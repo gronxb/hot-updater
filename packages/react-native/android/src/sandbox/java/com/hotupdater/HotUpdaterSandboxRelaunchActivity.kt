@@ -13,7 +13,7 @@ import android.os.SystemClock
 import android.util.Log
 
 /**
- * Replaces the app's process with a dev session's or the first screen's, in the
+ * Replaces the app's process with a session's or the first screen's, in the
  * SDK's restart process, whose getters never prepare a launch. It stays alive
  * until the new process took its claim: being alive is what tells a relaunch
  * from an icon tap, before anything in the new process could read a bundle.
@@ -23,6 +23,8 @@ class HotUpdaterSandboxRelaunchActivity : Activity() {
         const val EXTRA_TARGET_PID = "com.hotupdater.sandbox.TARGET_PID"
         const val EXTRA_SESSION = "com.hotupdater.sandbox.SESSION"
         const val EXTRA_HOST = "com.hotupdater.sandbox.HOST"
+        const val EXTRA_STORED_BUNDLE = "com.hotupdater.sandbox.STORED_BUNDLE"
+        const val EXTRA_HANDOFF = "com.hotupdater.sandbox.HANDOFF"
         private const val TAG = "HotUpdaterSandboxDev"
         private const val CLAIM_POLL_MS = 50L
         private const val KILL_DELAY_MS = 100L
@@ -34,6 +36,15 @@ class HotUpdaterSandboxRelaunchActivity : Activity() {
         val launch = packageManager.getLaunchIntentForPackage(packageName)?.component
         if (launch == null) {
             Log.e(TAG, "This app has no launcher to relaunch")
+            finish()
+            Process.killProcess(Process.myPid())
+            return
+        }
+        val stored = intent.getStringExtra(EXTRA_STORED_BUNDLE)
+        // Only a request that takes its handoff goes on: one the screen called off, or a copy of one
+        // already taken, does nothing. The claim is the first and only thing it does with the file.
+        if (stored != null && !HotUpdaterSandboxDev.filesOf(this).claimHandoff(intent.getStringExtra(EXTRA_HANDOFF))) {
+            Log.i(TAG, "dropped a stored session's relaunch the screen called off")
             finish()
             Process.killProcess(Process.myPid())
             return
@@ -51,7 +62,11 @@ class HotUpdaterSandboxRelaunchActivity : Activity() {
         val host = intent.getStringExtra(EXTRA_HOST)
         val files = HotUpdaterSandboxDev.filesOf(this)
         val restart = Intent.makeRestartActivityTask(launch).setPackage(packageName).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
-        if (session != null && host != null) {
+        if (stored != null) {
+            files.writeClaim(
+                HotUpdaterSandboxDevClaim("", "", Process.myPid(), SystemClock.elapsedRealtime(), stored),
+            )
+        } else if (session != null && host != null) {
             files.writeClaim(
                 HotUpdaterSandboxDevClaim(session, host, Process.myPid(), SystemClock.elapsedRealtime()),
             )

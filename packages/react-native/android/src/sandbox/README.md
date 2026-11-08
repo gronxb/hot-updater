@@ -24,6 +24,11 @@ reads a bundle, whether this one runs a session. Connecting, a reload and Exit
 start a new process through `HotUpdaterSandboxRelaunchActivity`, whose helper
 process being alive is what tells a relaunch from an icon tap.
 
+A stored session is the same kind of process. `HotUpdaterSandboxShelf` keeps a copy
+of each bundle a switch downloaded in the `.sandbox` app's cache directory, and a
+row's claim names one. The generated impl then answers `getBundleId`, `getBaseURL`
+and `getManifest` from it, on a channel without releases.
+
 `HotUpdaterSandboxScreen` renders `HotUpdaterSandboxHomeModel`, which holds its
 words and has no views, so its specs read them. `HotUpdaterSandboxDevServer` is all
 the screen knows of dev-server mode. The screen is Compose, with the primitives in

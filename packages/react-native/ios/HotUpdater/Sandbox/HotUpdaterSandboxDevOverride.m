@@ -1,6 +1,6 @@
-// A dev session's view of main's HotUpdaterImpl, for what reaches it from the
-// bridge and the host: the bundle, and everything that would read or write the
-// normal selection's state. The deepest selector, since reload() calls it
+// A session's view of main's HotUpdaterImpl, for what reaches it from the bridge
+// and the host: the bundle, and everything that would read or write the normal
+// selection's state. A session runs a dev server's JavaScript or a stored bundle. The deepest selector, since reload() calls it
 // directly (HotUpdater.mm), so the session holds across an in-place reload.
 // Swift calling the same methods within the SDK and the sandbox's own view keep
 // the real implementation.
@@ -18,9 +18,14 @@ typedef void (^HUResolve)(id _Nullable);
 + (nullable NSString *)storageItem:(NSString *)key;
 + (void)setStorageItem:(NSString *)key value:(nullable NSString *)value;
 + (void)overrideInstalled;
+@property(class, readonly, nullable) NSString *storedBundleId;
+@property(class, readonly, nullable) NSString *storedBaseURL;
+@property(class, readonly, nullable) NSDictionary *storedManifest;
 @end
 
 static NSString *const kDevChannel = @"hot-updater-sandbox-dev-server";
+// No release targets either, so the app's own check finds nothing to install.
+static NSString *const kStoredChannel = @"hot-updater-sandbox-stored-bundle";
 
 static NSDictionary *EmptyState(void) {
   return @{
@@ -32,6 +37,11 @@ static NSDictionary *EmptyState(void) {
 }
 
 static NSString *const HUDevNoInstall = @"A dev session installs no updates. Exit the dev server first.";
+static NSString *const HUStoredNoInstall = @"A stored bundle installs no updates. Go back to the current bundle first.";
+
+static NSString *NoInstall(void) {
+  return HotUpdaterSandboxDevState.storedBundleId ? HUStoredNoInstall : HUDevNoInstall;
+}
 
 static BOOL IsDev(id impl) {
   return [HotUpdaterSandboxDevState bundleURLForImpl:impl] != nil;
@@ -106,19 +116,20 @@ static id (*gTakeEvents)(id, SEL, id);
     return [HotUpdaterSandboxDevState bundleURLForImpl:me] ?: gBundleURL(me, @selector(bundleURLWithBundle:), bundle);
   });
   HU_SWAP(impl, Channel, @selector(getChannel), ^id(id me) {
-    return IsDev(me) ? kDevChannel : gChannel(me, @selector(getChannel));
+    if (!IsDev(me)) return gChannel(me, @selector(getChannel));
+    return HotUpdaterSandboxDevState.storedBundleId ? kStoredChannel : kDevChannel;
   });
   HU_SWAP(impl, ActiveState, @selector(getActiveUpdateState), ^id(id me) {
     return IsDev(me) ? EmptyState() : gActiveState(me, @selector(getActiveUpdateState));
   });
   HU_SWAP(impl, BundleId, @selector(getBundleId), ^id(id me) {
-    return IsDev(me) ? nil : gBundleId(me, @selector(getBundleId));
+    return IsDev(me) ? HotUpdaterSandboxDevState.storedBundleId : gBundleId(me, @selector(getBundleId));
   });
   HU_SWAP(impl, BaseURL, @selector(getBaseURL), ^id(id me) {
-    return IsDev(me) ? nil : gBaseURL(me, @selector(getBaseURL));
+    return IsDev(me) ? HotUpdaterSandboxDevState.storedBaseURL : gBaseURL(me, @selector(getBaseURL));
   });
   HU_SWAP(impl, Manifest, @selector(getManifest), ^id(id me) {
-    return IsDev(me) ? @{} : gManifest(me, @selector(getManifest));
+    return IsDev(me) ? (HotUpdaterSandboxDevState.storedManifest ?: @{}) : gManifest(me, @selector(getManifest));
   });
   // The last normal launch's report stays for the normal launch it describes.
   HU_SWAP(impl, NotifyAppReady, @selector(notifyAppReady), ^id(id me) {
@@ -145,18 +156,18 @@ static id (*gTakeEvents)(id, SEL, id);
   });
   HU_SWAP(impl, Update, @selector(updateBundle:resolver:rejecter:), ^(id me, id params, HUResolve resolve, id reject) {
     if (IsDev(me)) {
-      // Any resolve would make its JavaScript take the request's channel: a dev session
+      // Any resolve would make its JavaScript take the request's channel: a session
       // installs nothing, so it says so the way a failed download does.
-      ((void (^)(NSString *, NSString *, NSError *))reject)(@"UNKNOWN_ERROR", HUDevNoInstall, nil);
+      ((void (^)(NSString *, NSString *, NSError *))reject)(@"UNKNOWN_ERROR", NoInstall(), nil);
     } else {
       gUpdate(me, @selector(updateBundle:resolver:rejecter:), params, resolve, reject);
     }
   });
   HU_SWAP(impl, Install, @selector(installArtifact:resolver:rejecter:), ^(id me, id params, HUResolve resolve, id reject) {
     if (IsDev(me)) {
-      // Any resolve would make its JavaScript take the request's channel: a dev session
+      // Any resolve would make its JavaScript take the request's channel: a session
       // installs nothing, so it says so the way a failed download does.
-      ((void (^)(NSString *, NSString *, NSError *))reject)(@"UNKNOWN_ERROR", HUDevNoInstall, nil);
+      ((void (^)(NSString *, NSString *, NSError *))reject)(@"UNKNOWN_ERROR", NoInstall(), nil);
     } else {
       gInstall(me, @selector(installArtifact:resolver:rejecter:), params, resolve, reject);
     }
@@ -172,7 +183,7 @@ static id (*gTakeEvents)(id, SEL, id);
       gSetItem(me, @selector(setStorageItem:value:), key, value);
     }
   });
-  // A dev session's reset changes nothing, and says so: on YES its JavaScript would take
+  // A session's reset changes nothing, and says so: on YES its JavaScript would take
   // the build's default channel and check the normal catalog.
   HU_SWAP(bridgeMeta, Reset, @selector(resetChannelWithImpl:resolver:rejecter:), ^(id me, id target, HUResolve resolve, id reject) {
     if (IsDev(target)) {

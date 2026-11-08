@@ -19,6 +19,18 @@ class HotUpdaterSandboxImplGenerator {
   static final String GETTER_ANCHOR = "val bundleUrl = prepareLaunchIfNeeded().bundleUrl"
   static final String GETTER_LINE = "        if (environment.isMain) HotUpdaterSandboxDev.bundleOfThisProcess(context)?.let { return it }"
 
+  /** What JavaScript reads of the launched bundle, each answered by a stored session's bundle first. */
+  static final String STORED_ANCHOR = "val launchSelection = currentLaunchSelection"
+  static final Map<String, String> STORED_GETTERS = [
+    "    fun getBaseURL(): String? {": "baseURL",
+    "    fun getBundleId(): String? {": "bundleId",
+    "    fun getManifest(): Map<String, Any?> {": "manifest",
+  ]
+
+  static String storedLine(String field) {
+    "        HotUpdaterSandboxDev.storedBundle(context, environment)?.let { return it.${field} }"
+  }
+
   static final String RESTART = "    private fun restartApplication(reactContext: Context): Boolean {"
   static final String RESTART_ANCHOR = "val applicationContext = reactContext.applicationContext"
   static final String RESTART_LINE = "        if (environment.isMain && HotUpdaterSandboxDev.relaunch(reactContext)) return true"
@@ -53,11 +65,17 @@ class HotUpdaterSandboxImplGenerator {
     def anchorAt = nextStatement(lines, getterAt, GETTER_PRELUDE, GETTER_ANCHOR, "getJSBundleFile", refuse)
     def restartAt = uniqueLine(lines, RESTART, refuse)
     def restartAnchorAt = nextStatement(lines, restartAt, [], RESTART_ANCHOR, "restartApplication", refuse)
+    def storedAt = [:]
+    STORED_GETTERS.each { signature, field ->
+      def name = signature.trim().split(/[ (]/)[1]
+      storedAt[nextStatement(lines, uniqueLine(lines, signature, refuse), [], STORED_ANCHOR, name, refuse)] = storedLine(field)
+    }
 
     def output = []
     lines.eachWithIndex { line, index ->
       if (index == anchorAt) output << GETTER_LINE
       if (index == restartAnchorAt) output << RESTART_LINE
+      if (storedAt.containsKey(index)) output << storedAt[index]
       output << (ASSIGNMENTS[line] ?: line)
     }
     return HEADER + output.join("\n")

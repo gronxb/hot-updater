@@ -107,14 +107,14 @@ big row to start your app.
 | --------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | Big row         | Starts the bundle the next launch runs, named by the bundle: an update on the default channel isn't the built-in bundle |
 | Dev server      | Lists hosts and takes a new one. Tapping one runs its JavaScript in this build. See [Dev server](#dev-server)           |
-| OTA previews    | The last 10 channels this device opened, newest first. They say what you opened, not what the server has now            |
 | Scan QR code    | iOS scans in the app. Android opens the system camera, so check that your phone's camera opens the link                 |
 | Enter a channel | A channel name, or a whole preview link                                                                                 |
+| Downloaded      | The last 10 bundles a QR code, a link, or a channel downloaded. See [Downloaded bundles](#downloaded-bundles)           |
 | Info            | The build's version, fingerprint and built-in bundle, what's selected and pending, and **Reset to built-in bundle**     |
 
-Opening the screen sends your update server nothing. A preview row or a channel you
-type starts right away, and deletes downloaded bundles. A preview link always asks
-first, even one you paste, and gets the same fingerprint check as a scanned one.
+Opening the screen sends your update server nothing. A channel you type starts right
+away and replaces the current bundle. A preview link always asks first, even one you
+paste, and gets the same fingerprint check as a scanned one.
 
 Shake the device to open the same screen over your running app. It says what's
 running, and **Reload** runs it again. When the next launch would run another
@@ -131,6 +131,26 @@ After a launch that failed, a banner says what happened:
 
 A bundle that reached its first screen has passed its check, so a later crash doesn't
 roll it back. Opening it runs it again until you switch or reset.
+
+### Downloaded bundles
+
+Each bundle a QR code, a link, or a channel downloads stays listed, newest first, up
+to 10. Tapping one runs that exact bundle again, offline, without asking your update
+server:
+
+- It runs until the app restarts. A cold start opens the current bundle again, and
+  **Back to current bundle** returns to it sooner.
+- Your app's update check finds nothing to install while it runs. Offline, that
+  check fails as on any offline launch.
+- A crash in it never rolls back the current bundle.
+
+Press and hold a row to check its channel for a newer bundle, or to delete it. The
+copies live in the app's cache, so the system may remove them. A row whose copy is
+gone checks its channel instead.
+
+On iOS, only a sandbox with its own bundle ID, ending in `.sandbox`, keeps copies,
+so nothing stays in the store app. With the store app's ID, every row checks its
+channel. See [A separate app](#a-separate-app-on-ios).
 
 ### Links
 
@@ -271,7 +291,8 @@ own:
 
 1. In Xcode, duplicate the `Release` configuration as `Sandbox`, and set the app
    target's Product Bundle Identifier to `com.example.app.sandbox` for it. An app
-   extension needs its own ID under that one.
+   extension needs its own ID under that one. The `.sandbox` ending is what turns on
+   [Downloaded bundles](#downloaded-bundles).
 2. Map the configuration in the `Podfile`, then run `pod install`:
 
    ```ruby

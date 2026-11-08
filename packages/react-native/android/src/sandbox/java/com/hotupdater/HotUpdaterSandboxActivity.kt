@@ -50,6 +50,7 @@ internal object HotUpdaterSandbox {
             coordinator ?: HotUpdaterSandboxCoordinator(
                 host = HotUpdaterSandboxLiveHost(context),
                 store = HotUpdaterSandboxPreferences(context),
+                shelf = HotUpdaterSandboxDev.shelf(context),
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
                 openApp = { switched, fixed -> open(context.applicationContext, switched, fixed) },
                 log = { Log.i(TAG, it) },
@@ -132,6 +133,12 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handle(intent, savedInstanceState)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Back in front in this process: a stored session's relaunch still pending didn't happen.
+        if (screen != null) HotUpdaterSandbox.coordinator(this).resumed()
     }
 
     override fun onNewIntent(intent: Intent) {

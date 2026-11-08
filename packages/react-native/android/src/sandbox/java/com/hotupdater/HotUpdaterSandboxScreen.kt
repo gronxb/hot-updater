@@ -110,7 +110,7 @@ internal data class HotUpdaterSandboxQuestion(
                         Kind.CONFIRM,
                         "Open ${phase.link.channel}?",
                         if (isOverApp) {
-                            "This replaces the running bundle and deletes downloaded bundles."
+                            "This replaces the running bundle. Downloaded bundles stay listed."
                         } else {
                             HotUpdaterSandboxHomeModel.SWITCH_NOTE
                         },
@@ -150,6 +150,8 @@ internal data class HotUpdaterSandboxQuestion(
                             HotUpdaterSandboxFailure.NoBundle -> "${phase.target} has no bundle for this build."
                             HotUpdaterSandboxFailure.ResetFailed -> "Downloaded bundles couldn't be removed."
                             HotUpdaterSandboxFailure.Superseded -> "Another update check changed the selection first."
+                            HotUpdaterSandboxFailure.InStoredSession ->
+                                "A stored bundle is running. Go back to the current bundle, then try again."
                             is HotUpdaterSandboxFailure.Error -> failure.message
                         }
                     val bundle = if (phase.selection.isBuiltIn) "built-in bundle" else "bundle ${phase.selection.bundleId}"
@@ -157,7 +159,7 @@ internal data class HotUpdaterSandboxQuestion(
                         Kind.FAILED,
                         "Couldn't open ${phase.target}",
                         "$reason\n\nSelected now: ${phase.selection.channel}, $bundle.",
-                        "Retry",
+                        if (phase.failure == HotUpdaterSandboxFailure.InStoredSession) "Back" else "Retry",
                         "Close",
                     )
                 }
@@ -194,6 +196,9 @@ internal class HotUpdaterSandboxScreen(
 
     /** The question a person asked for, Clear or Reset, and the license, open across a new layout. */
     private var confirming by mutableStateOf<String?>(null)
+
+    /** The Downloaded row a person pressed and held. */
+    private var menuFor by mutableStateOf<HotUpdaterSandboxHomeModel.Downloaded?>(null)
     private var showsLicense by mutableStateOf(false)
     private val homeScroll = ScrollState(0)
     private val infoScroll = ScrollState(0)
@@ -425,6 +430,13 @@ internal class HotUpdaterSandboxScreen(
                             else -> coordinator.reloadApp()
                         }
                     }
+                    if (home.bigRow.showsBack) {
+                        SandboxDivider()
+                        SandboxRow(SandboxLead.Icon(R.drawable.hot_updater_sandbox_back), "Back to current bundle", showsChevron = false) {
+                            SandboxHaptic.tap(haptics)
+                            coordinator.leaveStoredSession()
+                        }
+                    }
                 }
             }
             SandboxSection(
@@ -504,23 +516,32 @@ internal class HotUpdaterSandboxScreen(
                     ) { coordinator.switchTo(it) }
                 }
             }
-            if (home.previews.isNotEmpty()) {
-                SandboxSection("Recent", "Clear" to { confirming = CONFIRM_CLEAR }) {
+            SandboxSection(
+                "Downloaded",
+                ("Clear" to { confirming = CONFIRM_CLEAR }).takeIf { home.downloaded.any { !it.isRunning } },
+                footer = home.downloadedFooter,
+            ) {
+                if (home.downloaded.isNotEmpty()) {
                     SandboxCard {
-                        home.previews.forEachIndexed { index, preview ->
-                            key(preview.channel) {
+                        home.downloaded.forEachIndexed { index, row ->
+                            key(row.bundleId) {
                                 if (index > 0) SandboxDivider()
                                 SandboxRow(
-                                    SandboxLead.Icon(R.drawable.hot_updater_sandbox_history),
-                                    preview.channel,
+                                    SandboxLead.Icon(R.drawable.hot_updater_sandbox_box),
+                                    row.channel,
                                     SandboxType.codeHeadline,
-                                    preview.message,
-                                    preview.opened,
+                                    row.message,
+                                    row.detail,
                                     enabled = !home.isBusy,
+                                    badge = "Running".takeIf { row.isRunning },
+                                    onLongClick = {
+                                        SandboxHaptic.toggle(haptics)
+                                        menuFor = row
+                                    },
                                 ) {
                                     SandboxHaptic.tap(haptics)
                                     focus.clearFocus()
-                                    coordinator.switchTo(preview.channel)
+                                    coordinator.openDownloaded(row.bundleId)
                                 }
                             }
                         }
@@ -799,19 +820,30 @@ internal class HotUpdaterSandboxScreen(
         when (confirming) {
             CONFIRM_CLEAR ->
                 SandboxDialog(
-                    title = "Clear recent previews?",
-                    message = "They're only listed on this device. Nothing else changes.",
+                    title = "Clear downloaded bundles?",
+                    message = "They're only on this device. The running one stays.",
                     confirm = "Clear",
                     destructive = true,
                     dismiss = "Cancel",
                     dismissible = true,
                     onConfirm = {
                         confirming = null
-                        coordinator.clearHistory()
+                        coordinator.clearDownloaded()
                     },
                     onDismiss = { confirming = null },
                 )
             CONFIRM_RESET -> ResetDialog { confirming = null }
+        }
+        menuFor?.let { row ->
+            SandboxActionsDialog(
+                title = row.channel,
+                actions =
+                    listOfNotNull(
+                        Triple("Check ${row.channel} for a newer bundle", false) { coordinator.switchTo(row.channel) },
+                        Triple("Delete", true) { coordinator.deleteDownloaded(row.bundleId) }.takeIf { !row.isRunning },
+                    ),
+                onDismiss = { menuFor = null },
+            )
         }
         if (showsLicense) {
             val text =

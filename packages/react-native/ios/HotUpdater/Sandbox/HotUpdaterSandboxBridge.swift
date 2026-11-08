@@ -22,12 +22,14 @@ public final class HotUpdaterSandboxBridge: NSObject {
 
     private static let host: HotUpdaterSandboxLiveHost = {
         let host = HotUpdaterSandboxLiveHost(isAppRunning: { isReleased?() == true })
-        host.exitDevServerAction = { devServer.exitDevServer() }
+        host.exitSessionAction = { devServer.exitDevServer() }
+        host.startStoredAction = { devServer.startStored($0) }
         return host
     }()
     private static let coordinator = HotUpdaterSandboxCoordinator(
         host: host,
         store: HotUpdaterSandboxDefaults(),
+        shelf: HotUpdaterSandboxLiveHost.shelf,
         openApp: { switched, fixed in open(switched: switched, fixed: fixed) },
         log: { NSLog("[HotUpdaterSandbox] %@", $0) }
     )

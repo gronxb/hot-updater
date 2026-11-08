@@ -141,9 +141,14 @@ text, with no leading slot. It always asks first.
 the text in `body`, and when the crashed bundle stays selected, a destructive
 row **Reset to built-in bundle** under a hairline.
 
-**History list.** The channels this device opened, newest first. Each row has a
-clock tile, the channel in `code`, its message as the subtitle, and when it
-was opened as the detail.
+**Downloaded list.** The bundles the sandbox's switches downloaded, newest
+first, at most 10. Each row has a box tile, the channel in `code`, its message as
+the subtitle, and its bundle and when it was downloaded as the detail. The running
+one shows a **Running** badge in place of the chevron. Pressed and held, a row
+offers **Check `<channel>` for a newer bundle** and **Delete**: a context menu on
+iOS, the dialog card on Android. The footer gives the count and size, or, while
+empty, what the list is for. A stored bundle running puts **Back to current
+bundle** under the primary row.
 
 **Tabs.** Home and Info. The selected tab is `accent`, the other `muted`.
 
@@ -152,8 +157,8 @@ was opened as the detail.
 **Home.** The header, then a status and a crash banner when there is one. Then
 the primary row under the label the model gives it, the Dev server section,
 the OTA previews section with **Scan QR code** and the **Enter a channel**
-accordion, and the history list under **Recent**. The hint to shake the device
-ends the page.
+accordion, and the Downloaded list under **Downloaded**. The hint to shake the
+device ends the page.
 
 **Info.** The title, the Build and Bundle cards of name and value rows, and the
 destructive row **Reset to built-in bundle** with the note under it, and

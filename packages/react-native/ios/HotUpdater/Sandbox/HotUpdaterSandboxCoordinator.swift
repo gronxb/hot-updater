@@ -46,10 +46,18 @@ func hotUpdaterSandboxNextLaunchBundleId(
 protocol HotUpdaterSandboxHost: AnyObject {
     /// The fingerprint this build embeds, or nil without one.
     func fingerprintHash() -> String?
-    /// Whether this process runs a dev server's JavaScript, where nothing can change the normal selection.
-    var isRunningDevServer: Bool { get }
-    /// Ends the dev session, with the screen still up to answer a link.
-    func exitDevServerForLink()
+    /// Whether this process runs a dev server's JavaScript or a stored bundle, where
+    /// nothing can change the normal selection.
+    var isInSession: Bool { get }
+    /// The stored bundle this process runs, or nil.
+    var storedSessionBundleId: String? { get }
+    /// Runs a stored bundle for this process: a reload over a running app, or the
+    /// app's start. A cold launch is back on the normal selection.
+    func startStoredSession(_ bundle: HotUpdaterSandboxStoredBundle)
+    /// Ends the session: the normal selection runs again.
+    func exitSession()
+    /// Ends the session, with the screen still up to answer a link.
+    func exitSessionForLink()
     /// Whether the app's JavaScript left a server config: a server answered one of its checks.
     func hasServerConfig() -> Bool
     /// What the next launch selects, as storage holds it. Settles the previous launch
@@ -75,8 +83,11 @@ protocol HotUpdaterSandboxHost: AnyObject {
 }
 
 extension HotUpdaterSandboxHost {
-    var isRunningDevServer: Bool { false }
-    func exitDevServerForLink() {}
+    var isInSession: Bool { false }
+    var storedSessionBundleId: String? { nil }
+    func startStoredSession(_ bundle: HotUpdaterSandboxStoredBundle) {}
+    func exitSession() {}
+    func exitSessionForLink() {}
 
     func launchBundleId() async -> String {
         await selection().bundleId
@@ -93,10 +104,6 @@ protocol HotUpdaterSandboxStore: AnyObject {
     var pendingLinks: [String] { get set }
     func recordSelected(_ selection: HotUpdaterSandboxSelection)
     func recordOpened(_ selection: HotUpdaterSandboxSelection)
-    /// The previews this device opened, newest first.
-    var history: [HotUpdaterSandboxHistoryEntry] { get set }
-    /// Each bundle's deploy message, newest first, by bundle ID.
-    var messages: [HotUpdaterSandboxBundleMessage] { get set }
     /// What the last launch left, until a person moved on from it.
     var lastLaunch: HotUpdaterSandboxLastLaunch? { get set }
 }
@@ -119,6 +126,8 @@ enum HotUpdaterSandboxFailure: Equatable {
     case resetFailed
     /// Another check or a reset changed the selection during the switch.
     case superseded
+    /// A stored bundle runs: the way back is to the current bundle.
+    case inStoredSession
     /// A request failed, or the SDK refused.
     case error(String)
 }
@@ -150,7 +159,12 @@ struct HotUpdaterSandboxState: Equatable {
     var queuedLinks: Int
     var details: HotUpdaterSandboxDetails?
     var lastLaunch: HotUpdaterSandboxLastLaunch?
-    var history: [HotUpdaterSandboxHistoryEntry] = []
+    /// What the sandbox's switches downloaded, newest first.
+    var downloaded: [HotUpdaterSandboxShelfEntry] = []
+    /// What the stored copies take.
+    var downloadedBytes: Int64 = 0
+    /// The stored bundle this process runs, or nil.
+    var storedSessionBundleId: String?
     /// The deploy message of the selected bundle, when this device knows it.
     var selectedMessage: String?
     /// What this process's launch runs, or before one, what it would pick; `selection` is the next launch.
@@ -194,6 +208,19 @@ final class HotUpdaterSandboxLock {
 final class HotUpdaterSandboxCoordinator {
     private let host: HotUpdaterSandboxHost
     private let store: HotUpdaterSandboxStore
+    private let shelf: HotUpdaterSandboxShelf
+    /// Where the shelf's file work runs, in order, off the main thread.
+    private let shelfQueue: DispatchQueue
+    /// The Downloaded list as the shelf last reported it: the screen reads only this.
+    private var downloaded: [HotUpdaterSandboxShelfEntry] = []
+    private var downloadedBytes: Int64 = 0
+    /// A row's stored bundle being checked, before its session starts: Clear and
+    /// Delete leave it alone, as they do the running one.
+    private var openingBundleId: String?
+
+    private var protectedBundleIds: Set<String> {
+        Set([host.storedSessionBundleId, openingBundleId].compactMap { $0 })
+    }
     /// Opens the app: on `open()` with `switched` false, or after a switch.
     /// `fixed` is true when this process had already fixed its launch, so only a
     /// reload can apply the switch.
@@ -228,15 +255,19 @@ final class HotUpdaterSandboxCoordinator {
     init(
         host: HotUpdaterSandboxHost,
         store: HotUpdaterSandboxStore,
+        shelf: HotUpdaterSandboxShelf,
         openApp: @escaping (_ switched: Bool, _ fixed: Bool) -> Void,
         log: @escaping (String) -> Void = { _ in },
         now: @escaping () -> Date = Date.init,
-        lock: HotUpdaterSandboxLock = .shared
+        lock: HotUpdaterSandboxLock = .shared,
+        shelfQueue: DispatchQueue = DispatchQueue(label: "hot-updater-sandbox.shelf")
     ) {
+        self.shelfQueue = shelfQueue
         self.now = now
         self.lock = lock
         self.host = host
         self.store = store
+        self.shelf = shelf
         self.openApp = openApp
         self.log = log
         queue = store.pendingLinks
@@ -256,6 +287,12 @@ final class HotUpdaterSandboxCoordinator {
     /// Reads what storage holds, and asks about the oldest unanswered link.
     /// Sends no request: opening the screen costs the update server nothing.
     func refresh() async {
+        // A switch may be copying into the shelf: its partial copy isn't listed yet.
+        if case .working = state.phase {
+            await relist(reconciling: false)
+        } else {
+            await relist(reconciling: true)
+        }
         let selection = await readSelection()
         publish(reading(selection, launched: await host.launchBundleId()))
         pump()
@@ -286,9 +323,11 @@ final class HotUpdaterSandboxCoordinator {
     /// Accepts the link in `.confirming`.
     func confirmLink() {
         guard case .confirming(let link) = state.phase else { return }
+        // A row is opening its stored bundle: the link waits for it.
+        if openingBundleId != nil { return }
         // The link stays stored, and the screen asks about it on the normal selection.
-        if host.isRunningDevServer {
-            host.exitDevServerForLink()
+        if host.isInSession {
+            host.exitSessionForLink()
             setPhase(.idle)
             pump()
             return
@@ -350,7 +389,7 @@ final class HotUpdaterSandboxCoordinator {
             guard await takeLock(operationId, "") else { return }
             defer { lock.release(.switching) }
             let target = await host.selection().defaultChannel
-            if await refuseInDevSession(operationId, target) { return }
+            if await refuseInSession(operationId, target) { return }
             setPhase(.working(operationId: operationId, target: target, step: .reset, progress: nil))
             guard let reset = await attempt(operationId, target, .reset, { try await self.host.reset() }) else { return }
             guard reset else {
@@ -364,7 +403,12 @@ final class HotUpdaterSandboxCoordinator {
 
     /// Runs the failed switch again from its preflight.
     func retry() {
-        guard case .failed(_, let target, _, _, _) = state.phase else { return }
+        guard case .failed(_, let target, _, let failure, _) = state.phase else { return }
+        // A refusal in a stored session offers the way back instead.
+        if failure == .inStoredSession {
+            leaveStoredSession()
+            return
+        }
         begin(target: retryTarget ?? target)
     }
 
@@ -375,8 +419,8 @@ final class HotUpdaterSandboxCoordinator {
         // Over a running app, opening shows what it runs: what's selected waits for
         // its launch. Before the app starts, what's selected is what opens.
         let reloads = launchFixed && !host.isAppRunning()
-        // A dev session runs no bundle, so it says nothing about one.
-        if !host.isRunningDevServer {
+        // A session runs no selected bundle, so it says nothing about one.
+        if !host.isInSession {
             recordOpened(reloads ? selection : HotUpdaterSandboxSelection(
                 channel: selection.channel,
                 defaultChannel: selection.defaultChannel,
@@ -392,8 +436,62 @@ final class HotUpdaterSandboxCoordinator {
     /// Runs the app again from the screen over it: the bundle a launch selects now.
     func reloadApp() {
         guard canStart else { return }
+        if let stored = host.storedSessionBundleId {
+            openDownloaded(stored)
+            return
+        }
         acknowledgeLastLaunch()
         openApp(true, true)
+    }
+
+    /// A Downloaded row runs its stored bundle for this process, offline. A row
+    /// whose bundle isn't on this device checks its channel, as a typed one does,
+    /// and stays: only Delete and Clear remove a row.
+    /// Returns false while a switch runs.
+    @discardableResult
+    func openDownloaded(_ bundleId: String) -> Bool {
+        guard canStart, lock.holder == nil,
+              let entry = downloaded.first(where: { $0.bundleId == bundleId }) else { return false }
+        openingBundleId = bundleId
+        let shelf = shelf
+        Task { @MainActor in
+            // The files are checked off the main thread.
+            let bundle = await onShelf { shelf.stored(bundleId) }
+            guard let bundle else {
+                openingBundleId = nil
+                switchTo(entry.channel)
+                pump()
+                return
+            }
+            // The session is this process's own from here: its ID is the running one at once.
+            openingBundleId = nil
+            if canStart, lock.holder == nil {
+                acknowledgeLastLaunch()
+                setPhase(.idle)
+                log("opening stored \(entry.channel) \(bundleId)")
+                host.startStoredSession(bundle)
+            }
+            publish(reading(state))
+            pump()
+        }
+        return true
+    }
+
+    /// Back to what the normal selection runs.
+    func leaveStoredSession() {
+        guard host.storedSessionBundleId != nil else { return }
+        if case .failed = state.phase { dismiss() }
+        host.exitSession()
+    }
+
+    /// Removes a row and its files. The running one stays.
+    func deleteDownloaded(_ bundleId: String) {
+        guard !protectedBundleIds.contains(bundleId) else { return }
+        let shelf = shelf
+        Task { @MainActor in
+            await onShelf { shelf.remove(bundleId) }
+            await relist(reconciling: false)
+        }
     }
 
     /// A person moved on from what the last launch left, so it's not told again.
@@ -406,12 +504,48 @@ final class HotUpdaterSandboxCoordinator {
         publish(next)
     }
 
-    /// Forgets the previews this device opened: what they list is local, so nothing else changes.
-    func clearHistory() {
-        store.history = []
-        var next = state
-        next.history = []
-        publish(next)
+    /// Removes every row and its files but the running one: they're only on this device.
+    func clearDownloaded() {
+        let shelf = shelf
+        let kept = protectedBundleIds
+        Task { @MainActor in
+            await onShelf { shelf.clear(keeping: kept) }
+            await relist(reconciling: false)
+        }
+    }
+
+    /// Runs the shelf's file work in order on its queue, so the main thread never waits for it.
+    private func onShelf<T>(_ work: @escaping () -> T) async -> T {
+        await withCheckedContinuation { continuation in
+            shelfQueue.async { continuation.resume(returning: work()) }
+        }
+    }
+
+    /// Takes the shelf's list and size from its queue, and shows them.
+    private func relist(reconciling: Bool) async {
+        let shelf = shelf
+        let (entries, bytes) = await onShelf { () -> ([HotUpdaterSandboxShelfEntry], Int64) in
+            if reconciling { shelf.reconcile() }
+            return (shelf.entries, shelf.totalBytes())
+        }
+        downloaded = entries
+        downloadedBytes = bytes
+        publish(reading(state))
+    }
+
+    /// The Downloaded list as the shelf last reported it.
+    private func reading(_ base: HotUpdaterSandboxState) -> HotUpdaterSandboxState {
+        var next = base
+        next.downloaded = downloaded
+        next.downloadedBytes = downloadedBytes
+        next.storedSessionBundleId = host.storedSessionBundleId
+        next.selectedMessage = next.selection.flatMap { message(of: $0.bundleId) }
+        next.runningMessage = next.runningBundleId.flatMap(message(of:))
+        return next
+    }
+
+    private func message(of bundleId: String) -> String? {
+        downloaded.first { $0.bundleId == bundleId }?.message
     }
 
     /// What storage says now, with no request.
@@ -419,13 +553,10 @@ final class HotUpdaterSandboxCoordinator {
         var next = state
         next.selection = selection
         next.runningBundleId = launched
-        next.runningMessage = store.messages.first { $0.bundleId == launched }?.message
         next.hasServerConfig = host.hasServerConfig()
         next.details = host.details()
-        next.history = store.history
-        next.selectedMessage = store.messages.first { $0.bundleId == selection.bundleId }?.message
         next.lastLaunch = settledLastLaunch(launched: launched)
-        return next
+        return reading(next)
     }
 
     /// Reads evidence after the host's reads, which settled the previous launch.
@@ -437,23 +568,12 @@ final class HotUpdaterSandboxCoordinator {
         return store.lastLaunch
     }
 
-    /// One entry per preview channel: a default channel is the big row, not a
-    /// preview, and the built-in bundle isn't what a channel holds.
     private func recordOpened(_ selection: HotUpdaterSandboxSelection) {
         store.recordOpened(selection)
-        guard selection.channel != selection.defaultChannel, !selection.isBuiltIn else { return }
-        store.history = HotUpdaterSandboxHistory.adding(
-            HotUpdaterSandboxHistoryEntry(
-                channel: selection.channel,
-                bundleId: selection.bundleId,
-                message: store.messages.first { $0.bundleId == selection.bundleId }?.message,
-                openedAtMs: now().timeIntervalSince1970 * 1000
-            ),
-            to: store.history
-        )
     }
 
     private var canStart: Bool {
+        if openingBundleId != nil { return false }
         switch state.phase {
         case .idle, .failed:
             return true
@@ -483,18 +603,22 @@ final class HotUpdaterSandboxCoordinator {
         return true
     }
 
-    /// A dev process's native state is the dev session's, so a switch waits for its Exit.
+    /// A session's native state is the session's, so a switch waits for its end.
     /// Asked again after every await, before a step that changes the selection.
-    private func refuseInDevSession(_ operationId: Int, _ target: String, _ step: HotUpdaterSandboxStep = .preflight) async -> Bool {
-        guard host.isRunningDevServer else { return false }
-        await fail(operationId, target, step, .error("The dev server is running. Exit it, then try again."))
+    private func refuseInSession(_ operationId: Int, _ target: String, _ step: HotUpdaterSandboxStep = .preflight) async -> Bool {
+        guard host.isInSession else { return false }
+        if host.storedSessionBundleId != nil {
+            await fail(operationId, target, step, .inStoredSession)
+        } else {
+            await fail(operationId, target, step, .error("The dev server is running. Exit it, then try again."))
+        }
         return true
     }
 
     private func run(_ operationId: Int, _ target: String) async {
         guard await takeLock(operationId, target) else { return }
         defer { lock.release(.switching) }
-        if await refuseInDevSession(operationId, target) { return }
+        if await refuseInSession(operationId, target) { return }
         let before = await host.selection()
         let toDefault = target == before.defaultChannel
         guard let hasBundle = await attempt(operationId, target, .preflight, {
@@ -506,7 +630,7 @@ final class HotUpdaterSandboxCoordinator {
             return
         }
         if before.channel != target {
-            if await refuseInDevSession(operationId, target, .reset) { return }
+            if await refuseInSession(operationId, target, .reset) { return }
             setPhase(.working(operationId: operationId, target: target, step: .reset, progress: nil))
             guard let reset = await attempt(operationId, target, .reset, { try await self.host.reset() }) else { return }
             guard reset else {
@@ -514,7 +638,7 @@ final class HotUpdaterSandboxCoordinator {
                 return
             }
         }
-        if await refuseInDevSession(operationId, target, .check) { return }
+        if await refuseInSession(operationId, target, .check) { return }
         setPhase(.working(operationId: operationId, target: target, step: .check, progress: nil))
         guard let staged = await attempt(operationId, target, .check, {
             try await self.host.checkAndStage(channel: target) { progress in
@@ -532,19 +656,26 @@ final class HotUpdaterSandboxCoordinator {
             }
             await finish(operationId)
         case .update(let bundleId, let message):
-            if let message {
-                store.messages = HotUpdaterSandboxHistory.remembering(
-                    HotUpdaterSandboxBundleMessage(bundleId: bundleId, message: message),
-                    in: store.messages
-                )
-            }
             // A check from the running app may have switched channels between the SDK's steps.
             if await host.selection().channel != target {
                 await fail(operationId, target, .check, .superseded)
                 return
             }
+            await shelve(bundleId: bundleId, channel: target, message: message)
             await finish(operationId)
         }
+    }
+
+    /// Keeps a copy of what the switch just installed, off the main thread. Main's
+    /// store keeps the bundle it just installed, so the copy reads it in place.
+    private func shelve(bundleId: String, channel: String, message: String?) async {
+        let shelf = shelf
+        let nowMs = now().timeIntervalSince1970 * 1000
+        let kept = protectedBundleIds
+        await onShelf {
+            shelf.add(bundleId: bundleId, channel: channel, message: message, nowMs: nowMs, kept: kept)
+        }
+        await relist(reconciling: false)
     }
 
     private func finish(_ operationId: Int) async {
@@ -568,9 +699,6 @@ final class HotUpdaterSandboxCoordinator {
         if let selection = state.selection {
             recordOpened(selection)
         }
-        var next = state
-        next.history = store.history
-        publish(next)
         openApp(true, launchFixed)
     }
 
@@ -578,8 +706,8 @@ final class HotUpdaterSandboxCoordinator {
     private func readSelection() async -> HotUpdaterSandboxSelection {
         let selection = await host.selection()
         let launchBundleId = await host.launchBundleId()
-        // A dev process runs no selection, and only Exit replaces it.
-        launchFixed = !host.isRunningDevServer && launchBundleId != selection.bundleId
+        // A session runs no selection, and only its end replaces it.
+        launchFixed = !host.isInSession && launchBundleId != selection.bundleId
         return selection
     }
 
@@ -621,6 +749,11 @@ final class HotUpdaterSandboxCoordinator {
     /// waiting for a server is asked about again from scratch, so its fingerprint
     /// is read again after a restart too.
     private func pump() {
+        // A row is opening its stored bundle: links stay queued until it has.
+        if openingBundleId != nil {
+            publish(state)
+            return
+        }
         switch state.phase {
         case .idle, .waitingForServer:
             break

@@ -1,15 +1,23 @@
 package com.hotupdater
 
+import android.content.Context
+import android.content.ContextWrapper
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.io.IOException
+import java.nio.file.Files
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import kotlin.coroutines.EmptyCoroutineContext
 
 private const val FINGERPRINT = "abc"
 
@@ -17,6 +25,18 @@ private fun link(
     channel: String,
     fingerprintHash: String = FINGERPRINT,
 ) = "hu-sandbox-app://hot-updater/preview?channel=$channel&fingerprint=$fingerprintHash"
+
+/**
+ * An application context whose only real part is its files directory: all the live
+ * host's handoff path reads. The rest is the unit tests' stubbed Android.
+ */
+private class TestAppContext(
+    private val files: File,
+) : ContextWrapper(null) {
+    override fun getApplicationContext(): Context = this
+
+    override fun getFilesDir(): File = files
+}
 
 private class FakeHost : HotUpdaterSandboxHost {
     var fingerprint: String? = FINGERPRINT
@@ -31,10 +51,59 @@ private class FakeHost : HotUpdaterSandboxHost {
     var stageResult: Result<HotUpdaterSandboxStaged> = Result.success(HotUpdaterSandboxStaged.Update("ota"))
     var progress: ((Double) -> Unit)? = null
     var channelAfterStaging: String? = null
-    override var isRunningDevServer = false
+    var isRunningDevServer = false
+    var storedBundleId: String? = null
+    val startedStored = ArrayList<String>()
     var exits = 0
 
-    override fun exitDevServer() {
+    override val isInSession get() = isRunningDevServer || storedBundleId != null
+
+    override val storedSessionBundleId get() = storedBundleId
+
+    /** Whether the relaunch's intent can't go out. */
+    var handoffFails = false
+
+    /** Handoffs the screen called off. */
+    var abandoned = 0
+
+    /** An app whose files directory is a temporary one, for the live host's handoff path. */
+    private val app = TestAppContext(Files.createTempDirectory("sandbox-app").toFile())
+
+    /** The live host itself calls each handoff off, as on a device. */
+    private val live = HotUpdaterSandboxLiveHost(app)
+
+    /** The handoffs' files, where the live host and the relaunch's helper take them. */
+    val handoffFiles get() = HotUpdaterSandboxDev.filesOf(app)
+
+    /** The nonces of the handoffs that went out, oldest first. */
+    val handoffs = ArrayList<String>()
+
+    /** What each of the live host's call-offs returned, in order. */
+    val callOffs = ArrayList<Boolean>()
+
+    override fun abandonStoredSession(handoff: String): Boolean =
+        live.abandonStoredSession(handoff).also { tookIt ->
+            callOffs += tookIt
+            if (tookIt) abandoned += 1
+        }
+
+    /** As the live host: the session's ID changes only in the process that replaces this one. */
+    override fun startStoredSession(
+        bundle: HotUpdaterSandboxStoredBundle,
+        handoff: String,
+    ): Boolean {
+        if (handoffFails) return false
+        // What the live host's relaunch records before its intent goes out.
+        handoffFiles.writeHandoff(handoff)
+        handoffs += handoff
+        startedStored += bundle.bundleId
+        return true
+    }
+
+    /** The relaunch's helper for the handoff [index] went out as: whether it may relaunch. */
+    fun helperClaims(index: Int = handoffs.lastIndex) = handoffFiles.claimHandoff(handoffs[index])
+
+    override fun exitSession() {
         exits += 1
     }
 
@@ -96,8 +165,6 @@ private class FakeStore(
 ) : HotUpdaterSandboxStore {
     val selected = ArrayList<String>()
     val opened = ArrayList<String>()
-    override var history: List<HotUpdaterSandboxHistoryEntry> = emptyList()
-    override var messages: List<HotUpdaterSandboxBundleMessage> = emptyList()
     override var lastLaunch: HotUpdaterSandboxLastLaunch? = null
 
     override fun recordSelected(selection: HotUpdaterSandboxSelection) {
@@ -111,20 +178,24 @@ private class FakeStore(
 
 private class Fixture(
     pendingLinks: List<String> = emptyList(),
+    shelfContext: kotlin.coroutines.CoroutineContext = EmptyCoroutineContext,
 ) {
     val host = FakeHost()
     val store = FakeStore(pendingLinks)
     val lock = HotUpdaterSandboxLock()
     val opens = ArrayList<Pair<Boolean, Boolean>>()
+    val shelf = testShelf().also { installTestBundle(it.source, "ota") }
     val coordinator =
         HotUpdaterSandboxCoordinator(
             host = host,
             store = store,
+            shelf = shelf,
             // Each step runs at once on the test's thread; a gate holds one open.
             scope = CoroutineScope(Dispatchers.Unconfined),
             openApp = { switched, fixed -> opens += switched to fixed },
             nowMs = { 1_000_000L },
             lock = lock,
+            shelfContext = shelfContext,
         )
 
     val phase get() = coordinator.state.phase
@@ -439,6 +510,291 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
+    fun `a row runs its stored bundle with no request`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        fixture.host.calls.clear()
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        assertTrue(fixture.host.calls.isEmpty())
+        assertEquals(listOf("ota"), fixture.host.startedStored)
+
+        // In the stored session's process, Reload runs the same stored bundle again.
+        val session = Fixture()
+        session.host.storedBundleId = "ota"
+        session.shelf.add("ota", "pr-1", null, 0)
+        session.coordinator.refresh()
+        session.coordinator.reloadApp()
+        assertEquals(listOf("ota"), session.host.startedStored)
+        assertTrue(session.host.calls.isEmpty())
+    }
+
+    @Test
+    fun `a handoff keeps its bundle and its guard until the process is replaced`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        installTestBundle(fixture.shelf.source, "other")
+        fixture.shelf.add("other", "pr-2", null, 0)
+        fixture.coordinator.refresh()
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        assertEquals(listOf("ota"), fixture.host.startedStored)
+        // The relaunch is on its way: a second tap, Delete, Clear, or a switch changes nothing of it.
+        assertFalse(fixture.coordinator.openDownloaded("ota"))
+        assertFalse(fixture.coordinator.openDownloaded("other"))
+        assertFalse(fixture.coordinator.switchTo("pr-2"))
+        fixture.coordinator.deleteDownloaded("ota")
+        fixture.coordinator.clearDownloaded()
+        assertEquals(listOf("ota"), fixture.host.startedStored)
+        assertNotNull(fixture.shelf.stored("ota"))
+        assertNull(fixture.shelf.stored("other"))
+    }
+
+    @Test
+    fun `a relaunch the system never starts lets go once the screen is back`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        // The intent went out, but the system kept the relaunch from starting: the screen comes back.
+        assertFalse(fixture.coordinator.openDownloaded("ota"))
+        fixture.coordinator.resumed()
+        assertEquals(1, fixture.host.abandoned)
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        assertEquals(listOf("ota", "ota"), fixture.host.startedStored)
+        // A screen that comes back with nothing pending calls nothing off.
+        val idle = Fixture()
+        idle.coordinator.resumed()
+        assertEquals(0, idle.host.abandoned)
+    }
+
+    @Test
+    fun `a screen back while the relaunch has taken its handoff keeps the guard, every time`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        fixture.coordinator.receiveLink(link("pr-new"))
+        assertTrue(fixture.host.helperClaims())
+        // The relaunch is replacing this process: on the first resume and the next, nothing
+        // else starts, and the link waits for the new one.
+        repeat(2) { round ->
+            fixture.coordinator.resumed()
+            // The live host's call-off loses, this time and the next.
+            assertEquals(List(round + 1) { false }, fixture.host.callOffs)
+            assertEquals(0, fixture.host.abandoned)
+            assertFalse(fixture.coordinator.openDownloaded("ota"))
+            assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
+            assertEquals(1, fixture.coordinator.state.queuedLinks)
+            fixture.coordinator.clearDownloaded()
+            assertNotNull(fixture.shelf.stored("ota"))
+        }
+        assertEquals(listOf("ota"), fixture.host.startedStored)
+    }
+
+    @Test
+    fun `a helper that asks after the screen called its handoff off doesn't relaunch`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        // The helper has its request but hasn't claimed it; the screen comes back first.
+        fixture.coordinator.resumed()
+        assertEquals(1, fixture.host.abandoned)
+        assertFalse(fixture.host.helperClaims())
+        assertFalse(fixture.host.helperClaims())
+    }
+
+    @Test
+    fun `a called-off helper can't claim after another row opens`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        installTestBundle(fixture.shelf.source, "other")
+        fixture.shelf.add("other", "pr-2", null, 0)
+        fixture.coordinator.refresh()
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        fixture.coordinator.resumed()
+        assertTrue(fixture.coordinator.openDownloaded("other"))
+        // The first row's helper, late, loses for good; the second row's goes on.
+        assertFalse(fixture.host.helperClaims(0))
+        assertTrue(fixture.host.helperClaims(1))
+        assertFalse(fixture.host.helperClaims(0))
+    }
+
+    @Test
+    fun `a check still running when the screen comes back hands nothing off`() {
+        val shelfThread = Executors.newSingleThreadExecutor()
+        val fixture = Fixture(shelfContext = shelfThread.asCoroutineDispatcher())
+        val drain = { repeat(10) { shelfThread.submit {}.get() } }
+        fixture.coordinator.switchTo("pr-1")
+        drain()
+        val disk = CountDownLatch(1)
+        shelfThread.submit { disk.await() }
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        fixture.coordinator.resumed()
+        disk.countDown()
+        drain()
+        assertTrue(fixture.host.startedStored.isEmpty())
+        shelfThread.shutdown()
+    }
+
+    @Test
+    fun `a link during a handoff waits, and the pending bundle outlasts the cap`() {
+        val fixture = Fixture()
+        // Ten bundles listed, the one being opened the oldest.
+        fixture.shelf.add("ota", "pr-1", null, 0)
+        for (index in 1 until HotUpdaterSandboxShelf.LIMIT) {
+            installTestBundle(fixture.shelf.source, "b$index")
+            fixture.shelf.add("b$index", "pr-b$index", null, index.toLong())
+        }
+        fixture.coordinator.refresh()
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        fixture.coordinator.receiveLink(link("pr-new"))
+        assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
+        assertEquals(1, fixture.coordinator.state.queuedLinks)
+        fixture.coordinator.confirmLink()
+        assertTrue(fixture.host.calls.isEmpty())
+        assertNotNull(fixture.shelf.stored("ota"))
+        assertEquals(HotUpdaterSandboxShelf.LIMIT, fixture.shelf.entries.size)
+        // Once the handoff resolves, the link is asked about.
+        fixture.coordinator.resumed()
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Confirming)
+    }
+
+    @Test
+    fun `a handoff that never goes out lets go`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        fixture.host.handoffFails = true
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        fixture.host.handoffFails = false
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        assertEquals(listOf("ota"), fixture.host.startedStored)
+    }
+
+    @Test
+    fun `a row whose files are gone checks its channel`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        java.io.File(fixture.shelf.root, "ota").deleteRecursively()
+        fixture.host.calls.clear()
+        fixture.coordinator.openDownloaded("ota")
+        assertTrue(fixture.host.startedStored.isEmpty())
+        assertEquals(listOf("preflight pr-1", "check pr-1"), fixture.host.calls)
+    }
+
+    @Test
+    fun `a row without files stays when its channel has nothing new`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        java.io.File(fixture.shelf.root, "ota").deleteRecursively()
+        val row = fixture.shelf.entries
+        fixture.host.stageResult = Result.success(HotUpdaterSandboxStaged.NoUpdate)
+        repeat(2) {
+            fixture.host.calls.clear()
+            assertTrue(fixture.coordinator.openDownloaded("ota"))
+            assertEquals(listOf("preflight pr-1", "check pr-1"), fixture.host.calls)
+            assertEquals(row, fixture.shelf.entries)
+            assertEquals(row, fixture.coordinator.state.downloaded)
+        }
+        assertTrue(fixture.host.startedStored.isEmpty())
+    }
+
+    @Test
+    fun `a row without files stays when its channel can't be checked`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        java.io.File(fixture.shelf.root, "ota").deleteRecursively()
+        val row = fixture.shelf.entries
+        fixture.host.preflights["pr-1"] = Result.failure(IOException("offline"))
+        fixture.coordinator.openDownloaded("ota")
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Failed)
+        assertEquals(row, fixture.shelf.entries)
+        assertEquals(row, fixture.coordinator.state.downloaded)
+    }
+
+    @Test
+    fun `in a stored session a typed channel is refused with a way back`() {
+        val fixture = Fixture()
+        fixture.host.storedBundleId = "ota"
+        fixture.coordinator.switchTo("pr-2")
+        val phase = fixture.phase as HotUpdaterSandboxPhase.Failed
+        assertEquals(HotUpdaterSandboxFailure.InStoredSession, phase.failure)
+        assertEquals("Back", HotUpdaterSandboxQuestion.of(phase, isOverApp = true)?.accept)
+        assertTrue(fixture.host.calls.isEmpty())
+        fixture.coordinator.retry()
+        assertEquals(1, fixture.host.exits)
+        assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
+    }
+
+    @Test
+    fun `in a stored session a link exits only once confirmed`() {
+        val fixture = Fixture()
+        fixture.host.storedBundleId = "ota"
+        fixture.coordinator.receiveLink(link("pr-1"))
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Confirming)
+        assertEquals(0, fixture.host.exits)
+        fixture.coordinator.confirmLink()
+        assertEquals(1, fixture.host.exits)
+        assertTrue(fixture.host.calls.isEmpty())
+    }
+
+    @Test
+    fun `a refresh during a switch leaves its copy alone`() {
+        val fixture = Fixture()
+        val partial = java.io.File(fixture.shelf.root, "ota.tmp").apply { mkdirs() }
+        fixture.host.stageGate = CompletableDeferred()
+        fixture.coordinator.switchTo("pr-1")
+        fixture.coordinator.refresh()
+        assertTrue(partial.exists())
+        fixture.host.stageGate?.complete(HotUpdaterSandboxStaged.Update("ota"))
+        fixture.coordinator.refresh()
+        assertFalse(partial.exists())
+    }
+
+    @Test
+    fun `the main thread never waits for the shelf's files`() {
+        val shelfThread = Executors.newSingleThreadExecutor()
+        val fixture = Fixture(shelfContext = shelfThread.asCoroutineDispatcher())
+        // Work on the shelf's thread can queue more of it: let it all run.
+        val drain = { repeat(10) { shelfThread.submit {}.get() } }
+        fixture.coordinator.switchTo("pr-1")
+        drain()
+        // The shelf is busy for as long as the test says: a slow disk.
+        installTestBundle(fixture.shelf.source, "other")
+        fixture.shelf.add("other", "pr-2", null, 0)
+        val disk = CountDownLatch(1)
+        shelfThread.submit { disk.await() }
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        // The bundle being opened stays whole through Delete and Clear.
+        fixture.coordinator.deleteDownloaded("ota")
+        fixture.coordinator.clearDownloaded()
+        assertTrue(fixture.host.startedStored.isEmpty())
+        assertNotNull(fixture.shelf.stored("ota"))
+        disk.countDown()
+        drain()
+        assertEquals(listOf("ota"), fixture.host.startedStored)
+        assertNotNull(fixture.shelf.stored("ota"))
+        assertNull(fixture.shelf.stored("other"))
+        assertEquals(listOf("ota"), fixture.shelf.entries.map { it.bundleId })
+        shelfThread.shutdown()
+    }
+
+    @Test
+    fun `clear and delete keep the running bundle`() {
+        val fixture = Fixture()
+        installTestBundle(fixture.shelf.source, "other")
+        installTestBundle(fixture.shelf.source, "third")
+        fixture.shelf.add("ota", "pr-1", null, 0)
+        fixture.shelf.add("other", "pr-2", null, 1)
+        fixture.shelf.add("third", "pr-3", null, 2)
+        fixture.host.storedBundleId = "ota"
+        fixture.coordinator.deleteDownloaded("ota")
+        assertNotNull(fixture.shelf.stored("ota"))
+        fixture.coordinator.deleteDownloaded("third")
+        assertEquals(listOf("other", "ota"), fixture.shelf.entries.map { it.bundleId })
+        fixture.coordinator.clearDownloaded()
+        assertEquals(listOf("ota"), fixture.shelf.entries.map { it.bundleId })
+        assertNull(fixture.shelf.stored("other"))
+        assertTrue(fixture.host.calls.isEmpty())
+    }
+
+    @Test
     fun `the next launch is what storage holds once a launch is fixed`() {
         val builtIn = "built-in"
         // Before any launch, the SDK's read is what a launch would pick.
@@ -456,8 +812,6 @@ class HotUpdaterSandboxCoordinatorTest {
     private class OpenedStore : HotUpdaterSandboxStore {
         override var pendingLinks: List<String> = emptyList()
         var opened: String? = null
-        override var history: List<HotUpdaterSandboxHistoryEntry> = emptyList()
-        override var messages: List<HotUpdaterSandboxBundleMessage> = emptyList()
         override var lastLaunch: HotUpdaterSandboxLastLaunch? = null
 
         override fun recordSelected(selection: HotUpdaterSandboxSelection) = Unit
@@ -477,7 +831,14 @@ class HotUpdaterSandboxCoordinatorTest {
             }
         val store = OpenedStore()
         val opens = ArrayList<Pair<Boolean, Boolean>>()
-        HotUpdaterSandboxCoordinator(host, store, CoroutineScope(Dispatchers.Unconfined), { a, b -> opens += a to b }).open()
+        HotUpdaterSandboxCoordinator(
+            host,
+            store,
+            testShelf(),
+            CoroutineScope(Dispatchers.Unconfined),
+            { a, b -> opens += a to b },
+            shelfContext = EmptyCoroutineContext,
+        ).open()
         assertEquals("ota-0", store.opened)
         assertEquals(listOf(false to false), opens)
     }
@@ -491,7 +852,14 @@ class HotUpdaterSandboxCoordinatorTest {
             }
         val store = OpenedStore()
         val opens = ArrayList<Pair<Boolean, Boolean>>()
-        HotUpdaterSandboxCoordinator(host, store, CoroutineScope(Dispatchers.Unconfined), { a, b -> opens += a to b }).open()
+        HotUpdaterSandboxCoordinator(
+            host,
+            store,
+            testShelf(),
+            CoroutineScope(Dispatchers.Unconfined),
+            { a, b -> opens += a to b },
+            shelfContext = EmptyCoroutineContext,
+        ).open()
         assertEquals("built-in", store.opened)
         assertEquals(listOf(false to true), opens)
     }

@@ -138,6 +138,82 @@ class HotUpdaterSandboxDevTest {
     }
 
     @Test
+    fun `a stored claim runs the shelf's bundle once, and a gone bundle arms nothing`() {
+        val shelf = testShelf(folder.newFolder())
+        installTestBundle(shelf.source, "ota")
+        shelf.add("ota", "pr-1", null, 0)
+        val files = files()
+        val claim = HotUpdaterSandboxDevClaim("", "", 7, 1_000, "ota")
+        assertEquals(claim, HotUpdaterSandboxDevClaim.parse(claim.toJson()))
+        files.writeClaim(claim)
+        val session = files.takeSession({ it == 7 }, 1_500, shelf::stored)
+        assertEquals("ota", session?.stored?.bundleId)
+        assertEquals(File(shelf.root, "ota/index.android.bundle"), session?.bundle)
+        assertNull(files.takeSession({ it == 7 }, 1_500, shelf::stored))
+
+        shelf.remove("ota")
+        files.writeClaim(claim)
+        assertNull(files.takeSession({ it == 7 }, 1_500, shelf::stored))
+        assertFalse(files.claim.exists())
+    }
+
+    @Test
+    fun `a handoff goes to whichever side claims it first, and only once`() {
+        val files = files()
+        // The relaunch's helper first: the screen's call-off loses, so its guard stays.
+        files.writeHandoff("first")
+        assertTrue(files.claimHandoff("first"))
+        assertFalse(files.claimHandoff("first"))
+        // The screen first: the helper's late request loses and does nothing.
+        files.writeHandoff("second")
+        assertTrue(files.claimHandoff("second"))
+        assertFalse(files.claimHandoff("second"))
+        // A new handoff leaves another's alone: one taken stays taken, one pending stays its own.
+        files.writeHandoff("third")
+        assertTrue(files.claimHandoff("third"))
+        files.writeHandoff("fourth")
+        files.writeHandoff("fifth")
+        assertFalse(files.claimHandoff("third"))
+        assertFalse(files.claimHandoff(null))
+        assertTrue(files.claimHandoff("fourth"))
+        assertTrue(files.claimHandoff("fifth"))
+    }
+
+    @Test
+    fun `a starting process clears what earlier handoffs left, and nothing else`() {
+        val files = files().withSession("one")
+        files.writeHandoff("taken")
+        assertTrue(files.claimHandoff("taken"))
+        files.writeHandoff("pending")
+        files.writeClaim(claim())
+        files.clearHandoffs()
+        assertEquals(listOf("claim.json", "sessions"), files.root.list()?.sorted())
+        assertFalse(files.claimHandoff("pending"))
+    }
+
+    @Test
+    fun `of two sides claiming a handoff at once, exactly one wins`() {
+        val files = files()
+        repeat(200) { round ->
+            files.writeHandoff("t$round")
+            val start = java.util.concurrent.CyclicBarrier(2)
+            val wins =
+                java.util.concurrent.atomic
+                    .AtomicInteger()
+            val sides =
+                List(2) {
+                    Thread {
+                        start.await()
+                        if (files.claimHandoff("t$round")) wins.incrementAndGet()
+                    }
+                }
+            sides.forEach(Thread::start)
+            sides.forEach(Thread::join)
+            assertEquals("round $round", 1, wins.get())
+        }
+    }
+
+    @Test
     fun `the helper lives until the claim is gone, so the claim goes only after the helper is checked`() {
         val files = files().withSession("one")
         files.writeClaim(claim())
