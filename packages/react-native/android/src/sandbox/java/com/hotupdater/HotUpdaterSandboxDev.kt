@@ -265,15 +265,21 @@ internal object HotUpdaterSandboxDev {
 
     fun storedBundle(context: Context): HotUpdaterSandboxStoredBundle? = session(context)?.stored
 
-    /** The Downloaded list's shelf, in the `.sandbox` app's cache directory. */
-    fun shelf(context: Context): HotUpdaterSandboxShelf {
-        val app = context.applicationContext ?: context
-        return HotUpdaterSandboxShelf(
-            root = File(app.cacheDir, "hot-updater-sandbox-bundles"),
-            source = File(app.filesDir, "bundle-store"),
-            isolationKey = HotUpdaterInstanceEnvironment.main.isolationKey(app),
-        )
-    }
+    @Volatile
+    private var shelf: HotUpdaterSandboxShelf? = null
+
+    /** The Downloaded list's one shelf, in the `.sandbox` app's cache directory. */
+    fun shelf(context: Context): HotUpdaterSandboxShelf =
+        shelf ?: synchronized(this) {
+            shelf ?: run {
+                val app = context.applicationContext ?: context
+                HotUpdaterSandboxShelf(
+                    root = File(app.cacheDir, "hot-updater-sandbox-bundles"),
+                    source = File(app.filesDir, "bundle-store"),
+                    isolationKey = HotUpdaterInstanceEnvironment.main.isolationKey(app),
+                ).also { shelf = it }
+            }
+        }
 
     fun storage(
         context: Context,

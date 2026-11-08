@@ -25,8 +25,12 @@ struct HotUpdaterSandboxStoredBundle: Equatable {
 /// The sandbox's own copies of what its switches downloaded, in the caches
 /// directory, so the OS may purge them and nothing durable stays behind. Main's
 /// store is only read. A row whose files are gone checks its channel instead.
+///
+/// Every read and write runs under one lock: a copy runs off the main thread, and
+/// a refresh or a Clear must never see half of one. The app holds one shelf.
 final class HotUpdaterSandboxShelf {
     static let limit = 10
+    private let lock = NSLock()
     private static let indexName = "index.json"
     private static let partialSuffix = ".tmp"
 
@@ -49,6 +53,16 @@ final class HotUpdaterSandboxShelf {
 
     /// Newest first.
     var entries: [HotUpdaterSandboxShelfEntry] {
+        serially { readEntries() }
+    }
+
+    private func serially<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+
+    private func readEntries() -> [HotUpdaterSandboxShelfEntry] {
         guard let data = try? Data(contentsOf: root.appendingPathComponent(Self.indexName)) else { return [] }
         return (try? JSONDecoder().decode([HotUpdaterSandboxShelfEntry].self, from: data)) ?? []
     }
@@ -57,6 +71,10 @@ final class HotUpdaterSandboxShelf {
     /// bundles. Best effort: a copy that fails its check lists nothing. The oldest
     /// entry past the cap goes, never `running`'s.
     func add(bundleId: String, channel: String, message: String?, nowMs: Double, running: String?) {
+        serially { addSerially(bundleId: bundleId, channel: channel, message: message, nowMs: nowMs, running: running) }
+    }
+
+    private func addSerially(bundleId: String, channel: String, message: String?, nowMs: Double, running: String?) {
         guard Self.isName(bundleId) else { return }
         if storesBundles && !copy(bundleId) { return }
         let entry = HotUpdaterSandboxShelfEntry(
@@ -67,7 +85,7 @@ final class HotUpdaterSandboxShelf {
             downloadedAtMs: nowMs
         )
         // Without a copy, a row checks its channel, so one row per channel is enough.
-        var next = [entry] + entries.filter { $0.bundleId != bundleId && (storesBundles || $0.channel != channel) }
+        var next = [entry] + readEntries().filter { $0.bundleId != bundleId && (storesBundles || $0.channel != channel) }
         while next.count > Self.limit, let oldest = next.filter({ $0.bundleId != running }).min(by: { $0.downloadedAtMs < $1.downloadedAtMs }) {
             next.removeAll { $0.bundleId == oldest.bundleId }
             try? fileManager.removeItem(at: directory(oldest.bundleId))
@@ -78,25 +96,35 @@ final class HotUpdaterSandboxShelf {
     /// The bundle's files when they're all on this device, checked as main checks a launch.
     func stored(_ bundleId: String) -> HotUpdaterSandboxStoredBundle? {
         guard Self.isName(bundleId) else { return nil }
-        return Self.check(directory(bundleId), bundleId: bundleId)
+        return serially { Self.check(directory(bundleId), bundleId: bundleId) }
     }
 
     func remove(_ bundleId: String) {
         guard Self.isName(bundleId) else { return }
-        try? fileManager.removeItem(at: directory(bundleId))
-        write(entries.filter { $0.bundleId != bundleId })
+        serially {
+            try? fileManager.removeItem(at: directory(bundleId))
+            write(readEntries().filter { $0.bundleId != bundleId })
+        }
     }
 
     /// Everything but what runs.
     func clear(keeping running: String?) {
-        for entry in entries where entry.bundleId != running {
-            try? fileManager.removeItem(at: directory(entry.bundleId))
+        serially {
+            let entries = readEntries()
+            for entry in entries where entry.bundleId != running {
+                try? fileManager.removeItem(at: directory(entry.bundleId))
+            }
+            write(entries.filter { $0.bundleId == running })
         }
-        write(entries.filter { $0.bundleId == running })
     }
 
     /// Another build's entries go, and so do partial copies and files no entry names.
     func reconcile() {
+        serially { reconcileSerially() }
+    }
+
+    private func reconcileSerially() {
+        let entries = readEntries()
         let kept = entries.filter { $0.isolationKey == isolationKey }
         if kept.count != entries.count { write(kept) }
         let names = Set(kept.map(\.bundleId))
@@ -108,7 +136,7 @@ final class HotUpdaterSandboxShelf {
 
     /// What the stored copies take, in bytes.
     func totalBytes() -> Int64 {
-        entries.reduce(0) { total, entry in
+        serially { readEntries() }.reduce(0) { total, entry in
             let files = fileManager.enumerator(at: directory(entry.bundleId), includingPropertiesForKeys: [.fileSizeKey])
             return total + (files?.reduce(Int64(0)) { sum, item in
                 sum + Int64(((item as? URL).flatMap { try? $0.resourceValues(forKeys: [.fileSizeKey]).fileSize }) ?? 0)

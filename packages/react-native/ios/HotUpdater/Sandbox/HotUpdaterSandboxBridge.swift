@@ -29,7 +29,7 @@ public final class HotUpdaterSandboxBridge: NSObject {
     private static let coordinator = HotUpdaterSandboxCoordinator(
         host: host,
         store: HotUpdaterSandboxDefaults(),
-        shelf: HotUpdaterSandboxLiveHost.shelf(),
+        shelf: HotUpdaterSandboxLiveHost.shelf,
         openApp: { switched, fixed in open(switched: switched, fixed: fixed) },
         log: { NSLog("[HotUpdaterSandbox] %@", $0) }
     )

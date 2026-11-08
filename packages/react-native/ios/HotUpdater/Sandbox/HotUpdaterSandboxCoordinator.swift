@@ -425,15 +425,14 @@ final class HotUpdaterSandboxCoordinator {
     }
 
     /// A Downloaded row runs its stored bundle for this process, offline. A row
-    /// whose bundle isn't on this device checks its channel, as a typed one does.
+    /// whose bundle isn't on this device checks its channel, as a typed one does,
+    /// and stays: only Delete and Clear remove a row.
     /// Returns false while a switch runs.
     @discardableResult
     func openDownloaded(_ bundleId: String) -> Bool {
         guard canStart, lock.holder == nil,
               let entry = shelf.entries.first(where: { $0.bundleId == bundleId }) else { return false }
         guard let bundle = shelf.stored(bundleId) else {
-            shelf.remove(bundleId)
-            publish(reading(state))
             return switchTo(entry.channel)
         }
         acknowledgeLastLaunch()

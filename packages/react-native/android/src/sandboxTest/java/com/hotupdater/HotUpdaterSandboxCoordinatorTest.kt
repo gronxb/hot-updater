@@ -477,6 +477,36 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
+    fun `a row without files stays when its channel has nothing new`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        java.io.File(fixture.shelf.root, "ota").deleteRecursively()
+        val row = fixture.shelf.entries
+        fixture.host.stageResult = Result.success(HotUpdaterSandboxStaged.NoUpdate)
+        repeat(2) {
+            fixture.host.calls.clear()
+            assertTrue(fixture.coordinator.openDownloaded("ota"))
+            assertEquals(listOf("preflight pr-1", "check pr-1"), fixture.host.calls)
+            assertEquals(row, fixture.shelf.entries)
+            assertEquals(row, fixture.coordinator.state.downloaded)
+        }
+        assertTrue(fixture.host.startedStored.isEmpty())
+    }
+
+    @Test
+    fun `a row without files stays when its channel can't be checked`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        java.io.File(fixture.shelf.root, "ota").deleteRecursively()
+        val row = fixture.shelf.entries
+        fixture.host.preflights["pr-1"] = Result.failure(IOException("offline"))
+        fixture.coordinator.openDownloaded("ota")
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Failed)
+        assertEquals(row, fixture.shelf.entries)
+        assertEquals(row, fixture.coordinator.state.downloaded)
+    }
+
+    @Test
     fun `in a stored session a typed channel is refused with a way back`() {
         val fixture = Fixture()
         fixture.host.storedBundleId = "ota"

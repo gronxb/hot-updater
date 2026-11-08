@@ -231,10 +231,10 @@ private struct Fixture {
         var opens: [(Bool, Bool)] = []
     }
 
-    init(pendingLinks: [String] = []) {
+    init(pendingLinks: [String] = [], storesBundles: Bool = true) {
         store.pendingLinks = pendingLinks
         let box = box
-        shelf = makeShelf(files)
+        shelf = makeShelf(files, storesBundles: storesBundles)
         // What the fake check installs.
         install("ota", in: shelf.source)
         coordinator = HotUpdaterSandboxCoordinator(
@@ -1317,6 +1317,43 @@ struct HotUpdaterSandboxScreenStateTests {
     }
 
     @Test
+    func aRowWithoutFilesStaysWhenItsChannelHasNothingNew() async {
+        let fixture = Fixture(storesBundles: false)
+        fixture.host.stageResult = .success(.update(bundleId: "ota", message: "fix: login"))
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        let row = fixture.shelf.entries
+        #expect(row.map(\.bundleId) == ["ota"])
+        fixture.host.stageResult = .success(.noUpdate)
+        for _ in 0 ..< 2 {
+            fixture.host.calls = []
+            #expect(fixture.coordinator.openDownloaded("ota"))
+            await settle()
+            #expect(fixture.host.calls == ["preflight pr-1", "check pr-1"])
+            #expect(fixture.shelf.entries == row)
+            #expect(fixture.coordinator.state.downloaded == row)
+        }
+        #expect(fixture.host.startedStored.isEmpty)
+    }
+
+    @Test
+    func aRowWithoutFilesStaysWhenItsChannelCantBeChecked() async {
+        let fixture = Fixture(storesBundles: false)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        let row = fixture.shelf.entries
+        fixture.host.preflights["pr-1"] = .failure(FakeError.offline)
+        fixture.coordinator.openDownloaded("ota")
+        await settle()
+        guard case .failed = fixture.coordinator.state.phase else {
+            Issue.record("expected the check's failure")
+            return
+        }
+        #expect(fixture.shelf.entries == row)
+        #expect(fixture.coordinator.state.downloaded == row)
+    }
+
+    @Test
     func aSameIdBuildListsRowsThatCheckTheirChannel() async {
         let fixture = Fixture()
         let shelf = makeShelf(fixture.files, storesBundles: false)
@@ -1480,6 +1517,49 @@ struct HotUpdaterSandboxShelfTests {
         new.reconcile()
         #expect(new.entries.isEmpty)
         #expect(try FileManager.default.contentsOfDirectory(atPath: new.root.path) == ["index.json"])
+    }
+
+    /// The list and the files agree, and every listed bundle is whole.
+    private func expectAgreement(_ shelf: HotUpdaterSandboxShelf, _ round: Int) {
+        let names = ((try? FileManager.default.contentsOfDirectory(atPath: shelf.root.path)) ?? []).filter { $0 != "index.json" }
+        let listed = shelf.entries.map(\.bundleId)
+        #expect(Set(names) == Set(listed), "round \(round): files \(names), listed \(listed)")
+        for bundleId in listed {
+            #expect(shelf.stored(bundleId) != nil, "round \(round): \(bundleId) isn't whole")
+        }
+    }
+
+    @Test
+    func aRefreshWhileABundleIsShelvedKeepsIt() {
+        for round in 0 ..< 40 {
+            let shelf = makeShelf(temporaryDirectory())
+            install("b\(round)", in: shelf.source)
+            let done = DispatchSemaphore(value: 0)
+            DispatchQueue.global().async {
+                shelf.add(bundleId: "b\(round)", channel: "pr-1", message: nil, nowMs: 0, running: nil)
+                done.signal()
+            }
+            repeat { shelf.reconcile() } while done.wait(timeout: .now()) == .timedOut
+            expectAgreement(shelf, round)
+            #expect(shelf.entries.map(\.bundleId) == ["b\(round)"], "round \(round)")
+        }
+    }
+
+    @Test
+    func aClearWhileABundleIsShelvedLeavesTheListAndFilesInAgreement() {
+        for round in 0 ..< 40 {
+            let shelf = makeShelf(temporaryDirectory())
+            install("old", in: shelf.source)
+            shelf.add(bundleId: "old", channel: "pr-0", message: nil, nowMs: 0, running: nil)
+            install("b\(round)", in: shelf.source)
+            let done = DispatchSemaphore(value: 0)
+            DispatchQueue.global().async {
+                shelf.add(bundleId: "b\(round)", channel: "pr-1", message: nil, nowMs: 1, running: nil)
+                done.signal()
+            }
+            repeat { shelf.clear(keeping: nil) } while done.wait(timeout: .now()) == .timedOut
+            expectAgreement(shelf, round)
+        }
     }
 
     @Test

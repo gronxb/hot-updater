@@ -91,6 +91,51 @@ class HotUpdaterSandboxShelfTest {
         assertEquals(listOf("index.json"), new.root.list()!!.toList())
     }
 
+    /** The list and the files agree, and every listed bundle is whole. */
+    private fun assertAgreement(
+        shelf: HotUpdaterSandboxShelf,
+        round: Int,
+    ) {
+        val names =
+            shelf.root
+                .list()
+                .orEmpty()
+                .filter { it != "index.json" }
+                .toSet()
+        val listed = shelf.entries.map { it.bundleId }
+        assertEquals("round $round", names, listed.toSet())
+        listed.forEach { assertNotNull("round $round: $it isn't whole", shelf.stored(it)) }
+    }
+
+    @Test
+    fun `a refresh while a bundle is shelved keeps it`() {
+        repeat(40) { round ->
+            val shelf = testShelf()
+            installTestBundle(shelf.source, "b$round")
+            val copy = Thread { shelf.add("b$round", "pr-1", null, 0, null) }.apply { start() }
+            do {
+                shelf.reconcile()
+            } while (copy.isAlive)
+            assertAgreement(shelf, round)
+            assertEquals("round $round", listOf("b$round"), shelf.entries.map { it.bundleId })
+        }
+    }
+
+    @Test
+    fun `a clear while a bundle is shelved leaves the list and files in agreement`() {
+        repeat(40) { round ->
+            val shelf = testShelf()
+            installTestBundle(shelf.source, "old")
+            shelf.add("old", "pr-0", null, 0, null)
+            installTestBundle(shelf.source, "b$round")
+            val copy = Thread { shelf.add("b$round", "pr-1", null, 1, null) }.apply { start() }
+            do {
+                shelf.clear(null)
+            } while (copy.isAlive)
+            assertAgreement(shelf, round)
+        }
+    }
+
     @Test
     fun `a link or a path outside the bundle fails the check`() {
         val root = Files.createTempDirectory("sandbox-shelf").toFile()

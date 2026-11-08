@@ -472,18 +472,14 @@ internal class HotUpdaterSandboxCoordinator(
 
     /**
      * A Downloaded row runs its stored bundle in a new process, offline. A row
-     * whose bundle isn't on this device checks its channel, as a typed one does.
+     * whose bundle isn't on this device checks its channel, as a typed one does,
+     * and stays: only Delete and Clear remove a row.
      * Returns false while a switch runs.
      */
     fun openDownloaded(bundleId: String): Boolean {
         if (!canStart() || lock.holder != null) return false
         val entry = shelf.entries.firstOrNull { it.bundleId == bundleId } ?: return false
-        val bundle = shelf.stored(bundleId)
-        if (bundle == null) {
-            shelf.remove(bundleId)
-            publish(listed(state))
-            return switchTo(entry.channel)
-        }
+        val bundle = shelf.stored(bundleId) ?: return switchTo(entry.channel)
         acknowledgeLastLaunch()
         publish(state.copy(phase = HotUpdaterSandboxPhase.Idle))
         log("opening stored ${entry.channel} $bundleId")

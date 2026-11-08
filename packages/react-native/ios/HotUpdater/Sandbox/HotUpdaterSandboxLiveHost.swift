@@ -82,10 +82,10 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
         MainActor.assumeIsolated { startStoredAction(bundle) }
     }
 
-    /// The Downloaded list's shelf, in the caches directory. Only a sandbox with its
-    /// own bundle ID stores bundles: one with the store app's ID leaves nothing
+    /// The Downloaded list's one shelf, in the caches directory. Only a sandbox with
+    /// its own bundle ID stores bundles: one with the store app's ID leaves nothing
     /// behind in the store app's container.
-    static func shelf() -> HotUpdaterSandboxShelf {
+    static let shelf: HotUpdaterSandboxShelf = {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         return HotUpdaterSandboxShelf(
             root: caches.appendingPathComponent("hot-updater-sandbox/bundles", isDirectory: true),
@@ -93,7 +93,7 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
             isolationKey: HotUpdaterImpl.getIsolationKey(),
             storesBundles: Bundle.main.bundleIdentifier?.hasSuffix(".sandbox") == true
         )
-    }
+    }()
 
     func hasServerConfig() -> Bool {
         config() != nil

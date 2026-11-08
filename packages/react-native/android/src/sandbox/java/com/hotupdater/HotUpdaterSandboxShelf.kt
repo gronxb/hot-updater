@@ -30,6 +30,9 @@ internal data class HotUpdaterSandboxStoredBundle(
  * The sandbox's own copies of what its switches downloaded, in the cache
  * directory of the `.sandbox` app. Main's store is only read. A row whose files
  * are gone checks its channel instead.
+ *
+ * Every read and write runs under one lock: a copy runs off the main thread, and
+ * a refresh or a Clear must never see half of one. The process holds one shelf.
  */
 internal class HotUpdaterSandboxShelf(
     /** The shelf's directory. */
@@ -38,22 +41,26 @@ internal class HotUpdaterSandboxShelf(
     val source: File,
     val isolationKey: String,
 ) {
+    private val lock = Any()
+
     /** Newest first. */
     val entries: List<HotUpdaterSandboxShelfEntry>
-        get() =
-            runCatching {
-                val items = JSONArray(File(root, INDEX).readText())
-                (0 until items.length()).map { index ->
-                    val item = items.getJSONObject(index)
-                    HotUpdaterSandboxShelfEntry(
-                        bundleId = item.getString("bundleId"),
-                        channel = item.getString("channel"),
-                        message = item.optString("message").takeIf { item.has("message") },
-                        isolationKey = item.getString("isolationKey"),
-                        downloadedAtMs = item.getLong("downloadedAtMs"),
-                    )
-                }
-            }.getOrDefault(emptyList())
+        get() = synchronized(lock) { readEntries() }
+
+    private fun readEntries(): List<HotUpdaterSandboxShelfEntry> =
+        runCatching {
+            val items = JSONArray(File(root, INDEX).readText())
+            (0 until items.length()).map { index ->
+                val item = items.getJSONObject(index)
+                HotUpdaterSandboxShelfEntry(
+                    bundleId = item.getString("bundleId"),
+                    channel = item.getString("channel"),
+                    message = item.optString("message").takeIf { item.has("message") },
+                    isolationKey = item.getString("isolationKey"),
+                    downloadedAtMs = item.getLong("downloadedAtMs"),
+                )
+            }
+        }.getOrDefault(emptyList())
 
     /**
      * Lists a bundle main just installed, with a copy. Best effort: a copy that
@@ -66,12 +73,23 @@ internal class HotUpdaterSandboxShelf(
         message: String?,
         nowMs: Long,
         running: String?,
+    ): Unit =
+        synchronized(lock) {
+            addHolding(bundleId, channel, message, nowMs, running)
+        }
+
+    private fun addHolding(
+        bundleId: String,
+        channel: String,
+        message: String?,
+        nowMs: Long,
+        running: String?,
     ) {
         if (!isName(bundleId) || !copy(bundleId)) return
         val next =
             (
                 listOf(HotUpdaterSandboxShelfEntry(bundleId, channel, message, isolationKey, nowMs)) +
-                    entries.filter { it.bundleId != bundleId }
+                    readEntries().filter { it.bundleId != bundleId }
             ).toMutableList()
         while (next.size > LIMIT) {
             val oldest = next.filter { it.bundleId != running }.minByOrNull { it.downloadedAtMs } ?: break
@@ -82,23 +100,30 @@ internal class HotUpdaterSandboxShelf(
     }
 
     /** The bundle's files when they're all on this device, checked as main checks a launch. */
-    fun stored(bundleId: String): HotUpdaterSandboxStoredBundle? = if (isName(bundleId)) check(directory(bundleId), bundleId) else null
+    fun stored(bundleId: String): HotUpdaterSandboxStoredBundle? =
+        if (isName(bundleId)) synchronized(lock) { check(directory(bundleId), bundleId) } else null
 
     fun remove(bundleId: String) {
         if (!isName(bundleId)) return
-        directory(bundleId).deleteRecursively()
-        write(entries.filter { it.bundleId != bundleId })
+        synchronized(lock) {
+            directory(bundleId).deleteRecursively()
+            write(readEntries().filter { it.bundleId != bundleId })
+        }
     }
 
     /** Everything but what runs. */
-    fun clear(running: String?) {
-        entries.filter { it.bundleId != running }.forEach { directory(it.bundleId).deleteRecursively() }
-        write(entries.filter { it.bundleId == running })
-    }
+    fun clear(running: String?): Unit =
+        synchronized(lock) {
+            val all = readEntries()
+            all.filter { it.bundleId != running }.forEach { directory(it.bundleId).deleteRecursively() }
+            write(all.filter { it.bundleId == running })
+        }
 
     /** Another build's entries go, and so do partial copies and files no entry names. */
-    fun reconcile() {
-        val all = entries
+    fun reconcile(): Unit = synchronized(lock) { reconcileHolding() }
+
+    private fun reconcileHolding() {
+        val all = readEntries()
         val kept = all.filter { it.isolationKey == isolationKey }
         if (kept.size != all.size) write(kept)
         val names = kept.map { it.bundleId }.toSet()
@@ -107,7 +132,7 @@ internal class HotUpdaterSandboxShelf(
 
     /** What the stored copies take, in bytes. */
     fun totalBytes(): Long =
-        entries.sumOf { entry ->
+        synchronized(lock) { readEntries() }.sumOf { entry ->
             directory(entry.bundleId).walkTopDown().filter { it.isFile }.sumOf { it.length() }
         }
 
