@@ -31,7 +31,7 @@ integrations manage those rows through the
 
 ### 1. Specify the Channel in Native Configuration
 
-<Tabs items={["Basic", "Expo"]}>
+<Tabs items={["Basic", "Expo", "One"]}>
   <Tab value="Basic">
     Use the `hot-updater channel set` command to specify your desired channel.
 
@@ -92,6 +92,24 @@ integrations manage those rows through the
     ```
 
   </Tab>
+  <Tab value="One">
+    For One, set the channel in `hotUpdaterPatches` in `vite.config.ts`.
+
+    ```ts title="vite.config.ts (excerpt)"
+    native: {
+      app: {
+        patches: hotUpdaterPatches({ channel: "<your-channel-name>" }), // [!code ++]
+      },
+    },
+    ```
+
+    Then run `one prebuild` to apply the changes to the native projects.
+
+    ```package-install
+    npx one prebuild
+    ```
+
+  </Tab>
 </Tabs>
 
 ## Custom Configuration Paths
@@ -138,7 +156,7 @@ channel.
 
 After setting the channel, rebuild your app in Release mode:
 
-<Tabs items={["Bare (React Native CLI)", "Rock", "Expo"]}>
+<Tabs items={["Bare (React Native CLI)", "Rock", "Expo", "One"]}>
   <Tab value="Bare (React Native CLI)">
     **iOS:**
     ```sh
@@ -173,6 +191,22 @@ After setting the channel, rebuild your app in Release mode:
     **Android:**
     ```sh
     npx expo run:android --variant release
+    ```
+
+  </Tab>
+  <Tab value="One">
+    Set the channel in `hotUpdaterPatches` in `native.app.patches`, then
+    regenerate and build the native projects:
+    ```sh
+    npx one prebuild
+    ```
+
+    **iOS:** open `ios/<App>.xcworkspace` in Xcode and run the Release
+    configuration.
+
+    **Android:**
+    ```sh
+    cd android && ./gradlew installRelease
     ```
 
   </Tab>

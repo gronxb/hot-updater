@@ -34,7 +34,9 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   };
 });
 
-vi.mock("@/utils/expoDetection", () => ({ warnIfExpoCNG: vi.fn() }));
+vi.mock("@/utils/prebuildDetection", () => ({
+  warnIfPrebuildGenerated: vi.fn(),
+}));
 
 vi.mock("@/utils/fingerprint", () => ({
   computeRecordedFingerprintHash: vi.fn(),

@@ -6,7 +6,7 @@ import path from "path";
 import { getCwd } from "@hot-updater/cli-tools";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isExpo, warnIfExpoCNG } from "./expoDetection";
+import { isExpo, warnIfPrebuildGenerated } from "./prebuildDetection";
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
@@ -58,7 +58,7 @@ describe("isExpo", () => {
   });
 });
 
-describe("warnIfExpoCNG", () => {
+describe("warnIfPrebuildGenerated", () => {
   // An Expo CNG project: the expo package and app.json, no native folders.
   const createCngProject = async () => {
     const { projectPath } = await createProject({
@@ -109,7 +109,7 @@ describe("warnIfExpoCNG", () => {
     const cwd = await createCngProject();
 
     const output = await printed(() =>
-      warnIfExpoCNG({ cwd, config: configListing(true) }),
+      warnIfPrebuildGenerated({ cwd, config: configListing(true) }),
     );
 
     expect(output).toBe("");
@@ -119,7 +119,7 @@ describe("warnIfExpoCNG", () => {
     const cwd = await createCngProject();
 
     const output = await printed(() =>
-      warnIfExpoCNG({ cwd, config: configListing(false) }),
+      warnIfPrebuildGenerated({ cwd, config: configListing(false) }),
     );
 
     expect(output).toContain(
@@ -149,7 +149,7 @@ describe("warnIfExpoCNG", () => {
         const cwd = await createCngProject();
 
         const output = await printed(() =>
-          warnIfExpoCNG({ cwd, config, publicKey: true }),
+          warnIfPrebuildGenerated({ cwd, config, publicKey: true }),
         );
 
         expect(output.replace(/\n│ {2}/g, " ")).toContain(keyWarning);
@@ -161,7 +161,7 @@ describe("warnIfExpoCNG", () => {
       const cwd = await createCngProject();
 
       const output = await printed(() =>
-        warnIfExpoCNG({
+        warnIfPrebuildGenerated({
           cwd,
           config: configListing(true, "./keys/public-key.pem"),
           publicKey: true,
@@ -169,6 +169,74 @@ describe("warnIfExpoCNG", () => {
       );
 
       expect(output).toBe("");
+    });
+  });
+
+  describe("in a One app", () => {
+    const createOneApp = async () => {
+      const { projectPath } = await createProject({
+        dependencies: { one: "^2.15.0" },
+      });
+      await writeFile(path.join(projectPath, "vite.config.ts"), "");
+      vi.mocked(getCwd).mockReturnValue(projectPath);
+      return projectPath;
+    };
+
+    it("prints nothing when native.app.patches has hotUpdaterPatches", async () => {
+      const cwd = await createOneApp();
+
+      const output = await printed(() =>
+        warnIfPrebuildGenerated({ cwd, config: configListing(true) }),
+      );
+
+      expect(output).toBe("");
+    });
+
+    it("prints the hotUpdaterPatches entry when native.app.patches doesn't have it", async () => {
+      const cwd = await createOneApp();
+
+      const output = await printed(() =>
+        warnIfPrebuildGenerated({ cwd, config: configListing(false) }),
+      );
+
+      expect(output).toContain(
+        "One app: npx one prebuild regenerates the native files.",
+      );
+      expect(output).toContain(
+        'patches: hotUpdaterPatches({ channel: "production" })',
+      );
+    });
+
+    it("warns that prebuild removes the key without publicKeyPath", async () => {
+      const cwd = await createOneApp();
+
+      const output = await printed(() =>
+        warnIfPrebuildGenerated({
+          cwd,
+          config: configListing(true),
+          publicKey: true,
+        }),
+      );
+
+      expect(output.replace(/\n│ {2}/g, " ")).toContain(
+        "One app: npx one prebuild removes this key. Export it with --output and set publicKeyPath in hotUpdaterPatches:",
+      );
+      expect(output).toContain('│    publicKeyPath: "./keys/public-key.pem",');
+    });
+
+    it("returns the publicKeyPath hotUpdaterPatches sets", async () => {
+      const cwd = await createOneApp();
+
+      await expect(
+        warnIfPrebuildGenerated({
+          cwd,
+          config: configListing(true, "./keys/public-key.pem"),
+          publicKey: true,
+        }),
+      ).resolves.toEqual({
+        command: "npx one prebuild",
+        publicKeyPath: "./keys/public-key.pem",
+      });
     });
   });
 });

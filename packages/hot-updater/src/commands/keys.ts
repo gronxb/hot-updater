@@ -15,7 +15,7 @@ import {
 import { type Row, ui } from "../utils/cli-ui";
 import { AndroidConfigParser } from "../utils/configParser/androidParser";
 import { IosConfigParser } from "../utils/configParser/iosParser";
-import { warnIfExpoCNG } from "../utils/expoDetection";
+import { warnIfPrebuildGenerated } from "../utils/prebuildDetection";
 import { canPrompt } from "../utils/prompt";
 import { spkiFingerprint } from "../utils/signing/bundleSigningKey";
 
@@ -66,8 +66,9 @@ const getTrustAnchorChange = (
 };
 
 /**
- * Whether the Expo plugin's `publicKeyPath` file, relative to `cwd`, holds
- * `publicKey`, read as Expo prebuild reads it (`readBundleSigningPublicKeyFile`)
+ * Whether the `publicKeyPath` file of the Expo plugin or One's
+ * `hotUpdaterPatches`, relative to `cwd`, holds `publicKey`, read as prebuild
+ * reads it (`readBundleSigningPublicKeyFile`)
  * and compared as a key: `"missing"` without the file, and `"different"` for
  * another key or one prebuild can't read.
  */
@@ -278,7 +279,7 @@ export const keysExportPublic = async (
       return;
     }
 
-    const expoCng = await warnIfExpoCNG({ config, publicKey: true });
+    const prebuilt = await warnIfPrebuildGenerated({ config, publicKey: true });
 
     const androidManifestPaths =
       config.platform.android.androidManifestPaths ?? [];
@@ -291,17 +292,17 @@ export const keysExportPublic = async (
     const iosExists = await iosParser.exists();
 
     if (!androidExists && !iosExists) {
-      // Expo CNG without native folders: prebuild embeds the plugin's
+      // Expo CNG or One without native folders: prebuild embeds the
       // publicKeyPath, and the warning above says how to set it.
-      if (expoCng?.publicKeyPath) {
-        const { publicKeyPath } = expoCng;
+      if (prebuilt?.publicKeyPath) {
+        const { command, publicKeyPath } = prebuilt;
         const state = await readTrustAnchorFile(
           cwd,
           publicKeyPath,
           getPublicKeyIdentity(publicKeyPEM),
         );
         if (state === "same") {
-          p.log.success(`npx expo prebuild embeds ${publicKeyPath}.`);
+          p.log.success(`${command} embeds ${publicKeyPath}.`);
           return;
         }
         const writeIt = `npx hot-updater keys export-public --output ${publicKeyPath}`;
@@ -318,7 +319,7 @@ export const keysExportPublic = async (
         );
         return process.exit(1);
       }
-      if (expoCng) return process.exit(1);
+      if (prebuilt) return process.exit(1);
       p.log.error("No native configuration files found.");
       p.log.info(
         "Tip: Use --print-only to display the key for manual configuration.",

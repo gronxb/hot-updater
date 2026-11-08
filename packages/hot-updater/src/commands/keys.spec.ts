@@ -76,14 +76,14 @@ vi.mock("../utils/configParser/iosParser", () => ({
   },
 }));
 
-vi.mock("../utils/expoDetection", () => ({
-  warnIfExpoCNG: vi.fn(),
+vi.mock("../utils/prebuildDetection", () => ({
+  warnIfPrebuildGenerated: vi.fn(),
 }));
 
 import { secret } from "@hot-updater/cli-tools";
 
 import { infisical } from "../infisical";
-import { warnIfExpoCNG } from "../utils/expoDetection";
+import { warnIfPrebuildGenerated } from "../utils/prebuildDetection";
 import { keysExportPublic, keysRemove } from "./keys";
 
 const setStdinTTY = (isTTY: boolean | undefined) =>
@@ -309,7 +309,10 @@ describe("keysExportPublic", () => {
       mocks.androidExists.mockResolvedValue(false);
       mocks.iosExists.mockResolvedValue(false);
       // What the Expo CNG check found: the plugin's publicKeyPath, or none.
-      vi.mocked(warnIfExpoCNG).mockResolvedValue({ publicKeyPath });
+      vi.mocked(warnIfPrebuildGenerated).mockResolvedValue({
+        command: "npx expo prebuild",
+        publicKeyPath,
+      });
       return vi
         .spyOn(process, "exit")
         .mockImplementation(() => undefined as never);

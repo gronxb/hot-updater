@@ -9,6 +9,8 @@ overrides:
   '@smithy/types': 4.16.1
   protobufjs: 7.6.6
   recharts@3.8.0>es-toolkit: 1.46.0
+  # A One app provides one; the workspace doesn't install it for the peer.
+  '@hot-updater/one>one': '-'
 
 # @bacons/xcode imports @xmldom/xmldom without declaring it, so the CLI
 # bundles whichever copy pnpm hoists. Pin the one it was built with.
