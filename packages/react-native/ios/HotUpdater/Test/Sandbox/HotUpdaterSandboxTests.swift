@@ -1474,6 +1474,27 @@ struct HotUpdaterSandboxHomeModelTests {
     }
 
     @Test
+    func aLinkSaysItReplacesTheRunningBundleOnlyOverTheApp() {
+        let link = HotUpdaterSandboxLink(url: "hu-sandbox-app://hot-updater/preview?channel=pr-1&fingerprint=fp")!
+        let over = HotUpdaterSandboxQuestion(phase: .confirming(link), isOverApp: true)
+        let before = HotUpdaterSandboxQuestion(phase: .confirming(link), isOverApp: false)
+        #expect(over?.message == "This replaces the running bundle and deletes downloaded bundles.")
+        #expect(before?.message == HotUpdaterSandboxHomeModel.switchNote)
+    }
+
+    @Test
+    func theScannerSendsOnlyADeniedCameraToSettings() {
+        #expect(HotUpdaterSandboxScannerContent(access: .denied)
+            == .message("Allow camera access to scan QR codes.", opensSettings: true))
+        #expect(HotUpdaterSandboxScannerContent(access: .restricted)
+            == .message("Camera access is restricted on this device.", opensSettings: false))
+        #expect(HotUpdaterSandboxScannerContent(access: .allowed) == .camera)
+        #expect(HotUpdaterSandboxScannerContent(access: .allowed, problem: "No camera on this device.")
+            == .message("No camera on this device.", opensSettings: false))
+        #expect(HotUpdaterSandboxScannerContent(access: .undetermined) == .waiting)
+    }
+
+    @Test
     func licenseReflowsIntoParagraphs() {
         let text = """
         Copyright 2024 The Authors

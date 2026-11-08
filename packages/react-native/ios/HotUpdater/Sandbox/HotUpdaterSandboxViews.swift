@@ -908,17 +908,22 @@ private struct HotUpdaterSandboxScanSheet: View {
 
     @ViewBuilder
     private var content: some View {
-        switch access {
-        case .authorized:
-            if let problem {
-                message(problem)
-            } else {
-                viewfinder
-            }
-        case .denied, .restricted:
-            message("Allow camera access to scan QR codes.", opensSettings: true)
-        default:
+        switch HotUpdaterSandboxScannerContent(access: Self.access(access), problem: problem) {
+        case .camera:
+            viewfinder
+        case let .message(text, opensSettings):
+            message(text, opensSettings: opensSettings)
+        case .waiting:
             Color.clear
+        }
+    }
+
+    private static func access(_ status: AVAuthorizationStatus) -> HotUpdaterSandboxCameraAccess {
+        switch status {
+        case .authorized: return .allowed
+        case .denied: return .denied
+        case .restricted: return .restricted
+        default: return .undetermined
         }
     }
 
@@ -948,7 +953,7 @@ private struct HotUpdaterSandboxScanSheet: View {
 
     /// What stands in for the camera while it can't scan: no viewfinder, and no
     /// hint to aim it.
-    private func message(_ text: String, opensSettings: Bool = false) -> some View {
+    private func message(_ text: String, opensSettings: Bool) -> some View {
         VStack(spacing: 20) {
             Text(text)
                 .font(SandboxFont.body)
