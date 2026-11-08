@@ -276,8 +276,13 @@ internal class HotUpdaterSandboxCoordinator(
     private var downloaded = emptyList<HotUpdaterSandboxShelfEntry>()
     private var downloadedBytes = 0L
 
-    /** A row's stored bundle being checked, before its session starts. */
-    private var opening = false
+    /**
+     * A row's stored bundle being checked, before its session starts: Clear and
+     * Delete leave it alone, as they do the running one.
+     */
+    private var openingBundleId: String? = null
+
+    private val protectedBundleIds get() = setOfNotNull(host.storedSessionBundleId, openingBundleId)
 
     private val listeners = LinkedHashSet<(HotUpdaterSandboxState) -> Unit>()
     private val queue = ArrayList(store.pendingLinks)
@@ -488,11 +493,11 @@ internal class HotUpdaterSandboxCoordinator(
     fun openDownloaded(bundleId: String): Boolean {
         if (!canStart() || lock.holder != null) return false
         val entry = downloaded.firstOrNull { it.bundleId == bundleId } ?: return false
-        opening = true
+        openingBundleId = bundleId
         scope.launch {
             // The files are checked off the main thread.
             val bundle = withContext(shelfContext) { shelf.stored(bundleId) }
-            opening = false
+            openingBundleId = null
             if (bundle == null) {
                 switchTo(entry.channel)
                 return@launch
@@ -515,7 +520,7 @@ internal class HotUpdaterSandboxCoordinator(
 
     /** Removes a row and its files. The running one stays. */
     fun deleteDownloaded(bundleId: String) {
-        if (bundleId == host.storedSessionBundleId) return
+        if (bundleId in protectedBundleIds) return
         scope.launch {
             withContext(shelfContext) { shelf.remove(bundleId) }
             relist(reconciling = false)
@@ -532,9 +537,9 @@ internal class HotUpdaterSandboxCoordinator(
 
     /** Removes every row and its files but the running one: they're only on this device. */
     fun clearDownloaded() {
-        val running = host.storedSessionBundleId
+        val kept = protectedBundleIds
         scope.launch {
-            withContext(shelfContext) { shelf.clear(running) }
+            withContext(shelfContext) { shelf.clear(kept) }
             relist(reconciling = false)
         }
     }
@@ -591,7 +596,8 @@ internal class HotUpdaterSandboxCoordinator(
         store.recordOpened(selection)
     }
 
-    private fun canStart() = !opening && (state.phase is HotUpdaterSandboxPhase.Idle || state.phase is HotUpdaterSandboxPhase.Failed)
+    private fun canStart() =
+        openingBundleId == null && (state.phase is HotUpdaterSandboxPhase.Idle || state.phase is HotUpdaterSandboxPhase.Failed)
 
     private fun begin(target: String) {
         val operationId = nextOperationId++

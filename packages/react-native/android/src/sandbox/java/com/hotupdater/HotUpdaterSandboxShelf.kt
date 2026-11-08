@@ -150,13 +150,13 @@ internal class HotUpdaterSandboxShelf(
         delete(listOfNotNull(trash))
     }
 
-    /** Everything but what runs. */
-    fun clear(running: String?) {
+    /** Everything but what runs, or is about to. */
+    fun clear(kept: Set<String>) {
         val trash =
             synchronized(lock) {
                 val all = list()
-                write(all.filter { it.bundleId == running })
-                all.filter { it.bundleId != running }.mapNotNull { setAside(it.bundleId) }
+                write(all.filter { it.bundleId in kept })
+                all.filter { it.bundleId !in kept }.mapNotNull { setAside(it.bundleId) }
             }
         delete(trash)
     }

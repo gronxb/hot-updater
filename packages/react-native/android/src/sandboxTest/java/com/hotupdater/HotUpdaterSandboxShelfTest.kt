@@ -133,7 +133,7 @@ class HotUpdaterSandboxShelfTest {
             installTestBundle(shelf.source, "b$round")
             val copy = Thread { shelf.add("b$round", "pr-1", null, 1, null) }.apply { start() }
             do {
-                shelf.clear(null)
+                shelf.clear(emptySet())
                 copy.join(0, 200_000)
             } while (copy.isAlive)
             assertAgreement(shelf, round)

@@ -1566,7 +1566,7 @@ struct HotUpdaterSandboxShelfTests {
                 shelf.add(bundleId: "b\(round)", channel: "pr-1", message: nil, nowMs: 1, running: nil)
                 done.signal()
             }
-            repeat { shelf.clear(keeping: nil) } while done.wait(timeout: .now() + .microseconds(200)) == .timedOut
+            repeat { shelf.clear(keeping: []) } while done.wait(timeout: .now() + .microseconds(200)) == .timedOut
             expectAgreement(shelf, round)
         }
     }
@@ -1590,8 +1590,12 @@ struct HotUpdaterSandboxShelfTests {
         fixture.coordinator.switchTo("pr-1")
         await settle()
         // The shelf is busy for as long as the test says: a slow disk.
+        install("other", in: fixture.shelf.source)
+        fixture.shelf.add(bundleId: "other", channel: "pr-2", message: nil, nowMs: 0, running: nil)
         shelfQueue.suspend()
         #expect(fixture.coordinator.openDownloaded("ota"))
+        // The bundle being opened stays whole through Delete and Clear.
+        fixture.coordinator.deleteDownloaded("ota")
         fixture.coordinator.clearDownloaded()
         await settle()
         #expect(fixture.host.startedStored.isEmpty)
@@ -1599,7 +1603,9 @@ struct HotUpdaterSandboxShelfTests {
         shelfQueue.resume()
         await settle()
         #expect(fixture.host.startedStored == ["ota"])
-        #expect(fixture.coordinator.state.downloaded.isEmpty)
+        #expect(fixture.shelf.stored("ota") != nil)
+        #expect(fixture.shelf.stored("other") == nil)
+        #expect(fixture.coordinator.state.downloaded.map(\.bundleId) == ["ota"])
     }
 
     @Test

@@ -558,16 +558,22 @@ class HotUpdaterSandboxCoordinatorTest {
         fixture.coordinator.switchTo("pr-1")
         drain()
         // The shelf is busy for as long as the test says: a slow disk.
+        installTestBundle(fixture.shelf.source, "other")
+        fixture.shelf.add("other", "pr-2", null, 0, null)
         val disk = CountDownLatch(1)
         shelfThread.submit { disk.await() }
         assertTrue(fixture.coordinator.openDownloaded("ota"))
+        // The bundle being opened stays whole through Delete and Clear.
+        fixture.coordinator.deleteDownloaded("ota")
         fixture.coordinator.clearDownloaded()
         assertTrue(fixture.host.startedStored.isEmpty())
         assertNotNull(fixture.shelf.stored("ota"))
         disk.countDown()
         drain()
         assertEquals(listOf("ota"), fixture.host.startedStored)
-        assertTrue(fixture.shelf.entries.isEmpty())
+        assertNotNull(fixture.shelf.stored("ota"))
+        assertNull(fixture.shelf.stored("other"))
+        assertEquals(listOf("ota"), fixture.shelf.entries.map { it.bundleId })
         shelfThread.shutdown()
     }
 

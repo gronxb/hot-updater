@@ -214,8 +214,13 @@ final class HotUpdaterSandboxCoordinator {
     /// The Downloaded list as the shelf last reported it: the screen reads only this.
     private var downloaded: [HotUpdaterSandboxShelfEntry] = []
     private var downloadedBytes: Int64 = 0
-    /// A row's stored bundle being checked, before its session starts.
-    private var isOpening = false
+    /// A row's stored bundle being checked, before its session starts: Clear and
+    /// Delete leave it alone, as they do the running one.
+    private var openingBundleId: String?
+
+    private var protectedBundleIds: Set<String> {
+        Set([host.storedSessionBundleId, openingBundleId].compactMap { $0 })
+    }
     /// Opens the app: on `open()` with `switched` false, or after a switch.
     /// `fixed` is true when this process had already fixed its launch, so only a
     /// reload can apply the switch.
@@ -445,12 +450,12 @@ final class HotUpdaterSandboxCoordinator {
     func openDownloaded(_ bundleId: String) -> Bool {
         guard canStart, lock.holder == nil,
               let entry = downloaded.first(where: { $0.bundleId == bundleId }) else { return false }
-        isOpening = true
+        openingBundleId = bundleId
         let shelf = shelf
         Task { @MainActor in
             // The files are checked off the main thread.
             let bundle = await onShelf { shelf.stored(bundleId) }
-            isOpening = false
+            openingBundleId = nil
             guard let bundle else {
                 switchTo(entry.channel)
                 return
@@ -474,7 +479,7 @@ final class HotUpdaterSandboxCoordinator {
 
     /// Removes a row and its files. The running one stays.
     func deleteDownloaded(_ bundleId: String) {
-        guard bundleId != host.storedSessionBundleId else { return }
+        guard !protectedBundleIds.contains(bundleId) else { return }
         let shelf = shelf
         Task { @MainActor in
             await onShelf { shelf.remove(bundleId) }
@@ -495,9 +500,9 @@ final class HotUpdaterSandboxCoordinator {
     /// Removes every row and its files but the running one: they're only on this device.
     func clearDownloaded() {
         let shelf = shelf
-        let running = host.storedSessionBundleId
+        let kept = protectedBundleIds
         Task { @MainActor in
-            await onShelf { shelf.clear(keeping: running) }
+            await onShelf { shelf.clear(keeping: kept) }
             await relist(reconciling: false)
         }
     }
@@ -561,7 +566,7 @@ final class HotUpdaterSandboxCoordinator {
     }
 
     private var canStart: Bool {
-        if isOpening { return false }
+        if openingBundleId != nil { return false }
         switch state.phase {
         case .idle, .failed:
             return true

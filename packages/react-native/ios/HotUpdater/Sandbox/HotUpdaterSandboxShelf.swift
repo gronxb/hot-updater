@@ -154,12 +154,12 @@ final class HotUpdaterSandboxShelf {
         delete(trash.map { [$0] } ?? [])
     }
 
-    /// Everything but what runs.
-    func clear(keeping running: String?) {
+    /// Everything but what runs, or is about to.
+    func clear(keeping kept: Set<String>) {
         let trash: [URL] = serially {
             let all = list
-            write(all.filter { $0.bundleId == running })
-            return all.filter { $0.bundleId != running }.compactMap { setAside($0.bundleId) }
+            write(all.filter { kept.contains($0.bundleId) })
+            return all.filter { !kept.contains($0.bundleId) }.compactMap { setAside($0.bundleId) }
         }
         delete(trash)
     }
