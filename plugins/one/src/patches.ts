@@ -60,7 +60,7 @@ const escapeAndroidString = (value: string) => {
 
 const missingAnchor = (file: string, anchor: string): never => {
   throw new Error(
-    `[hot-updater] cannot patch ${file}: expected ${anchor} in it. Set up Hot Updater in ${file} by hand, or update @hot-updater/one.`,
+    `[hot-updater] cannot patch ${file}: expected ${anchor} in it. Leave native.app.updates unset, or update @hot-updater/one.`,
   );
 };
 
