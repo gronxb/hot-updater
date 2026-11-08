@@ -121,7 +121,6 @@ overrides:
   '@smithy/types': 4.16.1
   protobufjs: 7.6.6
   recharts@3.8.0>es-toolkit: 1.46.0
-  '@hot-updater/one>one': '-'
 
 packageExtensionsChecksum: sha256-q7unnnzsYw1z/6h9/dSrllxFrzPQxTiRuq2g1DiBLTA=
 

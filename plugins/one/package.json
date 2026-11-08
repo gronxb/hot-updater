@@ -46,14 +46,6 @@
     },
     "./package.json": "./package.json"
   },
-  "peerDependencies": {
-    "one": "^2.15.0"
-  },
-  "peerDependenciesMeta": {
-    "one": {
-      "optional": true
-    }
-  },
   "inlinedDependencies": {
     "@sec-ant/readable-stream": "0.4.1",
     "@sindresorhus/merge-streams": "4.0.0",
