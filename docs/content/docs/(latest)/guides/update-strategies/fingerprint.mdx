@@ -18,8 +18,8 @@ lets you specify compatible version targets manually.
 
 An OTA update replaces only JavaScript, so it stays compatible as long as the
 native interface it calls stays the same. Hot Updater computes the fingerprint
-itself, the same way for the bare, Rock, and Expo build adapters, from what
-your project declares. It covers:
+itself, the same way for the bare, Rock, Expo, and One build adapters, from
+what your project declares. It covers:
 
 - the React Native version;
 - the JavaScript engine and the architecture: `hermesEnabled`,
@@ -170,6 +170,15 @@ bump `nativeVersion`. For custom native code, prefer a local Expo module in
 `modules/`: autolinking links it, so the fingerprint follows its native files,
 and a renamed function or an edited native body asks for a new build. See
 [Local Native Modules](#local-native-modules).
+
+### One Apps
+
+The One build adapter uses the bare adapter's fingerprint, so `fingerprint
+create` before `one prebuild` and the native build after it compute the same
+fingerprint. It also counts the Swift packages and Kotlin files One compiles
+into the app from outside `ios/` and `android/`, such as those in `native/`:
+they have no codegen spec, so like a local module without specs their native
+files are their interface, and editing one asks for a new build.
 
 ## Workflow
 

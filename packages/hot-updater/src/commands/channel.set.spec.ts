@@ -29,7 +29,10 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 }));
 
 // The real modules: the spec checks the files they write.
-vi.mock("@/utils/expoDetection", () => import("../utils/expoDetection"));
+vi.mock(
+  "@/utils/prebuildDetection",
+  () => import("../utils/prebuildDetection"),
+);
 vi.mock("@/utils/setChannel", () => import("../utils/setChannel"));
 vi.mock("@/utils/loadServer", () => ({ loadServer: vi.fn() }));
 vi.mock("../utils/printBanner", () => ({ printBanner: vi.fn() }));

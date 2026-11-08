@@ -29,7 +29,7 @@ const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const repoRoot = path.resolve(packageRoot, "../..");
 const outputRoot = path.join(packageRoot, "dist/infra-templates");
 const providers = ["cloudflare", "supabase", "aws", "firebase", "vercel", "azure"];
-const builds = ["bare", "rock", "expo"];
+const builds = ["bare", "rock", "expo", "one"];
 const upgradeFiles = await readInfrastructureUpgradeFiles(
   path.join(packageRoot, "infrastructure-upgrades"),
   INFRASTRUCTURE_UPDATES,

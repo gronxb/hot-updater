@@ -34,7 +34,7 @@ import {
 } from "./initProviders";
 import { openInitTeamSecrets, storeInitTeamSecrets } from "./initSecrets";
 
-const BUILD_ADAPTER_KEYS = ["bare", "rock", "expo"] as const;
+const BUILD_ADAPTER_KEYS = ["bare", "rock", "expo", "one"] as const;
 
 const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],
@@ -48,7 +48,10 @@ interface BuildAdapterChoice {
   devDependencies: string[];
 }
 
-const BUILD_ADAPTERS: Record<"bare" | "rock" | "expo", BuildAdapterChoice> = {
+const BUILD_ADAPTERS: Record<
+  (typeof BUILD_ADAPTER_KEYS)[number],
+  BuildAdapterChoice
+> = {
   bare: {
     name: "bare",
     label: "Bare",
@@ -68,6 +71,13 @@ const BUILD_ADAPTERS: Record<"bare" | "rock" | "expo", BuildAdapterChoice> = {
     label: "Expo",
     dependencies: [],
     devDependencies: ["@hot-updater/expo"],
+  },
+  one: {
+    name: "one",
+    label: "One",
+    hint: "One, the React framework for web and native",
+    dependencies: [],
+    devDependencies: ["@hot-updater/one"],
   },
 };
 

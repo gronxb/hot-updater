@@ -132,10 +132,10 @@ export async function validateSigningConfig(
         platform: "ios",
         code: "MISSING_PUBLIC_KEY",
         message: usesExternalNativeConfig
-          ? "Signing is enabled but @hot-updater/expo publicKeyPath is missing"
+          ? "Signing is enabled but the Expo config plugin or One's hotUpdaterPatches sets no publicKeyPath"
           : "Signing is enabled but HOT_UPDATER_PUBLIC_KEY is missing from Info.plist",
         resolution: usesExternalNativeConfig
-          ? "Run `npx hot-updater keys export-public --output <path>`, configure that path in the Expo app plugin, then rebuild your app."
+          ? "Run `npx hot-updater keys export-public --output <path>`, set it as publicKeyPath of the @hot-updater/expo plugin or One's hotUpdaterPatches, then rebuild your app."
           : "Run `npx hot-updater keys export-public` to add the public key, then rebuild your iOS app.",
       });
     }
@@ -149,10 +149,10 @@ export async function validateSigningConfig(
         platform: "android",
         code: "MISSING_PUBLIC_KEY",
         message: usesExternalNativeConfig
-          ? "Signing is enabled but @hot-updater/expo publicKeyPath is missing"
+          ? "Signing is enabled but the Expo config plugin or One's hotUpdaterPatches sets no publicKeyPath"
           : "Signing is enabled but com.hotupdater.PUBLIC_KEY is missing from AndroidManifest.xml",
         resolution: usesExternalNativeConfig
-          ? "Run `npx hot-updater keys export-public --output <path>`, configure that path in the Expo app plugin, then rebuild your app."
+          ? "Run `npx hot-updater keys export-public --output <path>`, set it as publicKeyPath of the @hot-updater/expo plugin or One's hotUpdaterPatches, then rebuild your app."
           : "Run `npx hot-updater keys export-public` to add the public key, then rebuild your Android app.",
       });
     }

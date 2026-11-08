@@ -524,10 +524,12 @@ const GRADLE_FLAGS = [
 ];
 
 /**
- * The engine and architecture flags android/gradle.properties declares. An
- * absent flag takes React Native's default, which follows its version.
+ * The engine and architecture flags the gradle.properties in `androidDir`
+ * declares, as the fingerprint's `android:<flag>` settings. An absent flag
+ * takes React Native's default, which follows its version. A framework that
+ * generates android/ from a template reads the template's.
  */
-const readGradleFlags = async (
+export const readGradleFlags = async (
   androidDir: string,
 ): Promise<Record<string, string>> => {
   const properties = await fs
@@ -1053,11 +1055,13 @@ export const createInterfaceFingerprint = async (
 /**
  * The fingerprint of a React Native CLI project: the native interface
  * `react-native config` reports. The bare adapter's fingerprint, and the one
- * a build adapter without its own gets.
+ * a build adapter without its own gets. `settings` are the engine settings
+ * when the project declares them outside android/gradle.properties.
  */
 export const reactNativeCliFingerprint = async (
   cwd: string,
   options: NativeFingerprintOptions,
+  settings?: Record<string, string>,
 ) =>
   createInterfaceFingerprint(
     cwd,
@@ -1067,5 +1071,6 @@ export const reactNativeCliFingerprint = async (
       command: process.execPath,
       args: reactNativeCliConfig(cwd),
       platform: options.platform,
+      ...(settings === undefined ? {} : { settings }),
     }),
   );

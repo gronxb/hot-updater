@@ -215,7 +215,7 @@ program
     new Option(
       "--build <adapter>",
       "build adapter to use; skips the prompt",
-    ).choices(["bare", "rock", "expo"]),
+    ).choices(["bare", "rock", "expo", "one"]),
   )
   .option(
     "--from-env-file <path>",

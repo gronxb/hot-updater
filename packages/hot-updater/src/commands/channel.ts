@@ -5,8 +5,8 @@ import {
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
 
-import { expoConfigFile } from "@/utils/expoDetection";
 import { loadServer } from "@/utils/loadServer";
+import { prebuildConfig } from "@/utils/prebuildDetection";
 import { setChannel } from "@/utils/setChannel";
 
 import { type Row, ui } from "../utils/cli-ui";
@@ -26,10 +26,12 @@ const NATIVE_CHANNEL_FILES = [
  * `expo prebuild` writes into the native files, so it points there: in
  * `app.json`, the option set to this channel; in a dynamic `app.config.*`,
  * the option read from the user's own environment variable, as the pull
- * request preview guide does, with the variable to build with.
+ * request preview guide does, with the variable to build with. A One app
+ * takes it from `hotUpdaterPatches`' `channel` option in its vite config,
+ * which `one prebuild` writes the same way.
  */
 export const handleSetChannel = async (channel: string) => {
-  const expoConfig = expoConfigFile();
+  const prebuild = prebuildConfig();
   const rows: Row[] = [];
   let written = false;
   for (const { platform, name, file } of NATIVE_CHANNEL_FILES) {
@@ -51,11 +53,23 @@ export const handleSetChannel = async (channel: string) => {
     p.log.success(
       ui.block(`Set the default channel to ${ui.channel(channel)}`, rows),
     );
-  } else if (expoConfig === null) {
+  } else if (prebuild === null) {
     p.log.warn(ui.block("No native file to write the channel into", rows));
   }
 
-  if (expoConfig !== null) {
+  if (prebuild?.framework === "one") {
+    // `one prebuild` writes hotUpdaterPatches' option into the native files.
+    p.log.info(
+      [
+        `Set the channel in ${prebuild.file}:`,
+        `patches: hotUpdaterPatches({ channel: ${JSON.stringify(channel)} })`,
+      ].join("\n"),
+    );
+    if (written) {
+      p.log.warn("one prebuild replaces what was written here.");
+    }
+  } else if (prebuild !== null) {
+    const expoConfig = prebuild.file;
     // `expo prebuild` writes the plugin's option into the native files.
     p.log.info(
       (expoConfig === "app.json"

@@ -9,7 +9,6 @@ import {
 } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 
-import { warnIfExpoCNG } from "@/utils/expoDetection";
 import {
   computeRecordedFingerprintHash,
   createAndInjectFingerprintFiles,
@@ -23,6 +22,7 @@ import {
   getFingerprintDiff,
   showFingerprintDiff,
 } from "@/utils/fingerprint/diff";
+import { warnIfPrebuildGenerated } from "@/utils/prebuildDetection";
 
 import { ui } from "../utils/cli-ui";
 import { reportUnexpectedError } from "../utils/reportUnexpectedError";
@@ -34,7 +34,7 @@ const exitWithFingerprintError = (error: unknown): never => {
 };
 
 export const handleCreateFingerprint = async () => {
-  await warnIfExpoCNG();
+  await warnIfPrebuildGenerated();
   let result: Awaited<
     ReturnType<typeof createAndInjectFingerprintFiles>
   > | null = null;

@@ -25,6 +25,7 @@ const ADAPTER_FINGERPRINTS: Readonly<
 > = {
   bare: { packageName: "@hot-updater/bare", exportName: "bareFingerprint" },
   rock: { packageName: "@hot-updater/rock", exportName: "rockFingerprint" },
+  one: { packageName: "@hot-updater/one", exportName: "oneFingerprint" },
   expo: { packageName: "@hot-updater/expo", exportName: "expoFingerprint" },
 };
 
