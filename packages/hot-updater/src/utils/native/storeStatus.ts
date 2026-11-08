@@ -1,6 +1,7 @@
 import {
+  PLAY_TRACKS,
   playTestingUrl,
-  readPlayInternalRelease,
+  readPlayTrackRelease,
   resolvePlayUploadServiceAccount,
 } from "@hot-updater/android-helper";
 import {
@@ -275,8 +276,10 @@ export const readStoreStatus = async (
         const serviceAccount = await credentials.resolve(
           resolvePlayUploadServiceAccount({ scheme, androidScheme }),
         );
-        const release = await readPlayInternalRelease({
+        const release = await readPlayTrackRelease({
           versionCode: Number(buildNumber),
+          track:
+            PLAY_TRACKS[build.submitted_to as keyof typeof PLAY_TRACKS].track,
           packageName,
           serviceAccount,
           ...(fetch ? { fetch } : {}),
@@ -288,8 +291,11 @@ export const readStoreStatus = async (
               ? "draft"
               : "ready";
         return {
-          destination: "play-internal",
-          url: playTestingUrl(packageName),
+          destination: build.submitted_to!,
+          url:
+            build.submitted_to === "play-production"
+              ? null
+              : playTestingUrl(packageName),
           version: build.submitted_version,
           state,
           expiresAtMs: null,

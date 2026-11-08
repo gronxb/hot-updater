@@ -41,10 +41,12 @@ vi.mock("@hot-updater/apple-helper", () => ({
     return { state: "COMPLETE", testFlightUrl: "https://asc" };
   }),
 }));
-vi.mock("@hot-updater/android-helper", () => ({
+vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/android-helper")>()),
   PlayVersionCodeUsedError: class PlayVersionCodeUsedError extends Error {},
   readBuiltApp: vi.fn(async () => undefined),
   buildAndroid: vi.fn(async () => ({ logFilePath: null })),
+  hasPlayVersionCode: vi.fn(async () => false),
   findPlayInternalRelease: vi.fn(async () => {
     events.push("find on Play");
     return true;

@@ -539,6 +539,35 @@ describe("the native build registry", () => {
     ]);
   });
 
+  it.each(["play-closed", "play-open", "play-production"] as const)(
+    "records promotion to %s",
+    async (destination) => {
+      const core = setup();
+      const build = await core.registerNativeBuild(
+        registration(1, {
+          platform: "android",
+          artifact: {
+            kind: "aab",
+            storageUri: "storage://app.aab",
+            byteSize: 1,
+          },
+        }),
+      );
+      await core.recordNativeBuildSubmission(build.id, {
+        destination: "play-internal",
+        version: "1.7.0 (63)",
+      });
+      await core.recordNativeBuildSubmission(build.id, {
+        destination,
+        version: "1.7.0 (63)",
+      });
+      await expect(core.getNativeBuild(build.id)).resolves.toMatchObject({
+        submitted_to: destination,
+        submitted_version: "1.7.0 (63)",
+      });
+    },
+  );
+
   it("stores the build number the artifact reports, and none for a registration without one", async () => {
     const core = setup();
     const numbered = await core.registerNativeBuild(
@@ -924,6 +953,38 @@ describe("the store build mark", () => {
       nativeBuild: { id: buildId(2), is_store_build: true, is_sandbox: false },
     });
   });
+
+  it.each(["play-closed", "play-open", "play-production"] as const)(
+    "refuses sandbox submission to %s",
+    async (destination) => {
+      const core = setup();
+      const build = await core.registerNativeBuild(
+        registration(1, {
+          platform: "android",
+          channel: "sandbox-release",
+          isSandbox: true,
+          artifact: {
+            kind: "aab",
+            storageUri: "storage://app.aab",
+            byteSize: 1,
+          },
+        }),
+      );
+      await core.recordNativeBuildSubmission(build.id, {
+        destination: "play-internal",
+        version: "1.0 (1)",
+      });
+      await expect(
+        core.recordNativeBuildSubmission(build.id, {
+          destination,
+          version: "1.0 (1)",
+        }),
+      ).rejects.toThrow("sandbox");
+      expect(await core.getNativeBuild(build.id)).toMatchObject({
+        submitted_to: "play-internal",
+      });
+    },
+  );
 
   it("keeps a sandbox build's record through its submission", async () => {
     const core = setup();

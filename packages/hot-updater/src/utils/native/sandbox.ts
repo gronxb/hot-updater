@@ -33,8 +33,7 @@ import { getChannel } from "../setChannel";
 
 /**
  * The stores a sandbox build may go to: the internal ones, which never reach
- * review or the public. `--submit` has no other target today; a new one stays
- * refused here until it is known to be internal.
+ * review or the public. Other submission destinations stay refused.
  */
 const SANDBOX_SUBMIT_TARGETS: Readonly<
   Record<Platform, readonly NativeBuildSubmissionDestination[]>
@@ -116,7 +115,7 @@ export const assertSandboxBuildAllowed = async ({
   }
   if (submit && !SANDBOX_SUBMIT_TARGETS[platform].includes(submit)) {
     throw new Error(
-      `A sandbox build can't go to ${submit}.\nUse ${SANDBOX_SUBMIT_TARGETS[platform].join(" or ")}.`,
+      `A sandbox build can't go to ${submit}; use ${SANDBOX_SUBMIT_TARGETS[platform].join(" or ")}.`,
     );
   }
   if (platform === "ios") {

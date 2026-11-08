@@ -354,6 +354,44 @@ export const setupCoreAdminTestSuite = (options: {
           )
         ).data,
       ).toBeNull();
+      const androidBuiltIn = bundleRow("64");
+      const androidResponse = await admin(
+        "/native-builds",
+        jsonRequest("POST", {
+          id: bundleRow("864").id,
+          platform: "android",
+          channel,
+          fingerprintHash: "android-fingerprint",
+          appVersion: null,
+          minBundleId: androidBuiltIn.id,
+          gitCommitHash: null,
+          buildKey: null,
+          buildNumber: "64",
+          artifact: {
+            kind: "aab",
+            storageUri: "storage://native-builds/android/64/app.aab",
+            byteSize: 1000,
+          },
+          embeddedBundle: {
+            manifestStorageUri: androidBuiltIn.manifest_storage_uri,
+            manifestFileHash: androidBuiltIn.manifest_file_hash,
+            assetBaseStorageUri: androidBuiltIn.asset_base_storage_uri,
+          },
+        }),
+      );
+      expect(androidResponse.status).toBe(201);
+      await androidResponse.text();
+      const production = await admin(
+        `/native-builds/${bundleRow("864").id}/submission`,
+        jsonRequest("POST", {
+          destination: "play-production",
+          version: "1.0.0 (64)",
+        }),
+      );
+      expect(production.status).toBe(200);
+      expect((await production.json()).data.submitted_to).toBe(
+        "play-production",
+      );
       // An iOS build goes to TestFlight, not Google Play.
       const wrongStore = await admin(
         `/native-builds/${newest.id}/submission`,

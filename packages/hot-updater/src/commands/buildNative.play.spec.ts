@@ -7,7 +7,10 @@ const events: string[] = [];
 
 const serviceAccount = { json: '{"client_email":"uploader@example.com"}' };
 
-vi.mock("@hot-updater/android-helper", () => ({
+vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/android-helper")>()),
+  readBuiltVersionCode: vi.fn(async () => 42),
+  readBuiltApp: vi.fn(async () => ({ appVersion: "1.7.0" })),
   PlayVersionCodeUsedError: class PlayVersionCodeUsedError extends Error {},
   assertPlaySigned: vi.fn(async () => {
     events.push("check signer");
@@ -62,7 +65,9 @@ vi.mock("../utils/native/playServiceAccount", async (importOriginal) => ({
   }),
 }));
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
-vi.mock("@/utils/setChannel", () => ({ getChannel: vi.fn() }));
+vi.mock("@/utils/setChannel", () => ({
+  getChannel: vi.fn(async () => ({ value: "production" })),
+}));
 vi.mock("@/utils/native/prepareNativeBuild", () => ({
   prepareNativeBuild: vi.fn(async (options) => {
     const androidSchemeConfig = {
@@ -129,8 +134,19 @@ vi.mock("@/utils/native/registerNativeBuild", () => ({
   }),
 }));
 
+vi.mock("../utils/native/nativeBuildSubmission", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../utils/native/nativeBuildSubmission")
+  >()),
+  recordNativeBuildSubmission: vi.fn(async (build, destination) => ({
+    ...build,
+    submitted_to: destination,
+  })),
+}));
+
 import {
   assertPlaySigned,
+  PlayVersionCodeUsedError,
   readBuiltPackageName,
   resolvePlayUploadServiceAccount,
   uploadToPlay,
@@ -138,8 +154,11 @@ import {
 import { p } from "@hot-updater/cli-tools";
 
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
+import { registerNativeBuild } from "@/utils/native/registerNativeBuild";
 
+import { recordNativeBuildSubmission } from "../utils/native/nativeBuildSubmission";
 import { checkGooglePlay } from "../utils/native/playServiceAccount";
+import { reuseNativeBuild } from "../utils/native/reuseNativeBuild";
 import { handleNativeBuildCreate } from "./buildNative";
 
 const AAB = "/out/app/build/outputs/bundle/app-staging-release.aab";
@@ -156,6 +175,71 @@ const mockExit = () =>
   }) as never);
 
 describe("native-build android --submit play-internal", () => {
+  it.each([
+    ["play-internal", 100],
+    ["play-internal", 25],
+    [undefined, 25],
+  ] as const)(
+    "refuses rollout for %s at %s before building",
+    async (submit, rollout) => {
+      const exit = mockExit();
+      try {
+        await expect(
+          handleNativeBuildCreate("android", {
+            scheme: "release",
+            submit,
+            rollout,
+          }),
+        ).rejects.toThrow("exit");
+        expect(events).not.toContain("prebuild");
+        expect(p.log.error).toHaveBeenCalledWith(
+          "--rollout takes 1–100 with a Play closed, open, or production submission.",
+        );
+      } finally {
+        exit.mockRestore();
+      }
+    },
+  );
+
+  it("promotes a cached version already held by Play", async () => {
+    vi.mocked(registerNativeBuild).mockResolvedValueOnce({
+      id: "nb1",
+      submitted_to: "play-internal",
+    } as never);
+    const result = await vi.mocked(createNativeBuild)({} as never);
+    vi.mocked(reuseNativeBuild).mockResolvedValueOnce({
+      ...(await vi.mocked(reuseNativeBuild)({} as never)),
+      hit: { source: "local", result },
+    } as never);
+    await handleNativeBuildCreate("android", {
+      scheme: "release",
+      submit: "play-production",
+    });
+    expect(uploadToPlay).toHaveBeenCalledWith(
+      expect.objectContaining({ existingVersionCode: 42, track: "production" }),
+    );
+    expect(recordNativeBuildSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "nb1" }),
+      "play-production",
+      "1.7.0 (42)",
+    );
+  });
+
+  it.each([
+    ["play-closed", "alpha"],
+    ["play-open", "beta"],
+    ["play-production", "production"],
+  ] as const)("submits %s to %s", async (submit, track) => {
+    await handleNativeBuildCreate("android", {
+      scheme: "release",
+      submit,
+      rollout: 25,
+    });
+    expect(uploadToPlay).toHaveBeenCalledWith(
+      expect.objectContaining({ track, rollout: 25 }),
+    );
+  });
+
   it("checks the scheme and everything Google Play needs before the prebuild, then builds, registers and uploads", async () => {
     await handleNativeBuildCreate("android", {
       scheme: "release",
@@ -208,6 +292,123 @@ describe("native-build android --submit play-internal", () => {
       "Google Play refuses an .aab signed with the Android debug keystore",
     );
   });
+
+  it.each(["play-closed", "play-open", "play-production"] as const)(
+    "keeps %s when internal testing is requested",
+    async (submitted_to) => {
+      vi.mocked(registerNativeBuild).mockResolvedValueOnce({
+        id: "nb1",
+        submitted_at_ms: null,
+        submitted_version: null,
+        submitted_to,
+      } as never);
+      await handleNativeBuildCreate("android", {
+        scheme: "release",
+        submit: "play-internal",
+      });
+      expect(uploadToPlay).not.toHaveBeenCalled();
+      expect(recordNativeBuildSubmission).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["play-closed", "alpha"],
+    ["play-open", "beta"],
+    ["play-production", "production"],
+  ] as const)(
+    "updates an existing %s release with an explicit rollout",
+    async (submit, track) => {
+      for (const rollout of [10, 50, 100]) {
+        vi.mocked(registerNativeBuild).mockResolvedValueOnce({
+          id: "nb1",
+          submitted_to: submit,
+        } as never);
+        await handleNativeBuildCreate("android", {
+          scheme: "release",
+          submit,
+          rollout,
+        });
+        expect(uploadToPlay).toHaveBeenCalledWith(
+          expect.objectContaining({
+            existingVersionCode: 42,
+            track,
+            rollout,
+          }),
+        );
+      }
+    },
+  );
+
+  it.each([
+    ["play-closed", "play-closed"],
+    ["play-open", "play-open"],
+    ["play-production", "play-production"],
+    ["play-production", "play-closed"],
+    ["play-production", "play-open"],
+    ["play-open", "play-closed"],
+  ] as const)(
+    "keeps recorded %s when requesting %s",
+    async (recorded, submit) => {
+      vi.mocked(registerNativeBuild).mockResolvedValueOnce({
+        id: "nb1",
+        submitted_to: recorded,
+        submitted_version: null,
+        submitted_at_ms: null,
+      } as never);
+      await handleNativeBuildCreate("android", { scheme: "release", submit });
+      expect(uploadToPlay).not.toHaveBeenCalled();
+      expect(recordNativeBuildSubmission).not.toHaveBeenCalled();
+      expect(vi.mocked(p.log.step).mock.calls.flat().join("\n")).toContain(
+        "Already on",
+      );
+    },
+  );
+
+  it("uploads an unrecorded cached artifact rather than promoting a matching version code", async () => {
+    const result = await vi.mocked(createNativeBuild)({} as never);
+    vi.mocked(reuseNativeBuild).mockResolvedValueOnce({
+      ...(await vi.mocked(reuseNativeBuild)({} as never)),
+      hit: { source: "local", result },
+    } as never);
+    await handleNativeBuildCreate("android", {
+      scheme: "release",
+      submit: "play-production",
+    });
+    expect(uploadToPlay).toHaveBeenCalledWith(
+      expect.not.objectContaining({ existingVersionCode: 42 }),
+    );
+  });
+
+  it.each([false, true])(
+    "records nothing and names only Google Play when an artifact is refused (cached: %s)",
+    async (cached) => {
+      if (cached) {
+        const result = await vi.mocked(createNativeBuild)({} as never);
+        vi.mocked(reuseNativeBuild).mockResolvedValueOnce({
+          ...(await vi.mocked(reuseNativeBuild)({} as never)),
+          hit: { source: "local", result },
+        } as never);
+      }
+      vi.mocked(registerNativeBuild).mockResolvedValueOnce({
+        id: "nb1",
+        submitted_to: null,
+      } as never);
+      vi.mocked(uploadToPlay).mockRejectedValueOnce(
+        new PlayVersionCodeUsedError(),
+      );
+      await handleNativeBuildCreate("android", {
+        scheme: "release",
+        submit: "play-production",
+      });
+      expect(recordNativeBuildSubmission).not.toHaveBeenCalled();
+      const output = stripVTControlCharacters(
+        vi.mocked(p.log.step).mock.calls.flat().join("\n"),
+      );
+      expect(output).toContain("Already on Google Play\n");
+      expect(output).not.toContain("Already on Google Play production");
+      expect(output).toContain("Bump the build number");
+    },
+  );
 
   it("checks Google Play with the scheme's applicationId, which the build reads", async () => {
     await handleNativeBuildCreate("android", {

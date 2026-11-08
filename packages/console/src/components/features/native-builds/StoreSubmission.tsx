@@ -5,16 +5,17 @@ import { Send } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 
+import { PLAY_TRACKS } from "./playTracks";
+
 dayjs.extend(relativeTime);
 
 /** Each store track's name as the stores call it. */
 export const storeTrackLabels = {
   testflight: "TestFlight",
-  "play-internal": "Play internal",
-} as const satisfies Record<
-  NonNullable<NativeBuildRow["submitted_to"]>,
-  string
->;
+  ...Object.fromEntries(
+    Object.entries(PLAY_TRACKS).map(([key, value]) => [key, value.label]),
+  ),
+} as Record<NonNullable<NativeBuildRow["submitted_to"]>, string>;
 
 export type Submitted = NativeBuildRow & {
   readonly submitted_to: NonNullable<NativeBuildRow["submitted_to"]>;

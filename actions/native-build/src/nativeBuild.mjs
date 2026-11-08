@@ -1,6 +1,7 @@
 // @ts-check
 
 import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
+import { PLAY_TRACKS } from "../../shared/playTracks.mjs";
 
 /**
  * @typedef {"android" | "ios"} Platform
@@ -8,7 +9,7 @@ import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
  * @typedef {object} Inputs
  * @property {Platform} platform
  * @property {string} scheme
- * @property {"testflight" | "play-internal" | null} submit
+ * @property {"testflight" | "play-internal" | "play-closed" | "play-open" | "play-production" | null} submit
  * @property {boolean} [noCache] Builds even when a build could be reused.
  * @property {string[]} [extraArgs] More `native-build` arguments.
  *
@@ -21,18 +22,21 @@ import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
  *
  * @typedef {object} NativeBuildJson What `native-build <platform> --json` prints last.
  * @property {{ platform: Platform, scheme: string, artifactPath: string, artifactKind: string, minBundleId: string, channel: string, fingerprintHash: string | null, appVersion: string | null }} build
- * @property {{ id: string } | null} nativeBuild
+ * @property {{ id: string, submitted_to?: import("../../shared/nativeBuild.mjs").StoreStatus["destination"] | null } | null} nativeBuild
  * @property {{ skipped: "debug" | "dry-run" | null }} registration Why the build has no record.
- * @property {{ destination: string | null, skipped: "dry-run" | "already-submitted" | null, existing: { version: string | null, source: "recorded" | "store" } | null, store?: import("../../shared/nativeBuild.mjs").StoreStatus | null }} submission
+ * @property {{ destination: string | null, skipped: "dry-run" | "already-submitted" | null, existing: { destination?: import("../../shared/nativeBuild.mjs").StoreStatus["destination"], version: string | null, source: "recorded" | "store" } | null, store?: import("../../shared/nativeBuild.mjs").StoreStatus | null }} submission
  *   The store the build went to, the store's build that kept it from uploading,
  *   and what the store says of the build this run submitted.
  */
 
 /** The store each platform submits to. */
-const SUBMITS = /** @type {const} */ ({
-  testflight: "ios",
-  "play-internal": "android",
-});
+const SUBMITS =
+  /** @type {Record<NonNullable<Inputs["submit"]>, Platform>} */ ({
+    testflight: "ios",
+    ...Object.fromEntries(
+      Object.keys(PLAY_TRACKS).map((key) => [key, "android"]),
+    ),
+  });
 
 /**
  * Refuses an iOS build on a runner that has no Xcode.
@@ -78,7 +82,7 @@ export const parseInputs = (env) => {
   const submit = input("SUBMIT");
   if (submit !== "" && !(submit in SUBMITS)) {
     throw new Error(
-      `submit takes testflight or play-internal, or is empty, not ${submit}.`,
+      `submit takes testflight, play-internal, play-closed, play-open or play-production, or is empty, not ${submit}.`,
     );
   }
   const store = /** @type {keyof typeof SUBMITS | ""} */ (submit);
@@ -183,8 +187,9 @@ export const runAction = async (deps, inputs) => {
       "Submitted to",
       inputs.submit === "testflight"
         ? "TestFlight"
-        : inputs.submit === "play-internal"
-          ? "Google Play internal testing"
+        : inputs.submit?.startsWith("play-")
+          ? PLAY_TRACKS[/** @type {keyof typeof PLAY_TRACKS} */ (inputs.submit)]
+              .name
           : "no store",
     ],
   ];

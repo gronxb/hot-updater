@@ -31,7 +31,7 @@ import {
   playTestingUrl,
   PlayVersionCodeUsedError,
   readPlayHighestVersionCode,
-  readPlayInternalRelease,
+  readPlayTrackRelease,
   resolvePlayUploadServiceAccount,
   uploadToPlay,
 } from "./uploadToPlay";
@@ -114,6 +114,8 @@ const successRoutes = (): Record<string, Reply | Reply[]> => ({
   [`PUT ${LOCATION}`]: {
     json: { versionCode: 42, sha256: "abc" },
   },
+  [`GET ${EDIT}/tracks/internal`]: { json: { releases: [] } },
+  [`GET ${EDIT}/tracks/production`]: { json: { releases: [] } },
   [`PUT ${EDIT}/tracks/internal`]: { json: { track: "internal" } },
   [`POST ${EDIT}:commit`]: { json: { id: "edit-1" } },
 });
@@ -192,6 +194,171 @@ describe("createServiceAccountAssertion", () => {
 });
 
 describe("uploadToPlay", () => {
+  it("reads the selected production track", async () => {
+    const routes = successRoutes();
+    routes[`GET ${EDIT}/tracks/production`] = {
+      json: { releases: [{ versionCodes: ["42"], status: "inProgress" }] },
+    };
+    routes[`DELETE ${EDIT}`] = { status: 204 };
+    const { fetch } = createRecordingFetch(routes);
+    await expect(
+      readPlayTrackRelease({
+        packageName: "com.example.app",
+        serviceAccount: { json: serviceAccountJson },
+        versionCode: 42,
+        track: "production",
+        fetch,
+      }),
+    ).resolves.toBe("inProgress");
+  });
+
+  it.each([0, 101, 1.5, NaN])(
+    "rejects invalid rollout %s before opening an edit",
+    async (rollout) => {
+      const { fetch, requests } = createRecordingFetch(successRoutes());
+      await expect(
+        uploadToPlay({
+          aabPath,
+          packageName: "com.example.app",
+          serviceAccount: { json: serviceAccountJson },
+          fetch,
+          track: "production",
+          rollout,
+        }),
+      ).rejects.toThrow("integer from 1 to 100");
+      expect(requests).toEqual([]);
+    },
+  );
+  it("refuses staged rollout on internal", async () => {
+    const { fetch } = createRecordingFetch(successRoutes());
+    await expect(
+      uploadToPlay({
+        aabPath,
+        packageName: "com.example.app",
+        serviceAccount: { json: serviceAccountJson },
+        fetch,
+        rollout: 50,
+      }),
+    ).rejects.toThrow("does not support staged rollout");
+  });
+  it("keeps draft-app fallback on a staged production promotion", async () => {
+    const routes = successRoutes();
+    routes[`PUT ${EDIT}/tracks/production`] = [
+      {
+        status: 400,
+        json: {
+          error: {
+            message:
+              "Only releases with status draft may be created on draft app",
+          },
+        },
+      },
+      { json: {} },
+    ];
+    const { fetch, requests } = createRecordingFetch(routes);
+    await expect(
+      uploadToPlay({
+        aabPath,
+        packageName: "com.example.app",
+        serviceAccount: { json: serviceAccountJson },
+        fetch,
+        track: "production",
+        rollout: 10,
+        existingVersionCode: 42,
+      }),
+    ).resolves.toEqual({ versionCode: 42, status: "draft" });
+    expect(requests.filter((r) => r.method === "PUT").at(-1)?.body).toEqual({
+      track: "production",
+      releases: [{ versionCodes: ["42"], status: "draft" }],
+    });
+  });
+  it.each(["alpha", "beta", "production"] as const)(
+    "promotes an existing bundle to %s with a staged rollout",
+    async (track) => {
+      const routes = successRoutes();
+      routes[`PUT ${EDIT}/tracks/${track}`] = { json: { track } };
+      routes[`GET ${EDIT}/tracks/${track}`] = { json: { releases: [] } };
+      const { fetch, requests } = createRecordingFetch(routes);
+      await expect(
+        uploadToPlay({
+          aabPath,
+          packageName: "com.example.app",
+          serviceAccount: { json: serviceAccountJson },
+          fetch,
+          track,
+          rollout: 25,
+          existingVersionCode: 42,
+        }),
+      ).resolves.toEqual({ versionCode: 42, status: "inProgress" });
+      expect(
+        requests.find(
+          (r) => r.method === "PUT" && r.url === `${EDIT}/tracks/${track}`,
+        )?.body,
+      ).toEqual({
+        track,
+        releases: [
+          { versionCodes: ["42"], status: "inProgress", userFraction: 0.25 },
+        ],
+      });
+      expect(requests.some((r) => r.url.includes("/upload"))).toBe(false);
+    },
+  );
+
+  it.each([25, 100])(
+    "preserves metadata, and country targeting while staged, when updating rollout to %s",
+    async (rollout) => {
+      const routes = successRoutes();
+      const metadata = {
+        name: "Release 42",
+        countryTargeting: { countries: ["KR"], includeRestOfWorld: false },
+        inAppUpdatePriority: 3,
+        futureField: { value: "preserved" },
+        releaseNotes: [{ language: "en-US", text: "Fixes" }],
+      };
+      routes[`GET ${EDIT}/tracks/production`] = {
+        json: {
+          releases: [
+            { versionCodes: ["41"], name: "Older" },
+            {
+              versionCodes: ["42"],
+              status: "halted",
+              userFraction: 0.1,
+              ...metadata,
+            },
+          ],
+        },
+      };
+      routes[`PUT ${EDIT}/tracks/production`] = { json: {} };
+      const { fetch, requests } = createRecordingFetch(routes);
+      await uploadToPlay({
+        aabPath,
+        packageName: "com.example.app",
+        serviceAccount: { json: serviceAccountJson },
+        fetch,
+        track: "production",
+        rollout,
+        existingVersionCode: 42,
+      });
+      expect(
+        requests.find(
+          (r) => r.method === "PUT" && r.url === `${EDIT}/tracks/production`,
+        )?.body,
+      ).toEqual({
+        track: "production",
+        releases: [
+          {
+            versionCodes: ["42"],
+            ...metadata,
+            // Play takes countryTargeting only on an inProgress release.
+            ...(rollout < 100 ? {} : { countryTargeting: undefined }),
+            status: rollout < 100 ? "inProgress" : "completed",
+            ...(rollout < 100 ? { userFraction: 0.25 } : {}),
+          },
+        ],
+      });
+    },
+  );
+
   it("releases the .aab to the internal track through one edit, in order", async () => {
     const { fetch, requests } = createRecordingFetch(successRoutes());
 
@@ -416,7 +583,7 @@ describe("uploadToPlay", () => {
     const { fetch } = createRecordingFetch(routes);
 
     await expect(upload(fetch)).rejects.toThrow(
-      "Google Play didn't confirm the release.\nCommitting the Google Play edit failed (HTTP 503).\nCheck internal testing in Play Console before you upload it again.",
+      "Google Play didn't confirm the release.\nCommitting the Google Play edit failed (HTTP 503).\nCheck the release in Play Console before you upload it again.",
     );
   });
 
@@ -523,7 +690,7 @@ describe("uploadToPlay", () => {
     const { fetch } = createRecordingFetch(routes);
 
     await expect(upload(fetch)).rejects.toThrow(
-      "The Play service account can't release com.example.app.\nInvite its email in Play Console (Users and permissions)",
+      "Release to production for production",
     );
   });
 
@@ -606,9 +773,9 @@ describe("resolvePlayUploadServiceAccount", () => {
   });
 });
 
-describe("readPlayInternalRelease", () => {
+describe("readPlayTrackRelease", () => {
   const read = (fetch: typeof globalThis.fetch, versionCode: number) =>
-    readPlayInternalRelease({
+    readPlayTrackRelease({
       versionCode,
       packageName: "com.example.app",
       serviceAccount: { json: serviceAccountJson },

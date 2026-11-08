@@ -1,5 +1,6 @@
 import {
   DatabaseBundleNotFoundError,
+  type NativeBuildSubmissionDestination,
   DatabaseConstraintError,
   ReleaseCatalogMutationError,
   ReleaseManagementError,
@@ -14,6 +15,7 @@ import {
 import type { Bundle } from "@hot-updater/protocol";
 
 import type { CoreApi } from "./core/api";
+import { NATIVE_BUILD_SUBMISSION_DESTINATIONS } from "./core/nativeBuildDestinations";
 import { NativeBuildInputError } from "./core/nativeBuilds";
 import { HandlerBadRequestError } from "./handlerErrors";
 import {
@@ -613,16 +615,17 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     const input = await body(request);
     if (
       !isRecord(input) ||
-      (input.destination !== "testflight" &&
-        input.destination !== "play-internal") ||
+      !Object.values(NATIVE_BUILD_SUBMISSION_DESTINATIONS)
+        .flat()
+        .includes(input.destination as NativeBuildSubmissionDestination) ||
       !isText(input.version)
     ) {
       throw new HandlerBadRequestError(
-        "A native build submission needs destination (testflight or play-internal) and version.",
+        "A native build submission needs a valid store destination and version.",
       );
     }
     const submission = {
-      destination: input.destination,
+      destination: input.destination as NativeBuildSubmissionDestination,
       version: input.version,
     } as const;
     return json({

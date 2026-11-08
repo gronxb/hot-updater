@@ -1104,6 +1104,28 @@ describe("a submitted build's page", () => {
     expect(screen.queryByText("Store")).toBeNull();
   });
 
+  it.each(["play-closed", "play-open", "play-production"] as const)(
+    "shows the Play Console link for %s",
+    (submitted_to) => {
+      render(
+        <InstallCard build={build({ artifact_kind: "aab", submitted_to })} />,
+      );
+      if (submitted_to === "play-production") {
+        expect(screen.queryByText(/Testers get it once/)).toBeNull();
+      }
+      expect(
+        screen
+          .getByRole("link", { name: /Open Play Console/ })
+          .getAttribute("href"),
+      ).toBe("https://play.google.com/console");
+      expect(
+        screen.getByText(
+          new RegExp(`Submitted to Play ${submitted_to.slice(5)} as`),
+        ),
+      ).toBeTruthy();
+    },
+  );
+
   it("names Google Play for a submitted AAB", () => {
     render(
       <InstallCard

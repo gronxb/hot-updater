@@ -21,6 +21,7 @@ import type { NativeBuildDownloadLinkResult } from "@/lib/server/nativeBuildDown
 
 import { CopyableText } from "./CopyableText";
 import { IosInstall, useIosDevice } from "./IosInstall";
+import { PLAY_TRACKS } from "./playTracks";
 import { isSubmitted, type Submitted } from "./StoreSubmission";
 
 /**
@@ -153,26 +154,17 @@ function SubmittedVersion({ build }: { readonly build: NativeBuildRow }) {
 }
 
 /**
- * Where a store's testers and its people get a build: a tester's own link needs
- * the app's ID in the store, which only the pull request's comment has.
- */
-const STORE_CONSOLES = {
-  testflight: {
-    name: "App Store Connect",
-    url: "https://appstoreconnect.apple.com/apps",
-  },
-  "play-internal": {
-    name: "Play Console",
-    url: "https://play.google.com/console",
-  },
-} as const;
-
-/**
  * A build a store took installs from the store, so the card leads with it, and
  * the file stays for keeping, with no QR code or signed link to ask for.
  */
 function StoreInstallCard({ build }: { readonly build: Submitted }) {
-  const store = STORE_CONSOLES[build.submitted_to];
+  const store =
+    build.submitted_to === "testflight"
+      ? {
+          name: "App Store Connect",
+          url: "https://appstoreconnect.apple.com/apps",
+        }
+      : { name: "Play Console", url: "https://play.google.com/console" };
   return (
     <Card className="overflow-hidden shadow-sm">
       <CardHeader className="border-b px-4 py-3">
@@ -265,10 +257,15 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
     case "aab":
       return isSubmitted(build) ? (
         <p className="text-xs text-muted-foreground">
-          Submitted to Google Play internal testing as{" "}
-          <SubmittedVersion build={build} />. Testers get it once its release is
-          rolled out; on an app Play Console hasn't published, the release is a
-          draft you roll out in Play Console.
+          Submitted to{" "}
+          {build.submitted_to === "play-internal"
+            ? PLAY_TRACKS["play-internal"].name
+            : PLAY_TRACKS[build.submitted_to as keyof typeof PLAY_TRACKS]
+                .label}{" "}
+          as <SubmittedVersion build={build} />.{" "}
+          {build.submitted_to === "play-production" ? "Users" : "Testers"} get
+          it once its release is rolled out; on an app Play Console hasn't
+          published, the release is a draft you roll out in Play Console.
         </p>
       ) : (
         <div className="flex min-w-0 flex-col gap-2">

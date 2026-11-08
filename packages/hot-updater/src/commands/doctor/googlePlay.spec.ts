@@ -110,6 +110,7 @@ describe("doctor's Google Play check", () => {
         "✗ com.example.app          invite the service account",
         `  ${EMAIL}`,
         "  App permission: Release apps to testing tracks",
+        "  For production: Release to production",
         `  https://play.google.com/console/u/0/developers/_/users-and-permissions?invite=${encodeURIComponent(EMAIL)}`,
         "✗ com.example.app.staging  upload the first .aab in Play Console",
         "Guide: https://hot-updater.dev/docs/native-builds/google-play",

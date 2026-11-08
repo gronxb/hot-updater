@@ -12,6 +12,7 @@ import {
   encodeChannelKey,
 } from "@hot-updater/protocol";
 
+import { NATIVE_BUILD_SUBMISSION_DESTINATIONS } from "./nativeBuildDestinations";
 import { after, type CoreDatabase } from "./reads";
 import { insertChannel, type CoreTransaction } from "./writes";
 
@@ -77,15 +78,6 @@ const OLDER_BUILDS_PAGE = 20;
 
 /** How many times a mark runs again after losing its scope's mark to another. */
 const MARK_ATTEMPTS = 8;
-
-/** The store track each platform's builds are submitted to. */
-const SUBMISSION_DESTINATIONS = {
-  android: "play-internal",
-  ios: "testflight",
-} as const satisfies Record<
-  NativeBuildRow["platform"],
-  NonNullable<NativeBuildRow["submitted_to"]>
->;
 
 /** `native_builds.build_number`'s bound in core's schema. */
 const BUILD_NUMBER_MAX_LENGTH = 64;
@@ -356,9 +348,24 @@ export const createNativeBuildApi = (
       const row = await tx.findOne("native_builds", { id });
       if (row === null) return null;
       const build = pick(row);
-      if (SUBMISSION_DESTINATIONS[build.platform] !== destination) {
+      if (
+        !(
+          NATIVE_BUILD_SUBMISSION_DESTINATIONS[
+            build.platform
+          ] as readonly string[]
+        ).includes(destination)
+      ) {
         throw new NativeBuildInputError(
-          `Invalid native build submission: an ${build.platform} build is submitted to ${SUBMISSION_DESTINATIONS[build.platform]}, not ${destination}.`,
+          `Invalid native build submission: an ${build.platform} build is submitted to ${NATIVE_BUILD_SUBMISSION_DESTINATIONS[build.platform].join(" or ")}, not ${destination}.`,
+        );
+      }
+      if (
+        build.is_sandbox &&
+        destination !== "testflight" &&
+        destination !== "play-internal"
+      ) {
+        throw new NativeBuildInputError(
+          "A sandbox build can submit only to TestFlight or Play internal testing.",
         );
       }
       const set = {

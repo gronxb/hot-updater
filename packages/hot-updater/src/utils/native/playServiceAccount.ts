@@ -22,8 +22,7 @@ export const GOOGLE_PLAY_GUIDE_URL =
   "https://hot-updater.dev/docs/native-builds/google-play";
 
 /**
- * The least Play Console permission the service account needs: the CLI
- * releases only to the internal testing track.
+ * The Play Console permission depends on the requested release track.
  */
 export const PLAY_PERMISSION = "Release apps to testing tracks";
 
@@ -113,6 +112,7 @@ export const describePlayAccess = (
         lines: [
           access.email,
           `App permission: ${PLAY_PERMISSION}`,
+          "For production: Release to production",
           ui.path(playConsoleInviteUrl(access.email)),
         ],
       };

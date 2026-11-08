@@ -12,7 +12,8 @@ const { events, prebuildScheme, resolve } = vi.hoisted(() => {
   };
 });
 
-vi.mock("@hot-updater/android-helper", () => ({
+vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/android-helper")>()),
   buildAndroid: vi.fn(async () => ({ logFilePath: null })),
   readBuiltPackageName: vi.fn(),
   resolvePlayUploadServiceAccount: vi.fn(),

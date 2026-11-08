@@ -199,6 +199,7 @@ describe("checkGooglePlay", () => {
         "✗ Play access          invite the service account",
         `  ${EMAIL}`,
         "  App permission: Release apps to testing tracks",
+        "  For production: Release to production",
         `  ${INVITE_URL}`,
         GUIDE,
       ].join("\n"),

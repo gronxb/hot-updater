@@ -43,6 +43,23 @@ const deployment: Deployment = {
 describe("admin API protocol 2 routes", () => {
   const routes = createAdminRouteHandlers();
 
+  it("accepts production submissions through HTTP", async () => {
+    const recordNativeBuildSubmission = vi.fn(async () => null);
+    const response = await routes.recordNativeBuildSubmission!(
+      { id: "nb1" },
+      post("/native-builds/nb1/submission", {
+        destination: "play-production",
+        version: "1.0 (42)",
+      }),
+      apiWith({ recordNativeBuildSubmission }),
+    );
+    expect(response.status).toBe(200);
+    expect(recordNativeBuildSubmission).toHaveBeenCalledWith("nb1", {
+      destination: "play-production",
+      version: "1.0 (42)",
+    });
+  });
+
   it("deploys well-formed deployments through core", async () => {
     const deploy = vi.fn(async () => []);
 

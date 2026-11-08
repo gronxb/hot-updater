@@ -200,6 +200,14 @@ describe("decide", () => {
   it.each([
     ["no build", null, true, "build"],
     ["a submitted build", row(), true, "ota"],
+    ["a closed build", row({ submitted_to: "play-closed" }), true, "ota"],
+    ["an open build", row({ submitted_to: "play-open" }), true, "ota"],
+    [
+      "a production build",
+      row({ submitted_to: "play-production" }),
+      true,
+      "ota",
+    ],
     ["a build with no submission", row({ submitted_to: null }), true, "build"],
     [
       "an imported build",
@@ -264,6 +272,20 @@ describe("runAction", () => {
     expect(summaries[0]).toContain(
       "| android | production | fingerprint fp-abcde | ota |",
     );
+  });
+
+  it("reports the recorded higher track after a cached build", async () => {
+    const fake = fakeCli({
+      built: {
+        nativeBuild: { id: "nb-new", submitted_to: "play-production" },
+        submission: {
+          skipped: "already-submitted",
+          existing: { source: "recorded", destination: "play-production" },
+        },
+      },
+    });
+    const { result } = await run(fake);
+    expect(result.platforms[0].submittedTo).toBe("play-production");
   });
 
   it("builds and submits, and deploys nothing, when no build has the fingerprint", async () => {

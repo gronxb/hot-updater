@@ -18,7 +18,7 @@ import { parseJsonOutput } from "./cli.mjs";
  * @property {boolean} [is_sandbox] Whether the build is a sandbox build, as registered.
  *
  * @typedef {object} StoreStatus What a store says of a build a run submitted.
- * @property {"testflight" | "play-internal"} destination
+ * @property {"testflight" | "play-internal" | "play-closed" | "play-open" | "play-production"} destination
  * @property {string | null} url The store's page of the app.
  * @property {string | null} version The store's label, such as `1.7.0 (66)`.
  * @property {string | null} state Such as `processing`, `ready`, or `draft`.

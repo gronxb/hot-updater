@@ -324,7 +324,7 @@ read access, fails with the store's reason.
 | ------------------- | ------------------------------ | ------------------------------------------------------------------------- |
 | `platform`          |                                | `ios`, on a macOS runner, or `android`. Required                          |
 | `scheme`            |                                | The `nativeBuild.<platform>` scheme. Required                             |
-| `submit`            |                                | `testflight` for iOS, `play-internal` for Android, or empty to only build |
+| `submit`            |                                | `testflight` for iOS; `play-internal`, `play-closed`, `play-open`, or `play-production` for Android; empty to only build |
 | `working-directory` | `.`                            | The app's directory, with `hot-updater.config.ts`                         |
 | `cli`               | `npx --no-install hot-updater` | The command that runs the project's CLI                                   |
 

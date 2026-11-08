@@ -13,6 +13,7 @@ import {
   refreshFingerprint,
   STORES,
 } from "../../shared/nativeBuild.mjs";
+import { PLAY_TRACKS } from "../../shared/playTracks.mjs";
 
 /**
  * @typedef {import("../../shared/nativeBuild.mjs").Platform} Platform
@@ -50,7 +51,7 @@ import {
  * @property {"deployed" | "built" | "decided" | "failed"} outcome
  * @property {string | null} nativeBuildId
  * @property {string | null} bundleId
- * @property {"testflight" | "play-internal" | null} submittedTo
+ * @property {"testflight" | "play-internal" | "play-closed" | "play-open" | "play-production" | null} submittedTo
  * @property {string | null} error
  */
 
@@ -128,10 +129,14 @@ export const decide = (found, { submit }) => {
   if (!submit || (build.build_key ?? null) === null) {
     return { decision: "ota", reason: `native build ${build.id} is tracked` };
   }
-  return build.submitted_to === store.id
+  return (
+    found.platform === "android"
+      ? build.submitted_to?.startsWith("play-")
+      : build.submitted_to === store.id
+  )
     ? {
         decision: "ota",
-        reason: `native build ${build.id} is on ${store.name}`,
+        reason: `native build ${build.id} is on ${found.platform === "android" ? (PLAY_TRACKS[/** @type {keyof typeof PLAY_TRACKS} */ (build.submitted_to)]?.name ?? "Google Play") : store.name}`,
       }
     : {
         decision: "build",
@@ -235,7 +240,9 @@ const buildPlatform = async (deps, inputs, env, result, channel) => {
       `${store.name} already has ${existing.version ?? "this build number"}, which may be another build. Raise the build number and push again.`,
     );
   }
-  result.submittedTo = inputs.submit ? store.id : null;
+  result.submittedTo = inputs.submit
+    ? (existing?.destination ?? built.nativeBuild.submitted_to ?? store.id)
+    : null;
   result.outcome = "built";
 };
 

@@ -45,8 +45,13 @@ export const whatToTestCommandOption = new Option(
 
 export const playSubmitCommandOption = new Option(
   "--submit <destination>",
-  "submit the .aab to a store: play-internal releases it to Google Play's internal testing track with the play-service-account secret",
-).choices(["play-internal"]);
+  "release the .aab to a Google Play track with the play-service-account secret",
+).choices(["play-internal", "play-closed", "play-open", "play-production"]);
+
+export const playRolloutCommandOption = new Option(
+  "--rollout <percentage>",
+  "staged rollout percentage, 1–100 (default: 100)",
+).argParser(Number);
 
 export const nativeBuildDryRunCommandOption = new Option(
   "--dry-run",

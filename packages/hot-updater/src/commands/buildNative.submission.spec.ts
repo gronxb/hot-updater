@@ -79,11 +79,15 @@ vi.mock("@hot-updater/apple-helper", async (importOriginal) => ({
   })),
 }));
 vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
+  PLAY_TRACKS: (
+    await importOriginal<typeof import("@hot-updater/android-helper")>()
+  ).PLAY_TRACKS,
   PlayVersionCodeUsedError: (
     await importOriginal<typeof import("@hot-updater/android-helper")>()
   ).PlayVersionCodeUsedError,
   assertPlaySigned: vi.fn(async () => {}),
   buildAndroid: vi.fn(async () => ({ logFilePath: null })),
+  hasPlayVersionCode: vi.fn(async () => false),
   findPlayInternalRelease: vi.fn(async () => false),
   readBuiltApp: vi.fn(async () => ({ appVersion: "1.7.0", channel: null })),
   readBuiltPackageName: vi.fn(async () => "com.example.app"),
@@ -543,7 +547,7 @@ describe("native-build android --submit play-internal", () => {
     });
 
     expect(stepped()).toContain(
-      "Already on Google Play internal testing\nVersion  1.7.0 (66)\nBump the build number to upload this build.",
+      "Already on Google Play\nVersion  1.7.0 (66)\nBump the build number to upload this build.",
     );
     expect(submission(await stored())).toEqual(NONE);
   });

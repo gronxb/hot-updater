@@ -158,6 +158,22 @@ describe("assertSandboxBuildAllowed", () => {
     ).rejects.toThrow("can't name a channel");
   });
 
+  it.each(["play-closed", "play-open", "play-production"] as const)(
+    "refuses sandbox submission to %s",
+    async (submit) => {
+      await expect(
+        assertSandboxBuildAllowed({
+          platform: "android",
+          scheme: "beta",
+          androidScheme: { ...android, sandbox: true },
+          submit,
+        }),
+      ).rejects.toThrow(
+        `A sandbox build can't go to ${submit}; use play-internal.`,
+      );
+    },
+  );
+
   it("keeps each platform to its internal store", async () => {
     await expect(
       assertSandboxBuildAllowed({
@@ -183,7 +199,7 @@ describe("assertSandboxBuildAllowed", () => {
         submit: "testflight",
       }),
     ).rejects.toThrow(
-      "A sandbox build can't go to testflight.\nUse play-internal.",
+      "A sandbox build can't go to testflight; use play-internal.",
     );
   });
 

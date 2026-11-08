@@ -173,7 +173,7 @@ const explain = (error: unknown, packageName: string): unknown => {
       [
         `The Play service account can't release ${packageName}.`,
         "Invite its email in Play Console (Users and permissions) to release to",
-        "testing tracks, and enable the Google Play Android Developer API.",
+        "testing tracks (Release to production for production), and enable the Google Play Android Developer API.",
       ].join("\n"),
       { cause: error },
     );
@@ -419,17 +419,20 @@ const readInEdit = async <T>(
 };
 
 /**
- * The status of the internal testing release holding `versionCode`, such as
+ * The status of the selected track's release holding `versionCode`, defaulting
+ * to internal testing, such as
  * `completed` or `draft`, or null when the track doesn't hold it: never
  * uploaded, or replaced by a newer release, which testers get instead.
  */
-export const readPlayInternalRelease = ({
+export const readPlayTrackRelease = ({
   versionCode,
+  track = INTERNAL_TRACK,
   packageName,
   serviceAccount,
   fetch = globalThis.fetch,
 }: {
   versionCode: number;
+  track?: string;
   /** The application ID the `.aab` was built with. */
   packageName: string;
   serviceAccount: Credentials["play-service-account"];
@@ -438,7 +441,11 @@ export const readPlayInternalRelease = ({
   readInEdit({ packageName, serviceAccount, fetch }, async (request, edit) => {
     const { releases = [] } = await request<{
       releases?: { status?: string; versionCodes?: string[] }[];
-    }>("Reading the internal track", "GET", `${edit}/tracks/${INTERNAL_TRACK}`);
+    }>(
+      `Reading the ${track} track`,
+      "GET",
+      `${edit}/tracks/${encodeURIComponent(track)}`,
+    );
     const release = releases.find(({ versionCodes = [] }) =>
       versionCodes.includes(String(versionCode)),
     );
@@ -455,7 +462,7 @@ export const findPlayInternalRelease = async (options: {
   packageName: string;
   serviceAccount: Credentials["play-service-account"];
   fetch?: typeof globalThis.fetch;
-}): Promise<boolean> => (await readPlayInternalRelease(options)) !== null;
+}): Promise<boolean> => (await readPlayTrackRelease(options)) !== null;
 
 /**
  * The highest version code Google Play has taken for the app, on any track,
@@ -522,13 +529,13 @@ export interface UploadToPlayResult {
   /** The version code Google Play read from the `.aab`. */
   versionCode: number;
   /** The release's status: `draft` on an app Play Console has not published. */
-  status: "completed" | "draft";
+  status: "completed" | "draft" | "inProgress";
 }
 
 /**
- * Uploads an `.aab` to Google Play's internal testing track with the Google
+ * Uploads or promotes an `.aab` to a Google Play track with the Google
  * Play Developer API: it opens an edit, uploads the bundle, releases its
- * version code to the internal track, and commits the edit, which it
+ * version code to the selected track, and commits the edit, which it
  * deletes again when any step fails. The service account stays in memory.
  */
 export const uploadToPlay = async ({
@@ -537,8 +544,14 @@ export const uploadToPlay = async ({
   serviceAccount: { json },
   fetch = globalThis.fetch,
   commitRetryDelayMs = 2_000,
+  track = "internal",
+  rollout = 100,
+  existingVersionCode,
 }: {
   aabPath: string;
+  track?: "internal" | "alpha" | "beta" | "production";
+  rollout?: number;
+  existingVersionCode?: number;
   /** The application ID the `.aab` was built with. */
   packageName: string;
   serviceAccount: Credentials["play-service-account"];
@@ -546,6 +559,18 @@ export const uploadToPlay = async ({
   /** The first wait before committing again an edit Google is processing. */
   commitRetryDelayMs?: number;
 }): Promise<UploadToPlayResult> => {
+  if (
+    !Number.isInteger(rollout) ||
+    rollout < 1 ||
+    rollout > 100 ||
+    (track === "internal" && rollout < 100)
+  ) {
+    throw new Error(
+      track === "internal" && rollout < 100
+        ? "Play internal testing does not support staged rollout."
+        : "Rollout must be an integer from 1 to 100.",
+    );
+  }
   const { app, authorization, request } = createPlayClient({
     json,
     packageName,
@@ -566,30 +591,62 @@ export const uploadToPlay = async ({
   const edit = `${API_URL}${app}/edits/${encodeURIComponent(editId)}`;
 
   try {
-    p.log.info(`Uploading ${packageName}'s .aab to Google Play`);
-    const versionCode = await uploadBundle({
-      aabPath,
-      sessionUrl: `${API_URL}/upload${app}/edits/${encodeURIComponent(editId)}/bundles?uploadType=resumable`,
-      authorization,
-      fetch,
-    });
+    p.log.info(
+      `${existingVersionCode === undefined ? "Uploading" : "Promoting"} ${packageName} to Google Play`,
+    );
+    const versionCode =
+      existingVersionCode ??
+      (await uploadBundle({
+        aabPath,
+        sessionUrl: `${API_URL}/upload${app}/edits/${encodeURIComponent(editId)}/bundles?uploadType=resumable`,
+        authorization,
+        fetch,
+      }));
+
+    const current =
+      existingVersionCode === undefined
+        ? undefined
+        : await request<{
+            releases?: {
+              versionCodes?: string[];
+              userFraction?: number;
+              countryTargeting?: unknown;
+              [key: string]: unknown;
+            }[];
+          }>("Reading the Google Play track", "GET", `${edit}/tracks/${track}`);
+    const existingRelease = current?.releases?.find((release) =>
+      release.versionCodes?.includes(String(versionCode)),
+    );
 
     const release = async (status: UploadToPlayResult["status"]) => {
+      const updatedRelease = {
+        ...existingRelease,
+        versionCodes: existingRelease?.versionCodes ?? [String(versionCode)],
+        status,
+      };
+      if (status === "inProgress") {
+        updatedRelease.userFraction = rollout / 100;
+      } else {
+        // Play takes both only on an inProgress release.
+        delete updatedRelease.userFraction;
+        delete updatedRelease.countryTargeting;
+      }
       await request(
-        "Releasing to the internal track",
+        `Releasing to the ${track} track`,
         "PUT",
-        `${edit}/tracks/${INTERNAL_TRACK}`,
+        `${edit}/tracks/${track}`,
         {
-          track: INTERNAL_TRACK,
-          releases: [{ versionCodes: [String(versionCode)], status }],
+          track,
+          releases: [updatedRelease],
         },
       );
       await commit({ request, edit, retryDelayMs: commitRetryDelayMs });
     };
 
     try {
-      await release("completed");
-      return { versionCode, status: "completed" };
+      const status = rollout < 100 ? "inProgress" : "completed";
+      await release(status);
+      return { versionCode, status };
     } catch (error) {
       if (
         !(error instanceof GooglePlayError) ||
@@ -657,7 +714,7 @@ const commit = async ({
           [
             "Google Play didn't confirm the release.",
             error instanceof Error ? error.message : String(error),
-            "Check internal testing in Play Console before you upload it again.",
+            "Check the release in Play Console before you upload it again.",
           ].join("\n"),
           { cause: error },
         );
