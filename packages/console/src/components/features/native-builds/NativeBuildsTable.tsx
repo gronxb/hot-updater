@@ -177,20 +177,23 @@ function BuildLink({ build }: { readonly build: NativeBuildRow }) {
 
 /**
  * What the build is, its artifact kind and whether it is a sandbox build, kept
- * together so the tag never wraps away from the kind it qualifies: stacked in
- * a table cell, as the Store column stacks its mark, and beside the kind on a
- * card, under it only when a narrow card has no room.
+ * together so the tag never wraps away from the kind it qualifies. In a table
+ * cell the tag sits beside the kind, so a sandbox row is as tall as any other,
+ * and the cell is capped at its widest short kind ("AAB Sandbox"): only a
+ * longer kind, such as a sandbox "Simulator app", puts its tag under it rather
+ * than widen the table past its frame. On a card the tag sits beside the kind,
+ * under it only when a narrow card has no room.
  */
 function BuildIdentity({
   build,
-  stacked = false,
+  inTable = false,
 }: {
   readonly build: NativeBuildRow;
-  readonly stacked?: boolean;
+  readonly inTable?: boolean;
 }) {
-  if (stacked) {
+  if (inTable) {
     return (
-      <span className="flex flex-col items-start gap-1">
+      <span className="flex max-w-24 flex-wrap items-center gap-x-1.5 gap-y-1">
         <BuildLink build={build} />
         <SandboxBadge build={build} />
       </span>
@@ -249,7 +252,9 @@ function StoreBadges({
     <span className={className}>
       <StoreSubmissionBadge build={build} />
       {build.is_store_build ? (
-        <Badge variant="secondary">Store build</Badge>
+        <Badge className="px-1.5" variant="muted">
+          Store build
+        </Badge>
       ) : null}
     </span>
   );
@@ -307,7 +312,7 @@ function BuildRow({
       }
     >
       <TableCell>
-        <BuildIdentity build={build} stacked />
+        <BuildIdentity build={build} inTable />
       </TableCell>
       <TableCell>
         <ChannelFilterButton channel={channel} onChannel={onChannel} />
