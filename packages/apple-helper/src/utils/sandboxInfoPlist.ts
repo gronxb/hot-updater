@@ -4,6 +4,7 @@ import path from "path";
 import { BuildFailedError, p } from "@hot-updater/cli-tools";
 import {
   SANDBOX_INFO_PLIST_KEY,
+  SANDBOX_URL_TYPE_NAME,
   sandboxChannelOf,
   sandboxUrlSchemeOf,
 } from "@hot-updater/protocol/native-artifact";
@@ -14,7 +15,6 @@ import {
   sandboxVersionDecision,
 } from "../sandboxTestFlight";
 
-const URL_TYPE_NAME = "hot-updater-sandbox";
 const CAMERA_USAGE = "Scans the QR code of a preview to open it in this build.";
 const LOCAL_NETWORK_USAGE =
   "Connects to the dev server you choose on this network.";
@@ -43,18 +43,47 @@ const readValue = async (plist: string, key: string) => {
 const setString = (plist: string, key: string, value: string) =>
   plutil(["-replace", key, "-string", value, plist]);
 
-/** Appends a URL type with the sandbox's scheme to the app's own. */
-const addUrlScheme = async (plist: string, urlScheme: string) => {
-  const urlType = JSON.stringify({
-    CFBundleURLName: URL_TYPE_NAME,
-    CFBundleURLSchemes: [urlScheme],
-  });
+/** The app's own URL types, or null when it has none. */
+const readUrlTypes = async (plist: string): Promise<unknown[] | null> => {
   const { stdout, exitCode } = await execa(
     "plutil",
     ["-extract", "CFBundleURLTypes", "json", "-o", "-", plist],
     { reject: false },
   );
-  if (exitCode !== 0) {
+  return exitCode === 0 ? (JSON.parse(stdout) as unknown[]) : null;
+};
+
+const isSandboxUrlType = (type: unknown) =>
+  (type as { CFBundleURLName?: unknown } | null)?.CFBundleURLName ===
+  SANDBOX_URL_TYPE_NAME;
+
+/**
+ * Appends a URL type with the sandbox's scheme to the app's own, or replaces
+ * the one an earlier patch of the same app added.
+ */
+const addUrlScheme = async (
+  plist: string,
+  urlScheme: string,
+  existing: unknown[] | null,
+) => {
+  const urlType = JSON.stringify({
+    CFBundleURLName: SANDBOX_URL_TYPE_NAME,
+    CFBundleURLSchemes: [urlScheme],
+  });
+  const patched = existing?.findIndex(isSandboxUrlType) ?? -1;
+  if (patched !== -1) {
+    // `-replace` of an array's item inserts before it.
+    await plutil(["-remove", `CFBundleURLTypes.${patched}`, plist]);
+    await plutil([
+      "-insert",
+      `CFBundleURLTypes.${patched}`,
+      "-json",
+      urlType,
+      plist,
+    ]);
+    return;
+  }
+  if (existing === null) {
     await plutil([
       "-insert",
       "CFBundleURLTypes",
@@ -64,7 +93,6 @@ const addUrlScheme = async (plist: string, urlScheme: string) => {
     ]);
     return;
   }
-  const existing = JSON.parse(stdout) as unknown[];
   await plutil([
     "-insert",
     `CFBundleURLTypes.${existing.length}`,
@@ -73,6 +101,26 @@ const addUrlScheme = async (plist: string, urlScheme: string) => {
     plist,
   ]);
 };
+
+/**
+ * Whether the app's own URL types list `urlScheme`, as iOS compares schemes:
+ * ignoring case. The sandbox's own, from an earlier patch, isn't the app's.
+ */
+const registersUrlScheme = (urlTypes: unknown, urlScheme: string): boolean =>
+  Array.isArray(urlTypes) &&
+  urlTypes.some((type) => {
+    if (isSandboxUrlType(type)) return false;
+    const schemes = (type as { CFBundleURLSchemes?: unknown } | null)
+      ?.CFBundleURLSchemes;
+    return (
+      Array.isArray(schemes) &&
+      schemes.some(
+        (scheme) =>
+          typeof scheme === "string" &&
+          scheme.toLowerCase() === urlScheme.toLowerCase(),
+      )
+    );
+  });
 
 const hasKey = async (plist: string, key: string) => {
   const { exitCode } = await execa(
@@ -116,20 +164,35 @@ const addSandboxPermissions = async (plist: string) => {
   }
 };
 
+/** What a sandbox build's Info.plist is patched from. */
+export interface SandboxPlistScheme {
+  hotUpdaterSchemeName: string;
+  bundleIdentifier: string;
+  /** The URL scheme the build registers; null derives it from `bundleIdentifier`. */
+  sandboxUrlScheme?: string | null;
+}
+
 /**
  * The app's dedicated URL scheme, default channel, and the sandbox's key. The
- * URL scheme and App Store Connect's app come from the scheme's
- * `bundleIdentifier`, while Xcode's build settings decide the app's ID, so an
- * app of another ID stops here, before anything is signed or uploaded.
+ * URL scheme, unless the scheme sets one, and App Store Connect's app come
+ * from the scheme's `bundleIdentifier`, while Xcode's build settings decide
+ * the app's ID, so an app of another ID stops here, before anything is signed
+ * or uploaded.
  */
-const patchAppInfoPlist = async (
-  plist: string,
-  scheme: { hotUpdaterSchemeName: string; bundleIdentifier: string },
-) => {
+const patchAppInfoPlist = async (plist: string, scheme: SandboxPlistScheme) => {
   const built = await readValue(plist, "CFBundleIdentifier");
   if (built !== scheme.bundleIdentifier) {
     throw refusal(
       `The sandbox scheme ${scheme.hotUpdaterSchemeName} sets bundleIdentifier ${scheme.bundleIdentifier}, but Xcode built ${built ?? "no bundle ID"}.\nSet bundleIdentifier to the ID its configuration builds.`,
+    );
+  }
+  // A scheme the app registers itself would ask which app opens its links.
+  const urlScheme =
+    scheme.sandboxUrlScheme ?? sandboxUrlSchemeOf(scheme.bundleIdentifier);
+  const urlTypes = await readUrlTypes(plist);
+  if (registersUrlScheme(urlTypes, urlScheme)) {
+    throw refusal(
+      `The sandbox scheme ${scheme.hotUpdaterSchemeName} registers URL scheme ${urlScheme}, which the app registers itself.\nSet sandbox.urlScheme to a scheme the app doesn't register.`,
     );
   }
   await setString(
@@ -138,7 +201,7 @@ const patchAppInfoPlist = async (
     sandboxChannelOf(scheme.hotUpdaterSchemeName),
   );
   await plutil(["-replace", SANDBOX_INFO_PLIST_KEY, "-bool", "true", plist]);
-  await addUrlScheme(plist, sandboxUrlSchemeOf(scheme.bundleIdentifier));
+  await addUrlScheme(plist, urlScheme, urlTypes);
   await addSandboxPermissions(plist);
 };
 
@@ -167,7 +230,7 @@ export const patchSandboxArchive = async ({
 }: {
   archivePath: string;
   appPath: string;
-  schemeConfig: { hotUpdaterSchemeName: string; bundleIdentifier: string };
+  schemeConfig: SandboxPlistScheme;
   plan?: SandboxArchivePlan;
 }): Promise<void> => {
   const appPlist = path.join(appPath, "Info.plist");
@@ -238,7 +301,7 @@ export const nextBuildNumber = (
  */
 export const patchSandboxSimulatorApp = async (
   appPath: string,
-  schemeConfig: { hotUpdaterSchemeName: string; bundleIdentifier: string },
+  schemeConfig: SandboxPlistScheme,
 ): Promise<void> => {
   await patchAppInfoPlist(path.join(appPath, "Info.plist"), schemeConfig);
   await execa("codesign", [

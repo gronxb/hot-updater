@@ -2,6 +2,7 @@ package com.hotupdater
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -33,6 +34,17 @@ class HotUpdaterSandboxLinkTest {
         for (index in 0 until invalid.length()) {
             assertNull(invalid.getString(index), HotUpdaterSandboxLink.parse(invalid.getString(index)))
         }
+    }
+
+    @Test
+    fun `takes its own scheme alone, or without one, the prefix`() {
+        assertTrue(HotUpdaterSandboxLink.isOwnScheme("ACME-preview", "acme-preview"))
+        assertFalse(HotUpdaterSandboxLink.isOwnScheme("hu-sandbox-com-example-app", "acme-preview"))
+        assertFalse(HotUpdaterSandboxLink.isOwnScheme("exampleapp", "acme-preview"))
+        assertFalse(HotUpdaterSandboxLink.isOwnScheme(null, "acme-preview"))
+        // A build from before the scheme could be set names none.
+        assertTrue(HotUpdaterSandboxLink.isOwnScheme("hu-sandbox-com-example-app", null))
+        assertFalse(HotUpdaterSandboxLink.isOwnScheme("acme-preview", null))
     }
 
     private fun locateFixture(): File {

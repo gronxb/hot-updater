@@ -16,6 +16,8 @@ import { parseJsonOutput } from "./cli.mjs";
  * @property {string | null} [submitted_to] The store track that took the build.
  * @property {string} [min_bundle_id] The oldest bundle ID the build runs.
  * @property {boolean} [is_sandbox] Whether the build is a sandbox build, as registered.
+ * @property {string | null} [sandbox_url_scheme] The URL scheme a sandbox
+ *   build registers, or null for a build registered before it was recorded.
  *
  * @typedef {object} StoreStatus What a store says of a build a run submitted.
  * @property {"testflight" | "play-internal" | "play-closed" | "play-open" | "play-production"} destination
@@ -29,12 +31,13 @@ import { parseJsonOutput } from "./cli.mjs";
  * @property {string | null} fingerprintHash
  * @property {string | null} appVersion
  *
- * @typedef {BuildTarget & { platform: Platform, channel: string, nativeBuild: NativeBuildRow | null, downloadUrl?: string | null, store?: StoreStatus | null, sandbox?: { appId: string, otherBuilds: boolean } }} NativeBuildFindResult
+ * @typedef {BuildTarget & { platform: Platform, channel: string, nativeBuild: NativeBuildRow | null, downloadUrl?: string | null, store?: StoreStatus | null, sandbox?: { appId: string, urlScheme: string, otherBuilds: boolean } }} NativeBuildFindResult
  *   What `native-build find --json` prints. `downloadUrl` is the storage's URL
  *   of the artifact, which anyone who has it can fetch until it expires,
  *   `store`, with `storeStatus`, what the store says of a submitted build, and
- *   `sandbox`, only for a sandbox scheme, the app ID its links derive from and,
- *   when no build matched, whether builds with other native code exist. The
+ *   `sandbox`, only for a sandbox scheme, its app ID, the URL scheme its links
+ *   open, the matched build's or the one the next build registers, and, when
+ *   no build matched, whether builds with other native code exist. The
  *   build's own record is `nativeBuild.is_sandbox`.
  *
  * @typedef {object} ShellDeps

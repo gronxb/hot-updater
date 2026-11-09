@@ -279,7 +279,12 @@ private struct Fixture {
         var opens: [(Bool, Bool)] = []
     }
 
-    init(pendingLinks: [String] = [], storesBundles: Bool = true, shelfQueue: DispatchQueue = DispatchQueue(label: "test.shelf")) {
+    init(
+        pendingLinks: [String] = [],
+        storesBundles: Bool = true,
+        shelfQueue: DispatchQueue = DispatchQueue(label: "test.shelf"),
+        ownScheme: String? = nil
+    ) {
         store.pendingLinks = pendingLinks
         let box = box
         shelf = makeShelf(files, storesBundles: storesBundles)
@@ -292,7 +297,8 @@ private struct Fixture {
             openApp: { box.opens.append(($0, $1)) },
             now: { Date(timeIntervalSince1970: 1000) },
             lock: lock,
-            shelfQueue: shelfQueue
+            shelfQueue: shelfQueue,
+            isOwnScheme: { HotUpdaterSandboxLink.isOwnScheme($0, own: ownScheme) }
         )
     }
 }
@@ -518,6 +524,22 @@ struct HotUpdaterSandboxCoordinatorTests {
         let fixture = Fixture()
         fixture.coordinator.switchTo("")
         #expect(fixture.coordinator.state.phase == .refused(.invalidChannel("")))
+    }
+
+    @Test
+    func aLinkOfItsOwnSchemeIsAskedAbout() async {
+        let fixture = Fixture(ownScheme: "acme-preview")
+        let url = "acme-preview://hot-updater/preview?channel=pr-1&fingerprint=\(fingerprint)"
+        fixture.coordinator.receiveLink(url)
+        #expect(fixture.coordinator.state.phase == .confirming(HotUpdaterSandboxLink(url: url)!))
+    }
+
+    @Test
+    func aLinkOfAnotherSchemeIsntForThisApp() async {
+        let fixture = Fixture(ownScheme: "acme-preview")
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.coordinator.state.phase == .refused(.unreadable(url: link("pr-1"))))
+        #expect(fixture.store.pendingLinks.isEmpty)
     }
 
     @Test
@@ -1054,9 +1076,41 @@ struct HotUpdaterSandboxLinkTests {
             #expect(HotUpdaterSandboxLink(url: url) == nil, "\(url)")
         }
     }
+
+    @Test
+    func readsItsOwnSchemeFromTheUrlTypeTheCliNames() {
+        let info: [String: Any] = [
+            "CFBundleURLTypes": [
+                ["CFBundleURLName": "com.example.app", "CFBundleURLSchemes": ["exampleapp"]],
+                ["CFBundleURLName": "hot-updater-sandbox", "CFBundleURLSchemes": ["Acme-Preview"]],
+            ],
+        ]
+        #expect(HotUpdaterSandboxLink.ownScheme(in: info) == "acme-preview")
+        #expect(HotUpdaterSandboxLink.ownScheme(in: ["CFBundleURLTypes": [["CFBundleURLSchemes": ["exampleapp"]]]]) == nil)
+        #expect(HotUpdaterSandboxLink.ownScheme(in: [:]) == nil)
+        #expect(HotUpdaterSandboxLink.ownScheme(in: nil) == nil)
+    }
+
+    @Test
+    func takesItsOwnSchemeAloneOrWithoutOneThePrefix() {
+        #expect(HotUpdaterSandboxLink.isOwnScheme("ACME-preview", own: "acme-preview"))
+        #expect(!HotUpdaterSandboxLink.isOwnScheme("hu-sandbox-com-example-app", own: "acme-preview"))
+        #expect(!HotUpdaterSandboxLink.isOwnScheme("exampleapp", own: "acme-preview"))
+        #expect(!HotUpdaterSandboxLink.isOwnScheme(nil, own: "acme-preview"))
+        // A build from before the scheme could be set names no URL type.
+        #expect(HotUpdaterSandboxLink.isOwnScheme("hu-sandbox-com-example-app", own: nil))
+        #expect(!HotUpdaterSandboxLink.isOwnScheme("acme-preview", own: nil))
+    }
 }
 
 struct HotUpdaterSandboxLaunchPolicyTests {
+    @Test
+    func anotherSchemesLinkIsTheApps() {
+        let link = ["UIApplicationLaunchOptionsURLKey", "UIApplicationLaunchOptionsSourceApplicationKey"]
+        #expect(!HotUpdaterSandboxLaunchPolicy.isForTheApp(optionKeys: link, urlScheme: "acme-preview", own: "acme-preview"))
+        #expect(HotUpdaterSandboxLaunchPolicy.isForTheApp(optionKeys: link, urlScheme: "hu-sandbox-app", own: "acme-preview"))
+    }
+
     @Test
     func anIconLaunchHasNoReason() {
         #expect(!HotUpdaterSandboxLaunchPolicy.isForTheApp(optionKeys: [], urlScheme: nil))

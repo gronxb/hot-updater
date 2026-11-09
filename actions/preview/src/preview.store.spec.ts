@@ -77,7 +77,13 @@ const fakeCli = ({
           downloadUrl: found && "https://storage.example.com/App.ipa",
           ...(args.includes("--store-status") ? { store: foundStore } : {}),
           ...(sandboxScheme
-            ? { sandbox: { appId: "com.example.app", otherBuilds: false } }
+            ? {
+                sandbox: {
+                  appId: "com.example.app",
+                  urlScheme: "hu-sandbox-com-example-app",
+                  otherBuilds: false,
+                },
+              }
             : {}),
         }),
       };

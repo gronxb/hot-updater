@@ -344,7 +344,7 @@ export interface AndroidManifestInfo {
   readonly metaData: ReadonlyMap<string, ManifestValue>;
   /** The `<activity>`s and `<activity-alias>`es with a MAIN + LAUNCHER filter. */
   readonly launchers: readonly string[];
-  /** The schemes of each intent filter, by the component that declares it. */
+  /** The schemes of each `VIEW` intent filter, by the component that declares it. */
   readonly urlSchemes: ReadonlyMap<string, readonly string[]>;
 }
 
@@ -399,6 +399,7 @@ export const readAndroidManifest = (
         ) {
           launchers.push(component);
         }
+        if (!named("action").includes("android.intent.action.VIEW")) continue;
         for (const data of filter.children) {
           if (data.name !== "data") continue;
           const scheme = stringAttribute(data, SCHEME, "scheme");

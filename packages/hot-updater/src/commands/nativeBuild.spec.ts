@@ -49,7 +49,8 @@ const register = (
   scope: Pick<
     NativeBuildRegistration,
     "platform" | "channel" | "fingerprintHash" | "appVersion" | "isSandbox"
-  >,
+  > &
+    Pick<Partial<NativeBuildRegistration>, "sandboxUrlScheme">,
 ) =>
   databaseHarness.core.registerNativeBuild({
     ...scope,
@@ -235,6 +236,63 @@ describe("handleNativeBuildFind", () => {
           sandbox: { otherBuilds: true },
         });
         expect(list).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe("the URL scheme its links open", () => {
+      const withUrlScheme = (urlScheme: string) =>
+        loadConfig.mockResolvedValue({
+          updateStrategy: "fingerprint",
+          nativeBuild: {
+            ...sandboxSchemes,
+            android: {
+              ...sandboxSchemes.android,
+              sandbox: {
+                ...sandboxSchemes.android.sandbox,
+                sandboxUrlScheme: urlScheme,
+              },
+            },
+          },
+          build,
+        });
+
+      it("is the derived one for a scheme that sets none", async () => {
+        expect((await find("android")).sandbox.urlScheme).toBe(
+          "hu-sandbox-com-example",
+        );
+        expect((await find("ios")).sandbox.urlScheme).toBe(
+          "hu-sandbox-com-example-sandbox",
+        );
+      });
+
+      it("is the configured one when no build matches, which the next build registers", async () => {
+        withUrlScheme("acme-preview");
+        expect((await find("android")).sandbox).toEqual({
+          appId: "com.example",
+          urlScheme: "acme-preview",
+          otherBuilds: false,
+        });
+      });
+
+      it("is the matched build's own, whatever the config says now", async () => {
+        withUrlScheme("acme-next");
+        await register("1", {
+          ...sandboxScope("android"),
+          fingerprintHash: "fingerprint-a",
+          sandboxUrlScheme: "acme-preview",
+        });
+        expect((await find("android")).sandbox.urlScheme).toBe("acme-preview");
+      });
+
+      it("is the derived one for a build registered before the scheme was recorded", async () => {
+        withUrlScheme("acme-preview");
+        await register("1", {
+          ...sandboxScope("android"),
+          fingerprintHash: "fingerprint-a",
+        });
+        const found = await find("android");
+        expect(found.nativeBuild?.sandbox_url_scheme).toBeNull();
+        expect(found.sandbox.urlScheme).toBe("hu-sandbox-com-example");
       });
     });
 

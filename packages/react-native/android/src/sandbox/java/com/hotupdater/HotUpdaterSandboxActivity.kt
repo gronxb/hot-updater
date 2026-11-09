@@ -54,6 +54,7 @@ internal object HotUpdaterSandbox {
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
                 openApp = { switched, fixed -> open(context.applicationContext, switched, fixed) },
                 log = { Log.i(TAG, it) },
+                isOwnScheme = { HotUpdaterSandboxLink.isOwnScheme(it, HotUpdaterSandboxLink.ownScheme(context)) },
             ).also { coordinator = it }
         }
 
@@ -163,6 +164,7 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
                     hasClipData = intent.clipData != null,
                     flags = intent.flags,
                     restored = restored,
+                    ownScheme = HotUpdaterSandboxLink.ownScheme(this),
                 ),
             )
         Log.i(TAG, "start: $decision flags=0x${Integer.toHexString(intent.flags)} action=${intent.action}")
@@ -209,7 +211,10 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
             finish()
             return
         }
-        val launcher = intent.takeUnless { HotUpdaterSandboxLink.isSandboxScheme(it.scheme) || it.hasExtra(EXTRA_OVER_APP) }
+        val launcher =
+            intent.takeUnless {
+                HotUpdaterSandboxLink.isOwnScheme(it.scheme, HotUpdaterSandboxLink.ownScheme(this)) || it.hasExtra(EXTRA_OVER_APP)
+            }
         startHost(launcher ?: Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER))
     }
 

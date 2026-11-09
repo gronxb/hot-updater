@@ -40,6 +40,7 @@ export {
 } from "./nativeArtifact/zip";
 export {
   createPreviewLink,
+  isConfigurableSandboxUrlScheme,
   isSandboxChannel,
   isSandboxUrlScheme,
   parsePreviewLink,
@@ -49,6 +50,8 @@ export {
   SANDBOX_CODE_MARKER,
   SANDBOX_INFO_PLIST_KEY,
   SANDBOX_META_DATA,
+  SANDBOX_URL_SCHEME_META_DATA,
+  SANDBOX_URL_TYPE_NAME,
   sandboxChannelOf,
   sandboxUrlSchemeOf,
 } from "./nativeArtifact/sandbox";

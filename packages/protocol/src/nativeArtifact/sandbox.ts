@@ -24,6 +24,18 @@ export const SANDBOX_ACTIVITY = "com.hotupdater.HotUpdaterSandboxActivity";
 /** The `applicationIdSuffix` an Android sandbox build appends. */
 export const SANDBOX_APPLICATION_ID_SUFFIX = ".sandbox";
 
+/**
+ * The `CFBundleURLName` of the URL type an iOS sandbox build registers its URL
+ * scheme with, which the build reads its own scheme from.
+ */
+export const SANDBOX_URL_TYPE_NAME = "hot-updater-sandbox";
+
+/**
+ * The `<meta-data>` of `SANDBOX_ACTIVITY` that names the URL scheme an Android
+ * sandbox build registers, which the build reads its own scheme from.
+ */
+export const SANDBOX_URL_SCHEME_META_DATA = "com.hotupdater.sandbox.URL_SCHEME";
+
 const SANDBOX_CHANNEL_PREFIX = "sandbox-";
 const SANDBOX_URL_SCHEME_PREFIX = "hu-sandbox-";
 
@@ -40,15 +52,36 @@ export const isSandboxChannel = (channel: string): boolean =>
   channel.startsWith(SANDBOX_CHANNEL_PREFIX);
 
 /**
- * The URL scheme only a sandbox build registers, derived from the app's ID:
- * the app's own scheme would ask which app to open beside the store app.
+ * The URL scheme a sandbox build registers when its scheme sets none, derived
+ * from the app's ID: the app's own scheme would ask which app to open beside
+ * the store app.
  */
 export const sandboxUrlSchemeOf = (appId: string): string =>
   `${SANDBOX_URL_SCHEME_PREFIX}${appId.toLowerCase().replace(/[^a-z0-9]+/gu, "-")}`;
 
-/** Whether a URL scheme is one a sandbox build registers. */
+/**
+ * Whether a URL scheme has the prefix of the derived one: how an artifact built
+ * before the URL scheme could be set is read, which registered no other.
+ */
 export const isSandboxUrlScheme = (scheme: string): boolean =>
   scheme.toLowerCase().startsWith(SANDBOX_URL_SCHEME_PREFIX);
+
+const CONFIGURED_URL_SCHEME = /^[a-z][a-z0-9+.-]{0,63}$/u;
+const SYSTEM_URL_SCHEMES: ReadonlySet<string> = new Set([
+  "http",
+  "https",
+  "file",
+  "data",
+  "javascript",
+]);
+
+/**
+ * Whether `sandbox: { urlScheme }` can name a URL scheme: lower case, a letter
+ * then up to 63 letters, digits, `+`, `.` or `-`, and none the system or a
+ * browser owns.
+ */
+export const isConfigurableSandboxUrlScheme = (urlScheme: string): boolean =>
+  CONFIGURED_URL_SCHEME.test(urlScheme) && !SYSTEM_URL_SCHEMES.has(urlScheme);
 
 /** What a preview link asks a sandbox build to run. */
 export interface PreviewLink {
@@ -60,30 +93,38 @@ export interface PreviewLink {
 }
 
 /**
- * The link a preview QR holds. `appId` is the scheme's `bundleIdentifier` or
- * `packageName`: the ID before the Android sandbox's `.sandbox` suffix.
+ * The link a preview QR holds. `urlScheme` is the one the sandbox build
+ * registered; without it, the one derived from `appId`, the scheme's
+ * `bundleIdentifier` or `packageName`: the ID before the Android sandbox's
+ * `.sandbox` suffix.
  */
 export const createPreviewLink = ({
+  urlScheme,
   appId,
   channel,
   fingerprintHash,
 }: {
-  readonly appId: string;
   readonly channel: string;
   readonly fingerprintHash: string;
-}): string => {
+} & (
+  | { readonly urlScheme: string; readonly appId?: string }
+  | { readonly urlScheme?: undefined; readonly appId: string }
+)): string => {
   assertCanonicalChannelName(channel);
-  return `${sandboxUrlSchemeOf(appId)}://hot-updater/preview?channel=${encodeURIComponent(channel)}&fingerprint=${encodeURIComponent(fingerprintHash)}`;
+  const scheme = urlScheme ?? sandboxUrlSchemeOf(appId as string);
+  return `${scheme.toLowerCase()}://hot-updater/preview?channel=${encodeURIComponent(channel)}&fingerprint=${encodeURIComponent(fingerprintHash)}`;
 };
 
+/** Any URL scheme: which app's it is, the app that opens the link decides. */
 const PREVIEW_LINK =
-  /^(hu-sandbox-[a-z0-9-]+):\/\/hot-updater\/preview\?([^#]*)$/iu;
+  /^([a-z][a-z0-9+.-]*):\/\/hot-updater\/preview\?([^#]*)$/iu;
 const MAX_FINGERPRINT_LENGTH = 256;
 
 /**
  * What a preview link says, or null for anything else: another shape, a
- * repeated or missing parameter, or a channel no release can target. Native
- * code parses it the same way before any JavaScript runs, in
+ * repeated or missing parameter, or a channel no release can target. It takes
+ * any URL scheme: a sandbox build refuses a link of another scheme than its
+ * own. Native code parses it the same way before any JavaScript runs, in
  * HotUpdaterSandboxLink, and shares the vectors in test-utils'
  * `sandbox-preview-links.json`.
  */

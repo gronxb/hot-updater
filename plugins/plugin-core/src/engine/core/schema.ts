@@ -181,7 +181,9 @@ const channels = defineTable(
  * for that build alone, so `byStoreBuild` holds one entry per scope at most,
  * on every store, while any number of a scope's builds hold none.
  * `is_sandbox` is true on a sandbox build, set when it registers and never
- * changed. Boolean columns follow one rule: `is_*` for a fact about the row or
+ * changed, and `sandbox_url_scheme` is the URL scheme its artifact registers,
+ * which its preview links open; null on any other build, and on a sandbox
+ * build registered before the column, which registered the derived one. Boolean columns follow one rule: `is_*` for a fact about the row or
  * `should_*` for an instruction to the client, never null; a unique index over
  * the rows where one is true keys a derived slot, not the boolean.
  */
@@ -214,6 +216,12 @@ const nativeBuilds = defineTable(
     submitted_version: { type: "string", maxLength: 255, required: false },
     is_store_build: { type: "boolean" },
     is_sandbox: { type: "boolean" },
+    sandbox_url_scheme: {
+      type: "string",
+      maxLength: 255,
+      ascii: true,
+      required: false,
+    },
   },
   {
     key: ["id"],

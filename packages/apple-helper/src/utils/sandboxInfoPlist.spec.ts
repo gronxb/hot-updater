@@ -217,6 +217,59 @@ describe.runIf(process.platform === "darwin")("patching with plutil", () => {
     });
   });
 
+  it("registers the URL scheme the scheme sets, in the URL type the build reads it from", async () => {
+    await patchSandboxArchive({
+      archivePath: archive,
+      appPath: app,
+      schemeConfig: { ...scheme, sandboxUrlScheme: "acme-preview" },
+    });
+    expect(read(path.join(app, "Info.plist")).CFBundleURLTypes).toEqual([
+      { CFBundleURLSchemes: ["myapp"] },
+      {
+        CFBundleURLName: "hot-updater-sandbox",
+        CFBundleURLSchemes: ["acme-preview"],
+      },
+    ]);
+  });
+
+  it("patches an app it patched before with one sandbox URL type, the latest", async () => {
+    await patchSandboxArchive({
+      archivePath: archive,
+      appPath: app,
+      schemeConfig: scheme,
+    });
+    await patchSandboxArchive({
+      archivePath: archive,
+      appPath: app,
+      schemeConfig: { ...scheme, sandboxUrlScheme: "acme-preview" },
+    });
+    expect(read(path.join(app, "Info.plist")).CFBundleURLTypes).toEqual([
+      { CFBundleURLSchemes: ["myapp"] },
+      {
+        CFBundleURLName: "hot-updater-sandbox",
+        CFBundleURLSchemes: ["acme-preview"],
+      },
+    ]);
+  });
+
+  it.each(["myapp", "MyApp"])(
+    "refuses a URL scheme the app registers itself, as %s, and patches nothing",
+    async (urlScheme) => {
+      const appPlist = path.join(app, "Info.plist");
+      const before = await fs.readFile(appPlist);
+      const message = `The sandbox scheme release registers URL scheme ${urlScheme}, which the app registers itself.\nSet sandbox.urlScheme to a scheme the app doesn't register.`;
+
+      await expect(
+        patchSandboxArchive({
+          archivePath: archive,
+          appPath: app,
+          schemeConfig: { ...scheme, sandboxUrlScheme: urlScheme },
+        }),
+      ).rejects.toMatchObject({ message, hint: message });
+      expect(await fs.readFile(appPlist)).toEqual(before);
+    },
+  );
+
   it("refuses an app Xcode built with another ID than bundleIdentifier, and patches nothing", async () => {
     const appPlist = path.join(app, "Info.plist");
     const before = await fs.readFile(appPlist);

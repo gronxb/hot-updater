@@ -609,10 +609,28 @@ export const setupCoreAdminTestSuite = (options: {
       expect(
         await refusal("74", { channel: sandboxChannel, isSandbox: "yes" }),
       ).toBe(400);
+      expect(
+        await refusal("74", { channel, sandboxUrlScheme: "acme-preview" }),
+      ).toBe(400);
+      expect(
+        await refusal("74", {
+          channel: sandboxChannel,
+          isSandbox: true,
+          sandboxUrlScheme: "Acme",
+        }),
+      ).toBe(400);
+      expect(
+        await refusal("74", {
+          channel: sandboxChannel,
+          isSandbox: true,
+          sandboxUrlScheme: 42,
+        }),
+      ).toBe(400);
 
       const tagged = await post("72", {
         channel: sandboxChannel,
         isSandbox: true,
+        sandboxUrlScheme: "acme-preview",
       });
       expect(tagged.status).toBe(201);
       const sandboxBuild = ((await tagged.json()) as { data: NativeBuildRow })
@@ -625,10 +643,12 @@ export const setupCoreAdminTestSuite = (options: {
       expect(sandboxBuild).toMatchObject({
         is_sandbox: true,
         is_store_build: false,
+        sandbox_url_scheme: "acme-preview",
       });
       expect(plainBuild).toMatchObject({
         is_sandbox: false,
         is_store_build: false,
+        sandbox_url_scheme: null,
       });
       expect(
         (await adminJson(`/native-builds/${sandboxBuild.id}`)).data,

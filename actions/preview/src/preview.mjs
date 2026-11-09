@@ -416,33 +416,36 @@ const findOrSubmitStoreBuild = async (
 };
 
 /**
- * What a sandbox build adds to its preview: the link a QR code holds, derived
- * from the app's ID, which nothing stores. A link names a fingerprint, so a
- * build matched by app version has none.
+ * What a sandbox build adds to its preview: the link a QR code holds, of the
+ * URL scheme the build registered: its record's, or `find`'s, which also
+ * answers for a build that registered before the record. A link names a
+ * fingerprint, so a build matched by app version has none.
  *
  * @param {Inputs} inputs
- * @param {{ appId: string } | undefined} sandbox
+ * @param {{ appId: string, urlScheme: string } | undefined} sandbox
  * @param {import("../../shared/nativeBuild.mjs").BuildTarget} target
  * @param {NativeBuildRow} build
  * @returns {{ sandbox?: import("./comment.mjs").SandboxPreview }}
  */
-const sandboxOf = (inputs, sandbox, { fingerprintHash }, build) =>
-  sandbox === undefined
-    ? {}
-    : {
-        sandbox: {
-          appId: sandbox.appId,
-          link:
-            fingerprintHash === null
-              ? null
-              : previewLink({
-                  appId: sandbox.appId,
-                  channel: inputs.channel,
-                  fingerprintHash,
-                }),
-          minBundleId: build.min_bundle_id ?? null,
-        },
-      };
+const sandboxOf = (inputs, sandbox, { fingerprintHash }, build) => {
+  if (sandbox === undefined) return {};
+  const urlScheme = build.sandbox_url_scheme ?? sandbox.urlScheme;
+  return {
+    sandbox: {
+      appId: sandbox.appId,
+      urlScheme,
+      link:
+        fingerprintHash === null
+          ? null
+          : previewLink({
+              urlScheme,
+              channel: inputs.channel,
+              fingerprintHash,
+            }),
+      minBundleId: build.min_bundle_id ?? null,
+    },
+  };
+};
 
 /**
  * Deploys one platform's bundle to the pull request's channel, after

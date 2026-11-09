@@ -9,6 +9,7 @@ import { type ByteSource, NativeArtifactError } from "./byteSource";
 import { parsePlist } from "./plist";
 import {
   isSandboxUrlScheme,
+  SANDBOX_URL_TYPE_NAME,
   SANDBOX_ACTIVITY,
   SANDBOX_CODE_MARKER,
   SANDBOX_INFO_PLIST_KEY,
@@ -226,9 +227,8 @@ const readAndroid = async (
     },
     entry: {
       launchers: manifest.launchers,
-      sandboxUrlScheme:
-        manifest.urlSchemes.get(SANDBOX_ACTIVITY)?.find(isSandboxUrlScheme) ??
-        null,
+      // The links the sandbox's activity takes: the one URL scheme it registers.
+      sandboxUrlScheme: manifest.urlSchemes.get(SANDBOX_ACTIVITY)?.[0] ?? null,
     },
     builtInBundle:
       bundle === undefined
@@ -237,21 +237,28 @@ const readAndroid = async (
   };
 };
 
-/** The sandbox URL scheme in an Info.plist's `CFBundleURLTypes`, or null. */
+/**
+ * The sandbox URL scheme in an Info.plist's `CFBundleURLTypes`, or null: the
+ * scheme of the URL type named `SANDBOX_URL_TYPE_NAME`, or, in an artifact
+ * whose URL types name none, one with the derived scheme's prefix.
+ */
 const sandboxUrlSchemeIn = (info: Record<string, unknown>): string | null => {
   const types = info["CFBundleURLTypes"];
   if (!Array.isArray(types)) return null;
-  for (const type of types) {
+  const schemesOf = (type: unknown): string[] => {
     const schemes = (type as { CFBundleURLSchemes?: unknown } | null)
       ?.CFBundleURLSchemes;
-    if (!Array.isArray(schemes)) continue;
-    for (const scheme of schemes) {
-      if (typeof scheme === "string" && isSandboxUrlScheme(scheme)) {
-        return scheme;
-      }
-    }
-  }
-  return null;
+    return Array.isArray(schemes)
+      ? schemes.filter((scheme): scheme is string => typeof scheme === "string")
+      : [];
+  };
+  const named = types.find(
+    (type) =>
+      (type as { CFBundleURLName?: unknown } | null)?.CFBundleURLName ===
+      SANDBOX_URL_TYPE_NAME,
+  );
+  if (named !== undefined) return schemesOf(named)[0] ?? null;
+  return types.flatMap(schemesOf).find(isSandboxUrlScheme) ?? null;
 };
 
 const stringValue = (value: unknown): string | null =>

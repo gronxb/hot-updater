@@ -9,25 +9,43 @@ struct HotUpdaterSandboxLink: Equatable {
     let channel: String
     let fingerprintHash: String
 
+    /// The prefix of the scheme a build registered before it could be set.
     private static let schemePrefix = "hu-sandbox-"
+    /// The URL type the build registers its scheme in, as the CLI writes it.
+    static let urlTypeName = "hot-updater-sandbox"
     private static let maxFingerprintLength = 256
     private static let maxChannelCodePoints = 255
     private static let pattern: NSRegularExpression = {
         // swiftlint:disable:next force_try
         try! NSRegularExpression(
-            pattern: "^(hu-sandbox-[a-z0-9-]+)://hot-updater/preview\\?([^#]*)$",
+            pattern: "^([a-z][a-z0-9+.-]*)://hot-updater/preview\\?([^#]*)$",
             options: [.caseInsensitive]
         )
     }()
 
-    /// Whether a URL scheme is the sandbox's, so its links never reach the app.
-    static func isSandboxScheme(_ scheme: String?) -> Bool {
-        scheme?.lowercased().hasPrefix(schemePrefix) == true
+    /// This build's own URL scheme, read once from its Info.plist: the launch
+    /// path asks for it before anything else runs.
+    static let ownScheme: String? = ownScheme(in: Bundle.main.infoDictionary)
+
+    /// The scheme of the URL type named `urlTypeName`, in lower case, or nil.
+    static func ownScheme(in info: [String: Any]?) -> String? {
+        let types = info?["CFBundleURLTypes"] as? [[String: Any]] ?? []
+        let type = types.first { $0["CFBundleURLName"] as? String == urlTypeName }
+        return (type?["CFBundleURLSchemes"] as? [String])?.first?.lowercased()
+    }
+
+    /// Whether a URL scheme is this build's, so its links never reach the app:
+    /// the one it registered, or without one, the prefix every build had then.
+    static func isOwnScheme(_ scheme: String?, own: String? = ownScheme) -> Bool {
+        guard let scheme = scheme?.lowercased() else { return false }
+        guard let own else { return scheme.hasPrefix(schemePrefix) }
+        return scheme == own
     }
 
     /// `parsePreviewLink` of `@hot-updater/protocol`, which shares its vectors in
     /// test-utils' `sandbox-preview-links.json`: nil for anything else, or a
-    /// channel no release can target.
+    /// channel no release can target. It takes any URL scheme; whether the
+    /// link is this build's is `isOwnScheme`.
     init?(url: String) {
         let whole = NSRange(url.startIndex..., in: url)
         guard let match = Self.pattern.firstMatch(in: url, range: whole),

@@ -1,19 +1,25 @@
-import type { NativeBuildAndroidScheme } from "@hot-updater/plugin-core";
+import type { ResolvedNativeBuildAndroidScheme } from "@hot-updater/cli-tools";
 
 /**
  * Validated scheme filled nullish values with default values.
  */
 export type EnrichedNativeBuildAndroidScheme = Required<
-  Omit<NativeBuildAndroidScheme, "signing" | "sandbox">
+  Omit<
+    ResolvedNativeBuildAndroidScheme,
+    "signing" | "sandbox" | "sandboxUrlScheme"
+  >
 > &
-  Pick<NativeBuildAndroidScheme, "signing" | "sandbox"> & {
+  Pick<
+    ResolvedNativeBuildAndroidScheme,
+    "signing" | "sandbox" | "sandboxUrlScheme"
+  > & {
     hotUpdaterSchemeName: string;
   };
 export const enrichNativeBuildAndroidScheme = async ({
   schemeConfig,
   hotUpdaterSchemeName,
 }: {
-  schemeConfig: NativeBuildAndroidScheme;
+  schemeConfig: ResolvedNativeBuildAndroidScheme;
   hotUpdaterSchemeName: string;
 }): Promise<EnrichedNativeBuildAndroidScheme> => {
   return {

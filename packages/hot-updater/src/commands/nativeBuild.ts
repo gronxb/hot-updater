@@ -24,6 +24,7 @@ import {
 import {
   blobSource,
   readNativeArtifact,
+  sandboxUrlSchemeOf,
 } from "@hot-updater/protocol/native-artifact";
 
 import { type Row, ui } from "../utils/cli-ui";
@@ -100,10 +101,10 @@ export const handleNativeBuildFind = async (
       options.scheme === undefined
         ? undefined
         : schemeArtifactKind(config, options.platform, options.scheme);
-    const sandboxAppId =
+    const sandbox =
       options.scheme === undefined
         ? null
-        : schemeSandboxAppId(config, options.platform, options.scheme);
+        : schemeSandbox(config, options.platform, options.scheme);
 
     // The registry `native-build ios|android` tracks builds in.
     const server = await loadServer(await loadConfig(null));
@@ -125,7 +126,7 @@ export const handleNativeBuildFind = async (
           nativeBuild,
         );
       }
-      if (options.json && sandboxAppId !== null && nativeBuild === null) {
+      if (options.json && sandbox !== null && nativeBuild === null) {
         otherBuilds = await hasOtherSandboxBuilds(server, scope);
       }
     } finally {
@@ -154,9 +155,15 @@ export const handleNativeBuildFind = async (
             nativeBuild,
             downloadUrl,
             ...(options.storeStatus ? { store } : {}),
-            ...(sandboxAppId === null
+            ...(sandbox === null
               ? {}
-              : { sandbox: { appId: sandboxAppId, otherBuilds } }),
+              : {
+                  sandbox: {
+                    appId: sandbox.appId,
+                    urlScheme: sandboxUrlSchemeFor(sandbox, nativeBuild),
+                    otherBuilds,
+                  },
+                }),
           },
           null,
           2,
@@ -225,21 +232,41 @@ const schemeArtifactKind = (
       : "ipa";
 
 /**
- * The app ID a sandbox scheme's links derive their URL scheme from, or null for
- * any other scheme: the configured ID, before Android's `.sandbox` suffix.
+ * What a sandbox scheme's links are made from, or null for any other scheme:
+ * the configured app ID, before Android's `.sandbox` suffix, and the URL
+ * scheme a build of the config registers.
  */
-const schemeSandboxAppId = (
+const schemeSandbox = (
   config: Awaited<ReturnType<typeof loadConfig>>,
   platform: Platform,
   scheme: string,
-): string | null => {
-  if (platform === "android") {
-    const android = config.nativeBuild.android[scheme];
-    return android?.sandbox ? android.packageName : null;
-  }
-  const ios = config.nativeBuild.ios[scheme];
-  return ios?.sandbox ? ios.bundleIdentifier : null;
+): { appId: string; urlScheme: string } | null => {
+  const entry =
+    platform === "android"
+      ? config.nativeBuild.android[scheme]
+      : config.nativeBuild.ios[scheme];
+  if (!entry?.sandbox) return null;
+  const appId =
+    "packageName" in entry ? entry.packageName : entry.bundleIdentifier;
+  return {
+    appId,
+    urlScheme: entry.sandboxUrlScheme ?? sandboxUrlSchemeOf(appId),
+  };
 };
+
+/**
+ * The URL scheme a sandbox scheme's links open: the matched build's, which a
+ * build keeps whatever the config says now, or, with none matched, the one a
+ * build of the config registers. A build registered before its scheme was
+ * recorded registered the one derived from the app's ID.
+ */
+const sandboxUrlSchemeFor = (
+  sandbox: { appId: string; urlScheme: string },
+  nativeBuild: NativeBuildRow | null,
+): string =>
+  nativeBuild === null
+    ? sandbox.urlScheme
+    : (nativeBuild.sandbox_url_scheme ?? sandboxUrlSchemeOf(sandbox.appId));
 
 /** One page of a channel's builds, newest first. */
 const SANDBOX_BUILDS_PAGE = 100;

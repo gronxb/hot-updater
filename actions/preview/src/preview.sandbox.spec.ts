@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createPreviewLink,
   parsePreviewLink,
+  sandboxUrlSchemeOf,
 } from "../../../packages/protocol/src/nativeArtifact/sandbox";
 import { COMMENT_MARKER, previewLink } from "./comment.mjs";
 import { parseInputs, runAction } from "./preview.mjs";
@@ -45,6 +46,8 @@ type Build = {
   fingerprintHash: string;
   kind: string;
   minBundleId?: string;
+  /** The URL scheme the build registered; left out, a build from before the record. */
+  sandboxUrlScheme?: string;
 };
 
 const SANDBOX_SCHEMES: Readonly<Record<string, string>> = { sandbox: APP_ID };
@@ -54,16 +57,20 @@ const row = (build: Build) => ({
   artifact_kind: build.kind,
   artifact_storage_uri: `s3://bucket/native-builds/${build.platform}/${build.id}/app-release.apk`,
   min_bundle_id: build.minBundleId ?? MIN_BUNDLE_ID,
+  sandbox_url_scheme: build.sandboxUrlScheme ?? null,
 });
 
 /**
  * The project's CLI as the real one answers: `find` refuses another channel on
  * a sandbox scheme, a sandbox scheme's channel is its own, and any other scheme
- * embeds what `channel set` wrote. Only a sandbox scheme's result has `sandbox`.
+ * embeds what `channel set` wrote. Only a sandbox scheme's result has `sandbox`,
+ * whose URL scheme is the matched build's, or the one `urlScheme` (the
+ * config's) builds; a build registers its URL scheme.
  */
 const fakeCli = ({
   fingerprintHash = FINGERPRINT,
   builds = [] as Build[],
+  urlScheme = undefined as string | undefined,
   builtChannel = undefined as string | undefined,
   reportedChannel = undefined as string | undefined,
   storeRow = undefined as Record<string, unknown> | undefined,
@@ -123,6 +130,10 @@ const fakeCli = ({
             ? {
                 sandbox: {
                   appId,
+                  urlScheme:
+                    found === null
+                      ? (urlScheme ?? sandboxUrlSchemeOf(appId))
+                      : (found.sandboxUrlScheme ?? sandboxUrlSchemeOf(appId)),
                   otherBuilds:
                     found === null &&
                     onChannel.some(
@@ -144,6 +155,12 @@ const fakeCli = ({
           (SANDBOX_SCHEMES[scheme] ? `sandbox-${scheme}` : channel),
         fingerprintHash,
         kind: "apk",
+        ...(SANDBOX_SCHEMES[scheme]
+          ? {
+              sandboxUrlScheme:
+                urlScheme ?? sandboxUrlSchemeOf(SANDBOX_SCHEMES[scheme]!),
+            }
+          : {}),
       };
       builds.push(built);
       return {
@@ -239,7 +256,7 @@ describe("the link", () => {
     ["UPPER.Case_1.2"],
   ])("is what the protocol makes for %s, and what the app accepts", (appId) => {
     const link = previewLink({
-      appId,
+      urlScheme: sandboxUrlSchemeOf(appId),
       channel: "pr-12",
       fingerprintHash: FINGERPRINT,
     });
@@ -259,10 +276,18 @@ describe("the link", () => {
 
   it("encodes a channel as the protocol does", () => {
     const channel = "pr 12/tv";
-    const parts = { appId: APP_ID, channel, fingerprintHash: FINGERPRINT };
+    const parts = {
+      urlScheme: "acme.preview+qa",
+      channel,
+      fingerprintHash: FINGERPRINT,
+    };
 
     expect(previewLink(parts)).toBe(createPreviewLink(parts));
-    expect(parsePreviewLink(previewLink(parts))?.channel).toBe(channel);
+    expect(parsePreviewLink(previewLink(parts))).toEqual({
+      urlScheme: "acme.preview+qa",
+      channel,
+      fingerprintHash: FINGERPRINT,
+    });
   });
 });
 
@@ -417,6 +442,7 @@ describe("a sandbox build that has the fingerprint", () => {
     );
     expect(JSON.parse(outputs["previews"]!)[0].sandbox).toEqual({
       appId: APP_ID,
+      urlScheme: "hu-sandbox-com-example-app-tv",
       link: LINK,
       minBundleId: MIN_BUNDLE_ID,
     });
@@ -572,6 +598,41 @@ describe("no sandbox build at all", () => {
       "embeds the production channel, not sandbox-sandbox",
     );
     expect(fake.calls.some((call) => call.startsWith("deploy"))).toBe(false);
+  });
+});
+
+describe("the URL scheme a sandbox scheme sets", () => {
+  const custom = `acme-preview://hot-updater/preview?channel=pr-12&fingerprint=${FINGERPRINT}`;
+
+  it("opens the build it makes with the configured scheme", async () => {
+    const { body, outputs } = await run(fakeCli({ urlScheme: "acme-preview" }));
+
+    expect(outputs["android-sandbox-link"]).toBe(custom);
+    expect(body).toContain(`\`${custom}\``);
+    expect(body).toContain(`<img src="${qrImage(custom)}"`);
+    expect(JSON.parse(outputs["previews"]!)[0].sandbox).toMatchObject({
+      urlScheme: "acme-preview",
+      link: custom,
+    });
+  });
+
+  it("opens a reused build with the scheme it registered, whatever the config says now", async () => {
+    const { outputs } = await run(
+      fakeCli({
+        urlScheme: "acme-next",
+        builds: [{ ...sandboxBuild(), sandboxUrlScheme: "acme-preview" }],
+      }),
+    );
+
+    expect(outputs["android-sandbox-link"]).toBe(custom);
+  });
+
+  it("opens a build registered before the scheme was recorded with the derived one", async () => {
+    const { outputs } = await run(
+      fakeCli({ urlScheme: "acme-preview", builds: [sandboxBuild()] }),
+    );
+
+    expect(outputs["android-sandbox-link"]).toBe(LINK);
   });
 });
 

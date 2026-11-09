@@ -350,6 +350,97 @@ describe("loadConfig", () => {
     }
   });
 
+  it("resolves each scheme's sandbox to a boolean and the URL scheme it registers", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "export default {",
+        "  nativeBuild: {",
+        "    ios: {",
+        '      release: { bundleIdentifier: "com.Example.app", scheme: "App" },',
+        '      preview: { bundleIdentifier: "com.Example.app", scheme: "App", sandbox: true },',
+        '      qa: { bundleIdentifier: "com.example.app", scheme: "App", sandbox: { urlScheme: "acme-preview" } },',
+        '      empty: { bundleIdentifier: "com.example.app", scheme: "App", sandbox: {} },',
+        '      off: { bundleIdentifier: "com.example.app", scheme: "App", sandbox: false },',
+        "    },",
+        "    android: {",
+        '      preview: { packageName: "com.example.app", sandbox: true },',
+        '      qa: { packageName: "com.example.app", sandbox: { urlScheme: "acme.preview+qa" } },',
+        "    },",
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    const { nativeBuild } = await loadConfig(null);
+
+    expect(nativeBuild.ios.release).toMatchObject({
+      sandbox: false,
+      sandboxUrlScheme: null,
+    });
+    expect(nativeBuild.ios.preview).toMatchObject({
+      sandbox: true,
+      sandboxUrlScheme: "hu-sandbox-com-example-app",
+    });
+    expect(nativeBuild.ios.qa).toMatchObject({
+      sandbox: true,
+      sandboxUrlScheme: "acme-preview",
+    });
+    expect(nativeBuild.ios.empty).toMatchObject({
+      sandbox: true,
+      sandboxUrlScheme: "hu-sandbox-com-example-app",
+    });
+    expect(nativeBuild.ios.off).toMatchObject({
+      sandbox: false,
+      sandboxUrlScheme: null,
+    });
+    expect(nativeBuild.android.preview).toMatchObject({
+      sandbox: true,
+      sandboxUrlScheme: "hu-sandbox-com-example-app",
+    });
+    expect(nativeBuild.android.qa).toMatchObject({
+      sandbox: true,
+      sandboxUrlScheme: "acme.preview+qa",
+    });
+  });
+
+  it.each([
+    '"Acme"',
+    '"1app"',
+    '"acme_preview"',
+    '"acme://"',
+    '"https"',
+    '"javascript"',
+    '""',
+    `"a${"b".repeat(64)}"`,
+    "42",
+  ])(
+    "refuses a sandbox urlScheme of %s when the config loads",
+    async (urlScheme) => {
+      await writeProjectFile(
+        projectRoot,
+        "hot-updater.config.ts",
+        [
+          "export default {",
+          "  nativeBuild: {",
+          `    android: { qa: { packageName: "com.example.app", sandbox: { urlScheme: ${urlScheme} } } },`,
+          "  },",
+          "};",
+          "",
+        ].join("\n"),
+      );
+
+      const { loadConfig } = await import("./loadConfig");
+
+      await expect(loadConfig(null)).rejects.toThrow(
+        `nativeBuild.android.qa: sandbox.urlScheme ${urlScheme} isn't a URL scheme a sandbox build can register.\nUse lower case: a letter, then up to 63 letters, digits, +, . or -, and not http, https, file, data or javascript.`,
+      );
+    },
+  );
+
   it("allows disabling the local CLI cache", async () => {
     await writeProjectFile(
       projectRoot,

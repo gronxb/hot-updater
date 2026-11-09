@@ -9,6 +9,7 @@ import {
   readMergedManifest,
   resolveSandboxLauncher,
   sandboxManifestOverlay,
+  declaredUrlSchemes,
 } from "./sandboxManifest";
 
 const LAUNCHER_FILTER = `<intent-filter>
@@ -164,11 +165,45 @@ describe("resolveSandboxLauncher", () => {
   });
 });
 
+describe("declaredUrlSchemes", () => {
+  it("lists every component's link schemes, in lower case", () => {
+    expect(
+      declaredUrlSchemes(
+        merged(`
+    <activity android:name="com.example.app.MainActivity">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <data android:scheme="MyApp" />
+        <data android:scheme="https" android:host="example.com" />
+      </intent-filter>
+    </activity>
+    <activity-alias android:name="com.example.app.Alias" android:targetActivity="com.example.app.MainActivity">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <data android:scheme="other" />
+      </intent-filter>
+    </activity-alias>
+    <receiver android:name="com.example.app.Receiver">
+      <intent-filter>
+        <action android:name="com.example.ACTION" />
+        <data android:scheme="package" />
+      </intent-filter>
+    </receiver>`),
+      ),
+    ).toEqual(["myapp", "https", "other", "package"]);
+    expect(declaredUrlSchemes(merged(activity()))).toEqual([]);
+  });
+});
+
 describe("sandboxManifestOverlay", () => {
   const overlayOf = (components: string) =>
     sandboxManifestOverlay({
       channel: "sandbox-release",
-      appId: "com.Example.app",
+      urlScheme: "hu-sandbox-com-example-app",
       launcher: resolveSandboxLauncher(merged(components)),
     });
 
@@ -214,6 +249,10 @@ describe("sandboxManifestOverlay", () => {
     expect(sandbox).toContain('android:scheme="hu-sandbox-com-example-app"');
     expect(sandbox).toContain(
       '<meta-data android:name="com.hotupdater.sandbox.HOST_ACTIVITY" android:value="com.example.app.MainActivity" />',
+    );
+    // The build reads its own scheme from here, and no other activity has it.
+    expect(sandbox).toContain(
+      '<meta-data android:name="com.hotupdater.sandbox.URL_SCHEME" android:value="hu-sandbox-com-example-app" />',
     );
     const host = overlay.slice(
       overlay.indexOf('<activity android:name="com.example.app.MainActivity"'),
@@ -300,7 +339,7 @@ describe("sandboxManifestOverlay", () => {
   it("escapes what it copies", () => {
     const overlay = sandboxManifestOverlay({
       channel: 'a"b&c',
-      appId: "com.example.app",
+      urlScheme: "hu-sandbox-com-example-app",
       launcher: {
         kind: "activity",
         name: "com.example.app.Main$Activity",

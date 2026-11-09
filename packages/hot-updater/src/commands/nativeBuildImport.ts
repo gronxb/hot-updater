@@ -397,6 +397,7 @@ export const handleNativeBuildImport = async (
           buildKey: null,
           // The artifact's sandbox layer, checked against the channel.
           sandbox: build.sandbox,
+          sandboxUrlScheme: build.sandboxUrlScheme,
           // Built elsewhere, so this checkout's commit is not its own.
           gitCommitHash: null,
           writeBuiltInBundle: (outputPath) =>

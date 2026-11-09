@@ -74,7 +74,8 @@ final class HotUpdaterSandboxScanner: UIViewController, AVCaptureMetadataOutputO
         guard !isDone,
               let value = (objects.first as? AVMetadataMachineReadableCodeObject)?.stringValue,
               let url = URL(string: value),
-              HotUpdaterSandboxLink.isSandboxScheme(url.scheme) else {
+              // Another app's preview link too, which the screen refuses.
+              HotUpdaterSandboxLink.isOwnScheme(url.scheme) || HotUpdaterSandboxLink(url: value) != nil else {
             return
         }
         isDone = true

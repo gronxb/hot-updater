@@ -119,6 +119,11 @@ export type NativeBuildRegistration = NativeBuildScope & {
    * channel, and only a sandbox build does.
    */
   readonly isSandbox?: boolean;
+  /**
+   * The URL scheme a sandbox build's artifact registers, which its preview
+   * links open; null or left out for any other build.
+   */
+  readonly sandboxUrlScheme?: string | null;
   readonly artifact: {
     readonly kind: NativeBuildArtifactKind;
     readonly storageUri: string;

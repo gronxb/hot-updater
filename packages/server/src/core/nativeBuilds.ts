@@ -35,6 +35,17 @@ const GIT_COMMIT_HASH_MAX_LENGTH = 255;
  */
 const BUILD_KEY = /^nbk1:[0-9a-f]{64}$/;
 
+/** `native_builds.sandbox_url_scheme`'s bound in core's schema. */
+const SANDBOX_URL_SCHEME_MAX_LENGTH = 255;
+
+/**
+ * A URL scheme as RFC 3986 spells it, in lower case: what a sandbox build's
+ * artifact registers, as `@hot-updater/protocol/native-artifact` reads it.
+ */
+const URL_SCHEME = new RegExp(
+  `^[a-z][a-z0-9+.-]{0,${SANDBOX_URL_SCHEME_MAX_LENGTH - 1}}$`,
+);
+
 /** A native build or scope core cannot store or look up: the caller's input. */
 export class NativeBuildInputError extends TypeError {
   override readonly name = "NativeBuildInputError";
@@ -61,6 +72,7 @@ const pick = (row: Readonly<Record<string, unknown>>): NativeBuildRow => ({
   // A key-value or document row written before a boolean column lacks it.
   is_store_build: row.is_store_build === true,
   is_sandbox: row.is_sandbox === true,
+  sandbox_url_scheme: (row.sandbox_url_scheme ?? null) as string | null,
 });
 
 /**
@@ -139,6 +151,7 @@ const problemOf = ({
   buildKey,
   buildNumber,
   isSandbox,
+  sandboxUrlScheme,
   artifact,
 }: NativeBuildRegistration): string | null => {
   if (!isUUIDv7(id)) return "id must be a UUIDv7";
@@ -159,6 +172,17 @@ const problemOf = ({
   }
   if (isSandbox !== true && reserved) {
     return `channel ${channel} is reserved for sandbox builds`;
+  }
+  if (sandboxUrlScheme !== undefined && sandboxUrlScheme !== null) {
+    if (isSandbox !== true) {
+      return "sandboxUrlScheme is a sandbox build's, and this isn't one";
+    }
+    if (
+      typeof sandboxUrlScheme !== "string" ||
+      !URL_SCHEME.test(sandboxUrlScheme)
+    ) {
+      return `sandboxUrlScheme must be a URL scheme in lower case, up to ${SANDBOX_URL_SCHEME_MAX_LENGTH} characters, or null`;
+    }
   }
   if (
     gitCommitHash !== null &&
@@ -233,6 +257,7 @@ export const createNativeBuildApi = (
       submitted_version: null,
       is_store_build: false,
       is_sandbox: registration.isSandbox === true,
+      sandbox_url_scheme: registration.sandboxUrlScheme ?? null,
     };
     // A channel deleted between ensuring it and the write refuses the write
     // through `byChannel`'s root, so it runs again and ensures it anew.

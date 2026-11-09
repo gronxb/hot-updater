@@ -128,6 +128,7 @@ export const native_builds = sqliteTable("native_builds", {
   "submitted_version": column("TEXT")("submitted_version"),
   "is_store_build": column("INTEGER")("is_store_build").notNull(),
   "is_sandbox": column("INTEGER")("is_sandbox").notNull(),
+  "sandbox_url_scheme": column("TEXT")("sandbox_url_scheme"),
   "store_build_scope_key": column("TEXT")("store_build_scope_key"),
   "_v": column("INTEGER")("_v").notNull().default(0),
 }, (table) => [

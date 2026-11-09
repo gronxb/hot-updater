@@ -104,6 +104,52 @@ describe("withSandboxGradleArgs", () => {
     expect(build).not.toHaveBeenCalled();
   });
 
+  it("registers the URL scheme the scheme sets, and names it for the build", async () => {
+    await withSandboxGradleArgs(
+      { ...scheme, sandboxUrlScheme: "acme-preview" },
+      mergedManifest,
+      async (gradleArgs) => {
+        const script = gradleArgs[gradleArgs.indexOf("--init-script") + 1]!;
+        const overlay = fs.readFileSync(
+          path.join(path.dirname(script), "AndroidManifest.xml"),
+          "utf-8",
+        );
+        expect(overlay).toContain('<data android:scheme="acme-preview" />');
+        expect(overlay).toContain(
+          '<meta-data android:name="com.hotupdater.sandbox.URL_SCHEME" android:value="acme-preview" />',
+        );
+        expect(overlay).not.toContain("hu-sandbox-");
+        return gradleArgs;
+      },
+    );
+  });
+
+  it.each(["myapp", "MyApp"])(
+    "refuses a URL scheme the app registers itself, as %s, and builds nothing",
+    async (urlScheme) => {
+      const build = vi.fn(async () => "built");
+      const withLinks = async () =>
+        (await mergedManifest()).replace(
+          "</activity>",
+          `  <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <data android:scheme="myapp" />
+      </intent-filter>
+    </activity>`,
+        );
+      await expect(
+        withSandboxGradleArgs(
+          { ...scheme, sandboxUrlScheme: urlScheme },
+          withLinks,
+          build,
+        ),
+      ).rejects.toThrow(
+        `The sandbox scheme release registers URL scheme ${urlScheme}, which the app registers itself.\nSet sandbox.urlScheme to a scheme the app doesn't register.`,
+      );
+      expect(build).not.toHaveBeenCalled();
+    },
+  );
+
   it("refuses a sandbox scheme with no package name, which its URL scheme needs", async () => {
     await expect(
       withSandboxGradleArgs(

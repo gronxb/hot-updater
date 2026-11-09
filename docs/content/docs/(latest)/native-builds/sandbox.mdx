@@ -54,7 +54,7 @@ refuses one that holds the wrong thing.
 | --------------- | ----------------------------------- | -------------------------------------- |
 | App ID          | Same bundle ID by default           | `.sandbox` added to the application ID |
 | Default channel | `sandbox-<scheme>`                  | `sandbox-<scheme>`                     |
-| URL scheme      | `hu-sandbox-<app ID>`               | `hu-sandbox-<package name>`            |
+| URL scheme      | `hu-sandbox-<app ID>` by default    | `hu-sandbox-<package name>` by default |
 | First screen    | Before the app's JavaScript         | Before the app's JavaScript            |
 | Install         | TestFlight internal, or a simulator | Direct `.apk`, or internal testing     |
 
@@ -168,7 +168,10 @@ hu-sandbox-com-example-app://hot-updater/preview?channel=staging&fingerprint=<ha
 It never reaches your app's `Linking`, or the connection options of a scene
 delegate. On iOS, an app delegate with no scene delegate still finds it in the launch
 options of `didFinishLaunching`. The app ID in it is the scheme's `bundleIdentifier`
-or `packageName`, without the `.sandbox` suffix.
+or `packageName`, without the `.sandbox` suffix. To use another URL scheme, set
+`sandbox: { urlScheme: "acme-preview" }` on the scheme instead of `sandbox: true`:
+lower case, and none your app registers itself. A build keeps the scheme it was
+built with, so a new one takes effect at the next sandbox build.
 [Pull request previews](/docs/guides/pull-request-previews#open-a-pull-request-in-a-sandbox-build)
 comment one with its QR code for each pull request.
 

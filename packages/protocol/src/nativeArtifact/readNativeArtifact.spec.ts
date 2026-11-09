@@ -22,6 +22,7 @@ import {
   readNativeArtifact,
 } from "./readNativeArtifact";
 import {
+  isConfigurableSandboxUrlScheme,
   isSandboxChannel,
   createPreviewLink,
   parsePreviewLink,
@@ -588,6 +589,58 @@ describe("the sandbox layer", () => {
     });
   });
 
+  it("reads the URL scheme a scheme set, by the sandbox's activity and URL type", async () => {
+    const expected = {
+      launchers: ["com.hotupdater.HotUpdaterSandboxActivity"],
+      sandboxUrlScheme: "acme-preview",
+    };
+    expect(
+      (
+        await read(
+          sandboxApk({ "AndroidManifest.xml": fixture("sandbox-custom.axml") }),
+          "app.apk",
+        )
+      ).entry,
+    ).toEqual(expected);
+    expect(
+      (
+        await read(
+          {
+            "base/manifest/AndroidManifest.xml": fixture("sandbox-custom.pb"),
+            "base/dex/classes.dex": fixture("sandbox.dex"),
+          },
+          "app.aab",
+        )
+      ).entry,
+    ).toEqual(expected);
+    // The app's own URL type comes first, and its scheme isn't the sandbox's.
+    expect(
+      (
+        await read(
+          sandboxIpa({
+            "Payload/App.app/Info.plist": fixture("Info.sandbox-custom.plist"),
+          }),
+          "app.ipa",
+        )
+      ).entry,
+    ).toEqual({ launchers: [], sandboxUrlScheme: "acme-preview" });
+  });
+
+  it("reads an unnamed URL type by the derived scheme's prefix, and no other", async () => {
+    expect(
+      (
+        await read(
+          sandboxIpa({
+            "Payload/App.app/Info.plist": fixture("Info.sandbox-unnamed.plist"),
+          }),
+          "app.ipa",
+        )
+      ).entry.sandboxUrlScheme,
+    ).toBe("hu-sandbox-com-example-app");
+    expect((await read(ipa(), "app.ipa")).entry.sandboxUrlScheme).toBeNull();
+    expect((await read(apk(), "app.apk")).entry.sandboxUrlScheme).toBeNull();
+  });
+
   it.each(["axml", "pb"])(
     "reads an alias as a launcher of its own, from .%s",
     async (format) => {
@@ -718,6 +771,23 @@ describe("the sandbox layer", () => {
       });
     });
 
+    it("creates a link of the URL scheme a build registered, over the derived one", () => {
+      const link = createPreviewLink({
+        urlScheme: "acme-preview",
+        appId: "com.example.app",
+        channel: "pr-12",
+        fingerprintHash: "abc",
+      });
+      expect(link).toBe(
+        "acme-preview://hot-updater/preview?channel=pr-12&fingerprint=abc",
+      );
+      expect(parsePreviewLink(link)).toEqual({
+        urlScheme: "acme-preview",
+        channel: "pr-12",
+        fingerprintHash: "abc",
+      });
+    });
+
     it("creates no link for a channel no release can target", () => {
       expect(() =>
         createPreviewLink({
@@ -737,5 +807,33 @@ describe("the sandbox layer", () => {
     expect(sandboxUrlSchemeOf("com.Example.example_app")).toBe(
       "hu-sandbox-com-example-example-app",
     );
+  });
+
+  it("takes a configured URL scheme of the URI syntax, in lower case, that no system owns", () => {
+    for (const scheme of [
+      "acme-preview",
+      "a",
+      "acme.preview+qa-2",
+      `a${"b".repeat(63)}`,
+    ]) {
+      expect(isConfigurableSandboxUrlScheme(scheme)).toBe(true);
+    }
+    for (const scheme of [
+      "",
+      "Acme",
+      "1app",
+      "-app",
+      "acme_preview",
+      "acme preview",
+      "acme://x",
+      `a${"b".repeat(64)}`,
+      "http",
+      "https",
+      "file",
+      "data",
+      "javascript",
+    ]) {
+      expect(isConfigurableSandboxUrlScheme(scheme)).toBe(false);
+    }
   });
 });

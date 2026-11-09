@@ -128,6 +128,7 @@ export const native_builds = pgTable("native_builds", {
   "submitted_version": column("varchar(255) COLLATE \"C\"")("submitted_version"),
   "is_store_build": column("boolean")("is_store_build").notNull(),
   "is_sandbox": column("boolean")("is_sandbox").notNull(),
+  "sandbox_url_scheme": column("varchar(255) COLLATE \"C\"")("sandbox_url_scheme"),
   "store_build_scope_key": column("varchar(2048) COLLATE \"C\"")("store_build_scope_key"),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [

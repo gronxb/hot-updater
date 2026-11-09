@@ -1,8 +1,11 @@
 import fs from "fs";
 import path from "path";
 
-import { getCwd, p } from "@hot-updater/cli-tools";
-import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
+import {
+  getCwd,
+  p,
+  type ResolvedNativeBuildIosScheme,
+} from "@hot-updater/cli-tools";
 
 const resolveExportOptionsPlist = (exportOptionsPlist?: string) => {
   const resolvedExportOptionsPlist = exportOptionsPlist
@@ -27,10 +30,10 @@ const resolveExportOptionsPlist = (exportOptionsPlist?: string) => {
 /**
  * Validated scheme filled nullish values with default values.
  */
-export type EnrichedNativeBuildIosScheme = NativeBuildIosScheme &
+export type EnrichedNativeBuildIosScheme = ResolvedNativeBuildIosScheme &
   Required<
     Pick<
-      NativeBuildIosScheme,
+      ResolvedNativeBuildIosScheme,
       "platform" | "installPods" | "configuration" | "destination" | "simulator"
     >
   > & { hotUpdaterSchemeName: string };
@@ -38,7 +41,7 @@ export const enrichNativeBuildIosScheme = async ({
   scheme,
   hotUpdaterSchemeName,
 }: {
-  scheme: NativeBuildIosScheme;
+  scheme: ResolvedNativeBuildIosScheme;
   hotUpdaterSchemeName: string;
 }): Promise<EnrichedNativeBuildIosScheme> => {
   return {

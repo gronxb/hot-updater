@@ -104,6 +104,30 @@ manifest sandbox '>
         <data android:scheme="exampleapp"/>
       </intent-filter>
     </activity>' com.example.app.sandbox
+# A sandbox build of a scheme that sets sandbox: { urlScheme }.
+manifest sandbox-custom '>
+    <meta-data android:name="com.hotupdater.CHANNEL" android:value="sandbox-release"/>
+    <meta-data android:name="com.hotupdater.SANDBOX" android:value="true"/>
+    <activity android:name="com.hotupdater.HotUpdaterSandboxActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="acme-preview"/>
+      </intent-filter>
+      <meta-data android:name="com.hotupdater.sandbox.URL_SCHEME" android:value="acme-preview"/>
+    </activity>
+    <activity android:name="com.example.app.MainActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:scheme="exampleapp"/>
+      </intent-filter>
+    </activity>' com.example.app.sandbox
 manifest launcher '>
     <activity android:name="com.example.app.MainActivity" android:exported="true">
       <intent-filter>
@@ -170,3 +194,9 @@ cp Info.plist Info.sandbox.plist
 plutil -replace HOT_UPDATER_CHANNEL -string sandbox-release Info.sandbox.plist
 plutil -replace HOT_UPDATER_SANDBOX -bool true Info.sandbox.plist
 plutil -replace CFBundleURLTypes -json '[{"CFBundleURLName":"hot-updater-sandbox","CFBundleURLSchemes":["hu-sandbox-com-example-app"]}]' Info.sandbox.plist
+# One with the URL scheme its scheme sets, after the app's own URL type.
+cp Info.sandbox.plist Info.sandbox-custom.plist
+plutil -replace CFBundleURLTypes -json '[{"CFBundleURLName":"com.example.app","CFBundleURLSchemes":["exampleapp"]},{"CFBundleURLName":"hot-updater-sandbox","CFBundleURLSchemes":["acme-preview"]}]' Info.sandbox-custom.plist
+# One whose sandbox URL type has no name, read by the derived scheme's prefix.
+cp Info.sandbox.plist Info.sandbox-unnamed.plist
+plutil -replace CFBundleURLTypes -json '[{"CFBundleURLSchemes":["exampleapp"]},{"CFBundleURLSchemes":["hu-sandbox-com-example-app"]}]' Info.sandbox-unnamed.plist

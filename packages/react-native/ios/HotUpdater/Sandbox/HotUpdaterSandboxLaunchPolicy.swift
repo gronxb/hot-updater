@@ -15,7 +15,12 @@ public final class HotUpdaterSandboxLaunchPolicy: NSObject {
     /// own link, an activity, a notification, a shortcut, a location event. So
     /// the app starts at once, and it's a sandbox link alone that doesn't count.
     @objc public static func isForTheApp(optionKeys: [String], urlScheme: String?) -> Bool {
-        if HotUpdaterSandboxLink.isSandboxScheme(urlScheme) {
+        isForTheApp(optionKeys: optionKeys, urlScheme: urlScheme, own: HotUpdaterSandboxLink.ownScheme)
+    }
+
+    /// `own` is this build's URL scheme: another scheme's link is the app's.
+    static func isForTheApp(optionKeys: [String], urlScheme: String?, own: String?) -> Bool {
+        if HotUpdaterSandboxLink.isOwnScheme(urlScheme, own: own) {
             return optionKeys.contains { !linkKeys.contains($0) }
         }
         return !optionKeys.isEmpty
@@ -26,8 +31,9 @@ public final class HotUpdaterSandboxLaunchPolicy: NSObject {
         Array(linkKeys)
     }
 
+    /// Whether a URL scheme is this build's own, read once at launch.
     @objc public static func isSandboxScheme(_ scheme: String?) -> Bool {
-        HotUpdaterSandboxLink.isSandboxScheme(scheme)
+        HotUpdaterSandboxLink.isOwnScheme(scheme)
     }
 }
 #endif

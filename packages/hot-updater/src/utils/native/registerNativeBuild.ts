@@ -199,6 +199,7 @@ export const registerNativeBuild = async (
   {
     buildKey,
     sandbox,
+    sandboxUrlScheme = null,
     gitCommitHash,
     writeBuiltInBundle,
   }: {
@@ -208,6 +209,11 @@ export const registerNativeBuild = async (
      * against the artifact: the registry records it.
      */
     readonly sandbox: boolean;
+    /**
+     * The URL scheme a sandbox build's artifact registers, as the caller read
+     * it from the artifact: the registry records it for its preview links.
+     */
+    readonly sandboxUrlScheme?: string | null;
     /**
      * The commit the build was made from: this checkout's latest by
      * default, and null for a build imported from elsewhere.
@@ -334,6 +340,7 @@ export const registerNativeBuild = async (
       buildKey,
       buildNumber: build.buildNumber ?? null,
       isSandbox: sandbox,
+      sandboxUrlScheme: sandbox ? sandboxUrlScheme : null,
       artifact: {
         kind: build.artifactKind,
         storageUri: artifactUpload.storageUri,
