@@ -208,6 +208,8 @@ struct SandboxRowContent<Trailing: View>: View {
     var subtitle: String?
     var detail: String?
     var detailFont = SandboxFont.footnote
+    /// The detail's lines at most, ending in an ellipsis; nil wraps it whole.
+    var detailLineLimit: Int?
     @ViewBuilder let trailing: Trailing
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -244,6 +246,8 @@ struct SandboxRowContent<Trailing: View>: View {
                     Text(detail)
                         .font(detailFont)
                         .foregroundColor(SandboxColor.textSecondary)
+                        .lineLimit(detailLineLimit)
+                        .truncationMode(.tail)
                 }
             }
             .multilineTextAlignment(.leading)
@@ -269,6 +273,7 @@ struct SandboxRow: View {
     var subtitle: String?
     var detail: String?
     var detailFont = SandboxFont.footnote
+    var detailLineLimit: Int?
     var showsChevron = true
     var isEnabled = true
     let action: () -> Void
@@ -281,7 +286,8 @@ struct SandboxRow: View {
                 titleFont: titleFont,
                 subtitle: subtitle,
                 detail: detail,
-                detailFont: detailFont
+                detailFont: detailFont,
+                detailLineLimit: detailLineLimit
             ) {
                 if showsChevron { SandboxChevron() }
             }

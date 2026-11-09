@@ -463,6 +463,8 @@ private struct HomeScreen: View {
                     titleFont: SandboxFont.headline,
                     subtitle: home.bigRow.subtitle,
                     detail: home.bigRow.detail,
+                    // A deploy message leads with what identifies it, such as a commit: one line keeps it in view.
+                    detailLineLimit: 1,
                     isEnabled: !home.isBusy,
                     action: model.openOrReload
                 )

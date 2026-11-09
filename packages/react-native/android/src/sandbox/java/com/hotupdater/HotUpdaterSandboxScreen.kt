@@ -420,6 +420,8 @@ internal class HotUpdaterSandboxScreen(
                         titleStyle = SandboxType.headline,
                         subtitle = home.bigRow.subtitle,
                         detail = home.bigRow.detail,
+                        // A deploy message leads with what identifies it, such as a commit: one line keeps it in view.
+                        detailMaxLines = 1,
                         enabled = !home.isBusy,
                     ) {
                         SandboxHaptic.tap(haptics)

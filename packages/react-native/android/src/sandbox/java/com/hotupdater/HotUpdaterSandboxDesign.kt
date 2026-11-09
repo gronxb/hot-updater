@@ -386,6 +386,8 @@ internal fun SandboxRowContent(
     subtitle: String? = null,
     detail: String? = null,
     detailStyle: TextStyle = SandboxType.footnote,
+    /** The detail's lines at most, ending in an ellipsis. */
+    detailMaxLines: Int = Int.MAX_VALUE,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val colors = LocalSandboxColors.current
@@ -401,7 +403,7 @@ internal fun SandboxRowContent(
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 SandboxText(title, titleStyle)
                 if (subtitle != null) SandboxText(subtitle, SandboxType.subhead, colors.textSecondary)
-                if (detail != null) SandboxText(detail, detailStyle, colors.textSecondary)
+                if (detail != null) SandboxText(detail, detailStyle, colors.textSecondary, maxLines = detailMaxLines)
             }
         }
         if (isLargeText()) {
@@ -432,6 +434,7 @@ internal fun SandboxRow(
     subtitle: String? = null,
     detail: String? = null,
     detailStyle: TextStyle = SandboxType.footnote,
+    detailMaxLines: Int = Int.MAX_VALUE,
     showsChevron: Boolean = true,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
@@ -453,6 +456,7 @@ internal fun SandboxRow(
             subtitle = subtitle,
             detail = detail,
             detailStyle = detailStyle,
+            detailMaxLines = detailMaxLines,
             trailing =
                 when {
                     badge != null -> {
