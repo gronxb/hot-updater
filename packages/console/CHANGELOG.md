@@ -1,5 +1,34 @@
 # @hot-updater/console
 
+## 1.2.0-rc.25
+
+### Minor Changes
+
+- 740048a: The preview comment works in two steps: install the app, then, on a sandbox build, scan the QR code that opens the pull request.
+  - Each platform's native build gets one line of install links: Download APK, Install on iPhone, or its own store's link and state, then Details. Native builds have no QR code. Build IDs, fingerprints, and bundles move into a collapsed Builds table.
+  - The sandbox link's QR code is the only QR code. The action draws it and commits it to the repository's `hot-updater-preview` branch, so a Console on a VPN or Tailscale gets one too. The workflow needs `permissions: contents: write`; without it, the action writes the comment with the link and no QR code, then fails with the permission to add. With `comment: false`, it writes none.
+  - "Scan" appears only above a QR code.
+  - The project's CLI and its builds no longer get the action's GitHub token.
+
+### Patch Changes
+
+- cdac8d7: Show the Native builds "Sandbox" tag beside the artifact kind, as a muted tinted tag in the same style as the channel badge, so a sandbox build's row is as tall as any other and the tag reads quieter than the kind it qualifies. The "Store build" mark and the store submission badge use the same muted style, on the table, the mobile cards, and the build page.
+- 0d8a448: Select Google Play closed, open, or production tracks, optionally use staged rollout, and promote builds with a recorded Play submission without uploading them again. Keep sandbox submissions on internal testing.
+
+  Keep release-action OTA updates working after promotion and allow reruns with an explicit `--rollout` to update or complete public-track rollouts. Skip implicit reruns and downward promotions, and preserve release metadata when updating a rollout.
+
+  Upgrade a self-hosted server and Console before the CLI: older RC servers reject the new destinations with HTTP 400 after Play has released the build, and older RC Consoles crash on the new `submitted_to` labels.
+
+- Updated dependencies [a2d057c]
+- Updated dependencies [0d8a448]
+- Updated dependencies [211e584]
+- Updated dependencies [5427f56]
+  - @hot-updater/cli-tools@1.2.0-rc.25
+  - @hot-updater/server@1.2.0-rc.25
+  - @hot-updater/plugin-core@1.2.0-rc.25
+  - @hot-updater/protocol@1.2.0-rc.25
+  - @hot-updater/bsdiff@1.2.0-rc.25
+
 ## 1.2.0-rc.24
 
 ### Patch Changes
