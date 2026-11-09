@@ -166,12 +166,12 @@ private final class HotUpdaterSandboxFallbackScreen: UIViewController {
     @objc private func channelTapped() {
         let alert = UIAlertController(title: "Enter a channel", message: HotUpdaterSandboxHomeModel.switchNote, preferredStyle: .alert)
         alert.addTextField { field in
-            field.placeholder = "pr-123"
+            field.placeholder = "Channel"
             field.autocapitalizationType = .none
             field.autocorrectionType = .no
         }
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Open", style: .default) { [weak self, weak alert] _ in
+        alert.addAction(UIAlertAction(title: "Open latest", style: .default) { [weak self, weak alert] _ in
             guard let text = alert?.textFields?.first?.text, !text.isEmpty else { return }
             self?.coordinator.switchTo(text)
         })

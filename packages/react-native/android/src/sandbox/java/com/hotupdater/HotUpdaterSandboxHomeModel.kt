@@ -58,7 +58,7 @@ internal data class HotUpdaterSandboxHomeModel(
         const val HINT = "Shake the device to come back here."
 
         /** A typed channel doesn't ask first, so this says it up front. */
-        const val SWITCH_NOTE = "Opening a preview from the server replaces the current bundle. Downloaded bundles stay listed."
+        const val SWITCH_NOTE = "Opening a channel runs its latest bundle. Downloaded bundles stay listed."
         const val RESET_NOTE = "Removes the channel switch. Downloaded bundles stay listed."
         const val EMPTY_DOWNLOADED = "Bundles you open from a QR code, a link, or a channel stay here."
 
@@ -95,7 +95,7 @@ internal data class HotUpdaterSandboxHomeModel(
                     if (state.hasServerConfig) {
                         null
                     } else {
-                        "No update server yet. Previews work once your update server answers one of the app's update checks."
+                        "No update server yet. Channels open after the app's first update check."
                     },
             )
         }

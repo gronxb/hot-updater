@@ -514,7 +514,7 @@ class HotUpdaterSandboxHomeModelTest {
     @Test
     fun `the first launch says a server answer is needed`() {
         val hint = home(state(selection(bundleId = "built-in"), hasServerConfig = false)).previewHint.orEmpty()
-        assertTrue(hint.contains("answers one of the app's update checks"))
+        assertTrue(hint.contains("Channels open after the app's first update check"))
         assertFalse(hint.contains("Open the app once"))
     }
 

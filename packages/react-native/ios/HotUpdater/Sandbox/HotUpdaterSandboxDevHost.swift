@@ -40,7 +40,7 @@ final class HotUpdaterSandboxDevConnector {
         connections = Task { @MainActor in
             await previous?.value
             guard lock.take(.devServer) else {
-                completion("A preview is being opened. Wait for it, then connect.")
+                completion("A bundle is being opened. Wait for it, then connect.")
                 return
             }
             defer { lock.release(.devServer) }

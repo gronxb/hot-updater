@@ -47,7 +47,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
 
     static let hint = "Shake the device to come back here."
     /// A typed channel doesn't ask first, so this says it up front.
-    static let switchNote = "Opening a preview from the server replaces the current bundle. Downloaded bundles stay listed."
+    static let switchNote = "Opening a channel runs its latest bundle. Downloaded bundles stay listed."
     static let resetNote = "Removes the channel switch. Downloaded bundles stay listed."
     static let emptyDownloaded = "Bundles you open from a QR code, a link, or a channel stay here."
 
@@ -85,7 +85,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
             : "\(history.count) of \(HotUpdaterSandboxShelf.limit)" + (state.downloadedBytes > 0 ? " · \(Self.sizeText(state.downloadedBytes))" : "")
         previewHint = state.hasServerConfig
             ? nil
-            : "No update server yet. Previews work once your update server answers one of the app's update checks."
+            : "No update server yet. Channels open after the app's first update check."
     }
 
     static func downloadedText(atMs: Double, nowMs: Double) -> String {
@@ -375,7 +375,7 @@ struct HotUpdaterSandboxQuestion: Equatable {
             switch refusal {
             case .unreadable:
                 title = "This link can't be read"
-                message = "It isn't a preview link for this app."
+                message = "It isn't a link for this app."
             case .invalidChannel(let channel):
                 title = "That isn't a channel name"
                 message = "Check \"\(channel)\" and try again."

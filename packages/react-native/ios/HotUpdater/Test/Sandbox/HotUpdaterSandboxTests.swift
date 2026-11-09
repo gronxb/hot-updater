@@ -1846,7 +1846,7 @@ struct HotUpdaterSandboxHomeModelTests {
     @Test
     func theFirstLaunchSaysAServerAnswerIsNeeded() {
         let model = home(state(selection: selection(bundleId: "built-in"), hasServerConfig: false))
-        #expect(model.previewHint?.contains("answers one of the app's update checks") == true)
+        #expect(model.previewHint?.contains("Channels open after the app's first update check") == true)
         #expect(model.previewHint?.contains("Open the app once") == false)
     }
 
@@ -2066,7 +2066,7 @@ struct HotUpdaterSandboxDevConnectorTests {
         var failure: String?
         connector.connect("http://a:1") { failure = $0 }
         await settle { failure != nil }
-        #expect(failure == "A preview is being opened. Wait for it, then connect.")
+        #expect(failure == "A bundle is being opened. Wait for it, then connect.")
         #expect(server.pending == 0)
         #expect(committed == 0)
         #expect(lock.holder == .switching)

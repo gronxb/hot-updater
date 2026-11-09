@@ -123,7 +123,7 @@ internal data class HotUpdaterSandboxQuestion(
                             HotUpdaterSandboxQuestion(
                                 Kind.REFUSED,
                                 "This link can't be read",
-                                "It isn't a preview link for this app.",
+                                "It isn't a link for this app.",
                                 "OK",
                                 null,
                             )
@@ -493,7 +493,7 @@ internal class HotUpdaterSandboxScreen(
                 }
             }
             SandboxSection(
-                "OTA previews",
+                "Channels",
                 footer = listOfNotNull(home.previewHint, HotUpdaterSandboxHomeModel.SWITCH_NOTE).joinToString(" "),
             ) {
                 SandboxCard {
@@ -508,9 +508,9 @@ internal class HotUpdaterSandboxScreen(
                         onExpand = { expanded = it },
                         icon = R.drawable.hot_updater_sandbox_keyboard,
                         title = "Enter a channel",
-                        placeholder = "pr-123",
-                        fieldLabel = "Channel or preview link",
-                        action = "Open",
+                        placeholder = "Channel",
+                        fieldLabel = "Channel or link",
+                        action = "Open latest",
                         keyboardType = KeyboardType.Ascii,
                         enabled = !home.isBusy,
                     ) { coordinator.switchTo(it) }
@@ -839,7 +839,7 @@ internal class HotUpdaterSandboxScreen(
                 title = row.channel,
                 actions =
                     listOfNotNull(
-                        Triple("Check ${row.channel} for a newer bundle", false) { coordinator.switchTo(row.channel) },
+                        Triple("Open latest", false) { coordinator.switchTo(row.channel) },
                         Triple("Delete", true) { coordinator.deleteDownloaded(row.bundleId) }.takeIf { !row.isRunning },
                     ),
                 onDismiss = { menuFor = null },
@@ -904,7 +904,7 @@ internal class HotUpdaterSandboxScreen(
             activity.startActivity(Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA))
         } catch (error: ActivityNotFoundException) {
             Log.w(TAG, "no camera app", error)
-            notice = "No camera app" to "Paste the preview link into \"Enter a channel\" instead."
+            notice = "No camera app" to "Paste the link into \"Enter a channel\" instead."
         }
     }
 }
