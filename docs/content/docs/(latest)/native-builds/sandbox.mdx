@@ -108,7 +108,7 @@ big row to start your app.
 | Big row         | Starts the bundle the next launch runs, named by the bundle: an update on the default channel isn't the built-in bundle |
 | Dev server      | Lists hosts and takes a new one. Tapping one runs its JavaScript in this build. See [Dev server](#dev-server)           |
 | Scan QR code    | iOS scans in the app. Android opens the system camera, so check that your phone's camera opens the link                 |
-| Enter a channel | A channel name or a whole link. **Open latest** runs its latest bundle                                                  |
+| Enter a channel | A channel name or a whole link, then **Open latest**                                                                   |
 | Downloaded      | The last 10 bundles a QR code, a link, or a channel downloaded. See [Downloaded bundles](#downloaded-bundles)           |
 | Info            | The build's version, fingerprint and built-in bundle, what's selected and pending, and **Reset to built-in bundle**     |
 
@@ -161,7 +161,7 @@ intent, or your activity as its component, opens your app.
 A sandbox link looks like this:
 
 ```text
-hu-sandbox-com-example-app://hot-updater/preview?channel=pr-12&fingerprint=<hash>
+hu-sandbox-com-example-app://hot-updater/preview?channel=staging&fingerprint=<hash>
 ```
 
 It never reaches your app's `Linking`, or the connection options of a scene

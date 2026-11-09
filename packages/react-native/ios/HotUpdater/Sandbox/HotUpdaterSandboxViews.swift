@@ -580,7 +580,7 @@ private struct HomeScreen: View {
         }
     }
 
-    /// Opens the stored bundle. Pressed and held, it offers a check of its channel and Delete.
+    /// Opens the stored bundle. Pressed and held, it offers Open latest on its channel and Delete.
     private func downloadedRow(_ row: HotUpdaterSandboxHomeModel.Downloaded, isEnabled: Bool) -> some View {
         Button {
             SandboxHaptic.tap()
