@@ -180,3 +180,62 @@ describe.each(adapters)("the store build mark on %s", (_name, adapter) => {
     expect(await core.findNativeBuild(scope, { storeBuild: true })).toBeNull();
   });
 });
+
+describe("a native build row written before sandbox_url_scheme", () => {
+  /**
+   * A key-value store under an RC-era writer, which knew no
+   * `sandbox_url_scheme`: every row and index copy it stores lacks the field,
+   * as an item DynamoDB, Firestore or Cosmos DB holds from then does.
+   */
+  const rcEraStore = () => {
+    const store = createMemoryKeyValueStore();
+    let dropped = 0;
+    const withoutColumn = (value: Readonly<Record<string, unknown>>) => {
+      if (!("sandbox_url_scheme" in value)) return value;
+      dropped += 1;
+      const { sandbox_url_scheme: _dropped, ...rest } = value;
+      return rest;
+    };
+    return {
+      ...store,
+      /** How many stored items the field was left out of. */
+      dropped: () => dropped,
+      write: ((ops) =>
+        store.write(
+          ops.map((op) =>
+            op.type === "put"
+              ? { ...op, value: withoutColumn(op.value) }
+              : op.type === "add" && op.init !== undefined
+                ? { ...op, init: withoutColumn(op.init) }
+                : op,
+          ) as typeof ops,
+        )) as typeof store.write,
+    };
+  };
+
+  it("reads back with no URL scheme, by its ID and by its scope", async () => {
+    const store = rcEraStore();
+    const core = createInProcessCoreApi(createKvAdapter({ store }));
+    await core.registerNativeBuild(
+      registration(1, {
+        channel: "sandbox-release",
+        isSandbox: true,
+        sandboxUrlScheme: "acme-preview",
+      }),
+    );
+    // The row and its index copies hold no field at all, not a null.
+    expect(store.dropped()).toBeGreaterThan(0);
+
+    const byId = await core.getNativeBuild(buildId(1));
+    expect(byId).toMatchObject({ is_sandbox: true, sandbox_url_scheme: null });
+    expect(byId).toHaveProperty("sandbox_url_scheme", null);
+    expect(
+      await core.findNativeBuild({ ...scope, channel: "sandbox-release" }),
+    ).toHaveProperty("sandbox_url_scheme", null);
+    expect(
+      (await core.listNativeBuilds({ limit: 10 })).map(
+        ({ sandbox_url_scheme }) => sandbox_url_scheme,
+      ),
+    ).toEqual([null]);
+  });
+});
