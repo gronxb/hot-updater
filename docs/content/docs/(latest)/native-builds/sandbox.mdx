@@ -143,6 +143,7 @@ server:
 - Your app's update check finds nothing to install while it runs. Offline, that
   check fails as on any offline launch.
 - A crash in it never rolls back the current bundle.
+- `HotUpdater.getBundleId()` returns the bundle ID its row shows.
 
 Press and hold a row for **Open latest** on its channel, or to delete it. The
 copies live in the app's cache, so the system may remove them. A row whose copy is

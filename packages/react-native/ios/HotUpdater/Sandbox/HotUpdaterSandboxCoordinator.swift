@@ -457,13 +457,15 @@ final class HotUpdaterSandboxCoordinator {
         let shelf = shelf
         Task { @MainActor in
             // The files are checked off the main thread.
-            let bundle = await onShelf { shelf.stored(bundleId) }
-            guard let bundle else {
+            let stored = await onShelf { shelf.stored(bundleId) }
+            guard var bundle = stored else {
                 openingBundleId = nil
                 switchTo(entry.channel)
                 pump()
                 return
             }
+            // The session reports the release its row was listed as.
+            bundle.releaseId = entry.releaseId
             // The session is this process's own from here: its ID is the running one at once.
             openingBundleId = nil
             if canStart, lock.holder == nil {

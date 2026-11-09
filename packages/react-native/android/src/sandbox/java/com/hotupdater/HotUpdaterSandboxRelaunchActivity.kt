@@ -25,6 +25,7 @@ class HotUpdaterSandboxRelaunchActivity : Activity() {
         const val EXTRA_HOST = "com.hotupdater.sandbox.HOST"
         const val EXTRA_STORED_BUNDLE = "com.hotupdater.sandbox.STORED_BUNDLE"
         const val EXTRA_HANDOFF = "com.hotupdater.sandbox.HANDOFF"
+        const val EXTRA_STORED_RELEASE = "com.hotupdater.sandbox.STORED_RELEASE"
         private const val TAG = "HotUpdaterSandboxDev"
         private const val CLAIM_POLL_MS = 50L
         private const val KILL_DELAY_MS = 100L
@@ -64,7 +65,14 @@ class HotUpdaterSandboxRelaunchActivity : Activity() {
         val restart = Intent.makeRestartActivityTask(launch).setPackage(packageName).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
         if (stored != null) {
             files.writeClaim(
-                HotUpdaterSandboxDevClaim("", "", Process.myPid(), SystemClock.elapsedRealtime(), stored),
+                HotUpdaterSandboxDevClaim(
+                    "",
+                    "",
+                    Process.myPid(),
+                    SystemClock.elapsedRealtime(),
+                    stored,
+                    intent.getStringExtra(EXTRA_STORED_RELEASE),
+                ),
             )
         } else if (session != null && host != null) {
             files.writeClaim(

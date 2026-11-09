@@ -49,7 +49,7 @@ internal class HotUpdaterSandboxLiveHost(
         try {
             // Leaving the normal launch, so its "started" mark doesn't read as a crash.
             if (!isInSession) HotUpdaterSandboxDev.clearNormalLaunchStarted(impl.getRunningBundleId())
-            HotUpdaterSandboxDev.startRelaunch(context, HotUpdaterSandboxRelaunch.Stored(bundle.bundleId, handoff))
+            HotUpdaterSandboxDev.startRelaunch(context, HotUpdaterSandboxRelaunch.Stored(bundle.bundleId, handoff, bundle.releaseId))
             true
         } catch (error: Exception) {
             Log.w("HotUpdaterSandbox", "couldn't relaunch into ${bundle.bundleId}: ${error.message}")

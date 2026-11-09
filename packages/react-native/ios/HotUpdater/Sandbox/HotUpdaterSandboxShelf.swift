@@ -26,6 +26,9 @@ struct HotUpdaterSandboxStoredBundle: Equatable {
     /// `file://` and the bundle's directory, as main answers `getBaseURL`.
     let baseURL: String
     let manifest: NSDictionary
+    /// The release its row was listed as, which `HotUpdater.getBundleId()` reports
+    /// in its session. Nil for a row listed before releases were kept.
+    var releaseId: String? = nil
 }
 
 /// The sandbox's own copies of what its switches downloaded, in the caches
@@ -270,5 +273,29 @@ final class HotUpdaterSandboxShelf {
             manifest: manifest
         )
     }
+}
+
+/// The SDK's active state in a stored session that knows its release, for
+/// `getActiveUpdateState`: the release `HotUpdater.getBundleId()` reports, on the
+/// session's own channel. In memory only, and never a catalog's receipt: with no
+/// catalog, scope, or generation, a check from the session's JavaScript reads no
+/// selection of its own scope, and nothing commits it.
+func hotUpdaterSandboxStoredActiveState(releaseId: String, bundleId: String, channel: String) -> [String: Any] {
+    [
+        "activeSelection": [
+            "kind": "BUNDLE",
+            "releaseId": releaseId,
+            "bundleId": bundleId,
+            "catalogId": NSNull(),
+            "scopeKey": NSNull(),
+            "generation": NSNull(),
+            "catalogHash": NSNull(),
+            "channel": channel,
+            "selectionContextHash": NSNull(),
+        ] as [String: Any],
+        "stableSelection": NSNull(),
+        "verificationPending": false,
+        "highestSeenCatalogs": [String: Any](),
+    ]
 }
 #endif

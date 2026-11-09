@@ -18,6 +18,7 @@ typedef void (^HUResolve)(id _Nullable);
 + (nullable NSString *)storageItem:(NSString *)key;
 + (void)setStorageItem:(NSString *)key value:(nullable NSString *)value;
 + (void)overrideInstalled;
++ (nullable NSDictionary *)storedActiveStateWithChannel:(NSString *)channel;
 @property(class, readonly, nullable) NSString *storedBundleId;
 @property(class, readonly, nullable) NSString *storedBaseURL;
 @property(class, readonly, nullable) NSDictionary *storedManifest;
@@ -119,8 +120,10 @@ static id (*gTakeEvents)(id, SEL, id);
     if (!IsDev(me)) return gChannel(me, @selector(getChannel));
     return HotUpdaterSandboxDevState.storedBundleId ? kStoredChannel : kDevChannel;
   });
+  // A stored session names its release, so HotUpdater.getBundleId() reports it.
   HU_SWAP(impl, ActiveState, @selector(getActiveUpdateState), ^id(id me) {
-    return IsDev(me) ? EmptyState() : gActiveState(me, @selector(getActiveUpdateState));
+    if (!IsDev(me)) return gActiveState(me, @selector(getActiveUpdateState));
+    return [HotUpdaterSandboxDevState storedActiveStateWithChannel:kStoredChannel] ?: EmptyState();
   });
   HU_SWAP(impl, BundleId, @selector(getBundleId), ^id(id me) {
     return IsDev(me) ? HotUpdaterSandboxDevState.storedBundleId : gBundleId(me, @selector(getBundleId));

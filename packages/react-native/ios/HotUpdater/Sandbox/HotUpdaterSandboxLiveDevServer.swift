@@ -46,6 +46,16 @@ public final class HotUpdaterSandboxDevState: NSObject {
         return stored?.manifest
     }
 
+    /// A stored session's active state, which names its release; nil otherwise,
+    /// and for a row that never knew it.
+    @objc(storedActiveStateWithChannel:)
+    public static func storedActiveState(channel: String) -> NSDictionary? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let stored, let releaseId = stored.releaseId else { return nil }
+        return hotUpdaterSandboxStoredActiveState(releaseId: releaseId, bundleId: stored.bundleId, channel: channel) as NSDictionary
+    }
+
     @objc public static func storageItem(_ key: String) -> String? {
         lock.lock()
         defer { lock.unlock() }

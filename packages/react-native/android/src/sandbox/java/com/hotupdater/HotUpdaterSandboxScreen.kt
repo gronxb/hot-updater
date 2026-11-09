@@ -108,13 +108,13 @@ internal data class HotUpdaterSandboxQuestion(
                 is HotUpdaterSandboxPhase.Confirming ->
                     HotUpdaterSandboxQuestion(
                         Kind.CONFIRM,
-                        "Open ${phase.link.channel}?",
+                        "Open latest on ${phase.link.channel}?",
                         if (isOverApp) {
                             "This replaces the running bundle. Downloaded bundles stay listed."
                         } else {
                             HotUpdaterSandboxHomeModel.SWITCH_NOTE
                         },
-                        "Open",
+                        "Open latest",
                         "Cancel",
                     )
                 is HotUpdaterSandboxPhase.Refused ->

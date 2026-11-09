@@ -558,6 +558,14 @@ class HotUpdaterSandboxHomeModelTest {
         assertTrue(row.showsBack)
         val info = HotUpdaterSandboxInfoModel.of(current, "1", "Release", isOverApp = true)
         assertEquals("Stored 019a3f…c2", info.bundle.first { it.name == "Current" }.value)
+        // Its row's deploy message, as a running row shows one.
+        val withMessage =
+            state(
+                selection(),
+                history = listOf(entry("019a3f00aabbc2", "pr-12", "abc1234 · #12 Fix login")),
+                storedSession = "019a3f00aabbc2",
+            )
+        assertEquals("abc1234 · #12 Fix login", home(withMessage, isOverApp = true).bigRow.detail)
     }
 
     /**
@@ -629,6 +637,9 @@ class HotUpdaterSandboxHomeModelTest {
             HotUpdaterSandboxQuestion.of(phase, isOverApp = true)?.message,
         )
         assertEquals(HotUpdaterSandboxHomeModel.SWITCH_NOTE, HotUpdaterSandboxQuestion.of(phase, isOverApp = false)?.message)
+        // It opens the channel's latest bundle, and says so.
+        assertEquals("Open latest on pr-1?", HotUpdaterSandboxQuestion.of(phase, isOverApp = false)?.title)
+        assertEquals("Open latest", HotUpdaterSandboxQuestion.of(phase, isOverApp = false)?.accept)
     }
 
     @Test
