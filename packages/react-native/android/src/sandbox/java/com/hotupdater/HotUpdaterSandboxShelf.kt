@@ -34,6 +34,11 @@ internal data class HotUpdaterSandboxStoredBundle(
     /** `file://` and the bundle's directory, as main answers `getBaseURL`. */
     val baseURL: String,
     val manifest: Map<String, Any?>,
+    /**
+     * The release its row was listed as, which `HotUpdater.getBundleId()` reports
+     * in its session. Null for a row listed before releases were kept.
+     */
+    val releaseId: String? = null,
 )
 
 /**

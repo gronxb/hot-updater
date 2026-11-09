@@ -27,7 +27,9 @@ process being alive is what tells a relaunch from an icon tap.
 A stored session is the same kind of process. `HotUpdaterSandboxShelf` keeps a copy
 of each bundle a switch downloaded in the `.sandbox` app's cache directory, and a
 row's claim names one. The generated impl then answers `getBundleId`, `getBaseURL`
-and `getManifest` from it, on a channel without releases.
+and `getManifest` from it, on a channel without releases, and its active state
+names the release the claim carries, with no catalog, so JavaScript's
+`getBundleId()` reports it.
 
 `HotUpdaterSandboxScreen` renders `HotUpdaterSandboxHomeModel`, which holds its
 words and has no views, so its specs read them. `HotUpdaterSandboxDevServer` is all

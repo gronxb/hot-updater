@@ -136,7 +136,9 @@ internal data class HotUpdaterSandboxHomeModel(
                 val entry = state.downloaded.firstOrNull { it.bundleId == stored }
                 val channel = entry?.channel?.let { " $it" }.orEmpty()
                 val shown = entry?.shownId ?: stored
-                return BigRow("Running", "Reload", "Running stored$channel", "Bundle ${shortId(shown)}", isReload = true, showsBack = true)
+                // Its deploy message, as a running row shows one, or its bundle.
+                val detail = entry?.message ?: "Bundle ${shortId(shown)}"
+                return BigRow("Running", "Reload", "Running stored$channel", detail, isReload = true, showsBack = true)
             }
             val selection =
                 state.selection

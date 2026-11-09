@@ -527,7 +527,8 @@ internal class HotUpdaterSandboxCoordinator(
         val attempt = ++handoff
         scope.launch {
             // The files are checked off the main thread.
-            val bundle = withContext(shelfContext) { shelf.stored(bundleId) }
+            // The session reports the release its row was listed as.
+            val bundle = withContext(shelfContext) { shelf.stored(bundleId) }?.copy(releaseId = entry.releaseId)
             if (attempt != handoff) return@launch
             if (bundle == null) {
                 pendingStoredBundleId = null

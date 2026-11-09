@@ -37,6 +37,8 @@ internal data class HotUpdaterSandboxDevClaim(
     val witnessPid: Int,
     val elapsedRealtime: Long,
     val storedBundleId: String? = null,
+    /** The release the stored bundle was opened as, for `HotUpdater.getBundleId()` in its session. */
+    val storedReleaseId: String? = null,
 ) {
     fun toJson(): String =
         JSONObject()
@@ -45,6 +47,7 @@ internal data class HotUpdaterSandboxDevClaim(
             .put("witnessPid", witnessPid)
             .put("elapsedRealtime", elapsedRealtime)
             .put("storedBundleId", storedBundleId)
+            .put("storedReleaseId", storedReleaseId)
             .toString()
 
     companion object {
@@ -57,6 +60,7 @@ internal data class HotUpdaterSandboxDevClaim(
                     witnessPid = json.getInt("witnessPid"),
                     elapsedRealtime = json.getLong("elapsedRealtime"),
                     storedBundleId = json.optString("storedBundleId").takeIf { json.has("storedBundleId") },
+                    storedReleaseId = json.optString("storedReleaseId").takeIf { json.has("storedReleaseId") },
                 )
             }.getOrNull()
     }
@@ -126,7 +130,7 @@ internal class HotUpdaterSandboxDevFiles(
                 return null
             }
             if (claim.storedBundleId != null) {
-                val bundle = stored(claim.storedBundleId)
+                val bundle = stored(claim.storedBundleId)?.copy(releaseId = claim.storedReleaseId)
                 if (bundle == null) Log.w(TAG, "dropped a claim whose stored bundle is gone")
                 return bundle?.let { HotUpdaterSandboxDevSession(claim.sessionId, claim.host, it.bundle, it) }
             }
@@ -318,7 +322,11 @@ internal object HotUpdaterSandboxDev {
         normalStorage = storage
         val running = session(context) ?: return storage
         return if (running.stored != null) {
-            HotUpdaterSandboxDevStorage(storage, "A stored bundle installs no updates. Go back to the current bundle first.")
+            HotUpdaterSandboxDevStorage(
+                storage,
+                "A stored bundle installs no updates. Go back to the current bundle first.",
+                running.stored,
+            )
         } else {
             HotUpdaterSandboxDevStorage(storage)
         }
@@ -372,7 +380,7 @@ internal object HotUpdaterSandboxDev {
         startRelaunch(
             context,
             if (stored != null) {
-                HotUpdaterSandboxRelaunch.Stored(stored.bundleId, UUID.randomUUID().toString())
+                HotUpdaterSandboxRelaunch.Stored(stored.bundleId, UUID.randomUUID().toString(), stored.releaseId)
             } else {
                 HotUpdaterSandboxRelaunch.Dev(running.id, running.host)
             },
@@ -402,6 +410,7 @@ internal object HotUpdaterSandboxDev {
                 intent
                     .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_STORED_BUNDLE, relaunch.bundleId)
                     .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_HANDOFF, relaunch.nonce)
+                    .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_STORED_RELEASE, relaunch.releaseId)
             }
             HotUpdaterSandboxRelaunch.FirstScreen -> Unit
         }
@@ -426,6 +435,8 @@ internal sealed class HotUpdaterSandboxRelaunch {
         val bundleId: String,
         /** The handoff's nonce, which the helper and the screen each try to take: see [HotUpdaterSandboxDevFiles.claimHandoff]. */
         val nonce: String,
+        /** The release it runs as, which the session reports to `HotUpdater.getBundleId()`. */
+        val releaseId: String? = null,
     ) : HotUpdaterSandboxRelaunch()
 
     object FirstScreen : HotUpdaterSandboxRelaunch()
@@ -440,6 +451,8 @@ internal sealed class HotUpdaterSandboxRelaunch {
 internal class HotUpdaterSandboxDevStorage(
     private val normal: BundleStorageService,
     private val noInstall: String = "A dev session installs no updates. Exit the dev server first.",
+    /** A stored session's bundle: when it knows its release, the active state names it. */
+    private val stored: HotUpdaterSandboxStoredBundle? = null,
 ) : BundleStorageService {
     override fun setBundleURL(localPath: String?): Boolean = false
 
@@ -477,9 +490,28 @@ internal class HotUpdaterSandboxDevStorage(
         selectionContextHash: String,
     ): Boolean = true
 
+    /**
+     * In a stored session that knows its release, that release on the session's
+     * own channel, so `HotUpdater.getBundleId()` reports it. In memory only, and
+     * never a catalog's receipt: with no catalog, scope, or generation, a check
+     * from the session's JavaScript reads no selection of its own scope.
+     */
     override fun getActiveUpdateState(): Map<String, Any?> =
         mapOf(
-            "activeSelection" to null,
+            "activeSelection" to
+                stored?.releaseId?.let { releaseId ->
+                    mapOf(
+                        "kind" to "BUNDLE",
+                        "releaseId" to releaseId,
+                        "bundleId" to stored.bundleId,
+                        "catalogId" to null,
+                        "scopeKey" to null,
+                        "generation" to null,
+                        "catalogHash" to null,
+                        "channel" to HotUpdaterSandboxDev.STORED_CHANNEL,
+                        "selectionContextHash" to null,
+                    )
+                },
             "stableSelection" to null,
             "verificationPending" to false,
             "highestSeenCatalogs" to emptyMap<String, Any?>(),

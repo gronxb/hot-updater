@@ -132,11 +132,13 @@ struct HotUpdaterSandboxHomeModel: Equatable {
         }
         if let stored = state.storedSessionBundleId {
             let channel = channel(of: stored, in: state.downloaded).map { " \($0)" } ?? ""
+            // Its deploy message, as a running row shows one, or its bundle.
+            let message = state.downloaded.first { $0.bundleId == stored }?.message
             return BigRow(
                 caption: "Running",
                 title: "Reload",
                 subtitle: "Running stored\(channel)",
-                detail: "Bundle \(shortId(shownId(of: stored, in: state.downloaded)))",
+                detail: message ?? "Bundle \(shortId(shownId(of: stored, in: state.downloaded)))",
                 isReload: true,
                 showsBack: true
             )
@@ -364,11 +366,11 @@ struct HotUpdaterSandboxQuestion: Equatable {
         switch phase {
         case .confirming(let link):
             kind = .confirm
-            title = "Open \(link.channel)?"
+            title = "Open latest on \(link.channel)?"
             message = isOverApp
                 ? "This replaces the running bundle. Downloaded bundles stay listed."
                 : HotUpdaterSandboxHomeModel.switchNote
-            accept = "Open"
+            accept = "Open latest"
             decline = "Cancel"
         case .refused(let refusal):
             kind = .refused

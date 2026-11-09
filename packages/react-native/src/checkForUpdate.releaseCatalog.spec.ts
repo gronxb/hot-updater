@@ -1045,6 +1045,42 @@ describe("checkForUpdate Release catalog protocol", () => {
     );
     expect(mocks.acceptReleaseCatalog).not.toHaveBeenCalled();
   });
+
+  it("checks as usual in a sandbox stored session, whose receipt names its Release with no Catalog", async () => {
+    // What a sandbox build's native side reports while it runs a stored bundle:
+    // in memory, on the session's own channel, with no catalog, scope, or generation.
+    const session: PersistedSelectionReceipt = {
+      bundleId: CURRENT_BUNDLE_ID,
+      catalogHash: null,
+      catalogId: null,
+      channel: "hot-updater-sandbox-stored-bundle",
+      generation: null,
+      kind: "BUNDLE",
+      releaseId: ACTIVE_RELEASE_ID,
+      scopeKey: null,
+      selectionContextHash: null,
+    };
+    mocks.getActiveUpdateState.mockReturnValue({
+      activeSelection: session,
+      highestSeenCatalogs: {},
+      stableSelection: null,
+      verificationPending: false,
+    });
+    const onError = vi.fn();
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client } = createClient();
+
+    await checkForUpdate({
+      emit,
+      client,
+      onError,
+      updateStrategy: "appVersion",
+    });
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(mocks.acceptReleaseCatalog).toHaveBeenCalledOnce();
+  });
+
   it("reports a check that found nothing to install as UNCHANGED", async () => {
     mocks.getBundleId.mockReturnValueOnce(MINIMUM_RELEASE_ID);
     const { checkForUpdate } = await import("./checkForUpdate");

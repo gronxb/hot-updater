@@ -54,6 +54,7 @@ private final class FakeHost: HotUpdaterSandboxHost {
     var devExits = 0
     var storedBundleId: String?
     var startedStored: [String] = []
+    var startedBundles: [HotUpdaterSandboxStoredBundle] = []
 
     nonisolated var isInSession: Bool {
         MainActor.assumeIsolated { runsDevServer || storedBundleId != nil }
@@ -66,6 +67,7 @@ private final class FakeHost: HotUpdaterSandboxHost {
     nonisolated func startStoredSession(_ bundle: HotUpdaterSandboxStoredBundle) {
         MainActor.assumeIsolated {
             startedStored.append(bundle.bundleId)
+            startedBundles.append(bundle)
             storedBundleId = bundle.bundleId
         }
     }
@@ -1887,6 +1889,13 @@ struct HotUpdaterSandboxHomeModelTests {
         #expect(row.showsBack)
         let info = HotUpdaterSandboxInfoModel(state: current, version: "1", configuration: "Release", isOverApp: true)
         #expect(info.bundle.first { $0.name == "Current" }?.value == "Stored 019a3f…c2")
+        // Its row's deploy message, as a running row shows one.
+        let withMessage = state(
+            selection: selection(),
+            history: [entry("019a3f00aabbc2", "pr-12", message: "abc1234 · #12 Fix login")],
+            storedSession: "019a3f00aabbc2"
+        )
+        #expect(home(withMessage, isOverApp: true).bigRow.detail == "abc1234 · #12 Fix login")
     }
 
     /// QA of codex-relay pr-135: the list said bundle 01a1be…c6, the stored files'
@@ -1951,6 +1960,9 @@ struct HotUpdaterSandboxHomeModelTests {
         let before = HotUpdaterSandboxQuestion(phase: .confirming(link), isOverApp: false)
         #expect(over?.message == "This replaces the running bundle. Downloaded bundles stay listed.")
         #expect(before?.message == HotUpdaterSandboxHomeModel.switchNote)
+        // It opens the channel's latest bundle, and says so.
+        #expect(before?.title == "Open latest on pr-1?")
+        #expect(before?.accept == "Open latest")
     }
 
     @Test
@@ -2166,6 +2178,50 @@ struct HotUpdaterSandboxDevConnectorTests {
         server.answer(.bundle(URL(string: "http://b:2/index.bundle")!))
         await settle { committed.count == 2 }
         #expect(committed == ["http://a:1", "http://b:2"])
+    }
+}
+
+@MainActor
+struct HotUpdaterSandboxStoredReleaseTests {
+    @Test
+    func everyStoredSessionNamesTheReleaseItsRowKeptAndALegacyRowNamesNone() async {
+        let fixture = Fixture()
+        fixture.host.stageResult = .success(.update(bundleId: "ota", message: nil, releaseId: "019a0000-0000-7000-8000-0000000000a2"))
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        fixture.host.storedBundleId = nil
+        fixture.coordinator.openDownloaded("ota")
+        await settle()
+        #expect(fixture.host.startedBundles.last?.releaseId == "019a0000-0000-7000-8000-0000000000a2")
+
+        let legacy = Fixture()
+        legacy.shelf.add(bundleId: "ota", channel: "pr-1", message: nil, nowMs: 0)
+        await legacy.coordinator.refresh()
+        legacy.coordinator.openDownloaded("ota")
+        await settle()
+        #expect(legacy.host.startedBundles.count == 1)
+        #expect(legacy.host.startedBundles.first?.releaseId == nil)
+    }
+
+    @Test
+    func aStoredSessionNamesItsReleaseWithNoCatalogScopeOrGeneration() throws {
+        let state = hotUpdaterSandboxStoredActiveState(
+            releaseId: "019a0000-0000-7000-8000-0000000000a1",
+            bundleId: "b-r1",
+            channel: "hot-updater-sandbox-stored-bundle"
+        )
+        let active = try #require(state["activeSelection"] as? [String: Any])
+        #expect(active["releaseId"] as? String == "019a0000-0000-7000-8000-0000000000a1")
+        #expect(active["bundleId"] as? String == "b-r1")
+        #expect(active["kind"] as? String == "BUNDLE")
+        #expect(active["channel"] as? String == "hot-updater-sandbox-stored-bundle")
+        for key in ["catalogId", "scopeKey", "generation", "catalogHash", "selectionContextHash"] {
+            #expect(active[key] is NSNull, "\(key)")
+        }
+        #expect(state["stableSelection"] is NSNull)
+        #expect(state["verificationPending"] as? Bool == false)
+        // It goes to JavaScript as JSON.
+        #expect(JSONSerialization.isValidJSONObject(state))
     }
 }
 #endif

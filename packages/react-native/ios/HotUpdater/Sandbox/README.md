@@ -37,7 +37,9 @@ next start.
 caches directory, and only when the bundle ID ends in `.sandbox`, so nothing stays
 in a store app that shares the sandbox's ID. A row starts a stored session through
 the same override: `HotUpdaterSandboxDevState` then serves the stored bundle, its
-ID, base URL and manifest, on a channel without releases, for this process only.
+ID, base URL and manifest, on a channel without releases, for this process only,
+and an active state that names its row's release, with no catalog, so JavaScript's
+`getBundleId()` reports it.
 
 `HotUpdaterSandboxScreen` renders `HotUpdaterSandboxHomeModel`, which holds its
 words and has no views, so its specs read them. `HotUpdaterSandboxDevServer` is all

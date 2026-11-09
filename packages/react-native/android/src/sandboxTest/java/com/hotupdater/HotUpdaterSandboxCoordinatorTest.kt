@@ -54,6 +54,7 @@ private class FakeHost : HotUpdaterSandboxHost {
     var isRunningDevServer = false
     var storedBundleId: String? = null
     val startedStored = ArrayList<String>()
+    val startedBundles = ArrayList<HotUpdaterSandboxStoredBundle>()
     var exits = 0
 
     override val isInSession get() = isRunningDevServer || storedBundleId != null
@@ -97,6 +98,7 @@ private class FakeHost : HotUpdaterSandboxHost {
         handoffFiles.writeHandoff(handoff)
         handoffs += handoff
         startedStored += bundle.bundleId
+        startedBundles += bundle
         return true
     }
 
@@ -507,6 +509,30 @@ class HotUpdaterSandboxCoordinatorTest {
         assertEquals("built-in", phase.selection.bundleId)
         assertTrue(phase.selection.isBuiltIn)
         assertEquals(listOf("sandbox-release"), fixture.store.selected)
+    }
+
+    @Test
+    fun `every stored session names the release its row kept, and a row from before releases names none`() {
+        val fixture = Fixture()
+        fixture.host.stageResult = Result.success(HotUpdaterSandboxStaged.Update("ota", null, "019a0000-0000-7000-8000-0000000000a2"))
+        fixture.coordinator.switchTo("pr-1")
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        assertEquals(
+            "019a0000-0000-7000-8000-0000000000a2",
+            fixture.host.startedBundles
+                .single()
+                .releaseId,
+        )
+
+        val legacy = Fixture()
+        legacy.shelf.add("ota", "pr-1", null, 0)
+        legacy.coordinator.refresh()
+        assertTrue(legacy.coordinator.openDownloaded("ota"))
+        assertNull(
+            legacy.host.startedBundles
+                .single()
+                .releaseId,
+        )
     }
 
     @Test

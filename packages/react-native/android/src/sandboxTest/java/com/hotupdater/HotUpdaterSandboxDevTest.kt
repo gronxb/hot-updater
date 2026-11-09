@@ -315,6 +315,44 @@ class HotUpdaterSandboxDevTest {
         )
     }
 
+    @Test
+    fun `a stored claim carries its release to the session, and an older claim reads without one`() {
+        val root = folder.newFolder("claim")
+        val shelf = testShelf(root)
+        installTestBundle(shelf.source, "ota")
+        shelf.add("ota", "pr-1", null, 0)
+        val files = HotUpdaterSandboxDevFiles(File(root, "dev"))
+        val claim = HotUpdaterSandboxDevClaim("", "", 7, 1_000, "ota", "019a0000-0000-7000-8000-0000000000a1")
+        assertEquals(claim, HotUpdaterSandboxDevClaim.parse(claim.toJson()))
+        files.writeClaim(claim)
+        assertEquals("019a0000-0000-7000-8000-0000000000a1", files.takeSession({ it == 7 }, 1_500, shelf::stored)?.stored?.releaseId)
+        val older = """{"sessionId":"","host":"","witnessPid":7,"elapsedRealtime":1000,"storedBundleId":"ota"}"""
+        assertEquals(HotUpdaterSandboxDevClaim("", "", 7, 1_000, "ota"), HotUpdaterSandboxDevClaim.parse(older))
+        files.writeClaim(HotUpdaterSandboxDevClaim.parse(older)!!)
+        assertNull(files.takeSession({ it == 7 }, 1_500, shelf::stored)?.stored?.releaseId)
+    }
+
+    @Test
+    fun `a stored session names its release with no catalog, scope, or generation`() {
+        val bundle = HotUpdaterSandboxStoredBundle("b-r1", File("x"), "file://x", emptyMap(), "019a0000-0000-7000-8000-0000000000a1")
+        val state = HotUpdaterSandboxDevStorage(Recording(), "no", bundle).getActiveUpdateState()
+
+        @Suppress("UNCHECKED_CAST")
+        val active = state["activeSelection"] as Map<String, Any?>
+        assertEquals("019a0000-0000-7000-8000-0000000000a1", active["releaseId"])
+        assertEquals("b-r1", active["bundleId"])
+        assertEquals("BUNDLE", active["kind"])
+        assertEquals(HotUpdaterSandboxDev.STORED_CHANNEL, active["channel"])
+        listOf("catalogId", "scopeKey", "generation", "catalogHash", "selectionContextHash").forEach {
+            assertTrue(it, active.containsKey(it) && active[it] == null)
+        }
+        assertNull(state["stableSelection"])
+        assertEquals(false, state["verificationPending"])
+        // A row that never knew its release, and a dev session: nothing selected.
+        assertNull(HotUpdaterSandboxDevStorage(Recording(), "no", bundle.copy(releaseId = null)).getActiveUpdateState()["activeSelection"])
+        assertNull(HotUpdaterSandboxDevStorage(Recording()).getActiveUpdateState()["activeSelection"])
+    }
+
     private class Recording : BundleStorageService {
         val calls = ArrayList<String>()
 
