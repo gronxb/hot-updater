@@ -208,6 +208,8 @@ final class HotUpdaterSandboxLock {
 @MainActor
 final class HotUpdaterSandboxCoordinator {
     private let host: HotUpdaterSandboxHost
+    /// Whether a link's scheme is this build's: another app's link isn't for it.
+    private let isOwnScheme: (String) -> Bool
     private let store: HotUpdaterSandboxStore
     private let shelf: HotUpdaterSandboxShelf
     /// Where the shelf's file work runs, in order, off the main thread.
@@ -261,8 +263,10 @@ final class HotUpdaterSandboxCoordinator {
         log: @escaping (String) -> Void = { _ in },
         now: @escaping () -> Date = Date.init,
         lock: HotUpdaterSandboxLock = .shared,
-        shelfQueue: DispatchQueue = DispatchQueue(label: "hot-updater-sandbox.shelf")
+        shelfQueue: DispatchQueue = DispatchQueue(label: "hot-updater-sandbox.shelf"),
+        isOwnScheme: @escaping (String) -> Bool = { HotUpdaterSandboxLink.isOwnScheme($0) }
     ) {
+        self.isOwnScheme = isOwnScheme
         self.shelfQueue = shelfQueue
         self.now = now
         self.lock = lock
@@ -768,7 +772,7 @@ final class HotUpdaterSandboxCoordinator {
             setPhase(.idle)
             return
         }
-        guard let link = HotUpdaterSandboxLink(url: url) else {
+        guard let link = HotUpdaterSandboxLink(url: url), isOwnScheme(link.urlScheme) else {
             remove(url)
             refusedLink = url
             setPhase(.refused(.unreadable(url: url)))

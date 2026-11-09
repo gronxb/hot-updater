@@ -259,6 +259,7 @@ describe("native-build ios|android with a cached build", () => {
     expect(registerNativeBuild).toHaveBeenCalledWith(built, {
       buildKey: KEY,
       sandbox: false,
+      sandboxUrlScheme: null,
     });
     expect(lastJson()).toMatchObject({
       build: built,
@@ -346,6 +347,7 @@ describe("native-build ios|android with a cached build", () => {
     expect(registerNativeBuild).toHaveBeenCalledWith(cached, {
       buildKey: KEY,
       sandbox: false,
+      sandboxUrlScheme: null,
     });
     expect(lastJson()).toMatchObject({
       build: { minBundleId: cached.minBundleId },

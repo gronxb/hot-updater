@@ -181,6 +181,7 @@ private class FakeStore(
 private class Fixture(
     pendingLinks: List<String> = emptyList(),
     shelfContext: kotlin.coroutines.CoroutineContext = EmptyCoroutineContext,
+    ownScheme: String? = null,
 ) {
     val host = FakeHost()
     val store = FakeStore(pendingLinks)
@@ -198,6 +199,7 @@ private class Fixture(
             nowMs = { 1_000_000L },
             lock = lock,
             shelfContext = shelfContext,
+            isOwnScheme = { HotUpdaterSandboxLink.isOwnScheme(it, ownScheme) },
         )
 
     val phase get() = coordinator.state.phase
@@ -392,6 +394,23 @@ class HotUpdaterSandboxCoordinatorTest {
         fixture.coordinator.switchTo("")
         val refusal = (fixture.phase as HotUpdaterSandboxPhase.Refused).refusal
         assertEquals(HotUpdaterSandboxRefusal.InvalidChannel(""), refusal)
+    }
+
+    @Test
+    fun `a link of its own scheme is asked about`() {
+        val fixture = Fixture(ownScheme = "acme-preview")
+        val url = "acme-preview://hot-updater/preview?channel=pr-1&fingerprint=${fixture.host.fingerprintHash()}"
+        fixture.coordinator.receiveLink(url)
+        assertEquals(HotUpdaterSandboxPhase.Confirming(HotUpdaterSandboxLink.parse(url)!!), fixture.phase)
+    }
+
+    @Test
+    fun `a link of another scheme isn't for this app`() {
+        val fixture = Fixture(ownScheme = "acme-preview")
+        fixture.coordinator.receiveLink(link("pr-1"))
+        val refusal = (fixture.phase as HotUpdaterSandboxPhase.Refused).refusal
+        assertEquals(HotUpdaterSandboxRefusal.Unreadable(link("pr-1")), refusal)
+        assertTrue(fixture.store.pendingLinks.isEmpty())
     }
 
     @Test

@@ -33,6 +33,8 @@ export interface ImportableNativeBuild {
   readonly builtInBundlePath: string;
   /** Whether the artifact holds the sandbox layer: a sandbox build. */
   readonly sandbox: boolean;
+  /** The URL scheme a sandbox build registers; null for any other build. */
+  readonly sandboxUrlScheme: string | null;
 }
 
 export type NativeArtifactCheck = (
@@ -245,6 +247,7 @@ export const checkNativeArtifact = (
       appVersion,
       builtInBundlePath: info.builtInBundle!.path,
       sandbox: info.sandbox.code,
+      sandboxUrlScheme: info.sandbox.code ? info.entry.sandboxUrlScheme : null,
     },
   };
 };

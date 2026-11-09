@@ -150,6 +150,20 @@ export interface BuildAdapter {
 /**
  * Android native build gradle configuration.
  */
+/** The options of a native build scheme's `sandbox`, which turn it on. */
+export interface NativeBuildSandboxOptions {
+  /**
+   * The URL scheme the sandbox build registers, which its preview links and
+   * QR codes open: lower case, a letter then up to 63 letters, digits, `+`,
+   * `.` or `-`, none the app registers itself, and not `http`, `https`,
+   * `file`, `data`, `javascript`, `true` or `false`. A build keeps the scheme it
+   * was built with, so a changed one takes effect at the next sandbox build.
+   *
+   * @default "hu-sandbox-<bundleIdentifier | packageName>"
+   */
+  urlScheme?: string;
+}
+
 export interface NativeBuildAndroidScheme {
   /**
    * Android application module build variant.
@@ -204,10 +218,13 @@ export interface NativeBuildAndroidScheme {
    * a device, as a separate app: the application ID gets a `.sandbox` suffix.
    * It registers on the reserved channel `sandbox-<scheme>`, and reaches
    * Google Play's internal testing only. No other build compiles the layer.
+   * An object turns it on with options: `urlScheme` is the URL scheme its
+   * preview links and QR codes open, `hu-sandbox-<packageName>` by default.
    *
    * @default false
+   * @example { urlScheme: "acme-preview" }
    */
-  sandbox?: boolean;
+  sandbox?: boolean | NativeBuildSandboxOptions;
 }
 
 export type IosBuildDestination =
@@ -341,11 +358,14 @@ export interface NativeBuildIosScheme {
    * replaces on a device, or its own from a separate configuration. It
    * registers on the reserved channel `sandbox-<scheme>`, and its `.ipa` is for
    * TestFlight internal testing only, never App Store review. No other build
-   * compiles the layer.
+   * compiles the layer. An object turns it on with options: `urlScheme` is
+   * the URL scheme its preview links and QR codes open,
+   * `hu-sandbox-<bundleIdentifier>` by default.
    *
    * @default false
+   * @example { urlScheme: "acme-preview" }
    */
-  sandbox?: boolean;
+  sandbox?: boolean | NativeBuildSandboxOptions;
 }
 
 export interface PlatformConfig {

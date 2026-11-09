@@ -4,7 +4,7 @@ import path from "path";
 import {
   SANDBOX_ACTIVITY,
   SANDBOX_META_DATA,
-  sandboxUrlSchemeOf,
+  SANDBOX_URL_SCHEME_META_DATA,
 } from "@hot-updater/protocol/native-artifact";
 import { XMLParser } from "fast-xml-parser";
 
@@ -174,6 +174,29 @@ export const resolveSandboxLauncher = (
   };
 };
 
+const COMPONENTS = ["activity", "activity-alias", "service", "receiver"];
+
+/**
+ * The URL schemes a variant's merged manifest declares in its components'
+ * intent filters, in lower case: a sandbox build registers none of them.
+ */
+export const declaredUrlSchemes = (mergedManifest: string): string[] => {
+  const application = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: "",
+  }).parse(mergedManifest)?.manifest?.application as XmlElement | undefined;
+  return COMPONENTS.flatMap((component) =>
+    asArray(application?.[component]),
+  ).flatMap((element) =>
+    filtersOf(element).flatMap(({ data }) =>
+      data.flatMap((item) => {
+        const scheme = attribute(item, "scheme");
+        return scheme === undefined ? [] : [scheme.toLowerCase()];
+      }),
+    ),
+  );
+};
+
 const xml = (text: string) =>
   text
     .replace(/&/gu, "&amp;")
@@ -209,19 +232,19 @@ const optional = (name: string, value: string | undefined) =>
  * The manifest a sandbox build overlays on the app's. `tools:replace` wins over
  * a channel the app's manifest sets, as an Expo project's does. The launcher's
  * filter, label, icon and static shortcuts move to the sandbox's activity, which
- * also takes the links of `appId`'s URL scheme; the rest of the app's activity
- * stays, so its own links still reach it. `appId` is the scheme's `packageName`,
- * before the `.sandbox` suffix, so a preview link needs no build to derive it.
+ * also takes the links of `urlScheme`, which its `<meta-data>` names for the
+ * build to read; the rest of the app's activity stays, so its own links still
+ * reach it.
  * The dev server is plain http, which a project's network security config can
  * still refuse: the screen then says so.
  */
 export const sandboxManifestOverlay = ({
   channel,
-  appId,
+  urlScheme,
   launcher,
 }: {
   channel: string;
-  appId: string;
+  urlScheme: string;
   launcher: SandboxLauncher;
 }) => `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
@@ -234,9 +257,10 @@ ${filterXml(launcher.filter)}
         <action android:name="android.intent.action.VIEW" />
         <category android:name="android.intent.category.DEFAULT" />
         <category android:name="android.intent.category.BROWSABLE" />
-        <data android:scheme="${sandboxUrlSchemeOf(appId)}" />
+        <data android:scheme="${xml(urlScheme)}" />
       </intent-filter>
-      <meta-data android:name="com.hotupdater.sandbox.HOST_ACTIVITY" android:value="${xml(launcher.name)}" />${
+      <meta-data android:name="com.hotupdater.sandbox.HOST_ACTIVITY" android:value="${xml(launcher.name)}" />
+      <meta-data android:name="${SANDBOX_URL_SCHEME_META_DATA}" android:value="${xml(urlScheme)}" />${
         launcher.shortcuts === undefined
           ? ""
           : `\n      <meta-data android:name="${SHORTCUTS}" android:resource="${xml(launcher.shortcuts)}" />`

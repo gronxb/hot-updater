@@ -137,4 +137,10 @@ export interface NativeBuildRow {
    * registers and never changed. A sandbox build is never the store build.
    */
   readonly is_sandbox: boolean;
+  /**
+   * The URL scheme a sandbox build's artifact registers, which its preview
+   * links open. Null on any other build, and on a sandbox build registered
+   * before it was recorded, which registered `hu-sandbox-<app ID>`.
+   */
+  readonly sandbox_url_scheme: string | null;
 }

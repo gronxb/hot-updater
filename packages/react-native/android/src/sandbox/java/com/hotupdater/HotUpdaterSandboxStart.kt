@@ -25,6 +25,8 @@ internal data class HotUpdaterSandboxStartFacts(
     val flags: Int,
     /** The system recreated this activity from its saved state. */
     val restored: Boolean,
+    /** This build's own URL scheme, or null in a build from before it was recorded. */
+    val ownScheme: String? = null,
 )
 
 internal object HotUpdaterSandboxStart {
@@ -40,7 +42,7 @@ internal object HotUpdaterSandboxStart {
      * such as a notification's extras or a shortcut's data, is for the app.
      */
     fun decide(facts: HotUpdaterSandboxStartFacts): HotUpdaterSandboxStartDecision {
-        if (HotUpdaterSandboxLink.isSandboxScheme(facts.dataScheme)) {
+        if (HotUpdaterSandboxLink.isOwnScheme(facts.dataScheme, facts.ownScheme)) {
             val fromRecents = facts.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
             return if (facts.restored || fromRecents) {
                 HotUpdaterSandboxStartDecision.SHOW_SCREEN

@@ -297,6 +297,40 @@ describe("computeNativeBuildKey", () => {
     },
   );
 
+  it("keys a sandbox build apart by the URL scheme it registers", async () => {
+    const base = {
+      platform: "android",
+      artifactKind: "apk",
+      buildAdapter: "bare",
+      channel: "sandbox-release",
+    } as const;
+    const schemeConfig = {
+      variant: "Release",
+      aab: false,
+      packageName: "com.app",
+      sandbox: true,
+    };
+    const derived = await key({
+      ...base,
+      schemeConfig: { ...schemeConfig, sandboxUrlScheme: "hu-sandbox-com-app" },
+    });
+    const custom = await key({
+      ...base,
+      schemeConfig: { ...schemeConfig, sandboxUrlScheme: "acme-preview" },
+    });
+
+    expect(custom.key).toMatch(/^nbk1:/);
+    expect(custom.key).not.toBe(derived.key);
+    expect(
+      (
+        await key({
+          ...base,
+          schemeConfig: { ...schemeConfig, sandboxUrlScheme: "acme-preview" },
+        })
+      ).key,
+    ).toBe(custom.key);
+  });
+
   it("computes the same key from the same inputs, with and without its hash cache", async () => {
     const first = await key();
     const second = await key();

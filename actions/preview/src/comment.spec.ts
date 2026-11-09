@@ -89,7 +89,12 @@ const ANDROID_QR =
 const IOS_QR =
   "https://github.com/octo/app/raw/hot-updater-preview/pr-12/bbbbbbbbbbbbbbbb.png";
 const sandbox = (link: string | null) =>
-  ({ appId: "com.example.app", link, minBundleId: null }) as const;
+  ({
+    appId: "com.example.app",
+    urlScheme: "hu-sandbox-com-example-app",
+    link,
+    minBundleId: null,
+  }) as const;
 const androidSandbox = { ...android, sandbox: sandbox(ANDROID_LINK) } as const;
 const iosSandboxOnTestFlight = {
   ...ipaOnTestFlight,

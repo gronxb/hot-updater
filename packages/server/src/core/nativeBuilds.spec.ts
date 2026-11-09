@@ -138,6 +138,29 @@ describe("the native build registry", () => {
       { channel: "production", isSandbox: "yes" },
       "isSandbox must be true or false",
     ],
+    [
+      "a sandbox URL scheme on a build of no sandbox",
+      { channel: "production", sandboxUrlScheme: "acme-preview" },
+      "sandboxUrlScheme is a sandbox build's, and this isn't one",
+    ],
+    ...(
+      [
+        "Acme",
+        "1app",
+        "acme_preview",
+        "acme://",
+        "",
+        `a${"b".repeat(255)}`,
+        42,
+      ] as const
+    ).map(
+      (sandboxUrlScheme) =>
+        [
+          `a sandbox URL scheme of ${JSON.stringify(sandboxUrlScheme)}`,
+          { channel: "sandbox-release", isSandbox: true, sandboxUrlScheme },
+          "sandboxUrlScheme must be a URL scheme in lower case, up to 255 characters, or null",
+        ] as const,
+    ),
   ] as const)("refuses %s", async (_, overrides, message) => {
     const core = setup();
     await expect(
@@ -148,6 +171,30 @@ describe("the native build registry", () => {
       new NativeBuildInputError(`Invalid native build: ${message}.`),
     );
     expect(await core.getNativeBuild(buildId(1))).toBeNull();
+  });
+
+  it("records the URL scheme a sandbox build's artifact registers, and null without one", async () => {
+    const core = setup();
+    const custom = await core.registerNativeBuild(
+      registration(1, {
+        channel: "sandbox-release",
+        isSandbox: true,
+        sandboxUrlScheme: "acme.preview+qa",
+      }),
+    );
+    // An RC CLI sends no scheme: its build registered the derived one.
+    const legacy = await core.registerNativeBuild(
+      registration(2, { channel: "sandbox-release", isSandbox: true }),
+    );
+    const plain = await core.registerNativeBuild(
+      registration(3, { sandboxUrlScheme: null }),
+    );
+
+    expect(custom.sandbox_url_scheme).toBe("acme.preview+qa");
+    expect(legacy.sandbox_url_scheme).toBeNull();
+    expect(plain.sandbox_url_scheme).toBeNull();
+    expect(await core.getNativeBuild(buildId(1))).toEqual(custom);
+    expect(await core.getNativeBuild(buildId(2))).toEqual(legacy);
   });
 
   it("finds the newest build of a platform, channel, and fingerprint", async () => {

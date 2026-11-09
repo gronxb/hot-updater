@@ -125,6 +125,7 @@ model native_builds {
   submitted_version String? @db.VarChar(255)
   is_store_build Boolean
   is_sandbox Boolean
+  sandbox_url_scheme String? @db.VarChar(255)
   store_build_scope_key String? @db.VarChar(2048)
   hu_v BigInt @default(0) @map("_v")
   @@id([id])

@@ -333,10 +333,37 @@ describe("native-build import", () => {
 
       expect(process.exitCode).toBeUndefined();
       const { nativeBuild } = printedJson(stdout);
-      expect(nativeBuild).toMatchObject({ is_sandbox: true });
+      expect(nativeBuild).toMatchObject({
+        is_sandbox: true,
+        sandbox_url_scheme: "hu-sandbox-com-example-app",
+      });
       await expect(
         harness.core.getNativeBuild(nativeBuild.id),
-      ).resolves.toMatchObject({ is_sandbox: true });
+      ).resolves.toMatchObject({
+        is_sandbox: true,
+        sandbox_url_scheme: "hu-sandbox-com-example-app",
+      });
+    });
+
+    it("records the URL scheme the artifact registers, which a scheme set", async () => {
+      const file = await writeArtifact(
+        dir,
+        "sandbox-custom.aab",
+        aab({
+          "base/manifest/AndroidManifest.xml": fixture("sandbox-custom.pb"),
+          "base/dex/classes.dex": fixture("sandbox.dex"),
+        }),
+      );
+      await handleNativeBuildImport(file, { json: true });
+
+      expect(process.exitCode).toBeUndefined();
+      const { nativeBuild } = printedJson(stdout);
+      await expect(
+        harness.core.getNativeBuild(nativeBuild.id),
+      ).resolves.toMatchObject({
+        is_sandbox: true,
+        sandbox_url_scheme: "acme-preview",
+      });
     });
 
     it("refuses a sandbox build on another channel", async () => {

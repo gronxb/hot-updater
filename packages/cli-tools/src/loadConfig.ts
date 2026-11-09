@@ -4,12 +4,18 @@ import type {
   AnyHotUpdaterPlugin,
   ConfigInput,
   ConfiguredDatabase,
+  NativeBuildAndroidScheme,
+  NativeBuildIosScheme,
   Platform,
   RequiredDeep,
   SecretsAdapter,
   SigningConfig,
   StorageAdapter,
 } from "@hot-updater/plugin-core";
+import {
+  isConfigurableSandboxUrlScheme,
+  sandboxUrlSchemeOf,
+} from "@hot-updater/protocol/native-artifact";
 import { mergeWith } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
@@ -107,9 +113,41 @@ const getDefaultConfig = (): Omit<ConfigInput, "database" | "storage"> => {
   };
 };
 
+/**
+ * A scheme's `sandbox` as the CLI reads it: whether the build is a sandbox
+ * build, and the URL scheme it registers, the configured `urlScheme` or the
+ * one derived from the app's ID, or null for a build of no sandbox. A loaded
+ * config sets both.
+ */
+export interface ResolvedSandbox {
+  sandbox?: boolean;
+  sandboxUrlScheme?: string | null;
+}
+
+/** An iOS `nativeBuild` scheme with its `sandbox` resolved. */
+export type ResolvedNativeBuildIosScheme = Omit<
+  NativeBuildIosScheme,
+  "sandbox"
+> &
+  ResolvedSandbox;
+
+/** An Android `nativeBuild` scheme with its `sandbox` resolved. */
+export type ResolvedNativeBuildAndroidScheme = Omit<
+  NativeBuildAndroidScheme,
+  "sandbox"
+> &
+  ResolvedSandbox;
+
 export type ConfigResponse = RequiredDeep<
-  Omit<ConfigInput, "database" | "storage" | "plugins" | "signing" | "secrets">
+  Omit<
+    ConfigInput,
+    "database" | "storage" | "plugins" | "signing" | "secrets" | "nativeBuild"
+  >
 > & {
+  nativeBuild: {
+    android: Record<string, RequiredDeep<ResolvedNativeBuildAndroidScheme>>;
+    ios: Record<string, RequiredDeep<ResolvedNativeBuildIosScheme>>;
+  };
   /** The server's database, or `standaloneRepository(...)`; absent when the config names none. */
   database?: ConfiguredDatabase;
   /** Where the CLI uploads bundles; absent when the config names none. */
@@ -266,6 +304,76 @@ const buildSecretNames = (config: Partial<ConfigInput>): string[] => {
 };
 
 /**
+ * `sandbox` of the scheme `name` resolved: `true` or an object turns it on,
+ * and its URL scheme is `urlScheme`, or the one derived from `appId`. A
+ * `urlScheme` no sandbox can register stops the config from loading.
+ */
+const resolveSandbox = (
+  sandbox: NativeBuildIosScheme["sandbox"] | undefined,
+  appId: string | undefined,
+  name: string,
+): Required<ResolvedSandbox> => {
+  if (sandbox !== true && (typeof sandbox !== "object" || sandbox === null)) {
+    return { sandbox: false, sandboxUrlScheme: null };
+  }
+  const urlScheme = sandbox === true ? undefined : sandbox.urlScheme;
+  if (urlScheme === undefined) {
+    return {
+      sandbox: true,
+      sandboxUrlScheme: appId ? sandboxUrlSchemeOf(appId) : null,
+    };
+  }
+  if (
+    typeof urlScheme !== "string" ||
+    !isConfigurableSandboxUrlScheme(urlScheme)
+  ) {
+    throw new Error(
+      `${name}: sandbox.urlScheme ${JSON.stringify(urlScheme)} isn't a URL scheme a sandbox build can register.\nUse lower case: a letter, then up to 63 letters, digits, +, . or -, and not http, https, file, data, javascript, true or false.`,
+    );
+  }
+  return { sandbox: true, sandboxUrlScheme: urlScheme };
+};
+
+/** The config's `nativeBuild` with each scheme's `sandbox` resolved. */
+const resolveNativeBuild = (
+  nativeBuild: ConfigInput["nativeBuild"],
+): ConfigResponse["nativeBuild"] => {
+  const resolveSchemes = <T extends { sandbox?: unknown }>(
+    schemes: Record<string, T> | undefined,
+    platform: Platform,
+    appIdOf: (scheme: T) => string | undefined,
+  ) =>
+    Object.fromEntries(
+      Object.entries(schemes ?? {}).map(([name, scheme]) => [
+        name,
+        scheme
+          ? {
+              ...scheme,
+              ...resolveSandbox(
+                scheme.sandbox as NativeBuildIosScheme["sandbox"],
+                appIdOf(scheme),
+                `nativeBuild.${platform}.${name}`,
+              ),
+            }
+          : scheme,
+      ]),
+    );
+  return {
+    ...nativeBuild,
+    android: resolveSchemes(
+      nativeBuild?.android,
+      "android",
+      (scheme) => scheme.packageName,
+    ),
+    ios: resolveSchemes(
+      nativeBuild?.ios,
+      "ios",
+      (scheme) => scheme.bundleIdentifier,
+    ),
+  } as ConfigResponse["nativeBuild"];
+};
+
+/**
  * The config with its defaults. Its `secrets` adapter fills `scopes` not yet
  * filled, which the `secret()` its evaluation created read, and becomes the
  * default of credential resolvers.
@@ -285,6 +393,7 @@ const resolveConfig = (
   setConfiguredSecrets(secrets);
   const resolved = {
     ...mergedConfig,
+    nativeBuild: resolveNativeBuild(mergedConfig.nativeBuild),
     secrets,
   } as ConfigResponse;
   Object.defineProperty(resolved, DEPLOY_SECRET_NAMES, {

@@ -15,6 +15,50 @@ export const SANDBOX_CODE_MARKER = "HOT_UPDATER_SANDBOX_NATIVE_LAYER";
 /** The Info.plist key an iOS sandbox build declares itself with. */
 export const SANDBOX_INFO_PLIST_KEY = "HOT_UPDATER_SANDBOX";
 
+/**
+ * The Info.plist key that records the URL scheme an iOS sandbox build
+ * registers in its `SANDBOX_URL_TYPE_NAME` URL type: the build reads its own
+ * scheme from it, and a later patch knows which scheme is the sandbox's.
+ */
+export const SANDBOX_URL_SCHEME_INFO_PLIST_KEY =
+  "HOT_UPDATER_SANDBOX_URL_SCHEME";
+
+const URL_SCHEME_SYNTAX = /^[a-z][a-z0-9+.-]*$/;
+
+/**
+ * Whether a value is a URL scheme in lower-case ASCII, as written: what a
+ * build records, read before any lower-casing.
+ */
+export const isRecordedUrlSchemeSyntax = (value: unknown): value is string =>
+  typeof value === "string" && URL_SCHEME_SYNTAX.test(value);
+
+/**
+ * The URL scheme an iOS sandbox build registers, by one rule its patch, its
+ * reader, and its own code apply alike. `recorded` is the Info.plist's
+ * `SANDBOX_URL_SCHEME_INFO_PLIST_KEY`, undefined when the key is absent, and
+ * `namedTypes` its URL types named `SANDBOX_URL_TYPE_NAME`.
+ * - Absent: a prerelease's build, which recorded none. Undefined: the caller
+ *   reads it the way that build was read.
+ * - Present: a scheme in lower-case ASCII, as written, that the one URL type
+ *   of the name holds alone. Anything else is null, with no fallback.
+ */
+export const recordedSandboxUrlScheme = (
+  recorded: unknown,
+  namedTypes: readonly unknown[],
+): string | null | undefined => {
+  if (recorded === undefined) return undefined;
+  if (!isRecordedUrlSchemeSyntax(recorded) || namedTypes.length !== 1) {
+    return null;
+  }
+  const schemes = (namedTypes[0] as { CFBundleURLSchemes?: unknown } | null)
+    ?.CFBundleURLSchemes;
+  return Array.isArray(schemes) &&
+    schemes.length === 1 &&
+    schemes[0] === recorded
+    ? recorded
+    : null;
+};
+
 /** The `<meta-data>` an Android sandbox build declares itself with. */
 export const SANDBOX_META_DATA = "com.hotupdater.SANDBOX";
 
@@ -23,6 +67,18 @@ export const SANDBOX_ACTIVITY = "com.hotupdater.HotUpdaterSandboxActivity";
 
 /** The `applicationIdSuffix` an Android sandbox build appends. */
 export const SANDBOX_APPLICATION_ID_SUFFIX = ".sandbox";
+
+/**
+ * The `CFBundleURLName` of the URL type an iOS sandbox build registers its URL
+ * scheme with, which the build reads its own scheme from.
+ */
+export const SANDBOX_URL_TYPE_NAME = "hot-updater-sandbox";
+
+/**
+ * The `<meta-data>` of `SANDBOX_ACTIVITY` that names the URL scheme an Android
+ * sandbox build registers, which the build reads its own scheme from.
+ */
+export const SANDBOX_URL_SCHEME_META_DATA = "com.hotupdater.sandbox.URL_SCHEME";
 
 const SANDBOX_CHANNEL_PREFIX = "sandbox-";
 const SANDBOX_URL_SCHEME_PREFIX = "hu-sandbox-";
@@ -40,15 +96,40 @@ export const isSandboxChannel = (channel: string): boolean =>
   channel.startsWith(SANDBOX_CHANNEL_PREFIX);
 
 /**
- * The URL scheme only a sandbox build registers, derived from the app's ID:
- * the app's own scheme would ask which app to open beside the store app.
+ * The URL scheme a sandbox build registers when its scheme sets none, derived
+ * from the app's ID: the app's own scheme would ask which app to open beside
+ * the store app.
  */
 export const sandboxUrlSchemeOf = (appId: string): string =>
   `${SANDBOX_URL_SCHEME_PREFIX}${appId.toLowerCase().replace(/[^a-z0-9]+/gu, "-")}`;
 
-/** Whether a URL scheme is one a sandbox build registers. */
+/**
+ * Whether a URL scheme has the prefix of the derived one: how an artifact built
+ * before the URL scheme could be set is read, which registered no other.
+ */
 export const isSandboxUrlScheme = (scheme: string): boolean =>
   scheme.toLowerCase().startsWith(SANDBOX_URL_SCHEME_PREFIX);
+
+const CONFIGURED_URL_SCHEME = /^[a-z][a-z0-9+.-]{0,63}$/u;
+const RESERVED_URL_SCHEMES: ReadonlySet<string> = new Set([
+  "http",
+  "https",
+  "file",
+  "data",
+  "javascript",
+  // aapt compiles these as booleans in an Android `<meta-data>` value.
+  "true",
+  "false",
+]);
+
+/**
+ * Whether `sandbox: { urlScheme }` can name a URL scheme: lower case, a letter
+ * then up to 63 letters, digits, `+`, `.` or `-`, none the system or a browser
+ * owns, and neither `true` nor `false`, which Android's manifest can't hold as
+ * a string.
+ */
+export const isConfigurableSandboxUrlScheme = (urlScheme: string): boolean =>
+  CONFIGURED_URL_SCHEME.test(urlScheme) && !RESERVED_URL_SCHEMES.has(urlScheme);
 
 /** What a preview link asks a sandbox build to run. */
 export interface PreviewLink {
@@ -60,36 +141,49 @@ export interface PreviewLink {
 }
 
 /**
- * The link a preview QR holds. `appId` is the scheme's `bundleIdentifier` or
- * `packageName`: the ID before the Android sandbox's `.sandbox` suffix.
+ * The link a preview QR holds. `urlScheme` is the one the sandbox build
+ * registered; without it, the one derived from `appId`, the scheme's
+ * `bundleIdentifier` or `packageName`: the ID before the Android sandbox's
+ * `.sandbox` suffix.
  */
 export const createPreviewLink = ({
+  urlScheme,
   appId,
   channel,
   fingerprintHash,
 }: {
-  readonly appId: string;
   readonly channel: string;
   readonly fingerprintHash: string;
-}): string => {
+} & (
+  | { readonly urlScheme: string; readonly appId?: string }
+  | { readonly urlScheme?: undefined; readonly appId: string }
+)): string => {
   assertCanonicalChannelName(channel);
-  return `${sandboxUrlSchemeOf(appId)}://hot-updater/preview?channel=${encodeURIComponent(channel)}&fingerprint=${encodeURIComponent(fingerprintHash)}`;
+  const scheme = urlScheme ?? sandboxUrlSchemeOf(appId as string);
+  return `${scheme.toLowerCase()}://hot-updater/preview?channel=${encodeURIComponent(channel)}&fingerprint=${encodeURIComponent(fingerprintHash)}`;
 };
 
+/** Any URL scheme: which app's it is, the app that opens the link decides. */
 const PREVIEW_LINK =
-  /^(hu-sandbox-[a-z0-9-]+):\/\/hot-updater\/preview\?([^#]*)$/iu;
+  /^([a-z][a-z0-9+.-]*):\/\/hot-updater\/preview\?([^#]*)$/iu;
+/**
+ * A URL scheme in ASCII alone: case folding lets `/iu` match `K` (Kelvin) or
+ * `ſ` as a letter.
+ */
+const ASCII_URL_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*$/;
 const MAX_FINGERPRINT_LENGTH = 256;
 
 /**
  * What a preview link says, or null for anything else: another shape, a
- * repeated or missing parameter, or a channel no release can target. Native
- * code parses it the same way before any JavaScript runs, in
+ * repeated or missing parameter, or a channel no release can target. It takes
+ * any URL scheme: a sandbox build refuses a link of another scheme than its
+ * own. Native code parses it the same way before any JavaScript runs, in
  * HotUpdaterSandboxLink, and shares the vectors in test-utils'
  * `sandbox-preview-links.json`.
  */
 export const parsePreviewLink = (link: string): PreviewLink | null => {
   const match = PREVIEW_LINK.exec(link);
-  if (match === null) return null;
+  if (match === null || !ASCII_URL_SCHEME.test(match[1]!)) return null;
   const parameters = new Map<string, string>();
   for (const parameter of match[2]!.split("&")) {
     const separator = parameter.indexOf("=");

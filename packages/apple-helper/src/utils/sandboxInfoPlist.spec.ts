@@ -217,6 +217,270 @@ describe.runIf(process.platform === "darwin")("patching with plutil", () => {
     });
   });
 
+  it("registers the URL scheme the scheme sets, in the URL type the build reads it from", async () => {
+    await patchSandboxArchive({
+      archivePath: archive,
+      appPath: app,
+      schemeConfig: { ...scheme, sandboxUrlScheme: "acme-preview" },
+    });
+    expect(read(path.join(app, "Info.plist")).CFBundleURLTypes).toEqual([
+      { CFBundleURLSchemes: ["myapp"] },
+      {
+        CFBundleURLName: "hot-updater-sandbox",
+        CFBundleURLSchemes: ["acme-preview"],
+      },
+    ]);
+  });
+
+  it("patches an app it patched before with one sandbox URL type, the latest", async () => {
+    await patchSandboxArchive({
+      archivePath: archive,
+      appPath: app,
+      schemeConfig: scheme,
+    });
+    await patchSandboxArchive({
+      archivePath: archive,
+      appPath: app,
+      schemeConfig: { ...scheme, sandboxUrlScheme: "acme-preview" },
+    });
+    expect(read(path.join(app, "Info.plist")).CFBundleURLTypes).toEqual([
+      { CFBundleURLSchemes: ["myapp"] },
+      {
+        CFBundleURLName: "hot-updater-sandbox",
+        CFBundleURLSchemes: ["acme-preview"],
+      },
+    ]);
+  });
+
+  it("re-patches with a changed scheme when the sandbox's URL type holds only its own", async () => {
+    await patchSandboxArchive({
+      archivePath: archive,
+      appPath: app,
+      schemeConfig: { ...scheme, sandboxUrlScheme: "old-preview" },
+    });
+    await patchSandboxArchive({
+      archivePath: archive,
+      appPath: app,
+      schemeConfig: { ...scheme, sandboxUrlScheme: "new-preview" },
+    });
+    expect(read(path.join(app, "Info.plist")).CFBundleURLTypes).toEqual([
+      { CFBundleURLSchemes: ["myapp"] },
+      {
+        CFBundleURLName: "hot-updater-sandbox",
+        CFBundleURLSchemes: ["new-preview"],
+      },
+    ]);
+  });
+
+  describe("re-patching an app an earlier patch made a sandbox app", () => {
+    const appPlist = () => path.join(app, "Info.plist");
+    /** A prerelease's patch, which recorded no scheme. */
+    const ABSENT = Symbol("absent");
+    /** A patched plist: the marker, the recorded scheme unless absent, and these URL types. */
+    const patchedPlist = async (
+      sandboxTypes: unknown[],
+      recorded: unknown = "old-preview",
+    ) =>
+      writePlist(appPlist(), {
+        CFBundleIdentifier: "com.example.App",
+        HOT_UPDATER_SANDBOX: true,
+        ...(recorded === ABSENT
+          ? {}
+          : { HOT_UPDATER_SANDBOX_URL_SCHEME: recorded }),
+        CFBundleURLTypes: [{ CFBundleURLSchemes: ["myapp"] }, ...sandboxTypes],
+      });
+    const named = (schemes: string[]) => ({
+      CFBundleURLName: "hot-updater-sandbox",
+      CFBundleURLSchemes: schemes,
+    });
+    const patch = (sandboxUrlScheme: string) =>
+      patchSandboxArchive({
+        archivePath: archive,
+        appPath: app,
+        schemeConfig: { ...scheme, sandboxUrlScheme },
+      });
+
+    const keep = (scheme: string) =>
+      `Keep exactly one hot-updater-sandbox URL type, holding only ${scheme}, and move the rest to a URL type of the app's own.`;
+
+    it.each([
+      [
+        "our scheme, then the app's",
+        [named(["old-preview", "app-login"])],
+        "The app's hot-updater-sandbox URL type holds old-preview, app-login.",
+      ],
+      [
+        "the app's scheme, then ours",
+        [named(["app-login", "old-preview"])],
+        "The app's hot-updater-sandbox URL type holds app-login, old-preview.",
+      ],
+      [
+        "two URL types of the name",
+        [named([]), named(["app-login"])],
+        "The app has 2 hot-updater-sandbox URL types, holding app-login.",
+      ],
+      [
+        "two URL types of the name, each with our scheme",
+        [named(["old-preview"]), named(["old-preview"])],
+        "The app has 2 hot-updater-sandbox URL types, holding old-preview, old-preview.",
+      ],
+      [
+        "no URL type of the name, though it recorded a scheme",
+        [],
+        "The app has 0 hot-updater-sandbox URL types.",
+      ],
+      [
+        "an empty list",
+        [named([])],
+        "The app's hot-updater-sandbox URL type holds no scheme.",
+      ],
+      [
+        "our scheme twice",
+        [named(["old-preview", "old-preview"])],
+        "The app's hot-updater-sandbox URL type holds old-preview, old-preview.",
+      ],
+      [
+        "another scheme than the one recorded",
+        [named(["app-login"])],
+        "The app's hot-updater-sandbox URL type holds app-login.",
+      ],
+    ])(
+      "refuses %s, naming what it holds, and patches nothing",
+      async (_, sandboxTypes, found) => {
+        await patchedPlist(sandboxTypes);
+        const before = await fs.readFile(appPlist());
+        const message = `${found}\n${keep("old-preview")}`;
+
+        await expect(patch("new-preview")).rejects.toMatchObject({
+          message,
+          hint: message,
+        });
+        expect(await fs.readFile(appPlist())).toEqual(before);
+      },
+    );
+
+    it.each([
+      ["an empty string", "", '""', ["hu-sandbox-com-example-app"]],
+      [
+        "a Kelvin sign",
+        "\u212A-preview",
+        '"\u212A-preview"',
+        ["\u212A-preview"],
+      ],
+      ["upper case", "Old-Preview", '"Old-Preview"', ["Old-Preview"]],
+      ["a number", 42, "42", ["old-preview"]],
+    ])(
+      "refuses a recorded scheme of %s, with no fallback, and patches nothing",
+      async (_, recorded, shown, schemes) => {
+        await patchedPlist([named(schemes)], recorded);
+        const before = await fs.readFile(appPlist());
+        const message = `The app's Info.plist records sandbox URL scheme ${shown} in HOT_UPDATER_SANDBOX_URL_SCHEME, which isn't a URL scheme.\nBuild the app again: a new build records none.`;
+
+        await expect(patch("new-preview")).rejects.toMatchObject({ message });
+        expect(await fs.readFile(appPlist())).toEqual(before);
+      },
+    );
+
+    it("refuses a prerelease's patched plist whose sandbox URL type isn't the derived scheme alone", async () => {
+      await patchedPlist([named(["app-login"])], ABSENT);
+      const before = await fs.readFile(appPlist());
+      const message = `The app's hot-updater-sandbox URL type holds app-login.\n${keep("hu-sandbox-com-example-app")}`;
+
+      await expect(patch("new-preview")).rejects.toMatchObject({ message });
+      expect(await fs.readFile(appPlist())).toEqual(before);
+    });
+
+    it("re-patches a prerelease's patched plist, which recorded no scheme, from its derived one", async () => {
+      await patchedPlist([named(["hu-sandbox-com-example-app"])], ABSENT);
+      await patch("new-preview");
+
+      expect(read(appPlist())).toMatchObject({
+        HOT_UPDATER_SANDBOX_URL_SCHEME: "new-preview",
+        CFBundleURLTypes: [
+          { CFBundleURLSchemes: ["myapp"] },
+          named(["new-preview"]),
+        ],
+      });
+    });
+
+    it.each([
+      ["the same scheme", "old-preview"],
+      ["a changed scheme", "new-preview"],
+    ])("re-patches with %s, and records it", async (_, urlScheme) => {
+      await patchedPlist([named(["old-preview"])]);
+      await patch(urlScheme);
+
+      expect(read(appPlist())).toMatchObject({
+        HOT_UPDATER_SANDBOX_URL_SCHEME: urlScheme,
+        CFBundleURLTypes: [
+          { CFBundleURLSchemes: ["myapp"] },
+          named([urlScheme]),
+        ],
+      });
+    });
+
+    it("records the scheme of a first patch, and takes its own on the next", async () => {
+      await patch("old-preview");
+      expect(read(appPlist()).HOT_UPDATER_SANDBOX_URL_SCHEME).toBe(
+        "old-preview",
+      );
+      await patch("old-preview");
+      expect(read(appPlist()).CFBundleURLTypes).toEqual([
+        { CFBundleURLSchemes: ["myapp"] },
+        named(["old-preview"]),
+      ]);
+    });
+  });
+
+  it.each([
+    ["holds the sandbox's scheme", ["acme-preview", "app-login"]],
+    ["holds another scheme", ["app-login"]],
+  ])(
+    "refuses an app whose own URL type of the sandbox's name %s, and patches nothing",
+    async (_, schemes) => {
+      const appPlist = path.join(app, "Info.plist");
+      await writePlist(appPlist, {
+        CFBundleIdentifier: "com.example.App",
+        CFBundleURLTypes: [
+          {
+            CFBundleURLName: "hot-updater-sandbox",
+            CFBundleURLSchemes: schemes,
+          },
+        ],
+      });
+      const before = await fs.readFile(appPlist);
+      const message =
+        "The app has a URL type named hot-updater-sandbox, the name a sandbox build registers its URL scheme under.\nRename the app's URL type.";
+
+      await expect(
+        patchSandboxArchive({
+          archivePath: archive,
+          appPath: app,
+          schemeConfig: { ...scheme, sandboxUrlScheme: "acme-preview" },
+        }),
+      ).rejects.toMatchObject({ message, hint: message });
+      expect(await fs.readFile(appPlist)).toEqual(before);
+    },
+  );
+
+  it.each(["myapp", "MyApp"])(
+    "refuses a URL scheme the app registers itself, as %s, and patches nothing",
+    async (urlScheme) => {
+      const appPlist = path.join(app, "Info.plist");
+      const before = await fs.readFile(appPlist);
+      const message = `The sandbox scheme release registers URL scheme ${urlScheme}, which the app registers itself.\nSet sandbox.urlScheme to a scheme the app doesn't register.`;
+
+      await expect(
+        patchSandboxArchive({
+          archivePath: archive,
+          appPath: app,
+          schemeConfig: { ...scheme, sandboxUrlScheme: urlScheme },
+        }),
+      ).rejects.toMatchObject({ message, hint: message });
+      expect(await fs.readFile(appPlist)).toEqual(before);
+    },
+  );
+
   it("refuses an app Xcode built with another ID than bundleIdentifier, and patches nothing", async () => {
     const appPlist = path.join(app, "Info.plist");
     const before = await fs.readFile(appPlist);

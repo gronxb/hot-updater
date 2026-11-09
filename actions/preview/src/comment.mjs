@@ -30,7 +30,9 @@ const CREDIT = "Preview by [hot-updater](https://hot-updater.dev)";
  *   the pull request's native code differs from its sandbox builds'.
  *
  * @typedef {object} SandboxPreview
- * @property {string} appId The ID the link's URL scheme derives from.
+ * @property {string} appId The scheme's app ID, before Android's `.sandbox` suffix.
+ * @property {string} urlScheme The URL scheme the sandbox build registers,
+ *   which its link opens.
  * @property {string | null} link The link a QR code holds; a build matched by
  *   app version has none, since a link names a fingerprint.
  * @property {string | null} minBundleId The oldest bundle ID the build runs.
@@ -105,13 +107,14 @@ export const nativeBuildInstallUrl = (consoleUrl, { id, artifactKind }) =>
     : nativeBuildDownloadLink(consoleUrl, id);
 
 /**
- * The link a sandbox build opens a channel from. `@hot-updater/protocol` has the
- * same `createPreviewLink`, which an action, with no dependencies, can't import;
- * the specs hold the two together.
- * @param {{ appId: string, channel: string, fingerprintHash: string }} link
+ * The link a sandbox build opens a channel from, of the URL scheme the build
+ * registered. `@hot-updater/protocol` has the same `createPreviewLink`, which
+ * an action, with no dependencies, can't import; the specs hold the two
+ * together.
+ * @param {{ urlScheme: string, channel: string, fingerprintHash: string }} link
  */
-export const previewLink = ({ appId, channel, fingerprintHash }) =>
-  `hu-sandbox-${appId.toLowerCase().replace(/[^a-z0-9]+/gu, "-")}://hot-updater/preview?channel=${encodeURIComponent(channel)}&fingerprint=${encodeURIComponent(fingerprintHash)}`;
+export const previewLink = ({ urlScheme, channel, fingerprintHash }) =>
+  `${urlScheme.toLowerCase()}://hot-updater/preview?channel=${encodeURIComponent(channel)}&fingerprint=${encodeURIComponent(fingerprintHash)}`;
 
 /**
  * What each QR code of the comment holds: a sandbox build's link, which opens

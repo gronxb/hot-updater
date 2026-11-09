@@ -87,8 +87,8 @@ outputs:
       artifactKind), built, bundleId, installUrl, downloadUrl (null when
       android-download-url or ios-download-url is empty), with android-submit
       or ios-submit, store (destination, url, version, state, expiresAtMs,
-      reusable), on a sandbox build, sandbox (appId, link, minBundleId), and
-      after a fallback, fallbackScheme.
+      reusable), on a sandbox build, sandbox (appId, urlScheme, link,
+      minBundleId), and after a fallback, fallbackScheme.
     value: ${{ steps.run.outputs.previews }}
   android-install-url:
     description: >-

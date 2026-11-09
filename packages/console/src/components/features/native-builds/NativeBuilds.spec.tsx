@@ -99,6 +99,7 @@ const build = (overrides: Partial<NativeBuildRow> = {}): NativeBuildRow => ({
   submitted_version: null,
   is_store_build: false,
   is_sandbox: false,
+  sandbox_url_scheme: null,
   ...overrides,
 });
 

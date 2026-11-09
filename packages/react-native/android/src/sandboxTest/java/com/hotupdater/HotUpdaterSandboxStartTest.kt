@@ -38,6 +38,15 @@ class HotUpdaterSandboxStartTest {
     }
 
     @Test
+    fun `only its own scheme's link stops, and another is the app's`() {
+        val own = sandboxLink.copy(dataScheme = "acme-preview", ownScheme = "acme-preview")
+        assertEquals(HotUpdaterSandboxStartDecision.SHOW_LINK, decide(own))
+        assertEquals(HotUpdaterSandboxStartDecision.SHOW_LINK, decide(own.copy(dataScheme = "ACME-Preview")))
+        val derived = sandboxLink.copy(ownScheme = "acme-preview")
+        assertEquals(HotUpdaterSandboxStartDecision.OPEN_HOST, decide(derived))
+    }
+
+    @Test
     fun `a sandbox link always stops, whatever flags it sets`() {
         assertEquals(HotUpdaterSandboxStartDecision.SHOW_LINK, decide(sandboxLink))
         val forged = sandboxLink.copy(flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)

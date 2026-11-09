@@ -287,6 +287,8 @@ internal class HotUpdaterSandboxCoordinator(
     private val lock: HotUpdaterSandboxLock = HotUpdaterSandboxLock.process,
     /** Where the shelf's file work runs, in order, off the main thread. */
     private val shelfContext: CoroutineContext = Executors.newSingleThreadExecutor().asCoroutineDispatcher(),
+    /** Whether a link's scheme is this build's: another app's link isn't for it. */
+    private val isOwnScheme: (String) -> Boolean = { HotUpdaterSandboxLink.isOwnScheme(it, null) },
 ) {
     /** The Downloaded list as the shelf last reported it: the screen reads only this. */
     private var downloaded = emptyList<HotUpdaterSandboxShelfEntry>()
@@ -895,7 +897,7 @@ internal class HotUpdaterSandboxCoordinator(
             publish(state.copy(phase = HotUpdaterSandboxPhase.Idle))
             return
         }
-        val link = HotUpdaterSandboxLink.parse(url)
+        val link = HotUpdaterSandboxLink.parse(url)?.takeIf { isOwnScheme(it.urlScheme) }
         if (link == null) {
             remove(url)
             refusedLink = url

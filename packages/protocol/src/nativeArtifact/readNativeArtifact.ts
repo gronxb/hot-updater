@@ -3,16 +3,21 @@ import {
   parseBinaryManifest,
   parseProtoManifest,
   readAndroidManifest,
+  type AndroidManifestInfo,
   type ManifestValue,
 } from "./androidManifest";
 import { type ByteSource, NativeArtifactError } from "./byteSource";
 import { parsePlist } from "./plist";
 import {
   isSandboxUrlScheme,
+  SANDBOX_URL_SCHEME_INFO_PLIST_KEY,
+  SANDBOX_URL_SCHEME_META_DATA,
+  SANDBOX_URL_TYPE_NAME,
   SANDBOX_ACTIVITY,
   SANDBOX_CODE_MARKER,
   SANDBOX_INFO_PLIST_KEY,
   SANDBOX_META_DATA,
+  recordedSandboxUrlScheme,
 } from "./sandbox";
 import { readDexStrings, readMachOStrings } from "./strings";
 import {
@@ -226,9 +231,7 @@ const readAndroid = async (
     },
     entry: {
       launchers: manifest.launchers,
-      sandboxUrlScheme:
-        manifest.urlSchemes.get(SANDBOX_ACTIVITY)?.find(isSandboxUrlScheme) ??
-        null,
+      sandboxUrlScheme: androidSandboxUrlScheme(manifest),
     },
     builtInBundle:
       bundle === undefined
@@ -237,21 +240,60 @@ const readAndroid = async (
   };
 };
 
-/** The sandbox URL scheme in an Info.plist's `CFBundleURLTypes`, or null. */
+/**
+ * The URL scheme an Android sandbox build registers, or null: the one its
+ * activity's `SANDBOX_URL_SCHEME_META_DATA` names, when the activity's `VIEW`
+ * filters take it too. An artifact built before the meta-data takes the one
+ * with the derived scheme's prefix.
+ */
+const androidSandboxUrlScheme = (
+  manifest: AndroidManifestInfo,
+): string | null => {
+  const schemes = manifest.urlSchemes.get(SANDBOX_ACTIVITY) ?? [];
+  const declared = manifest.componentMetaData
+    .get(SANDBOX_ACTIVITY)
+    ?.get(SANDBOX_URL_SCHEME_META_DATA);
+  if (declared === undefined) {
+    return schemes.find(isSandboxUrlScheme) ?? null;
+  }
+  if (declared.type !== "string") return null;
+  return schemes.includes(declared.value) ? declared.value : null;
+};
+
+/**
+ * The sandbox URL scheme of an Info.plist, or null: the one
+ * `SANDBOX_URL_SCHEME_INFO_PLIST_KEY` records, by `recordedSandboxUrlScheme`'s
+ * rule. A prerelease's artifact, with no key, gives its named URL type's one
+ * scheme, or, with no named type, one with the derived scheme's prefix.
+ */
 const sandboxUrlSchemeIn = (info: Record<string, unknown>): string | null => {
   const types = info["CFBundleURLTypes"];
   if (!Array.isArray(types)) return null;
-  for (const type of types) {
+  const schemesOf = (type: unknown): string[] => {
     const schemes = (type as { CFBundleURLSchemes?: unknown } | null)
       ?.CFBundleURLSchemes;
-    if (!Array.isArray(schemes)) continue;
-    for (const scheme of schemes) {
-      if (typeof scheme === "string" && isSandboxUrlScheme(scheme)) {
-        return scheme;
-      }
-    }
+    return Array.isArray(schemes)
+      ? schemes.filter((scheme): scheme is string => typeof scheme === "string")
+      : [];
+  };
+  const named = types.filter(
+    (type) =>
+      (type as { CFBundleURLName?: unknown } | null)?.CFBundleURLName ===
+      SANDBOX_URL_TYPE_NAME,
+  );
+  const recorded = recordedSandboxUrlScheme(
+    SANDBOX_URL_SCHEME_INFO_PLIST_KEY in info
+      ? info[SANDBOX_URL_SCHEME_INFO_PLIST_KEY]
+      : undefined,
+    named,
+  );
+  if (recorded !== undefined) return recorded;
+  if (named.length > 1) return null;
+  if (named.length === 1) {
+    const schemes = schemesOf(named[0]);
+    return schemes.length === 1 ? schemes[0]! : null;
   }
-  return null;
+  return types.flatMap(schemesOf).find(isSandboxUrlScheme) ?? null;
 };
 
 const stringValue = (value: unknown): string | null =>

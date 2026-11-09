@@ -132,6 +132,7 @@ model native_builds {
   submitted_version String?
   is_store_build BigInt
   is_sandbox BigInt
+  sandbox_url_scheme String?
   store_build_scope_key String?
   hu_v BigInt @default(0) @map("_v")
   @@id([id])

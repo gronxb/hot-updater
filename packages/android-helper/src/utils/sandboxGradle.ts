@@ -7,9 +7,11 @@ import { getCwd } from "@hot-updater/cli-tools";
 import {
   SANDBOX_APPLICATION_ID_SUFFIX,
   sandboxChannelOf,
+  sandboxUrlSchemeOf,
 } from "@hot-updater/protocol/native-artifact";
 
 import {
+  declaredUrlSchemes,
   resolveSandboxLauncher,
   sandboxManifestOverlay,
 } from "./sandboxManifest";
@@ -108,6 +110,8 @@ export const withSandboxGradleArgs = async <T>(
     readonly appModuleName: string;
     readonly variant: string;
     readonly packageName?: string;
+    /** The URL scheme the build registers; null derives it from `packageName`. */
+    readonly sandboxUrlScheme?: string | null;
   },
   readEffectiveManifest: () => Promise<string>,
   build: (args: string[]) => Promise<T>,
@@ -124,7 +128,16 @@ export const withSandboxGradleArgs = async <T>(
       `The sandbox scheme ${scheme.hotUpdaterSchemeName} sets no packageName, which its URL scheme comes from.\nSet packageName on the scheme.`,
     );
   }
-  const launcher = resolveSandboxLauncher(await readEffectiveManifest());
+  const effectiveManifest = await readEffectiveManifest();
+  const launcher = resolveSandboxLauncher(effectiveManifest);
+  const urlScheme =
+    scheme.sandboxUrlScheme ?? sandboxUrlSchemeOf(scheme.packageName);
+  // A scheme the app registers itself would ask which app opens its links.
+  if (declaredUrlSchemes(effectiveManifest).includes(urlScheme.toLowerCase())) {
+    throw new Error(
+      `The sandbox scheme ${scheme.hotUpdaterSchemeName} registers URL scheme ${urlScheme}, which the app registers itself.\nSet sandbox.urlScheme to a scheme the app doesn't register.`,
+    );
+  }
   const directory = await fs.promises.mkdtemp(
     path.join(os.tmpdir(), "hot-updater-sandbox-"),
   );
@@ -135,7 +148,7 @@ export const withSandboxGradleArgs = async <T>(
       overlay,
       sandboxManifestOverlay({
         channel: sandboxChannelOf(scheme.hotUpdaterSchemeName),
-        appId: scheme.packageName,
+        urlScheme,
         launcher,
       }),
     );

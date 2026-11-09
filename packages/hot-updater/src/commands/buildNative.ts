@@ -550,6 +550,8 @@ const buildNativeInternal = async ({
               : await trackBuild(result, upload, {
                   buildKey: cache?.key.key ?? null,
                   sandbox,
+                  // The artifact's, read above: what its links can open.
+                  sandboxUrlScheme: artifact?.entry.sandboxUrlScheme ?? null,
                 });
         if (registered && reused?.source !== "storage" && cache) {
           await rememberTrackedBuild(cache, registered.id);
@@ -1237,7 +1239,11 @@ const stays = (artifactPath: string) =>
 const trackBuild = async (
   result: NativeBuildResult,
   upload: NativeBuildCreateOptions["submit"],
-  options: { readonly buildKey: string | null; readonly sandbox: boolean },
+  options: {
+    readonly buildKey: string | null;
+    readonly sandbox: boolean;
+    readonly sandboxUrlScheme: string | null;
+  },
 ) => {
   try {
     return await registerNativeBuild(result, options);

@@ -17,13 +17,32 @@
       "urlScheme": "hu-sandbox-a",
       "channel": "채널",
       "fingerprintHash": "abc"
+    },
+    {
+      "link": "exampleapp://hot-updater/preview?channel=pr-12&fingerprint=abc",
+      "urlScheme": "exampleapp",
+      "channel": "pr-12",
+      "fingerprintHash": "abc"
+    },
+    {
+      "link": "Acme.Preview+QA-2://hot-updater/preview?channel=pr-12&fingerprint=abc",
+      "urlScheme": "acme.preview+qa-2",
+      "channel": "pr-12",
+      "fingerprintHash": "abc"
     }
   ],
   "invalid": [
     "",
     "pr-12",
-    "exampleapp://hot-updater/preview?channel=pr-12&fingerprint=abc",
-    "hu-sandbox-://hot-updater/preview?channel=pr-12&fingerprint=abc",
+    "://hot-updater/preview?channel=pr-12&fingerprint=abc",
+    "1app://hot-updater/preview?channel=pr-12&fingerprint=abc",
+    "-app://hot-updater/preview?channel=pr-12&fingerprint=abc",
+    "acme_preview://hot-updater/preview?channel=pr-12&fingerprint=abc",
+    "acme preview://hot-updater/preview?channel=pr-12&fingerprint=abc",
+    "acme-preview:/hot-updater/preview?channel=pr-12&fingerprint=abc",
+    "K-preview://hot-updater/preview?channel=pr-12&fingerprint=abc",
+    "ſ-preview://hot-updater/preview?channel=pr-12&fingerprint=abc",
+    "acme-Kqa://hot-updater/preview?channel=pr-12&fingerprint=abc",
     "hu-sandbox-a://other/preview?channel=pr-12&fingerprint=abc",
     "hu-sandbox-a://hot-updater/other?channel=pr-12&fingerprint=abc",
     "hu-sandbox-a://hot-updater/preview",
