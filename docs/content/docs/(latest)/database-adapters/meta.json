@@ -8,6 +8,7 @@
     "aws",
     "firestore",
     "postgres",
+    "neon",
     "azure",
     "---Your own database---",
     "../custom/database/kysely",

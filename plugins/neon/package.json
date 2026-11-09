@@ -35,11 +35,14 @@
   "dependencies": {
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/postgres": "workspace:*",
-    "@hot-updater/storage-s3": "workspace:*"
+    "@hot-updater/storage-s3": "workspace:*",
+    "@neondatabase/serverless": "catalog:db"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "catalog:aws",
     "@aws-sdk/lib-storage": "catalog:aws",
+    "@electric-sql/pglite": "catalog:db",
+    "@hot-updater/server": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "vitest": "catalog:"

@@ -53,6 +53,7 @@ catalogs:
     "@azure/storage-blob": 12.34.0
   db:
     "@electric-sql/pglite": 0.4.1
+    "@neondatabase/serverless": 1.2.0
     "@libsql/client": 0.15.15
     "@prisma/client": 6.19.3
     drizzle-orm: 0.45.2

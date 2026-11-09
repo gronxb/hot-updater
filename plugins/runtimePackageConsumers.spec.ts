@@ -163,7 +163,7 @@ describe("packed provider entrypoints", () => {
     {
       directory: "neon",
       packageName: "@hot-updater/neon",
-      exports: ["neonStorage", "postgres"],
+      exports: ["neonDatabase", "neonStorage", "postgres"],
     },
     {
       directory: "postgres",

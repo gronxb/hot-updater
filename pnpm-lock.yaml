@@ -35,6 +35,9 @@ catalogs:
     '@libsql/client':
       specifier: 0.15.15
       version: 0.15.15
+    '@neondatabase/serverless':
+      specifier: 1.2.0
+      version: 1.2.0
     '@prisma/client':
       specifier: 6.19.3
       version: 6.19.3
@@ -350,7 +353,7 @@ importers:
         version: 0.31.10
       drizzle-orm:
         specifier: catalog:db
-        version: 0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2))
+        version: 0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@neondatabase/serverless@1.2.0)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2))
       elysia:
         specifier: ^1.4.28
         version: 1.4.28(@sinclair/typebox@0.34.49)(@typescript/typescript6@6.0.2)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)
@@ -455,7 +458,7 @@ importers:
         version: 0.31.10
       drizzle-orm:
         specifier: catalog:db
-        version: 0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2))
+        version: 0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@neondatabase/serverless@1.2.0)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2))
       execa:
         specifier: catalog:tools
         version: 9.5.2
@@ -1754,7 +1757,7 @@ importers:
         version: 0.4.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       nitro:
         specifier: 3.0.260610-beta
-        version: 3.0.260610-beta(@azure/cosmos@4.10.1)(@azure/storage-blob@12.34.0)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@vercel/blob@2.8.1)(@vercel/functions@3.9.11(@aws-sdk/credential-provider-web-identity@3.972.52)(ws@8.21.3))(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(giget@2.0.0)(jiti@2.7.0)(lru-cache@11.5.1)(miniflare@4.20260609.0)(mongodb@6.20.0(@aws-sdk/credential-providers@3.1066.0)(socks@2.8.9))(mysql2@3.19.1(@types/node@25.9.3))(vite@8.0.8(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.99.0(@cloudflare/workers-types@4.20260611.1))(xml2js@0.6.2)
+        version: 3.0.260610-beta(@azure/cosmos@4.10.1)(@azure/storage-blob@12.34.0)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@vercel/blob@2.8.1)(@vercel/functions@3.9.11(@aws-sdk/credential-provider-web-identity@3.972.52)(ws@8.21.3))(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@neondatabase/serverless@1.2.0)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(giget@2.0.0)(jiti@2.7.0)(lru-cache@11.5.1)(miniflare@4.20260609.0)(mongodb@6.20.0(@aws-sdk/credential-providers@3.1066.0)(socks@2.8.9))(mysql2@3.19.1(@types/node@25.9.3))(vite@8.0.8(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.99.0(@cloudflare/workers-types@4.20260611.1))(xml2js@0.6.2)
       react-grab:
         specifier: ^0.1.28
         version: 0.1.44(react@19.2.6)
@@ -2094,7 +2097,7 @@ importers:
         version: 0.31.10
       drizzle-orm:
         specifier: catalog:db
-        version: 0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(typescript@7.0.2))(typescript@7.0.2))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.13.1)(prisma@6.19.3(typescript@7.0.2))
+        version: 0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@neondatabase/serverless@1.2.0)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(typescript@7.0.2))(typescript@7.0.2))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.13.1)(prisma@6.19.3(typescript@7.0.2))
       execa:
         specifier: catalog:tools
         version: 9.5.2
@@ -2585,6 +2588,9 @@ importers:
       '@hot-updater/storage-s3':
         specifier: workspace:*
         version: link:../storage-s3
+      '@neondatabase/serverless':
+        specifier: catalog:db
+        version: 1.2.0
     devDependencies:
       '@aws-sdk/client-s3':
         specifier: catalog:aws
@@ -2592,6 +2598,12 @@ importers:
       '@aws-sdk/lib-storage':
         specifier: catalog:aws
         version: 3.1066.0(@aws-sdk/client-s3@3.1066.0)
+      '@electric-sql/pglite':
+        specifier: catalog:db
+        version: 0.4.1
+      '@hot-updater/server':
+        specifier: workspace:*
+        version: link:../../packages/server
       '@hot-updater/test-utils':
         specifier: workspace:*
         version: link:../../packages/test-utils
@@ -6419,6 +6431,10 @@ packages:
   '@neon-rs/load@0.0.4':
     resolution: {integrity: sha512-kTPhdZyTQxB+2wpiRcFWrDcejc4JI6tkPuS7UZCG4l6Zvc5kU/gGQ/ozvHTh1XR5tS+UlfAfGuPajjzQjCiHCw==}
 
+  '@neondatabase/serverless@1.2.0':
+    resolution: {integrity: sha512-tnaqgixUengZQNd9ZrS3ytQfamJzLKY8QxgqWQTNHHtB+KrFQWk77JTbbpg4RD+J3qE4eO2lVytvGDX5Kj6FdQ==}
+    engines: {node: '>=19.0.0'}
+
   '@next/env@16.2.9':
     resolution: {integrity: sha512-ki5VxxXfzD/9TDe13wyeTKIjQTAwBVpnr8KhRDUr8ltMUq1/NBpWNT5tiPoxiGl+PHM4X2ahSOiPk6iAimIzPg==}
 
@@ -9578,10 +9594,12 @@ packages:
   '@smithy/core@3.24.6':
     resolution: {integrity: sha512-wBXDRup6UU97VKyaiRo8AssnfStPtG0oAAfpq/bC0a1YYau8pM86YB4kM6ccoVi1mS8l/UHbn9oDM+7uozr/ug==}
     engines: {node: '>=18.0.0'}
+    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/core@3.31.1':
     resolution: {integrity: sha512-CyogUINxvi7C7LDsh8Syo6hVJOT9ckz4rG8dRZfTJ8r91HkMY59PnNooaj7WcHyxEkxPfBAmbgztZU+xTo76lg==}
     engines: {node: '>=18.0.0'}
+    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.3.8':
     resolution: {integrity: sha512-5cAM+KZC02sTqDt6NaLXyu50M/GNMd1eTzDVR8Lb0BBsVtu7RWHo47VPPEEv1vt3Yub6uzr+M5FHC+GtoT0USg==}
@@ -26568,6 +26586,8 @@ snapshots:
 
   '@neon-rs/load@0.0.4': {}
 
+  '@neondatabase/serverless@1.2.0': {}
+
   '@next/env@16.2.9': {}
 
   '@next/swc-darwin-arm64@16.2.9':
@@ -34213,11 +34233,11 @@ snapshots:
 
   dayjs@1.11.21: {}
 
-  db0@0.3.4(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(mysql2@3.19.1(@types/node@25.9.3)):
+  db0@0.3.4(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@neondatabase/serverless@1.2.0)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(mysql2@3.19.1(@types/node@25.9.3)):
     optionalDependencies:
       '@electric-sql/pglite': 0.4.1
       '@libsql/client': 0.15.15
-      drizzle-orm: 0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2))
+      drizzle-orm: 0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@neondatabase/serverless@1.2.0)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2))
       mysql2: 3.19.1(@types/node@25.9.3)
 
   debug@2.6.9:
@@ -34430,11 +34450,12 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.22.4
 
-  drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)):
+  drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@neondatabase/serverless@1.2.0)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)):
     optionalDependencies:
       '@cloudflare/workers-types': 4.20260611.1
       '@electric-sql/pglite': 0.4.1
       '@libsql/client': 0.15.15
+      '@neondatabase/serverless': 1.2.0
       '@opentelemetry/api': 1.9.1
       '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2))
       '@types/pg': 8.20.0
@@ -34443,11 +34464,12 @@ snapshots:
       pg: 8.21.0
       prisma: 6.19.3(@typescript/typescript6@6.0.2)
 
-  drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)):
+  drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@neondatabase/serverless@1.2.0)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)):
     optionalDependencies:
       '@cloudflare/workers-types': 4.20260611.1
       '@electric-sql/pglite': 0.4.1
       '@libsql/client': 0.15.15
+      '@neondatabase/serverless': 1.2.0
       '@opentelemetry/api': 1.9.1
       '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2))
       '@types/pg': 8.20.0
@@ -34457,11 +34479,12 @@ snapshots:
       prisma: 6.19.3(@typescript/typescript6@6.0.2)
     optional: true
 
-  drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(typescript@7.0.2))(typescript@7.0.2))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.13.1)(prisma@6.19.3(typescript@7.0.2)):
+  drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@neondatabase/serverless@1.2.0)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(typescript@7.0.2))(typescript@7.0.2))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.13.1)(prisma@6.19.3(typescript@7.0.2)):
     optionalDependencies:
       '@cloudflare/workers-types': 4.20260611.1
       '@electric-sql/pglite': 0.4.1
       '@libsql/client': 0.15.15
+      '@neondatabase/serverless': 1.2.0
       '@opentelemetry/api': 1.9.1
       '@prisma/client': 6.19.3(prisma@6.19.3(typescript@7.0.2))(typescript@7.0.2)
       '@types/pg': 8.20.0
@@ -41157,11 +41180,11 @@ snapshots:
       just-extend: 6.2.0
       path-to-regexp: 8.4.2
 
-  nitro@3.0.260610-beta(@azure/cosmos@4.10.1)(@azure/storage-blob@12.34.0)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@vercel/blob@2.8.1)(@vercel/functions@3.9.11(@aws-sdk/credential-provider-web-identity@3.972.52)(ws@8.21.3))(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(giget@2.0.0)(jiti@2.7.0)(lru-cache@11.5.1)(miniflare@4.20260609.0)(mongodb@6.20.0(@aws-sdk/credential-providers@3.1066.0)(socks@2.8.9))(mysql2@3.19.1(@types/node@25.9.3))(vite@8.0.8(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.99.0(@cloudflare/workers-types@4.20260611.1))(xml2js@0.6.2):
+  nitro@3.0.260610-beta(@azure/cosmos@4.10.1)(@azure/storage-blob@12.34.0)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@vercel/blob@2.8.1)(@vercel/functions@3.9.11(@aws-sdk/credential-provider-web-identity@3.972.52)(ws@8.21.3))(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@neondatabase/serverless@1.2.0)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(giget@2.0.0)(jiti@2.7.0)(lru-cache@11.5.1)(miniflare@4.20260609.0)(mongodb@6.20.0(@aws-sdk/credential-providers@3.1066.0)(socks@2.8.9))(mysql2@3.19.1(@types/node@25.9.3))(vite@8.0.8(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.99.0(@cloudflare/workers-types@4.20260611.1))(xml2js@0.6.2):
     dependencies:
       consola: 3.4.2
       crossws: 0.4.6(srvx@0.11.16)
-      db0: 0.3.4(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(mysql2@3.19.1(@types/node@25.9.3))
+      db0: 0.3.4(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@neondatabase/serverless@1.2.0)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(mysql2@3.19.1(@types/node@25.9.3))
       env-runner: 0.1.14(miniflare@4.20260609.0)(wrangler@4.99.0(@cloudflare/workers-types@4.20260611.1))
       h3: 2.0.1-rc.22(crossws@0.4.6(srvx@0.11.16))
       hookable: 6.1.1
@@ -41172,7 +41195,7 @@ snapshots:
       rolldown: 1.1.1
       srvx: 0.11.16
       unenv: 2.0.0-rc.24
-      unstorage: 2.0.0-alpha.7(@azure/cosmos@4.10.1)(@azure/storage-blob@12.34.0)(@vercel/blob@2.8.1)(@vercel/functions@3.9.11(@aws-sdk/credential-provider-web-identity@3.972.52)(ws@8.21.3))(chokidar@5.0.0)(db0@0.3.4(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(mysql2@3.19.1(@types/node@25.9.3)))(lru-cache@11.5.1)(mongodb@6.20.0(@aws-sdk/credential-providers@3.1066.0)(socks@2.8.9))(ofetch@2.0.0-alpha.3)
+      unstorage: 2.0.0-alpha.7(@azure/cosmos@4.10.1)(@azure/storage-blob@12.34.0)(@vercel/blob@2.8.1)(@vercel/functions@3.9.11(@aws-sdk/credential-provider-web-identity@3.972.52)(ws@8.21.3))(chokidar@5.0.0)(db0@0.3.4(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@neondatabase/serverless@1.2.0)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(mysql2@3.19.1(@types/node@25.9.3)))(lru-cache@11.5.1)(mongodb@6.20.0(@aws-sdk/credential-providers@3.1066.0)(socks@2.8.9))(ofetch@2.0.0-alpha.3)
     optionalDependencies:
       dotenv: 17.4.2
       giget: 2.0.0
@@ -45238,14 +45261,14 @@ snapshots:
       rolldown: 1.0.0-rc.17
     optional: true
 
-  unstorage@2.0.0-alpha.7(@azure/cosmos@4.10.1)(@azure/storage-blob@12.34.0)(@vercel/blob@2.8.1)(@vercel/functions@3.9.11(@aws-sdk/credential-provider-web-identity@3.972.52)(ws@8.21.3))(chokidar@5.0.0)(db0@0.3.4(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(mysql2@3.19.1(@types/node@25.9.3)))(lru-cache@11.5.1)(mongodb@6.20.0(@aws-sdk/credential-providers@3.1066.0)(socks@2.8.9))(ofetch@2.0.0-alpha.3):
+  unstorage@2.0.0-alpha.7(@azure/cosmos@4.10.1)(@azure/storage-blob@12.34.0)(@vercel/blob@2.8.1)(@vercel/functions@3.9.11(@aws-sdk/credential-provider-web-identity@3.972.52)(ws@8.21.3))(chokidar@5.0.0)(db0@0.3.4(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@neondatabase/serverless@1.2.0)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(mysql2@3.19.1(@types/node@25.9.3)))(lru-cache@11.5.1)(mongodb@6.20.0(@aws-sdk/credential-providers@3.1066.0)(socks@2.8.9))(ofetch@2.0.0-alpha.3):
     optionalDependencies:
       '@azure/cosmos': 4.10.1
       '@azure/storage-blob': 12.34.0
       '@vercel/blob': 2.8.1
       '@vercel/functions': 3.9.11(@aws-sdk/credential-provider-web-identity@3.972.52)(ws@8.21.3)
       chokidar: 5.0.0
-      db0: 0.3.4(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(mysql2@3.19.1(@types/node@25.9.3))
+      db0: 0.3.4(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@neondatabase/serverless@1.2.0)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(mysql2@3.19.1(@types/node@25.9.3))
       lru-cache: 11.5.1
       mongodb: 6.20.0(@aws-sdk/credential-providers@3.1066.0)(socks@2.8.9)
       ofetch: 2.0.0-alpha.3
