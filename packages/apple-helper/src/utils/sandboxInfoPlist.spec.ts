@@ -274,15 +274,17 @@ describe.runIf(process.platform === "darwin")("patching with plutil", () => {
 
   describe("re-patching an app an earlier patch made a sandbox app", () => {
     const appPlist = () => path.join(app, "Info.plist");
-    /** A patched plist: the marker, the recorded scheme when given, and these URL types. */
+    /** A prerelease's patch, which recorded no scheme. */
+    const ABSENT = Symbol("absent");
+    /** A patched plist: the marker, the recorded scheme unless absent, and these URL types. */
     const patchedPlist = async (
       sandboxTypes: unknown[],
-      recorded: string | null = "old-preview",
+      recorded: unknown = "old-preview",
     ) =>
       writePlist(appPlist(), {
         CFBundleIdentifier: "com.example.App",
         HOT_UPDATER_SANDBOX: true,
-        ...(recorded === null
+        ...(recorded === ABSENT
           ? {}
           : { HOT_UPDATER_SANDBOX_URL_SCHEME: recorded }),
         CFBundleURLTypes: [{ CFBundleURLSchemes: ["myapp"] }, ...sandboxTypes],
@@ -298,39 +300,56 @@ describe.runIf(process.platform === "darwin")("patching with plutil", () => {
         schemeConfig: { ...scheme, sandboxUrlScheme },
       });
 
+    const keep = (scheme: string) =>
+      `Keep exactly one hot-updater-sandbox URL type, holding only ${scheme}, and move the rest to a URL type of the app's own.`;
+
     it.each([
       [
         "our scheme, then the app's",
         [named(["old-preview", "app-login"])],
-        "type holds old-preview, app-login",
+        "The app's hot-updater-sandbox URL type holds old-preview, app-login.",
       ],
       [
         "the app's scheme, then ours",
         [named(["app-login", "old-preview"])],
-        "type holds app-login, old-preview",
+        "The app's hot-updater-sandbox URL type holds app-login, old-preview.",
       ],
       [
         "two URL types of the name",
         [named([]), named(["app-login"])],
-        "types hold app-login",
+        "The app has 2 hot-updater-sandbox URL types, holding app-login.",
       ],
-      ["an empty list", [named([])], "type holds no scheme"],
+      [
+        "two URL types of the name, each with our scheme",
+        [named(["old-preview"]), named(["old-preview"])],
+        "The app has 2 hot-updater-sandbox URL types, holding old-preview, old-preview.",
+      ],
+      [
+        "no URL type of the name, though it recorded a scheme",
+        [],
+        "The app has 0 hot-updater-sandbox URL types.",
+      ],
+      [
+        "an empty list",
+        [named([])],
+        "The app's hot-updater-sandbox URL type holds no scheme.",
+      ],
       [
         "our scheme twice",
         [named(["old-preview", "old-preview"])],
-        "type holds old-preview, old-preview",
+        "The app's hot-updater-sandbox URL type holds old-preview, old-preview.",
       ],
       [
         "another scheme than the one recorded",
         [named(["app-login"])],
-        "type holds app-login",
+        "The app's hot-updater-sandbox URL type holds app-login.",
       ],
     ])(
-      "refuses a sandbox URL type with %s, naming what it holds, and patches nothing",
-      async (_, sandboxTypes, holds) => {
+      "refuses %s, naming what it holds, and patches nothing",
+      async (_, sandboxTypes, found) => {
         await patchedPlist(sandboxTypes);
         const before = await fs.readFile(appPlist());
-        const message = `The app's hot-updater-sandbox URL ${holds}.\nKeep only old-preview in hot-updater-sandbox, and move the rest to a URL type of the app's own.`;
+        const message = `${found}\n${keep("old-preview")}`;
 
         await expect(patch("new-preview")).rejects.toMatchObject({
           message,
@@ -340,18 +359,39 @@ describe.runIf(process.platform === "darwin")("patching with plutil", () => {
       },
     );
 
+    it.each([
+      ["an empty string", "", '""', ["hu-sandbox-com-example-app"]],
+      [
+        "a Kelvin sign",
+        "\u212A-preview",
+        '"\u212A-preview"',
+        ["\u212A-preview"],
+      ],
+      ["upper case", "Old-Preview", '"Old-Preview"', ["Old-Preview"]],
+      ["a number", 42, "42", ["old-preview"]],
+    ])(
+      "refuses a recorded scheme of %s, with no fallback, and patches nothing",
+      async (_, recorded, shown, schemes) => {
+        await patchedPlist([named(schemes)], recorded);
+        const before = await fs.readFile(appPlist());
+        const message = `The app's Info.plist records sandbox URL scheme ${shown} in HOT_UPDATER_SANDBOX_URL_SCHEME, which isn't a URL scheme.\nBuild the app again: a new build records none.`;
+
+        await expect(patch("new-preview")).rejects.toMatchObject({ message });
+        expect(await fs.readFile(appPlist())).toEqual(before);
+      },
+    );
+
     it("refuses a prerelease's patched plist whose sandbox URL type isn't the derived scheme alone", async () => {
-      await patchedPlist([named(["app-login"])], null);
+      await patchedPlist([named(["app-login"])], ABSENT);
       const before = await fs.readFile(appPlist());
-      const message =
-        "The app's hot-updater-sandbox URL type holds app-login.\nKeep only hu-sandbox-com-example-app in hot-updater-sandbox, and move the rest to a URL type of the app's own.";
+      const message = `The app's hot-updater-sandbox URL type holds app-login.\n${keep("hu-sandbox-com-example-app")}`;
 
       await expect(patch("new-preview")).rejects.toMatchObject({ message });
       expect(await fs.readFile(appPlist())).toEqual(before);
     });
 
     it("re-patches a prerelease's patched plist, which recorded no scheme, from its derived one", async () => {
-      await patchedPlist([named(["hu-sandbox-com-example-app"])], null);
+      await patchedPlist([named(["hu-sandbox-com-example-app"])], ABSENT);
       await patch("new-preview");
 
       expect(read(appPlist())).toMatchObject({

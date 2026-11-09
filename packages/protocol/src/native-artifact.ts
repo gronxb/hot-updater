@@ -41,10 +41,12 @@ export {
 export {
   createPreviewLink,
   isConfigurableSandboxUrlScheme,
+  isRecordedUrlSchemeSyntax,
   isSandboxChannel,
   isSandboxUrlScheme,
   parsePreviewLink,
   type PreviewLink,
+  recordedSandboxUrlScheme,
   SANDBOX_ACTIVITY,
   SANDBOX_APPLICATION_ID_SUFFIX,
   SANDBOX_CODE_MARKER,

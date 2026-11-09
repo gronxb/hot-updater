@@ -247,3 +247,13 @@ cp Info.sandbox-custom.plist Info.sandbox-recorded.plist
 plutil -replace HOT_UPDATER_SANDBOX_URL_SCHEME -string acme-preview Info.sandbox-recorded.plist
 cp Info.sandbox-recorded.plist Info.sandbox-recorded-mismatch.plist
 plutil -replace CFBundleURLTypes -json '[{"CFBundleURLName":"hot-updater-sandbox","CFBundleURLSchemes":["app-login"]}]' Info.sandbox-recorded-mismatch.plist
+# Recorded values no rule takes, beside a URL type that holds a scheme.
+for name args in empty "-string ''" int "-integer 42" bool "-bool true"; do
+  cp Info.sandbox-recorded.plist Info.sandbox-recorded-$name.plist
+  eval plutil -replace HOT_UPDATER_SANDBOX_URL_SCHEME $args Info.sandbox-recorded-$name.plist
+done
+# A recorded scheme with no URL type of the sandbox's name, and with two.
+cp Info.sandbox-recorded.plist Info.sandbox-recorded-unnamed.plist
+plutil -replace CFBundleURLTypes -json '[{"CFBundleURLSchemes":["acme-preview"]}]' Info.sandbox-recorded-unnamed.plist
+cp Info.sandbox-recorded.plist Info.sandbox-recorded-twice.plist
+plutil -replace CFBundleURLTypes -json '[{"CFBundleURLName":"hot-updater-sandbox","CFBundleURLSchemes":["acme-preview"]},{"CFBundleURLName":"hot-updater-sandbox","CFBundleURLSchemes":["acme-preview"]}]' Info.sandbox-recorded-twice.plist

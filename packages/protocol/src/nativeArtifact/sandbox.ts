@@ -23,6 +23,42 @@ export const SANDBOX_INFO_PLIST_KEY = "HOT_UPDATER_SANDBOX";
 export const SANDBOX_URL_SCHEME_INFO_PLIST_KEY =
   "HOT_UPDATER_SANDBOX_URL_SCHEME";
 
+const URL_SCHEME_SYNTAX = /^[a-z][a-z0-9+.-]*$/;
+
+/**
+ * Whether a value is a URL scheme in lower-case ASCII, as written: what a
+ * build records, read before any lower-casing.
+ */
+export const isRecordedUrlSchemeSyntax = (value: unknown): value is string =>
+  typeof value === "string" && URL_SCHEME_SYNTAX.test(value);
+
+/**
+ * The URL scheme an iOS sandbox build registers, by one rule its patch, its
+ * reader, and its own code apply alike. `recorded` is the Info.plist's
+ * `SANDBOX_URL_SCHEME_INFO_PLIST_KEY`, undefined when the key is absent, and
+ * `namedTypes` its URL types named `SANDBOX_URL_TYPE_NAME`.
+ * - Absent: a prerelease's build, which recorded none. Undefined: the caller
+ *   reads it the way that build was read.
+ * - Present: a scheme in lower-case ASCII, as written, that the one URL type
+ *   of the name holds alone. Anything else is null, with no fallback.
+ */
+export const recordedSandboxUrlScheme = (
+  recorded: unknown,
+  namedTypes: readonly unknown[],
+): string | null | undefined => {
+  if (recorded === undefined) return undefined;
+  if (!isRecordedUrlSchemeSyntax(recorded) || namedTypes.length !== 1) {
+    return null;
+  }
+  const schemes = (namedTypes[0] as { CFBundleURLSchemes?: unknown } | null)
+    ?.CFBundleURLSchemes;
+  return Array.isArray(schemes) &&
+    schemes.length === 1 &&
+    schemes[0] === recorded
+    ? recorded
+    : null;
+};
+
 /** The `<meta-data>` an Android sandbox build declares itself with. */
 export const SANDBOX_META_DATA = "com.hotupdater.SANDBOX";
 

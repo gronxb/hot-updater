@@ -17,6 +17,7 @@ import {
   SANDBOX_CODE_MARKER,
   SANDBOX_INFO_PLIST_KEY,
   SANDBOX_META_DATA,
+  recordedSandboxUrlScheme,
 } from "./sandbox";
 import { readDexStrings, readMachOStrings } from "./strings";
 import {
@@ -260,10 +261,9 @@ const androidSandboxUrlScheme = (
 };
 
 /**
- * The sandbox URL scheme in an Info.plist's `CFBundleURLTypes`, or null: the
- * one scheme of the one URL type named `SANDBOX_URL_TYPE_NAME`, as the CLI
- * writes it, which must be the one `SANDBOX_URL_SCHEME_INFO_PLIST_KEY`
- * records. A prerelease's artifact recorded none: its named type's one
+ * The sandbox URL scheme of an Info.plist, or null: the one
+ * `SANDBOX_URL_SCHEME_INFO_PLIST_KEY` records, by `recordedSandboxUrlScheme`'s
+ * rule. A prerelease's artifact, with no key, gives its named URL type's one
  * scheme, or, with no named type, one with the derived scheme's prefix.
  */
 const sandboxUrlSchemeIn = (info: Record<string, unknown>): string | null => {
@@ -281,14 +281,18 @@ const sandboxUrlSchemeIn = (info: Record<string, unknown>): string | null => {
       (type as { CFBundleURLName?: unknown } | null)?.CFBundleURLName ===
       SANDBOX_URL_TYPE_NAME,
   );
-  const recorded = stringValue(info[SANDBOX_URL_SCHEME_INFO_PLIST_KEY]);
+  const recorded = recordedSandboxUrlScheme(
+    SANDBOX_URL_SCHEME_INFO_PLIST_KEY in info
+      ? info[SANDBOX_URL_SCHEME_INFO_PLIST_KEY]
+      : undefined,
+    named,
+  );
+  if (recorded !== undefined) return recorded;
   if (named.length > 1) return null;
   if (named.length === 1) {
     const schemes = schemesOf(named[0]);
-    const only = schemes.length === 1 ? schemes[0]! : null;
-    return recorded === null || only === recorded ? only : null;
+    return schemes.length === 1 ? schemes[0]! : null;
   }
-  if (recorded !== null) return null;
   return types.flatMap(schemesOf).find(isSandboxUrlScheme) ?? null;
 };
 

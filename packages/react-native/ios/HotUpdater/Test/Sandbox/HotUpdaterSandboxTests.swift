@@ -1088,12 +1088,38 @@ struct HotUpdaterSandboxLinkTests {
         #expect(HotUpdaterSandboxLink.ownScheme(in: info) == "acme-preview")
         #expect(HotUpdaterSandboxLink.ownScheme(in: ["CFBundleURLTypes": [["CFBundleURLSchemes": ["exampleapp"]]]]) == nil)
         #expect(HotUpdaterSandboxLink.ownScheme(in: [:]) == nil)
-        // The recorded scheme comes first: no URL type lookup.
-        #expect(HotUpdaterSandboxLink.ownScheme(in: ["HOT_UPDATER_SANDBOX_URL_SCHEME": "Acme-Preview"]) == "acme-preview")
-        var recorded = info
-        recorded["HOT_UPDATER_SANDBOX_URL_SCHEME"] = "other-preview"
-        #expect(HotUpdaterSandboxLink.ownScheme(in: recorded) == "other-preview")
         #expect(HotUpdaterSandboxLink.ownScheme(in: nil) == nil)
+    }
+
+    @Test
+    func readsTheRecordedSchemeByTheProtocolsRuleWithNoFallback() {
+        func named(_ schemes: [String]) -> [String: Any] {
+            ["CFBundleURLName": "hot-updater-sandbox", "CFBundleURLSchemes": schemes]
+        }
+        func own(_ recorded: Any?, _ types: [[String: Any]]) -> String? {
+            var info: [String: Any] = ["CFBundleURLTypes": types]
+            if let recorded { info["HOT_UPDATER_SANDBOX_URL_SCHEME"] = recorded }
+            return HotUpdaterSandboxLink.ownScheme(in: info)
+        }
+        // Present and the one named type's alone.
+        #expect(own("acme-preview", [["CFBundleURLSchemes": ["exampleapp"]], named(["acme-preview"])]) == "acme-preview")
+        // Absent: a prerelease's build, read by the URL type's name.
+        #expect(own(nil, [named(["hu-sandbox-app"])]) == "hu-sandbox-app")
+        // Present but breaking the rule: no own scheme, and no fallback.
+        let none = HotUpdaterSandboxLink.noScheme
+        #expect(own("", [named(["acme-preview"])]) == none)
+        #expect(own(42, [named(["acme-preview"])]) == none)
+        #expect(own(true, [named(["acme-preview"])]) == none)
+        #expect(own("\u{212A}-preview", [named(["\u{212A}-preview"])]) == none)
+        #expect(own("Acme-Preview", [named(["Acme-Preview"])]) == none)
+        #expect(own("app-login", [named(["acme-preview"])]) == none)
+        #expect(own("acme-preview", [named(["acme-preview", "app-login"])]) == none)
+        #expect(own("acme-preview", []) == none)
+        #expect(own("acme-preview", [named(["acme-preview"]), named(["acme-preview"])]) == none)
+        // No own scheme refuses every link, the derived prefix's too.
+        for scheme in ["acme-preview", "app-login", "hu-sandbox-app", "k-preview", ""] {
+            #expect(!HotUpdaterSandboxLink.isOwnScheme(scheme, own: none), "\(scheme)")
+        }
     }
 
     @Test

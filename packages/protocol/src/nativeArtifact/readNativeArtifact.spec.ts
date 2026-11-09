@@ -25,6 +25,7 @@ import {
   isConfigurableSandboxUrlScheme,
   isSandboxChannel,
   createPreviewLink,
+  recordedSandboxUrlScheme,
   parsePreviewLink,
   sandboxChannelOf,
   sandboxUrlSchemeOf,
@@ -684,6 +685,54 @@ describe("the sandbox layer", () => {
     expect(await schemeOf("Info.sandbox-recorded-mismatch.plist")).toBeNull();
     // A prerelease's artifact recorded none: its URL type's one scheme.
     expect(await schemeOf("Info.sandbox-custom.plist")).toBe("acme-preview");
+  });
+
+  it.each([
+    ["an empty string", "empty"],
+    ["a number", "int"],
+    ["a boolean", "bool"],
+    ["a scheme with no URL type of the name", "unnamed"],
+    ["a scheme two URL types of the name hold", "twice"],
+  ])(
+    "reads no scheme from a recorded %s, with no fallback",
+    async (_, name) => {
+      expect(
+        (
+          await read(
+            sandboxIpa({
+              "Payload/App.app/Info.plist": fixture(
+                `Info.sandbox-recorded-${name}.plist`,
+              ),
+            }),
+            "app.ipa",
+          )
+        ).entry.sandboxUrlScheme,
+      ).toBeNull();
+    },
+  );
+
+  it("records a scheme by one rule: present, lower-case ASCII as written, the one named type's alone", () => {
+    const named = (schemes: unknown[]) => ({
+      CFBundleURLName: "hot-updater-sandbox",
+      CFBundleURLSchemes: schemes,
+    });
+    expect(recordedSandboxUrlScheme(undefined, [named(["x"])])).toBeUndefined();
+    expect(
+      recordedSandboxUrlScheme("acme-preview", [named(["acme-preview"])]),
+    ).toBe("acme-preview");
+    for (const [recorded, types] of [
+      ["", [named([""])]],
+      [42, [named(["acme-preview"])]],
+      [true, [named(["acme-preview"])]],
+      ["\u212A-preview", [named(["\u212A-preview"])]],
+      ["Acme-Preview", [named(["Acme-Preview"])]],
+      ["acme-preview", [named(["app-login"])]],
+      ["acme-preview", [named(["acme-preview", "app-login"])]],
+      ["acme-preview", []],
+      ["acme-preview", [named(["acme-preview"]), named(["acme-preview"])]],
+    ] as const) {
+      expect(recordedSandboxUrlScheme(recorded, types)).toBeNull();
+    }
   });
 
   it("reads no scheme from a URL type of the sandbox's name that holds two", async () => {

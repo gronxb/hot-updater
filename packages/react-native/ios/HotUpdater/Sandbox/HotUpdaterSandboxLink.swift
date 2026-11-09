@@ -29,22 +29,45 @@ struct HotUpdaterSandboxLink: Equatable {
     /// path asks for it before anything else runs.
     static let ownScheme: String? = ownScheme(in: Bundle.main.infoDictionary)
 
-    /// The scheme the CLI recorded, in lower case, or, in a prerelease's
-    /// build, which recorded none, the scheme of the URL type named
-    /// `urlTypeName`, or nil.
+    /// What `ownScheme` is when the recorded key breaks the rule: a scheme no
+    /// link has, so every link is refused.
+    static let noScheme = ""
+
+    /// `recordedSandboxUrlScheme` of `@hot-updater/protocol`, one rule for the
+    /// CLI's patch, its artifact reader, and this:
+    /// - the key absent: a prerelease's build, which recorded none. The scheme
+    ///   of the URL type named `urlTypeName`, in lower case, or nil;
+    /// - the key present: a scheme in lower-case ASCII, as written, that the
+    ///   one URL type of the name holds alone. Anything else is `noScheme`,
+    ///   with no fallback.
     static func ownScheme(in info: [String: Any]?) -> String? {
-        if let recorded = info?[urlSchemeKey] as? String, !recorded.isEmpty {
-            return recorded.lowercased()
-        }
         let types = info?["CFBundleURLTypes"] as? [[String: Any]] ?? []
-        let type = types.first { $0["CFBundleURLName"] as? String == urlTypeName }
-        return (type?["CFBundleURLSchemes"] as? [String])?.first?.lowercased()
+        let named = types.filter { $0["CFBundleURLName"] as? String == urlTypeName }
+        guard let value = info?[urlSchemeKey] else {
+            return (named.first?["CFBundleURLSchemes"] as? [String])?.first?.lowercased()
+        }
+        guard let recorded = value as? String,
+              isRecordedSyntax(recorded),
+              named.count == 1,
+              named[0]["CFBundleURLSchemes"] as? [String] == [recorded] else {
+            return noScheme
+        }
+        return recorded
+    }
+
+    /// `^[a-z][a-z0-9+.-]*$` in ASCII, read before any lower-casing.
+    private static func isRecordedSyntax(_ scheme: String) -> Bool {
+        let scalars = Array(scheme.unicodeScalars)
+        guard let first = scalars.first, ("a"..."z").contains(first) else { return false }
+        return scalars.dropFirst().allSatisfy {
+            ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "+" || $0 == "." || $0 == "-"
+        }
     }
 
     /// Whether a URL scheme is this build's, so its links never reach the app:
     /// the one it registered, or without one, the prefix every build had then.
     static func isOwnScheme(_ scheme: String?, own: String? = ownScheme) -> Bool {
-        guard let scheme, isAscii(scheme) else { return false }
+        guard let scheme, !scheme.isEmpty, isAscii(scheme) else { return false }
         let lowercased = scheme.lowercased()
         guard let own else { return lowercased.hasPrefix(schemePrefix) }
         return lowercased == own

@@ -6,7 +6,9 @@ import {
   SANDBOX_INFO_PLIST_KEY,
   SANDBOX_URL_SCHEME_INFO_PLIST_KEY,
   SANDBOX_URL_TYPE_NAME,
+  isRecordedUrlSchemeSyntax,
   isSandboxUrlScheme,
+  recordedSandboxUrlScheme,
   sandboxChannelOf,
   sandboxUrlSchemeOf,
 } from "@hot-updater/protocol/native-artifact";
@@ -232,10 +234,38 @@ const patchAppInfoPlist = async (plist: string, scheme: SandboxPlistScheme) => {
 };
 
 /**
- * Refuses, in an app an earlier patch made a sandbox app, URL types of the
- * sandbox's name that hold anything but the one scheme that patch recorded:
- * replacing them would drop the app's own. A prerelease's patch recorded no
- * scheme, and registered one with the derived scheme's prefix.
+ * A key's value as written, or undefined when the plist has no such key:
+ * strings, numbers and booleans as they are, and any other type as itself
+ * named, which no rule takes. `-extract … json` refuses a lone scalar.
+ */
+const readTyped = async (plist: string, key: string): Promise<unknown> => {
+  const type = await execa("plutil", ["-type", key, plist], { reject: false });
+  if (type.exitCode !== 0) return undefined;
+  const { stdout } = await execa(
+    "plutil",
+    ["-extract", key, "raw", "-o", "-", plist],
+    { reject: false, stripFinalNewline: false },
+  );
+  const raw = stdout.endsWith("\n") ? stdout.slice(0, -1) : stdout;
+  switch (type.stdout.trim()) {
+    case "string":
+      return raw;
+    case "integer":
+    case "float":
+      return Number(raw);
+    case "bool":
+      return raw === "true";
+    default:
+      return `<${type.stdout.trim()}>`;
+  }
+};
+
+/**
+ * Refuses, in an app an earlier patch made a sandbox app, what replacing its
+ * URL type of the sandbox's name could break: by `recordedSandboxUrlScheme`'s
+ * rule, the one URL type of the name must hold the one scheme the patch
+ * recorded alone. A prerelease's patch recorded none, and registered one with
+ * the derived scheme's prefix.
  */
 const refuseForeignSandboxUrlTypes = async (
   plist: string,
@@ -243,19 +273,28 @@ const refuseForeignSandboxUrlTypes = async (
   scheme: SandboxPlistScheme,
 ) => {
   const named = urlTypes.filter(isSandboxUrlType);
-  if (named.length === 0) return;
-  const recorded = await readValue(plist, SANDBOX_URL_SCHEME_INFO_PLIST_KEY);
+  const value = await readTyped(plist, SANDBOX_URL_SCHEME_INFO_PLIST_KEY);
+  const recorded = recordedSandboxUrlScheme(value, named);
+  if (typeof recorded === "string") return;
   const schemes = named.flatMap(schemesOf);
-  const only = schemes.length === 1 ? schemes[0] : undefined;
-  const ours =
-    named.length === 1 &&
-    typeof only === "string" &&
-    (recorded === null ? isSandboxUrlScheme(only) : only === recorded);
-  if (ours) return;
+  if (recorded === undefined) {
+    const only = named.length === 1 && schemes.length === 1 ? schemes[0] : null;
+    if (typeof only === "string" && isSandboxUrlScheme(only)) return;
+  } else if (!isRecordedUrlSchemeSyntax(value)) {
+    throw refusal(
+      `The app's Info.plist records sandbox URL scheme ${JSON.stringify(value)} in ${SANDBOX_URL_SCHEME_INFO_PLIST_KEY}, which isn't a URL scheme.\nBuild the app again: a new build records none.`,
+    );
+  }
+  const keep = isRecordedUrlSchemeSyntax(value)
+    ? value
+    : sandboxUrlSchemeOf(scheme.bundleIdentifier);
   const holds = schemes.map(String).join(", ") || "no scheme";
-  const keep = recorded ?? sandboxUrlSchemeOf(scheme.bundleIdentifier);
+  const found =
+    named.length === 1
+      ? `The app's ${SANDBOX_URL_TYPE_NAME} URL type holds ${holds}.`
+      : `The app has ${named.length} ${SANDBOX_URL_TYPE_NAME} URL types${named.length === 0 ? "" : `, holding ${holds}`}.`;
   throw refusal(
-    `The app's ${SANDBOX_URL_TYPE_NAME} URL ${named.length === 1 ? "type holds" : "types hold"} ${holds}.\nKeep only ${keep} in ${SANDBOX_URL_TYPE_NAME}, and move the rest to a URL type of the app's own.`,
+    `${found}\nKeep exactly one ${SANDBOX_URL_TYPE_NAME} URL type, holding only ${keep}, and move the rest to a URL type of the app's own.`,
   );
 };
 
