@@ -45,6 +45,8 @@ class HotUpdaterSandboxLinkTest {
         // A build from before the scheme could be set names none.
         assertTrue(HotUpdaterSandboxLink.isOwnScheme("hu-sandbox-com-example-app", null))
         assertFalse(HotUpdaterSandboxLink.isOwnScheme("acme-preview", null))
+        // Lower-casing makes `K` (Kelvin) a `k`: a scheme is ASCII alone.
+        assertFalse(HotUpdaterSandboxLink.isOwnScheme("\u212A-preview", "k-preview"))
     }
 
     private fun locateFixture(): File {

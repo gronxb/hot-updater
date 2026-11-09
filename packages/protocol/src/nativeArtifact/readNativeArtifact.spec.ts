@@ -630,6 +630,63 @@ describe("the sandbox layer", () => {
     ).toEqual({ launchers: [], sandboxUrlScheme: "acme-preview" });
   });
 
+  it.each(["axml", "pb"])(
+    "reads the scheme the activity's meta-data names, not the first of its links, from .%s",
+    async (format) => {
+      const schemeOf = async (name: string) =>
+        (format === "axml"
+          ? await read(
+              sandboxApk({ "AndroidManifest.xml": fixture(`${name}.axml`) }),
+              "app.apk",
+            )
+          : await read(
+              {
+                "base/manifest/AndroidManifest.xml": fixture(`${name}.pb`),
+                "base/dex/classes.dex": fixture("sandbox.dex"),
+              },
+              "app.aab",
+            )
+        ).entry.sandboxUrlScheme;
+      // The app's own link comes first on the sandbox's activity.
+      expect(await schemeOf("sandbox-other-first")).toBe("acme-preview");
+      // The meta-data names a scheme the activity doesn't take.
+      expect(await schemeOf("sandbox-mismatch")).toBeNull();
+      // A build from before the meta-data: the derived scheme's prefix.
+      expect(await schemeOf("sandbox")).toBe("hu-sandbox-com-example-app");
+    },
+  );
+
+  it("refuses a sandbox build whose meta-data names a scheme it doesn't register", async () => {
+    expect(
+      codes(
+        checkNativeArtifact(
+          await read(
+            sandboxApk({
+              "AndroidManifest.xml": fixture("sandbox-mismatch.axml"),
+            }),
+            "app.apk",
+          ),
+          { updateStrategy: "fingerprint" },
+        ),
+      ),
+    ).toEqual(["SANDBOX_MISMATCH"]);
+  });
+
+  it("reads no scheme from a URL type of the sandbox's name that holds two", async () => {
+    expect(
+      (
+        await read(
+          sandboxIpa({
+            "Payload/App.app/Info.plist": fixture(
+              "Info.sandbox-two-schemes.plist",
+            ),
+          }),
+          "app.ipa",
+        )
+      ).entry.sandboxUrlScheme,
+    ).toBeNull();
+  });
+
   it("reads an unnamed URL type by the derived scheme's prefix, and no other", async () => {
     expect(
       (

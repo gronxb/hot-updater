@@ -58,19 +58,22 @@ const isSandboxUrlType = (type: unknown) =>
   SANDBOX_URL_TYPE_NAME;
 
 /**
- * Appends a URL type with the sandbox's scheme to the app's own, or replaces
- * the one an earlier patch of the same app added.
+ * Appends a URL type with the sandbox's scheme to the app's own, or, in an
+ * app an earlier patch made a sandbox app, replaces the one that patch added.
  */
 const addUrlScheme = async (
   plist: string,
   urlScheme: string,
   existing: unknown[] | null,
+  patchedBefore: boolean,
 ) => {
   const urlType = JSON.stringify({
     CFBundleURLName: SANDBOX_URL_TYPE_NAME,
     CFBundleURLSchemes: [urlScheme],
   });
-  const patched = existing?.findIndex(isSandboxUrlType) ?? -1;
+  const patched = patchedBefore
+    ? (existing?.findIndex(isSandboxUrlType) ?? -1)
+    : -1;
   if (patched !== -1) {
     // `-replace` of an array's item inserts before it.
     await plutil(["-remove", `CFBundleURLTypes.${patched}`, plist]);
@@ -102,14 +105,12 @@ const addUrlScheme = async (
   ]);
 };
 
-/**
- * Whether the app's own URL types list `urlScheme`, as iOS compares schemes:
- * ignoring case. The sandbox's own, from an earlier patch, isn't the app's.
- */
-const registersUrlScheme = (urlTypes: unknown, urlScheme: string): boolean =>
-  Array.isArray(urlTypes) &&
+/** Whether URL types list `urlScheme`, as iOS compares schemes: ignoring case. */
+const registersUrlScheme = (
+  urlTypes: readonly unknown[],
+  urlScheme: string,
+): boolean =>
   urlTypes.some((type) => {
-    if (isSandboxUrlType(type)) return false;
     const schemes = (type as { CFBundleURLSchemes?: unknown } | null)
       ?.CFBundleURLSchemes;
     return (
@@ -187,10 +188,22 @@ const patchAppInfoPlist = async (plist: string, scheme: SandboxPlistScheme) => {
     );
   }
   // A scheme the app registers itself would ask which app opens its links.
+  // Only an app an earlier patch made a sandbox app has a URL type of the
+  // sandbox's name that isn't the app's own.
   const urlScheme =
     scheme.sandboxUrlScheme ?? sandboxUrlSchemeOf(scheme.bundleIdentifier);
   const urlTypes = await readUrlTypes(plist);
-  if (registersUrlScheme(urlTypes, urlScheme)) {
+  const patchedBefore =
+    (await readValue(plist, SANDBOX_INFO_PLIST_KEY)) === "true";
+  const appUrlTypes = (urlTypes ?? []).filter(
+    (type) => !(patchedBefore && isSandboxUrlType(type)),
+  );
+  if (appUrlTypes.some(isSandboxUrlType)) {
+    throw refusal(
+      `The app has a URL type named ${SANDBOX_URL_TYPE_NAME}, the name a sandbox build registers its URL scheme under.\nRename the app's URL type.`,
+    );
+  }
+  if (registersUrlScheme(appUrlTypes, urlScheme)) {
     throw refusal(
       `The sandbox scheme ${scheme.hotUpdaterSchemeName} registers URL scheme ${urlScheme}, which the app registers itself.\nSet sandbox.urlScheme to a scheme the app doesn't register.`,
     );
@@ -201,7 +214,7 @@ const patchAppInfoPlist = async (plist: string, scheme: SandboxPlistScheme) => {
     sandboxChannelOf(scheme.hotUpdaterSchemeName),
   );
   await plutil(["-replace", SANDBOX_INFO_PLIST_KEY, "-bool", "true", plist]);
-  await addUrlScheme(plist, urlScheme, urlTypes);
+  await addUrlScheme(plist, urlScheme, urlTypes, patchedBefore);
   await addSandboxPermissions(plist);
 };
 

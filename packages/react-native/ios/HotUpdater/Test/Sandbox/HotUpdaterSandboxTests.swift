@@ -1100,6 +1100,8 @@ struct HotUpdaterSandboxLinkTests {
         // A build from before the scheme could be set names no URL type.
         #expect(HotUpdaterSandboxLink.isOwnScheme("hu-sandbox-com-example-app", own: nil))
         #expect(!HotUpdaterSandboxLink.isOwnScheme("acme-preview", own: nil))
+        // Lower-casing makes `K` (Kelvin) a `k`: a scheme is ASCII alone.
+        #expect(!HotUpdaterSandboxLink.isOwnScheme("\u{212A}-preview", own: "k-preview"))
     }
 }
 

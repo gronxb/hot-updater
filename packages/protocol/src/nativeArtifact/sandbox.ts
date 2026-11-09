@@ -118,6 +118,11 @@ export const createPreviewLink = ({
 /** Any URL scheme: which app's it is, the app that opens the link decides. */
 const PREVIEW_LINK =
   /^([a-z][a-z0-9+.-]*):\/\/hot-updater\/preview\?([^#]*)$/iu;
+/**
+ * A URL scheme in ASCII alone: case folding lets `/iu` match `K` (Kelvin) or
+ * `ſ` as a letter.
+ */
+const ASCII_URL_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*$/;
 const MAX_FINGERPRINT_LENGTH = 256;
 
 /**
@@ -130,7 +135,7 @@ const MAX_FINGERPRINT_LENGTH = 256;
  */
 export const parsePreviewLink = (link: string): PreviewLink | null => {
   const match = PREVIEW_LINK.exec(link);
-  if (match === null) return null;
+  if (match === null || !ASCII_URL_SCHEME.test(match[1]!)) return null;
   const parameters = new Map<string, string>();
   for (const parameter of match[2]!.split("&")) {
     const separator = parameter.indexOf("=");

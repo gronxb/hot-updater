@@ -69,9 +69,13 @@ internal data class HotUpdaterSandboxLink(
             scheme: String?,
             own: String?,
         ): Boolean {
-            val lowercased = scheme?.lowercase() ?: return false
+            if (scheme == null || !isAscii(scheme)) return false
+            val lowercased = scheme.lowercase()
             return if (own == null) lowercased.startsWith(SCHEME_PREFIX) else lowercased == own
         }
+
+        /** Case-insensitive matching can fold `K` (Kelvin) or `ſ` into a letter: a scheme is ASCII alone. */
+        private fun isAscii(scheme: String): Boolean = scheme.all { it.code < 0x80 }
 
         /**
          * `parsePreviewLink` of `@hot-updater/protocol`, which shares its
@@ -81,6 +85,7 @@ internal data class HotUpdaterSandboxLink(
          */
         fun parse(url: String): HotUpdaterSandboxLink? {
             val match = LINK.matchEntire(url) ?: return null
+            if (!isAscii(match.groupValues[1])) return null
             val parameters = HashMap<String, String>()
             for (parameter in match.groupValues[2].split("&")) {
                 val separator = parameter.indexOf('=')

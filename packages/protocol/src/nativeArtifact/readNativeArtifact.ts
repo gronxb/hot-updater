@@ -3,12 +3,14 @@ import {
   parseBinaryManifest,
   parseProtoManifest,
   readAndroidManifest,
+  type AndroidManifestInfo,
   type ManifestValue,
 } from "./androidManifest";
 import { type ByteSource, NativeArtifactError } from "./byteSource";
 import { parsePlist } from "./plist";
 import {
   isSandboxUrlScheme,
+  SANDBOX_URL_SCHEME_META_DATA,
   SANDBOX_URL_TYPE_NAME,
   SANDBOX_ACTIVITY,
   SANDBOX_CODE_MARKER,
@@ -227,8 +229,7 @@ const readAndroid = async (
     },
     entry: {
       launchers: manifest.launchers,
-      // The links the sandbox's activity takes: the one URL scheme it registers.
-      sandboxUrlScheme: manifest.urlSchemes.get(SANDBOX_ACTIVITY)?.[0] ?? null,
+      sandboxUrlScheme: androidSandboxUrlScheme(manifest),
     },
     builtInBundle:
       bundle === undefined
@@ -238,9 +239,30 @@ const readAndroid = async (
 };
 
 /**
+ * The URL scheme an Android sandbox build registers, or null: the one its
+ * activity's `SANDBOX_URL_SCHEME_META_DATA` names, when the activity's `VIEW`
+ * filters take it too. An artifact built before the meta-data takes the one
+ * with the derived scheme's prefix.
+ */
+const androidSandboxUrlScheme = (
+  manifest: AndroidManifestInfo,
+): string | null => {
+  const schemes = manifest.urlSchemes.get(SANDBOX_ACTIVITY) ?? [];
+  const declared = manifest.componentMetaData
+    .get(SANDBOX_ACTIVITY)
+    ?.get(SANDBOX_URL_SCHEME_META_DATA);
+  if (declared === undefined) {
+    return schemes.find(isSandboxUrlScheme) ?? null;
+  }
+  if (declared.type !== "string") return null;
+  return schemes.includes(declared.value) ? declared.value : null;
+};
+
+/**
  * The sandbox URL scheme in an Info.plist's `CFBundleURLTypes`, or null: the
- * scheme of the URL type named `SANDBOX_URL_TYPE_NAME`, or, in an artifact
- * whose URL types name none, one with the derived scheme's prefix.
+ * one scheme of the URL type named `SANDBOX_URL_TYPE_NAME`, as the CLI writes
+ * it, or, in an artifact whose URL types name none, one with the derived
+ * scheme's prefix.
  */
 const sandboxUrlSchemeIn = (info: Record<string, unknown>): string | null => {
   const types = info["CFBundleURLTypes"];
@@ -257,7 +279,10 @@ const sandboxUrlSchemeIn = (info: Record<string, unknown>): string | null => {
       (type as { CFBundleURLName?: unknown } | null)?.CFBundleURLName ===
       SANDBOX_URL_TYPE_NAME,
   );
-  if (named !== undefined) return schemesOf(named)[0] ?? null;
+  if (named !== undefined) {
+    const schemes = schemesOf(named);
+    return schemes.length === 1 ? schemes[0]! : null;
+  }
   return types.flatMap(schemesOf).find(isSandboxUrlScheme) ?? null;
 };
 

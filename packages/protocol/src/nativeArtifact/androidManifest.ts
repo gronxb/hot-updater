@@ -346,6 +346,11 @@ export interface AndroidManifestInfo {
   readonly launchers: readonly string[];
   /** The schemes of each `VIEW` intent filter, by the component that declares it. */
   readonly urlSchemes: ReadonlyMap<string, readonly string[]>;
+  /** Each component's own `<meta-data>` values, by component, then by name. */
+  readonly componentMetaData: ReadonlyMap<
+    string,
+    ReadonlyMap<string, ManifestValue>
+  >;
 }
 
 const attributeOf = (
@@ -374,6 +379,20 @@ export const readAndroidManifest = (
   const metaData = new Map<string, ManifestValue>();
   const launchers: string[] = [];
   const urlSchemes = new Map<string, string[]>();
+  const componentMetaData = new Map<string, Map<string, ManifestValue>>();
+  const metaDataOf = (
+    element: ManifestElement,
+    into: Map<string, ManifestValue>,
+  ) => {
+    const name = attributeOf(element, NAME, "name");
+    // `android:resource` names a resource the app reads the value of.
+    const value =
+      attributeOf(element, VALUE, "value") ??
+      attributeOf(element, RESOURCE, "resource");
+    if (name?.type === "string" && value !== null) {
+      into.set(name.value, value);
+    }
+  };
   const stringAttribute = (
     element: ManifestElement,
     id: number,
@@ -386,6 +405,12 @@ export const readAndroidManifest = (
     if (COMPONENTS.has(element.name)) {
       const component = stringAttribute(element, NAME, "name");
       if (component === null) continue;
+      for (const item of element.children) {
+        if (item.name !== "meta-data") continue;
+        const own = componentMetaData.get(component) ?? new Map();
+        metaDataOf(item, own);
+        componentMetaData.set(component, own);
+      }
       for (const filter of element.children) {
         if (filter.name !== "intent-filter") continue;
         const named = (child: string) =>
@@ -413,14 +438,7 @@ export const readAndroidManifest = (
       continue;
     }
     if (element.name !== "meta-data") continue;
-    const name = attributeOf(element, NAME, "name");
-    // `android:resource` names a resource the app reads the value of.
-    const value =
-      attributeOf(element, VALUE, "value") ??
-      attributeOf(element, RESOURCE, "resource");
-    if (name?.type === "string" && value !== null) {
-      metaData.set(name.value, value);
-    }
+    metaDataOf(element, metaData);
   }
   return {
     packageName: packageValue?.type === "string" ? packageValue.value : null,
@@ -429,5 +447,6 @@ export const readAndroidManifest = (
     metaData,
     launchers,
     urlSchemes,
+    componentMetaData,
   };
 };

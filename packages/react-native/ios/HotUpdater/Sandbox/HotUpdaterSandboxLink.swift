@@ -37,9 +37,20 @@ struct HotUpdaterSandboxLink: Equatable {
     /// Whether a URL scheme is this build's, so its links never reach the app:
     /// the one it registered, or without one, the prefix every build had then.
     static func isOwnScheme(_ scheme: String?, own: String? = ownScheme) -> Bool {
-        guard let scheme = scheme?.lowercased() else { return false }
-        guard let own else { return scheme.hasPrefix(schemePrefix) }
-        return scheme == own
+        guard let scheme, isAscii(scheme) else { return false }
+        let lowercased = scheme.lowercased()
+        guard let own else { return lowercased.hasPrefix(schemePrefix) }
+        return lowercased == own
+    }
+
+    /// Case-insensitive matching folds `K` (Kelvin) or `ſ` into a letter: a
+    /// scheme is ASCII alone.
+    private static func isAscii(_ scheme: Substring) -> Bool {
+        scheme.unicodeScalars.allSatisfy(\.isASCII)
+    }
+
+    private static func isAscii(_ scheme: String) -> Bool {
+        isAscii(scheme[...])
     }
 
     /// `parsePreviewLink` of `@hot-updater/protocol`, which shares its vectors in
@@ -51,6 +62,7 @@ struct HotUpdaterSandboxLink: Equatable {
         guard let match = Self.pattern.firstMatch(in: url, range: whole),
               match.range == whole,
               let schemeRange = Range(match.range(at: 1), in: url),
+              Self.isAscii(url[schemeRange]),
               let queryRange = Range(match.range(at: 2), in: url) else {
             return nil
         }

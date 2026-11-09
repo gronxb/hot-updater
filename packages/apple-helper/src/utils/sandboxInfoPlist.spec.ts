@@ -252,6 +252,37 @@ describe.runIf(process.platform === "darwin")("patching with plutil", () => {
     ]);
   });
 
+  it.each([
+    ["holds the sandbox's scheme", ["acme-preview", "app-login"]],
+    ["holds another scheme", ["app-login"]],
+  ])(
+    "refuses an app whose own URL type of the sandbox's name %s, and patches nothing",
+    async (_, schemes) => {
+      const appPlist = path.join(app, "Info.plist");
+      await writePlist(appPlist, {
+        CFBundleIdentifier: "com.example.App",
+        CFBundleURLTypes: [
+          {
+            CFBundleURLName: "hot-updater-sandbox",
+            CFBundleURLSchemes: schemes,
+          },
+        ],
+      });
+      const before = await fs.readFile(appPlist);
+      const message =
+        "The app has a URL type named hot-updater-sandbox, the name a sandbox build registers its URL scheme under.\nRename the app's URL type.";
+
+      await expect(
+        patchSandboxArchive({
+          archivePath: archive,
+          appPath: app,
+          schemeConfig: { ...scheme, sandboxUrlScheme: "acme-preview" },
+        }),
+      ).rejects.toMatchObject({ message, hint: message });
+      expect(await fs.readFile(appPlist)).toEqual(before);
+    },
+  );
+
   it.each(["myapp", "MyApp"])(
     "refuses a URL scheme the app registers itself, as %s, and patches nothing",
     async (urlScheme) => {

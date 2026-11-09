@@ -128,6 +128,44 @@ manifest sandbox-custom '>
         <data android:scheme="exampleapp"/>
       </intent-filter>
     </activity>' com.example.app.sandbox
+# Its activity also takes the app's link, in a filter before the sandbox's.
+manifest sandbox-other-first '>
+    <meta-data android:name="com.hotupdater.CHANNEL" android:value="sandbox-release"/>
+    <meta-data android:name="com.hotupdater.SANDBOX" android:value="true"/>
+    <activity android:name="com.hotupdater.HotUpdaterSandboxActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:scheme="exampleapp"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="acme-preview"/>
+      </intent-filter>
+      <meta-data android:name="com.hotupdater.sandbox.URL_SCHEME" android:value="acme-preview"/>
+    </activity>' com.example.app.sandbox
+# One whose meta-data names a scheme its activity doesn't take.
+manifest sandbox-mismatch '>
+    <meta-data android:name="com.hotupdater.CHANNEL" android:value="sandbox-release"/>
+    <meta-data android:name="com.hotupdater.SANDBOX" android:value="true"/>
+    <activity android:name="com.hotupdater.HotUpdaterSandboxActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:scheme="exampleapp"/>
+      </intent-filter>
+      <meta-data android:name="com.hotupdater.sandbox.URL_SCHEME" android:value="acme-preview"/>
+    </activity>' com.example.app.sandbox
 manifest launcher '>
     <activity android:name="com.example.app.MainActivity" android:exported="true">
       <intent-filter>
@@ -200,3 +238,6 @@ plutil -replace CFBundleURLTypes -json '[{"CFBundleURLName":"com.example.app","C
 # One whose sandbox URL type has no name, read by the derived scheme's prefix.
 cp Info.sandbox.plist Info.sandbox-unnamed.plist
 plutil -replace CFBundleURLTypes -json '[{"CFBundleURLSchemes":["exampleapp"]},{"CFBundleURLSchemes":["hu-sandbox-com-example-app"]}]' Info.sandbox-unnamed.plist
+# One whose URL type of the sandbox's name holds another scheme too.
+cp Info.sandbox.plist Info.sandbox-two-schemes.plist
+plutil -replace CFBundleURLTypes -json '[{"CFBundleURLName":"hot-updater-sandbox","CFBundleURLSchemes":["acme-preview","app-login"]}]' Info.sandbox-two-schemes.plist
