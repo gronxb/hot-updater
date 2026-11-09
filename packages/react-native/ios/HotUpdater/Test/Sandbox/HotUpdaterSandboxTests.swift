@@ -1685,6 +1685,10 @@ struct HotUpdaterSandboxShelfTests {
     }
 }
 
+/// The stored files' ID and the release's, as pr-135's Android deploy had them.
+private let artifactId = "01a1be20-0000-7000-8000-0000000000c6"
+private let releaseId = "01a1be22-0000-7000-8000-000000005b2b"
+
 private func entry(_ bundleId: String, _ channel: String, message: String? = nil) -> HotUpdaterSandboxShelfEntry {
     HotUpdaterSandboxShelfEntry(bundleId: bundleId, channel: channel, message: message, isolationKey: "key", downloadedAtMs: 0)
 }
@@ -1869,6 +1873,35 @@ struct HotUpdaterSandboxHomeModelTests {
         #expect(row.showsBack)
         let info = HotUpdaterSandboxInfoModel(state: current, version: "1", configuration: "Release", isOverApp: true)
         #expect(info.bundle.first { $0.name == "Current" }?.value == "Stored 019a3f…c2")
+    }
+
+    /// QA of codex-relay pr-135: the list said bundle 01a1be…c6, the stored files'
+    /// ID, while the app's `HotUpdater.getBundleId()`, the PR comment and the
+    /// Console said 01a1be…2b, the release's ID.
+    @Test
+    func aStoredBundleIsNamedByTheReleaseIdTheAppAndTheConsoleShow() throws {
+        let files = temporaryDirectory()
+        let shelf = makeShelf(files)
+        try FileManager.default.createDirectory(at: shelf.root, withIntermediateDirectories: true)
+        try Data(#"[{"bundleId":"\#(artifactId)","releaseId":"\#(releaseId)","channel":"pr-135","isolationKey":"key","downloadedAtMs":0}]"#.utf8)
+            .write(to: shelf.root.appendingPathComponent("index.json"))
+        let current = state(selection: selection(), history: shelf.entries, storedSession: artifactId)
+        #expect(home(current).downloaded.first?.detail == "Bundle 01a1be…2b · downloaded just now")
+        #expect(home(current, isOverApp: true).bigRow.detail == "Bundle 01a1be…2b")
+        let info = HotUpdaterSandboxInfoModel(state: current, version: "1", configuration: "Release", isOverApp: true)
+        #expect(info.bundle.first { $0.name == "Current" }?.value == "Stored 01a1be…2b")
+    }
+
+    @Test
+    func aStoredBundleListedBeforeReleaseIdsKeepsItsBundleId() throws {
+        let files = temporaryDirectory()
+        let shelf = makeShelf(files)
+        try FileManager.default.createDirectory(at: shelf.root, withIntermediateDirectories: true)
+        try Data(#"[{"bundleId":"\#(artifactId)","channel":"pr-135","isolationKey":"key","downloadedAtMs":0}]"#.utf8)
+            .write(to: shelf.root.appendingPathComponent("index.json"))
+        let current = state(selection: selection(), history: shelf.entries, storedSession: artifactId)
+        #expect(home(current).downloaded.first?.detail == "Bundle 01a1be…c6 · downloaded just now")
+        #expect(home(current, isOverApp: true).bigRow.detail == "Bundle 01a1be…c6")
     }
 
     @Test
