@@ -24,8 +24,9 @@ const event = {
   action: "synchronize",
   number: 12,
   title: "Fix the header",
-  headSha: "0123456789abcdef",
+  commitSha: "0123456789abcdef",
   repositoryUrl: "https://github.com/octo/app",
+  runUrl: "https://github.com/octo/app/actions/runs/42",
   fromFork: false,
 };
 
@@ -282,7 +283,7 @@ describe("no sandbox scheme", () => {
       [
         COMMENT_MARKER,
         "### Preview on `pr-12`",
-        "**Install this pull request's build.** It opens this pull request on its first launch.",
+        "**Install this pull request's build.** It opens the latest bundle on `pr-12` on its first launch.",
         `- **Android**: [Download APK](${DOWNLOAD}) · [Details](${CONSOLE}/native-builds/${BUILD_ID}) · allow "Install unknown apps" when Android asks`,
         LATEST_COMMIT,
         [
@@ -596,7 +597,7 @@ describe("a pull request whose fingerprint differs from the sandbox build", () =
     const built = JSON.parse(outputs["previews"]!)[0].nativeBuild.id;
     expect(written).toEqual([]);
     expect(body).toContain(
-      `**Install this pull request's build.** It opens this pull request on its first launch.\n\n- **Android**: [Download APK](${CONSOLE}/api/native-builds/${built}/download)`,
+      `**Install this pull request's build.** It opens the latest bundle on \`pr-12\` on its first launch.\n\n- **Android**: [Download APK](${CONSOLE}/api/native-builds/${built}/download)`,
     );
     expect(body).not.toContain("Scan");
     const [preview] = JSON.parse(outputs["previews"]!);
@@ -766,10 +767,81 @@ describe("a sandbox scheme beside a normal one", () => {
     expect(body).toContain(`\`${LINK}\``);
     // The iOS build embeds the channel: it needs no scan.
     expect(body).toContain(
-      "**This pull request's own build** opens this pull request on its first launch.\n\n- **iOS Simulator**: ",
+      "**This pull request's own build** opens the latest bundle on `pr-12` on its first launch.\n\n- **iOS Simulator**: ",
     );
     expect(fake.calls).toContain(
       "native-build find -p ios -c pr-12 -s simulator --json",
     );
+  });
+});
+
+describe("a platform that fails", () => {
+  const deps = (fake: ReturnType<typeof fakeCli>) => {
+    const github = fakeGitHub();
+    return {
+      github,
+      deps: {
+        cli: fake.cli,
+        buildLogs: vi.fn(() => []),
+        github: github.github,
+        setOutput: vi.fn(),
+        log: {
+          info: vi.fn(),
+          notice: vi.fn(),
+          group: <T>(_: string, body: () => Promise<T>) => body(),
+        },
+      } as never,
+    };
+  };
+  // The iOS scheme's native build fails; Android's sandbox build deploys.
+  const iosFails = () => {
+    const fake = fakeCli({ builds: [sandboxBuild()] });
+    const cli = fake.cli.getMockImplementation()!;
+    fake.cli.mockImplementation(async (args: string[]) =>
+      args[0] === "native-build" && args[1] === "ios"
+        ? Promise.reject(new Error("xcodebuild failed."))
+        : cli(args),
+    );
+    return fake;
+  };
+
+  it("comments the platforms that deployed, says which failed, then fails", async () => {
+    const fake = iosFails();
+    const { github, deps: value } = deps(fake);
+
+    await expect(
+      runAction(
+        value,
+        env({ INPUT_PLATFORMS: "android,ios", INPUT_IOS_SCHEME: "simulator" }),
+        event,
+      ),
+    ).rejects.toThrow("xcodebuild failed.");
+
+    const [comment] = github.comments;
+    expect(comment?.body).toContain(
+      "### Preview on `pr-12`\n\n**iOS** failed on this run: [see the logs](https://github.com/octo/app/actions/runs/42).",
+    );
+    expect(comment?.body).toContain(`\`${LINK}\``);
+    expect(comment?.body).toContain(LATEST_COMMIT);
+    expect(comment?.body).not.toContain("iOS Simulator");
+    // Android deployed after iOS failed, not before it only.
+    expect(fake.calls).toContain(
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
+    );
+  });
+
+  it("leaves the comment when no platform deployed", async () => {
+    const fake = iosFails();
+    const { github, deps: value } = deps(fake);
+
+    await expect(
+      runAction(
+        value,
+        env({ INPUT_PLATFORMS: "ios", INPUT_IOS_SCHEME: "simulator" }),
+        event,
+      ),
+    ).rejects.toThrow("xcodebuild failed.");
+
+    expect(github.comments).toEqual([]);
   });
 });

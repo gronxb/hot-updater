@@ -8,6 +8,7 @@ import {
   parseJsonOutput,
   repositoryUrlOf,
   runAction,
+  runUrlOf,
 } from "./preview.mjs";
 import { writeQrCodes } from "./qrBranch.mjs";
 import { fakeGitHub } from "./testing/fakeGitHub";
@@ -16,8 +17,9 @@ const event = {
   action: "synchronize",
   number: 12,
   title: "Fix the header",
-  headSha: "0123456789abcdef",
+  commitSha: "0123456789abcdef",
   repositoryUrl: "https://github.com/octo/app",
+  runUrl: "https://github.com/octo/app/actions/runs/42",
   fromFork: false,
 };
 
@@ -934,6 +936,19 @@ describe("repositoryUrlOf", () => {
       ),
     ).toBe("https://git.example.com/octo/app");
     expect(repositoryUrlOf({}, {})).toBeNull();
+  });
+});
+
+describe("runUrlOf", () => {
+  it("is the run's page on the repository's server, or none", () => {
+    const github = {
+      GITHUB_SERVER_URL: "https://git.example.com",
+      GITHUB_REPOSITORY: "octo/app",
+    };
+    expect(runUrlOf({ ...github, GITHUB_RUN_ID: "42" }, undefined)).toBe(
+      "https://git.example.com/octo/app/actions/runs/42",
+    );
+    expect(runUrlOf(github, undefined)).toBeNull();
   });
 });
 

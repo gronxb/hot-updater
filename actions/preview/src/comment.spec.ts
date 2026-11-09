@@ -35,7 +35,7 @@ const ios = {
 const base = {
   consoleUrl: "https://console.example.com/",
   channel: "pr-12",
-  headSha: "0123456789abcdef",
+  commitSha: "0123456789abcdef",
   // A server other than github.com, such as GitHub Enterprise Server.
   repositoryUrl: "https://git.example.com/octo/app",
   credit: true,
@@ -168,7 +168,7 @@ adb install -r app-release.apk
 
 ### Preview on \`pr-12\`
 
-**Install this pull request's build.** It opens this pull request on its first launch.
+**Install this pull request's build.** It opens the latest bundle on \`pr-12\` on its first launch.
 
 - **Android**: [Download APK](${C}/api/native-builds/019a0000-0000-7000-8000-00000000b001/download) · [Details](${C}/native-builds/019a0000-0000-7000-8000-00000000b001) · allow "Install unknown apps" when Android asks
 - **iOS Simulator**: [Details](${C}/native-builds/019a0000-0000-7000-8000-00000000b002) · install with the command below
@@ -256,7 +256,7 @@ npx hot-updater native-build install 019a0000-0000-7000-8000-00000000b002
       `**2. Scan to open the latest bundle on \`pr-12\`** with the sandbox app.\n${LATEST_COMMIT}`,
     );
     const own = body.indexOf(
-      `**This pull request's own build** opens this pull request on its first launch.\n\n- **iOS Simulator**: [Details](${C}/native-builds/${ios.nativeBuild.id}) · install with the command below`,
+      `**This pull request's own build** opens the latest bundle on \`pr-12\` on its first launch.\n\n- **iOS Simulator**: [Details](${C}/native-builds/${ios.nativeBuild.id}) · install with the command below`,
     );
     expect(scan).toBeGreaterThan(0);
     expect(own).toBeGreaterThan(scan);
@@ -490,6 +490,22 @@ describe("the sandbox link's QR code", () => {
     expect(body).toContain(
       `**2. Open the latest bundle on \`pr-12\`**: open the link on the phone with the sandbox app.\n${LATEST_COMMIT}\n\n**Android**\n\n\`${ANDROID_LINK}\``,
     );
+  });
+});
+
+describe("a platform that failed", () => {
+  it("gets one line, linking the run when there is one", () => {
+    const body = renderPreviewComment({
+      ...base,
+      previews: [android],
+      failed: ["ios"],
+      runUrl: null,
+    });
+
+    expect(body).toContain(
+      "### Preview on `pr-12`\n\n**iOS** failed on this run.\n\n**Install",
+    );
+    expect(body).not.toContain("iOS Simulator");
   });
 });
 

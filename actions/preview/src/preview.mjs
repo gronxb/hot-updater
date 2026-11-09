@@ -59,9 +59,12 @@ export { parseJsonOutput };
  *   whose workflow runs get no secrets.
  * @property {number} number
  * @property {string} title
- * @property {string} headSha
+ * @property {string} commitSha The commit the run deploys: what the app's
+ *   directory has checked out.
  * @property {string | null} repositoryUrl The repository's web URL, which
  *   the comment links the commit under.
+ * @property {string | null} runUrl The workflow run's page, which the comment
+ *   links a platform that failed to.
  *
  * @typedef {object} Deps
  * @property {(args: string[], options?: { capture?: boolean }) => Promise<{ code: number, stdout: string }>} cli
@@ -93,12 +96,25 @@ export const repositoryUrlOf = (env, payload) => {
 };
 
 /**
+ * The workflow run's page, or none without the repository's URL or the run.
+ * @param {Record<string, string | undefined>} env
+ * @param {{ repository?: { html_url?: string } } | undefined} payload
+ */
+export const runUrlOf = (env, payload) => {
+  const repositoryUrl = repositoryUrlOf(env, payload);
+  const runId = env["GITHUB_RUN_ID"];
+  return repositoryUrl && runId
+    ? `${repositoryUrl}/actions/runs/${encodeURIComponent(runId)}`
+    : null;
+};
+
+/**
  * The deploy message of a pull request's bundle, which the sandbox app shows
  * on one line: the commit first, so the line's ellipsis never cuts it.
  * @param {PullRequestEvent} event
  */
-export const deployMessage = ({ headSha, number, title }) =>
-  `${headSha.slice(0, 7)} · #${number} ${title}`;
+export const deployMessage = ({ commitSha, number, title }) =>
+  `${commitSha.slice(0, 7)} · #${number} ${title}`;
 
 /**
  * The `<platform>-submit` inputs that are set. Each takes only the platform's
@@ -637,13 +653,23 @@ export const runPreview = async (deps, inputs, event) => {
   await deps.cli(["channel", "set", inputs.channel]);
   /** @type {(PlatformPreview & { installUrl: string })[]} */
   const previews = [];
+  /** @type {{ platform: Platform, error: unknown }[]} */
+  const failures = [];
+  // Each platform deploys on its own, so the comment names this run's
+  // commit only beside the platforms that deployed it.
   for (const platform of inputs.platforms) {
-    previews.push(
-      await deps.log.group(`Preview ${platform}`, () =>
-        previewPlatform(deps, inputs, event, platform),
-      ),
-    );
+    try {
+      previews.push(
+        await deps.log.group(`Preview ${platform}`, () =>
+          previewPlatform(deps, inputs, event, platform),
+        ),
+      );
+    } catch (error) {
+      failures.push({ platform, error });
+    }
   }
+  // With nothing deployed, the comment still says what the channel has.
+  if (previews.length === 0) throw failureOf(failures);
   // The comment's QR codes live on a branch of the repository, which shows
   // them to anyone who can read it, whatever network the Console is on.
   /** @type {Record<string, string>} */
@@ -667,8 +693,10 @@ export const runPreview = async (deps, inputs, event) => {
     channel: inputs.channel,
     previews,
     qrImages,
-    headSha: event.headSha,
+    commitSha: event.commitSha,
     repositoryUrl: event.repositoryUrl,
+    failed: failures.map(({ platform }) => platform),
+    runUrl: event.runUrl,
     credit: inputs.credit,
   });
   /** @type {(PlatformPreview & PreviewOutputs)[]} */
@@ -693,9 +721,27 @@ export const runPreview = async (deps, inputs, event) => {
   if (inputs.comment && deps.github) {
     await upsertComment(deps.github, event.number, body);
   }
+  if (failures.length > 0) throw failureOf(failures);
   if (qrError) throw qrError;
   return { previews: outputs, body };
 };
+
+/**
+ * The error a run with failed platforms ends with: the one platform's own,
+ * or each platform's message.
+ * @param {{ platform: Platform, error: unknown }[]} failures
+ */
+const failureOf = (failures) =>
+  failures.length === 1
+    ? failures[0]?.error
+    : new Error(
+        failures
+          .map(
+            ({ platform, error }) =>
+              `${platform}: ${error instanceof Error ? error.message : String(error)}`,
+          )
+          .join("\n"),
+      );
 
 /**
  * Deletes the closed pull request's channel with its bundles and the native
