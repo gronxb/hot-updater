@@ -205,6 +205,8 @@ internal class HotUpdaterSandboxLiveHost(
             HotUpdaterSandboxStaged.Update(
                 active?.get("bundleId") as? String ?: HotUpdaterImpl.getMinBundleId(),
                 update.message,
+                // What `HotUpdater.getBundleId()` reports for this selection.
+                active?.get("releaseId") as? String,
             )
         }
 

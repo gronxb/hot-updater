@@ -10,6 +10,12 @@ struct HotUpdaterSandboxShelfEntry: Equatable, Codable {
     /// Main's key when it was downloaded: another build's bundles don't run here.
     let isolationKey: String
     let downloadedAtMs: Double
+    /// The release the check selected: the ID `HotUpdater.getBundleId()`, the PR
+    /// comment and the Console show. Nil on entries listed before it was kept.
+    var releaseId: String? = nil
+
+    /// What the list calls the bundle. The files stay under `bundleId`.
+    var shownId: String { releaseId ?? bundleId }
 }
 
 /// A stored bundle's files, checked: what a stored session runs.
@@ -82,10 +88,25 @@ final class HotUpdaterSandboxShelf {
     /// Lists a bundle main just installed, and copies it when this build stores
     /// bundles. Best effort: a copy that fails its check lists nothing. The oldest
     /// entry past the cap goes, never one in `kept`: what runs, or is about to.
-    func add(bundleId: String, channel: String, message: String?, nowMs: Double, kept: Set<String> = []) {
+    func add(
+        bundleId: String,
+        channel: String,
+        message: String?,
+        nowMs: Double,
+        kept: Set<String> = [],
+        releaseId: String? = nil
+    ) {
         guard Self.isName(bundleId) else { return }
+        let entry = HotUpdaterSandboxShelfEntry(
+            bundleId: bundleId,
+            channel: channel,
+            message: message,
+            isolationKey: isolationKey,
+            downloadedAtMs: nowMs,
+            releaseId: releaseId
+        )
         guard storesBundles else {
-            let trash = serially { publish(bundleId: bundleId, channel: channel, message: message, nowMs: nowMs, kept: kept) }
+            let trash = serially { publish(entry, kept: kept) }
             delete(trash)
             return
         }
@@ -112,23 +133,16 @@ final class HotUpdaterSandboxShelf {
                 NSLog("[HotUpdaterSandbox] didn't keep %@: %@", bundleId, error.localizedDescription)
                 return aside
             }
-            aside += publish(bundleId: bundleId, channel: channel, message: message, nowMs: nowMs, kept: kept)
+            aside += publish(entry, kept: kept)
             return aside
         }
         delete(trash + [partial])
     }
 
     /// Under the lock: the new list, and what its change set aside.
-    private func publish(bundleId: String, channel: String, message: String?, nowMs: Double, kept: Set<String>) -> [URL] {
-        let entry = HotUpdaterSandboxShelfEntry(
-            bundleId: bundleId,
-            channel: channel,
-            message: message,
-            isolationKey: isolationKey,
-            downloadedAtMs: nowMs
-        )
+    private func publish(_ entry: HotUpdaterSandboxShelfEntry, kept: Set<String>) -> [URL] {
         // Without a copy, a row checks its channel, so one row per channel is enough.
-        var next = [entry] + list.filter { $0.bundleId != bundleId && (storesBundles || $0.channel != channel) }
+        var next = [entry] + list.filter { $0.bundleId != entry.bundleId && (storesBundles || $0.channel != entry.channel) }
         var trash: [URL] = []
         while next.count > Self.limit, let oldest = next.filter({ !kept.contains($0.bundleId) }).min(by: { $0.downloadedAtMs < $1.downloadedAtMs }) {
             next.removeAll { $0.bundleId == oldest.bundleId }

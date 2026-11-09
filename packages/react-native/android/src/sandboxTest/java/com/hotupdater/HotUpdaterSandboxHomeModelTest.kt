@@ -9,7 +9,12 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import kotlin.coroutines.EmptyCoroutineContext
+
+/** The stored files' ID and the release's, as pr-135's Android deploy had them. */
+private const val ARTIFACT = "01a1be20-0000-7000-8000-0000000000c6"
+private const val RELEASE = "01a1be22-0000-7000-8000-000000005b2b"
 
 private fun selection(
     channel: String = "pr-1",
@@ -243,6 +248,23 @@ class HotUpdaterSandboxScreenStateTest {
         assertNotNull(fixture.shelf.stored("ota"))
         assertEquals("fix: login", fixture.coordinator.state.selectedMessage)
         assertEquals(1, fixture.coordinator.state.downloaded.size)
+    }
+
+    @Test
+    fun `a switch keeps the release ID the check selected`() {
+        val fixture = ScreenFixture()
+        fixture.host.stage = HotUpdaterSandboxStaged.Update("ota", releaseId = RELEASE)
+        fixture.coordinator.switchTo("pr-135")
+        assertEquals(listOf(RELEASE), fixture.shelf.entries.map { it.releaseId })
+        assertEquals(
+            listOf(RELEASE),
+            fixture.coordinator.state.downloaded
+                .map { it.shownId },
+        )
+        // The list on disk keeps it for the next launch; the files stay under the bundle's ID.
+        val reread = HotUpdaterSandboxShelf(fixture.shelf.root, fixture.shelf.source, "key")
+        assertEquals(listOf(RELEASE), reread.entries.map { it.releaseId })
+        assertNotNull(reread.stored("ota"))
     }
 
     @Test
@@ -536,6 +558,37 @@ class HotUpdaterSandboxHomeModelTest {
         assertTrue(row.showsBack)
         val info = HotUpdaterSandboxInfoModel.of(current, "1", "Release", isOverApp = true)
         assertEquals("Stored 019a3f…c2", info.bundle.first { it.name == "Current" }.value)
+    }
+
+    /**
+     * QA of codex-relay pr-135: the list said bundle 01a1be…c6, the stored files'
+     * ID, while the app's `HotUpdater.getBundleId()`, the PR comment and the
+     * Console said 01a1be…2b, the release's ID.
+     */
+    @Test
+    fun `a stored bundle is named by the release ID the app and the Console show`() {
+        val shelf = testShelf()
+        shelf.root.mkdirs()
+        File(shelf.root, "index.json").writeText(
+            """[{"bundleId":"$ARTIFACT","releaseId":"$RELEASE","channel":"pr-135","isolationKey":"key","downloadedAtMs":0}]""",
+        )
+        val current = state(selection(), history = shelf.entries, storedSession = ARTIFACT)
+        assertEquals("Bundle 01a1be…2b · downloaded just now", home(current).downloaded.single().detail)
+        assertEquals("Bundle 01a1be…2b", home(current, isOverApp = true).bigRow.detail)
+        val info = HotUpdaterSandboxInfoModel.of(current, "1", "Release", isOverApp = true)
+        assertEquals("Stored 01a1be…2b", info.bundle.first { it.name == "Current" }.value)
+    }
+
+    @Test
+    fun `a stored bundle listed before release IDs keeps its bundle ID`() {
+        val shelf = testShelf()
+        shelf.root.mkdirs()
+        File(shelf.root, "index.json").writeText(
+            """[{"bundleId":"$ARTIFACT","channel":"pr-135","isolationKey":"key","downloadedAtMs":0}]""",
+        )
+        val current = state(selection(), history = shelf.entries, storedSession = ARTIFACT)
+        assertEquals("Bundle 01a1be…c6 · downloaded just now", home(current).downloaded.single().detail)
+        assertEquals("Bundle 01a1be…c6", home(current, isOverApp = true).bigRow.detail)
     }
 
     @Test
