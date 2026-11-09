@@ -67,21 +67,25 @@ export const isSandboxUrlScheme = (scheme: string): boolean =>
   scheme.toLowerCase().startsWith(SANDBOX_URL_SCHEME_PREFIX);
 
 const CONFIGURED_URL_SCHEME = /^[a-z][a-z0-9+.-]{0,63}$/u;
-const SYSTEM_URL_SCHEMES: ReadonlySet<string> = new Set([
+const RESERVED_URL_SCHEMES: ReadonlySet<string> = new Set([
   "http",
   "https",
   "file",
   "data",
   "javascript",
+  // aapt compiles these as booleans in an Android `<meta-data>` value.
+  "true",
+  "false",
 ]);
 
 /**
  * Whether `sandbox: { urlScheme }` can name a URL scheme: lower case, a letter
- * then up to 63 letters, digits, `+`, `.` or `-`, and none the system or a
- * browser owns.
+ * then up to 63 letters, digits, `+`, `.` or `-`, none the system or a browser
+ * owns, and neither `true` nor `false`, which Android's manifest can't hold as
+ * a string.
  */
 export const isConfigurableSandboxUrlScheme = (urlScheme: string): boolean =>
-  CONFIGURED_URL_SCHEME.test(urlScheme) && !SYSTEM_URL_SCHEMES.has(urlScheme);
+  CONFIGURED_URL_SCHEME.test(urlScheme) && !RESERVED_URL_SCHEMES.has(urlScheme);
 
 /** What a preview link asks a sandbox build to run. */
 export interface PreviewLink {

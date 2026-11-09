@@ -893,6 +893,8 @@ describe("the sandbox layer", () => {
       "file",
       "data",
       "javascript",
+      "true",
+      "false",
     ]) {
       expect(isConfigurableSandboxUrlScheme(scheme)).toBe(false);
     }

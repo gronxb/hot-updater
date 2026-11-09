@@ -328,7 +328,7 @@ const resolveSandbox = (
     !isConfigurableSandboxUrlScheme(urlScheme)
   ) {
     throw new Error(
-      `${name}: sandbox.urlScheme ${JSON.stringify(urlScheme)} isn't a URL scheme a sandbox build can register.\nUse lower case: a letter, then up to 63 letters, digits, +, . or -, and not http, https, file, data or javascript.`,
+      `${name}: sandbox.urlScheme ${JSON.stringify(urlScheme)} isn't a URL scheme a sandbox build can register.\nUse lower case: a letter, then up to 63 letters, digits, +, . or -, and not http, https, file, data, javascript, true or false.`,
     );
   }
   return { sandbox: true, sandboxUrlScheme: urlScheme };

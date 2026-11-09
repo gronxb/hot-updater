@@ -50,7 +50,9 @@ internal data class HotUpdaterSandboxLink(
                                         ComponentName(context, HotUpdaterSandboxActivity::class.java),
                                         PackageManager.GET_META_DATA,
                                     ).metaData
-                                    ?.getString(URL_SCHEME_META_DATA)
+                                    // aapt keeps a value such as `true` typed: read it as written.
+                                    ?.get(URL_SCHEME_META_DATA)
+                                    ?.toString()
                                     ?.lowercase()
                             }.getOrNull()
                         ownSchemeRead = true

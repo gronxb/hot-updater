@@ -155,7 +155,8 @@ export interface NativeBuildSandboxOptions {
   /**
    * The URL scheme the sandbox build registers, which its preview links and
    * QR codes open: lower case, a letter then up to 63 letters, digits, `+`,
-   * `.` or `-`, and none the app registers itself. A build keeps the scheme it
+   * `.` or `-`, none the app registers itself, and not `http`, `https`,
+   * `file`, `data`, `javascript`, `true` or `false`. A build keeps the scheme it
    * was built with, so a changed one takes effect at the next sandbox build.
    *
    * @default "hu-sandbox-<bundleIdentifier | packageName>"
