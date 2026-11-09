@@ -278,8 +278,10 @@ the CLI masks only the credentials it reads, not every value the build may
 print.
 
 A platform that fails doesn't stop the others, and the job fails after them.
-When another platform deployed, the comment shows only that one and links the
-failed platform to the run. When none deployed, the comment stays as it was.
+The comment shows only the platforms that finished, and links each failed one
+to the run. One that failed after deploying its bundle says so, and the
+comment names no commit for it. When no bundle was deployed, the comment stays
+as it was.
 
 A scheme that sets the app version at build time, such as in an `xcconfig`,
 builds a version the project doesn't declare, so its preview builds again on

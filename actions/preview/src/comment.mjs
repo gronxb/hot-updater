@@ -300,8 +300,10 @@ const buildsTable = (previews) => {
  *   which each bundle's deploy message names too.
  * @param {string | null} [input.repositoryUrl] The repository's web URL, which
  *   the commit links under; without it, the commit is not a link.
- * @param {Platform[]} [input.failed] The platforms that failed on this run,
- *   which the comment shows nothing else of.
+ * @param {{ platform: Platform, deployed: boolean }[]} [input.failed] The
+ *   platforms that failed on this run, which the comment shows nothing else
+ *   of, and names no commit for: `deployed` when the bundle reached the
+ *   channel before the failure.
  * @param {string | null} [input.runUrl] The run's page, which a failed
  *   platform links to.
  * @param {boolean} input.credit Whether to end with "Preview by hot-updater".
@@ -341,8 +343,8 @@ export const renderPreviewComment = ({
     COMMENT_MARKER,
     `### Preview on ${code(channel)}`,
     ...failed.map(
-      (platform) =>
-        `**${platform === "ios" ? "iOS" : "Android"}** failed on this run${runUrl === null ? "." : `: [see the logs](${runUrl}).`}`,
+      ({ platform, deployed }) =>
+        `**${platform === "ios" ? "iOS" : "Android"}** failed on this run${deployed ? ", after deploying its bundle" : ""}${runUrl === null ? "." : `: [see the logs](${runUrl}).`}`,
     ),
     ...(sandboxes.length === 0
       ? []
@@ -389,9 +391,9 @@ export const renderPreviewComment = ({
             : `**This pull request's own build** opens the latest bundle on ${code(channel)} on its first launch.`,
           own.map(line).join("\n"),
         ]),
-    // Without step 2, the commit still goes once.
-    ...(linked.length === 0 ? [latestCommit] : []),
-    buildsTable(previews),
+    // Without step 2, the commit still goes once, beside a platform it reached.
+    ...(linked.length === 0 && previews.length > 0 ? [latestCommit] : []),
+    ...(previews.length === 0 ? [] : [buildsTable(previews)]),
     ...installCommands(previews),
     ...footer([], credit),
   ].join("\n\n");

@@ -455,9 +455,10 @@ const sandboxOf = (inputs, sandbox, { fingerprintHash }, build) =>
  * @param {Inputs} inputs
  * @param {PullRequestEvent} event
  * @param {Platform} platform
+ * @param {() => void} onDeployed Runs once the bundle is on the channel.
  * @returns {Promise<PlatformPreview & { installUrl: string }>}
  */
-const previewPlatform = async (deps, inputs, event, platform) => {
+const previewPlatform = async (deps, inputs, event, platform, onDeployed) => {
   const scheme = /** @type {string} */ (inputs.schemes[platform]);
   const submit = inputs.submits[platform];
   if (submit) {
@@ -468,6 +469,7 @@ const previewPlatform = async (deps, inputs, event, platform) => {
       channel: inputs.channel,
       target,
       message: deployMessage(event),
+      onDeployed,
     });
     const nativeBuild = {
       id: build.id,
@@ -503,6 +505,7 @@ const previewPlatform = async (deps, inputs, event, platform) => {
       platform,
       scheme,
       channel: inputs.channel,
+      onDeployed,
       // A config plugin can decide the channel, whatever `channel set` wrote.
       found:
         found.channel === inputs.channel
@@ -527,6 +530,7 @@ const previewPlatform = async (deps, inputs, event, platform) => {
       platform,
       scheme: fallback,
       channel: inputs.channel,
+      onDeployed,
       found: await findNativeBuild(deps, {
         platform,
         scheme: fallback,
@@ -540,6 +544,7 @@ const previewPlatform = async (deps, inputs, event, platform) => {
     scheme,
     channel: found.channel,
     found,
+    onDeployed,
   });
   return {
     ...preview,
@@ -554,14 +559,14 @@ const previewPlatform = async (deps, inputs, event, platform) => {
  * @param {Deps} deps
  * @param {Inputs} inputs
  * @param {PullRequestEvent} event
- * @param {{ platform: Platform, scheme: string, channel: string, found: import("../../shared/nativeBuild.mjs").NativeBuildFindResult }} options
+ * @param {{ platform: Platform, scheme: string, channel: string, found: import("../../shared/nativeBuild.mjs").NativeBuildFindResult, onDeployed: () => void }} options
  * @returns {Promise<{ preview: PlatformPreview & { installUrl: string }, build: NativeBuildRow }>}
  */
 const deployOnNativeBuild = async (
   deps,
   inputs,
   event,
-  { platform, scheme, channel, found },
+  { platform, scheme, channel, found, onDeployed },
 ) => {
   /** @type {import("../../shared/nativeBuild.mjs").BuildTarget} */
   let target = {
@@ -622,6 +627,7 @@ const deployOnNativeBuild = async (
     channel: inputs.channel,
     target,
     message: deployMessage(event),
+    onDeployed,
   });
   const nativeBuild = {
     id: build.id,
@@ -653,19 +659,24 @@ export const runPreview = async (deps, inputs, event) => {
   await deps.cli(["channel", "set", inputs.channel]);
   /** @type {(PlatformPreview & { installUrl: string })[]} */
   const previews = [];
-  /** @type {{ platform: Platform, error: unknown }[]} */
+  /** @type {{ platform: Platform, error: unknown, deployed: boolean }[]} */
   const failures = [];
   // Each platform deploys on its own, so the comment names this run's
   // commit only beside the platforms that deployed it.
   for (const platform of inputs.platforms) {
+    let deployed = false;
     try {
       previews.push(
         await deps.log.group(`Preview ${platform}`, () =>
-          previewPlatform(deps, inputs, event, platform),
+          previewPlatform(deps, inputs, event, platform, () => {
+            deployed = true;
+          }),
         ),
       );
     } catch (error) {
-      failures.push({ platform, error });
+      // A failure after the deploy leaves the channel with this run's
+      // bundle, which the comment can't name a commit for any more.
+      failures.push({ platform, error, deployed });
       // The run fails with it at the end; say so now, before the next build.
       if (platform !== inputs.platforms.at(-1)) {
         deps.log.error(`${platform}: ${messageOf(error)}`);
@@ -673,7 +684,9 @@ export const runPreview = async (deps, inputs, event) => {
     }
   }
   // With nothing deployed, the comment still says what the channel has.
-  if (previews.length === 0) throw failureOf(failures);
+  if (previews.length === 0 && failures.every(({ deployed }) => !deployed)) {
+    throw failureOf(failures);
+  }
   // The comment's QR codes live on a branch of the repository, which shows
   // them to anyone who can read it, whatever network the Console is on.
   /** @type {Record<string, string>} */
@@ -699,7 +712,7 @@ export const runPreview = async (deps, inputs, event) => {
     qrImages,
     commitSha: event.commitSha,
     repositoryUrl: event.repositoryUrl,
-    failed: failures.map(({ platform }) => platform),
+    failed: failures.map(({ platform, deployed }) => ({ platform, deployed })),
     runUrl: event.runUrl,
     credit: inputs.credit,
   });

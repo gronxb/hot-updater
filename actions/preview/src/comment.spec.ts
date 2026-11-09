@@ -498,7 +498,7 @@ describe("a platform that failed", () => {
     const body = renderPreviewComment({
       ...base,
       previews: [android],
-      failed: ["ios"],
+      failed: [{ platform: "ios", deployed: false }],
       runUrl: null,
     });
 

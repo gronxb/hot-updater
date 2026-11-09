@@ -177,11 +177,12 @@ export const refreshFingerprint = async (deps, target) => {
  * the registry says it reaches a native build with `target`.
  *
  * @param {ShellDeps} deps
- * @param {{ platform: Platform, channel: string, target: BuildTarget, message?: string }} options
+ * @param {{ platform: Platform, channel: string, target: BuildTarget, message?: string, onDeployed?: () => void }} options
+ *   `onDeployed` runs once `deploy` succeeds, before the registry is read.
  */
 export const deployBundle = async (
   deps,
-  { platform, channel, target, message },
+  { platform, channel, target, message, onDeployed },
 ) => {
   await deps.cli([
     "deploy",
@@ -194,6 +195,7 @@ export const deployBundle = async (
     // the project without the scheme.
     ...(target.appVersion === null ? [] : ["-t", target.appVersion]),
   ]);
+  onDeployed?.();
 
   const [release] =
     /** @type {{ id: string, fingerprint_hash: string | null, target_app_version: string | null }[]} */ (

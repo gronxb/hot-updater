@@ -849,3 +849,119 @@ describe("a platform that fails", () => {
     expect(github.comments).toEqual([]);
   });
 });
+
+describe("a deploy the registry can't confirm", () => {
+  const OLD_COMMIT = { ...event, commitSha: "fedcba9876543210" };
+  const iosBuild = {
+    ...sandboxBuild(),
+    platform: "ios",
+    channel: "pr-12",
+    kind: "app",
+    id: "ios-build",
+  };
+  const both = {
+    INPUT_PLATFORMS: "android,ios",
+    INPUT_IOS_SCHEME: "simulator",
+  };
+  const runOn = (
+    github: ReturnType<typeof fakeGitHub>,
+    fake: ReturnType<typeof fakeCli>,
+    overrides: Record<string, string>,
+    pullRequest: typeof event,
+  ) =>
+    runAction(
+      {
+        cli: fake.cli,
+        buildLogs: vi.fn(() => []),
+        github: github.github,
+        setOutput: vi.fn(),
+        log: {
+          info: vi.fn(),
+          notice: vi.fn(),
+          error: vi.fn(),
+          group: <T>(_: string, body: () => Promise<T>) => body(),
+        },
+      } as never,
+      env(overrides),
+      pullRequest,
+    );
+  // `deploy` succeeds, then reading the bundle back fails on `platforms`.
+  const lookupFails = (platforms: string[]) => {
+    const fake = fakeCli({ builds: [sandboxBuild(), iosBuild] });
+    const cli = fake.cli.getMockImplementation()!;
+    fake.cli.mockImplementation(async (args: string[]) => {
+      const platform = args[args.indexOf("-p") + 1]!;
+      return args[0] === "bundle" && platforms.includes(platform)
+        ? Promise.reject(new Error(`bundle list failed on ${platform}.`))
+        : cli(args);
+    });
+    return fake;
+  };
+  // The comment of an earlier run, which names its commit.
+  const commented = async (overrides: Record<string, string>) => {
+    const github = fakeGitHub();
+    await runOn(
+      github,
+      fakeCli({ builds: [sandboxBuild(), iosBuild] }),
+      overrides,
+      OLD_COMMIT,
+    );
+    expect(github.comments[0]?.body).toContain("fedcba9");
+    return github;
+  };
+
+  it("names no commit for the one platform it deployed, then fails", async () => {
+    const github = await commented({});
+    const fake = lookupFails(["android"]);
+
+    await expect(runOn(github, fake, {}, event)).rejects.toThrow(
+      "bundle list failed on android.",
+    );
+
+    expect(fake.calls).toContain(
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
+    );
+    const body = github.comments[0]!.body;
+    expect(body).toBe(
+      [
+        COMMENT_MARKER,
+        "### Preview on `pr-12`",
+        "**Android** failed on this run, after deploying its bundle: [see the logs](https://github.com/octo/app/actions/runs/42).",
+        "<sub>Preview by [hot-updater](https://hot-updater.dev)</sub>",
+      ].join("\n\n"),
+    );
+  });
+
+  it("names no commit for either platform when both deployed, then fails", async () => {
+    const github = await commented(both);
+    const fake = lookupFails(["android", "ios"]);
+
+    await expect(runOn(github, fake, both, event)).rejects.toThrow(
+      "android: bundle list failed on android.\nios: bundle list failed on ios.",
+    );
+
+    const body = github.comments[0]!.body;
+    expect(body).toContain(
+      "**Android** failed on this run, after deploying its bundle: [see the logs](https://github.com/octo/app/actions/runs/42).\n\n**iOS** failed on this run, after deploying its bundle: [see the logs](https://github.com/octo/app/actions/runs/42).",
+    );
+    expect(body).not.toContain("fedcba9");
+    expect(body).not.toContain("Latest commit");
+    expect(body).not.toContain(LINK);
+  });
+
+  it("keeps the other platform's commit when only one lookup failed", async () => {
+    const github = await commented(both);
+
+    await expect(
+      runOn(github, lookupFails(["ios"]), both, event),
+    ).rejects.toThrow("bundle list failed on ios.");
+
+    const body = github.comments[0]!.body;
+    expect(body).toContain(
+      "**iOS** failed on this run, after deploying its bundle",
+    );
+    expect(body).toContain(LATEST_COMMIT);
+    expect(body).not.toContain("fedcba9");
+    expect(body).not.toContain("iOS Simulator");
+  });
+});
