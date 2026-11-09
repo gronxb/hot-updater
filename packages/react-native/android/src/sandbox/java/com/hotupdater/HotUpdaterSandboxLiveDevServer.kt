@@ -387,7 +387,7 @@ internal class HotUpdaterSandboxLiveDevServer(
                 // Held while it fetches, so no switch runs beside it. A connection that
                 // relaunched keeps it: its process ends.
                 if (!lock.take(HotUpdaterSandboxLock.Holder.DEV_SERVER)) {
-                    completion("A preview is being opened. Wait for it, then connect.")
+                    completion("A bundle is being opened. Wait for it, then connect.")
                     return@withLock
                 }
                 val failure =

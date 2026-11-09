@@ -535,7 +535,7 @@ private struct HomeScreen: View {
 
     private func previews(_ home: HotUpdaterSandboxHomeModel) -> some View {
         let footer = [home.previewHint, HotUpdaterSandboxHomeModel.switchNote].compactMap { $0 }.joined(separator: " ")
-        return SandboxSection(title: "OTA previews", footer: footer) {
+        return SandboxSection(title: "Channels", footer: footer) {
             SandboxCard {
                 SandboxRow(lead: .icon("qrcode.viewfinder"), title: "Scan QR code", isEnabled: !home.isBusy) {
                     SandboxHaptic.tap()
@@ -547,9 +547,9 @@ private struct HomeScreen: View {
                     .channel,
                     lead: .icon("character.cursor.ibeam"),
                     title: "Enter a channel",
-                    placeholder: "pr-123",
-                    fieldLabel: "Channel or preview link",
-                    action: "Open",
+                    placeholder: "Channel",
+                    fieldLabel: "Channel or link",
+                    action: "Open latest",
                     keyboard: .asciiCapable,
                     text: $model.channelText,
                     isEnabled: !home.isBusy
@@ -602,7 +602,7 @@ private struct HomeScreen: View {
         .opacity(isEnabled ? 1 : 0.4)
         .contextMenu {
             Button { model.coordinator.switchTo(row.channel) } label: {
-                Label("Check \(row.channel) for a newer bundle", systemImage: "arrow.down.circle")
+                Label("Open latest", systemImage: "arrow.down.circle")
             }
             if !row.isRunning {
                 Button(role: .destructive) { model.coordinator.deleteDownloaded(row.bundleId) } label: {
@@ -974,7 +974,7 @@ private struct HotUpdaterSandboxScanSheet: View {
                 .accessibilityHidden(true)
             VStack {
                 Spacer()
-                Text("Point the camera at a preview's QR code.")
+                Text("Point the camera at a QR code.")
                     .font(SandboxFont.subhead)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)

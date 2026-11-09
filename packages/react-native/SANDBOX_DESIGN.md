@@ -156,7 +156,7 @@ bundle** under the primary row.
 
 **Home.** The header, then a status and a crash banner when there is one. Then
 the primary row under the label the model gives it, the Dev server section,
-the OTA previews section with **Scan QR code** and the **Enter a channel**
+the Channels section with **Scan QR code** and the **Enter a channel**
 accordion, and the Downloaded list under **Downloaded**. The hint to shake the
 device ends the page.
 
