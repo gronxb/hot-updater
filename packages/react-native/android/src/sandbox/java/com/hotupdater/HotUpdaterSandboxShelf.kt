@@ -15,7 +15,16 @@ internal data class HotUpdaterSandboxShelfEntry(
     /** Main's key when it was downloaded: another build's bundles don't run here. */
     val isolationKey: String,
     val downloadedAtMs: Long,
-)
+    /**
+     * The release the check selected: the ID `HotUpdater.getBundleId()`, the PR
+     * comment and the Console show. Null on entries listed before it was kept.
+     */
+    val releaseId: String? = null,
+) {
+    /** What the list calls the bundle. The files stay under [bundleId]. */
+    val shownId: String
+        get() = releaseId ?: bundleId
+}
 
 /** A stored bundle's files, checked: what a stored session runs. */
 internal data class HotUpdaterSandboxStoredBundle(
@@ -69,6 +78,7 @@ internal class HotUpdaterSandboxShelf(
                     message = item.optString("message").takeIf { item.has("message") },
                     isolationKey = item.getString("isolationKey"),
                     downloadedAtMs = item.getLong("downloadedAtMs"),
+                    releaseId = item.optString("releaseId").takeUnless { item.isNull("releaseId") },
                 )
             }
         }.getOrDefault(emptyList()).also { cached = it }
@@ -84,6 +94,7 @@ internal class HotUpdaterSandboxShelf(
         message: String?,
         nowMs: Long,
         kept: Set<String> = emptySet(),
+        releaseId: String? = null,
     ) {
         if (!isName(bundleId)) return
         val partial = File(root, "$bundleId$PARTIAL")
@@ -106,24 +117,17 @@ internal class HotUpdaterSandboxShelf(
                     Log.w(TAG, "didn't keep $bundleId: it couldn't be moved in")
                     return@synchronized aside
                 }
-                aside + publish(bundleId, channel, message, nowMs, kept)
+                aside + publish(HotUpdaterSandboxShelfEntry(bundleId, channel, message, isolationKey, nowMs, releaseId), kept)
             }
         delete(trash + partial)
     }
 
     /** Under the lock: the new list, and what its change set aside. */
     private fun publish(
-        bundleId: String,
-        channel: String,
-        message: String?,
-        nowMs: Long,
+        entry: HotUpdaterSandboxShelfEntry,
         kept: Set<String>,
     ): List<File> {
-        val next =
-            (
-                listOf(HotUpdaterSandboxShelfEntry(bundleId, channel, message, isolationKey, nowMs)) +
-                    list().filter { it.bundleId != bundleId }
-            ).toMutableList()
+        val next = (listOf(entry) + list().filter { it.bundleId != entry.bundleId }).toMutableList()
         val trash = mutableListOf<File>()
         while (next.size > LIMIT) {
             val oldest = next.filter { it.bundleId !in kept }.minByOrNull { it.downloadedAtMs } ?: break
@@ -221,6 +225,7 @@ internal class HotUpdaterSandboxShelf(
                         .put("message", it.message)
                         .put("isolationKey", it.isolationKey)
                         .put("downloadedAtMs", it.downloadedAtMs)
+                        .put("releaseId", it.releaseId)
                 },
             )
         val partial = File(root, "$INDEX$PARTIAL")

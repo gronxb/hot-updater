@@ -151,7 +151,7 @@ private final class FakeHost: HotUpdaterSandboxHost {
         } else {
             staged = try stageResult.get()
         }
-        if case .update(let bundleId, _) = staged {
+        if case .update(let bundleId, _, _) = staged {
             self.channel = channelAfterStaging ?? channel
             self.bundleId = bundleId
         }
@@ -1234,6 +1234,20 @@ struct HotUpdaterSandboxScreenStateTests {
         fixture.coordinator.switchTo("pr-1")
         await settle()
         #expect(fixture.coordinator.state.lastLaunch == nil)
+    }
+
+    @Test
+    func aSwitchKeepsTheReleaseIdTheCheckSelected() async {
+        let fixture = Fixture()
+        fixture.host.stageResult = .success(.update(bundleId: "ota", releaseId: releaseId))
+        fixture.coordinator.switchTo("pr-135")
+        await settle()
+        #expect(fixture.shelf.entries.map(\.releaseId) == [releaseId])
+        #expect(fixture.coordinator.state.downloaded.map(\.shownId) == [releaseId])
+        // The list on disk keeps it for the next launch; the files stay under the bundle's ID.
+        let reread = makeShelf(fixture.files)
+        #expect(reread.entries.map(\.releaseId) == [releaseId])
+        #expect(reread.stored("ota") != nil)
     }
 
     @Test

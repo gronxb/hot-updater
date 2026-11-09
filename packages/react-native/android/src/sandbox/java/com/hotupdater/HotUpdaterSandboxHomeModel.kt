@@ -80,7 +80,7 @@ internal data class HotUpdaterSandboxHomeModel(
                             bundleId = it.bundleId,
                             channel = it.channel,
                             message = it.message,
-                            detail = "Bundle ${shortId(it.bundleId)} · ${downloadedText(it.downloadedAtMs, nowMs)}",
+                            detail = "Bundle ${shortId(it.shownId)} · ${downloadedText(it.downloadedAtMs, nowMs)}",
                             isRunning = it.bundleId == state.storedSessionBundleId,
                         )
                     },
@@ -133,13 +133,10 @@ internal data class HotUpdaterSandboxHomeModel(
                 return BigRow("Running", "Reload", "Running the dev server", runningDevServerHost, isReload = true)
             }
             state.storedSessionBundleId?.let { stored ->
-                val channel =
-                    state.downloaded
-                        .firstOrNull { it.bundleId == stored }
-                        ?.channel
-                        ?.let { " $it" }
-                        .orEmpty()
-                return BigRow("Running", "Reload", "Running stored$channel", "Bundle ${shortId(stored)}", isReload = true, showsBack = true)
+                val entry = state.downloaded.firstOrNull { it.bundleId == stored }
+                val channel = entry?.channel?.let { " $it" }.orEmpty()
+                val shown = entry?.shownId ?: stored
+                return BigRow("Running", "Reload", "Running stored$channel", "Bundle ${shortId(shown)}", isReload = true, showsBack = true)
             }
             val selection =
                 state.selection
@@ -319,7 +316,11 @@ internal data class HotUpdaterSandboxInfoModel(
             val current =
                 when {
                     runningDevServerHost != null -> "Dev server"
-                    state.storedSessionBundleId != null -> "Stored ${HotUpdaterSandboxHomeModel.shortId(state.storedSessionBundleId)}"
+                    state.storedSessionBundleId != null -> {
+                        val stored = state.storedSessionBundleId
+                        val shown = state.downloaded.firstOrNull { it.bundleId == stored }?.shownId ?: stored
+                        "Stored ${HotUpdaterSandboxHomeModel.shortId(shown)}"
+                    }
                     shown == null -> ""
                     shown == details?.builtInBundleId -> "Built-in"
                     else -> HotUpdaterSandboxHomeModel.shortId(shown)

@@ -76,7 +76,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
                 bundleId: $0.bundleId,
                 channel: $0.channel,
                 message: $0.message,
-                detail: "Bundle \(Self.shortId($0.bundleId)) · \(Self.downloadedText(atMs: $0.downloadedAtMs, nowMs: nowMs))",
+                detail: "Bundle \(Self.shortId($0.shownId)) · \(Self.downloadedText(atMs: $0.downloadedAtMs, nowMs: nowMs))",
                 isRunning: $0.bundleId == state.storedSessionBundleId
             )
         }
@@ -111,6 +111,11 @@ struct HotUpdaterSandboxHomeModel: Equatable {
         history.first { $0.bundleId == bundleId }?.channel
     }
 
+    /// What the list calls a stored bundle: its release's ID when it was kept.
+    static func shownId(of bundleId: String, in history: [HotUpdaterSandboxShelfEntry]) -> String {
+        history.first { $0.bundleId == bundleId }?.shownId ?? bundleId
+    }
+
     /// `019a3f…c2`, or the whole ID when it's short.
     static func shortId(_ bundleId: String) -> String {
         guard bundleId.count > 10 else { return bundleId }
@@ -131,7 +136,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
                 caption: "Running",
                 title: "Reload",
                 subtitle: "Running stored\(channel)",
-                detail: "Bundle \(shortId(stored))",
+                detail: "Bundle \(shortId(shownId(of: stored, in: state.downloaded)))",
                 isReload: true,
                 showsBack: true
             )
@@ -299,7 +304,7 @@ struct HotUpdaterSandboxInfoModel: Equatable {
         if runningDevServerHost != nil {
             current = "Dev server"
         } else if let stored = state.storedSessionBundleId {
-            current = "Stored \(HotUpdaterSandboxHomeModel.shortId(stored))"
+            current = "Stored \(HotUpdaterSandboxHomeModel.shortId(HotUpdaterSandboxHomeModel.shownId(of: stored, in: state.downloaded)))"
         // Over the app, what it runs. Before it starts, what opens: the selection.
         } else if let shown = (isOverApp ? state.runningBundleId : nil) ?? selection?.bundleId {
             current = shown == details?.builtInBundleId ? "Built-in" : HotUpdaterSandboxHomeModel.shortId(shown)

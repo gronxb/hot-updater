@@ -3,8 +3,9 @@ import Foundation
 
 /// What a check of the target channel did.
 enum HotUpdaterSandboxStaged: Equatable {
-    /// The update is staged or committed: `bundleId` is what a launch selects.
-    case update(bundleId: String, message: String? = nil)
+    /// The update is staged or committed: `bundleId` is what a launch selects,
+    /// and `releaseId` what `HotUpdater.getBundleId()` reports for it.
+    case update(bundleId: String, message: String? = nil, releaseId: String? = nil)
     /// The channel has nothing newer for this build.
     case noUpdate
     /// Another check or reset replaced the selection first.
@@ -655,25 +656,25 @@ final class HotUpdaterSandboxCoordinator {
                 return
             }
             await finish(operationId)
-        case .update(let bundleId, let message):
+        case .update(let bundleId, let message, let releaseId):
             // A check from the running app may have switched channels between the SDK's steps.
             if await host.selection().channel != target {
                 await fail(operationId, target, .check, .superseded)
                 return
             }
-            await shelve(bundleId: bundleId, channel: target, message: message)
+            await shelve(bundleId: bundleId, channel: target, message: message, releaseId: releaseId)
             await finish(operationId)
         }
     }
 
     /// Keeps a copy of what the switch just installed, off the main thread. Main's
     /// store keeps the bundle it just installed, so the copy reads it in place.
-    private func shelve(bundleId: String, channel: String, message: String?) async {
+    private func shelve(bundleId: String, channel: String, message: String?, releaseId: String?) async {
         let shelf = shelf
         let nowMs = now().timeIntervalSince1970 * 1000
         let kept = protectedBundleIds
         await onShelf {
-            shelf.add(bundleId: bundleId, channel: channel, message: message, nowMs: nowMs, kept: kept)
+            shelf.add(bundleId: bundleId, channel: channel, message: message, nowMs: nowMs, kept: kept, releaseId: releaseId)
         }
         await relist(reconciling: false)
     }

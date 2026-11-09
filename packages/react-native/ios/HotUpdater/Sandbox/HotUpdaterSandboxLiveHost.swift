@@ -245,7 +245,7 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
         guard try await update.updateBundle(onProgress: onProgress) else {
             return .superseded
         }
-        return .update(bundleId: update.bundleId, message: update.message)
+        return .update(bundleId: update.bundleId, message: update.message, releaseId: update.releaseId)
     }
 }
 

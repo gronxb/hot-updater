@@ -15,6 +15,8 @@ internal sealed class HotUpdaterSandboxStaged {
     data class Update(
         val bundleId: String?,
         val message: String? = null,
+        /** The release the check selected, as `HotUpdater.getBundleId()` reports it. */
+        val releaseId: String? = null,
     ) : HotUpdaterSandboxStaged()
 
     /** The channel has nothing newer for this build. */
@@ -767,7 +769,7 @@ internal class HotUpdaterSandboxCoordinator(
                     fail(operationId, target, HotUpdaterSandboxStep.CHECK, HotUpdaterSandboxFailure.Superseded)
                     return
                 }
-                staged.bundleId?.let { shelve(it, target, staged.message) }
+                staged.bundleId?.let { shelve(it, target, staged.message, staged.releaseId) }
             }
         }
         finish(operationId)
@@ -781,10 +783,11 @@ internal class HotUpdaterSandboxCoordinator(
         bundleId: String,
         channel: String,
         message: String?,
+        releaseId: String?,
     ) {
         val kept = protectedBundleIds
         val now = nowMs()
-        withContext(shelfContext) { shelf.add(bundleId, channel, message, now, kept) }
+        withContext(shelfContext) { shelf.add(bundleId, channel, message, now, kept, releaseId) }
         relist(reconciling = false)
     }
 

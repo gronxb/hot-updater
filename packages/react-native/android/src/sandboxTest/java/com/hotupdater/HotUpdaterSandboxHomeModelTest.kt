@@ -251,6 +251,19 @@ class HotUpdaterSandboxScreenStateTest {
     }
 
     @Test
+    fun `a switch keeps the release ID the check selected`() {
+        val fixture = ScreenFixture()
+        fixture.host.stage = HotUpdaterSandboxStaged.Update("ota", releaseId = RELEASE)
+        fixture.coordinator.switchTo("pr-135")
+        assertEquals(listOf(RELEASE), fixture.shelf.entries.map { it.releaseId })
+        assertEquals(listOf(RELEASE), fixture.coordinator.state.downloaded.map { it.shownId })
+        // The list on disk keeps it for the next launch; the files stay under the bundle's ID.
+        val reread = HotUpdaterSandboxShelf(fixture.shelf.root, fixture.shelf.source, "key")
+        assertEquals(listOf(RELEASE), reread.entries.map { it.releaseId })
+        assertNotNull(reread.stored("ota"))
+    }
+
+    @Test
     fun `a message belongs to its bundle, not its channel`() {
         val fixture = ScreenFixture()
         installTestBundle(fixture.shelf.source, "older")
