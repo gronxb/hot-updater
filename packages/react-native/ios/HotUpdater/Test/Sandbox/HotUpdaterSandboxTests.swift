@@ -1088,6 +1088,11 @@ struct HotUpdaterSandboxLinkTests {
         #expect(HotUpdaterSandboxLink.ownScheme(in: info) == "acme-preview")
         #expect(HotUpdaterSandboxLink.ownScheme(in: ["CFBundleURLTypes": [["CFBundleURLSchemes": ["exampleapp"]]]]) == nil)
         #expect(HotUpdaterSandboxLink.ownScheme(in: [:]) == nil)
+        // The recorded scheme comes first: no URL type lookup.
+        #expect(HotUpdaterSandboxLink.ownScheme(in: ["HOT_UPDATER_SANDBOX_URL_SCHEME": "Acme-Preview"]) == "acme-preview")
+        var recorded = info
+        recorded["HOT_UPDATER_SANDBOX_URL_SCHEME"] = "other-preview"
+        #expect(HotUpdaterSandboxLink.ownScheme(in: recorded) == "other-preview")
         #expect(HotUpdaterSandboxLink.ownScheme(in: nil) == nil)
     }
 

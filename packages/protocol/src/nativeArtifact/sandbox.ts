@@ -15,6 +15,14 @@ export const SANDBOX_CODE_MARKER = "HOT_UPDATER_SANDBOX_NATIVE_LAYER";
 /** The Info.plist key an iOS sandbox build declares itself with. */
 export const SANDBOX_INFO_PLIST_KEY = "HOT_UPDATER_SANDBOX";
 
+/**
+ * The Info.plist key that records the URL scheme an iOS sandbox build
+ * registers in its `SANDBOX_URL_TYPE_NAME` URL type: the build reads its own
+ * scheme from it, and a later patch knows which scheme is the sandbox's.
+ */
+export const SANDBOX_URL_SCHEME_INFO_PLIST_KEY =
+  "HOT_UPDATER_SANDBOX_URL_SCHEME";
+
 /** The `<meta-data>` an Android sandbox build declares itself with. */
 export const SANDBOX_META_DATA = "com.hotupdater.SANDBOX";
 

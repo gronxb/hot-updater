@@ -241,3 +241,9 @@ plutil -replace CFBundleURLTypes -json '[{"CFBundleURLSchemes":["exampleapp"]},{
 # One whose URL type of the sandbox's name holds another scheme too.
 cp Info.sandbox.plist Info.sandbox-two-schemes.plist
 plutil -replace CFBundleURLTypes -json '[{"CFBundleURLName":"hot-updater-sandbox","CFBundleURLSchemes":["acme-preview","app-login"]}]' Info.sandbox-two-schemes.plist
+# One that records its scheme, as the CLI patches it now, and one whose sandbox
+# URL type holds another scheme than the one recorded.
+cp Info.sandbox-custom.plist Info.sandbox-recorded.plist
+plutil -replace HOT_UPDATER_SANDBOX_URL_SCHEME -string acme-preview Info.sandbox-recorded.plist
+cp Info.sandbox-recorded.plist Info.sandbox-recorded-mismatch.plist
+plutil -replace CFBundleURLTypes -json '[{"CFBundleURLName":"hot-updater-sandbox","CFBundleURLSchemes":["app-login"]}]' Info.sandbox-recorded-mismatch.plist

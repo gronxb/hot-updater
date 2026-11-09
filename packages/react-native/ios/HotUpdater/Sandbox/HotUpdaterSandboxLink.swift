@@ -13,6 +13,8 @@ struct HotUpdaterSandboxLink: Equatable {
     private static let schemePrefix = "hu-sandbox-"
     /// The URL type the build registers its scheme in, as the CLI writes it.
     static let urlTypeName = "hot-updater-sandbox"
+    /// The Info.plist key the CLI records that scheme in.
+    static let urlSchemeKey = "HOT_UPDATER_SANDBOX_URL_SCHEME"
     private static let maxFingerprintLength = 256
     private static let maxChannelCodePoints = 255
     private static let pattern: NSRegularExpression = {
@@ -27,8 +29,13 @@ struct HotUpdaterSandboxLink: Equatable {
     /// path asks for it before anything else runs.
     static let ownScheme: String? = ownScheme(in: Bundle.main.infoDictionary)
 
-    /// The scheme of the URL type named `urlTypeName`, in lower case, or nil.
+    /// The scheme the CLI recorded, in lower case, or, in a prerelease's
+    /// build, which recorded none, the scheme of the URL type named
+    /// `urlTypeName`, or nil.
     static func ownScheme(in info: [String: Any]?) -> String? {
+        if let recorded = info?[urlSchemeKey] as? String, !recorded.isEmpty {
+            return recorded.lowercased()
+        }
         let types = info?["CFBundleURLTypes"] as? [[String: Any]] ?? []
         let type = types.first { $0["CFBundleURLName"] as? String == urlTypeName }
         return (type?["CFBundleURLSchemes"] as? [String])?.first?.lowercased()

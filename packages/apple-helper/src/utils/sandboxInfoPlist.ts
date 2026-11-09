@@ -4,7 +4,9 @@ import path from "path";
 import { BuildFailedError, p } from "@hot-updater/cli-tools";
 import {
   SANDBOX_INFO_PLIST_KEY,
+  SANDBOX_URL_SCHEME_INFO_PLIST_KEY,
   SANDBOX_URL_TYPE_NAME,
+  isSandboxUrlScheme,
   sandboxChannelOf,
   sandboxUrlSchemeOf,
 } from "@hot-updater/protocol/native-artifact";
@@ -210,18 +212,8 @@ const patchAppInfoPlist = async (plist: string, scheme: SandboxPlistScheme) => {
       `The app has a URL type named ${SANDBOX_URL_TYPE_NAME}, the name a sandbox build registers its URL scheme under.\nRename the app's URL type.`,
     );
   }
-  // An earlier patch wrote one URL type of the sandbox's name with one
-  // scheme: anything else in it is the app's, which replacing it would drop.
-  const extra = patchedBefore
-    ? (urlTypes ?? [])
-        .filter(isSandboxUrlType)
-        .flatMap((type) => schemesOf(type))
-        .slice(1)
-    : [];
-  if (extra.length > 0) {
-    throw refusal(
-      `The app's URL type ${SANDBOX_URL_TYPE_NAME} also holds ${extra.join(", ")}, which a sandbox build would replace.\nMove ${extra.length === 1 ? "it" : "them"} to a URL type of the app's own.`,
-    );
+  if (patchedBefore) {
+    await refuseForeignSandboxUrlTypes(plist, urlTypes ?? [], scheme);
   }
   if (registersUrlScheme(appUrlTypes, urlScheme)) {
     throw refusal(
@@ -235,7 +227,36 @@ const patchAppInfoPlist = async (plist: string, scheme: SandboxPlistScheme) => {
   );
   await plutil(["-replace", SANDBOX_INFO_PLIST_KEY, "-bool", "true", plist]);
   await addUrlScheme(plist, urlScheme, urlTypes, patchedBefore);
+  await setString(plist, SANDBOX_URL_SCHEME_INFO_PLIST_KEY, urlScheme);
   await addSandboxPermissions(plist);
+};
+
+/**
+ * Refuses, in an app an earlier patch made a sandbox app, URL types of the
+ * sandbox's name that hold anything but the one scheme that patch recorded:
+ * replacing them would drop the app's own. A prerelease's patch recorded no
+ * scheme, and registered one with the derived scheme's prefix.
+ */
+const refuseForeignSandboxUrlTypes = async (
+  plist: string,
+  urlTypes: readonly unknown[],
+  scheme: SandboxPlistScheme,
+) => {
+  const named = urlTypes.filter(isSandboxUrlType);
+  if (named.length === 0) return;
+  const recorded = await readValue(plist, SANDBOX_URL_SCHEME_INFO_PLIST_KEY);
+  const schemes = named.flatMap(schemesOf);
+  const only = schemes.length === 1 ? schemes[0] : undefined;
+  const ours =
+    named.length === 1 &&
+    typeof only === "string" &&
+    (recorded === null ? isSandboxUrlScheme(only) : only === recorded);
+  if (ours) return;
+  const holds = schemes.map(String).join(", ") || "no scheme";
+  const keep = recorded ?? sandboxUrlSchemeOf(scheme.bundleIdentifier);
+  throw refusal(
+    `The app's ${SANDBOX_URL_TYPE_NAME} URL ${named.length === 1 ? "type holds" : "types hold"} ${holds}.\nKeep only ${keep} in ${SANDBOX_URL_TYPE_NAME}, and move the rest to a URL type of the app's own.`,
+  );
 };
 
 /** The Info.plist of each app extension inside an `.app`. */

@@ -672,6 +672,20 @@ describe("the sandbox layer", () => {
     ).toEqual(["SANDBOX_MISMATCH"]);
   });
 
+  it("reads the scheme the Info.plist records, only when its sandbox URL type holds it alone", async () => {
+    const schemeOf = async (plist: string) =>
+      (
+        await read(
+          sandboxIpa({ "Payload/App.app/Info.plist": fixture(plist) }),
+          "app.ipa",
+        )
+      ).entry.sandboxUrlScheme;
+    expect(await schemeOf("Info.sandbox-recorded.plist")).toBe("acme-preview");
+    expect(await schemeOf("Info.sandbox-recorded-mismatch.plist")).toBeNull();
+    // A prerelease's artifact recorded none: its URL type's one scheme.
+    expect(await schemeOf("Info.sandbox-custom.plist")).toBe("acme-preview");
+  });
+
   it("reads no scheme from a URL type of the sandbox's name that holds two", async () => {
     expect(
       (
