@@ -1,0 +1,19 @@
+Normal builds of examples/v0.88.0: origin/next's packages/react-native (f1cfcd6a9) vs this branch (c67791e6b), same worktree and inputs, --no-cache.
+
+Android APK: com.hotupdater classes head 489, base 489; dexdump -d diff:
+48710c48710
+< |0000: const-string v0, "01a1bf6d-e128-7000-8000-000000000000" // string@1ef1
+---
+> |0000: const-string v0, "01a1bf6b-748b-7000-8000-000000000000" // string@1ef1
+
+iOS simulator executable: symbols head 16182, base 16182, symbol diff lines 0; size -m diff lines 0; strings diff:
+987,988c987,988
+< 01a1bf6c-6aa5-7000-8000-000000000000
+< 01a1bf6c-6aa5-7000-8000-000000000000
+---
+> 01a1bf69-ff14-7000-8000-000000000000
+> 01a1bf69-ff14-7000-8000-000000000000
+
+Sandbox strings or classes: head 0
+0, base 0
+0
