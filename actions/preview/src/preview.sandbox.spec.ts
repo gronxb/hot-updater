@@ -17,12 +17,16 @@ const APP_ID = "com.Example.App_tv";
 const LINK = `hu-sandbox-com-example-app-tv://hot-updater/preview?channel=pr-12&fingerprint=${FINGERPRINT}`;
 const BUILD_ID = "019a0000-0000-7000-8000-00000000b001";
 const MIN_BUNDLE_ID = "019a0000-0000-7000-8000-000000000010";
+const LATEST_COMMIT =
+  "<sub>Latest commit: [`0123456`](https://github.com/octo/app/commit/0123456789abcdef)</sub>";
 
 const event = {
   action: "synchronize",
   number: 12,
   title: "Fix the header",
-  headSha: "0123456789abcdef",
+  commitSha: "0123456789abcdef",
+  repositoryUrl: "https://github.com/octo/app",
+  runUrl: "https://github.com/octo/app/actions/runs/42",
   fromFork: false,
 };
 
@@ -198,6 +202,7 @@ const run = async (
       log: {
         info: vi.fn(),
         notice,
+        error: vi.fn(),
         group: <T>(_: string, body: () => Promise<T>) => body(),
       },
     } as never,
@@ -279,8 +284,9 @@ describe("no sandbox scheme", () => {
       [
         COMMENT_MARKER,
         "### Preview on `pr-12`",
-        "**Install this pull request's build.** It opens this pull request on its first launch.",
+        "**Install this pull request's build.** It opens the latest bundle on `pr-12` on its first launch.",
         `- **Android**: [Download APK](${DOWNLOAD}) · [Details](${CONSOLE}/native-builds/${BUILD_ID}) · allow "Install unknown apps" when Android asks`,
+        LATEST_COMMIT,
         [
           "<details>",
           "<summary>Builds</summary>",
@@ -303,7 +309,7 @@ describe("no sandbox scheme", () => {
           "",
           "</details>",
         ].join("\n"),
-        "<sub>Deployed `0123456` · Preview by [hot-updater](https://hot-updater.dev)</sub>",
+        "<sub>Preview by [hot-updater](https://hot-updater.dev)</sub>",
       ].join("\n\n"),
     );
     expect(Object.keys(outputs).sort()).toEqual([
@@ -325,7 +331,7 @@ describe("no sandbox scheme", () => {
       "channel set pr-12",
       "native-build find -p android -s releaseApk --json",
       "fingerprint create",
-      "deploy -p android -c pr-12 -m #12 Fix the header",
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
       "native-build find -p android -c pr-12 -s releaseApk --json",
     ]);
@@ -372,7 +378,7 @@ describe("a sandbox build that has the fingerprint", () => {
       "channel set pr-12",
       "native-build find -p android -s sandbox --json",
       "fingerprint create",
-      "deploy -p android -c pr-12 -m #12 Fix the header",
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
       "native-build find -p android -s sandbox --json",
     ]);
@@ -398,7 +404,7 @@ describe("a sandbox build that has the fingerprint", () => {
       `**1. Install the sandbox app** once. Pull requests with the same native code share it.\n\n- **Android**: [Download APK](${DOWNLOAD}) · [Details](${CONSOLE}/native-builds/${BUILD_ID}) · allow "Install unknown apps" when Android asks`,
     );
     expect(body).toContain(
-      `**2. Scan to open this pull request** with the sandbox app.\n\n**Android**\n\n<img src="${QR}" alt="QR code of the sandbox link of pr-12" width="180" height="180">\n\n\`${LINK}\``,
+      `**2. Scan to open the latest bundle on \`pr-12\`** with the sandbox app.\n${LATEST_COMMIT}\n\n**Android**\n\n<img src="${QR}" alt="QR code of the sandbox link of pr-12" width="180" height="180">\n\n\`${LINK}\``,
     );
     expect(body).toContain(`| Android | \`${BUILD_ID}\` · reused |`);
     expect(body).toContain(`\`${LINK}\``);
@@ -458,7 +464,7 @@ describe("a sandbox build that has the fingerprint", () => {
     expect(body).not.toContain("<img");
     expect(body).not.toContain("Scan");
     expect(body).toContain(
-      `**2. Open this pull request**: open the link on the phone with the sandbox app.\n\n**Android**\n\n\`${LINK}\``,
+      `**2. Open the latest bundle on \`pr-12\`**: open the link on the phone with the sandbox app.\n${LATEST_COMMIT}\n\n**Android**\n\n\`${LINK}\``,
     );
   });
 });
@@ -582,7 +588,7 @@ describe("a pull request whose fingerprint differs from the sandbox build", () =
       "native-build find -p android -s sandbox --json",
       "native-build find -p android -c pr-12 -s releaseApk --json",
       "native-build android --scheme releaseApk --json",
-      "deploy -p android -c pr-12 -m #12 Fix the header",
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
       "native-build find -p android -c pr-12 -s releaseApk --json",
     ]);
@@ -592,7 +598,7 @@ describe("a pull request whose fingerprint differs from the sandbox build", () =
     const built = JSON.parse(outputs["previews"]!)[0].nativeBuild.id;
     expect(written).toEqual([]);
     expect(body).toContain(
-      `**Install this pull request's build.** It opens this pull request on its first launch.\n\n- **Android**: [Download APK](${CONSOLE}/api/native-builds/${built}/download)`,
+      `**Install this pull request's build.** It opens the latest bundle on \`pr-12\` on its first launch.\n\n- **Android**: [Download APK](${CONSOLE}/api/native-builds/${built}/download)`,
     );
     expect(body).not.toContain("Scan");
     const [preview] = JSON.parse(outputs["previews"]!);
@@ -636,7 +642,7 @@ describe("a pull request whose fingerprint differs from the sandbox build", () =
       "native-build android --scheme sandbox --json",
     );
     expect(outputs["android-sandbox-link"]).toBe(LINK);
-    expect(body).toContain("**2. Scan to open this pull request**");
+    expect(body).toContain("**2. Scan to open the latest bundle on `pr-12`**");
     expect(body).toContain("This run made a new sandbox build");
   });
 });
@@ -660,7 +666,7 @@ describe("a store build", () => {
       "channel set pr-12",
       "native-build find -p android -s sandbox --store-status --json",
       "fingerprint create",
-      "deploy -p android -c pr-12 -m #12 Fix the header",
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
       "native-build find -p android -s sandbox --json",
     ]);
@@ -762,10 +768,200 @@ describe("a sandbox scheme beside a normal one", () => {
     expect(body).toContain(`\`${LINK}\``);
     // The iOS build embeds the channel: it needs no scan.
     expect(body).toContain(
-      "**This pull request's own build** opens this pull request on its first launch.\n\n- **iOS Simulator**: ",
+      "**This pull request's own build** opens the latest bundle on `pr-12` on its first launch.\n\n- **iOS Simulator**: ",
     );
     expect(fake.calls).toContain(
       "native-build find -p ios -c pr-12 -s simulator --json",
     );
+  });
+});
+
+describe("a platform that fails", () => {
+  const error = vi.fn();
+  const deps = (fake: ReturnType<typeof fakeCli>) => {
+    const github = fakeGitHub();
+    return {
+      github,
+      deps: {
+        cli: fake.cli,
+        buildLogs: vi.fn(() => []),
+        github: github.github,
+        setOutput: vi.fn(),
+        log: {
+          info: vi.fn(),
+          notice: vi.fn(),
+          error,
+          group: <T>(_: string, body: () => Promise<T>) => body(),
+        },
+      } as never,
+    };
+  };
+  // The iOS scheme's native build fails; Android's sandbox build deploys.
+  const iosFails = () => {
+    const fake = fakeCli({ builds: [sandboxBuild()] });
+    const cli = fake.cli.getMockImplementation()!;
+    fake.cli.mockImplementation(async (args: string[]) =>
+      args[0] === "native-build" && args[1] === "ios"
+        ? Promise.reject(new Error("xcodebuild failed."))
+        : cli(args),
+    );
+    return fake;
+  };
+
+  it("comments the platforms that deployed, says which failed, then fails", async () => {
+    const fake = iosFails();
+    const { github, deps: value } = deps(fake);
+
+    await expect(
+      runAction(
+        value,
+        env({ INPUT_PLATFORMS: "ios,android", INPUT_IOS_SCHEME: "simulator" }),
+        event,
+      ),
+    ).rejects.toThrow("xcodebuild failed.");
+
+    const [comment] = github.comments;
+    expect(comment?.body).toContain(
+      "### Preview on `pr-12`\n\n**iOS** failed on this run: [see the logs](https://github.com/octo/app/actions/runs/42).",
+    );
+    expect(comment?.body).toContain(`\`${LINK}\``);
+    expect(comment?.body).toContain(LATEST_COMMIT);
+    expect(comment?.body).not.toContain("iOS Simulator");
+    // iOS failed first: Android still deployed, and the error showed at once.
+    expect(error).toHaveBeenCalledWith("ios: xcodebuild failed.");
+    expect(fake.calls).toContain(
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
+    );
+  });
+
+  it("leaves the comment when no platform deployed", async () => {
+    const fake = iosFails();
+    const { github, deps: value } = deps(fake);
+
+    await expect(
+      runAction(
+        value,
+        env({ INPUT_PLATFORMS: "ios", INPUT_IOS_SCHEME: "simulator" }),
+        event,
+      ),
+    ).rejects.toThrow("xcodebuild failed.");
+
+    expect(github.comments).toEqual([]);
+  });
+});
+
+describe("a deploy the registry can't confirm", () => {
+  const OLD_COMMIT = { ...event, commitSha: "fedcba9876543210" };
+  const iosBuild = {
+    ...sandboxBuild(),
+    platform: "ios",
+    channel: "pr-12",
+    kind: "app",
+    id: "ios-build",
+  };
+  const both = {
+    INPUT_PLATFORMS: "android,ios",
+    INPUT_IOS_SCHEME: "simulator",
+  };
+  const runOn = (
+    github: ReturnType<typeof fakeGitHub>,
+    fake: ReturnType<typeof fakeCli>,
+    overrides: Record<string, string>,
+    pullRequest: typeof event,
+  ) =>
+    runAction(
+      {
+        cli: fake.cli,
+        buildLogs: vi.fn(() => []),
+        github: github.github,
+        setOutput: vi.fn(),
+        log: {
+          info: vi.fn(),
+          notice: vi.fn(),
+          error: vi.fn(),
+          group: <T>(_: string, body: () => Promise<T>) => body(),
+        },
+      } as never,
+      env(overrides),
+      pullRequest,
+    );
+  // `deploy` succeeds, then reading the bundle back fails on `platforms`.
+  const lookupFails = (platforms: string[]) => {
+    const fake = fakeCli({ builds: [sandboxBuild(), iosBuild] });
+    const cli = fake.cli.getMockImplementation()!;
+    fake.cli.mockImplementation(async (args: string[]) => {
+      const platform = args[args.indexOf("-p") + 1]!;
+      return args[0] === "bundle" && platforms.includes(platform)
+        ? Promise.reject(new Error(`bundle list failed on ${platform}.`))
+        : cli(args);
+    });
+    return fake;
+  };
+  // The comment of an earlier run, which names its commit.
+  const commented = async (overrides: Record<string, string>) => {
+    const github = fakeGitHub();
+    await runOn(
+      github,
+      fakeCli({ builds: [sandboxBuild(), iosBuild] }),
+      overrides,
+      OLD_COMMIT,
+    );
+    expect(github.comments[0]?.body).toContain("fedcba9");
+    return github;
+  };
+
+  it("names no commit for the one platform it deployed, then fails", async () => {
+    const github = await commented({});
+    const fake = lookupFails(["android"]);
+
+    await expect(runOn(github, fake, {}, event)).rejects.toThrow(
+      "bundle list failed on android.",
+    );
+
+    expect(fake.calls).toContain(
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
+    );
+    const body = github.comments[0]!.body;
+    expect(body).toBe(
+      [
+        COMMENT_MARKER,
+        "### Preview on `pr-12`",
+        "**Android** failed on this run, after deploying its bundle: [see the logs](https://github.com/octo/app/actions/runs/42).",
+        "<sub>Preview by [hot-updater](https://hot-updater.dev)</sub>",
+      ].join("\n\n"),
+    );
+  });
+
+  it("names no commit for either platform when both deployed, then fails", async () => {
+    const github = await commented(both);
+    const fake = lookupFails(["android", "ios"]);
+
+    await expect(runOn(github, fake, both, event)).rejects.toThrow(
+      "android: bundle list failed on android.\nios: bundle list failed on ios.",
+    );
+
+    const body = github.comments[0]!.body;
+    expect(body).toContain(
+      "**Android** failed on this run, after deploying its bundle: [see the logs](https://github.com/octo/app/actions/runs/42).\n\n**iOS** failed on this run, after deploying its bundle: [see the logs](https://github.com/octo/app/actions/runs/42).",
+    );
+    expect(body).not.toContain("fedcba9");
+    expect(body).not.toContain("Latest commit");
+    expect(body).not.toContain(LINK);
+  });
+
+  it("keeps the other platform's commit when only one lookup failed", async () => {
+    const github = await commented(both);
+
+    await expect(
+      runOn(github, lookupFails(["ios"]), both, event),
+    ).rejects.toThrow("bundle list failed on ios.");
+
+    const body = github.comments[0]!.body;
+    expect(body).toContain(
+      "**iOS** failed on this run, after deploying its bundle",
+    );
+    expect(body).toContain(LATEST_COMMIT);
+    expect(body).not.toContain("fedcba9");
+    expect(body).not.toContain("iOS Simulator");
   });
 });

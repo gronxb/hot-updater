@@ -59,7 +59,12 @@ export { parseJsonOutput };
  *   whose workflow runs get no secrets.
  * @property {number} number
  * @property {string} title
- * @property {string} headSha
+ * @property {string} commitSha The commit the run deploys: what the app's
+ *   directory has checked out.
+ * @property {string | null} repositoryUrl The repository's web URL, which
+ *   the comment links the commit under.
+ * @property {string | null} runUrl The workflow run's page, which the comment
+ *   links a platform that failed to.
  *
  * @typedef {object} Deps
  * @property {(args: string[], options?: { capture?: boolean }) => Promise<{ code: number, stdout: string }>} cli
@@ -69,10 +74,47 @@ export { parseJsonOutput };
  * @property {import("../../shared/cli.mjs").BuildLogs} buildLogs
  * @property {import("./github.mjs").GitHubContext | null} github
  * @property {(name: string, value: string) => void} setOutput
- * @property {{ info: (message: string) => void, notice: (message: string) => void, group: <T>(name: string, run: () => Promise<T>) => Promise<T> }} log
+ * @property {{ info: (message: string) => void, notice: (message: string) => void, error: (message: string) => void, group: <T>(name: string, run: () => Promise<T>) => Promise<T> }} log
  *
  * @typedef {import("../../shared/nativeBuild.mjs").NativeBuildRow} NativeBuildRow
  */
+
+/**
+ * The repository's web URL, which the comment links the commit under: from
+ * the server the workflow runs on, such as GitHub Enterprise Server's, else
+ * from the event.
+ * @param {Record<string, string | undefined>} env
+ * @param {{ repository?: { html_url?: string } } | undefined} payload
+ * @returns {string | null}
+ */
+export const repositoryUrlOf = (env, payload) => {
+  const serverUrl = env["GITHUB_SERVER_URL"];
+  const repository = env["GITHUB_REPOSITORY"];
+  return serverUrl && repository
+    ? `${serverUrl.replace(/\/+$/, "")}/${repository}`
+    : (payload?.repository?.html_url ?? null);
+};
+
+/**
+ * The workflow run's page, or none without the repository's URL or the run.
+ * @param {Record<string, string | undefined>} env
+ * @param {{ repository?: { html_url?: string } } | undefined} payload
+ */
+export const runUrlOf = (env, payload) => {
+  const repositoryUrl = repositoryUrlOf(env, payload);
+  const runId = env["GITHUB_RUN_ID"];
+  return repositoryUrl && runId
+    ? `${repositoryUrl}/actions/runs/${encodeURIComponent(runId)}`
+    : null;
+};
+
+/**
+ * The deploy message of a pull request's bundle, which the sandbox app shows
+ * on one line: the commit first, so the line's ellipsis never cuts it.
+ * @param {PullRequestEvent} event
+ */
+export const deployMessage = ({ commitSha, number, title }) =>
+  `${commitSha.slice(0, 7)} · #${number} ${title}`;
 
 /**
  * The `<platform>-submit` inputs that are set. Each takes only the platform's
@@ -413,9 +455,10 @@ const sandboxOf = (inputs, sandbox, { fingerprintHash }, build) =>
  * @param {Inputs} inputs
  * @param {PullRequestEvent} event
  * @param {Platform} platform
+ * @param {() => void} onDeployed Runs once the bundle is on the channel.
  * @returns {Promise<PlatformPreview & { installUrl: string }>}
  */
-const previewPlatform = async (deps, inputs, event, platform) => {
+const previewPlatform = async (deps, inputs, event, platform, onDeployed) => {
   const scheme = /** @type {string} */ (inputs.schemes[platform]);
   const submit = inputs.submits[platform];
   if (submit) {
@@ -425,7 +468,8 @@ const previewPlatform = async (deps, inputs, event, platform) => {
       platform,
       channel: inputs.channel,
       target,
-      message: `#${event.number} ${event.title}`,
+      message: deployMessage(event),
+      onDeployed,
     });
     const nativeBuild = {
       id: build.id,
@@ -461,6 +505,7 @@ const previewPlatform = async (deps, inputs, event, platform) => {
       platform,
       scheme,
       channel: inputs.channel,
+      onDeployed,
       // A config plugin can decide the channel, whatever `channel set` wrote.
       found:
         found.channel === inputs.channel
@@ -485,6 +530,7 @@ const previewPlatform = async (deps, inputs, event, platform) => {
       platform,
       scheme: fallback,
       channel: inputs.channel,
+      onDeployed,
       found: await findNativeBuild(deps, {
         platform,
         scheme: fallback,
@@ -498,6 +544,7 @@ const previewPlatform = async (deps, inputs, event, platform) => {
     scheme,
     channel: found.channel,
     found,
+    onDeployed,
   });
   return {
     ...preview,
@@ -512,14 +559,14 @@ const previewPlatform = async (deps, inputs, event, platform) => {
  * @param {Deps} deps
  * @param {Inputs} inputs
  * @param {PullRequestEvent} event
- * @param {{ platform: Platform, scheme: string, channel: string, found: import("../../shared/nativeBuild.mjs").NativeBuildFindResult }} options
+ * @param {{ platform: Platform, scheme: string, channel: string, found: import("../../shared/nativeBuild.mjs").NativeBuildFindResult, onDeployed: () => void }} options
  * @returns {Promise<{ preview: PlatformPreview & { installUrl: string }, build: NativeBuildRow }>}
  */
 const deployOnNativeBuild = async (
   deps,
   inputs,
   event,
-  { platform, scheme, channel, found },
+  { platform, scheme, channel, found, onDeployed },
 ) => {
   /** @type {import("../../shared/nativeBuild.mjs").BuildTarget} */
   let target = {
@@ -579,7 +626,8 @@ const deployOnNativeBuild = async (
     platform,
     channel: inputs.channel,
     target,
-    message: `#${event.number} ${event.title}`,
+    message: deployMessage(event),
+    onDeployed,
   });
   const nativeBuild = {
     id: build.id,
@@ -611,12 +659,33 @@ export const runPreview = async (deps, inputs, event) => {
   await deps.cli(["channel", "set", inputs.channel]);
   /** @type {(PlatformPreview & { installUrl: string })[]} */
   const previews = [];
+  /** @type {{ platform: Platform, error: unknown, deployed: boolean }[]} */
+  const failures = [];
+  // Each platform deploys on its own, so the comment names this run's
+  // commit only beside the platforms that deployed it.
   for (const platform of inputs.platforms) {
-    previews.push(
-      await deps.log.group(`Preview ${platform}`, () =>
-        previewPlatform(deps, inputs, event, platform),
-      ),
-    );
+    let deployed = false;
+    try {
+      previews.push(
+        await deps.log.group(`Preview ${platform}`, () =>
+          previewPlatform(deps, inputs, event, platform, () => {
+            deployed = true;
+          }),
+        ),
+      );
+    } catch (error) {
+      // A failure after the deploy leaves the channel with this run's
+      // bundle, which the comment can't name a commit for any more.
+      failures.push({ platform, error, deployed });
+      // The run fails with it at the end; say so now, before the next build.
+      if (platform !== inputs.platforms.at(-1)) {
+        deps.log.error(`${platform}: ${messageOf(error)}`);
+      }
+    }
+  }
+  // With nothing deployed, the comment still says what the channel has.
+  if (previews.length === 0 && failures.every(({ deployed }) => !deployed)) {
+    throw failureOf(failures);
   }
   // The comment's QR codes live on a branch of the repository, which shows
   // them to anyone who can read it, whatever network the Console is on.
@@ -641,7 +710,10 @@ export const runPreview = async (deps, inputs, event) => {
     channel: inputs.channel,
     previews,
     qrImages,
-    headSha: event.headSha,
+    commitSha: event.commitSha,
+    repositoryUrl: event.repositoryUrl,
+    failed: failures.map(({ platform, deployed }) => ({ platform, deployed })),
+    runUrl: event.runUrl,
     credit: inputs.credit,
   });
   /** @type {(PlatformPreview & PreviewOutputs)[]} */
@@ -666,9 +738,31 @@ export const runPreview = async (deps, inputs, event) => {
   if (inputs.comment && deps.github) {
     await upsertComment(deps.github, event.number, body);
   }
+  if (failures.length > 0) {
+    if (qrError) deps.log.error(messageOf(qrError));
+    throw failureOf(failures);
+  }
   if (qrError) throw qrError;
   return { previews: outputs, body };
 };
+
+/** @param {unknown} error */
+const messageOf = (error) =>
+  error instanceof Error ? error.message : String(error);
+
+/**
+ * The error a run with failed platforms ends with: the one platform's own,
+ * or each platform's message.
+ * @param {{ platform: Platform, error: unknown }[]} failures
+ */
+const failureOf = (failures) =>
+  failures.length === 1
+    ? failures[0]?.error
+    : new Error(
+        failures
+          .map(({ platform, error }) => `${platform}: ${messageOf(error)}`)
+          .join("\n"),
+      );
 
 /**
  * Deletes the closed pull request's channel with its bundles and the native

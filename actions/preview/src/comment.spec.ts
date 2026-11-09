@@ -35,9 +35,14 @@ const ios = {
 const base = {
   consoleUrl: "https://console.example.com/",
   channel: "pr-12",
-  headSha: "0123456789abcdef",
+  commitSha: "0123456789abcdef",
+  // A server other than github.com, such as GitHub Enterprise Server.
+  repositoryUrl: "https://git.example.com/octo/app",
   credit: true,
 };
+
+const LATEST_COMMIT =
+  "<sub>Latest commit: [`0123456`](https://git.example.com/octo/app/commit/0123456789abcdef)</sub>";
 
 const onStore = {
   destination: "testflight",
@@ -83,7 +88,7 @@ const ANDROID_QR =
   "https://github.com/octo/app/raw/hot-updater-preview/pr-12/aaaaaaaaaaaaaaaa.png";
 const IOS_QR =
   "https://github.com/octo/app/raw/hot-updater-preview/pr-12/bbbbbbbbbbbbbbbb.png";
-const sandbox = (link: string) =>
+const sandbox = (link: string | null) =>
   ({ appId: "com.example.app", link, minBundleId: null }) as const;
 const androidSandbox = { ...android, sandbox: sandbox(ANDROID_LINK) } as const;
 const iosSandboxOnTestFlight = {
@@ -118,7 +123,8 @@ describe("renderPreviewComment", () => {
 
 This run made a new sandbox build: push the other open pull requests again.
 
-**2. Scan to open this pull request** with the sandbox app.
+**2. Scan to open the latest bundle on \`pr-12\`** with the sandbox app.
+${LATEST_COMMIT}
 
 **Android**
 
@@ -153,7 +159,7 @@ adb install -r app-release.apk
 
 </details>
 
-<sub>Deployed \`0123456\` · Preview by [hot-updater](https://hot-updater.dev)</sub>`);
+<sub>Preview by [hot-updater](https://hot-updater.dev)</sub>`);
   });
 
   it("links each pull request build, with no QR code, when there's no sandbox build", () => {
@@ -162,10 +168,12 @@ adb install -r app-release.apk
 
 ### Preview on \`pr-12\`
 
-**Install this pull request's build.** It opens this pull request on its first launch.
+**Install this pull request's build.** It opens the latest bundle on \`pr-12\` on its first launch.
 
 - **Android**: [Download APK](${C}/api/native-builds/019a0000-0000-7000-8000-00000000b001/download) · [Details](${C}/native-builds/019a0000-0000-7000-8000-00000000b001) · allow "Install unknown apps" when Android asks
 - **iOS Simulator**: [Details](${C}/native-builds/019a0000-0000-7000-8000-00000000b002) · install with the command below
+
+${LATEST_COMMIT}
 
 <details>
 <summary>Builds</summary>
@@ -194,7 +202,7 @@ npx hot-updater native-build install 019a0000-0000-7000-8000-00000000b002
 
 </details>
 
-<sub>Deployed \`0123456\` · Preview by [hot-updater](https://hot-updater.dev)</sub>`);
+<sub>Preview by [hot-updater](https://hot-updater.dev)</sub>`);
   });
 
   it("names each platform's own store, never the other's", () => {
@@ -244,12 +252,16 @@ npx hot-updater native-build install 019a0000-0000-7000-8000-00000000b002
       qrImages: { [ANDROID_LINK]: ANDROID_QR },
     });
 
-    const scan = body.indexOf("**2. Scan to open this pull request**");
+    const scan = body.indexOf(
+      `**2. Scan to open the latest bundle on \`pr-12\`** with the sandbox app.\n${LATEST_COMMIT}`,
+    );
     const own = body.indexOf(
-      `**This pull request's own build** opens this pull request on its first launch.\n\n- **iOS Simulator**: [Details](${C}/native-builds/${ios.nativeBuild.id}) · install with the command below`,
+      `**This pull request's own build** opens the latest bundle on \`pr-12\` on its first launch.\n\n- **iOS Simulator**: [Details](${C}/native-builds/${ios.nativeBuild.id}) · install with the command below`,
     );
     expect(scan).toBeGreaterThan(0);
     expect(own).toBeGreaterThan(scan);
+    // The commit goes once, under step 2.
+    expect(body.split("Latest commit").length).toBe(2);
   });
 
   it("says when the sandbox build floors out the bundle", () => {
@@ -319,7 +331,8 @@ adb install -r app-release.apk
 
     expect(body).not.toContain("Preview by");
     expect(body).not.toContain("hot-updater.dev");
-    expect(body.endsWith("<sub>Deployed `0123456`</sub>")).toBe(true);
+    expect(body).not.toContain("<sub>Preview");
+    expect(body.endsWith("</details>")).toBe(true);
   });
 
   it("shows the app version when the builds are matched by it", () => {
@@ -475,7 +488,51 @@ describe("the sandbox link's QR code", () => {
     expect(body).not.toContain("Scan");
     expect(body).not.toContain("<img");
     expect(body).toContain(
-      `**2. Open this pull request**: open the link on the phone with the sandbox app.\n\n**Android**\n\n\`${ANDROID_LINK}\``,
+      `**2. Open the latest bundle on \`pr-12\`**: open the link on the phone with the sandbox app.\n${LATEST_COMMIT}\n\n**Android**\n\n\`${ANDROID_LINK}\``,
     );
+  });
+});
+
+describe("a platform that failed", () => {
+  it("gets one line, linking the run when there is one", () => {
+    const body = renderPreviewComment({
+      ...base,
+      previews: [android],
+      failed: [{ platform: "ios", deployed: false }],
+      runUrl: null,
+    });
+
+    expect(body).toContain(
+      "### Preview on `pr-12`\n\n**iOS** failed on this run.\n\n**Install",
+    );
+    expect(body).not.toContain("iOS Simulator");
+  });
+});
+
+describe("the latest commit", () => {
+  it("names the commit without a link when the repository's URL is unknown", () => {
+    const body = renderPreviewComment({
+      ...base,
+      repositoryUrl: null,
+      previews: [androidSandbox],
+      qrImages: { [ANDROID_LINK]: ANDROID_QR },
+    });
+
+    expect(body).toContain(
+      "with the sandbox app.\n<sub>Latest commit: `0123456`</sub>",
+    );
+    expect(body).not.toContain("/commit/");
+  });
+
+  it("goes once, before the Builds table, when there's no step 2", () => {
+    const body = renderPreviewComment({
+      ...base,
+      // A sandbox build matched by app version has no link.
+      previews: [{ ...android, sandbox: sandbox(null) }],
+    });
+
+    expect(body).not.toContain("**2.");
+    expect(body.split("Latest commit").length).toBe(2);
+    expect(body).toContain(`${LATEST_COMMIT}\n\n<details>\n<summary>Builds`);
   });
 });

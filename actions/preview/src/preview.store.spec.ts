@@ -6,7 +6,9 @@ const event = {
   action: "synchronize",
   number: 12,
   title: "Fix the header",
-  headSha: "0123456789abcdef",
+  commitSha: "0123456789abcdef",
+  repositoryUrl: "https://github.com/octo/app",
+  runUrl: "https://github.com/octo/app/actions/runs/42",
   fromFork: false,
 };
 
@@ -131,6 +133,7 @@ const deps = (cli: unknown) => {
       log: {
         info: vi.fn(),
         notice: vi.fn(),
+        error: vi.fn(),
         group: async (_: string, run: () => Promise<unknown>) => run(),
       },
     } as never,

@@ -10,7 +10,7 @@ import { Callout } from "fumadocs-ui/components/callout";
 
 The preview action gives every pull request its own channel, such as
 `pr-12`, and native builds that embed it, so an installed build opens the
-pull request's bundle on its first launch, with no code in the app:
+latest bundle on that channel on its first launch, with no code in the app:
 
 1. It looks for a tracked native build of the project's fingerprint, or app
    version, on the pull request's channel.
@@ -21,8 +21,9 @@ pull request's bundle on its first launch, with no code in the app:
    with its download and its page in the Console's
    [Native builds](/docs/guides/native-build#native-builds-in-the-console)
    tab. On a [sandbox build](#open-a-pull-request-in-a-sandbox-build), it adds
-   the QR code that opens this pull request. It edits the same comment on
-   every push, and never another author's.
+   the QR code that opens the latest bundle on the pull request's channel.
+   It names that bundle's commit, and edits the same comment on every push,
+   never another author's.
 4. When the pull request closes, it deletes the channel with its bundles and
    its native builds, each with its artifact, and the pull request's QR codes.
 
@@ -137,6 +138,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # The pull request's own commit, which the comment and the bundle
+          # name, not GitHub's merge of it into the base branch.
+          ref: ${{ github.event.pull_request.head.sha }}
           # Keeps the token out of the project's install and build scripts.
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -171,6 +175,7 @@ pnpm:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -272,6 +277,12 @@ run's **Summary** page within a day: the artifact is kept for one day, since
 the CLI masks only the credentials it reads, not every value the build may
 print.
 
+A platform that fails doesn't stop the others, and the job fails after them.
+The comment shows only the platforms that finished, and links each failed one
+to the run. One that failed after deploying its bundle says so, and the
+comment names no commit for it. When no bundle was deployed, the comment stays
+as it was.
+
 A scheme that sets the app version at build time, such as in an `xcconfig`,
 builds a version the project doesn't declare, so its preview builds again on
 every run.
@@ -295,10 +306,13 @@ The comment says what a tester does, in order:
    [store build](#install-through-testflight-or-google-play). **Details** opens
    the build's page on the Console's
    [Native builds](/docs/guides/native-build#native-builds-in-the-console) tab.
-   A pull request's own build opens its bundle on its first launch.
-2. **Scan to open this pull request.** Only a
+   A pull request's own build opens the latest bundle on its channel on its
+   first launch.
+2. **Scan to open the latest bundle on `pr-12`.** Only a
    [sandbox build](#open-a-pull-request-in-a-sandbox-build) has this step: its
-   QR code holds the sandbox link, the one QR code in the comment.
+   QR code holds the sandbox link, the one QR code in the comment. The line
+   under it names the latest commit, the one the job checked out, which the
+   sandbox app shows too, in the bundle's message: `abc1234 · #12 Fix login`.
 
 The download links fetch a fresh storage URL on each request, so they never
 expire. A phone without a Console session signs in first, and a phone that

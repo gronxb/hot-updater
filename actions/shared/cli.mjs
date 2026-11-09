@@ -158,7 +158,7 @@ export const appendSummary = (markdown, env = process.env) => {
  *
  * @param {Record<string, string | undefined>} actionEnv
  */
-const appDirectory = (actionEnv) =>
+export const appDirectory = (actionEnv) =>
   path.resolve(
     actionEnv["GITHUB_WORKSPACE"] ?? process.cwd(),
     actionEnv["INPUT_WORKING_DIRECTORY"]?.trim() || ".",

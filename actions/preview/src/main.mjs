@@ -1,15 +1,17 @@
 // @ts-check
 
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 import {
+  appDirectory,
   createBuildLogs,
   createCli,
   log,
   maskCredentials,
   setOutput,
 } from "../../shared/cli.mjs";
-import { runAction } from "./preview.mjs";
+import { repositoryUrlOf, runAction, runUrlOf } from "./preview.mjs";
 
 /**
  * The composite step runs this with the inputs as `INPUT_*` variables. The
@@ -17,6 +19,25 @@ import { runAction } from "./preview.mjs";
  * `secrets` adapter when it sets one.
  */
 const env = process.env;
+
+/**
+ * The commit the app's directory has checked out, which the CLI builds and
+ * deploys: the pull request's head with `ref: head.sha`, or GitHub's merge
+ * commit with `actions/checkout`'s default. None without a git checkout.
+ */
+const checkedOutCommit = () => {
+  try {
+    return (
+      execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: appDirectory(env),
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim() || null
+    );
+  } catch {
+    return null;
+  }
+};
 
 const readEvent = () => {
   const eventPath = env["GITHUB_EVENT_PATH"];
@@ -36,7 +57,11 @@ const readEvent = () => {
     fromFork: head !== payload.repository?.full_name,
     number: Number(pullRequest.number),
     title: String(pullRequest.title ?? ""),
-    headSha: String(pullRequest.head?.sha ?? env["GITHUB_SHA"] ?? ""),
+    commitSha: String(
+      checkedOutCommit() ?? pullRequest.head?.sha ?? env["GITHUB_SHA"] ?? "",
+    ),
+    repositoryUrl: repositoryUrlOf(env, payload),
+    runUrl: runUrlOf(env, payload),
   };
 };
 
