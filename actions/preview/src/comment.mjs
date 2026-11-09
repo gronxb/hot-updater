@@ -285,8 +285,9 @@ const buildsTable = (previews) => {
 /**
  * The comment of a pull request whose bundles were deployed, in the order a
  * tester works: install the app, then, on a sandbox build, scan the QR code
- * of the sandbox link, which opens this pull request's bundle. Native builds
- * get links only; the sandbox link is the only QR code.
+ * of the sandbox link, which opens the latest bundle on the pull request's
+ * channel, from the commit it names. Native builds get links only; the
+ * sandbox link is the only QR code.
  *
  * @param {object} input
  * @param {string} input.consoleUrl
@@ -295,7 +296,10 @@ const buildsTable = (previews) => {
  * @param {Record<string, string>} [input.qrImages] The image of each sandbox
  *   link's QR code that the action wrote, by the link; a link without one is
  *   shown as text only.
- * @param {string} input.headSha
+ * @param {string} input.headSha The commit whose bundles the run deployed,
+ *   which each bundle's deploy message names too.
+ * @param {string | null} [input.repositoryUrl] The repository's web URL, which
+ *   the commit links under; without it, the commit is not a link.
  * @param {boolean} input.credit Whether to end with "Preview by hot-updater".
  */
 export const renderPreviewComment = ({
@@ -304,8 +308,16 @@ export const renderPreviewComment = ({
   previews,
   qrImages = {},
   headSha,
+  repositoryUrl = null,
   credit,
 }) => {
+  const sha7 = code(headSha.slice(0, 7));
+  // A tester opens the channel's latest bundle, and this names its commit.
+  const latestCommit = `<sub>Latest commit: ${
+    repositoryUrl === null
+      ? sha7
+      : `[${sha7}](${repositoryUrl}/commit/${encodeURIComponent(headSha)})`
+  }</sub>`;
   /** @param {PlatformPreview} preview */
   const line = (preview) =>
     `- **${installLabel(preview)}**: ${installLinks(consoleUrl, preview)}`;
@@ -336,9 +348,12 @@ export const renderPreviewComment = ({
     ...(linked.length === 0
       ? []
       : [
-          scannable
-            ? "**2. Scan to open this pull request** with the sandbox app."
-            : "**2. Open this pull request**: open the link on the phone with the sandbox app.",
+          [
+            scannable
+              ? `**2. Scan to open the latest bundle on ${code(channel)}** with the sandbox app.`
+              : `**2. Open the latest bundle on ${code(channel)}**: open the link on the phone with the sandbox app.`,
+            latestCommit,
+          ].join("\n"),
           ...linked.map(({ platform, sandbox }) => {
             const link = /** @type {string} */ (sandbox?.link);
             return [
@@ -364,9 +379,11 @@ export const renderPreviewComment = ({
             : "**This pull request's own build** opens this pull request on its first launch.",
           own.map(line).join("\n"),
         ]),
+    // Without step 2, the commit still goes once.
+    ...(linked.length === 0 ? [latestCommit] : []),
     buildsTable(previews),
     ...installCommands(previews),
-    ...footer([`Deployed ${code(headSha.slice(0, 7))}`], credit),
+    ...footer([], credit),
   ].join("\n\n");
 };
 

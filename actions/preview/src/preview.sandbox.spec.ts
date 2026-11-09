@@ -17,12 +17,15 @@ const APP_ID = "com.Example.App_tv";
 const LINK = `hu-sandbox-com-example-app-tv://hot-updater/preview?channel=pr-12&fingerprint=${FINGERPRINT}`;
 const BUILD_ID = "019a0000-0000-7000-8000-00000000b001";
 const MIN_BUNDLE_ID = "019a0000-0000-7000-8000-000000000010";
+const LATEST_COMMIT =
+  "<sub>Latest commit: [`0123456`](https://github.com/octo/app/commit/0123456789abcdef)</sub>";
 
 const event = {
   action: "synchronize",
   number: 12,
   title: "Fix the header",
   headSha: "0123456789abcdef",
+  repositoryUrl: "https://github.com/octo/app",
   fromFork: false,
 };
 
@@ -281,6 +284,7 @@ describe("no sandbox scheme", () => {
         "### Preview on `pr-12`",
         "**Install this pull request's build.** It opens this pull request on its first launch.",
         `- **Android**: [Download APK](${DOWNLOAD}) · [Details](${CONSOLE}/native-builds/${BUILD_ID}) · allow "Install unknown apps" when Android asks`,
+        LATEST_COMMIT,
         [
           "<details>",
           "<summary>Builds</summary>",
@@ -303,7 +307,7 @@ describe("no sandbox scheme", () => {
           "",
           "</details>",
         ].join("\n"),
-        "<sub>Deployed `0123456` · Preview by [hot-updater](https://hot-updater.dev)</sub>",
+        "<sub>Preview by [hot-updater](https://hot-updater.dev)</sub>",
       ].join("\n\n"),
     );
     expect(Object.keys(outputs).sort()).toEqual([
@@ -325,7 +329,7 @@ describe("no sandbox scheme", () => {
       "channel set pr-12",
       "native-build find -p android -s releaseApk --json",
       "fingerprint create",
-      "deploy -p android -c pr-12 -m #12 Fix the header",
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
       "native-build find -p android -c pr-12 -s releaseApk --json",
     ]);
@@ -372,7 +376,7 @@ describe("a sandbox build that has the fingerprint", () => {
       "channel set pr-12",
       "native-build find -p android -s sandbox --json",
       "fingerprint create",
-      "deploy -p android -c pr-12 -m #12 Fix the header",
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
       "native-build find -p android -s sandbox --json",
     ]);
@@ -398,7 +402,7 @@ describe("a sandbox build that has the fingerprint", () => {
       `**1. Install the sandbox app** once. Pull requests with the same native code share it.\n\n- **Android**: [Download APK](${DOWNLOAD}) · [Details](${CONSOLE}/native-builds/${BUILD_ID}) · allow "Install unknown apps" when Android asks`,
     );
     expect(body).toContain(
-      `**2. Scan to open this pull request** with the sandbox app.\n\n**Android**\n\n<img src="${QR}" alt="QR code of the sandbox link of pr-12" width="180" height="180">\n\n\`${LINK}\``,
+      `**2. Scan to open the latest bundle on \`pr-12\`** with the sandbox app.\n${LATEST_COMMIT}\n\n**Android**\n\n<img src="${QR}" alt="QR code of the sandbox link of pr-12" width="180" height="180">\n\n\`${LINK}\``,
     );
     expect(body).toContain(`| Android | \`${BUILD_ID}\` · reused |`);
     expect(body).toContain(`\`${LINK}\``);
@@ -458,7 +462,7 @@ describe("a sandbox build that has the fingerprint", () => {
     expect(body).not.toContain("<img");
     expect(body).not.toContain("Scan");
     expect(body).toContain(
-      `**2. Open this pull request**: open the link on the phone with the sandbox app.\n\n**Android**\n\n\`${LINK}\``,
+      `**2. Open the latest bundle on \`pr-12\`**: open the link on the phone with the sandbox app.\n${LATEST_COMMIT}\n\n**Android**\n\n\`${LINK}\``,
     );
   });
 });
@@ -582,7 +586,7 @@ describe("a pull request whose fingerprint differs from the sandbox build", () =
       "native-build find -p android -s sandbox --json",
       "native-build find -p android -c pr-12 -s releaseApk --json",
       "native-build android --scheme releaseApk --json",
-      "deploy -p android -c pr-12 -m #12 Fix the header",
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
       "native-build find -p android -c pr-12 -s releaseApk --json",
     ]);
@@ -636,7 +640,7 @@ describe("a pull request whose fingerprint differs from the sandbox build", () =
       "native-build android --scheme sandbox --json",
     );
     expect(outputs["android-sandbox-link"]).toBe(LINK);
-    expect(body).toContain("**2. Scan to open this pull request**");
+    expect(body).toContain("**2. Scan to open the latest bundle on `pr-12`**");
     expect(body).toContain("This run made a new sandbox build");
   });
 });
@@ -660,7 +664,7 @@ describe("a store build", () => {
       "channel set pr-12",
       "native-build find -p android -s sandbox --store-status --json",
       "fingerprint create",
-      "deploy -p android -c pr-12 -m #12 Fix the header",
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
       "native-build find -p android -s sandbox --json",
     ]);

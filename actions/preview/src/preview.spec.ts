@@ -2,7 +2,13 @@ import { createHash } from "node:crypto";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { parseInputs, parseJsonOutput, runAction } from "./preview.mjs";
+import {
+  deployMessage,
+  parseInputs,
+  parseJsonOutput,
+  repositoryUrlOf,
+  runAction,
+} from "./preview.mjs";
 import { writeQrCodes } from "./qrBranch.mjs";
 import { fakeGitHub } from "./testing/fakeGitHub";
 
@@ -11,6 +17,7 @@ const event = {
   number: 12,
   title: "Fix the header",
   headSha: "0123456789abcdef",
+  repositoryUrl: "https://github.com/octo/app",
   fromFork: false,
 };
 
@@ -259,7 +266,7 @@ describe("runAction preview", () => {
       "channel set pr-12",
       "native-build find -p android -s releaseApk --json",
       "native-build android --scheme releaseApk --json",
-      "deploy -p android -c pr-12 -m #12 Fix the header",
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
       // The download URL, once every platform is done.
       "native-build find -p android -c pr-12 -s releaseApk --json",
@@ -310,7 +317,7 @@ describe("runAction preview", () => {
       "native-build find -p android -s releaseApk --json",
       // fingerprint.json may be older than the project.
       "fingerprint create",
-      "deploy -p android -c pr-12 -m #12 Fix the header",
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
       "native-build find -p android -c pr-12 -s releaseApk --json",
     ]);
@@ -375,7 +382,7 @@ describe("runAction preview", () => {
     expect(fake.calls).toEqual([
       "channel set pr-12",
       "native-build find -p android -s releaseApk --json",
-      "deploy -p android -c pr-12 -m #12 Fix the header -t 1.4.0",
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header -t 1.4.0",
       "bundle list -c pr-12 -p android --limit 1 --json",
       "native-build find -p android -c pr-12 -s releaseApk --json",
     ]);
@@ -391,7 +398,7 @@ describe("runAction preview", () => {
     await runAction(d, env(), event);
 
     expect(fake.calls).toContain(
-      "deploy -p android -c pr-12 -m #12 Fix the header -t 2.0.0",
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header -t 2.0.0",
     );
     expect(JSON.parse(outputs["previews"]!)[0]).toMatchObject({
       target: { fingerprintHash: null, appVersion: "2.0.0" },
@@ -897,6 +904,36 @@ describe("parseInputs", () => {
     expect(parseInputs(env({ INPUT_CREDIT: "false" }), event).credit).toBe(
       false,
     );
+  });
+});
+
+describe("deployMessage", () => {
+  it("puts the commit first, so the sandbox app's one line never cuts it", () => {
+    expect(deployMessage(event)).toBe("0123456 · #12 Fix the header");
+  });
+});
+
+describe("repositoryUrlOf", () => {
+  it("uses the server the workflow runs on", () => {
+    expect(
+      repositoryUrlOf(
+        {
+          GITHUB_SERVER_URL: "https://git.example.com/",
+          GITHUB_REPOSITORY: "octo/app",
+        },
+        { repository: { html_url: "https://github.com/other/repo" } },
+      ),
+    ).toBe("https://git.example.com/octo/app");
+  });
+
+  it("falls back to the event's repository, else none", () => {
+    expect(
+      repositoryUrlOf(
+        {},
+        { repository: { html_url: "https://git.example.com/octo/app" } },
+      ),
+    ).toBe("https://git.example.com/octo/app");
+    expect(repositoryUrlOf({}, {})).toBeNull();
   });
 });
 

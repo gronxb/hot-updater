@@ -7,6 +7,7 @@ const event = {
   number: 12,
   title: "Fix the header",
   headSha: "0123456789abcdef",
+  repositoryUrl: "https://github.com/octo/app",
   fromFork: false,
 };
 

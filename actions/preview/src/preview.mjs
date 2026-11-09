@@ -60,6 +60,8 @@ export { parseJsonOutput };
  * @property {number} number
  * @property {string} title
  * @property {string} headSha
+ * @property {string | null} repositoryUrl The repository's web URL, which
+ *   the comment links the commit under.
  *
  * @typedef {object} Deps
  * @property {(args: string[], options?: { capture?: boolean }) => Promise<{ code: number, stdout: string }>} cli
@@ -73,6 +75,30 @@ export { parseJsonOutput };
  *
  * @typedef {import("../../shared/nativeBuild.mjs").NativeBuildRow} NativeBuildRow
  */
+
+/**
+ * The repository's web URL, which the comment links the commit under: from
+ * the server the workflow runs on, such as GitHub Enterprise Server's, else
+ * from the event.
+ * @param {Record<string, string | undefined>} env
+ * @param {{ repository?: { html_url?: string } } | undefined} payload
+ * @returns {string | null}
+ */
+export const repositoryUrlOf = (env, payload) => {
+  const serverUrl = env["GITHUB_SERVER_URL"];
+  const repository = env["GITHUB_REPOSITORY"];
+  return serverUrl && repository
+    ? `${serverUrl.replace(/\/+$/, "")}/${repository}`
+    : (payload?.repository?.html_url ?? null);
+};
+
+/**
+ * The deploy message of a pull request's bundle, which the sandbox app shows
+ * on one line: the commit first, so the line's ellipsis never cuts it.
+ * @param {PullRequestEvent} event
+ */
+export const deployMessage = ({ headSha, number, title }) =>
+  `${headSha.slice(0, 7)} · #${number} ${title}`;
 
 /**
  * The `<platform>-submit` inputs that are set. Each takes only the platform's
@@ -425,7 +451,7 @@ const previewPlatform = async (deps, inputs, event, platform) => {
       platform,
       channel: inputs.channel,
       target,
-      message: `#${event.number} ${event.title}`,
+      message: deployMessage(event),
     });
     const nativeBuild = {
       id: build.id,
@@ -579,7 +605,7 @@ const deployOnNativeBuild = async (
     platform,
     channel: inputs.channel,
     target,
-    message: `#${event.number} ${event.title}`,
+    message: deployMessage(event),
   });
   const nativeBuild = {
     id: build.id,
@@ -642,6 +668,7 @@ export const runPreview = async (deps, inputs, event) => {
     previews,
     qrImages,
     headSha: event.headSha,
+    repositoryUrl: event.repositoryUrl,
     credit: inputs.credit,
   });
   /** @type {(PlatformPreview & PreviewOutputs)[]} */

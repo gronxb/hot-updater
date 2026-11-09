@@ -9,7 +9,7 @@ import {
   maskCredentials,
   setOutput,
 } from "../../shared/cli.mjs";
-import { runAction } from "./preview.mjs";
+import { repositoryUrlOf, runAction } from "./preview.mjs";
 
 /**
  * The composite step runs this with the inputs as `INPUT_*` variables. The
@@ -37,6 +37,7 @@ const readEvent = () => {
     number: Number(pullRequest.number),
     title: String(pullRequest.title ?? ""),
     headSha: String(pullRequest.head?.sha ?? env["GITHUB_SHA"] ?? ""),
+    repositoryUrl: repositoryUrlOf(env, payload),
   };
 };
 
