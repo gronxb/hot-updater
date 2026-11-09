@@ -351,6 +351,7 @@ describe("checkNativeArtifact", () => {
         appVersion: null,
         builtInBundlePath: "base/assets/index.android.bundle",
         sandbox: false,
+        sandboxUrlScheme: null,
       },
     });
     const byVersion = checkNativeArtifact(info({ channel: null }), {
@@ -541,7 +542,10 @@ describe("the sandbox layer", () => {
       checkNativeArtifact(await read(sandboxApk(), "app.apk"), {
         updateStrategy: "fingerprint",
       }),
-    ).toMatchObject({ ok: true, build: { sandbox: true } });
+    ).toMatchObject({
+      ok: true,
+      build: { sandbox: true, sandboxUrlScheme: "hu-sandbox-com-example-app" },
+    });
     expect(
       checkNativeArtifact(await read(apk(), "app.apk"), {
         updateStrategy: "fingerprint",
