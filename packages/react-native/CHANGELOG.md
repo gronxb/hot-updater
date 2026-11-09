@@ -1,5 +1,34 @@
 # @hot-updater/react-native
 
+## 1.2.0-rc.25
+
+### Patch Changes
+
+- 10281e9: Keep what Android crash recovery reads by reflection from R8: `BridgelessReactContext`'s host, and `ReactRootViewTagGenerator` with its root view tag counter. In a minified release build of an app with named instances, R8 renamed them, so a named instance's fatal JavaScript error on the New Architecture skipped crash recovery, and a crash couldn't be attributed to the instance on screen. Apps need no ProGuard rules of their own: the library's consumer rules cover everything it reads by reflection.
+- f1cfcd6: Word the sandbox screen for any channel: the section is "Channels", the field's placeholder is "Channel" instead of a `pr-123` example, and its button reads "Open latest", as does a downloaded bundle's press-and-hold action, since a channel opens its latest bundle. The notes, the scanner hint and the refusals no longer call a channel a preview. Normal builds are unchanged.
+- 36ffe93: The sandbox screen lists the last 10 bundles a QR code, a link, or a channel downloaded. Tapping one runs that exact bundle again, offline, until the app restarts. On iOS, only a sandbox whose bundle ID ends in `.sandbox` keeps copies; with the store app's ID, a row checks its channel.
+- c83defd: Sandbox screen fixes. Opening **Enter a channel** or **Enter URL manually** now scrolls the field and its button above the on-screen keyboard, on iOS and Android, also in a window shorter than the form, such as a phone on its side. With camera access off, the iOS QR scanner no longer shows the viewfinder and the aiming hint: it shows one line and an **Open Settings** button, or, when the camera is restricted on the device, only a line saying so. It reads the camera access again when the app comes back to the foreground. A link opened before any bundle runs no longer says it replaces the running bundle. The Geist license reads as paragraphs, without the file's hard line breaks, on both platforms.
+- 0b3e640: Name each bundle in the sandbox's Downloaded list by the ID that `HotUpdater.getBundleId()`, the PR preview comment, and the Console show: the release's ID. The list showed the ID of the stored files instead, so a row didn't match the app or the PR comment. The "Running stored" row and Info's Current row use the same ID. Bundles listed before this change keep their old ID until they're downloaded again. Only `sandbox: true` builds change.
+- 8a045f4: The sandbox screen is native and shares one design on both platforms: SwiftUI on iOS 16 and later, and Jetpack Compose on Android, set in Geist. Expanding and collapsing rows animate smoothly, and the screen keeps its state across folds and rotations. A wide window, such as an open foldable, shows Home and Info side by side, away from the fold. Android gets edge-to-edge drawing and predictive Back. All of it ships only in sandbox builds.
+- bf29fc3: In a sandbox build, a Downloaded bundle running from its row now reports its release ID, the bundle ID its row, the Console, and pull request comments show, to `HotUpdater.getBundleId()`, instead of its files' ID. The session's update checks are unaffected, and a row listed before releases were kept still reports its files' ID. The running row also shows the bundle's deploy message, and a sandbox link now asks **Open latest on `<channel>`?** with **Open latest**. Normal builds are unchanged.
+- 211e584: Set a sandbox build's URL scheme on its scheme: `sandbox: { urlScheme: "acme-preview" }` in `hot-updater.config.ts` turns the sandbox on with that scheme, and `sandbox: true` keeps `hu-sandbox-<app ID>`. The config refuses a scheme that isn't lower case URI syntax of up to 64 characters, or is `http`, `https`, `file`, `data`, `javascript`, `true` or `false` (which Android's manifest compiles as booleans), and the build refuses one the app registers itself.
+
+  The build registers the scheme in its sandbox URL type on iOS, which also records it in the Info.plist key `HOT_UPDATER_SANDBOX_URL_SCHEME`, and on the sandbox activity on Android, which also names it in `com.hotupdater.sandbox.URL_SCHEME`, and the scheme is part of the native build key. Import and registration read it from the artifact (on Android, the sandbox activity's link scheme that its meta-data names; on iOS, the one scheme of the sandbox URL type) into the registry's new `native_builds.sandbox_url_scheme`, `native-build find --json` returns it as `sandbox.urlScheme`, and the preview action's link and QR code use it, so a reused build keeps the scheme it was built with. A sandbox build accepts only its own scheme's links: another scheme's link "isn't a link for this app". A preview link's scheme is ASCII alone. The iOS build refuses an app whose own URL type is named `hot-updater-sandbox`, and, when it patches an app it patched before, anything but exactly one `hot-updater-sandbox` URL type holding the one recorded scheme. The patch, the artifact reader and the build itself read the recorded scheme by one rule: absent, it's a prerelease's build, read as before; present, it must be a lower-case ASCII scheme that the one `hot-updater-sandbox` URL type holds alone, or the build has no scheme of its own and refuses every link. Builds registered before the column read as the derived scheme.
+
+  The column is part of the 1.2.0 migration. A SQL database a 1.2 prerelease already migrated needs it added by hand, before this version is deployed over it: until then, reads still work, but registering any native build, a normal one too, fails. Upgrade in this order: add the column, deploy the server, then upgrade the CLI. A new CLI that registers through `standaloneRepository` with an older server loses the scheme, since that server's admin route drops `sandboxUrlScheme`: the row stores null, and its links fall back to the derived scheme.
+  - D1 or SQLite: `ALTER TABLE native_builds ADD COLUMN sandbox_url_scheme TEXT;`
+  - Supabase: `ALTER TABLE hot_updater_v1_native_builds ADD COLUMN sandbox_url_scheme varchar(255) COLLATE "C";`
+  - PostgreSQL (Vercel, Neon, or your own): `ALTER TABLE native_builds ADD COLUMN sandbox_url_scheme varchar(255) COLLATE "C";`
+  - MySQL: ``ALTER TABLE native_builds ADD COLUMN `sandbox_url_scheme` varchar(255) CHARACTER SET ascii COLLATE ascii_bin;``
+  - Prisma or Drizzle: run `npx hot-updater db generate <server file>`, then the migration the ORM writes from it.
+
+  Key-value and document stores (DynamoDB, Firestore, Cosmos DB, MongoDB) need nothing: a row stored before the column has no such field, which reads as null. Nor does `standaloneRepository`, which stores nothing itself: its server's database takes the ALTER.
+
+- Updated dependencies [211e584]
+  - @hot-updater/protocol@1.2.0-rc.25
+  - @hot-updater/plugin-insights@1.2.0-rc.25
+  - @hot-updater/plugin-remote-config@1.2.0-rc.25
+
 ## 1.2.0-rc.24
 
 ### Patch Changes
