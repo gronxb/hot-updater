@@ -64,11 +64,7 @@ export function StoreSubmissionBadge({
   if (!isSubmitted(build)) return null;
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
-      <Badge
-        className="gap-1"
-        title={submittedTitle(build)}
-        variant="secondary"
-      >
+      <Badge className="gap-1" title={submittedTitle(build)} variant="muted">
         <Send aria-hidden="true" className="size-3" />
         {storeTrackLabels[build.submitted_to]}
         {build.submitted_version ? (
