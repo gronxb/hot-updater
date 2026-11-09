@@ -252,6 +252,58 @@ describe.runIf(process.platform === "darwin")("patching with plutil", () => {
     ]);
   });
 
+  it("re-patches with a changed scheme when the sandbox's URL type holds only its own", async () => {
+    await patchSandboxArchive({
+      archivePath: archive,
+      appPath: app,
+      schemeConfig: { ...scheme, sandboxUrlScheme: "old-preview" },
+    });
+    await patchSandboxArchive({
+      archivePath: archive,
+      appPath: app,
+      schemeConfig: { ...scheme, sandboxUrlScheme: "new-preview" },
+    });
+    expect(read(path.join(app, "Info.plist")).CFBundleURLTypes).toEqual([
+      { CFBundleURLSchemes: ["myapp"] },
+      {
+        CFBundleURLName: "hot-updater-sandbox",
+        CFBundleURLSchemes: ["new-preview"],
+      },
+    ]);
+  });
+
+  it.each([
+    [["old-preview", "app-login"], "app-login", "it"],
+    [["old-preview", "app-login", "app-pay"], "app-login, app-pay", "them"],
+  ])(
+    "refuses to re-patch a sandbox URL type that also holds %j, and patches nothing",
+    async (schemes, named, pronoun) => {
+      const appPlist = path.join(app, "Info.plist");
+      await writePlist(appPlist, {
+        CFBundleIdentifier: "com.example.App",
+        HOT_UPDATER_SANDBOX: true,
+        CFBundleURLTypes: [
+          { CFBundleURLSchemes: ["myapp"] },
+          {
+            CFBundleURLName: "hot-updater-sandbox",
+            CFBundleURLSchemes: schemes,
+          },
+        ],
+      });
+      const before = await fs.readFile(appPlist);
+      const message = `The app's URL type hot-updater-sandbox also holds ${named}, which a sandbox build would replace.\nMove ${pronoun} to a URL type of the app's own.`;
+
+      await expect(
+        patchSandboxArchive({
+          archivePath: archive,
+          appPath: app,
+          schemeConfig: { ...scheme, sandboxUrlScheme: "new-preview" },
+        }),
+      ).rejects.toMatchObject({ message, hint: message });
+      expect(await fs.readFile(appPlist)).toEqual(before);
+    },
+  );
+
   it.each([
     ["holds the sandbox's scheme", ["acme-preview", "app-login"]],
     ["holds another scheme", ["app-login"]],

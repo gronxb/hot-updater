@@ -105,6 +105,13 @@ const addUrlScheme = async (
   ]);
 };
 
+/** The schemes a URL type lists. */
+const schemesOf = (type: unknown): unknown[] => {
+  const schemes = (type as { CFBundleURLSchemes?: unknown } | null)
+    ?.CFBundleURLSchemes;
+  return Array.isArray(schemes) ? schemes : [];
+};
+
 /** Whether URL types list `urlScheme`, as iOS compares schemes: ignoring case. */
 const registersUrlScheme = (
   urlTypes: readonly unknown[],
@@ -201,6 +208,19 @@ const patchAppInfoPlist = async (plist: string, scheme: SandboxPlistScheme) => {
   if (appUrlTypes.some(isSandboxUrlType)) {
     throw refusal(
       `The app has a URL type named ${SANDBOX_URL_TYPE_NAME}, the name a sandbox build registers its URL scheme under.\nRename the app's URL type.`,
+    );
+  }
+  // An earlier patch wrote one URL type of the sandbox's name with one
+  // scheme: anything else in it is the app's, which replacing it would drop.
+  const extra = patchedBefore
+    ? (urlTypes ?? [])
+        .filter(isSandboxUrlType)
+        .flatMap((type) => schemesOf(type))
+        .slice(1)
+    : [];
+  if (extra.length > 0) {
+    throw refusal(
+      `The app's URL type ${SANDBOX_URL_TYPE_NAME} also holds ${extra.join(", ")}, which a sandbox build would replace.\nMove ${extra.length === 1 ? "it" : "them"} to a URL type of the app's own.`,
     );
   }
   if (registersUrlScheme(appUrlTypes, urlScheme)) {
