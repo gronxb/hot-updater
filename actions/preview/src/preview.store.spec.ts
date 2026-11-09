@@ -133,6 +133,7 @@ const deps = (cli: unknown) => {
       log: {
         info: vi.fn(),
         notice: vi.fn(),
+        error: vi.fn(),
         group: async (_: string, run: () => Promise<unknown>) => run(),
       },
     } as never,

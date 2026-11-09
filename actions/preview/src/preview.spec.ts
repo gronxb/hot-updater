@@ -233,6 +233,7 @@ const deps = (
     log: {
       info: vi.fn(),
       notice: vi.fn(),
+      error: vi.fn(),
       group: <T>(_: string, run: () => Promise<T>) => run(),
     },
     ...overrides,

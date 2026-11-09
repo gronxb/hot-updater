@@ -202,6 +202,7 @@ const run = async (
       log: {
         info: vi.fn(),
         notice,
+        error: vi.fn(),
         group: <T>(_: string, body: () => Promise<T>) => body(),
       },
     } as never,
@@ -776,6 +777,7 @@ describe("a sandbox scheme beside a normal one", () => {
 });
 
 describe("a platform that fails", () => {
+  const error = vi.fn();
   const deps = (fake: ReturnType<typeof fakeCli>) => {
     const github = fakeGitHub();
     return {
@@ -788,6 +790,7 @@ describe("a platform that fails", () => {
         log: {
           info: vi.fn(),
           notice: vi.fn(),
+          error,
           group: <T>(_: string, body: () => Promise<T>) => body(),
         },
       } as never,
@@ -812,7 +815,7 @@ describe("a platform that fails", () => {
     await expect(
       runAction(
         value,
-        env({ INPUT_PLATFORMS: "android,ios", INPUT_IOS_SCHEME: "simulator" }),
+        env({ INPUT_PLATFORMS: "ios,android", INPUT_IOS_SCHEME: "simulator" }),
         event,
       ),
     ).rejects.toThrow("xcodebuild failed.");
@@ -824,7 +827,8 @@ describe("a platform that fails", () => {
     expect(comment?.body).toContain(`\`${LINK}\``);
     expect(comment?.body).toContain(LATEST_COMMIT);
     expect(comment?.body).not.toContain("iOS Simulator");
-    // Android deployed after iOS failed, not before it only.
+    // iOS failed first: Android still deployed, and the error showed at once.
+    expect(error).toHaveBeenCalledWith("ios: xcodebuild failed.");
     expect(fake.calls).toContain(
       "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
     );

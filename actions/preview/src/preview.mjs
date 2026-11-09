@@ -74,7 +74,7 @@ export { parseJsonOutput };
  * @property {import("../../shared/cli.mjs").BuildLogs} buildLogs
  * @property {import("./github.mjs").GitHubContext | null} github
  * @property {(name: string, value: string) => void} setOutput
- * @property {{ info: (message: string) => void, notice: (message: string) => void, group: <T>(name: string, run: () => Promise<T>) => Promise<T> }} log
+ * @property {{ info: (message: string) => void, notice: (message: string) => void, error: (message: string) => void, group: <T>(name: string, run: () => Promise<T>) => Promise<T> }} log
  *
  * @typedef {import("../../shared/nativeBuild.mjs").NativeBuildRow} NativeBuildRow
  */
@@ -666,6 +666,10 @@ export const runPreview = async (deps, inputs, event) => {
       );
     } catch (error) {
       failures.push({ platform, error });
+      // The run fails with it at the end; say so now, before the next build.
+      if (platform !== inputs.platforms.at(-1)) {
+        deps.log.error(`${platform}: ${messageOf(error)}`);
+      }
     }
   }
   // With nothing deployed, the comment still says what the channel has.
@@ -721,10 +725,17 @@ export const runPreview = async (deps, inputs, event) => {
   if (inputs.comment && deps.github) {
     await upsertComment(deps.github, event.number, body);
   }
-  if (failures.length > 0) throw failureOf(failures);
+  if (failures.length > 0) {
+    if (qrError) deps.log.error(messageOf(qrError));
+    throw failureOf(failures);
+  }
   if (qrError) throw qrError;
   return { previews: outputs, body };
 };
+
+/** @param {unknown} error */
+const messageOf = (error) =>
+  error instanceof Error ? error.message : String(error);
 
 /**
  * The error a run with failed platforms ends with: the one platform's own,
@@ -736,10 +747,7 @@ const failureOf = (failures) =>
     ? failures[0]?.error
     : new Error(
         failures
-          .map(
-            ({ platform, error }) =>
-              `${platform}: ${error instanceof Error ? error.message : String(error)}`,
-          )
+          .map(({ platform, error }) => `${platform}: ${messageOf(error)}`)
           .join("\n"),
       );
 
