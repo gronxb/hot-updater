@@ -252,6 +252,24 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
+    fun `a new process removes the bundle a reset kept`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val running = createCompleteBundle(rootDir, "running-bundle", "running")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "running-bundle"))
+            val service = createService(rootDir)
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertTrue(service.resetChannel())
+            assertTrue(running.exists())
+
+            // Android's reload restarts the process, which launches from a new store.
+            val nextProcess = createService(rootDir)
+            assertNull(nextProcess.prepareLaunch(null).launchedBundleId)
+            assertFalse(running.exists())
+            assertEquals(listOf(BundleMetadata.METADATA_FILENAME), bundleStoreDir(rootDir).list()?.sorted())
+        }
+
+    @Test
     fun `a channel reset before a launch removes every bundle`() =
         runBlocking {
             val rootDir = temporaryFolder.newFolder()

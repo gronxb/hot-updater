@@ -288,6 +288,9 @@ class BundleFileStorageService(
         private const val NIL_UUID = "00000000-0000-0000-0000-000000000000"
         private val SHA256_PATTERN = Regex("^[0-9a-f]{64}$")
 
+        /** Names the bundle a channel reset kept for its running JavaScript, for the next launch to remove. */
+        private const val RETAINED_BUNDLE_FILENAME = "retained-bundle"
+
         /** Files downloaded at once when the archive is not used. */
         private const val PARALLEL_FILE_DOWNLOADS = 16
 
@@ -729,10 +732,10 @@ class BundleFileStorageService(
     private var retryHeldBundleId: String? = null
 
     // The bundle this process's last launch runs, under releaseStateLock. A
-    // channel reset keeps its files, which its JavaScript still loads, as
-    // retainedBundleId, and the next launch in this process removes them.
+    // channel reset keeps its files, which its JavaScript still loads, and
+    // names them in RETAINED_BUNDLE_FILENAME for the next launch to remove: a
+    // reload restarts the process, so the next one does.
     private var runningBundleId: String? = null
-    private var retainedBundleId: String? = null
 
     @Volatile
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot? = null
@@ -1875,11 +1878,15 @@ class BundleFileStorageService(
 
     /** Removes the files a channel reset kept for the launch it replaced, unless this launch or the metadata uses them again. */
     private fun removeRetainedBundle(launching: String?) {
-        val retained = retainedBundleId ?: return
-        retainedBundleId = null
+        val marker = File(getBundleStoreDir(), RETAINED_BUNDLE_FILENAME)
+        if (!marker.exists()) return
+        val retained = runCatching { marker.readText().trim() }.getOrDefault("")
+        marker.delete()
         val metadata = loadMetadataOrNull()
+        // Only a bundle directory's name: never the store itself or a path out of it.
+        if (retained.isEmpty() || retained.contains('/') || retained == "." || retained == "..") return
         if (retained == launching || retained == metadata?.stableBundleId || retained == metadata?.stagingBundleId) return
-        File(getBundleStoreDir(), retained).deleteRecursively()
+        File(getBundleStoreDir(), retained).takeIf { it.isDirectory }?.deleteRecursively()
     }
 
     override fun peekLaunchBundleId(): String? {
@@ -2954,7 +2961,7 @@ class BundleFileStorageService(
             // The running JavaScript still loads its files, such as images,
             // until React Native reloads; the next launch removes them.
             if (file.name == runningBundleId) {
-                retainedBundleId = file.name
+                File(getBundleStoreDir(), RETAINED_BUNDLE_FILENAME).writeText(file.name)
                 return@forEach
             }
 

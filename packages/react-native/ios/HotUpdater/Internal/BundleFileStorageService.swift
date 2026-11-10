@@ -427,10 +427,11 @@ class BundleFileStorageService: BundleStorageService {
     // A bundle waiting for its retry that this process keeps refusing, see InterruptedLaunch.
     private var retryHeldBundleId: String?
     // The bundle this process's last launch runs, under releaseStateLock. A
-    // channel reset keeps its files, which its JavaScript still loads, as
-    // retainedBundleId, and the next launch in this process removes them.
+    // channel reset keeps its files, which its JavaScript still loads, and
+    // names them in retainedBundleFilename for the next launch to remove, in
+    // this process or, after a restart, the next one.
     private var runningBundleId: String?
-    private var retainedBundleId: String?
+    private static let retainedBundleFilename = "retained-bundle"
     private let activeBundleMetadataLock = NSLock()
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot?
     private let builtInBundleIdProvider: () -> String
@@ -452,6 +453,7 @@ class BundleFileStorageService: BundleStorageService {
         "builtin-index-v1.json",
         // Written when a launch crashes, read at the next start.
         HotUpdaterCrashMarker.filename,
+        BundleFileStorageService.retainedBundleFilename,
     ]
 
     private func createDiffProgressFiles(
@@ -2279,13 +2281,19 @@ class BundleFileStorageService: BundleStorageService {
     /// Removes the files a channel reset kept for the launch it replaced, unless
     /// this launch or the metadata uses them again.
     private func removeRetainedBundle(launching launchedBundleId: String?) {
-        guard let retained = retainedBundleId else { return }
-        retainedBundleId = nil
+        guard case .success(let storeDir) = bundleStoreDir() else { return }
+        let marker = (storeDir as NSString).appendingPathComponent(Self.retainedBundleFilename)
+        guard fileSystem.fileExists(atPath: marker) else { return }
+        let retained = (try? String(contentsOfFile: marker, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        try? fileSystem.removeItem(atPath: marker)
         let metadata = loadMetadataOrNull()
-        guard retained != launchedBundleId,
+        // Only a bundle directory's name: never the store itself or a path out of it.
+        guard !retained.isEmpty, !retained.contains("/"), retained != ".", retained != "..",
+              !protectedBundleStoreEntries.contains(retained),
+              retained != launchedBundleId,
               retained != metadata?.stableBundleId,
-              retained != metadata?.stagingBundleId,
-              case .success(let storeDir) = bundleStoreDir() else { return }
+              retained != metadata?.stagingBundleId else { return }
         let path = (storeDir as NSString).appendingPathComponent(retained)
         if fileSystem.fileExists(atPath: path) {
             try? fileSystem.removeItem(atPath: path)
@@ -3448,7 +3456,8 @@ class BundleFileStorageService: BundleStorageService {
                 // The running JavaScript still loads its files, such as images,
                 // until React Native reloads; the next launch removes them.
                 if item == runningBundleId {
-                    retainedBundleId = item
+                    let marker = (storeDir as NSString).appendingPathComponent(Self.retainedBundleFilename)
+                    try Data(item.utf8).write(to: URL(fileURLWithPath: marker), options: .atomic)
                     continue
                 }
 

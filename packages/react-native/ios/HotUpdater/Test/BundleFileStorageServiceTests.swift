@@ -146,6 +146,30 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func aNewProcessRemovesTheBundleAResetKept() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let directory = try createBundleDirectory(documentsDirectory: root, bundleId: "running-bundle")
+        try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: directory, bundleId: "running-bundle")
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: "running-bundle"
+        ))
+        let service = makeStorageService(documentsDirectory: root)
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "running-bundle")
+        #expect(try service.resetChannel().get())
+        #expect(FileManager.default.fileExists(atPath: directory.path))
+
+        // A reload that restarts the process, as Android's does, launches from a new store.
+        let nextProcess = makeStorageService(documentsDirectory: root)
+        #expect(nextProcess.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
+        #expect(!FileManager.default.fileExists(atPath: directory.path))
+        let store = root.appendingPathComponent("bundle-store")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: store.path).sorted() == [BundleMetadata.metadataFilename])
+    }
+
+    @Test
     func resetChannelBeforeALaunchRemovesEveryBundle() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
