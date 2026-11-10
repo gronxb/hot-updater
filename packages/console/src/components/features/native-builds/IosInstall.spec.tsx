@@ -371,13 +371,15 @@ describe("InstallCard on an iPhone", () => {
 
   it("offers Install once another tab keeps the profile's answer", async () => {
     onIphone();
-    installEligibilityQuery.mockImplementation((_: string, udid: string | null) => ({
-      isPending: false,
-      isFetching: false,
-      dataUpdatedAt: Date.now(),
-      refetch,
-      data: installable(udid === null ? "unknown" : "included"),
-    }));
+    installEligibilityQuery.mockImplementation(
+      (_: string, udid: string | null) => ({
+        isPending: false,
+        isFetching: false,
+        dataUpdatedAt: Date.now(),
+        refetch,
+        data: installable(udid === null ? "unknown" : "included"),
+      }),
+    );
     render(<InstallCard build={row} />);
     await screen.findByRole("link", { name: /Install profile/ });
 
