@@ -143,6 +143,14 @@ internal data class HotUpdaterSandboxQuestion(
                                 "OK",
                                 null,
                             )
+                        is HotUpdaterSandboxRefusal.OtherPlatform ->
+                            HotUpdaterSandboxQuestion(
+                                Kind.REFUSED,
+                                "This QR is for iOS",
+                                "Scan the Android QR code for ${refusal.link.channel}.",
+                                "OK",
+                                null,
+                            )
                     }
                 is HotUpdaterSandboxPhase.Failed -> {
                     val reason =

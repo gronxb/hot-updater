@@ -8,6 +8,12 @@ struct HotUpdaterSandboxLink: Equatable {
     let urlScheme: String
     let channel: String
     let fingerprintHash: String
+    /// The platform the link is for, `ios` or `android`; nil when it names none.
+    let platform: String?
+
+    /// The platform this build's links are for.
+    static let ownPlatform = "ios"
+    private static let platforms: Set<String> = ["ios", "android"]
 
     /// The prefix of the scheme a build registered before it could be set.
     private static let schemePrefix = "hu-sandbox-"
@@ -86,7 +92,8 @@ struct HotUpdaterSandboxLink: Equatable {
     /// `parsePreviewLink` of `@hot-updater/protocol`, which shares its vectors in
     /// test-utils' `sandbox-preview-links.json`: nil for anything else, or a
     /// channel no release can target. It takes any URL scheme; whether the
-    /// link is this build's is `isOwnScheme`.
+    /// link is this build's is `isOwnScheme`. A `platform` other than `ios` or
+    /// `android` reads as none.
     init?(url: String) {
         let whole = NSRange(url.startIndex..., in: url)
         guard let match = Self.pattern.firstMatch(in: url, range: whole),
@@ -117,6 +124,7 @@ struct HotUpdaterSandboxLink: Equatable {
         urlScheme = url[schemeRange].lowercased()
         self.channel = channel
         self.fingerprintHash = fingerprintHash
+        platform = parameters["platform"].flatMap { Self.platforms.contains($0) ? $0 : nil }
     }
 
     /// `assertCanonicalChannelName`: non-empty, trimmed, NFC, at most 255 code points.

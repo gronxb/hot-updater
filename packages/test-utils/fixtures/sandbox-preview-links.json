@@ -29,6 +29,45 @@
       "urlScheme": "acme.preview+qa-2",
       "channel": "pr-12",
       "fingerprintHash": "abc"
+    },
+    {
+      "link": "acme-preview://hot-updater/preview?channel=pr-12&fingerprint=abc&platform=ios",
+      "urlScheme": "acme-preview",
+      "channel": "pr-12",
+      "fingerprintHash": "abc",
+      "platform": "ios"
+    },
+    {
+      "link": "acme-preview://hot-updater/preview?platform=android&channel=pr-12&fingerprint=abc",
+      "urlScheme": "acme-preview",
+      "channel": "pr-12",
+      "fingerprintHash": "abc",
+      "platform": "android"
+    },
+    {
+      "link": "acme-preview://hot-updater/preview?channel=pr-12&fingerprint=abc&platform=windows",
+      "urlScheme": "acme-preview",
+      "channel": "pr-12",
+      "fingerprintHash": "abc"
+    },
+    {
+      "link": "acme-preview://hot-updater/preview?channel=pr-12&fingerprint=abc&platform=IOS",
+      "urlScheme": "acme-preview",
+      "channel": "pr-12",
+      "fingerprintHash": "abc"
+    },
+    {
+      "link": "acme-preview://hot-updater/preview?channel=pr-12&fingerprint=abc&platform=",
+      "urlScheme": "acme-preview",
+      "channel": "pr-12",
+      "fingerprintHash": "abc"
+    },
+    {
+      "link": "acme-preview://hot-updater/preview?channel=pr-12&fingerprint=abc&platform=%69os",
+      "urlScheme": "acme-preview",
+      "channel": "pr-12",
+      "fingerprintHash": "abc",
+      "platform": "ios"
     }
   ],
   "invalid": [
@@ -51,6 +90,7 @@
     "hu-sandbox-a://hot-updater/preview?channel=&fingerprint=abc",
     "hu-sandbox-a://hot-updater/preview?channel=pr-12&fingerprint=",
     "hu-sandbox-a://hot-updater/preview?channel=a&channel=b&fingerprint=abc",
+    "hu-sandbox-a://hot-updater/preview?channel=pr-12&fingerprint=abc&platform=ios&platform=android",
     "hu-sandbox-a://hot-updater/preview?channel=%20a&fingerprint=abc",
     "hu-sandbox-a://hot-updater/preview?channel=%E0%A4%A&fingerprint=abc",
     "hu-sandbox-a://hot-updater/preview?channel=pr-12&fingerprint=abc#fragment",

@@ -131,6 +131,9 @@ const RESERVED_URL_SCHEMES: ReadonlySet<string> = new Set([
 export const isConfigurableSandboxUrlScheme = (urlScheme: string): boolean =>
   CONFIGURED_URL_SCHEME.test(urlScheme) && !RESERVED_URL_SCHEMES.has(urlScheme);
 
+/** The platform a preview link is for. */
+export type PreviewLinkPlatform = "ios" | "android";
+
 /** What a preview link asks a sandbox build to run. */
 export interface PreviewLink {
   /** The sandbox's URL scheme, in lower case. */
@@ -138,6 +141,12 @@ export interface PreviewLink {
   readonly channel: string;
   /** The fingerprint the channel's bundles need; another build refuses them. */
   readonly fingerprintHash: string;
+  /**
+   * The platform the link is for, absent from a link that names none: the
+   * other platform's sandbox build, which both can register the same scheme
+   * for, says which QR code to scan instead.
+   */
+  readonly platform?: PreviewLinkPlatform;
 }
 
 /**
@@ -151,16 +160,24 @@ export const createPreviewLink = ({
   appId,
   channel,
   fingerprintHash,
+  platform,
 }: {
   readonly channel: string;
   readonly fingerprintHash: string;
+  readonly platform?: PreviewLinkPlatform;
 } & (
   | { readonly urlScheme: string; readonly appId?: string }
   | { readonly urlScheme?: undefined; readonly appId: string }
 )): string => {
   assertCanonicalChannelName(channel);
+  if (platform !== undefined && !PREVIEW_LINK_PLATFORMS.has(platform)) {
+    throw new Error(
+      `A preview link's platform is ios or android, not ${platform}.`,
+    );
+  }
   const scheme = urlScheme ?? sandboxUrlSchemeOf(appId as string);
-  return `${scheme.toLowerCase()}://hot-updater/preview?channel=${encodeURIComponent(channel)}&fingerprint=${encodeURIComponent(fingerprintHash)}`;
+  const link = `${scheme.toLowerCase()}://hot-updater/preview?channel=${encodeURIComponent(channel)}&fingerprint=${encodeURIComponent(fingerprintHash)}`;
+  return platform === undefined ? link : `${link}&platform=${platform}`;
 };
 
 /** Any URL scheme: which app's it is, the app that opens the link decides. */
@@ -172,14 +189,16 @@ const PREVIEW_LINK =
  */
 const ASCII_URL_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*$/;
 const MAX_FINGERPRINT_LENGTH = 256;
+const PREVIEW_LINK_PLATFORMS: ReadonlySet<string> =
+  new Set<PreviewLinkPlatform>(["ios", "android"]);
 
 /**
  * What a preview link says, or null for anything else: another shape, a
  * repeated or missing parameter, or a channel no release can target. It takes
  * any URL scheme: a sandbox build refuses a link of another scheme than its
- * own. Native code parses it the same way before any JavaScript runs, in
- * HotUpdaterSandboxLink, and shares the vectors in test-utils'
- * `sandbox-preview-links.json`.
+ * own. A `platform` other than `ios` or `android` reads as none. Native code
+ * parses it the same way before any JavaScript runs, in HotUpdaterSandboxLink,
+ * and shares the vectors in test-utils' `sandbox-preview-links.json`.
  */
 export const parsePreviewLink = (link: string): PreviewLink | null => {
   const match = PREVIEW_LINK.exec(link);
@@ -213,9 +232,13 @@ export const parsePreviewLink = (link: string): PreviewLink | null => {
   } catch {
     return null;
   }
+  const platform = parameters.get("platform");
   return {
     urlScheme: match[1]!.toLowerCase(),
     channel,
     fingerprintHash,
+    ...(platform !== undefined && PREVIEW_LINK_PLATFORMS.has(platform)
+      ? { platform: platform as PreviewLinkPlatform }
+      : {}),
   };
 };

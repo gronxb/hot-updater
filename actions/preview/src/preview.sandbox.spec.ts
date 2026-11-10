@@ -15,7 +15,8 @@ const CONSOLE = "https://console.example.com";
 const FINGERPRINT = "a".repeat(64);
 const OLD_FINGERPRINT = "b".repeat(64);
 const APP_ID = "com.Example.App_tv";
-const LINK = `hu-sandbox-com-example-app-tv://hot-updater/preview?channel=pr-12&fingerprint=${FINGERPRINT}`;
+const LINK = `hu-sandbox-com-example-app-tv://hot-updater/preview?channel=pr-12&fingerprint=${FINGERPRINT}&platform=android`;
+const IOS_LINK = `hu-sandbox-com-example-app-tv://hot-updater/preview?channel=pr-12&fingerprint=${FINGERPRINT}&platform=ios`;
 const BUILD_ID = "019a0000-0000-7000-8000-00000000b001";
 const MIN_BUNDLE_ID = "019a0000-0000-7000-8000-000000000010";
 const LATEST_COMMIT =
@@ -259,6 +260,7 @@ describe("the link", () => {
       urlScheme: sandboxUrlSchemeOf(appId),
       channel: "pr-12",
       fingerprintHash: FINGERPRINT,
+      platform: "android",
     });
 
     expect(link).toBe(
@@ -266,6 +268,7 @@ describe("the link", () => {
         appId,
         channel: "pr-12",
         fingerprintHash: FINGERPRINT,
+        platform: "android",
       }),
     );
     expect(parsePreviewLink(link)).toMatchObject({
@@ -274,21 +277,26 @@ describe("the link", () => {
     });
   });
 
-  it("encodes a channel as the protocol does", () => {
-    const channel = "pr 12/tv";
-    const parts = {
-      urlScheme: "acme.preview+qa",
-      channel,
-      fingerprintHash: FINGERPRINT,
-    };
+  it.each(["ios", "android"] as const)(
+    "encodes a channel and names %s as the protocol does",
+    (platform) => {
+      const channel = "pr 12/tv";
+      const parts = {
+        urlScheme: "acme.preview+qa",
+        channel,
+        fingerprintHash: FINGERPRINT,
+        platform,
+      };
 
-    expect(previewLink(parts)).toBe(createPreviewLink(parts));
-    expect(parsePreviewLink(previewLink(parts))).toEqual({
-      urlScheme: "acme.preview+qa",
-      channel,
-      fingerprintHash: FINGERPRINT,
-    });
-  });
+      expect(previewLink(parts)).toBe(createPreviewLink(parts));
+      expect(parsePreviewLink(previewLink(parts))).toEqual({
+        urlScheme: "acme.preview+qa",
+        channel,
+        fingerprintHash: FINGERPRINT,
+        platform,
+      });
+    },
+  );
 });
 
 describe("no sandbox scheme", () => {
@@ -450,6 +458,7 @@ describe("a sandbox build that has the fingerprint", () => {
       urlScheme: "hu-sandbox-com-example-app-tv",
       channel: "pr-12",
       fingerprintHash: FINGERPRINT,
+      platform: "android",
     });
     // The QR code is the link's: never the download's.
     expect(written).toEqual([qrPath(LINK)]);
@@ -535,13 +544,17 @@ describe("a sandbox .ipa with no store input", () => {
   const inputs = { INPUT_PLATFORMS: "ios", INPUT_IOS_SCHEME: "sandbox" };
 
   it("shows the deep link's QR code, and keeps its page behind Details", async () => {
-    const { body, written } = await run(fakeCli({ builds: [ipa] }), inputs);
+    const { body, outputs, written } = await run(
+      fakeCli({ builds: [ipa] }),
+      inputs,
+    );
 
-    expect(body).toContain(`<img src="${QR}"`);
+    expect(body).toContain(`<img src="${qrImage(IOS_LINK)}"`);
     expect(body).toContain(
       `- **iOS**: [Install on iPhone](${CONSOLE}/native-builds/${BUILD_ID}) · [Download IPA](${DOWNLOAD}) · registered devices only`,
     );
-    expect(written).toEqual([qrPath(LINK)]);
+    expect(outputs["ios-sandbox-link"]).toBe(IOS_LINK);
+    expect(written).toEqual([qrPath(IOS_LINK)]);
   });
 
   it("links a normal .ipa's install page, with no QR code", async () => {
@@ -602,7 +615,7 @@ describe("no sandbox build at all", () => {
 });
 
 describe("the URL scheme a sandbox scheme sets", () => {
-  const custom = `acme-preview://hot-updater/preview?channel=pr-12&fingerprint=${FINGERPRINT}`;
+  const custom = `acme-preview://hot-updater/preview?channel=pr-12&fingerprint=${FINGERPRINT}&platform=android`;
 
   it("opens the build it makes with the configured scheme", async () => {
     const { body, outputs } = await run(fakeCli({ urlScheme: "acme-preview" }));

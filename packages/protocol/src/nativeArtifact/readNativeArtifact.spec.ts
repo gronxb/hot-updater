@@ -867,6 +867,7 @@ describe("the sandbox layer", () => {
         urlScheme: string;
         channel: string;
         fingerprintHash: string;
+        platform?: "ios" | "android";
       }[];
       invalid: string[];
     };
@@ -912,6 +913,24 @@ describe("the sandbox layer", () => {
       });
     });
 
+    it("names the platform a link is for, which the other platform's build refuses", () => {
+      const link = createPreviewLink({
+        urlScheme: "acme-preview",
+        channel: "pr-12",
+        fingerprintHash: "abc",
+        platform: "android",
+      });
+      expect(link).toBe(
+        "acme-preview://hot-updater/preview?channel=pr-12&fingerprint=abc&platform=android",
+      );
+      expect(parsePreviewLink(link)).toEqual({
+        urlScheme: "acme-preview",
+        channel: "pr-12",
+        fingerprintHash: "abc",
+        platform: "android",
+      });
+    });
+
     it("creates no link for a channel no release can target", () => {
       expect(() =>
         createPreviewLink({
@@ -920,6 +939,17 @@ describe("the sandbox layer", () => {
           fingerprintHash: "abc",
         }),
       ).toThrow("trimmed");
+    });
+
+    it("creates no link for a platform other than ios or android", () => {
+      expect(() =>
+        createPreviewLink({
+          appId: "com.example.app",
+          channel: "pr-12",
+          fingerprintHash: "abc",
+          platform: "Android" as "android",
+        }),
+      ).toThrow("ios or android");
     });
   });
 

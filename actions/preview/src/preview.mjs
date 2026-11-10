@@ -419,15 +419,16 @@ const findOrSubmitStoreBuild = async (
  * What a sandbox build adds to its preview: the link a QR code holds, of the
  * URL scheme the build registered: its record's, or `find`'s, which also
  * answers for a build that registered before the record. A link names a
- * fingerprint, so a build matched by app version has none.
+ * fingerprint, so a build matched by app version has none, and its platform.
  *
  * @param {Inputs} inputs
+ * @param {Platform} platform
  * @param {{ appId: string, urlScheme: string } | undefined} sandbox
  * @param {import("../../shared/nativeBuild.mjs").BuildTarget} target
  * @param {NativeBuildRow} build
  * @returns {{ sandbox?: import("./comment.mjs").SandboxPreview }}
  */
-const sandboxOf = (inputs, sandbox, { fingerprintHash }, build) => {
+const sandboxOf = (inputs, platform, sandbox, { fingerprintHash }, build) => {
   if (sandbox === undefined) return {};
   const urlScheme = build.sandbox_url_scheme ?? sandbox.urlScheme;
   return {
@@ -441,6 +442,7 @@ const sandboxOf = (inputs, sandbox, { fingerprintHash }, build) => {
               urlScheme,
               channel: inputs.channel,
               fingerprintHash,
+              platform,
             }),
       minBundleId: build.min_bundle_id ?? null,
     },
@@ -489,7 +491,7 @@ const previewPlatform = async (deps, inputs, event, platform, onDeployed) => {
       built,
       bundleId,
       store,
-      ...sandboxOf(inputs, sandbox, target, build),
+      ...sandboxOf(inputs, platform, sandbox, target, build),
       installUrl:
         store?.url ?? nativeBuildInstallUrl(inputs.consoleUrl, nativeBuild),
     };
@@ -551,7 +553,7 @@ const previewPlatform = async (deps, inputs, event, platform, onDeployed) => {
   });
   return {
     ...preview,
-    ...sandboxOf(inputs, found.sandbox, preview.target, build),
+    ...sandboxOf(inputs, platform, found.sandbox, preview.target, build),
   };
 };
 

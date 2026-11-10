@@ -349,6 +349,51 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
+    fun `an iOS link is refused before its fingerprint`() {
+        val fixture = Fixture()
+        val ios = link("pr-1", "other") + "&platform=ios"
+        fixture.coordinator.receiveLink(ios)
+        assertEquals(
+            HotUpdaterSandboxPhase.Refused(HotUpdaterSandboxRefusal.OtherPlatform(HotUpdaterSandboxLink.parse(ios)!!)),
+            fixture.phase,
+        )
+        assertTrue(fixture.host.calls.isEmpty())
+        assertTrue(fixture.store.pendingLinks.isEmpty())
+    }
+
+    @Test
+    fun `an iOS link of another scheme still says which QR to scan`() {
+        // The iOS sandbox can register another scheme, and the in-app scanner
+        // takes any preview link.
+        val fixture = Fixture(ownScheme = "acme-preview")
+        val ios = link("pr-1") + "&platform=ios"
+        fixture.coordinator.receiveLink(ios)
+        assertEquals(
+            HotUpdaterSandboxPhase.Refused(HotUpdaterSandboxRefusal.OtherPlatform(HotUpdaterSandboxLink.parse(ios)!!)),
+            fixture.phase,
+        )
+    }
+
+    @Test
+    fun `an Android link or an unknown platform is asked about`() {
+        for (platform in listOf("android", "windows")) {
+            val fixture = Fixture()
+            val url = link("pr-1") + "&platform=$platform"
+            fixture.coordinator.receiveLink(url)
+            assertEquals(platform, HotUpdaterSandboxPhase.Confirming(HotUpdaterSandboxLink.parse(url)!!), fixture.phase)
+        }
+    }
+
+    @Test
+    fun `a pasted iOS link is refused like a scanned one`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo(" ${link("pr-1")}&platform=ios ")
+        assertTrue(
+            ((fixture.phase as HotUpdaterSandboxPhase.Refused).refusal) is HotUpdaterSandboxRefusal.OtherPlatform,
+        )
+    }
+
+    @Test
     fun `a refused link delivered twice asks once`() {
         val fixture = Fixture()
         fixture.coordinator.receiveLink(link("pr-1", "other"))

@@ -459,10 +459,11 @@ The comment's first step links the sandbox build, and its second step has a QR
 code for each platform, since each has its own fingerprint:
 
 ```text
-hu-sandbox-com-example-app://hot-updater/preview?channel=pr-12&fingerprint=<hash>
+hu-sandbox-com-example-app://hot-updater/preview?channel=pr-12&fingerprint=<hash>&platform=ios
 ```
 
-A sandbox build with other native code refuses the link. The comment shows the link
+A sandbox build with other native code refuses the link, and the other
+platform's build says which QR code to scan instead. The comment shows the link
 under its QR code, which the action writes to the
 [`hot-updater-preview` branch](#where-the-qr-codes-live). Under the `appVersion`
 strategy it has neither, since a link names a fingerprint.

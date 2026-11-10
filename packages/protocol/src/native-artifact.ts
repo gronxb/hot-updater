@@ -46,6 +46,7 @@ export {
   isSandboxUrlScheme,
   parsePreviewLink,
   type PreviewLink,
+  type PreviewLinkPlatform,
   recordedSandboxUrlScheme,
   SANDBOX_ACTIVITY,
   SANDBOX_APPLICATION_ID_SUFFIX,
