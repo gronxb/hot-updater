@@ -728,6 +728,12 @@ class BundleFileStorageService(
     // A bundle waiting for its retry that this process keeps refusing, see InterruptedLaunch.
     private var retryHeldBundleId: String? = null
 
+    // The bundle this process's last launch runs, under releaseStateLock. A
+    // channel reset keeps its files, which its JavaScript still loads, as
+    // retainedBundleId, and the next launch in this process removes them.
+    private var runningBundleId: String? = null
+    private var retainedBundleId: String? = null
+
     @Volatile
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot? = null
     private val activeBundleMetadataLock = Any()
@@ -1856,11 +1862,24 @@ class BundleFileStorageService(
         // A launch is recorded only once it can show UI (markLaunchStarted).
         val selection = selectLaunch()
         pendingLaunchBundleId = selection.launchedBundleId.takeIf { selection.shouldRollbackOnCrash }
+        synchronized(releaseStateLock) {
+            removeRetainedBundle(launching = selection.launchedBundleId)
+            runningBundleId = selection.launchedBundleId
+        }
         Log.d(
             TAG,
             "prepareLaunch: bundleId=${selection.launchedBundleId} shouldRollback=${selection.shouldRollbackOnCrash} url=${selection.bundleUrl}",
         )
         return selection
+    }
+
+    /** Removes the files a channel reset kept for the launch it replaced, unless this launch or the metadata uses them again. */
+    private fun removeRetainedBundle(launching: String?) {
+        val retained = retainedBundleId ?: return
+        retainedBundleId = null
+        val metadata = loadMetadataOrNull()
+        if (retained == launching || retained == metadata?.stableBundleId || retained == metadata?.stagingBundleId) return
+        File(getBundleStoreDir(), retained).deleteRecursively()
     }
 
     override fun peekLaunchBundleId(): String? {
@@ -2929,6 +2948,13 @@ class BundleFileStorageService(
                 file.name == CrashedHistory.CRASHED_HISTORY_FILENAME ||
                 file.name == LaunchReport.LAUNCH_REPORT_FILENAME
             ) {
+                return@forEach
+            }
+
+            // The running JavaScript still loads its files, such as images,
+            // until React Native reloads; the next launch removes them.
+            if (file.name == runningBundleId) {
+                retainedBundleId = file.name
                 return@forEach
             }
 

@@ -114,6 +114,55 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func resetChannelKeepsTheRunningBundleUntilTheNextLaunch() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        for bundleId in ["running-bundle", "older-bundle"] {
+            let directory = try createBundleDirectory(documentsDirectory: root, bundleId: bundleId)
+            try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+            try writeManifest(in: directory, bundleId: bundleId)
+        }
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: "running-bundle"
+        ))
+        let store = root.appendingPathComponent("bundle-store")
+        func exists(_ path: String) -> Bool {
+            FileManager.default.fileExists(atPath: store.appendingPathComponent(path).path)
+        }
+        let service = makeStorageService(documentsDirectory: root)
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "running-bundle")
+
+        #expect(try service.resetChannel().get())
+        // The running JavaScript still loads its files until React Native reloads.
+        #expect(exists("running-bundle/index.ios.bundle"))
+        #expect(!exists("older-bundle"))
+        #expect(service.peekLaunchBundleId() == nil)
+
+        // The next launch runs the built-in bundle and removes them.
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
+        #expect(!exists("running-bundle"))
+        #expect(exists(BundleMetadata.metadataFilename))
+    }
+
+    @Test
+    func resetChannelBeforeALaunchRemovesEveryBundle() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let directory = try createBundleDirectory(documentsDirectory: root, bundleId: "stable-bundle")
+        try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: directory, bundleId: "stable-bundle")
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: "stable-bundle"
+        ))
+        let service = makeStorageService(documentsDirectory: root)
+
+        #expect(try service.resetChannel().get())
+        #expect(!FileManager.default.fileExists(atPath: directory.path))
+    }
+
+    @Test
     func peekLaunchBundleIdSkipsAStagedBundleWithoutItsFile() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }

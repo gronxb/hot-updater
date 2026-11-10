@@ -230,6 +230,40 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `a channel reset keeps the running bundle until the next launch`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val running = createCompleteBundle(rootDir, "running-bundle", "running")
+            val older = createCompleteBundle(rootDir, "older-bundle", "older")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "running-bundle"))
+            val service = createService(rootDir)
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+
+            assertTrue(service.resetChannel())
+            // The running JavaScript still loads its files until React Native reloads.
+            assertTrue(File(running, "index.android.bundle").exists())
+            assertFalse(older.exists())
+            assertNull(service.peekLaunchBundleId())
+
+            // The next launch runs the built-in bundle and removes them.
+            assertNull(service.prepareLaunch(null).launchedBundleId)
+            assertFalse(running.exists())
+            assertTrue(File(bundleStoreDir(rootDir), BundleMetadata.METADATA_FILENAME).exists())
+        }
+
+    @Test
+    fun `a channel reset before a launch removes every bundle`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val stable = createCompleteBundle(rootDir, "stable-bundle", "stable")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "stable-bundle"))
+            val service = createService(rootDir)
+
+            assertTrue(service.resetChannel())
+            assertFalse(stable.exists())
+        }
+
+    @Test
     fun `settling keeps the stable bundle when only the staged one lost its files`() {
         val rootDir = temporaryFolder.newFolder()
         val stable = createBundleDir(rootDir, "stable-bundle")

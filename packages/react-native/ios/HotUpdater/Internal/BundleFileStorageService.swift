@@ -426,6 +426,11 @@ class BundleFileStorageService: BundleStorageService {
     private let crashedHistoryLock = NSLock()
     // A bundle waiting for its retry that this process keeps refusing, see InterruptedLaunch.
     private var retryHeldBundleId: String?
+    // The bundle this process's last launch runs, under releaseStateLock. A
+    // channel reset keeps its files, which its JavaScript still loads, as
+    // retainedBundleId, and the next launch in this process removes them.
+    private var runningBundleId: String?
+    private var retainedBundleId: String?
     private let activeBundleMetadataLock = NSLock()
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot?
     private let builtInBundleIdProvider: () -> String
@@ -2264,7 +2269,27 @@ class BundleFileStorageService: BundleStorageService {
         // A launch is recorded only once it can show UI (markLaunchStarted).
         let selection = selectLaunch(bundle: bundle)
         pendingLaunchBundleId = selection.shouldRollbackOnCrash ? selection.launchedBundleId : nil
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
+        removeRetainedBundle(launching: selection.launchedBundleId)
+        runningBundleId = selection.launchedBundleId
         return selection
+    }
+
+    /// Removes the files a channel reset kept for the launch it replaced, unless
+    /// this launch or the metadata uses them again.
+    private func removeRetainedBundle(launching launchedBundleId: String?) {
+        guard let retained = retainedBundleId else { return }
+        retainedBundleId = nil
+        let metadata = loadMetadataOrNull()
+        guard retained != launchedBundleId,
+              retained != metadata?.stableBundleId,
+              retained != metadata?.stagingBundleId,
+              case .success(let storeDir) = bundleStoreDir() else { return }
+        let path = (storeDir as NSString).appendingPathComponent(retained)
+        if fileSystem.fileExists(atPath: path) {
+            try? fileSystem.removeItem(atPath: path)
+        }
     }
     
     // MARK: - Bundle Update
@@ -3418,6 +3443,12 @@ class BundleFileStorageService: BundleStorageService {
         do {
             for item in try fileSystem.contentsOfDirectory(atPath: storeDir) {
                 if protectedBundleStoreEntries.contains(item) {
+                    continue
+                }
+                // The running JavaScript still loads its files, such as images,
+                // until React Native reloads; the next launch removes them.
+                if item == runningBundleId {
+                    retainedBundleId = item
                     continue
                 }
 
