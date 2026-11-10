@@ -927,13 +927,38 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
-    fun `reset needs a restart over a fixed launch`() {
+    fun `reset over the app opens nothing, and its row runs the built-in bundle`() {
         val fixture = Fixture()
         fixture.host.channel = "pr-1"
         fixture.host.bundleId = "ota-1"
         fixture.host.runningBundleId = "ota-1"
-        fixture.coordinator.resetToBuiltIn()
+        fixture.host.appRunning = true
+        assertTrue(fixture.coordinator.resetToBuiltIn())
+        assertEquals(listOf("reset"), fixture.host.calls)
+        assertTrue("a reset ran the app", fixture.opens.isEmpty())
+        assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
+        assertEquals(true, fixture.coordinator.state.selection?.isBuiltIn)
+        val row = HotUpdaterSandboxHomeModel.of(fixture.coordinator.state, isOverApp = true, nowMs = 0).bigRow
+        assertEquals("Open built-in bundle", row.title)
+        assertTrue(row.isReload)
+        // Its reload is what runs the built-in bundle over a fixed launch.
+        fixture.coordinator.reloadApp()
         assertEquals(listOf(true to true), fixture.opens)
+    }
+
+    @Test
+    fun `reset before the app starts opens nothing, and its row opens the built-in bundle`() {
+        val fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        assertTrue(fixture.coordinator.resetToBuiltIn())
+        assertTrue("a reset ran the app", fixture.opens.isEmpty())
+        val row = HotUpdaterSandboxHomeModel.of(fixture.coordinator.state, isOverApp = false, nowMs = 0).bigRow
+        assertEquals("Open built-in bundle", row.title)
+        assertFalse(row.isReload)
+        fixture.coordinator.open()
+        assertEquals(listOf(false to false), fixture.opens)
+        assertEquals(listOf("sandbox-release"), fixture.store.opened)
     }
 
     @Test

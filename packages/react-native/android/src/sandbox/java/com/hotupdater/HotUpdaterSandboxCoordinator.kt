@@ -445,7 +445,11 @@ internal class HotUpdaterSandboxCoordinator(
         return true
     }
 
-    /** Back to the built-in bundle: what a failed switch leaves, on purpose. Returns false while a switch runs. */
+    /**
+     * Back to the built-in bundle: what a failed switch leaves, on purpose. It opens
+     * nothing: the screen stays, and its row opens the built-in bundle.
+     * Returns false while a switch runs.
+     */
     fun resetToBuiltIn(): Boolean {
         if (!canStart()) return false
         val operationId = nextOperationId++
@@ -462,7 +466,7 @@ internal class HotUpdaterSandboxCoordinator(
                     fail(operationId, target, HotUpdaterSandboxStep.RESET, HotUpdaterSandboxFailure.ResetFailed)
                     return@launch
                 }
-                finish(operationId)
+                finish(operationId, opens = false)
             } finally {
                 lock.release(HotUpdaterSandboxLock.Holder.SWITCHING)
             }
@@ -794,7 +798,11 @@ internal class HotUpdaterSandboxCoordinator(
         relist(reconciling = false)
     }
 
-    private suspend fun finish(operationId: Long) {
+    /** [opens]: whether the app opens on the selection once the links queued behind it are answered. */
+    private suspend fun finish(
+        operationId: Long,
+        opens: Boolean = true,
+    ) {
         linkInFlight?.let { url ->
             linkInFlight = null
             queue -= url
@@ -806,7 +814,7 @@ internal class HotUpdaterSandboxCoordinator(
         acknowledgeLastLaunch()
         publish(reading(selection, host.launchBundleId()).copy(phase = HotUpdaterSandboxPhase.Idle))
         log("operation $operationId selected ${selection.channel} ${selection.bundleId}")
-        switchAwaitsOpen = true
+        switchAwaitsOpen = opens
         pump()
         openSwitchIfAnswered()
     }

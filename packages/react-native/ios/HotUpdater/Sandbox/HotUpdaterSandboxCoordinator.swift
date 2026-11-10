@@ -382,7 +382,8 @@ final class HotUpdaterSandboxCoordinator {
         return true
     }
 
-    /// Back to the built-in bundle: what a failed switch leaves, on purpose.
+    /// Back to the built-in bundle: what a failed switch leaves, on purpose. It
+    /// opens nothing: the screen stays, and its row opens the built-in bundle.
     /// Returns false while a switch runs.
     @discardableResult
     func resetToBuiltIn() -> Bool {
@@ -401,7 +402,7 @@ final class HotUpdaterSandboxCoordinator {
                 await fail(operationId, target, .reset, .resetFailed)
                 return
             }
-            await finish(operationId)
+            await finish(operationId, opens: false)
         }
         return true
     }
@@ -685,7 +686,8 @@ final class HotUpdaterSandboxCoordinator {
         await relist(reconciling: false)
     }
 
-    private func finish(_ operationId: Int) async {
+    /// `opens`: whether the app opens on the selection once the links queued behind it are answered.
+    private func finish(_ operationId: Int, opens: Bool = true) async {
         clearLinkInFlight()
         retryTarget = nil
         let selection = await readSelection()
@@ -695,7 +697,7 @@ final class HotUpdaterSandboxCoordinator {
         next.phase = .idle
         publish(next)
         log("operation \(operationId) selected \(selection.channel) \(selection.bundleId)")
-        switchAwaitsOpen = true
+        switchAwaitsOpen = opens
         pump()
         openSwitchIfAnswered()
     }

@@ -433,13 +433,33 @@ class HotUpdaterSandboxHomeModelTest {
 
     @Test
     fun `over the app, running and next are separate when they differ`() {
-        val toBuiltIn = home(state(selection(bundleId = "built-in"), running = "ota"), isOverApp = true).bigRow
-        assertEquals("Running bundle ota", toBuiltIn.subtitle)
-        assertEquals("Next launch: the built-in bundle", toBuiltIn.detail)
-
         val toOta = home(state(selection(bundleId = "ota"), running = "built-in"), isOverApp = true).bigRow
+        assertEquals("Reload", toOta.title)
         assertEquals("Running the built-in bundle", toOta.subtitle)
         assertEquals("Next launch: bundle ota", toOta.detail)
+        assertFalse(toOta.opensSelection)
+    }
+
+    @Test
+    fun `over the app, a built-in bundle next is opened by its reload`() {
+        val row = home(state(selection(bundleId = "built-in"), running = "019a3f00aabbc2"), isOverApp = true).bigRow
+        assertEquals("Current bundle", row.caption)
+        assertEquals("Open built-in bundle", row.title)
+        assertEquals("The bundle this build shipped with", row.subtitle)
+        assertEquals("Running bundle 019a3f…c2", row.detail)
+        assertTrue(row.isReload)
+        assertTrue(row.opensSelection)
+    }
+
+    @Test
+    fun `over the app, the built-in bundle running stays a reload`() {
+        val row = home(state(selection(bundleId = "built-in"), running = "built-in"), isOverApp = true).bigRow
+        assertEquals("Running", row.caption)
+        assertEquals("Reload", row.title)
+        assertEquals("Running the built-in bundle", row.subtitle)
+        assertEquals("Channel pr-1", row.detail)
+        assertTrue(row.isReload)
+        assertFalse(row.opensSelection)
     }
 
     @Test

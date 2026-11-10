@@ -18,6 +18,9 @@ struct HotUpdaterSandboxHomeModel: Equatable {
         let isReload: Bool
         /// A stored bundle runs: a row under it goes back to the current bundle.
         var showsBack = false
+        /// Over the app, the reload runs the selection in place of what runs, so
+        /// the row shows Open's icon.
+        var opensSelection = false
     }
 
     /// A row of the Downloaded list.
@@ -193,6 +196,17 @@ struct HotUpdaterSandboxHomeModel: Equatable {
                 subtitle: runsBuiltIn ? "Running the built-in bundle" : "Running \(next.channel)",
                 detail: runsBuiltIn ? "Channel \(next.channel)" : message ?? "Bundle \(shortId(running))",
                 isReload: true
+            )
+        }
+        // The built-in bundle is next and another runs: the reload opens it.
+        if next.isBuiltIn {
+            return BigRow(
+                caption: "Current bundle",
+                title: "Open built-in bundle",
+                subtitle: "The bundle this build shipped with",
+                detail: "Running bundle \(shortId(running))",
+                isReload: true,
+                opensSelection: true
             )
         }
         return BigRow(

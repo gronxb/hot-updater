@@ -37,6 +37,8 @@ internal data class HotUpdaterSandboxHomeModel(
         val isReload: Boolean,
         /** A stored bundle runs: a row under it goes back to the current bundle. */
         val showsBack: Boolean = false,
+        /** Over the app, the reload runs the selection in place of what runs, so the row shows Open's icon. */
+        val opensSelection: Boolean = false,
     )
 
     /** A row of the Downloaded list. */
@@ -191,6 +193,17 @@ internal data class HotUpdaterSandboxHomeModel(
                     if (runsBuiltIn) "Running the built-in bundle" else "Running ${next.channel}",
                     if (runsBuiltIn) "Channel ${next.channel}" else message ?: "Bundle ${shortId(running.orEmpty())}",
                     isReload = true,
+                )
+            }
+            // The built-in bundle is next and another runs: the reload opens it.
+            if (next.isBuiltIn) {
+                return BigRow(
+                    "Current bundle",
+                    "Open built-in bundle",
+                    "The bundle this build shipped with",
+                    "Running bundle ${shortId(running.orEmpty())}",
+                    isReload = true,
+                    opensSelection = true,
                 )
             }
             return BigRow(
