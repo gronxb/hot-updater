@@ -252,6 +252,44 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
+    fun `a built-in commit keeps the running bundle until the next launch`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val running = createCompleteBundle(rootDir, "running-bundle", "running")
+            val older = createCompleteBundle(rootDir, "older-bundle", "older")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "running-bundle"))
+            val service = createService(rootDir)
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 1, "hash-1", "production", "context-1"))
+
+            // The running bundle's own update check selects the built-in bundle.
+            assertTrue(
+                service.commitReleaseSelection(
+                    PersistedSelection(
+                        kind = "BUILTIN",
+                        releaseId = "release-builtin",
+                        bundleId = "builtin-bundle",
+                        catalogId = "project-a",
+                        scopeKey = "scope-production",
+                        generation = 1,
+                        catalogHash = "hash-1",
+                        channel = "production",
+                        selectionContextHash = "context-1",
+                    ),
+                ),
+            )
+            // The running JavaScript still loads its files until React Native reloads.
+            assertTrue(File(running, "index.android.bundle").exists())
+            assertEquals("file://${running.absolutePath}", service.getBaseURLForBundle("running-bundle"))
+            assertFalse(older.exists())
+            assertNull(service.peekLaunchBundleId())
+
+            // The next launch runs the built-in bundle and removes them.
+            assertNull(service.prepareLaunch(null).launchedBundleId)
+            assertFalse(running.exists())
+        }
+
+    @Test
     fun `a new process removes the bundle a reset kept`() =
         runBlocking {
             val rootDir = temporaryFolder.newFolder()

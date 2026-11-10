@@ -19,8 +19,8 @@ class HotUpdaterSandboxImplGenerator {
   static final String GETTER_ANCHOR = "val bundleUrl = prepareLaunchIfNeeded().bundleUrl"
   static final String GETTER_LINE = "        if (environment.isMain) HotUpdaterSandboxDev.bundleOfThisProcess(context)?.let { return it }"
 
-  /** What JavaScript reads of the launched bundle, each answered by a stored session's bundle first. */
-  static final String STORED_ANCHOR = "val launchSelection = currentLaunchSelection"
+  /** What JavaScript reads of the running bundle, each answered by a stored session's bundle first. */
+  static final String STORED_ANCHOR = "val launchSelection = runningLaunchSelection"
   static final Map<String, String> STORED_GETTERS = [
     "    fun getBaseURL(): String? {": "baseURL",
     "    fun getBundleId(): String? {": "bundleId",

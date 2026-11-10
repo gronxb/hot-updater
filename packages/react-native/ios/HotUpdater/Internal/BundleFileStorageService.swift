@@ -427,7 +427,7 @@ class BundleFileStorageService: BundleStorageService {
     // A bundle waiting for its retry that this process keeps refusing, see InterruptedLaunch.
     private var retryHeldBundleId: String?
     // The bundle this process's last launch runs, under releaseStateLock. A
-    // channel reset keeps its files, which its JavaScript still loads, and
+    // channel reset or built-in commit keeps its files, which its JavaScript still loads, and
     // names them in retainedBundleFilename for the next launch to remove, in
     // this process or, after a restart, the next one.
     private var runningBundleId: String?
@@ -1743,11 +1743,7 @@ class BundleFileStorageService: BundleStorageService {
             return false
         }
         if selection.kind != "BUNDLE", case .success(let storeDir) = bundleStoreDir() {
-            for item in (try? fileSystem.contentsOfDirectory(atPath: storeDir)) ?? [] {
-                guard !protectedBundleStoreEntries.contains(item) else { continue }
-                let path = (storeDir as NSString).appendingPathComponent(item)
-                try? fileSystem.removeItem(atPath: path)
-            }
+            try? removeDownloadedBundles(in: storeDir)
         }
         return true
     }
@@ -2278,8 +2274,8 @@ class BundleFileStorageService: BundleStorageService {
         return selection
     }
 
-    /// Removes the files a channel reset kept for the launch it replaced, unless
-    /// this launch or the metadata uses them again.
+    /// Removes the files a channel reset or built-in commit kept for the launch
+    /// it replaced, unless this launch or the metadata uses them again.
     private func removeRetainedBundle(launching launchedBundleId: String?) {
         guard case .success(let storeDir) = bundleStoreDir() else { return }
         let marker = (storeDir as NSString).appendingPathComponent(Self.retainedBundleFilename)
@@ -3449,26 +3445,33 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         do {
-            for item in try fileSystem.contentsOfDirectory(atPath: storeDir) {
-                if protectedBundleStoreEntries.contains(item) {
-                    continue
-                }
-                // The running JavaScript still loads its files, such as images,
-                // until React Native reloads; the next launch removes them.
-                if item == runningBundleId {
-                    let marker = (storeDir as NSString).appendingPathComponent(Self.retainedBundleFilename)
-                    try Data(item.utf8).write(to: URL(fileURLWithPath: marker), options: .atomic)
-                    continue
-                }
-
-                let bundlePath = (storeDir as NSString).appendingPathComponent(item)
-                if fileSystem.fileExists(atPath: bundlePath) {
-                    try fileSystem.removeItem(atPath: bundlePath)
-                }
-            }
+            try removeDownloadedBundles(in: storeDir)
             return .success(true)
         } catch {
             return .failure(BundleStorageError.moveOperationFailed(error))
+        }
+    }
+
+    /// Removes every downloaded bundle once the selection no longer names any,
+    /// after a channel reset or a built-in commit. The running JavaScript still
+    /// loads its own bundle's files, such as images, until React Native
+    /// reloads, so that one stays, named in retainedBundleFilename for the next
+    /// launch to remove. Called under releaseStateLock.
+    private func removeDownloadedBundles(in storeDir: String) throws {
+        for item in try fileSystem.contentsOfDirectory(atPath: storeDir) {
+            if protectedBundleStoreEntries.contains(item) {
+                continue
+            }
+            if item == runningBundleId {
+                let marker = (storeDir as NSString).appendingPathComponent(Self.retainedBundleFilename)
+                try Data(item.utf8).write(to: URL(fileURLWithPath: marker), options: .atomic)
+                continue
+            }
+
+            let bundlePath = (storeDir as NSString).appendingPathComponent(item)
+            if fileSystem.fileExists(atPath: bundlePath) {
+                try fileSystem.removeItem(atPath: bundlePath)
+            }
         }
     }
 }

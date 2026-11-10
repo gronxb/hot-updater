@@ -68,10 +68,10 @@ class HotUpdaterSandboxImplGeneratorTest {
         )
     }
 
-    private val storedAnchor = "        val launchSelection = currentLaunchSelection"
+    private val storedAnchor = "        val launchSelection = runningLaunchSelection"
 
     @Test
-    fun `a stored session answers what JavaScript reads of the launched bundle first`() {
+    fun `a stored session answers what JavaScript reads of the running bundle first`() {
         val lines = generate(packaged).split("\n")
         for ((function, field) in listOf("getBaseURL" to "baseURL", "getBundleId" to "bundleId", "getManifest" to "manifest")) {
             val line = "        HotUpdaterSandboxDev.storedBundle(context, environment)?.let { return it.$field }"

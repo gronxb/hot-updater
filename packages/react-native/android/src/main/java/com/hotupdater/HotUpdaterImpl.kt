@@ -551,13 +551,14 @@ class HotUpdaterImpl {
     fun clearCrashHistory(): Boolean = bundleStorage.clearCrashHistory()
 
     /**
-     * Gets the base URL for the current active bundle directory.
+     * Gets the base URL for the running bundle's directory.
      * Returns the file:// URL to the bundle directory with trailing slash.
      * This is used for Expo DOM components to construct full asset paths.
+     * A channel reset or built-in commit keeps it until React Native reloads.
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123/") or null
      */
     fun getBaseURL(): String? {
-        val launchSelection = currentLaunchSelection
+        val launchSelection = runningLaunchSelection
         if (launchSelection != null) {
             val baseURL = bundleStorage.getBaseURLForBundle(launchSelection.launchedBundleId)
             return baseURL
@@ -568,11 +569,11 @@ class HotUpdaterImpl {
     }
 
     /**
-     * Gets the current launched bundle ID.
+     * Gets the running bundle's ID, null for the built-in bundle.
      * Built-in bundle fallback is handled in JS.
      */
     fun getBundleId(): String? {
-        val launchSelection = currentLaunchSelection
+        val launchSelection = runningLaunchSelection
         if (launchSelection != null) {
             return launchSelection.launchedBundleId
         }
@@ -584,7 +585,7 @@ class HotUpdaterImpl {
      * The bundle this process runs. A channel reset clears [currentLaunchSelection]
      * for the next launch, but the running bundle stays until React Native reloads.
      */
-    fun getRunningBundleId(): String? = (currentLaunchSelection ?: runningLaunchSelection)?.launchedBundleId
+    fun getRunningBundleId(): String? = runningLaunchSelection?.launchedBundleId
 
     /** Takes the queued native update events for JavaScript's `takeNativeUpdateEvents`. */
     fun takeNativeUpdateEvents(): String? =
@@ -603,7 +604,7 @@ class HotUpdaterImpl {
      */
     fun getBundleIdForUpdateCheck(): String? =
         synchronized(launchPreparationLock) {
-            val launchSelection = currentLaunchSelection ?: runningLaunchSelection
+            val launchSelection = runningLaunchSelection
             if (launchSelection != null) {
                 return@synchronized launchSelection.launchedBundleId
             }
@@ -613,10 +614,10 @@ class HotUpdaterImpl {
         }
 
     /**
-     * Gets the current manifest from bundle storage.
+     * Gets the running bundle's manifest, kept as [getBaseURL] is.
      */
     fun getManifest(): Map<String, Any?> {
-        val launchSelection = currentLaunchSelection
+        val launchSelection = runningLaunchSelection
         if (launchSelection != null) {
             return bundleStorage.getManifestForBundle(launchSelection.launchedBundleId)
         }

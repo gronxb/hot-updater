@@ -290,14 +290,14 @@ describe("the sandbox template", () => {
     }
     // A stored session answers each of the three getters before its first statement.
     expect(generator).toContain(
-      '"val launchSelection = currentLaunchSelection"',
+      '"val launchSelection = runningLaunchSelection"',
     );
     expect(
       impl
         .split("\n")
         .filter(
           (text) =>
-            text === "        val launchSelection = currentLaunchSelection",
+            text === "        val launchSelection = runningLaunchSelection",
         ),
     ).toHaveLength(3);
     // Its insertions hold for main only.

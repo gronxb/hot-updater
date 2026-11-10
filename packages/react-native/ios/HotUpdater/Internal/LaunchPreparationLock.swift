@@ -77,6 +77,75 @@ final class LaunchPreparationLock {
     }
 }
 
+/// The two launch selections of one instance: the one React Native's next read
+/// of the bundle URL returns, and the one React Native runs in this process. A
+/// channel reset or built-in commit clears only the next one, so what
+/// JavaScript reads about the running bundle (its ID, base URL, and manifest)
+/// stays that bundle's until React Native reloads. Read by native update
+/// checks on other threads while React Native sets it.
+final class LaunchSelections: @unchecked Sendable {
+    private let lock = NSLock()
+    private var nextValue: LaunchSelection?
+    private var runningValue: LaunchSelection?
+
+    /// The selection React Native's next read of the bundle URL returns, nil
+    /// once a reset or built-in commit asks it to select again.
+    var next: LaunchSelection? {
+        lock.lock()
+        defer { lock.unlock() }
+        return nextValue
+    }
+
+    /// The selection React Native runs in this process.
+    var running: LaunchSelection? {
+        lock.lock()
+        defer { lock.unlock() }
+        return runningValue
+    }
+
+    /// React Native launches `selection`, and runs it until it reads again.
+    func launch(_ selection: LaunchSelection) {
+        lock.lock()
+        nextValue = selection
+        runningValue = selection
+        lock.unlock()
+    }
+
+    /// The next read selects again; the running bundle stays until it does.
+    func clearNext() {
+        lock.lock()
+        nextValue = nil
+        lock.unlock()
+    }
+
+    /// Forgets both, before a reload reads the bundle URL again.
+    func clear() {
+        lock.lock()
+        nextValue = nil
+        runningValue = nil
+        lock.unlock()
+    }
+
+    var runningBundleId: String? {
+        running?.launchedBundleId
+    }
+
+    /// The running bundle's directory as a file:// URL, nil for the built-in
+    /// bundle or before React Native launches one.
+    func runningBaseURL(in storage: BundleStorageService) -> String? {
+        guard let running else { return nil }
+        let baseURL = storage.getBaseURL(forBundleId: running.launchedBundleId)
+        return baseURL.isEmpty ? nil : baseURL
+    }
+
+    /// The running bundle's manifest, empty for the built-in bundle or before
+    /// React Native launches one.
+    func runningManifest(in storage: BundleStorageService) -> ManifestAssets {
+        guard let running else { return [:] }
+        return storage.getManifest(forBundleId: running.launchedBundleId)
+    }
+}
+
 /// The Release selection a guarded change names, as JavaScript sends it.
 struct ReleaseSelectionGuardParams {
     let catalogId: String

@@ -74,6 +74,38 @@ struct LaunchPreparationLockTests {
         #expect(cleared.value == 1)
         #expect(storage.peekLaunchBundleId() == nil)
     }
+
+    /// A channel reset or built-in commit clears only the next launch's
+    /// selection: what JavaScript reads about the running bundle, its ID, base
+    /// URL, and manifest, stays that bundle's until React Native reloads.
+    @Test(arguments: ["commit", "reset"])
+    func theRunningBundlesGettersStayUntilTheReload(change: String) {
+        let launchPreparation = LaunchPreparationLock()
+        let storage = GatedBundleStorage(holdChange: false, events: EventLog())
+        let selections = LaunchSelections()
+        selections.launch(LaunchSelection(bundleURL: nil, launchedBundleId: "downloaded-bundle", shouldRollbackOnCrash: false))
+
+        if change == "commit" {
+            #expect(launchPreparation.commitReleaseSelection(selection("USE_BUILTIN"), in: storage) {
+                selections.clearNext()
+            })
+        } else {
+            #expect((try? launchPreparation.resetChannel(in: storage) { selections.clearNext() }.get()) == true)
+        }
+
+        // React Native's next read selects again.
+        #expect(selections.next == nil)
+        #expect(selections.runningBundleId == "downloaded-bundle")
+        #expect(selections.runningBaseURL(in: storage) == "file:///bundle-store/downloaded-bundle")
+        #expect(selections.runningManifest(in: storage)["bundleId"] as? String == "downloaded-bundle")
+
+        // The reload launches the built-in bundle.
+        selections.clear()
+        selections.launch(LaunchSelection(bundleURL: nil, launchedBundleId: storage.peekLaunchBundleId(), shouldRollbackOnCrash: false))
+        #expect(selections.runningBundleId == nil)
+        #expect(selections.runningBaseURL(in: storage) == nil)
+        #expect(selections.runningManifest(in: storage).isEmpty)
+    }
 }
 
 private func selection(_ kind: String) -> PersistedSelection {
@@ -220,9 +252,14 @@ private final class GatedBundleStorage: BundleStorageService, @unchecked Sendabl
     func clearCrashHistory() -> Bool { true }
     func getInstallId() -> String { "install" }
     func getBaseURL() -> String { "" }
-    func getBaseURL(forBundleId _: String?) -> String { "" }
+    // The running bundle keeps its files after a change, as storage keeps them.
+    func getBaseURL(forBundleId bundleId: String?) -> String {
+        bundleId.map { "file:///bundle-store/\($0)" } ?? ""
+    }
     func getBundleId() -> String? { nil }
     func getManifest() -> ManifestAssets { [:] }
-    func getManifest(forBundleId _: String?) -> ManifestAssets { [:] }
+    func getManifest(forBundleId bundleId: String?) -> ManifestAssets {
+        bundleId.map { ["bundleId": $0] } ?? [:]
+    }
 }
 #endif
