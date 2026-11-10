@@ -63,7 +63,8 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
   // Find actual AndroidManifest.xml files in the android directory
   let androidManifestPaths: string[] = []; // fallback
   try {
-    const manifestFiles = fg.sync(path.join("**", "AndroidManifest.xml"), {
+    // fast-glob patterns separate with `/` on every OS; a `\` is an escape.
+    const manifestFiles = fg.sync("**/AndroidManifest.xml", {
       cwd: path.join(getCwd(), "android"),
       absolute: false,
       onlyFiles: true,
