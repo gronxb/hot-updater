@@ -131,10 +131,6 @@ internal interface HotUpdaterSandboxStore {
     /** The unanswered links, oldest first. */
     var pendingLinks: List<String>
 
-    fun recordSelected(selection: HotUpdaterSandboxSelection)
-
-    fun recordOpened(selection: HotUpdaterSandboxSelection)
-
     /** What the last launch left, until a person moved on from it. */
     var lastLaunch: HotUpdaterSandboxLastLaunch?
 }
@@ -326,6 +322,9 @@ internal class HotUpdaterSandboxCoordinator(
     /** A finished switch opens the app once the links queued behind it are answered. */
     private var switchAwaitsOpen = false
 
+    /** [open] runs until it opens the app; a second tap meanwhile does nothing. */
+    private var opening = false
+
     /**
      * Whether this process's launch runs something other than what the next one
      * selects, as of the last [readSelection]: only a restart can apply that.
@@ -485,27 +484,38 @@ internal class HotUpdaterSandboxCoordinator(
         begin(retryTarget ?: phase.target)
     }
 
-    /** Opens the app on what's selected, when no switch or question stands in the way. */
+    /** What a tap on Home's big row does: its action, worked out with the row's words, so the two agree. */
+    fun tap(
+        action: HotUpdaterSandboxHomeModel.Action,
+        devServer: HotUpdaterSandboxDevServer?,
+    ) {
+        when (action) {
+            HotUpdaterSandboxHomeModel.Action.OPEN -> open()
+            HotUpdaterSandboxHomeModel.Action.OPEN_OVER_APP, HotUpdaterSandboxHomeModel.Action.RELOAD_APP -> reloadApp()
+            HotUpdaterSandboxHomeModel.Action.RELOAD_DEV_SERVER -> devServer?.reloadDevServer()
+        }
+    }
+
+    /**
+     * Opens the app on what's selected, when no switch or question stands in the way.
+     * A second tap while one opens opens nothing more.
+     */
     fun open() {
+        if (opening) return
+        opening = true
         scope.launch {
-            val selection = readSelection()
-            val launched = host.launchBundleId()
-            // Over a running app, opening shows what it runs: what's selected waits
-            // for its launch. Before the app starts, what's selected is what opens.
-            val restarts = launchFixed && !host.isAppRunning()
-            // A session runs no selected bundle, so it says nothing about one.
-            if (!host.isInSession) {
-                recordOpened(
-                    if (restarts) {
-                        selection
-                    } else {
-                        selection.copy(bundleId = launched, isBuiltIn = selection.isBuiltIn && launched == selection.bundleId)
-                    },
-                )
+            try {
+                val selection = readSelection()
+                val launched = host.launchBundleId()
+                // Over a running app, opening shows what it runs: what's selected waits
+                // for its launch. Before the app starts, what's selected is what opens.
+                val restarts = launchFixed && !host.isAppRunning()
+                acknowledgeLastLaunch()
+                publish(reading(selection, launched))
+                openApp(false, restarts)
+            } finally {
+                opening = false
             }
-            acknowledgeLastLaunch()
-            publish(reading(selection, launched))
-            openApp(false, restarts)
         }
     }
 
@@ -664,10 +674,6 @@ internal class HotUpdaterSandboxCoordinator(
         return store.lastLaunch
     }
 
-    private fun recordOpened(selection: HotUpdaterSandboxSelection) {
-        store.recordOpened(selection)
-    }
-
     private fun canStart() =
         pendingStoredBundleId == null && (state.phase is HotUpdaterSandboxPhase.Idle || state.phase is HotUpdaterSandboxPhase.Failed)
 
@@ -810,7 +816,6 @@ internal class HotUpdaterSandboxCoordinator(
         }
         retryTarget = null
         val selection = readSelection()
-        store.recordSelected(selection)
         acknowledgeLastLaunch()
         publish(reading(selection, host.launchBundleId()).copy(phase = HotUpdaterSandboxPhase.Idle))
         log("operation $operationId selected ${selection.channel} ${selection.bundleId}")
@@ -822,7 +827,6 @@ internal class HotUpdaterSandboxCoordinator(
     private fun openSwitchIfAnswered() {
         if (!switchAwaitsOpen || state.phase !is HotUpdaterSandboxPhase.Idle) return
         switchAwaitsOpen = false
-        state.selection?.let(::recordOpened)
         openApp(true, launchFixed)
     }
 
@@ -880,7 +884,6 @@ internal class HotUpdaterSandboxCoordinator(
             persist()
         }
         val selection = readSelection()
-        store.recordSelected(selection)
         publish(
             reading(
                 selection,

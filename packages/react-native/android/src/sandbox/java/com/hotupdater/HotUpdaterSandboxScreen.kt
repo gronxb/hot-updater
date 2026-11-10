@@ -417,10 +417,10 @@ internal class HotUpdaterSandboxScreen(
                     SandboxRow(
                         lead =
                             SandboxLead.Primary(
-                                if (home.bigRow.isReload && !home.bigRow.opensSelection) {
-                                    R.drawable.hot_updater_sandbox_reload
-                                } else {
+                                if (home.bigRow.action.opens) {
                                     R.drawable.hot_updater_sandbox_play
+                                } else {
+                                    R.drawable.hot_updater_sandbox_reload
                                 },
                             ),
                         title = home.bigRow.title,
@@ -433,11 +433,7 @@ internal class HotUpdaterSandboxScreen(
                     ) {
                         SandboxHaptic.tap(haptics)
                         focus.clearFocus()
-                        when {
-                            !home.bigRow.isReload -> coordinator.open()
-                            devServer.isRunningDevServer -> devServer.reloadDevServer()
-                            else -> coordinator.reloadApp()
-                        }
+                        coordinator.tap(home.bigRow.action, devServer)
                     }
                     if (home.bigRow.showsBack) {
                         SandboxDivider()

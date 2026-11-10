@@ -103,8 +103,6 @@ extension HotUpdaterSandboxHost {
 protocol HotUpdaterSandboxStore: AnyObject {
     /// The unanswered links, oldest first.
     var pendingLinks: [String] { get set }
-    func recordSelected(_ selection: HotUpdaterSandboxSelection)
-    func recordOpened(_ selection: HotUpdaterSandboxSelection)
     /// What the last launch left, until a person moved on from it.
     var lastLaunch: HotUpdaterSandboxLastLaunch? { get set }
 }
@@ -240,6 +238,8 @@ final class HotUpdaterSandboxCoordinator {
     private var refusedLink: String?
     /// A finished switch opens the app once the links queued behind it are answered.
     private var switchAwaitsOpen = false
+    /// `open()` runs until it opens the app; a second tap meanwhile does nothing.
+    private var isOpening = false
     /// Whether this process's launch runs something other than what the next one
     /// selects, as of the last `readSelection()`: only a reload can apply that.
     private var launchFixed = false
@@ -419,24 +419,29 @@ final class HotUpdaterSandboxCoordinator {
     }
 
     /// Opens the app on what's selected, when no switch or question stands in the way.
+    /// A second tap while one opens opens nothing more.
     func open() async {
+        guard !isOpening else { return }
+        isOpening = true
+        defer { isOpening = false }
         let selection = await readSelection()
         let launched = await host.launchBundleId()
         // Over a running app, opening shows what it runs: what's selected waits for
         // its launch. Before the app starts, what's selected is what opens.
         let reloads = launchFixed && !host.isAppRunning()
-        // A session runs no selected bundle, so it says nothing about one.
-        if !host.isInSession {
-            recordOpened(reloads ? selection : HotUpdaterSandboxSelection(
-                channel: selection.channel,
-                defaultChannel: selection.defaultChannel,
-                bundleId: launched,
-                isBuiltIn: selection.isBuiltIn && launched == selection.bundleId
-            ))
-        }
         acknowledgeLastLaunch()
         publish(reading(selection, launched: launched))
         openApp(false, reloads)
+    }
+
+    /// What a tap on Home's big row does: its action, worked out with the row's
+    /// words, so the two agree.
+    func tap(_ action: HotUpdaterSandboxHomeModel.Action, devServer: HotUpdaterSandboxDevServer?) {
+        switch action {
+        case .open: Task { await open() }
+        case .openOverApp, .reloadApp: reloadApp()
+        case .reloadDevServer: devServer?.reloadDevServer()
+        }
     }
 
     /// Runs the app again from the screen over it: the bundle a launch selects now.
@@ -576,10 +581,6 @@ final class HotUpdaterSandboxCoordinator {
         return store.lastLaunch
     }
 
-    private func recordOpened(_ selection: HotUpdaterSandboxSelection) {
-        store.recordOpened(selection)
-    }
-
     private var canStart: Bool {
         if openingBundleId != nil { return false }
         switch state.phase {
@@ -691,7 +692,6 @@ final class HotUpdaterSandboxCoordinator {
         clearLinkInFlight()
         retryTarget = nil
         let selection = await readSelection()
-        store.recordSelected(selection)
         acknowledgeLastLaunch()
         var next = reading(selection, launched: await host.launchBundleId())
         next.phase = .idle
@@ -705,9 +705,6 @@ final class HotUpdaterSandboxCoordinator {
     private func openSwitchIfAnswered() {
         guard switchAwaitsOpen, state.phase == .idle else { return }
         switchAwaitsOpen = false
-        if let selection = state.selection {
-            recordOpened(selection)
-        }
         openApp(true, launchFixed)
     }
 
@@ -748,7 +745,6 @@ final class HotUpdaterSandboxCoordinator {
     ) async {
         clearLinkInFlight()
         let selection = await readSelection()
-        store.recordSelected(selection)
         var next = reading(selection, launched: await host.launchBundleId())
         next.phase = .failed(operationId: operationId, target: target, step: step, failure: failure, selection: selection)
         publish(next)

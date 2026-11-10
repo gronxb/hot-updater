@@ -238,10 +238,6 @@ internal class HotUpdaterSandboxPreferences(
             preferences.edit().putString(PENDING_LINKS, JSONArray(value).toString()).commit()
         }
 
-    override fun recordSelected(selection: HotUpdaterSandboxSelection) = record(SELECTED, selection)
-
-    override fun recordOpened(selection: HotUpdaterSandboxSelection) = record(OPENED, selection)
-
     override var lastLaunch: HotUpdaterSandboxLastLaunch?
         get() {
             val value = preferences.getString(LAST_LAUNCH, null) ?: return null
@@ -266,25 +262,8 @@ internal class HotUpdaterSandboxPreferences(
             preferences.edit().putString(LAST_LAUNCH, item).commit()
         }
 
-    private fun record(
-        key: String,
-        selection: HotUpdaterSandboxSelection,
-    ) {
-        preferences
-            .edit()
-            .putString(
-                key,
-                JSONObject()
-                    .put("channel", selection.channel)
-                    .put("bundleId", selection.bundleId)
-                    .toString(),
-            ).commit()
-    }
-
     private companion object {
         const val PENDING_LINKS = "pendingLinks"
-        const val SELECTED = "selected"
-        const val OPENED = "opened"
         const val LAST_LAUNCH = "lastLaunch"
     }
 }

@@ -10,17 +10,29 @@ struct HotUpdaterSandboxHomeModel: Equatable {
         let offersReset: Bool
     }
 
+    /// What a tap on the big row does, worked out with its words, so the two agree.
+    enum Action: Equatable {
+        /// Opens the app on the selection.
+        case open
+        /// Over the app, runs the selection in place of what runs.
+        case openOverApp
+        /// Runs the app again: what a launch selects now, or the stored bundle.
+        case reloadApp
+        /// Loads the dev server's JavaScript again.
+        case reloadDevServer
+
+        /// Open's icon, or Reload's.
+        var opens: Bool { self == .open || self == .openOverApp }
+    }
+
     struct BigRow: Equatable {
         let caption: String
         let title: String
         let subtitle: String?
         let detail: String?
-        let isReload: Bool
+        let action: Action
         /// A stored bundle runs: a row under it goes back to the current bundle.
         var showsBack = false
-        /// Over the app, the reload runs the selection in place of what runs, so
-        /// the row shows Open's icon.
-        var opensSelection = false
     }
 
     /// A row of the Downloaded list.
@@ -131,7 +143,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
         runningDevServerHost: String?
     ) -> BigRow {
         if isOverApp, let host = runningDevServerHost {
-            return BigRow(caption: "Running", title: "Reload", subtitle: "Running the dev server", detail: host, isReload: true)
+            return BigRow(caption: "Running", title: "Reload", subtitle: "Running the dev server", detail: host, action: .reloadDevServer)
         }
         if let stored = state.storedSessionBundleId {
             let channel = channel(of: stored, in: state.downloaded).map { " \($0)" } ?? ""
@@ -142,7 +154,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
                 title: "Reload",
                 subtitle: "Running stored\(channel)",
                 detail: message ?? "Bundle \(shortId(shownId(of: stored, in: state.downloaded)))",
-                isReload: true,
+                action: .reloadApp,
                 showsBack: true
             )
         }
@@ -152,7 +164,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
                 title: isOverApp ? "Reload" : "Open",
                 subtitle: nil,
                 detail: nil,
-                isReload: isOverApp
+                action: isOverApp ? .reloadApp : .open
             )
         }
         if isOverApp {
@@ -169,7 +181,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
                 title: "Open built-in bundle",
                 subtitle: "The bundle this build shipped with",
                 detail: "Channel \(selection.channel)",
-                isReload: false
+                action: .open
             )
         }
         return BigRow(
@@ -177,7 +189,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
             title: "Open \(selection.channel)",
             subtitle: state.selectedMessage,
             detail: "Bundle \(shortId(selection.bundleId))",
-            isReload: false
+            action: .open
         )
     }
 
@@ -195,7 +207,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
                 title: "Reload",
                 subtitle: runsBuiltIn ? "Running the built-in bundle" : "Running \(next.channel)",
                 detail: runsBuiltIn ? "Channel \(next.channel)" : message ?? "Bundle \(shortId(running))",
-                isReload: true
+                action: .reloadApp
             )
         }
         // The built-in bundle is next and another runs: the reload opens it.
@@ -205,8 +217,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
                 title: "Open built-in bundle",
                 subtitle: "The bundle this build shipped with",
                 detail: "Running bundle \(shortId(running))",
-                isReload: true,
-                opensSelection: true
+                action: .openOverApp
             )
         }
         return BigRow(
@@ -214,7 +225,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
             title: "Reload",
             subtitle: runsBuiltIn ? "Running the built-in bundle" : "Running bundle \(shortId(running))",
             detail: "Next launch: \(next.isBuiltIn ? "the built-in bundle" : "bundle \(shortId(next.bundleId))")",
-            isReload: true
+            action: .reloadApp
         )
     }
 

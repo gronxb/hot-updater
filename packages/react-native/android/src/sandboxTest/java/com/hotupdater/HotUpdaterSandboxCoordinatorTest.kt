@@ -129,7 +129,13 @@ private class FakeHost : HotUpdaterSandboxHost {
 
     override fun hasServerConfig() = serverConfig
 
-    override suspend fun selection() = HotUpdaterSandboxSelection(channel, "sandbox-release", bundleId, bundleId == "built-in")
+    /** While set, a read of the selection waits for it. */
+    var selectionGate: CompletableDeferred<Unit>? = null
+
+    override suspend fun selection(): HotUpdaterSandboxSelection {
+        selectionGate?.await()
+        return HotUpdaterSandboxSelection(channel, "sandbox-release", bundleId, bundleId == "built-in")
+    }
 
     override suspend fun preflight(channel: String): Boolean {
         calls += "preflight $channel"
@@ -162,20 +168,30 @@ private class FakeHost : HotUpdaterSandboxHost {
     }
 }
 
+private class FakeDevServer(
+    override val isRunningDevServer: Boolean,
+    override val runningDevServerHost: String?,
+) : HotUpdaterSandboxDevServer {
+    override val devServerHosts: List<HotUpdaterSandboxDevServerHost> = emptyList()
+    override var onDevServerChange: (() -> Unit)? = null
+    var reloads = 0
+
+    override fun connect(
+        host: String,
+        completion: (String?) -> Unit,
+    ) = completion(null)
+
+    override fun reloadDevServer() {
+        reloads += 1
+    }
+
+    override fun exitDevServer() = Unit
+}
+
 private class FakeStore(
     override var pendingLinks: List<String> = emptyList(),
 ) : HotUpdaterSandboxStore {
-    val selected = ArrayList<String>()
-    val opened = ArrayList<String>()
     override var lastLaunch: HotUpdaterSandboxLastLaunch? = null
-
-    override fun recordSelected(selection: HotUpdaterSandboxSelection) {
-        selected += selection.channel
-    }
-
-    override fun recordOpened(selection: HotUpdaterSandboxSelection) {
-        opened += selection.channel
-    }
 }
 
 private class Fixture(
@@ -218,11 +234,10 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
-    fun `opening in a dev session records no bundle as opened`() {
+    fun `opening in a dev session opens the app`() {
         val fixture = Fixture()
         fixture.host.isRunningDevServer = true
         fixture.coordinator.open()
-        assertEquals(emptyList<String>(), fixture.store.opened)
         assertEquals(listOf(false to false), fixture.opens)
     }
 
@@ -242,7 +257,6 @@ class HotUpdaterSandboxCoordinatorTest {
         dev.coordinator.refresh()
         dev.coordinator.open()
         assertEquals(listOf(false to false), dev.opens)
-        assertEquals(emptyList<String>(), dev.store.opened)
     }
 
     @Test
@@ -334,8 +348,6 @@ class HotUpdaterSandboxCoordinatorTest {
         assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
         assertEquals(listOf(true to false), fixture.opens)
         assertTrue(fixture.store.pendingLinks.isEmpty())
-        assertEquals(listOf("pr-1"), fixture.store.selected)
-        assertEquals(listOf("pr-1"), fixture.store.opened)
     }
 
     @Test
@@ -527,7 +539,6 @@ class HotUpdaterSandboxCoordinatorTest {
         val phase = fixture.phase as HotUpdaterSandboxPhase.Failed
         assertEquals("built-in", phase.selection.bundleId)
         assertTrue(phase.selection.isBuiltIn)
-        assertEquals(listOf("sandbox-release"), fixture.store.selected)
     }
 
     @Test
@@ -853,38 +864,23 @@ class HotUpdaterSandboxCoordinatorTest {
         assertEquals("next", hotUpdaterSandboxNextLaunchBundleId(null, null, "next", builtIn))
     }
 
-    /** A store that keeps which bundle opened. */
-    private class OpenedStore : HotUpdaterSandboxStore {
-        override var pendingLinks: List<String> = emptyList()
-        var opened: String? = null
-        override var lastLaunch: HotUpdaterSandboxLastLaunch? = null
-
-        override fun recordSelected(selection: HotUpdaterSandboxSelection) = Unit
-
-        override fun recordOpened(selection: HotUpdaterSandboxSelection) {
-            opened = selection.bundleId
-        }
-    }
-
     @Test
-    fun `open over a running app records what it runs, and leaves what's staged for its launch`() {
+    fun `open over a running app leaves what's staged for its launch`() {
         val host =
             FakeHost().apply {
                 bundleId = "next"
                 runningBundleId = "ota-0"
                 appRunning = true
             }
-        val store = OpenedStore()
         val opens = ArrayList<Pair<Boolean, Boolean>>()
         HotUpdaterSandboxCoordinator(
             host,
-            store,
+            FakeStore(),
             testShelf(),
             CoroutineScope(Dispatchers.Unconfined),
             { a, b -> opens += a to b },
             shelfContext = EmptyCoroutineContext,
         ).open()
-        assertEquals("ota-0", store.opened)
         assertEquals(listOf(false to false), opens)
     }
 
@@ -895,17 +891,15 @@ class HotUpdaterSandboxCoordinatorTest {
                 bundleId = "built-in"
                 runningBundleId = "ota-0"
             }
-        val store = OpenedStore()
         val opens = ArrayList<Pair<Boolean, Boolean>>()
         HotUpdaterSandboxCoordinator(
             host,
-            store,
+            FakeStore(),
             testShelf(),
             CoroutineScope(Dispatchers.Unconfined),
             { a, b -> opens += a to b },
             shelfContext = EmptyCoroutineContext,
         ).open()
-        assertEquals("built-in", store.opened)
         assertEquals(listOf(false to true), opens)
     }
 
@@ -944,9 +938,9 @@ class HotUpdaterSandboxCoordinatorTest {
         )
         val row = HotUpdaterSandboxHomeModel.of(fixture.coordinator.state, isOverApp = true, nowMs = 0).bigRow
         assertEquals("Open built-in bundle", row.title)
-        assertTrue(row.isReload)
+        assertEquals(HotUpdaterSandboxHomeModel.Action.OPEN_OVER_APP, row.action)
         // Its reload is what runs the built-in bundle over a fixed launch.
-        fixture.coordinator.reloadApp()
+        fixture.coordinator.tap(row.action, devServer = null)
         assertEquals(listOf(true to true), fixture.opens)
     }
 
@@ -959,10 +953,57 @@ class HotUpdaterSandboxCoordinatorTest {
         assertTrue("a reset ran the app", fixture.opens.isEmpty())
         val row = HotUpdaterSandboxHomeModel.of(fixture.coordinator.state, isOverApp = false, nowMs = 0).bigRow
         assertEquals("Open built-in bundle", row.title)
-        assertFalse(row.isReload)
-        fixture.coordinator.open()
+        assertEquals(HotUpdaterSandboxHomeModel.Action.OPEN, row.action)
+        assertEquals(
+            true,
+            fixture.coordinator.state.selection
+                ?.isBuiltIn,
+        )
+        fixture.coordinator.tap(row.action, devServer = null)
         assertEquals(listOf(false to false), fixture.opens)
-        assertEquals(listOf("sandbox-release"), fixture.store.opened)
+    }
+
+    @Test
+    fun `a dev server running without a host leaves the row and its tap to the app`() {
+        val fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.runningBundleId = "ota-1"
+        fixture.host.appRunning = true
+        assertTrue(fixture.coordinator.resetToBuiltIn())
+        val devServer = FakeDevServer(isRunningDevServer = true, runningDevServerHost = null)
+        val row = HotUpdaterSandboxHomeModel.of(fixture.coordinator.state, true, devServer.runningDevServerHost, 0).bigRow
+        assertEquals("Open built-in bundle", row.title)
+        assertEquals(HotUpdaterSandboxHomeModel.Action.OPEN_OVER_APP, row.action)
+        // The tap does what the row says: it runs the built-in bundle.
+        fixture.coordinator.tap(row.action, devServer)
+        assertEquals(0, devServer.reloads)
+        assertEquals(listOf(true to true), fixture.opens)
+    }
+
+    @Test
+    fun `a running dev server's row reloads it`() {
+        val fixture = Fixture()
+        val devServer = FakeDevServer(isRunningDevServer = true, runningDevServerHost = "localhost:8081")
+        val row = HotUpdaterSandboxHomeModel.of(fixture.coordinator.state, true, devServer.runningDevServerHost, 0).bigRow
+        assertEquals(HotUpdaterSandboxHomeModel.Action.RELOAD_DEV_SERVER, row.action)
+        fixture.coordinator.tap(row.action, devServer)
+        assertEquals(1, devServer.reloads)
+        assertTrue(fixture.opens.isEmpty())
+    }
+
+    @Test
+    fun `a second Open while one runs opens nothing more`() {
+        val fixture = Fixture()
+        val held = CompletableDeferred<Unit>()
+        fixture.host.selectionGate = held
+        fixture.coordinator.tap(HotUpdaterSandboxHomeModel.Action.OPEN, devServer = null)
+        fixture.coordinator.tap(HotUpdaterSandboxHomeModel.Action.OPEN, devServer = null)
+        held.complete(Unit)
+        assertEquals(listOf(false to false), fixture.opens)
+        // Once it opened, Open opens again.
+        fixture.coordinator.open()
+        assertEquals(2, fixture.opens.size)
     }
 
     @Test
@@ -1174,12 +1215,10 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
-    fun `open records what opened and doesn't read as a switch`() {
+    fun `open doesn't read as a switch`() {
         val fixture = Fixture()
         fixture.coordinator.open()
         assertEquals(listOf(false to false), fixture.opens)
-        assertEquals(listOf("sandbox-release"), fixture.store.opened)
-        assertTrue(fixture.store.selected.isEmpty())
     }
 
     @Test

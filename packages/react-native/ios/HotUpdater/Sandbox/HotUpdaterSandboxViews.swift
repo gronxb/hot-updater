@@ -184,15 +184,7 @@ final class HotUpdaterSandboxScreenModel: ObservableObject {
 
     func openOrReload() {
         SandboxHaptic.tap()
-        if home.bigRow.isReload {
-            if devServer.isRunningDevServer {
-                devServer.reloadDevServer()
-            } else {
-                coordinator.reloadApp()
-            }
-            return
-        }
-        Task { await coordinator.open() }
+        coordinator.tap(home.bigRow.action, devServer: devServer)
     }
 }
 
@@ -466,7 +458,7 @@ private struct HomeScreen: View {
         SandboxSection(title: home.bigRow.caption) {
             SandboxCard {
                 SandboxRow(
-                    lead: .primary(home.bigRow.isReload && !home.bigRow.opensSelection ? "arrow.clockwise" : "play.fill"),
+                    lead: .primary(home.bigRow.action.opens ? "play.fill" : "arrow.clockwise"),
                     title: home.bigRow.title,
                     titleFont: SandboxFont.headline,
                     subtitle: home.bigRow.subtitle,
