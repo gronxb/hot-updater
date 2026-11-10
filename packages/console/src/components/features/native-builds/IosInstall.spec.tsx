@@ -398,7 +398,11 @@ describe("InstallCard on an iPhone", () => {
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("SecurityError");
     });
-    window.history.replaceState(null, "", `/native-builds/${BUILD}#udid=${PHONE}`);
+    window.history.replaceState(
+      null,
+      "",
+      `/native-builds/${BUILD}#udid=${PHONE}`,
+    );
     onIphone();
     answer(installable("included"));
     render(<InstallCard build={row} />);
