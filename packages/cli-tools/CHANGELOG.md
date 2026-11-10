@@ -1,5 +1,14 @@
 # @hot-updater/cli-tools
 
+## 1.1.9
+
+### Patch Changes
+
+- 949c024: Fix two Windows failures: the Android fingerprint Gradle task no longer passes node an inline script with double quotes, which `ProcessBuilder` broke (#1853), and the CLI finds `AndroidManifest.xml` with a `/` glob pattern, so `keys export-public`, `channel set`, and `doctor` see Android manifests again (#1854).
+- @hot-updater/protocol@1.1.9
+  - @hot-updater/server@1.1.9
+  - @hot-updater/plugin-core@1.1.9
+
 ## 1.1.8
 
 ### Patch Changes
