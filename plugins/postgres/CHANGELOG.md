@@ -1,5 +1,13 @@
 # @hot-updater/postgres
 
+## 1.1.10
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.10
+  - @hot-updater/server@1.1.10
+  - @hot-updater/plugin-core@1.1.10
+
 ## 1.1.9
 
 ### Patch Changes
