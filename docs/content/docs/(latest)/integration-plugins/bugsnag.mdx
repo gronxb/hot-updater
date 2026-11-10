@@ -4,7 +4,7 @@ description: "The `withBugsnag()` plugin for hot-updater enables automatic sourc
 icon: bugsnag
 ---
 
-import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
 ## Prerequisites
 
@@ -35,13 +35,15 @@ if (existsSync(".env.hotupdater")) {
 }
 
 export default defineConfig({
-  build: withBugsnag( // [!code ++]
+  build: withBugsnag(
+    // [!code ++]
     bare({
       enableHermes: false, // or true, depending if you want to use it
       // Required for sourcemap upload
       sourcemap: true, // [!code ++]
     }),
-    { // [!code ++]
+    {
+      // [!code ++]
       // Your BugSnag project API key
       apiKey: process.env.BUGSNAG_API_KEY!, // [!code ++]
     }, // [!code ++]
@@ -49,6 +51,7 @@ export default defineConfig({
   // .. your other config
 });
 ```
+
 </Tab>
 <Tab value="Expo">
 
@@ -63,12 +66,14 @@ if (existsSync(".env.hotupdater")) {
 }
 
 export default defineConfig({
-  build: withBugsnag( // [!code ++]
+  build: withBugsnag(
+    // [!code ++]
     expo({
       // Required for sourcemap upload
       sourcemap: true, // [!code ++]
     }),
-    { // [!code ++]
+    {
+      // [!code ++]
       // Your BugSnag project API key
       apiKey: process.env.BUGSNAG_API_KEY!, // [!code ++]
     }, // [!code ++]
@@ -76,6 +81,7 @@ export default defineConfig({
   // .. your other config
 });
 ```
+
 </Tab>
 
 <Tab value="Rock">
@@ -91,12 +97,14 @@ if (existsSync(".env.hotupdater")) {
 }
 
 export default defineConfig({
-  build: withBugsnag( // [!code ++]
+  build: withBugsnag(
+    // [!code ++]
     rock({
       // Required for sourcemap upload
       sourcemap: true, // [!code ++]
     }),
-    { // [!code ++]
+    {
+      // [!code ++]
       // Your BugSnag project API key
       apiKey: process.env.BUGSNAG_API_KEY!, // [!code ++]
     }, // [!code ++]
@@ -114,11 +122,11 @@ With a [managed provider](/docs/get-started/choose-provider#set-up-a-provider-pr
 database, and plugins in `hot-updater.config.ts`.
 
 <Callout title="Automatic Upload">
-`withBugsnag()` uploads one bundle and its sourcemap during `hot-updater deploy`,
-using the Hermes bundle and map when available. Additional bundles or chunk
-maps require separate uploads through BugSnag's tooling. Each upload uses a
-`codeBundleId`, which defaults to the artifact ID recorded in the generated
-manifest.
+  `withBugsnag()` uploads one bundle and its sourcemap during `hot-updater
+  deploy`, using the Hermes bundle and map when available. Additional bundles or
+  chunk maps require separate uploads through BugSnag's tooling. Each upload
+  uses a `codeBundleId`, which defaults to the artifact ID recorded in the
+  generated manifest.
 </Callout>
 
 ## Step 2: Set the `codeBundleId` in your app

@@ -107,6 +107,45 @@ describe("public infrastructure scaffolding", () => {
     },
   );
 
+  it("prints each file of an upgrade scaffold once, relative to its templates", () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        cliPath,
+        "agent",
+        "infra",
+        "upgrade",
+        "--provider",
+        "cloudflare",
+        "--build",
+        "bare",
+      ],
+      {
+        cwd,
+        encoding: "utf8",
+        timeout: 15_000,
+        env: { PATH: process.env["PATH"], NO_COLOR: "1" },
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const lines = result.stdout.trimEnd().split("\n");
+    // The templates' directory, then each file in it, relative to it.
+    expect(lines).toEqual([
+      "Infrastructure upgrade scaffold",
+      "Status       created",
+      "Provider     cloudflare",
+      expect.stringMatching(
+        /^Templates {4}hot-updater-infra\/cloudflare\/upgrade-bare-\S+$/u,
+      ),
+      "Manifest     manifest.json",
+      "Read         upgrades/README.md",
+      "Common       COMMON.md",
+      "State        deployment.json",
+      "Environment  ENVIRONMENT.md",
+      "Apply the templates as Read says, and verify each step.",
+    ]);
+  });
+
   it("preserves manual edits and prevents an agent scaffold from replacing a public scaffold", async () => {
     const args = [
       "infra",

@@ -255,7 +255,7 @@ describe("BundlesPage", () => {
     render(<BundlesPage />);
     const card = screen.getByRole("article", { name: "Bundle release-1" });
 
-    fireEvent.click(within(card).getByText("Platform"));
+    fireEvent.click(within(card).getByText("Stable release"));
 
     expect(mocks.navigate).toHaveBeenCalledWith({
       resetScroll: false,
@@ -387,5 +387,87 @@ describe("BundlesPage", () => {
     expect(
       screen.getByRole("button", { name: "Next" }).hasAttribute("disabled"),
     ).toBe(true);
+  });
+
+  it.each([false, true])(
+    "says what fills an empty list, as Native builds does (mobile: %s)",
+    (mobile) => {
+      mocks.isMobile.mockReturnValue(mobile);
+      releases = [];
+
+      mocks.search.mockReturnValue({ bundleId: "missing" });
+      const { unmount } = render(<BundlesPage />);
+      expect(screen.getByText("No bundles match these filters")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+      expect(mocks.navigate).toHaveBeenCalledWith({
+        resetScroll: true,
+        search: {},
+        to: "/",
+      });
+      unmount();
+
+      mocks.search.mockReturnValue({ beforeReleaseId: "release-9" });
+      const later = render(<BundlesPage />);
+      expect(screen.getByText("No more bundles")).toBeTruthy();
+      expect(
+        screen.getByRole("link", { name: "Show the newest bundles" }),
+      ).toBeTruthy();
+      later.unmount();
+
+      mocks.search.mockReturnValue({});
+      render(<BundlesPage />);
+      expect(screen.getByText("No bundles yet")).toBeTruthy();
+      expect(screen.getByText("npx hot-updater deploy")).toBeTruthy();
+    },
+  );
+
+  it.each([false, true])(
+    "shows when a bundle was created relative to now, the exact time on hover (mobile: %s)",
+    (mobile) => {
+      mocks.isMobile.mockReturnValue(mobile);
+      render(<BundlesPage />);
+
+      const created = document.querySelector("time")!;
+      expect(created.textContent).toMatch(/ ago/);
+      expect(created.getAttribute("title")).toMatch(
+        /^2026-07-1[78] \d{2}:\d{2}:\d{2}$/,
+      );
+    },
+  );
+
+  it("shows a bundle as a compact card, as Native builds does: what and where, then delivery, insights, and message", () => {
+    mocks.isMobile.mockReturnValue(true);
+    render(<BundlesPage />);
+    const card = screen.getByRole("article", { name: "Bundle release-1" });
+
+    // No label-value boxes: lines of values, a few cards to a screen.
+    expect(card.querySelector(":scope > dl")).toBeNull();
+    const meta = card.children[1]!;
+    expect(meta.textContent).toMatch(/^iOS·1 patch·.+ ago$/);
+    const delivery = card.children[2]!;
+    expect(delivery.textContent).toContain("Target 1.2.x");
+    expect(
+      within(card).getByRole("link", { name: /Downloaded 107 Launched 98/ }),
+    ).toBeTruthy();
+    expect(card.lastElementChild!.textContent).toBe("Stable release");
+  });
+
+  it("shows a card's fingerprint target as the table's pill", () => {
+    mocks.isMobile.mockReturnValue(true);
+    const fingerprint = "e7b2a84d0123456789abcdef0123456789ab9efb";
+    releases = [
+      {
+        ...release,
+        strategy: "FINGERPRINT",
+        target_app_version: null,
+        fingerprint_hash: fingerprint,
+      },
+    ];
+    render(<BundlesPage />);
+
+    expect(
+      screen.getByRole("button", { name: `Copy full value: ${fingerprint}` })
+        .textContent,
+    ).toBe("e7b2a84d…9efb");
   });
 });

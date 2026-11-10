@@ -1,6 +1,11 @@
 require "json"
 
 package = JSON.parse(File.read(File.join(__dir__, "package.json")))
+# ios/HotUpdater/Sandbox is compiled only with the build xcconfig of a sandbox
+# scheme, which sets INCLUDED_SOURCE_FILE_NAMES: any other build leaves it out,
+# whatever the last `pod install` saw. An app's own setting can replace this one,
+# so those files also compile to nothing without the xcconfig's condition.
+sandbox_excluded_files = "HotUpdaterSandbox*"
 
 Pod::Spec.new do |s|
   s.name         = "HotUpdater"
@@ -30,6 +35,7 @@ Pod::Spec.new do |s|
 
   s.pod_target_xcconfig = {
     "DEFINES_MODULE" => "YES",
+    "EXCLUDED_SOURCE_FILE_NAMES" => sandbox_excluded_files,
     "OTHER_SWIFT_FLAGS" => "-enable-experimental-feature AccessLevelOnImport",
     "HEADER_SEARCH_PATHS" => "\"$(DERIVED_FILE_DIR)\""
   }

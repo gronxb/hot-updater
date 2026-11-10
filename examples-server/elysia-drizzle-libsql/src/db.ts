@@ -41,6 +41,7 @@ export async function resetDecisionFixtures() {
       "DELETE FROM bundles",
       "DELETE FROM channels",
       "DELETE FROM bundle_totals",
+      "DELETE FROM native_builds",
     ],
     "write",
   );

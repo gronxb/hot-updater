@@ -129,11 +129,11 @@ describe("Bundle commands", () => {
     expect(rendered).not.toContain("APP_VERSION");
     expect(rendered).not.toContain("Source ID");
     expect(rendered).not.toContain("Operation");
-    expect(rendered).toMatch(/\bID:\s+/);
+    expect(rendered).toMatch(/^ID {2,}/mu);
     expect(rendered).toContain(release!.id);
     expect(rendered).not.toContain(seeded.bundle.id);
     expect(rendered).not.toContain(release!.scope_key);
-    expect(rendered).toMatch(/Revision:\s+1/);
+    expect(rendered).toMatch(/^Revision {2,}1/mu);
     expect(rendered).not.toMatch(/Release ID|Scope|Generation/);
   });
 
@@ -178,7 +178,7 @@ describe("Bundle commands", () => {
       ...log.message.mock.calls,
     ]) {
       const rendered = stripVTControlCharacters(String(rawRendered));
-      expect(rendered).toMatch(/\bID:\s+/);
+      expect(rendered).toMatch(/^ID {2,}/mu);
       expect(rendered).toContain(id);
       expect(rendered).not.toContain(seeded.bundle.id);
       expect(rendered).not.toContain(release!.scope_key);
@@ -294,9 +294,11 @@ describe("Bundle commands", () => {
     });
     const { handleReleaseEnablement } = await import("./release");
 
-    await expect(
-      handleReleaseEnablement(release!.id, false, {}),
-    ).rejects.toThrow(/revision/i);
+    await handleReleaseEnablement(release!.id, false, {});
+
+    expect(String(log.error.mock.calls[0]?.[0])).toMatch(/^Bundle .*revision/u);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
 
     await expect(
       databaseHarness.core.getRelease(release!.id),
@@ -337,4 +339,174 @@ describe("Bundle commands", () => {
     expect(log.message).not.toHaveBeenCalled();
     expect(log.warn).not.toHaveBeenCalled();
   });
+
+  describe("an ID no bundle has", () => {
+    const deployed = async () => {
+      const seeded = deployment("01900000-0000-7000-8000-000000000003");
+      const { release } = await commitDeployment({
+        core: databaseHarness.core,
+        ...seeded,
+      });
+      return { artifactId: seeded.bundle.id, releaseId: release!.id };
+    };
+    const unknownId = "01900000-0000-7000-8000-0000000000ff";
+
+    beforeEach(() => {
+      vi.spyOn(console, "log").mockImplementation(() => {});
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.spyOn(process, "exit").mockImplementation((() => {
+        throw new Error("process.exit");
+      }) as never);
+    });
+
+    afterEach(() => {
+      process.exitCode = undefined;
+    });
+
+    const printed = () =>
+      JSON.parse(String(vi.mocked(console.log).mock.calls.at(-1)?.[0]));
+    const stderr = () =>
+      stripVTControlCharacters(
+        String(vi.mocked(console.error).mock.calls.at(-1)?.[0]),
+      );
+
+    it("deletes nothing given an artifact ID, and names its bundle in JSON", async () => {
+      const { artifactId, releaseId } = await deployed();
+      const { handleBundleDelete } = await import("./bundle");
+
+      await handleBundleDelete(artifactId, { json: true, yes: true });
+
+      expect(printed()).toEqual({
+        id: artifactId,
+        deleted: false,
+        reason: "not_found",
+        releaseId,
+      });
+      expect(stderr().split("\n")).toEqual([
+        `No bundle with ID ${artifactId}.`,
+        `That's an artifact ID. Use bundle ${releaseId}`,
+      ]);
+      expect(process.exitCode).toBe(1);
+      await expect(
+        databaseHarness.core.getRelease(releaseId),
+      ).resolves.not.toBeNull();
+    });
+
+    it("names the bundle of an artifact ID for enable, disable and update", async () => {
+      const { artifactId, releaseId } = await deployed();
+      const { handleBundleEnablement, handleBundleUpdate } =
+        await import("./bundle");
+
+      await handleBundleEnablement(artifactId, true, { yes: true });
+      await handleBundleEnablement(artifactId, false, { yes: true });
+      await handleBundleUpdate(artifactId, { message: "x", yes: true });
+
+      expect(log.error).toHaveBeenCalledTimes(3);
+      for (const [message] of log.error.mock.calls) {
+        expect(stripVTControlCharacters(String(message))).toBe(
+          `No bundle with ID ${artifactId}.\nThat's an artifact ID. Use bundle ${releaseId}`,
+        );
+      }
+      expect(process.exitCode).toBe(1);
+    });
+
+    it("prints JSON for an ID that is neither, with no extra line", async () => {
+      await deployed();
+      const { handleBundleEnablement, handleBundleUpdate } =
+        await import("./bundle");
+
+      await handleBundleEnablement(unknownId, false, { json: true, yes: true });
+      expect(printed()).toEqual({
+        id: unknownId,
+        updated: false,
+        reason: "not_found",
+      });
+      await handleBundleUpdate(unknownId, {
+        json: true,
+        message: "x",
+        yes: true,
+      });
+      expect(printed()).toEqual({
+        id: unknownId,
+        updated: false,
+        reason: "not_found",
+      });
+      expect(stderr()).toBe(`No bundle with ID ${unknownId}.`);
+    });
+
+    it("refuses to delete an enabled bundle without a stack", async () => {
+      const { releaseId } = await deployed();
+      const { handleBundleDelete } = await import("./bundle");
+
+      await handleBundleDelete(releaseId, { json: true, yes: true });
+
+      expect(printed()).toEqual({
+        id: releaseId,
+        deleted: false,
+        reason: "enabled_release",
+      });
+      // What's wrong, then the command to run, whole on its own line.
+      expect(stderr().split("\n")).toEqual([
+        `Bundle ${releaseId.slice(0, 8)} is enabled. Disable it first:`,
+        `npx hot-updater bundle disable ${releaseId}`,
+      ]);
+      expect(process.exitCode).toBe(1);
+      await expect(
+        databaseHarness.core.getRelease(releaseId),
+      ).resolves.not.toBeNull();
+    });
+
+    it("names the command that disables an enabled bundle it won't delete", async () => {
+      const { releaseId } = await deployed();
+      const { handleBundleDelete } = await import("./bundle");
+
+      await handleBundleDelete(releaseId, { yes: true });
+
+      expect(log.error).toHaveBeenCalledOnce();
+      const lines = stripVTControlCharacters(
+        String(log.error.mock.calls[0]?.[0]),
+      ).split("\n");
+      expect(lines).toEqual([
+        `Bundle ${releaseId.slice(0, 8)} is enabled. Disable it first:`,
+        `npx hot-updater bundle disable ${releaseId}`,
+      ]);
+      for (const line of lines.slice(0, -1)) {
+        expect(line.length).toBeLessThanOrEqual(73);
+      }
+      expect(process.exitCode).toBe(1);
+    });
+
+    it("names the command that shows a bundle whose revision moved on", async () => {
+      const { releaseId } = await deployed();
+      const { handleBundleEnablement } = await import("./bundle");
+
+      await handleBundleEnablement(releaseId, false, {
+        expectedRevision: 9,
+        json: true,
+        yes: true,
+      });
+
+      expect(printed()).toEqual({
+        id: releaseId,
+        updated: false,
+        reason: "version_conflict",
+      });
+      expect(stderr().split("\n")).toEqual([
+        `Bundle ${releaseId.slice(0, 8)} is revision 1; expected 9.`,
+        "See what changed:",
+        `npx hot-updater bundle show ${releaseId}`,
+      ]);
+      expect(process.exitCode).toBe(1);
+    });
+  });
+});
+
+// The terminal these specs simulate takes prompts only outside CI, and CI
+// runners set CI.
+beforeEach(() => {
+  vi.stubEnv("CI", "");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });

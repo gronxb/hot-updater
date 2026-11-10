@@ -40,13 +40,8 @@ export interface Engine {
     readonly id: string;
     readonly schema: TSchema;
   }): HotUpdaterDatabase<TSchema>;
-  /**
-   * Applies aggregate changes the database batches that are still pending:
-   * this process's buffer, and the log rows no compaction has merged yet.
-   */
+  /** Applies the log rows of batched aggregates that no compaction has merged yet. */
   flush(): Promise<void>;
-  /** Stops batching's timer after a last flush. */
-  dispose(): Promise<void>;
 }
 
 /**
@@ -56,15 +51,15 @@ export interface Engine {
 const pluginTablesFix = (database: EngineDatabase) => {
   const { createMigrator, generateSchema } = database as EngineDatabase &
     DatabaseTooling;
-  const managed =
-    "A managed server runs only its provider's plugins, and rerunning `hot-updater init --provider <provider>` applies the provider's migrations.";
+  const doctor =
+    "Run `npx hot-updater doctor` in the project whose hot-updater.config.ts names this database: it names the command that migrates it.";
   const serverProject =
     "Run `hot-updater db` commands in the server's project: they load the server file named on the command line, or src/hotUpdater.* or src/db.*, and don't read hot-updater.config.ts.";
   return createMigrator !== undefined
-    ? `Run \`hot-updater db migrate\`. ${managed} ${serverProject}`
+    ? `${doctor} In a server project, run \`hot-updater db migrate\`. ${serverProject}`
     : generateSchema !== undefined
-      ? `Run \`hot-updater db generate\` and apply the file it writes. ${managed} ${serverProject}`
-      : managed;
+      ? `${doctor} On a database \`hot-updater init\` created, that is init again with its saved inputs; for your own server, run \`hot-updater db generate\` and apply the file it writes. ${serverProject}`
+      : `${doctor} On a database \`hot-updater init\` created, that is init again with its saved inputs.`;
 };
 
 /**
@@ -97,7 +92,8 @@ export const createEngine = (
   // Tooling creates the tables of the plugins a server runs, so their names
   // need to be free of core's and of each other's, not of anyone else's.
   if (modules.size > 0) validateSchema([coreModule, ...modules.values()]);
-  // A fenced database also waits for each plugin's settings row.
+  // A fenced database also waits for each plugin's settings row, checked
+  // with core's in one read so a refusal lists both.
   const name = fencedName(database.adapter);
   const fenced =
     name === undefined || plugins.length === 0
@@ -139,6 +135,5 @@ export const createEngine = (
       ) as never;
     },
     flush: () => engine.flush(),
-    dispose: () => engine.dispose(),
   };
 };

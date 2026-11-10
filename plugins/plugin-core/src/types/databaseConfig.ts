@@ -3,28 +3,17 @@ import type { DatabaseAdapter } from "../database/adapter";
 import type { RetryOptions } from "../engine/database/engineTransaction";
 
 /**
- * How changes to aggregates declared `batched` reach their rows: after the
- * transaction that made them commits, merged with other transactions'
- * changes into one write per aggregate row. Databases that bill each write
- * (DynamoDB, Firestore) batch them.
+ * How changes to aggregates declared `batched` reach their rows: each
+ * transaction writes its changes as one log row, and a compaction merges
+ * pending log rows into one write per aggregate row. Databases that bill each
+ * write (DynamoDB, Firestore, Cosmos DB) batch them.
  */
 export interface AggregateBatching {
   /**
-   * `"log"` (the default) writes each transaction's changes as one log row
-   * in that transaction, and a compaction merges pending log rows into the
-   * aggregates. It loses nothing and suits every runtime. `"memory"` keeps
-   * changes in the process until a timer flushes them. It writes no log
-   * rows, but a crash loses up to one window, and a runtime that freezes
-   * or drops the process between requests (Lambda, Cloud Functions,
-   * Workers) loses more, so use it only on a long-lived server.
-   */
-  readonly mode?: "log" | "memory";
-  /**
-   * How long changes wait before a compaction or a flush: `"log"` compacts
-   * after a commit once this has passed since the last compaction, 60
-   * seconds by default, and `"memory"` flushes this often, 15 seconds by
-   * default. A read that cannot compact (read-only credentials) shows
-   * aggregates that can leave out up to one window of the latest changes.
+   * A commit compacts once this has passed since the last compaction, 60
+   * seconds by default. A read compacts first; one that cannot (read-only
+   * credentials) shows aggregates that can leave out up to one window of the
+   * latest changes.
    */
   readonly windowMs?: number;
 }

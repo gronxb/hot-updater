@@ -86,6 +86,7 @@ export async function resetDecisionFixtures() {
       "releases",
       "bundles",
       "channels",
+      "native_builds",
     ] as const) {
       await sql`DELETE FROM ${sql.table(table)}`.execute(transaction);
     }

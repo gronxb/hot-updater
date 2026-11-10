@@ -163,7 +163,7 @@ describe("Insights rollout gate on DynamoDB Local", () => {
       {
         name: "dynamoDB",
         adapter: withAdapterLatency(adapter, LATENCY_MS),
-        aggregateBatching: { mode: "log", windowMs: 1_000 },
+        aggregateBatching: { windowMs: 1_000 },
         retry: {
           onRetry: (kind, attempt) => {
             retries[kind] += 1;

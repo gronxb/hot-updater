@@ -266,7 +266,7 @@ describe("hot-updater insights over hot-updater.config.ts", () => {
     await handleInsightsInstallations("install-1");
     const printed = messages();
     expect(printed).toContain("install-1");
-    expect(printed).toMatch(/Latest:\s+Launched/u);
+    expect(printed).toMatch(/^Latest {2,}Launched/mu);
 
     await handleInsightsInstallations("user-1", { json: true });
     expect(

@@ -1,22 +1,28 @@
 import fs from "fs";
 import path from "path";
-import { pipeline } from "stream/promises";
-import { createBrotliCompress, constants as zlibConstants } from "zlib";
 
 import {
   createTarBrTargetFiles,
   getCwd,
-  getStorageFileByteSize,
   HotUpdateDirUtil,
   type loadConfig,
   loadPlatformConfigs,
+  INVALID_SIGNING_NEXT_STEP,
+  ISSUE_SIGNING_KEY_COMMAND,
   p,
   prepareBundleSigning,
+  PUT_SIGNING_KEY_COMMAND,
   putStorageFile,
+  readBundleSigningState,
+  UNSIGNED_BUNDLES_NEXT_STEP,
+  toolOutput,
+  UNSIGNED_BUNDLES_WARNING,
 } from "@hot-updater/cli-tools";
 import type {
   ConfiguredDatabase,
   HotUpdaterCoreApi,
+  NativeBuildRow,
+  NativeBuildScope,
   Platform,
   ReleaseCatalogMutationResult,
   StorageAdapter,
@@ -26,10 +32,7 @@ import {
   assertStorageOperations,
   createBundleStorageKey,
   createStorageRootUriWithPath,
-  createStorageUriWithRelativePath,
-  getManifestAssetDownloadPath,
-  getManifestAssetStoragePath,
-  isContentAddressedAssetFileHash,
+  semverSatisfies,
   targetBaseCandidateKey,
 } from "@hot-updater/plugin-core";
 import isPortReachable from "is-port-reachable";
@@ -40,10 +43,12 @@ import { getPlatform } from "@/prompts/getPlatform";
 import { createSignedFileHash } from "@/signedHashUtils";
 import {
   createBundleManifest,
-  type Manifest,
   writeBundleManifestFile,
 } from "@/utils/bundleManifest";
-import { createBundleDiff } from "@/utils/createBundleDiff";
+import {
+  createBundleDiff,
+  UnchangedHermesBundleError,
+} from "@/utils/createBundleDiff";
 import {
   appendFingerprintExtraSources,
   assertNativeSdkEmbedsFingerprint,
@@ -73,10 +78,23 @@ import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { PLATFORMS } from "../commandOptions";
 import { ui } from "../utils/cli-ui";
 import {
+  MANIFEST_ASSET_UPLOAD_CONCURRENCY,
+  prepareContentAddressedAssetUploadTargets,
+  type PreparedAssetUploadTarget,
+  runWithConcurrency,
+  uploadContentAddressedAsset,
+} from "../utils/contentAddressedAssets";
+import { describeNativeBuild } from "../utils/native/describeNativeBuild";
+import { reportUnexpectedError } from "../utils/reportUnexpectedError";
+import {
+  DEPLOYMENT_BLOCKED,
+  reportSigningRefusal,
+} from "../utils/signing/signingRefusal";
+import {
   formatAppVersionCandidates,
   isAmbiguousAppVersion,
 } from "../utils/version/appVersionCandidates";
-import { getConsolePort, openConsole } from "./console";
+import { getConsolePort, openConsole, withConsoleSession } from "./console";
 import {
   commitDeployment,
   type DeploymentWrite,
@@ -86,8 +104,6 @@ import {
 type DeployStorageAdapter = StorageAdapterWith<
   "put" | "get" | "exists" | "delete"
 >;
-
-const MANIFEST_ASSET_UPLOAD_CONCURRENCY = 8;
 
 class DeployAbortedError extends Error {
   override readonly name = "DeployAbortedError";
@@ -177,25 +193,6 @@ export const normalizePatchMaxBaseBundles = (
   return maxBaseBundles;
 };
 
-const runWithConcurrency = async <T>(
-  items: T[],
-  concurrency: number,
-  task: (item: T) => Promise<void>,
-) => {
-  let nextIndex = 0;
-  const workerCount = Math.min(concurrency, items.length);
-
-  await Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      while (nextIndex < items.length) {
-        const itemIndex = nextIndex;
-        nextIndex += 1;
-        await task(items[itemIndex]!);
-      }
-    }),
-  );
-};
-
 const formatUploadProgress = (
   completed: number,
   total: number,
@@ -240,12 +237,119 @@ const getPatchBaseBundleIds = async ({
   return core.findBaseBundleIds(candidateKey, bundleId, maxBaseBundles);
 };
 
+/**
+ * The native build scope's app version for a deploy's target: the exact string
+ * a build compiled in. A target that holds the project's version, such as the
+ * range `1.x.x` or a default of `1.7.x` for a project at `1.7`, means that
+ * version; any other is compared as written, so it finds a build only when it
+ * is that build's exact version.
+ */
+const nativeBuildAppVersionOf = (
+  targetAppVersion: string,
+  projectAppVersion: string | null,
+): string =>
+  projectAppVersion !== null &&
+  semverSatisfies(targetAppVersion, projectAppVersion)
+    ? projectAppVersion
+    : targetAppVersion;
+
+/**
+ * The app version a build of the project would compile in: what the adapter's
+ * prebuild would write stands for a native project that has none yet. Null when
+ * the project declares none, or several, or can't be read here.
+ */
+const readProjectAppVersion = async (
+  platform: Platform,
+  buildAdapter: Awaited<ReturnType<DeployConfig["build"]>>,
+): Promise<string | null> => {
+  try {
+    const values = await buildAdapter.nativeBuild?.getNativeProjectValues?.({
+      platform,
+    });
+    return await getNativeAppVersion(platform, undefined, values?.appVersion);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * The one native build whose built-in bundle this deploy patches from, so an
+ * install of it gets its first OTA as a patch. Of the deploy's channel and
+ * platform, with its fingerprint or exact app version: the build marked as the
+ * store build, or the most recently registered one. A build made after this
+ * bundle runs it or a newer one, so it is passed over, marked or not. Registering
+ * took its file from the build's artifact, so the patch is made against the bytes
+ * the build ships. One indexed read when a mark serves the deploy, and one more
+ * when none does.
+ */
+const getBuiltInBase = async ({
+  bundleId,
+  channel,
+  core,
+  platform,
+  projectAppVersion,
+  target,
+}: {
+  bundleId: string;
+  channel: string;
+  core: HotUpdaterCoreApi;
+  platform: Platform;
+  projectAppVersion: string | null;
+  target: {
+    appVersion: string | null;
+    fingerprintHash: string | null;
+  };
+}): Promise<{
+  readonly build: NativeBuildRow;
+  readonly marked: boolean;
+} | null> => {
+  let scope: NativeBuildScope;
+  if (target.fingerprintHash !== null) {
+    scope = {
+      platform,
+      channel,
+      fingerprintHash: target.fingerprintHash,
+      appVersion: null,
+    };
+  } else if (target.appVersion !== null) {
+    scope = {
+      platform,
+      channel,
+      fingerprintHash: null,
+      appVersion: nativeBuildAppVersionOf(target.appVersion, projectAppVersion),
+    };
+  } else {
+    return null;
+  }
+  const isOlder = (build: NativeBuildRow) =>
+    build.min_bundle_id.localeCompare(bundleId) < 0;
+  try {
+    const marked = await core.findNativeBuild(scope, { storeBuild: true });
+    if (marked !== null && isOlder(marked)) {
+      return { build: marked, marked: true };
+    }
+    const newest = await core.findNativeBuild(scope, {
+      builtInOlderThan: bundleId,
+    });
+    // A server from before `builtInOlderThan` answers its newest build.
+    return newest !== null && isOlder(newest)
+      ? { build: newest, marked: false }
+      : null;
+  } catch (error) {
+    // A self-hosted server without the native build routes answers 404: it
+    // holds no native builds.
+    if ((error as { status?: unknown } | null)?.status === 404) return null;
+    throw error;
+  }
+};
+
 const createAutoPatches = async ({
   bundleId,
   channel,
   core,
   maxBaseBundles,
   platform,
+  projectAppVersion,
   signingPublicKey,
   storageAdapter,
   target,
@@ -255,6 +359,7 @@ const createAutoPatches = async ({
   core: HotUpdaterCoreApi;
   maxBaseBundles: number;
   platform: Platform;
+  projectAppVersion: string | null;
   signingPublicKey: string | null;
   storageAdapter: DeployStorageAdapter;
   target: {
@@ -262,7 +367,7 @@ const createAutoPatches = async ({
     fingerprintHash: string | null;
   };
 }) => {
-  const baseBundleIds = await getPatchBaseBundleIds({
+  const releasedBaseBundleIds = await getPatchBaseBundleIds({
     bundleId,
     channel,
     core,
@@ -271,7 +376,31 @@ const createAutoPatches = async ({
     target,
   });
   const failures: { baseBundleId: string; message: string }[] = [];
+  let builtInBase: Awaited<ReturnType<typeof getBuiltInBase>> = null;
+  try {
+    builtInBase = await getBuiltInBase({
+      bundleId,
+      channel,
+      core,
+      platform,
+      projectAppVersion,
+      target,
+    });
+  } catch (error) {
+    failures.push({
+      baseBundleId: "built-in",
+      message: error instanceof Error ? error.message : "Unknown patch error",
+    });
+  }
+  // No release publishes a built-in bundle, so the catalog never names it.
+  const builtInBaseBundleId = builtInBase?.build.min_bundle_id ?? null;
+  const baseBundleIds =
+    builtInBaseBundleId === null
+      ? releasedBaseBundleIds
+      : [...releasedBaseBundleIds, builtInBaseBundleId];
   let createdCount = 0;
+  let unchangedCount = 0;
+  let builtInPatched = false;
 
   for (const baseBundleId of baseBundleIds) {
     try {
@@ -290,7 +419,13 @@ const createAutoPatches = async ({
         },
       );
       createdCount += 1;
+      if (baseBundleId === builtInBaseBundleId) builtInPatched = true;
     } catch (error) {
+      // Same JS as the base: no patch is needed, so nothing is wrong.
+      if (error instanceof UnchangedHermesBundleError) {
+        unchangedCount += 1;
+        continue;
+      }
       failures.push({
         baseBundleId,
         message: error instanceof Error ? error.message : "Unknown patch error",
@@ -299,180 +434,12 @@ const createAutoPatches = async ({
   }
 
   return {
+    builtInBase: builtInPatched ? builtInBase : null,
     candidateCount: baseBundleIds.length,
     createdCount,
     failures,
+    unchangedCount,
   };
-};
-
-const getRelativeStorageDir = (relativePath: string) => {
-  const normalized = relativePath.replace(/\\/g, "/");
-  const dirname = path.posix.dirname(normalized);
-  return dirname === "." ? "" : dirname;
-};
-
-type ManifestTargetFile = { path: string; name: string };
-
-type PreparedAssetUploadTarget = {
-  storagePath: string;
-  uploadSourcePath: string;
-};
-
-const prepareManifestAssetUploadFile = async ({
-  outputPath,
-  targetFile,
-}: {
-  outputPath: string;
-  targetFile: ManifestTargetFile;
-}) => {
-  const uploadName = getManifestAssetDownloadPath(targetFile.name);
-  const expectedFilename = path.posix.basename(uploadName);
-  const actualFilename = path.basename(targetFile.path);
-
-  if (uploadName === targetFile.name && expectedFilename === actualFilename) {
-    return targetFile.path;
-  }
-
-  const aliasDir = path.join(
-    outputPath,
-    "upload-artifacts",
-    getRelativeStorageDir(uploadName),
-  );
-  await fs.promises.mkdir(aliasDir, { recursive: true });
-
-  const aliasPath = path.join(aliasDir, expectedFilename);
-  if (uploadName !== targetFile.name) {
-    await pipeline(
-      fs.createReadStream(targetFile.path),
-      createBrotliCompress({
-        params: {
-          [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
-        },
-      }),
-      fs.createWriteStream(aliasPath),
-    );
-  } else {
-    await fs.promises.copyFile(targetFile.path, aliasPath);
-  }
-  return aliasPath;
-};
-
-const prepareContentAddressedUploadFile = async ({
-  outputPath,
-  sourcePath,
-  storagePath,
-}: {
-  outputPath: string;
-  sourcePath: string;
-  storagePath: string;
-}) => {
-  const filename = path.posix.basename(storagePath);
-  if (path.basename(sourcePath) === filename) {
-    return sourcePath;
-  }
-
-  const uploadPath = path.join(
-    outputPath,
-    "upload-artifacts",
-    "content-addressed",
-    filename,
-  );
-  await fs.promises.mkdir(path.dirname(uploadPath), { recursive: true });
-  await fs.promises.copyFile(sourcePath, uploadPath);
-  return uploadPath;
-};
-
-const prepareContentAddressedAssetUploadTargets = async ({
-  manifest,
-  outputPath,
-  targetFiles,
-}: {
-  manifest: Manifest;
-  outputPath: string;
-  targetFiles: ManifestTargetFile[];
-}) => {
-  const candidates = new Map<
-    string,
-    {
-      targetFile: ManifestTargetFile;
-      targetNames: string[];
-    }
-  >();
-
-  for (const targetFile of targetFiles) {
-    const manifestAsset = manifest.assets[targetFile.name];
-    if (!manifestAsset?.fileHash) {
-      throw new Error(`Manifest file hash not found for ${targetFile.name}`);
-    }
-
-    const downloadPath = getManifestAssetDownloadPath(targetFile.name);
-    const logicalStoragePath = getManifestAssetStoragePath({
-      assetPath: downloadPath,
-      fileHash: manifestAsset.fileHash,
-    });
-    const candidateKey = `${downloadPath === targetFile.name ? "raw" : "br"}:${logicalStoragePath}`;
-
-    const candidate = candidates.get(candidateKey);
-    if (candidate) {
-      candidate.targetNames.push(targetFile.name);
-    } else {
-      candidates.set(candidateKey, {
-        targetFile,
-        targetNames: [targetFile.name],
-      });
-    }
-  }
-
-  const targets = new Map<string, PreparedAssetUploadTarget>();
-  await runWithConcurrency(
-    [...candidates.values()],
-    MANIFEST_ASSET_UPLOAD_CONCURRENCY,
-    async ({ targetFile, targetNames }) => {
-      const uploadName = getManifestAssetDownloadPath(targetFile.name);
-      const usesBrotli = uploadName !== targetFile.name;
-      const preparedPath = await prepareManifestAssetUploadFile({
-        outputPath,
-        targetFile,
-      });
-      const downloadByteSize = await getStorageFileByteSize(preparedPath);
-      const downloadFileHash = usesBrotli
-        ? await getFileHashFromFile(preparedPath)
-        : undefined;
-      if (
-        downloadFileHash !== undefined &&
-        !isContentAddressedAssetFileHash(downloadFileHash)
-      ) {
-        throw new Error(
-          `Prepared asset hash must be a lowercase SHA-256 hash: ${targetFile.name}`,
-        );
-      }
-
-      const manifestAsset = manifest.assets[targetFile.name]!;
-      const storagePath = getManifestAssetStoragePath({
-        assetPath: uploadName,
-        downloadFileHash,
-        fileHash: manifestAsset.fileHash,
-      });
-      const uploadSourcePath = await prepareContentAddressedUploadFile({
-        outputPath,
-        sourcePath: preparedPath,
-        storagePath,
-      });
-
-      for (const targetName of targetNames) {
-        manifest.assets[targetName] = {
-          ...manifest.assets[targetName]!,
-          downloadByteSize,
-          ...(downloadFileHash ? { downloadFileHash } : {}),
-        };
-      }
-      targets.set(storagePath, { storagePath, uploadSourcePath });
-    },
-  );
-
-  return [...targets.values()].sort((left, right) =>
-    left.storagePath.localeCompare(right.storagePath),
-  );
 };
 
 const getPlatformName = (platform: Platform) =>
@@ -549,23 +516,16 @@ const summarizeDeploymentResults = (
   results: readonly CommittedDeployPlatformResult[],
 ): string => {
   if (results.length === 1) {
-    return [
-      "Deployment successful",
+    return ui.block("Deployment successful", [
       ui.kv("ID", ui.id(results[0]!.releaseId)),
-    ].join("\n");
+    ]);
   }
-
-  const labels = results.map(
-    (result) => `${getPlatformName(result.platform)} ID:`,
-  );
-  const labelWidth = Math.max(...labels.map((label) => label.length));
-  return [
+  return ui.block(
     "Deployment successful",
-    ...results.map(
-      (result, index) =>
-        `    ${labels[index]!.padEnd(labelWidth)} ${ui.id(result.releaseId)}`,
+    results.map((result) =>
+      ui.kv(`${getPlatformName(result.platform)} ID`, ui.id(result.releaseId)),
     ),
-  ].join("\n");
+  );
 };
 
 const getDeployPlatforms = async (
@@ -685,7 +645,14 @@ const deployPlatform = async ({
 
   const [buildAdapter, signingSession] = await Promise.all([
     config.build({ cwd }),
-    prepareBundleSigning(config.signing, { cwd }),
+    prepareBundleSigning(config.signing, {
+      cwd,
+      secrets: config.secrets,
+    }).catch((error: unknown) => {
+      // The E2E refusal check reads both lines.
+      reportSigningRefusal(error);
+      return process.exit(1);
+    }),
   ]);
   const getNativeSigningPublicKey =
     buildAdapter.nativeBuild?.getBundleSigningPublicKey;
@@ -718,28 +685,18 @@ const deployPlatform = async ({
       (i) => i.type === "warning",
     );
 
+    // Doctor's --json prints the same issues: only their layout is ours.
+    for (const issue of errors) {
+      p.log.error(`${ui.prose(issue.message)}\n${ui.prose(issue.resolution)}`);
+    }
     if (errors.length > 0) {
-      console.log("");
-      p.log.error("Signing configuration error:");
-      for (const issue of errors) {
-        p.log.error(`  ${issue.message}`);
-        p.log.info(`  Resolution: ${issue.resolution}`);
-      }
-      console.log("");
-      p.log.error(
-        "Deployment blocked. Fix the signing configuration and try again.",
-      );
+      p.log.error(DEPLOYMENT_BLOCKED);
       process.exit(1);
     }
-
-    if (warnings.length > 0) {
-      console.log("");
-      p.log.warn("Signing configuration warning:");
-      for (const warning of warnings) {
-        p.log.warn(`  ${warning.message}`);
-        p.log.info(`  Resolution: ${warning.resolution}`);
-      }
-      console.log("");
+    for (const warning of warnings) {
+      p.log.warn(
+        `${ui.prose(warning.message)}\n${ui.prose(warning.resolution)}`,
+      );
     }
   }
 
@@ -756,7 +713,7 @@ const deployPlatform = async ({
     s.start(`Fingerprinting (${platform})`);
     if (!fs.existsSync(path.join(cwd, "fingerprint.json"))) {
       s.error(
-        "Fingerprint.json not found. Please run 'hot-updater fingerprint create' to update fingerprint.json",
+        "fingerprint.json not found. Run:\nnpx hot-updater fingerprint create",
       );
       process.exit(1);
     }
@@ -772,9 +729,7 @@ const deployPlatform = async ({
     });
     const projectFingerprint = await readLocalFingerprint();
     if (!isFingerprintEquals(newFingerprint, projectFingerprint?.[platform])) {
-      s.error(
-        "Fingerprint mismatch. 'hot-updater fingerprint create' to update fingerprint.json",
-      );
+      s.error("Fingerprint mismatch. Run:\nnpx hot-updater fingerprint create");
 
       const engineChange = getFingerprintEngineChange(
         projectFingerprint?.[platform],
@@ -824,7 +779,11 @@ const deployPlatform = async ({
   } else {
     if (fs.existsSync(path.join(cwd, "fingerprint.json"))) {
       p.log.warn(
-        `fingerprint.json exists, but updateStrategy is '${config.updateStrategy}'. Native builds embed its fingerprint hash, so apps built from this project report the fingerprint strategy. Delete fingerprint.json, or run \`npx hot-updater doctor --fix\`, then rebuild.`,
+        [
+          `fingerprint.json exists, but updateStrategy is '${config.updateStrategy}'.`,
+          "Apps built here report the fingerprint strategy.",
+          "Delete fingerprint.json, then rebuild the apps.",
+        ].join("\n"),
       );
     }
     const defaultTargetAppVersion = options.targetAppVersion
@@ -861,8 +820,8 @@ const deployPlatform = async ({
     if (!targetAppVersion) {
       p.log.error(
         ambiguousVersions
-          ? `The native project builds several app versions (${ambiguousVersions}), so the target app version for this deploy cannot be read from it. Pass -t <targetAppVersion> for the app this deploy targets.`
-          : "Target app version not found in native files (Info.plist or project.pbxproj for iOS, build.gradle for Android). Pass -t <targetAppVersion> explicitly, or check your native config.",
+          ? `The native project builds several app versions:\n${ambiguousVersions}\nPass -t <targetAppVersion> for the app this deploy targets.`
+          : "Target app version not found in Info.plist, project.pbxproj, build.gradle.\nPass -t <targetAppVersion>.",
       );
       return null;
     }
@@ -872,11 +831,11 @@ const deployPlatform = async ({
   if (!target.fingerprintHash && !target.appVersion) {
     if (config.updateStrategy === "fingerprint") {
       p.log.error(
-        "Fingerprint hash not found. Please run 'hot-updater fingerprint create' to update fingerprint.json",
+        "Fingerprint hash not found. Run:\nnpx hot-updater fingerprint create",
       );
     } else {
       p.log.error(
-        "Target app version not found. -t <targetAppVersion> semver format (e.g. 1.0.0, 1.x.x)",
+        "Target app version not found. Pass -t <targetAppVersion>, such as 1.x.x.",
       );
     }
     process.exit(1);
@@ -1015,7 +974,7 @@ const deployPlatform = async ({
     ]);
 
     if (taskRef.buildResult?.stdout) {
-      p.note(
+      toolOutput.note(
         taskRef.buildResult.stdout.trim(),
         multiPlatform ? `Build Output (${platformName})` : "Build Output",
       );
@@ -1080,26 +1039,13 @@ const deployPlatform = async ({
             await runWithConcurrency(
               assetUploadTargets,
               MANIFEST_ASSET_UPLOAD_CONCURRENCY,
-              async ({ storagePath, uploadSourcePath }) => {
-                const storageUri = createStorageUriWithRelativePath({
-                  baseStorageUri: taskRef.assetBaseStorageUri!,
-                  relativePath: storagePath,
-                });
-
-                const relativeDir = getRelativeStorageDir(storagePath);
-                const uploadKey = ["assets", relativeDir]
-                  .filter(Boolean)
-                  .join("/");
-
-                if ((await storageAdapter.exists({ storageUri })).exists) {
-                  skippedUploadCount += 1;
-                } else {
-                  await putStorageFile(
-                    storageAdapter,
-                    uploadKey,
-                    uploadSourcePath,
-                  );
-                }
+              async (target) => {
+                const uploaded = await uploadContentAddressedAsset(
+                  storageAdapter,
+                  taskRef.assetBaseStorageUri!,
+                  target,
+                );
+                if (!uploaded) skippedUploadCount += 1;
                 uploadedStepCount += 1;
                 updateUploadProgress();
               },
@@ -1164,13 +1110,20 @@ const deployPlatform = async ({
     if (config.patch.enabled) {
       const runAutoPatches = async (): Promise<void> => {
         let patchSummary: {
+          builtInBase: {
+            readonly build: NativeBuildRow;
+            readonly marked: boolean;
+          } | null;
           candidateCount: number;
           createdCount: number;
           failures: { baseBundleId: string; message: string }[];
+          unchangedCount: number;
         } = {
+          builtInBase: null,
           candidateCount: 0,
           createdCount: 0,
           failures: [],
+          unchangedCount: 0,
         };
 
         await p.tasks([
@@ -1184,6 +1137,10 @@ const deployPlatform = async ({
                   core,
                   maxBaseBundles: maxPatchBaseBundles,
                   platform,
+                  projectAppVersion:
+                    target.fingerprintHash === null
+                      ? await readProjectAppVersion(platform, buildAdapter)
+                      : null,
                   signingPublicKey: signingSession?.publicKey ?? null,
                   storageAdapter,
                   target,
@@ -1195,9 +1152,11 @@ const deployPlatform = async ({
                     : "Unknown patch optimization error";
                 p.log.warn(`Partial updates unavailable: ${message}`);
                 patchSummary = {
+                  builtInBase: null,
                   candidateCount: 0,
                   createdCount: 0,
                   failures: [],
+                  unchangedCount: 0,
                 };
               }
 
@@ -1206,7 +1165,10 @@ const deployPlatform = async ({
               }
 
               if (!patchSummary.createdCount) {
-                return "Skipped (no patch artifacts created)";
+                return patchSummary.unchangedCount ===
+                  patchSummary.candidateCount
+                  ? "Skipped (Hermes bundle unchanged)"
+                  : "Skipped (no patch artifacts created)";
               }
 
               return `✅ Prepared ${patchSummary.createdCount} partial update path(s)`;
@@ -1214,6 +1176,12 @@ const deployPlatform = async ({
           },
         ]);
 
+        if (patchSummary.builtInBase !== null) {
+          const { build, marked } = patchSummary.builtInBase;
+          p.log.info(
+            `Built-in base  ${describeNativeBuild(build)} · ${marked ? "store build" : "newest build"}`,
+          );
+        }
         for (const failure of patchSummary.failures) {
           p.log.warn(
             `Partial update skipped for file ${failure.baseBundleId.slice(0, 8)}: ${failure.message}`,
@@ -1230,7 +1198,7 @@ const deployPlatform = async ({
 
     return { bundleId: confirmedBundleId, platform, runDeferredPatches };
   } catch (e) {
-    console.error(e);
+    reportUnexpectedError(e);
     process.exit(1);
   }
 };
@@ -1250,6 +1218,32 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   const firstPlatformConfig = platformConfigs[0];
   if (!firstPlatformConfig) {
     return;
+  }
+  const signingStates = platformConfigs.map(({ config }) =>
+    readBundleSigningState(config.signing),
+  );
+  // A value signing doesn't take, such as a removed signing adapter, never
+  // deploys unsigned: refused before anything connects or builds.
+  const refused = signingStates.find((state) => state.status === "invalid");
+  if (refused?.status === "invalid") {
+    p.log.error(
+      [
+        refused.message,
+        ui.withCommand(INVALID_SIGNING_NEXT_STEP, PUT_SIGNING_KEY_COMMAND),
+      ].join("\n"),
+    );
+    p.log.error(DEPLOYMENT_BLOCKED);
+    return process.exit(1);
+  }
+  // Once a run, however many platforms deploy unsigned. `enabled: false`
+  // signs nothing on purpose, without the warning.
+  if (signingStates.some((state) => state.status === "unsigned")) {
+    p.log.warn(
+      [
+        UNSIGNED_BUNDLES_WARNING,
+        ui.withCommand(UNSIGNED_BUNDLES_NEXT_STEP, ISSUE_SIGNING_KEY_COMMAND),
+      ].join("\n"),
+    );
   }
   // Every platform deploys through one server, assembled from the first
   // platform's config, so the configs must share one database. The ones a
@@ -1361,8 +1355,8 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
             initialValue: false,
           });
           if (!p.isCancel(result) && result) {
-            await openConsole(port, () => {
-              void open(url);
+            await openConsole(port, ({ session }) => {
+              void open(withConsoleSession(url, session));
             });
           }
         } else {

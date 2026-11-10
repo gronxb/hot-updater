@@ -24,12 +24,13 @@ setupReadBudgetTestSuite({
   name: "drizzle (PGlite)",
   createAdapter: async () => {
     const client = new PGlite();
+    const { schema, settings } = toolingTargetOf([
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+    ]);
     await client.exec(
-      generateEngineSql(
-        "postgresql",
-        toolingTargetOf([insights(), apiKeys(), remoteConfig()]).schema,
-        toolingTargetOf([insights(), apiKeys(), remoteConfig()]).settings,
-      ).join(";\n"),
+      generateEngineSql("postgresql", schema, settings).join(";\n"),
     );
     const reads = postgresRowsExamined(
       async (sql, params) =>

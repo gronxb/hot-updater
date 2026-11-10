@@ -20,6 +20,7 @@ interface HotUpdaterAttempt {
   bootstrap: JsonObject;
   consoleInsights?: JsonObject;
   expectedLaunchFailures?: number;
+  expectedLinkTimeouts?: number;
 }
 
 async function finishAttempt(attempt: HotUpdaterAttempt) {
@@ -52,6 +53,7 @@ async function finishAttempt(attempt: HotUpdaterAttempt) {
       ? {
           consoleInsights: attempt.consoleInsights,
           expectedLaunchFailures: attempt.expectedLaunchFailures ?? 0,
+          expectedLinkTimeouts: attempt.expectedLinkTimeouts ?? 0,
         }
       : {}),
   });
@@ -122,5 +124,6 @@ for (const scenarioName of context.scenarioNames) {
     hotUpdater.consoleInsights =
       await app.verifyConsoleInsights(insightsStartedAtMs);
     hotUpdater.expectedLaunchFailures = app.expectedLaunchFailures;
+    hotUpdater.expectedLinkTimeouts = app.expectedLinkTimeouts;
   });
 }

@@ -34,7 +34,7 @@ apply an update.
 Choose your project's build tool. Run the command for the platform you want to
 test on a simulator, emulator or connected device.
 
-<Tabs items={["React Native CLI", "Rock", "Expo"]}>
+<Tabs items={["React Native CLI", "Rock", "Expo", "One"]}>
   <Tab value="React Native CLI">
 
 For iOS, install the native dependencies with your project's CocoaPods setup,
@@ -84,6 +84,23 @@ npx expo run:android --variant release
 ```
 
   </Tab>
+  <Tab value="One">
+
+`one prebuild` generates the native projects; build them in Release.
+
+For iOS, run `npx one prebuild --platform ios`, then open
+`ios/<App>.xcworkspace` in Xcode, set the scheme's Run build configuration to
+Release, and run it.
+
+For Android:
+
+```sh
+npx one prebuild --platform android
+cd android
+./gradlew installRelease
+```
+
+  </Tab>
 </Tabs>
 
 Use your equivalent Release command if the app has custom schemes or flavors.
@@ -103,24 +120,24 @@ Publish to the same platform, test channel and compatibility target as the
 installed app. These examples use iOS and version `1.0.0`; substitute your
 actual values. For Android, use `-p android`.
 
-<Tabs items={["App version", "Fingerprint"]}>
+<Tabs items={["Fingerprint", "App version"]}>
+  <Tab value="Fingerprint">
+
+With `updateStrategy: "fingerprint"`, which `init` writes, deploy with the
+project's existing fingerprint. Do not recreate the fingerprint between the
+native build and this update.
+
+```sh
+npx hot-updater deploy -p ios -c ota-test
+```
+
+  </Tab>
   <Tab value="App version">
 
 Use the native app version of the Release build you just installed:
 
 ```sh
 npx hot-updater deploy -p ios -c ota-test -t 1.0.0
-```
-
-  </Tab>
-  <Tab value="Fingerprint">
-
-For a project configured to use fingerprint matching, deploy with its existing
-fingerprint. Do not recreate the fingerprint between the native build and this
-update.
-
-```sh
-npx hot-updater deploy -p ios -c ota-test
 ```
 
   </Tab>
@@ -170,11 +187,11 @@ is a separate recovery mechanism.
 
 Keep a short record of the platform, channel, deployment ID and what you saw:
 
-| Check | Expected result |
-| --- | --- |
-| Native build | Original text and image appear in a Release app |
-| OTA update | New text and image appear after restart, with the deployment ID |
-| Rollback | Original screen returns after disabling the test update |
+| Check        | Expected result                                                 |
+| ------------ | --------------------------------------------------------------- |
+| Native build | Original text and image appear in a Release app                 |
+| OTA update   | New text and image appear after restart, with the deployment ID |
+| Rollback     | Original screen returns after disabling the test update         |
 
 If the app runs the [Insights plugin](/docs/react-native-api/insights),
 [verify its reports](/docs/guides/insights#verify-reporting) in the Console:
@@ -187,12 +204,12 @@ You can now explore [update timing](/docs/guides/custom-update),
 
 ## If something goes wrong
 
-| What you see | What to do next |
-| --- | --- |
-| Update failed | Check the app's URL and client key with [client-access diagnostics](/docs/guides/doctor#check-client-access) |
+| What you see                                     | What to do next                                                                                                 |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Update failed                                    | Check the app's URL and client key with [client-access diagnostics](/docs/guides/doctor#check-client-access)    |
 | Button becomes available again, screen unchanged | Inspect the deployment with `bundle show`; platform, channel, version/fingerprint and cohort must match the app |
-| New ID, old screen | Wait for the download and restart to finish; check app logs if the restart fails |
-| New screen disappears after restart | Check [startup errors and crash history](/docs/react-native-api/getCrashHistory) |
+| New ID, old screen                               | Wait for the download and restart to finish; check app logs if the restart fails                                |
+| New screen disappears after restart              | Check [startup errors and crash history](/docs/react-native-api/getCrashHistory)                                |
 
 `HotUpdater.init()` configures the client at module scope and returns the
 instance the button uses. The button starts the check, download and restart. Keep the sample's shared error reporter so request,

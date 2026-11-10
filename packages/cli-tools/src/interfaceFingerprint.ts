@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -18,8 +18,11 @@ const require = createRequire(import.meta.url);
 
 /**
  * The engine fingerprint.json records for the interface fingerprint. Change
- * it with any change to what is hashed or how, so the new hashes are reported
- * as an engine change rather than a native one.
+ * it with any change to what is hashed or how that moves every project's
+ * hash, so the new hashes are reported as an engine change rather than a
+ * native one. The name is part of every digest, so changing it moves them all:
+ * tracking an input nothing tracked before keeps the name, moves only the
+ * projects that have that input, and is reported as a change to its files.
  */
 export const INTERFACE_FINGERPRINT_ENGINE = "hot-updater/interface@1";
 
@@ -112,6 +115,13 @@ const nativeSourceDir = (
   return platform === "ios" ? path.dirname(value) : value;
 };
 
+const isInNodeModules = (dir: string) =>
+  dir.split(path.sep).includes("node_modules");
+
+/** A folder of native code that exists, outside what an install wrote. */
+const isLinkedSourceDir = (dir: string) =>
+  !isInNodeModules(dir) && existsSync(dir);
+
 /**
  * The native side JavaScript runs against: the runtime, such as
  * `react-native@0.85.0`, and the native packages linked into the app.
@@ -124,6 +134,14 @@ export interface NativeInterface {
    * engine, read from the files the framework itself reads.
    */
   settings?: Record<string, string>;
+  /**
+   * What autolinking printed, as parsed: the React Native config, and
+   * expo-modules-autolinking's `resolve` when the app links Expo modules.
+   */
+  autolinking?: {
+    reactNative: unknown;
+    expoModules: unknown;
+  };
 }
 
 interface AutolinkingConfig {
@@ -170,6 +188,29 @@ const parseJsonOutput = <T>(stdout: string, command: string): T => {
   );
 };
 
+const EXPO_MODULE_CONFIGS = ["expo-module.config.json", "unimodule.json"];
+
+/**
+ * The folder of an Expo module autolinking found outside node_modules: the
+ * nearest one above `anchor` that holds its registration or its package.json.
+ * `create-expo-module --local` writes no package.json, and an empty `name`
+ * reaches here when the module's package.json has none.
+ */
+const findLocalExpoModuleRoot = async (anchor: string, name: string) => {
+  const start = await fs.realpath(anchor).catch(() => anchor);
+  if (isInNodeModules(start)) return null;
+  let dir = start;
+  while (true) {
+    if (name && (await readManifest(dir))?.name === name) return dir;
+    for (const config of EXPO_MODULE_CONFIGS) {
+      if (existsSync(path.join(dir, config))) return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return start;
+    dir = parent;
+  }
+};
+
 const findPackageRoot = async (from: string, name: string) => {
   let dir = from;
   while (true) {
@@ -193,7 +234,7 @@ const readExpoModuleConfig = async (
   // Expo autolinking reads the first of these it finds; unimodule.json is
   // the legacy name.
   let file: string | null = null;
-  for (const name of ["expo-module.config.json", "unimodule.json"]) {
+  for (const name of EXPO_MODULE_CONFIGS) {
     file = await fs.readFile(path.join(root, name), "utf8").catch(() => null);
     if (file !== null) break;
   }
@@ -230,6 +271,77 @@ const atLeast = (version: string, minimum: [number, number, number]) => {
     if (part !== minimum[index]) return part > minimum[index]!;
   }
   return true;
+};
+
+/** The arguments that run React Native CLI's `config` with Node.js. */
+const reactNativeCliConfig = (cwd: string) => [
+  path.join(
+    path.dirname(
+      require.resolve("react-native/package.json", { paths: [cwd] }),
+    ),
+    "cli.js",
+  ),
+  "config",
+];
+
+/**
+ * The command, run with Node.js, that lists the React Native packages a
+ * build links, chosen as Expo and @expo/fingerprint choose it: Expo's
+ * autolinking from expo-modules-autolinking 1.12 (SDK 52), else React Native
+ * CLI, as for an app without Expo. The native templates also fall back to
+ * React Native CLI when `EXPO_USE_COMMUNITY_AUTOLINKING=1`, as Expo
+ * documents.
+ */
+export const reactNativeConfigCommand = (
+  cwd: string,
+  platform: Platform,
+  env: NodeJS.ProcessEnv = process.env,
+): string[] => {
+  let autolinking: ReturnType<typeof resolveExpoAutolinking> | null = null;
+  try {
+    autolinking = resolveExpoAutolinking(cwd);
+  } catch {
+    // No Expo: React Native CLI links the app.
+  }
+  if (
+    autolinking?.linksReactNative &&
+    env["EXPO_USE_COMMUNITY_AUTOLINKING"] !== "1"
+  ) {
+    return [
+      autolinking.bin,
+      "react-native-config",
+      "--platform",
+      platform,
+      "--json",
+    ];
+  }
+  return reactNativeCliConfig(cwd);
+};
+
+/**
+ * The command that lists the React Native packages the native project of a
+ * build adapter links, as the adapter's own fingerprint runs it: `rock config`
+ * for Rock, React Native CLI's `config` for the bare adapter, and
+ * {@link reactNativeConfigCommand} for Expo and any other adapter.
+ */
+export const autolinkingConfigCommand = (
+  cwd: string,
+  platform: Platform,
+  {
+    buildAdapter,
+    env = process.env,
+  }: { buildAdapter?: string; env?: NodeJS.ProcessEnv } = {},
+): { command: string; args: string[] } => {
+  if (buildAdapter === "rock") {
+    return { command: "npx", args: ["rock", "config", "-p", platform] };
+  }
+  return {
+    command: process.execPath,
+    args:
+      buildAdapter === "bare"
+        ? reactNativeCliConfig(cwd)
+        : reactNativeConfigCommand(cwd, platform, env),
+  };
 };
 
 /**
@@ -271,7 +383,7 @@ export const resolveExpoAutolinking = (
 const readExpoModules = async (
   cwd: string,
   platform: Platform,
-): Promise<NativeDependency[]> => {
+): Promise<{ dependencies: NativeDependency[]; output: unknown }> => {
   const { bin, version } = resolveExpoAutolinking(cwd);
   // expo-modules-autolinking 1.10 renamed the iOS platform `apple`.
   const name =
@@ -288,11 +400,14 @@ const readExpoModules = async (
   if (result.exitCode !== 0) {
     throw new Error("`expo-modules-autolinking resolve` failed.");
   }
-  const { modules = [] } = parseJsonOutput<{ modules?: ExpoModule[] }>(
+  const output = parseJsonOutput<{ modules?: ExpoModule[] }>(
     result.stdout,
     "expo-modules-autolinking resolve",
   );
-  return readExpoModuleDependencies(modules);
+  return {
+    dependencies: await readExpoModuleDependencies(output.modules ?? []),
+    output,
+  };
 };
 
 const readExpoModuleDependencies = (
@@ -300,8 +415,7 @@ const readExpoModuleDependencies = (
 ): Promise<NativeDependency[]> =>
   Promise.all(
     modules.flatMap((module) => {
-      const name = module.packageName;
-      if (!name) return [];
+      const name = module.packageName ?? "";
       // Every Android project, Gradle plugin, and iOS pod the module declares.
       const sourceDirs = [
         ...(module.projects ?? []).map(({ sourceDir }) => sourceDir),
@@ -317,16 +431,88 @@ const readExpoModuleDependencies = (
         .map(({ aarFilePath }) => aarFilePath)
         .filter((file): file is string => Boolean(file));
       return [
-        (async (): Promise<NativeDependency> => {
-          const anchor = sourceDirs[0] ?? files[0];
-          const root = anchor ? await findPackageRoot(anchor, name) : null;
-          return root
-            ? { name, root, sourceDirs, ...(files.length > 0 ? { files } : {}) }
-            : { name, version: module.packageVersion ?? "unknown" };
+        (async (): Promise<NativeDependency[]> => {
+          const anchor =
+            sourceDirs[0] ?? (files[0] ? path.dirname(files[0]) : undefined);
+          const local = anchor
+            ? await findLocalExpoModuleRoot(anchor, name)
+            : null;
+          const root =
+            local ??
+            (anchor && name ? await findPackageRoot(anchor, name) : null);
+          if (root) {
+            return [
+              {
+                name: name || path.basename(root),
+                root,
+                sourceDirs,
+                ...(files.length > 0 ? { files } : {}),
+              },
+            ];
+          }
+          return name
+            ? [{ name, version: module.packageVersion ?? "unknown" }]
+            : [];
         })(),
       ];
     }),
+  ).then((dependencies) => dependencies.flat());
+
+/** The packages an autolinking config links on the platform. */
+const linkedDependencies = (
+  config: AutolinkingConfig,
+  platform: Platform,
+): NativeDependency[] =>
+  Object.entries(config.dependencies ?? {}).flatMap(([key, dependency]) => {
+    const platformConfig = dependency.platforms?.[platform];
+    if (!platformConfig) return [];
+    const sourceDir = nativeSourceDir(platform, platformConfig);
+    if (dependency.name && dependency.root) {
+      const { name, root } = dependency;
+      return [
+        sourceDir ? { name, root, sourceDirs: [sourceDir] } : { name, root },
+      ];
+    }
+    // Source paths in react-native.config.js for a package nothing installed:
+    // React Native CLI prints them with no name and no root, and CocoaPods
+    // autolinking on older React Native still links them.
+    return sourceDir && isLinkedSourceDir(sourceDir)
+      ? [{ name: key, root: sourceDir, sourceDirs: [sourceDir] }]
+      : [];
+  });
+
+/**
+ * The local packages of a bare app with Expo modules that only Expo's
+ * `react-native-config` lists. `install-expo-modules` makes its native project
+ * link through that command, which also reads autolinking's search paths, such
+ * as `modules/`. Packages it lists in node_modules stay out, so an app with no
+ * such package keeps its fingerprint.
+ */
+const readExpoLocalPackages = async (
+  cwd: string,
+  platform: Platform,
+): Promise<NativeDependency[]> => {
+  const { bin, linksReactNative } = resolveExpoAutolinking(cwd);
+  if (
+    !linksReactNative ||
+    process.env["EXPO_USE_COMMUNITY_AUTOLINKING"] === "1"
+  ) {
+    return [];
+  }
+  const { exitCode, stdout } = await execa(
+    process.execPath,
+    [bin, "react-native-config", "--platform", platform, "--json"],
+    { cwd, reject: false },
   );
+  // React Native CLI's config already gave this app a fingerprint.
+  if (exitCode !== 0 || !stdout.includes("{")) return [];
+  return linkedDependencies(
+    parseJsonOutput<AutolinkingConfig>(stdout, "react-native-config"),
+    platform,
+  ).filter(
+    (dependency) => "root" in dependency && !isInNodeModules(dependency.root),
+  );
+};
 
 // The gradle.properties keys the React Native Gradle plugin reads to choose
 // the JavaScript engine and architecture.
@@ -338,10 +524,12 @@ const GRADLE_FLAGS = [
 ];
 
 /**
- * The engine and architecture flags android/gradle.properties declares. An
- * absent flag takes React Native's default, which follows its version.
+ * The engine and architecture flags the gradle.properties in `androidDir`
+ * declares, as the fingerprint's `android:<flag>` settings. An absent flag
+ * takes React Native's default, which follows its version. A framework that
+ * generates android/ from a template reads the template's.
  */
-const readGradleFlags = async (
+export const readGradleFlags = async (
   androidDir: string,
 ): Promise<Record<string, string>> => {
   const properties = await fs
@@ -418,29 +606,20 @@ export const readReactNativeInterface = async ({
   const reactNative = config.reactNativePath
     ? await readManifest(config.reactNativePath)
     : null;
-  const dependencies: NativeDependency[] = Object.values(
-    config.dependencies ?? {},
-  ).flatMap((dependency) =>
-    dependency.name && dependency.root && dependency.platforms?.[platform]
-      ? [
-          {
-            name: dependency.name,
-            root: dependency.root,
-            sourceDir: nativeSourceDir(
-              platform,
-              dependency.platforms[platform],
-            ),
-          },
-        ].map(({ sourceDir, ...rest }) =>
-          sourceDir ? { ...rest, sourceDirs: [sourceDir] } : rest,
-        )
-      : [],
-  );
+  const dependencies = linkedDependencies(config, platform);
   const linksExpoModules = dependencies.some(({ name }) => name === "expo");
-  const expoModules = linksExpoModules
+  const expo = linksExpoModules
     ? await readExpoModules(cwd, platform)
-    : [];
+    : { dependencies: [], output: null };
+  const expoModules = expo.dependencies;
   const names = new Set(dependencies.map(({ name }) => name));
+  // Rock's native project links through `rock config`, and Expo's already ran.
+  const expoLocalPackages =
+    linksExpoModules &&
+    command === process.execPath &&
+    !args.includes("react-native-config")
+      ? await readExpoLocalPackages(cwd, platform)
+      : [];
   // iOS declares no engine setting React Native's pods read from a file:
   // `pod install` takes them from the environment.
   const settings =
@@ -455,8 +634,14 @@ export const readReactNativeInterface = async ({
     dependencies: [
       ...dependencies,
       ...expoModules.filter(({ name }) => !names.has(name)),
+      ...expoLocalPackages.filter(
+        ({ name }) =>
+          !names.has(name) &&
+          !expoModules.some((module) => module.name === name),
+      ),
     ],
     settings,
+    autolinking: { reactNative: config, expoModules: expo.output },
   };
 };
 
@@ -619,6 +804,29 @@ const findConfiguredPatches = async (
 };
 
 /**
+ * Whether the app's package.json installs `name` from a `file:` folder. pnpm,
+ * Yarn, and Bun copy the folder into node_modules where npm links it, and the
+ * version stays the same while its code changes. A tarball has a version of
+ * its own, like a package from a registry or Git.
+ */
+const isFileFolderDependency = async (cwd: string, name: string) => {
+  const manifest = (await readManifest(cwd)) as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+    optionalDependencies?: Record<string, string>;
+  } | null;
+  const specifier =
+    manifest?.dependencies?.[name] ??
+    manifest?.devDependencies?.[name] ??
+    manifest?.optionalDependencies?.[name];
+  if (!specifier?.startsWith("file:")) return false;
+  return fs.stat(path.resolve(cwd, specifier.slice("file:".length))).then(
+    (stat) => stat.isDirectory(),
+    () => false,
+  );
+};
+
+/**
  * Fingerprints the native interface JavaScript depends on, not the native
  * build: the runtime and its native settings, each registry package as
  * `name@version`, the codegen
@@ -703,7 +911,10 @@ export const createInterfaceFingerprint = async (
       continue;
     }
     const root = await fs.realpath(dependency.root);
-    if (root.split(path.sep).includes("node_modules")) {
+    if (
+      isInNodeModules(root) &&
+      !(await isFileFolderDependency(cwd, dependency.name))
+    ) {
       const version = (await readManifest(root))?.version ?? "unknown";
       addContents(
         `dependency:${dependency.name}`,
@@ -844,11 +1055,13 @@ export const createInterfaceFingerprint = async (
 /**
  * The fingerprint of a React Native CLI project: the native interface
  * `react-native config` reports. The bare adapter's fingerprint, and the one
- * a build adapter without its own gets.
+ * a build adapter without its own gets. `settings` are the engine settings
+ * when the project declares them outside android/gradle.properties.
  */
 export const reactNativeCliFingerprint = async (
   cwd: string,
   options: NativeFingerprintOptions,
+  settings?: Record<string, string>,
 ) =>
   createInterfaceFingerprint(
     cwd,
@@ -856,15 +1069,8 @@ export const reactNativeCliFingerprint = async (
     await readReactNativeInterface({
       cwd,
       command: process.execPath,
-      args: [
-        path.join(
-          path.dirname(
-            require.resolve("react-native/package.json", { paths: [cwd] }),
-          ),
-          "cli.js",
-        ),
-        "config",
-      ],
+      args: reactNativeCliConfig(cwd),
       platform: options.platform,
+      ...(settings === undefined ? {} : { settings }),
     }),
   );

@@ -21,6 +21,7 @@ export interface AttemptRecord {
   cleanupCompleted: true;
   consoleInsights?: JsonObject;
   expectedLaunchFailures?: number;
+  expectedLinkTimeouts?: number;
 }
 
 export interface QuarantineRecord {
@@ -89,13 +90,19 @@ export function collectAttemptEvidence(resultsDir: string) {
     evidence: {
       schemaVersion: 1,
       scenarios: records.flatMap(
-        ({ name, consoleInsights, expectedLaunchFailures }) =>
+        ({
+          name,
+          consoleInsights,
+          expectedLaunchFailures,
+          expectedLinkTimeouts,
+        }) =>
           name && consoleInsights
             ? [
                 {
                   name,
                   consoleInsights,
                   expectedLaunchFailures: expectedLaunchFailures ?? 0,
+                  expectedLinkTimeouts: expectedLinkTimeouts ?? 0,
                   bodyCompleted: true,
                   cleanupCompleted: true,
                 },

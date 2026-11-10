@@ -51,12 +51,13 @@ files through your own tooling, use
 
 Review the setup result:
 
-| Output | What to verify |
-| --- | --- |
-| `hot-updater.config.ts` | Selected build, storage, database, the managed server's plugins, and update strategy |
-| `.env.hotupdater` | Local provider settings and registered `HOT_UPDATER_API_KEY`, kept private and ignored |
-| Update server base URL | The actual deployed endpoint, including a provider base path when required |
-| Remote resources | The selected account/project, database and storage match the local config |
+| Output                  | What to verify                                                                         |
+| ----------------------- | -------------------------------------------------------------------------------------- |
+| `hot-updater.config.ts` | Selected build, storage, database, the managed server's plugins, and update strategy   |
+| `fingerprint.json`      | The native fingerprint for `updateStrategy: "fingerprint"`; commit it                  |
+| `.env.hotupdater`       | Local provider settings and registered `HOT_UPDATER_API_KEY`, kept private and ignored |
+| Update server base URL  | The actual deployed endpoint, including a provider base path when required             |
+| Remote resources        | The selected account/project, database and storage match the local config              |
 
 For every managed provider, `init` imports `apiKeys`, `insights`, and
 `remoteConfig` from `hot-updater/plugins` and writes
@@ -64,6 +65,19 @@ For every managed provider, `init` imports `apiKeys`, `insights`, and
 If it cannot safely merge an existing config, it keeps the file and prints the
 imports and settings to add. A later spread or computed property must not
 override the `plugins` list.
+
+A new config sets `updateStrategy: "fingerprint"`, and `init` then writes
+`fingerprint.json`, which native builds embed and `deploy` targets. If it can't
+compute the fingerprint, it prints `npx hot-updater fingerprint create` as the
+next step. An existing config keeps its strategy. To target store versions
+yourself instead, use
+[`appVersion`](/docs/guides/update-strategies/app-version).
+
+`init` also writes `secrets: localSecrets()`, which keeps the CLI's keys on
+this machine only. Working alone, keep it; when teammates or CI must share the
+same keys, switch to a
+[team store](/docs/concepts/secrets#this-machine-or-the-team): `infisical()`
+with any provider, or the store of the cloud you already use.
 
 The server URL and **client** API key connect the app to the server.
 `.env.hotupdater` is not automatically loaded into the mobile app. Provider,
@@ -88,14 +102,15 @@ build adapter, native loading, compatibility and test channel.
 ## Build configuration
 
 The [build configuration](/docs/get-started/app-setup#build-configuration)
-section covers Bare, Rock and Expo. Keep its build setting alongside your
+section covers Bare, Rock, Expo and One. Keep its build setting alongside your
 provider's storage, database and plugins settings.
 
 ## Native code setup
 
 Native integration is required before the first Release build. Expo applies the
-native changes through its config plugin during prebuild; bare and Rock apps
-configure native bundle loading directly.
+native changes through its config plugin during prebuild, and One through
+`hotUpdaterPatches`; bare and Rock apps configure native bundle loading
+directly.
 
 ### Android
 

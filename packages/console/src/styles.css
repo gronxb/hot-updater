@@ -40,6 +40,20 @@ code {
   --destructive: oklch(0.577 0.245 27.325);
   --success: oklch(0.448 0.119 151.328);
   --warning: oklch(0.473 0.137 46.201);
+  /*
+   * A channel's badge, by name, and any other channel's. Each text keeps
+   * AA contrast on its own 10% tint.
+   */
+  --channel-production: oklch(0.507 0.154 150.069);
+  --channel-staging: oklch(0.534 0.135 66.442);
+  --channel-dev: oklch(0.488 0.243 264.376);
+  --channel-other: oklch(0.373 0.034 259.733);
+  /*
+   * A muted badge's text, border, and tint: a qualifier such as "Sandbox".
+   * Muted-foreground's hue, 0.033 L darker here so the text keeps AA on its
+   * own 10% tint.
+   */
+  --badge-muted: oklch(0.52 0.013 58.071);
   --border: oklch(0.923 0.003 48.717);
   --input: oklch(0.923 0.003 48.717);
   --ring: oklch(0.709 0.01 56.259);
@@ -83,6 +97,11 @@ code {
   --destructive: oklch(0.704 0.191 22.216);
   --success: oklch(0.792 0.209 151.711);
   --warning: oklch(0.828 0.189 84.429);
+  --channel-production: oklch(0.792 0.209 151.711);
+  --channel-staging: oklch(0.852 0.199 91.936);
+  --channel-dev: oklch(0.707 0.165 254.624);
+  --channel-other: oklch(0.707 0.022 261.325);
+  --badge-muted: var(--muted-foreground);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.553 0.013 58.071);
@@ -126,6 +145,11 @@ code {
   --color-destructive: var(--destructive);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-channel-production: var(--channel-production);
+  --color-channel-staging: var(--channel-staging);
+  --color-channel-dev: var(--channel-dev);
+  --color-channel-other: var(--channel-other);
+  --color-badge-muted: var(--badge-muted);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);

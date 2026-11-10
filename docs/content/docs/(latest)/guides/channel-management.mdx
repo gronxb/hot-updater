@@ -31,7 +31,7 @@ integrations manage those rows through the
 
 ### 1. Specify the Channel in Native Configuration
 
-<Tabs items={["Basic", "Expo"]}>
+<Tabs items={["Basic", "Expo", "One"]}>
   <Tab value="Basic">
     Use the `hot-updater channel set` command to specify your desired channel.
 
@@ -60,6 +60,7 @@ integrations manage those rows through the
       ```
       </Tab>
     </Tabs>
+
   </Tab>
   <Tab value="Expo">
     For Expo, add the channel to the plugin configuration in your `app.json`
@@ -89,6 +90,25 @@ integrations manage those rows through the
     ```package-install
     npx expo prebuild --clean
     ```
+
+  </Tab>
+  <Tab value="One">
+    For One, set the channel in `hotUpdaterPatches` in `vite.config.ts`.
+
+    ```ts title="vite.config.ts (excerpt)"
+    native: {
+      app: {
+        patches: hotUpdaterPatches({ channel: "<your-channel-name>" }), // [!code ++]
+      },
+    },
+    ```
+
+    Then run `one prebuild` to apply the changes to the native projects.
+
+    ```package-install
+    npx one prebuild
+    ```
+
   </Tab>
 </Tabs>
 
@@ -136,7 +156,7 @@ channel.
 
 After setting the channel, rebuild your app in Release mode:
 
-<Tabs items={["Bare (React Native CLI)", "Rock", "Expo"]}>
+<Tabs items={["Bare (React Native CLI)", "Rock", "Expo", "One"]}>
   <Tab value="Bare (React Native CLI)">
     **iOS:**
     ```sh
@@ -148,6 +168,7 @@ After setting the channel, rebuild your app in Release mode:
     ```sh
     npx react-native run-android --mode Release
     ```
+
   </Tab>
   <Tab value="Rock">
     **iOS:**
@@ -159,6 +180,7 @@ After setting the channel, rebuild your app in Release mode:
     ```sh
     npx rock run:android --variant Release
     ```
+
   </Tab>
   <Tab value="Expo">
     **iOS:**
@@ -170,6 +192,23 @@ After setting the channel, rebuild your app in Release mode:
     ```sh
     npx expo run:android --variant release
     ```
+
+  </Tab>
+  <Tab value="One">
+    Set the channel in `hotUpdaterPatches` in `native.app.patches`, then
+    regenerate and build the native projects:
+    ```sh
+    npx one prebuild
+    ```
+
+    **iOS:** open `ios/<App>.xcworkspace` in Xcode and run the Release
+    configuration.
+
+    **Android:**
+    ```sh
+    cd android && ./gradlew installRelease
+    ```
+
   </Tab>
 </Tabs>
 
@@ -183,6 +222,28 @@ npx hot-updater deploy -p <"ios" | "android"> -c "<channel>"
 
 Replace `<channel>` with your target channel name, for example `dev`, `staging`,
 or `production`.
+
+## Delete a Channel
+
+Delete a channel with its bundles, such as a closed pull request's channel:
+
+```package-install
+npx hot-updater channel delete <channel>
+```
+
+The command disables and deletes each bundle in the channel, then the
+channel. Add `--yes` to skip the confirmation in CI. A channel a native build
+embeds as its default channel is kept, unless `--native-builds` deletes those
+builds too, each with its built-in bundle and its artifact in storage, as
+[`hot-updater native-build delete`](/docs/guides/native-build#delete-a-build)
+deletes one:
+
+```package-install
+npx hot-updater channel delete <channel> --native-builds --yes
+```
+
+[Pull Request Previews](/docs/guides/pull-request-previews) cleans up a
+closed pull request this way.
 
 ## Check the Current Channel
 
@@ -223,7 +284,7 @@ export default function App() {
 ```
 
 `init` configures the client without checking for updates. Call
-`hotUpdater.checkForUpdate({ updateStrategy: "appVersion" })` when your app is
+`hotUpdater.checkForUpdate({ updateStrategy: "fingerprint" })` when your app is
 ready, then download and apply through the
 [custom update flow](/docs/guides/custom-update).
 

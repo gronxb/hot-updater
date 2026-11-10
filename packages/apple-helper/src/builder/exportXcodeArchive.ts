@@ -1,22 +1,34 @@
-import { createRandomTmpDir } from "../utils/createRandomTmpDir";
 import { prettifyXcodebuildError } from "../utils/prettifyXcodebuildError";
 import { runXcodebuildWithLogging } from "../utils/runXcodebuildWithLogging";
 
+/** Exports the archive into `exportPath`. */
 export const exportXcodeArchive = async ({
   archivePath,
+  exportPath,
   sourceDir,
   exportExtraParams,
   exportOptionsPlist,
   logPrefix,
+  logFilePath,
+  title,
+  authenticationArgs,
 }: {
   archivePath: string;
+  /** Where the export, such as the `.ipa`, is written. */
+  exportPath: string;
+  /** Signing arguments from `resolveXcodeAuthenticationArgs`. */
+  authenticationArgs?: string[];
   exportExtraParams?: string[];
   exportOptionsPlist: string;
   logPrefix: string;
+  /** The log to append to, such as the archive's. */
+  logFilePath?: string;
+  /** The step's name, such as the scheme's. */
+  title: string;
   sourceDir: string;
 }): Promise<{ exportPath: string }> => {
-  const exportPath = await createRandomTmpDir();
   const exportArgs = prepareExportArgs({
+    authenticationArgs,
     archivePath,
     exportPath,
     exportOptionsPlist,
@@ -27,9 +39,11 @@ export const exportXcodeArchive = async ({
     await runXcodebuildWithLogging({
       args: exportArgs,
       sourceDir,
-      successMessage: "Archive exported successfully",
+      title: `Exporting ${title}`,
+      successMessage: `Exported ${title}`,
       failureMessage: "Export failed",
       logPrefix,
+      logFilePath,
     });
 
     return { exportPath };
@@ -43,8 +57,10 @@ const prepareExportArgs = ({
   archivePath,
   exportExtraParams,
   exportOptionsPlist,
+  authenticationArgs,
 }: {
   archivePath: string;
+  authenticationArgs?: string[];
   exportExtraParams?: string[];
   exportOptionsPlist: string;
   exportPath: string;
@@ -56,6 +72,10 @@ const prepareExportArgs = ({
     "-exportPath",
     exportPath,
   ];
+
+  if (authenticationArgs) {
+    args.push(...authenticationArgs);
+  }
 
   if (exportExtraParams) {
     args.push(...exportExtraParams);

@@ -65,7 +65,7 @@ export default function App() {
 
     try {
       const update = await hotUpdater.checkForUpdate({
-        updateStrategy: "appVersion",
+        updateStrategy: "fingerprint",
       });
 
       if (!update) {
@@ -121,14 +121,16 @@ and required updates. For background downloads or a separate restart prompt,
 see [Control update timing](/docs/guides/custom-update). To check when the app
 starts instead, with an optional loading screen, wrap the root with
 [`hotUpdater.wrap`](/docs/react-native-api/wrap):
-`export default hotUpdater.wrap({ updateStrategy: "appVersion" })(App)`.
+`export default hotUpdater.wrap({ updateStrategy: "fingerprint" })(App)`.
 
 Replace the URL and client-key placeholders using your verified provider setup.
 Keep any provider base path; the SDK appends the catalog and artifact routes.
 Use the same `updateStrategy` in `checkForUpdate` and `hot-updater.config.ts`.
-`appVersion` is the default; choose
-[fingerprint](/docs/guides/update-strategies/fingerprint) when you want to track
-native compatibility inputs.
+New projects use [`fingerprint`](/docs/guides/update-strategies/fingerprint),
+which `init` writes: an update reaches only builds with the same native
+interface. Choose [`appVersion`](/docs/guides/update-strategies/app-version)
+when you'd rather target store versions yourself with `deploy -t`. A config
+that sets no `updateStrategy` uses `appVersion`.
 
 The client key is intended for the app. Provider tokens, service-role keys,
 admin bearer tokens and signing private keys stay in the deployment environment
@@ -202,7 +204,7 @@ Setup configures bundling through the `build` field in `hot-updater.config.ts`.
 Keep the selected build adapter alongside your existing storage, database and
 plugins settings.
 
-<Tabs items={['Bare (React Native CLI)', 'Rock', 'Expo']}>
+<Tabs items={['Bare (React Native CLI)', 'Rock', 'Expo', 'One']}>
   <Tab value="Bare (React Native CLI)">
 
 Use the Bare build adapter for standard React Native CLI projects:
@@ -212,7 +214,8 @@ import { bare } from "@hot-updater/bare"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  build: bare({ // [!code ++:3]
+  build: bare({
+    // [!code ++:3]
     enableHermes: true,
   }),
   // ... storage, database, plugins, and updateStrategy
@@ -241,7 +244,8 @@ No additional Babel plugin setup is required.
   </Tab>
   <Tab value="Expo">
 
-Use the Expo build adapter in `hot-updater.config.ts`:
+Hot Updater needs Expo SDK 55 or later. Use the Expo build adapter in
+`hot-updater.config.ts`:
 
 ```ts title="hot-updater.config.ts"
 import { expo } from "@hot-updater/expo"; // [!code ++]
@@ -259,14 +263,15 @@ Then add the config plugin to your `app.json`:
 {
   "expo": {
     "plugins": [
-      [ // [!code ++:6]
+      [
+        // [!code ++:6]
         "@hot-updater/expo",
         {
-          "channel": "ota-test"
-        }
-      ]
-    ]
-  }
+          "channel": "ota-test",
+        },
+      ],
+    ],
+  },
 }
 ```
 
@@ -282,9 +287,49 @@ npx expo prebuild
 </Callout>
 
 <Callout type="info">
-  Expo DOM components (`use dom`) need Expo SDK 55 or later and a Babel
-  plugin; see [Expo DOM Components (`use
-  dom`)](/docs/build-adapters/expo#expo-dom-components-use-dom).
+  Expo DOM components (`use dom`) need a Babel plugin; see [Expo DOM Components
+  (`use dom`)](/docs/build-adapters/expo#expo-dom-components-use-dom).
+</Callout>
+
+  </Tab>
+  <Tab value="One">
+
+Hot Updater needs One 2.15 or later. Use the One build adapter in
+`hot-updater.config.ts`:
+
+```ts title="hot-updater.config.ts"
+import { one } from "@hot-updater/one"; // [!code ++]
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  build: one(), // [!code ++]
+  // ... storage, database, plugins, and updateStrategy
+});
+```
+
+Then add `hotUpdaterPatches` to `native.app.patches` in `vite.config.ts`:
+
+```ts title="vite.config.ts (excerpt)"
+import { hotUpdaterPatches } from "@hot-updater/one/patches"; // [!code ++]
+
+native: {
+  app: {
+    // ... name, ios, android
+    patches: hotUpdaterPatches({ channel: "ota-test" }), // [!code ++]
+  },
+},
+```
+
+Run prebuild to apply the native changes:
+
+```package-install
+npx one prebuild
+```
+
+<Callout>
+  `one prebuild` regenerates `ios/` and `android/`, and applies the native code
+  configuration described in the next section through the patches on every run.
+  See the [One adapter](/docs/build-adapters/one#one-configuration).
 </Callout>
 
   </Tab>
@@ -298,8 +343,8 @@ code. Use the variant matching your project; do not replace the entire native
 file with a sample application's boilerplate.
 
 <Callout type="info">
-  If you're using Expo with the plugin configured above, this step is handled
-  automatically during prebuild.
+  If you're using Expo or One with the plugin or patches configured above, this
+  step is handled automatically during prebuild.
 </Callout>
 
 ### Android
@@ -622,12 +667,13 @@ Before a store release, choose the channel that binary should use and rebuild.
 
 If this app uses [bundle signing](/docs/guides/bundle-signing), embed the matching
 public key before building. Signing is opt-in; server provisioning alone does
-not enable it. Preserve an existing signer and its public key.
+not enable it. Preserve an existing signing key and its public key.
 
-For `appVersion`, record the native app version that the OTA will target. For
-`fingerprint`, run `fingerprint create` and commit `fingerprint.json` before the
-native build, which embeds the fingerprint, as the
+For `fingerprint`, commit the `fingerprint.json` init wrote, or run
+`fingerprint create` if it named that as the next step, before the native
+build, which embeds the fingerprint, as the
 [fingerprint workflow](/docs/guides/update-strategies/fingerprint) describes.
+For `appVersion`, record the native app version that the OTA will target.
 
 ## Verify the integration
 

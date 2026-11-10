@@ -1,0 +1,384 @@
+---
+title: "Sandbox builds"
+description: "Build your own app with a native testing layer that store builds never compile, and keep it out of store review."
+icon: FlaskConical
+---
+
+## What a sandbox build is
+
+A sandbox build is your own app, with the same native modules and the same
+fingerprint, plus a native layer for testing. Set `sandbox: true` on a scheme
+in `hot-updater.config.ts`:
+
+```ts title="hot-updater.config.ts"
+export default defineConfig({
+  nativeBuild: {
+    ios: {
+      release: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        signing: { ascApiKey: secret("asc-api-key") },
+      },
+      sandbox: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        signing: { ascApiKey: secret("asc-api-key") },
+        sandbox: true,
+      },
+    },
+    android: {
+      sandbox: {
+        packageName: "com.example.app",
+        aab: false,
+        sandbox: true,
+      },
+    },
+  },
+});
+```
+
+Build it like any other scheme:
+
+```package-install
+npx hot-updater native-build ios --scheme sandbox
+```
+
+No project file changes. Any other scheme, and any build from Xcode or Gradle
+directly, doesn't compile the layer, even after a sandbox build in the same
+checkout. Before a build is tracked or uploaded, the CLI reads the artifact and
+refuses one that holds the wrong thing.
+
+## What changes in the app
+
+|                 | iOS                                 | Android                                |
+| --------------- | ----------------------------------- | -------------------------------------- |
+| App ID          | Same bundle ID by default           | `.sandbox` added to the application ID |
+| Default channel | `sandbox-<scheme>`                  | `sandbox-<scheme>`                     |
+| URL scheme      | `hu-sandbox-<app ID>` by default    | `hu-sandbox-<package name>` by default |
+| First screen    | Before the app's JavaScript         | Before the app's JavaScript            |
+| Install         | TestFlight internal, or a simulator | Direct `.apk`, or internal testing     |
+
+On Android, the two install side by side. The suffix goes after
+`defaultConfig`'s suffix and before a flavor's, as in
+`com.example.app.base.sandbox.staging`. What your manifest fixes stays the same in
+both:
+
+- A provider with a hard-coded `android:authorities` stops the second install with
+  `INSTALL_FAILED_CONFLICTING_PROVIDER`. Use `${applicationId}` in it.
+- Both apps declare your app's own link, so Android asks which one opens it while
+  both are installed.
+- Firebase needs an Android app for the `.sandbox` ID. Add it to the project and
+  download `google-services.json` again.
+
+On iOS, with the same bundle ID, the sandbox build replaces the store app on a
+device. [A separate app](#a-separate-app-on-ios) installs beside it.
+
+The channel `sandbox-<scheme>` is reserved. A normal build can't register on a
+`sandbox-*` channel, and a sandbox build can't register on any other. The
+registry records the build as a sandbox build (`is_sandbox` on its row, which
+`native-build import` reads from the artifact), so the Console tags it
+**Sandbox** and `native-build find` prints it beside its kind.
+`native-build find --scheme <scheme>` looks on that channel by itself, and with
+`--json` adds `sandbox`: the `appId` its links derive from, and `otherBuilds`,
+whether the platform has builds there with other native code when none matched.
+
+A build on a `sandbox-*` channel is in another scope than your store build, so
+testing builds on a sandbox scheme don't touch the base a store install's first
+OTA [patches from](/docs/guides/native-build#mark-the-store-build). A sandbox
+build can't be marked as the store build either.
+
+## What runs first
+
+A sandbox build shows a native screen before your app's JavaScript starts. Tap the
+big row to start your app.
+
+| How the app starts                                 | What happens                                                           |
+| -------------------------------------------------- | ---------------------------------------------------------------------- |
+| Launcher icon, cold                                | The screen                                                             |
+| Launcher icon, app running                         | The running app                                                        |
+| A sandbox link                                     | The screen, which asks to open it                                      |
+| Your app's own link, a notification, or a shortcut | Your app, no screen                                                    |
+| A silent push or a background task                 | Your app in the background. With the screen up, your app keeps waiting |
+| `reload()`                                         | Your app, no screen                                                    |
+
+### The screen
+
+| Part            | What it does                                                                                                            |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Big row         | Starts the bundle the next launch runs, named by the bundle: an update on the default channel isn't the built-in bundle |
+| Dev server      | Lists hosts and takes a new one. Tapping one runs its JavaScript in this build. See [Dev server](#dev-server)           |
+| Scan QR code    | iOS scans in the app. Android opens the system camera, so check that your phone's camera opens the link                 |
+| Enter a channel | A channel name or a whole link, then **Open latest**                                                                   |
+| Downloaded      | The last 10 bundles a QR code, a link, or a channel downloaded. See [Downloaded bundles](#downloaded-bundles)           |
+| Info            | The build's version, fingerprint and built-in bundle, what's selected and pending, and **Reset to built-in bundle**     |
+
+Opening the screen sends your update server nothing. A channel you type starts right
+away and replaces the current bundle. A preview link always asks first, even one you
+paste, and gets the same fingerprint check as a scanned one.
+
+Shake the device to open the same screen over your running app. It says what's
+running, and **Reload** runs it again. When the next launch would run another
+bundle, the screen says which. The close button returns to your app, as does Back
+on Android.
+
+After a launch that failed, a banner says what happened:
+
+| What happened                               | What the banner says                                             |
+| ------------------------------------------- | ---------------------------------------------------------------- |
+| A crash before the bundle's first screen    | It crashed, and the device rolled back                           |
+| A launch that ended before its first screen | It didn't reach its first screen, and the device rolled back     |
+| A crash after the bundle's first screen     | It crashed and stays selected, with **Reset to built-in bundle** |
+
+A bundle that reached its first screen has passed its check, so a later crash doesn't
+roll it back. Opening it runs it again until you switch or reset.
+
+### Downloaded bundles
+
+Each bundle a QR code, a link, or a channel downloads stays listed, newest first, up
+to 10. Tapping one runs that exact bundle again, offline, without asking your update
+server:
+
+- It runs until the app restarts. A cold start opens the current bundle again, and
+  **Back to current bundle** returns to it sooner.
+- Your app's update check finds nothing to install while it runs. Offline, that
+  check fails as on any offline launch.
+- A crash in it never rolls back the current bundle.
+- `HotUpdater.getBundleId()` returns the bundle ID its row shows.
+
+Press and hold a row for **Open latest** on its channel, or to delete it. The
+copies live in the app's cache, so the system may remove them. A row whose copy is
+gone checks its channel instead.
+
+On iOS, only a sandbox with its own bundle ID, ending in `.sandbox`, keeps copies,
+so nothing stays in the store app. With the store app's ID, every row checks its
+channel. See [A separate app](#a-separate-app-on-ios).
+
+### Links
+
+On Android, a notification that opens a bare `getLaunchIntentForPackage` intent looks
+just like the launcher icon, so a cold start shows the screen. An extra on the
+intent, or your activity as its component, opens your app.
+
+A sandbox link looks like this:
+
+```text
+hu-sandbox-com-example-app://hot-updater/preview?channel=staging&fingerprint=<hash>
+```
+
+It never reaches your app's `Linking`, or the connection options of a scene
+delegate. On iOS, an app delegate with no scene delegate still finds it in the launch
+options of `didFinishLaunching`. The app ID in it is the scheme's `bundleIdentifier`
+or `packageName`, without the `.sandbox` suffix. To use another URL scheme, set
+`sandbox: { urlScheme: "acme-preview" }` on the scheme instead of `sandbox: true`:
+lower case, and none your app registers itself. A build keeps the scheme it was
+built with, so a new one takes effect at the next sandbox build.
+[Pull request previews](/docs/guides/pull-request-previews#open-a-pull-request-in-a-sandbox-build)
+comment one with its QR code for each pull request.
+
+### Opening a link
+
+A link from another native build is refused with no request. Otherwise the screen
+asks, naming the channel, because opening one deletes downloaded bundles. Then
+the build asks the server whether the channel has a bundle for it, and stops there
+if it doesn't, with your downloads untouched. If the download fails after that,
+the screen shows what's selected now, the built-in bundle, and offers **Retry**.
+
+A sandbox build learns your update server from your app, when a server answers one
+of its update checks. Until then a link waits, across restarts, and asks once a
+check is answered. An app that holds its first check back, such as behind a consent
+prompt, holds the link back too.
+
+### Supported hosts
+
+| Platform | Tested with                                                                |
+| -------- | -------------------------------------------------------------------------- |
+| iOS      | React Native 0.74, 0.85 and 0.88 app delegates, and Expo SDK 55, 57 and 58 |
+| Android  | React Native 0.74, 0.85 and 0.88, and Expo SDK 55, 57 and 58               |
+
+No other Expo SDK has been tested. Hot Updater needs Expo SDK 55 or later.
+
+On iOS, the screen holds your root view inside a stable container until **Open**,
+so overlays and constraints you add to it stay, and a background color you set on it
+goes on your real root. Code that uses it as a React Native
+root before then starts your app at once, without the screen. On a host with no
+`RCTRootViewFactory`, or one that creates its root another way, the app logs that
+and starts as usual. A background launch that's neither a notification, a
+background fetch nor a registered task starts your app after 2 seconds.
+
+On iOS, return `HotUpdater.bundleURL()` from your delegate's `bundleURL` each time
+it's called. React Native loads what the delegate returns, so a URL stored before
+the screen can name a bundle the switch deleted: the app crashes once, and the next
+launch opens what's selected.
+
+An Expo config plugin that returns its own root from a React delegate handler is
+one of those: Hot Updater's CLI already refuses `expo-updates`, which does this.
+
+## Dev server
+
+A sandbox build can run JavaScript from a dev server instead of a bundle. Start
+Metro, and enter its address on the first screen, such as `192.168.0.2:8081`. The
+screen lists addresses you used before and asks each once whether it's running.
+Addresses are entered on the device: a link can't set one.
+
+The build loads a `dev=false` bundle and reloads when you tap **Reload**, which
+fetches it again. There's no Fast Refresh, dev menu or debugger, and changes don't
+appear until you reload. To change the address, tap **Exit dev server**, then connect
+to the new one.
+
+While a dev server runs:
+
+- `reload()` stays on the dev server. Only **Exit dev server** on the screen returns
+  to your app's bundle.
+- A crash ends the session: the next launch is a normal one, and a crash of dev
+  JavaScript is never held against a bundle.
+- An update check finds nothing, so `wrap`'s forced update can't end the session.
+  The check does reach your server, on a channel with no releases,
+  `hot-updater-sandbox-dev-server`.
+- `updateBundle`, `resetChannel` and the launch report change nothing. What's
+  staged stays staged, and the report of your last normal launch waits for your
+  next one.
+- `getBundleId()` reports the built-in bundle, whatever runs, and `getChannel()`
+  reports that channel. Plugin values live in the session, apart from your app's.
+  `setCohort` still applies, since it belongs to the device.
+- A preview link asks first, then exits the dev server and asks again on your
+  app's bundle. Switching channels waits for **Exit dev server** the same way.
+
+On Android, the JavaScript and its assets download into the app's files, apart from
+updates, and go when a normal launch starts. Each of these replaces the process. On
+iOS, the JavaScript and its assets load from the server, and each of these reloads
+in place. A launch of the selected bundle in progress stops counting.
+
+The build allows plain http on the device. On Android, a `networkSecurityConfig` of
+your own still wins: the screen says when it blocks the address, and you allow it
+there. On iOS, that's local addresses, with the system's local network prompt, unless your app already sets `NSAllowsLocalNetworking` to false.
+
+The server must answer `/status` and `/index.bundle`. An Expo server's manifest names
+the entry and its transform instead. On Android it must list its assets too, which Metro does and Re.Pack's dev
+server doesn't, and the screen says so. A host's own native update check, from iOS native code during a session,
+isn't kept from your selection: run it before the first screen, as a launch does.
+
+## Stores
+
+A sandbox build can't reach store review.
+
+**iOS.** The export sets `testFlightInternalTestingOnly`. The CLI checks the flag
+in the `.ipa` before it uploads, and reads `buildAudienceType` afterwards. A build
+that isn't `INTERNAL_ONLY` fails. Internal groups with access to all builds
+receive it, as they do any other build.
+
+A scheme's own App Store Connect `exportOptionsPlist` that sets
+`testFlightInternalTestingOnly` to `false` is refused. A
+[`release-testing` export](/docs/native-builds/iphone-install) never reaches App
+Store Connect, so it takes no such flag.
+
+`--testflight-group <name>` adds the build to an internal group, and
+`--what-to-test <text>` sets its What to Test, once App Store Connect has processed
+it. A group that isn't internal stops the command before it builds. For a build
+already on TestFlight, `native-build testflight-group <id> <group> --scheme <scheme>`
+adds it to an internal group with no new upload.
+
+**Android.** `--submit play-internal` is the only upload it takes. Google Play
+needs its own app record for the `.sandbox` ID, and a first upload by hand. The
+CLI reads the highest version code Google Play has and builds past it. Play
+Console can still promote an internal build, so keep that in mind when you grant
+access.
+
+A cached build the store may already hold gets a new number instead of an upload
+the store would refuse. [Pull request previews](/docs/guides/pull-request-previews#install-through-testflight-or-google-play)
+run these uploads from a pull request.
+
+### A separate app on iOS
+
+The bundle ID comes from your Xcode build settings, and `bundleIdentifier` names
+it. To sit beside the store app, give the sandbox scheme a configuration of its
+own:
+
+1. In Xcode, duplicate the `Release` configuration as `Sandbox`, and set the app
+   target's Product Bundle Identifier to `com.example.app.sandbox` for it. An app
+   extension needs its own ID under that one. The `.sandbox` ending is what turns on
+   [Downloaded bundles](#downloaded-bundles).
+2. Map the configuration in the `Podfile`, then run `pod install`:
+
+   ```ruby
+   project 'ExampleApp', 'Sandbox' => :release
+   ```
+
+3. Name both in the scheme:
+
+   ```ts
+   sandbox: {
+     bundleIdentifier: "com.example.app.sandbox",
+     scheme: "ExampleApp",
+     configuration: "Sandbox",
+     signing: { ascApiKey: secret("asc-api-key") },
+     sandbox: true,
+   },
+   ```
+
+4. For TestFlight, create an app record for that ID in App Store Connect by hand:
+   its API can't create one.
+
+With Expo, when `expo prebuild` generates `ios/`, it removes a configuration you add
+in Xcode. Set the ID from the environment instead:
+
+```js title="app.config.js"
+const isSandbox = process.env.APP_VARIANT === "sandbox";
+
+module.exports = ({ config }) => ({
+  ...config,
+  ios: {
+    ...config.ios,
+    bundleIdentifier: isSandbox ? "com.example.app.sandbox" : "com.example.app",
+  },
+});
+```
+
+Name that ID in the scheme, with no `configuration`, and build with the variable set:
+
+```bash
+APP_VARIANT=sandbox npx hot-updater native-build ios --scheme sandbox
+```
+
+The next build without the variable goes back to `com.example.app`.
+
+The URL scheme and the App Store Connect app follow `bundleIdentifier`, so a build
+stops if Xcode built another ID. The update channel and fingerprint don't change.
+
+### Closed versions on iOS
+
+App Store Connect refuses a build of a version it already approved, or of a
+lower one. With an App Store Connect API key, the CLI reads the approved versions
+before it exports:
+
+- Under the `fingerprint` strategy, it raises the sandbox build's version past the
+  approved one, in the app and its extensions.
+- Under the `appVersion` strategy, the version is what updates target, so it stops
+  and asks you to raise the app version.
+
+The build number becomes the one after the app's highest.
+
+## What can't build yet
+
+`hot-updater doctor` reports each of these for a sandbox scheme.
+
+| The project has                                            | What happens                                     |
+| ---------------------------------------------------------- | ------------------------------------------------ |
+| A `Debug` configuration or variant                         | Refused: it skips OTA updates                    |
+| Swift Package Manager on iOS                               | Refused                                          |
+| AGP 9's default DSL                                        | Refused: set `android.newDsl=false`              |
+| Its own `src/<buildType>/AndroidManifest.xml`              | Refused: move what it declares to `src/main`     |
+| A `google-services.json` with no client for the ID         | Google's plugin fails the build: add the client  |
+| The Rock adapter, on Android                               | Refused: build it with the bare adapter          |
+| The SDK as a prebuilt AAR, on Android                      | Refused: compile it from source                  |
+| The Rock adapter on iOS, `use_frameworks`, app extensions  | Builds, but untested: check it on a device first |
+| An Expo SDK other than 55, 57 or 58                        | Builds, but untested: check it on a device first |
+
+The build itself refuses, with the fix, a launcher its activity can't take over:
+
+- None, or more than one, in the variant's merged manifest. An `activity-alias` is
+  fine, as long as it's the only one: the sandbox's activity takes its label, icon
+  and shortcuts, and opens it.
+- `singleInstance`, `singleInstancePerTask`, `taskAffinity` or a `documentLaunchMode`
+  on the launcher's activity. `singleTask` is fine.
+- An `android:process` on the launcher's activity other than the application's. An
+  `android:process` on `<application>` is fine: the sandbox runs in that process too.

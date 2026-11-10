@@ -5,10 +5,8 @@ export default defineConfig({
     config: "./src/config.ts",
     index: "./src/index.ts",
     plugins: "./src/plugins.ts",
-    signing: "./src/signing.ts",
   },
   deps: {
-    neverBundle: ["@aws-sdk/client-kms", "@google-cloud/kms"],
     onlyBundle: false,
   },
   exports: {
@@ -26,13 +24,8 @@ export default defineConfig({
         import: "./dist/plugins.mjs",
         require: "./dist/plugins.mjs",
       },
-      "./signing": {
-        types: "./dist/signing.d.mts",
-        import: "./dist/signing.mjs",
-        require: "./dist/signing.mjs",
-      },
     },
-    exclude: ["index", "plugins", "signing"],
+    exclude: ["index", "plugins"],
     inlinedDependencies: true,
     legacy: true,
   },

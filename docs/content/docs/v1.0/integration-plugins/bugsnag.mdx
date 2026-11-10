@@ -1,0 +1,158 @@
+---
+title: "BugSnag"
+description: "The `withBugsnag()` plugin for hot-updater enables automatic sourcemap upload to BugSnag during the update bundle build process."
+icon: bugsnag
+---
+
+import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
+
+## Prerequisites
+
+- BugSnag Account: Sign up here if you don't have one.
+- API Key: Copy the API key of your project from your BugSnag dashboard.
+- Complete the [BugSnag React Native setup](https://docs.bugsnag.com/platforms/react-native/react-native/manual-setup/), including the `@bugsnag/react-native` runtime package, iOS pods, and native API-key configuration and initialization. Verify that your app reports a test error before adding OTA sourcemap uploads.
+- Install the plugin:
+
+```package-install
+npm install @hot-updater/bugsnag-plugin @bugsnag/cli --save-dev
+```
+
+## Step 1: Wrap your build adapter
+
+Use `withBugsnag()` to wrap any compatible build adapter such as bare.
+
+<Tabs items={['Bare', 'Expo', 'Rock']}>
+  <Tab value="Bare">
+
+```ts title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
+import { bare } from "@hot-updater/bare";
+import { withBugsnag } from "@hot-updater/bugsnag-plugin"; // [!code ++]
+import { defineConfig } from "hot-updater";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
+export default defineConfig({
+  build: withBugsnag( // [!code ++]
+    bare({
+      enableHermes: false, // or true, depending if you want to use it
+      // Required for sourcemap upload
+      sourcemap: true, // [!code ++]
+    }),
+    { // [!code ++]
+      // Your BugSnag project API key
+      apiKey: process.env.BUGSNAG_API_KEY!, // [!code ++]
+    }, // [!code ++]
+  ), // [!code ++]
+  // .. your other config
+});
+```
+</Tab>
+<Tab value="Expo">
+
+```ts title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
+import { withBugsnag } from "@hot-updater/bugsnag-plugin"; // [!code ++]
+import { defineConfig } from "hot-updater";
+import { expo } from "@hot-updater/expo";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
+export default defineConfig({
+  build: withBugsnag( // [!code ++]
+    expo({
+      // Required for sourcemap upload
+      sourcemap: true, // [!code ++]
+    }),
+    { // [!code ++]
+      // Your BugSnag project API key
+      apiKey: process.env.BUGSNAG_API_KEY!, // [!code ++]
+    }, // [!code ++]
+  ), // [!code ++]
+  // .. your other config
+});
+```
+</Tab>
+
+<Tab value="Rock">
+
+```ts title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
+import { withBugsnag } from "@hot-updater/bugsnag-plugin"; // [!code ++]
+import { defineConfig } from "hot-updater";
+import { rock } from "@hot-updater/rock";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
+export default defineConfig({
+  build: withBugsnag( // [!code ++]
+    rock({
+      // Required for sourcemap upload
+      sourcemap: true, // [!code ++]
+    }),
+    { // [!code ++]
+      // Your BugSnag project API key
+      apiKey: process.env.BUGSNAG_API_KEY!, // [!code ++]
+    }, // [!code ++]
+  ), // [!code ++]
+  // .. your other config
+});
+```
+
+</Tab>
+
+</Tabs>
+
+With a [managed provider](/docs/v1.0/get-started/choose-provider#set-up-a-provider-preset),
+`hot-updater init` keeps this wrapped build when it updates the storage,
+database, and plugins in `hot-updater.config.ts`.
+
+<Callout title="Automatic Upload">
+`withBugsnag()` uploads one bundle and its sourcemap during `hot-updater deploy`,
+using the Hermes bundle and map when available. Additional bundles or chunk
+maps require separate uploads through BugSnag's tooling. Each upload uses a
+`codeBundleId`, which defaults to the artifact ID recorded in the generated
+manifest.
+</Callout>
+
+## Step 2: Set the `codeBundleId` in your app
+
+BugSnag matches errors from OTA-updated apps to the uploaded sourcemaps through
+the `codeBundleId`. Add the file identifier from the current manifest to your
+existing `Bugsnag.start` options, retaining the rest of your configuration:
+
+```tsx title="App.tsx"
+import Bugsnag from "@bugsnag/react-native";
+
+import { hotUpdater } from "./src/hotUpdater"; // [!code ++]
+
+Bugsnag.start({
+  // Keep your existing BugSnag options.
+  codeBundleId: hotUpdater.getManifest().bundleId, // [!code ++]
+});
+```
+
+This keeps sourcemap matching tied to the running code, including when the
+same files are promoted to another channel.
+
+## Step 3: Deploy
+
+Deploy the update to build the bundle and upload its sourcemaps to BugSnag.
+
+```package-install
+npx hot-updater deploy -i
+```
+
+## Verify symbolication
+
+Install a release build, deploy a small JavaScript change with sourcemaps
+enabled, and trigger a controlled test error from the updated code. In your
+monitoring dashboard, confirm the stack points to the original source file
+and line in that update. A successful upload alone does not prove the app and
+uploaded map use the same identity.

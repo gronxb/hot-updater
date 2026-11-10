@@ -138,11 +138,7 @@ describe("a server definition", () => {
   it("starts its plugins without reading or writing the database", () => {
     const { adapter, calls } = recording(createMemoryAdapter());
 
-    for (const aggregateBatching of [
-      undefined,
-      { mode: "log" },
-      { mode: "memory" },
-    ] as const) {
+    for (const aggregateBatching of [undefined, {}] as const) {
       createHotUpdater({
         database: {
           name: "recording",

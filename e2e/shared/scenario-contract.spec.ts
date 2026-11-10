@@ -96,6 +96,9 @@ const defaultScenarioNames = [
   "bspatch-consecutive-diff-ota",
   "bspatch-disabled-chain-rollback",
   "bspatch-manifest-diff-fallback",
+  "store-install-patches-from-built-in",
+  "store-install-built-in-mismatch-downloads",
+  "store-install-patches-from-marked-build",
   "runtime-channel-switch-reset",
   "numeric-cohort-rollout",
   "target-cohorts-only",
@@ -108,6 +111,7 @@ const defaultScenarioNames = [
   "fingerprint-initial-install",
   "catalog-only-no-update",
   "same-bundle-release-adoption",
+  "ota-after-going-back-to-a-build",
   "size-aware-artifact-selection",
   "asset-heavy-ota-uses-archive",
   "stale-catalog-after-newer-generation",
@@ -121,6 +125,7 @@ const defaultScenarioNames = [
   "runtime-channel-crash-restore",
   "ten-crash-history-safe-bundle",
   "remote-config-fetch-activate",
+  "foreign-signing-key-refused",
 ] as const;
 const standaloneDatabaseProfileSources = [
   "examples-server/elysia-drizzle-libsql/src/db.ts",
@@ -223,6 +228,36 @@ async function recordScenarioCalls(
   return calls;
 }
 
+/**
+ * Runs a scenario over a driver that fails `failingStage` with a mismatch, and
+ * passes every other step.
+ */
+async function runScenarioFailingAt(
+  scenarioName: string,
+  failingStage?: string,
+): Promise<readonly string[]> {
+  const stages: string[] = [];
+  const step = (stage: string) => {
+    stages.push(stage);
+    return stage === failingStage
+      ? Promise.reject(new Error(`mismatch at ${stage}`))
+      : Promise.resolve();
+  };
+  await getScenarioDefinition(scenarioName).run({
+    assertText: step,
+    background: step,
+    control: step,
+    launch: step,
+    platform: "ios",
+    reload: step,
+    resetAppState: step,
+    tap: step,
+    terminate: step,
+    typeText: step,
+  });
+  return stages;
+}
+
 async function scenarioStages(
   scenarioName: string,
 ): Promise<readonly string[]> {
@@ -267,6 +302,139 @@ async function controlStepDefinition(
 }
 
 describe("E2E scenario contract", () => {
+  describe("ota-after-going-back-to-a-build", () => {
+    const name = "ota-after-going-back-to-a-build";
+
+    it("passes only when every step holds, and doesn't check again once it has", async () => {
+      await expect(runScenarioFailingAt(name)).resolves.not.toContain(
+        "check once more",
+      );
+    });
+
+    it.each([
+      "build A reports its built-in bundle",
+      "the check installs the OTA",
+      "the server log shows the OTA downloaded",
+      "the next launch runs the OTA",
+    ])("fails when %s doesn't hold, then checks the rest", async (stage) => {
+      await expect(runScenarioFailingAt(name, stage)).rejects.toThrow(
+        `Going back to the build lost the OTA:\nmismatch at ${stage}`,
+      );
+    });
+
+    it.each([
+      "read both builds' IDs from their code",
+      "install the other build",
+      "launch the other build",
+      "the other build runs",
+      "the check did try the server",
+      "install build A again",
+      "launch build A again",
+      "launch build A once more",
+    ])("stops at once when %s fails", async (stage) => {
+      await expect(runScenarioFailingAt(name, stage)).rejects.toThrow(
+        new RegExp(`^mismatch at ${stage}$`),
+      );
+    });
+
+    it("expects only what the app renders and the server's log shows", async () => {
+      const calls = await recordScenarioCalls(name);
+      const controlPaths = calls.flatMap((call) =>
+        call.kind === "control" ? [call.pathName] : [],
+      );
+      expect(new Set(controlPaths)).toEqual(
+        new Set([
+          "/e2e/jobs/read-native-builds",
+          "/e2e/jobs/deploy-bundle",
+          "/e2e/proxy-control",
+          "/e2e/jobs/install-native-build",
+          "/e2e/assert-proxy",
+        ]),
+      );
+    });
+  });
+
+  describe("store-install-patches-from-marked-build", () => {
+    const name = "store-install-patches-from-marked-build";
+    const reason =
+      "The store install's first update wasn't a patch from the marked build:";
+
+    it("passes only when every step holds", async () => {
+      await expect(runScenarioFailingAt(name)).resolves.toEqual(
+        expect.arrayContaining([
+          "mark the store build",
+          "the server log shows only a patch downloaded",
+        ]),
+      );
+    });
+
+    it("names the newer build the mark must win over, and registers it after the store build", async () => {
+      const calls = await recordScenarioCalls(name);
+      const controlSteps = calls.flatMap((call) =>
+        call.kind === "control" ? [call] : [],
+      );
+      const register = controlSteps.filter(
+        ({ pathName }) => pathName === "/e2e/jobs/register-native-build",
+      );
+      expect(register.map(({ body }) => body)).toEqual([
+        { appVersion: "1.0" },
+        { appVersion: "1.0", build: "other", channel: "$storeBuildChannel" },
+      ]);
+      const deploy = controlSteps.find(
+        ({ pathName }) => pathName === "/e2e/jobs/deploy-bundle",
+      );
+      // Naming a base would wait for that patch, so a deploy from the wrong
+      // base would fail on the wait, not on what the device downloads.
+      expect(deploy?.body).not.toHaveProperty("diffBaseBundleId");
+      const steps = controlSteps.map(({ pathName }) => pathName);
+      expect(steps.indexOf("/e2e/jobs/mark-native-build")).toBeLessThan(
+        steps.indexOf("/e2e/jobs/deploy-bundle"),
+      );
+    });
+
+    it.each([
+      "the app installs the first update",
+      "the server log shows only a patch downloaded",
+      "the first update runs",
+    ])("fails when %s doesn't hold, then checks the rest", async (stage) => {
+      await expect(runScenarioFailingAt(name, stage)).rejects.toThrow(
+        `${reason}\nmismatch at ${stage}`,
+      );
+    });
+
+    it.each([
+      "read both builds' IDs from their code",
+      "register the store build",
+      "register a newer build on the store build's channel",
+      "mark the store build",
+      "deploy the first update",
+      "launch the fresh store install",
+      "the store install runs its built-in bundle",
+      "install the first update",
+      "run the first update",
+    ])("stops at once when %s fails", async (stage) => {
+      await expect(runScenarioFailingAt(name, stage)).rejects.toThrow(
+        new RegExp(`^mismatch at ${stage}$`),
+      );
+    });
+
+    it("expects only what the app renders and the server's log shows", async () => {
+      const calls = await recordScenarioCalls(name);
+      const controlPaths = calls.flatMap((call) =>
+        call.kind === "control" ? [call.pathName] : [],
+      );
+      expect(new Set(controlPaths)).toEqual(
+        new Set([
+          "/e2e/jobs/read-native-builds",
+          "/e2e/jobs/register-native-build",
+          "/e2e/jobs/mark-native-build",
+          "/e2e/jobs/deploy-bundle",
+          "/e2e/assert-bundle-artifact-transfers",
+        ]),
+      );
+    });
+  });
+
   it("keeps Console Insights and Remote Config enabled for every standalone database profile", async () => {
     // Given: Console Insights is an acceptance checkpoint after each device
     // scenario, every standalone adapter implements the insights model, and
@@ -293,7 +461,7 @@ describe("E2E scenario contract", () => {
 
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
-    expect(new Set(listScenarioNames()).size).toBe(35);
+    expect(new Set(listScenarioNames()).size).toBe(40);
   });
 
   it("runs every default scenario a native app shell can host in the brownfield suite", () => {
@@ -303,10 +471,17 @@ describe("E2E scenario contract", () => {
       "headless-launch-keeps-staged-bundle",
       "force-update-auto-reload",
       "skipped-force-update-propagates",
+      // A host app embeds React Native's bundle in a framework, not as a
+      // native build `native-build ios|android` tracks.
+      "store-install-patches-from-built-in",
+      "store-install-built-in-mismatch-downloads",
+      "store-install-patches-from-marked-build",
       // The post-crash native check is proved on the example app first; a
       // host's runtime may outlive a fatal of the React Native it embeds.
       "post-content-crash-native-recovery",
       "post-content-crash-native-rollback",
+      // Only the example app's build is built a second time, with another key.
+      "ota-after-going-back-to-a-build",
     ]);
 
     expect(listSuiteNames()).toEqual(["default", "brownfield"]);
@@ -997,12 +1172,33 @@ describe("E2E scenario contract", () => {
         }),
     });
     const buildOutput = ["Release ID", "Bundle ID", "Artifact ID", "Build ID"]
-      .map((label) => `│  ${label}: ${file.id}`)
+      .map((label) => `│  \u001b[2m${label}  \u001b[22m${file.id}`)
       .join("\n");
-    const output = `${buildOutput}\n└  Deployment successful\n    \u001b[2mID:      \u001b[22m \u001b[33m${release!.id}\u001b[39m\n`;
+    // The tail of a deploy's output, as the workspace CLI prints it: the
+    // outro's heading, then its `ID` row, outside the frame.
+    const output = [
+      buildOutput,
+      "│",
+      "◆  Skipped (no compatible base bundles)",
+      "│",
+      "└  Deployment successful",
+      `\u001b[2mID  \u001b[22m\u001b[33m${release!.id}\u001b[39m`,
+      "",
+      "",
+    ].join("\n");
+    // A deploy refused for its signing key, as deploy prints the refusal
+    // (hot-updater's signingRefusal.spec.ts renders it from the CLI).
+    const refused = await fs.readFile(
+      path.join(
+        import.meta.dirname,
+        "control-server/__fixtures__/missing-signing-secret-refusal.txt",
+      ),
+      "utf8",
+    );
 
     expect(release!.id).not.toBe(file.id);
     expect(controller.extractDeployReleaseId(buildOutput)).toBeNull();
+    expect(controller.extractDeployReleaseId(refused)).toBeNull();
     const id = controller.extractDeployReleaseId(output);
     expect(id).toBe(release!.id);
     const deployed = await controller.resolveDeployedRelease(id, "production");
@@ -1408,7 +1604,7 @@ describe("E2E scenario contract", () => {
       /export const E2E_SCENARIO_MARKER = "([^"]+)";/,
     )?.[1];
 
-    // When: E2E seeds Maestro-compatible output.initialMarker.
+    // When: E2E seeds output.initialMarker for the scenarios.
     // Then: the seeded marker must match the actual built-in app default,
     // because E2E-first lifecycle does not reinstall a patched built-in app
     // from the fixture server.
@@ -1614,7 +1810,7 @@ describe("E2E scenario contract", () => {
     }
   });
 
-  it("keeps metadata waits on Maestro-equivalent relaunch behavior", async () => {
+  it("keeps metadata waits on relaunching the app", async () => {
     const scenarioDirEntries = await fs.readdir(scenarioDir);
     const scenarioSources = await Promise.all(
       scenarioDirEntries
@@ -2155,7 +2351,7 @@ describe("E2E scenario contract", () => {
     }
   });
 
-  it("keeps bsdiff install phases aligned with Maestro metadata-first assertions", async () => {
+  it("keeps bsdiff install phases asserting metadata first", async () => {
     expect(
       await updateActionResultAssertStages("bspatch-builtin-to-diff-ota"),
     ).toEqual([]);
@@ -2171,13 +2367,13 @@ describe("E2E scenario contract", () => {
     ]);
   });
 
-  it("keeps multi-asset replacement aligned with Maestro metadata-first assertions", async () => {
+  it("keeps multi-asset replacement asserting metadata first", async () => {
     expect(
       await updateActionResultAssertStages("multi-asset-replacement"),
     ).toEqual([]);
   });
 
-  it("keeps manifest fallback aligned with Maestro metadata-first assertions", async () => {
+  it("keeps manifest fallback asserting metadata first", async () => {
     expect(
       await updateActionResultAssertStages("bspatch-manifest-diff-fallback"),
     ).toEqual([]);

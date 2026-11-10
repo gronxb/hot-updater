@@ -22,8 +22,7 @@ const requireWrangler = createRequire(
 const { Miniflare } = requireWrangler("miniflare");
 const baseline = "ef1a071e83fc870038a591b7b83d91a6a738f96c";
 const eventOnly = "dfee6cb63e6cf6d79a03453284d2417f2c1600db";
-const schemaPath =
-  "plugins/cloudflare/worker/migrations/0001_hot-updater_1.0.0.sql";
+const schemaPath = "plugins/cloudflare/sql/bundles.sql";
 const selectedSchema = readFileSync(resolve(root, schemaPath), "utf8");
 const selectedSchemaSha256 = createHash("sha256")
   .update(selectedSchema)

@@ -51,7 +51,8 @@ export const resetDecisionFixtures = async () => {
       releases,
       bundles,
       channels,
-      bundle_totals
+      bundle_totals,
+      native_builds
     CASCADE
   `);
 };

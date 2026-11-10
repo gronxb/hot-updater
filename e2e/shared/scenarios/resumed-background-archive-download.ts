@@ -79,6 +79,20 @@ export const resumedBackgroundArchiveDownloadScenario: ScenarioDefinition = {
         reset: true,
       },
     );
+    // iOS suspends the app about a second after it leaves the foreground.
+    // The proxy answers the artifact, manifest, and archive requests from
+    // memory, so the archive download reaches the background session, and
+    // its interruption the app, before then on every backend. A slower
+    // backend would leave the resumed download to a woken app, which iOS
+    // delays by a minute.
+    await app.control(
+      "prefetch the resumed archive update",
+      "/e2e/jobs/prefetch-update-artifact",
+      {
+        currentBundleId: "$resumedArchiveBaseBundleId",
+        targetBundleId: "$resumedArchiveBundleId",
+      },
+    );
     await app.tap(
       "apply the update once the app leaves the foreground",
       "action-apply-captured-update-in-background",

@@ -18,11 +18,13 @@ import { disabledBundleRollbackToPreviousOtaScenario } from "./scenarios/disable
 import { failedDownloadSameGenerationRetryScenario } from "./scenarios/failed-download-same-generation-retry.ts";
 import { fingerprintInitialInstallScenario } from "./scenarios/fingerprint-initial-install.ts";
 import { forceUpdateAutoReloadScenario } from "./scenarios/force-update-auto-reload.ts";
+import { foreignSigningKeyRefusedScenario } from "./scenarios/foreign-signing-key-refused.ts";
 import { headlessLaunchKeepsStagedBundleScenario } from "./scenarios/headless-launch-keeps-staged-bundle.ts";
 import { interruptedLaunchRetriesBundleScenario } from "./scenarios/interrupted-launch-retries-bundle.ts";
 import { launchStatusAfterSessionInstallScenario } from "./scenarios/launch-status-after-session-install.ts";
 import { multiAssetReplacementScenario } from "./scenarios/multi-asset-replacement.ts";
 import { numericCohortRolloutScenario } from "./scenarios/numeric-cohort-rollout.ts";
+import { otaAfterGoingBackToABuildScenario } from "./scenarios/ota-after-going-back-to-a-build.ts";
 import { postContentCrashNativeRecoveryScenario } from "./scenarios/post-content-crash-native-recovery.ts";
 import { postContentCrashNativeRollbackScenario } from "./scenarios/post-content-crash-native-rollback.ts";
 import { releaseOtaRecoveryScenario } from "./scenarios/release-ota-recovery.ts";
@@ -37,6 +39,9 @@ import { skippedForceUpdatePropagatesScenario } from "./scenarios/skipped-force-
 import { slowOldArtifactAfterNewerInstallScenario } from "./scenarios/slow-old-artifact-after-newer-install.ts";
 import { staleCatalogAfterNewerGenerationScenario } from "./scenarios/stale-catalog-after-newer-generation.ts";
 import { startupHangRecoveryScenario } from "./scenarios/startup-hang-recovery.ts";
+import { storeInstallBuiltInMismatchDownloadsScenario } from "./scenarios/store-install-built-in-mismatch-downloads.ts";
+import { storeInstallPatchesFromBuiltInScenario } from "./scenarios/store-install-patches-from-built-in.ts";
+import { storeInstallPatchesFromMarkedBuildScenario } from "./scenarios/store-install-patches-from-marked-build.ts";
 import { targetCohortsOnlyScenario } from "./scenarios/target-cohorts-only.ts";
 import { targetCohortsRolloutInteractionScenario } from "./scenarios/target-cohorts-rollout-interaction.ts";
 import { targetedCohortSwitchbackScenario } from "./scenarios/targeted-cohort-switchback.ts";
@@ -59,6 +64,9 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   bspatchConsecutiveDiffOtaScenario,
   bspatchDisabledChainRollbackScenario,
   bspatchManifestDiffFallbackScenario,
+  storeInstallPatchesFromBuiltInScenario,
+  storeInstallBuiltInMismatchDownloadsScenario,
+  storeInstallPatchesFromMarkedBuildScenario,
   runtimeChannelSwitchResetScenario,
   numericCohortRolloutScenario,
   targetCohortsOnlyScenario,
@@ -71,6 +79,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   fingerprintInitialInstallScenario,
   catalogOnlyNoUpdateScenario,
   sameBundleReleaseAdoptionScenario,
+  otaAfterGoingBackToABuildScenario,
   sizeAwareArtifactSelectionScenario,
   assetHeavyOtaUsesArchiveScenario,
   staleCatalogAfterNewerGenerationScenario,
@@ -84,6 +93,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   runtimeChannelCrashRestoreScenario,
   tenCrashHistorySafeBundleScenario,
   remoteConfigFetchActivateScenario,
+  foreignSigningKeyRefusedScenario,
   brownfieldNativeRequiredUpdateScenario,
   brownfieldNativeMinorUpdateScenario,
   brownfieldInstancesUpdateIndependentlyScenario,

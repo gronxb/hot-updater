@@ -37,11 +37,19 @@ const CORE_SCHEMA_KEY = "schema.core";
 const stored = ({ key, expected, found }: SchemaSettingMismatch) =>
   `"${key}" is ${found === null ? "missing" : `"${found}"`}; expected "${expected}"`;
 
+/**
+ * How to migrate a database the fence refused: doctor names the command for
+ * it, init again for a deployment init manages, or the database's own
+ * tooling in the server's project.
+ */
+const MIGRATE_SCHEMA_FIX =
+  "Run `npx hot-updater doctor` in the project whose hot-updater.config.ts names this database: it names the command that migrates it. In a server project, `hot-updater db migrate` migrates the database its server file names.";
+
 const settingMessage = (
   adapterName: string,
   { key, expected, found }: SchemaSettingMismatch,
 ) =>
-  `Hot Updater schema setting "${key}" for ${adapterName} is ${found === null ? "missing" : `"${found}"`}; expected "${expected}". Run \`hot-updater db migrate\`.`;
+  `Hot Updater schema setting "${key}" for ${adapterName} is ${found === null ? "missing" : `"${found}"`}; expected "${expected}". ${MIGRATE_SCHEMA_FIX}`;
 
 /** The plugin a `schema.<id>` setting belongs to; undefined for core's and the engine's. */
 const pluginOf = ({ key }: SchemaSettingMismatch) =>
@@ -56,9 +64,11 @@ const listed = (items: readonly string[]) =>
     ? items.join("")
     : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
 
-/** How to create plugins' tables when the fence was given no fix. */
-const PLUGIN_TABLES_FIX =
-  "Run `hot-updater db migrate`. A managed server runs only its provider's plugins, and rerunning `hot-updater init --provider <provider>` applies the provider's migrations. Run `hot-updater db` commands in the server's project: they load the server file named on the command line, or src/hotUpdater.* or src/db.*, and don't read hot-updater.config.ts.";
+const settingsMessage = (
+  adapterName: string,
+  settings: readonly SchemaSettingMismatch[],
+) =>
+  `Hot Updater schema settings for ${adapterName} are not migrated: ${settings.map(stored).join(", and ")}. ${MIGRATE_SCHEMA_FIX}`;
 
 const pluginsMessage = (
   adapterName: string,
@@ -95,16 +105,21 @@ export class HotUpdaterSchemaMigrationRequiredError extends Error {
     super(
       setting === undefined
         ? currentVersion === undefined
-          ? `Hot Updater database schema is not initialized for ${adapterName}. Run \`hot-updater db migrate\` before using this adapter.`
+          ? `Hot Updater database schema is not initialized for ${adapterName}. ${MIGRATE_SCHEMA_FIX}`
           : `Hot Updater v1 cannot migrate schema ${currentVersion} in place. Create a new empty database and run \`hot-updater db migrate\`.`
         : plugins.length > 0 && plugins.length === settings.length
           ? pluginsMessage(
               adapterName,
               plugins,
               settings,
-              options?.fix ?? PLUGIN_TABLES_FIX,
+              options?.fix ?? MIGRATE_SCHEMA_FIX,
             )
-          : settingMessage(adapterName, setting),
+          : // A database without the engine's setting was never migrated:
+            // its first setting says so.
+            settings.length > 1 &&
+              !(setting.key === ENGINE_SCHEMA_KEY && setting.found === null)
+            ? settingsMessage(adapterName, settings)
+            : settingMessage(adapterName, setting),
       options?.cause === undefined ? undefined : { cause: options.cause },
     );
     this.name = "HotUpdaterSchemaMigrationRequiredError";
@@ -207,8 +222,25 @@ export const checkSchemaFence = async (
 /** The database name a fenced adapter carries, so a server can fence its plugins' rows too. */
 const FENCED: unique symbol = Symbol.for("@hot-updater/server/schema-fence");
 
+/**
+ * The adapter a fence reads its settings through and the settings it
+ * expects, so a fence over it checks them with its own in one read. Another
+ * key than `FENCED`, whose value another copy of plugin-core reads as the
+ * name.
+ */
+const FENCED_SETTINGS: unique symbol = Symbol.for(
+  "@hot-updater/server/schema-fence-settings",
+);
+
+/** What a fence reads, for the fences layered over it. */
+interface FenceSettings {
+  readonly adapter: DatabaseAdapter;
+  readonly expected: SchemaSettings;
+}
+
 interface FencedAdapter extends DatabaseAdapter {
   readonly [FENCED]?: string;
+  readonly [FENCED_SETTINGS]?: FenceSettings;
 }
 
 /** The database name an adapter behind the schema fence reports under. */
@@ -218,27 +250,43 @@ export const fencedName = (adapter: FencedAdapter): string | undefined =>
 /**
  * The adapter behind the schema fence: a process's first read or write
  * checks the settings first. Success is kept; a failure is checked again on
- * the next call.
+ * the next call. A fence over another one, as a server's plugins' over
+ * core's, checks the inner fence's settings with its own in that one read,
+ * so its refusal lists every setting missing or different.
  */
 export const withSchemaFence = (
-  adapter: DatabaseAdapter,
+  adapter: FencedAdapter,
   adapterName: string,
   expected: SchemaSettings,
   fix?: string,
 ): FencedAdapter => {
+  const inner = adapter[FENCED_SETTINGS];
+  // Reads stay on `adapter`, whose own fence still checks its settings, and
+  // on whatever wraps it: only the check reads beneath it.
+  const settings: FenceSettings =
+    inner === undefined
+      ? { adapter, expected }
+      : {
+          adapter: inner.adapter,
+          expected: { ...inner.expected, ...expected },
+        };
   let ready: Promise<void> | undefined;
   const fence = () => {
-    ready ??= checkSchemaFence(adapter, adapterName, expected, fix).catch(
-      (error: unknown) => {
-        ready = undefined;
-        throw error;
-      },
-    );
+    ready ??= checkSchemaFence(
+      settings.adapter,
+      adapterName,
+      settings.expected,
+      fix,
+    ).catch((error: unknown) => {
+      ready = undefined;
+      throw error;
+    });
     return ready;
   };
   return {
     ...adapter,
     [FENCED]: adapterName,
+    [FENCED_SETTINGS]: settings,
     get: (table, keys) => fence().then(() => adapter.get(table, keys)),
     query: (table, request) =>
       fence().then(() => adapter.query(table, request)),

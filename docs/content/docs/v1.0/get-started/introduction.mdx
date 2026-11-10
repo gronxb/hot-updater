@@ -1,0 +1,68 @@
+---
+title: "Start here"
+description: "Set up Hot Updater with an agent or your terminal, then verify an OTA update on a native app."
+icon: Rocket
+---
+
+## What is Hot Updater?
+
+Hot Updater delivers JavaScript and asset updates to React Native apps over the
+air. You host the update infrastructure in your own account, using Cloudflare,
+Supabase, AWS, Firebase, Vercel, Azure or a custom server. Native code changes require a new
+native app build.
+
+<a id="why-hot-updater" />
+
+## Choose your starting point
+
+| Your task | Start here |
+| --- | --- |
+| Let a coding agent inspect and set up your project | [Set up with an agent](/docs/v1.0/guides/ai-agents) |
+| Choose a provider or connect custom infrastructure | [Choose infrastructure](/docs/v1.0/get-started/choose-provider) |
+| Configure the app and server from your terminal | [Set up manually](/docs/v1.0/get-started/basic-usage) |
+| Move an existing v0 app to v1 | [Move from v0 to v1](/docs/v1.0/guides/upgrade-to-v1) |
+| Connect an app to infrastructure you already prepared | [Connect your app](/docs/v1.0/get-started/app-setup) |
+| Prove that an integrated app receives updates | [Test an OTA update](/docs/v1.0/get-started/test-ota) |
+
+## Install the latest stable release
+
+[Install packages](/docs/v1.0/get-started/installation) lists the CLI, SDK, required
+build adapter and provider packages and runtime prerequisites.
+
+For an existing v0 app, follow the
+[migration guide](/docs/v1.0/guides/upgrade-to-v1) before changing the SDK or server.
+
+<a id="how-it-works" />
+
+## What a completed setup looks like
+
+Both the agent and manual paths lead to the same verified result:
+
+1. The app has compatible SDK, CLI and plugins.
+2. The deployed server has a known base URL and working client authentication.
+3. A native Release build loads Hot Updater and uses the intended channel and
+   compatibility target.
+4. A JavaScript and asset change arrives through OTA and is visible after the
+   app applies it.
+5. You can inspect that update in the Console and verify its rollback behavior
+   and, when the app runs the Insights plugin, its
+   [Insights](/docs/v1.0/guides/insights) reports.
+
+Server deployment, native launch and OTA application are separate checks. An
+agent should report which passed and any remaining native release steps.
+
+<a id="key-features" />
+
+## Find the next task
+
+- **Deliver updates:** [Deploy](/docs/v1.0/guides/deploy),
+  [Rollout & Cohorts](/docs/v1.0/guides/rollout-cohorts), and
+  [Default Channel Setup](/docs/v1.0/guides/channel-management).
+- **Operate:** [Console](/docs/v1.0/guides/console),
+  [host the Console](/docs/v1.0/guides/console-deployment),
+  [Insights](/docs/v1.0/guides/insights), and [Doctor](/docs/v1.0/guides/doctor).
+- **Understand the model:** [How it works](/docs/v1.0/concepts/how-it-works),
+  [automatic crash rollback](/docs/v1.0/concepts/automatic-rollback), and
+  [Plugin System](/docs/v1.0/concepts/plugin-system).
+- **Protect delivery:** [Bundle Signing](/docs/v1.0/guides/bundle-signing) and
+  [Security](/docs/v1.0/policy/security).

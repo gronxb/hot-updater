@@ -1,4 +1,4 @@
-export type BuildType = "bare" | "rock" | "expo";
+export type BuildType = "bare" | "rock" | "expo" | "one";
 
 export type ImportInfo = {
   pkg: string;
@@ -109,14 +109,18 @@ export type ConfigBuilderScaffold = {
  * Renders the hot-updater.config.ts init writes: the build, the server's
  * storage, database, and plugins, and the deploy settings.
  */
+/** How an app finds its updates: by native fingerprint, or by app version. */
+export type UpdateStrategy = "appVersion" | "fingerprint";
+
 export class ConfigBuilder {
   private buildType: BuildType | null = null;
   private storageInfo: ProviderConfig | null = null;
   private databaseInfo: ProviderConfig | null = null;
   private pluginsInfo: ProviderConfig | null = null;
   private intermediateCode = "";
+  private updateStrategy: UpdateStrategy = "fingerprint";
   private readonly imports: ImportInfo[] = [
-    { pkg: "hot-updater", named: ["defineConfig"] },
+    { pkg: "hot-updater", named: ["defineConfig", "localSecrets"] },
     { pkg: "node:fs", named: ["existsSync"] },
   ];
 
@@ -136,12 +140,14 @@ export class ConfigBuilder {
         return "rock()";
       case "expo":
         return "expo()";
+      case "one":
+        return "one()";
       default:
         throw new Error(`Invalid build type: ${this.buildType}`);
     }
   }
 
-  /** Sets the build type ('bare', 'rock', or 'expo') and its import. */
+  /** Sets the build type ('bare', 'rock', 'expo', or 'one') and its import. */
   setBuildType(buildType: BuildType): this {
     this.buildType = buildType;
     this.imports.push({
@@ -169,6 +175,15 @@ export class ConfigBuilder {
   setPlugins(pluginsConfig: ProviderConfig): this {
     this.pluginsInfo = pluginsConfig;
     this.imports.push(...pluginsConfig.imports);
+    return this;
+  }
+
+  /**
+   * Sets the config's `updateStrategy`. A new project gets `fingerprint`;
+   * `appVersion` is the alternative the config's comment names.
+   */
+  setUpdateStrategy(updateStrategy: UpdateStrategy): this {
+    this.updateStrategy = updateStrategy;
     return this;
   }
 
@@ -203,7 +218,10 @@ ${this.intermediateCode ? `${this.intermediateCode}\n\n` : ""}export default def
   storage: ${this.storageInfo.configString},
   database: ${this.databaseInfo.configString},
   ${plugins === "plugins" ? "plugins" : `plugins: ${plugins}`},
-  updateStrategy: "appVersion", // or "fingerprint"
+  secrets: localSecrets(),
+  updateStrategy: "${this.updateStrategy}", // or "${
+    this.updateStrategy === "fingerprint" ? "appVersion" : "fingerprint"
+  }"
 });
 `.trim();
 

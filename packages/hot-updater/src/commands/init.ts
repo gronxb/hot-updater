@@ -6,6 +6,7 @@ import {
   HotUpdateDirUtil,
   InitError,
   makeEnv,
+  type RunInitResult,
   MissingInitInputsError,
   p,
   readHotUpdaterInitEnv,
@@ -20,18 +21,20 @@ import {
 } from "@/utils/git";
 import { printBanner } from "@/utils/printBanner";
 
+import { prepareInitFingerprint } from "./initFingerprint";
 import {
   assertInstalledInitProvider,
+  INIT_BUILD_ENV_KEY,
+  INIT_PROVIDER_ENV_KEY,
   INIT_PROVIDER_NAMES,
   INIT_PROVIDER_PACKAGES,
   type InitProvider,
   isInitProvider,
   loadInitProvider,
 } from "./initProviders";
+import { openInitTeamSecrets, storeInitTeamSecrets } from "./initSecrets";
 
-const INIT_BUILD_ENV_KEY = "HOT_UPDATER_INIT_BUILD";
-const INIT_PROVIDER_ENV_KEY = "HOT_UPDATER_INIT_PROVIDER";
-const BUILD_ADAPTER_KEYS = ["bare", "rock", "expo"] as const;
+const BUILD_ADAPTER_KEYS = ["bare", "rock", "expo", "one"] as const;
 
 const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],
@@ -45,7 +48,10 @@ interface BuildAdapterChoice {
   devDependencies: string[];
 }
 
-const BUILD_ADAPTERS: Record<"bare" | "rock" | "expo", BuildAdapterChoice> = {
+const BUILD_ADAPTERS: Record<
+  (typeof BUILD_ADAPTER_KEYS)[number],
+  BuildAdapterChoice
+> = {
   bare: {
     name: "bare",
     label: "Bare",
@@ -65,6 +71,13 @@ const BUILD_ADAPTERS: Record<"bare" | "rock" | "expo", BuildAdapterChoice> = {
     label: "Expo",
     dependencies: [],
     devDependencies: ["@hot-updater/expo"],
+  },
+  one: {
+    name: "one",
+    label: "One",
+    hint: "One, the React framework for web and native",
+    dependencies: [],
+    devDependencies: ["@hot-updater/one"],
   },
 };
 
@@ -87,9 +100,11 @@ const collectInitChoices = async (
 ): Promise<{
   build: BuildAdapterKey;
   env: Readonly<Record<string, string>>;
+  /** `.env.hotupdater` as saved, which interactive init reads its inputs from. */
+  managedEnv: Readonly<Record<string, string>>;
   provider: InitProvider;
 }> => {
-  const { env: existingEnv } = await readHotUpdaterInitEnv(
+  const { env: existingEnv, managedEnv } = await readHotUpdaterInitEnv(
     process.cwd(),
     options.envFile,
   );
@@ -115,7 +130,7 @@ const collectInitChoices = async (
   }
 
   if (build && provider) {
-    return { build, env: existingEnv, provider };
+    return { build, env: existingEnv, managedEnv, provider };
   }
 
   const choices = await p.group(
@@ -147,7 +162,7 @@ const collectInitChoices = async (
     },
   );
 
-  return { ...choices, env: existingEnv };
+  return { ...choices, env: existingEnv, managedEnv };
 };
 
 const handleInitError = (error: unknown): boolean => {
@@ -231,12 +246,25 @@ export const init = async (options: InitOptions = {}) => {
     process.exit(1);
   }
 
+  let result: RunInitResult | undefined;
   try {
     const { initProvider, runInit } = await loadInitProvider(provider);
+    const cwd = process.cwd();
+    // A team secrets store holds the credentials a teammate's init saved.
+    // Read from the store only what neither init's env files nor the
+    // environment set, as the provider's inputs resolve.
+    const team = await openInitTeamSecrets({
+      provider: initProvider,
+      env: { ...choices.managedEnv, ...choices.env },
+      cwd,
+    });
     if (options.envFile !== undefined) {
       // Before any cloud resource changes, every missing input at once.
       const missingInputs = getMissingInitProviderInputs({
-        inputs: resolveInitProviderInputs(choices.env, initProvider),
+        inputs: resolveInitProviderInputs(
+          { ...team?.secretsEnv, ...choices.env },
+          initProvider,
+        ),
         preflightOnly: true,
         provider: initProvider,
       });
@@ -244,14 +272,37 @@ export const init = async (options: InitOptions = {}) => {
         throw new MissingInitInputsError([...new Set(missingInputs)]);
       }
     }
-    await runInit({
+    result = await runInit({
       build: buildAdapterPackage.name,
       envFile: options.envFile,
+      ...(team === undefined ? {} : { secretsEnv: team.secretsEnv }),
     } satisfies RunInitOptions);
+    if (team !== undefined) await storeInitTeamSecrets(team, cwd);
   } catch (error) {
     if (handleInitError(error)) {
       return;
     }
     throw error;
   }
+
+  if (result !== null) await closeInit(result);
+};
+
+/**
+ * Init's closing, once the provider's init set the project up: the
+ * fingerprint.json step, then every next step, the provider's first, then
+ * "Done! 🎉", so nothing prints after it. `undefined` is a provider package
+ * from before this closing, which printed its own next steps and Done: the
+ * fingerprint.json step still runs and prints the step it leaves, without a
+ * second Done.
+ */
+export const closeInit = async (
+  result: NonNullable<RunInitResult> | undefined,
+): Promise<void> => {
+  const fingerprintSteps = await prepareInitFingerprint();
+  const steps = [...(result?.nextSteps ?? []), ...fingerprintSteps];
+  for (const step of steps) {
+    p.log.message(`Next step: ${step}`);
+  }
+  if (result !== undefined) p.log.success("Done! 🎉");
 };

@@ -94,7 +94,73 @@ let package = Package(
         .testTarget(
             name: "HotUpdaterTest",
             dependencies: ["HotUpdaterCore", "HotUpdaterRecovery"],
-            path: "Test"
+            path: "Test",
+            exclude: ["Sandbox"]
+        ),
+        // The sandbox layer's logic, which needs neither React Native nor UIKit.
+        .target(
+            name: "HotUpdaterSandboxCore",
+            path: "Sandbox",
+            exclude: [
+                "README.md",
+                "HotUpdaterSandboxBridge.swift",
+                "HotUpdaterSandboxDesign.swift",
+                "HotUpdaterSandboxDevOverride.m",
+                "HotUpdaterSandboxEntryPoints.h",
+                "HotUpdaterSandboxEntryPoints.m",
+                "HotUpdaterSandboxFonts.swift",
+                "HotUpdaterSandboxGate.m",
+                "HotUpdaterSandboxLiveDevServer.swift",
+                "HotUpdaterSandboxLiveHost.swift",
+                "HotUpdaterSandboxMarker.m",
+                "HotUpdaterSandboxScanner.swift",
+                "HotUpdaterSandboxScreen.swift",
+                "HotUpdaterSandboxViews.swift",
+            ],
+            sources: [
+                "HotUpdaterSandboxCoordinator.swift",
+                "HotUpdaterSandboxDevHost.swift",
+                "HotUpdaterSandboxDevServer.swift",
+                "HotUpdaterSandboxHomeModel.swift",
+                "HotUpdaterSandboxLastLaunch.swift",
+                "HotUpdaterSandboxLaunchPolicy.swift",
+                "HotUpdaterSandboxLink.swift",
+                "HotUpdaterSandboxShelf.swift",
+            ],
+            swiftSettings: [.define("HOT_UPDATER_SANDBOX_LAYER")]
+        ),
+        .target(
+            name: "HotUpdaterSandboxEntryPoints",
+            path: "Sandbox",
+            exclude: [
+                "README.md",
+                "HotUpdaterSandboxBridge.swift",
+                "HotUpdaterSandboxCoordinator.swift",
+                "HotUpdaterSandboxDesign.swift",
+                "HotUpdaterSandboxDevServer.swift",
+                "HotUpdaterSandboxFonts.swift",
+                "HotUpdaterSandboxGate.m",
+                "HotUpdaterSandboxHomeModel.swift",
+                "HotUpdaterSandboxLastLaunch.swift",
+                "HotUpdaterSandboxLaunchPolicy.swift",
+                "HotUpdaterSandboxLink.swift",
+                "HotUpdaterSandboxLiveHost.swift",
+                "HotUpdaterSandboxMarker.m",
+                "HotUpdaterSandboxScanner.swift",
+                "HotUpdaterSandboxScreen.swift",
+                "HotUpdaterSandboxShelf.swift",
+                "HotUpdaterSandboxViews.swift",
+            ],
+            sources: ["HotUpdaterSandboxEntryPoints.m"],
+            publicHeadersPath: ".",
+            cSettings: [.define("HOT_UPDATER_SANDBOX_LAYER", to: "1")]
+        ),
+        .testTarget(
+            name: "HotUpdaterSandboxTest",
+            dependencies: ["HotUpdaterSandboxCore", "HotUpdaterSandboxEntryPoints"],
+            path: "Test/Sandbox",
+            // The header the tests import, which a target's cSettings don't reach.
+            swiftSettings: [.unsafeFlags(["-Xcc", "-DHOT_UPDATER_SANDBOX_LAYER=1"])]
         ),
     ]
 ) 

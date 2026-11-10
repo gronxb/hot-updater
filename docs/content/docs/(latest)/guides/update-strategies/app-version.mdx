@@ -8,8 +8,10 @@ icon: Hash
 
 The App Version strategy gives you manual control over which app versions receive updates. You specify exact versions or ranges when deploying, rather than relying on automatic fingerprint detection.
 
-This is the default strategy. Keep it when you prefer
-explicit version targeting over automated native compatibility checks.
+New projects use [Fingerprint](/docs/guides/update-strategies/fingerprint),
+which `init` writes. Choose App Version when you'd rather target store versions
+yourself: you version every native change, and each deploy names the versions
+it reaches. A config that sets no `updateStrategy` uses App Version.
 
 ## Setup
 
@@ -20,9 +22,14 @@ storage, database, and plugins settings:
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
+  updateStrategy: "fingerprint", // [!code --]
   updateStrategy: "appVersion", // [!code ++]
 });
 ```
+
+Switching takes a new native build: delete `fingerprint.json`, rebuild, and
+release the new binaries. Builds made before the switch keep checking by their
+fingerprint, so they receive no update deployed by app version.
 
 ## Version Targeting
 

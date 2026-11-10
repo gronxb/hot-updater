@@ -155,4 +155,5 @@ export const initProvider = {
       optional: true,
     },
   },
+  secrets: ["HOT_UPDATER_S3_ACCESS_KEY_ID", "HOT_UPDATER_S3_SECRET_ACCESS_KEY"],
 } as const satisfies InitProviderDefinition;

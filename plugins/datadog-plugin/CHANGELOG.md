@@ -1,5 +1,212 @@
 # @hot-updater/datadog-plugin
 
+## 1.2.0-rc.25
+
+### Patch Changes
+
+- Updated dependencies [0d8a448]
+- Updated dependencies [211e584]
+  - @hot-updater/plugin-core@1.2.0-rc.25
+  - @hot-updater/protocol@1.2.0-rc.25
+
+## 1.2.0-rc.24
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.24
+  - @hot-updater/plugin-core@1.2.0-rc.24
+
+## 1.2.0-rc.23
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.23
+  - @hot-updater/plugin-core@1.2.0-rc.23
+
+## 1.2.0-rc.22
+
+### Patch Changes
+
+- Updated dependencies [a823198]
+  - @hot-updater/plugin-core@1.2.0-rc.22
+  - @hot-updater/protocol@1.2.0-rc.22
+
+## 1.2.0-rc.21
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.21
+  - @hot-updater/plugin-core@1.2.0-rc.21
+
+## 1.2.0-rc.20
+
+### Patch Changes
+
+- Updated dependencies [1e72e05]
+  - @hot-updater/plugin-core@1.2.0-rc.20
+  - @hot-updater/protocol@1.2.0-rc.20
+
+## 1.2.0-rc.19
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.19
+  - @hot-updater/plugin-core@1.2.0-rc.19
+
+## 1.2.0-rc.18
+
+### Patch Changes
+
+- Updated dependencies [42f5b23]
+  - @hot-updater/plugin-core@1.2.0-rc.18
+  - @hot-updater/protocol@1.2.0-rc.18
+
+## 1.2.0-rc.17
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.17
+  - @hot-updater/plugin-core@1.2.0-rc.17
+
+## 1.2.0-rc.16
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.16
+  - @hot-updater/plugin-core@1.2.0-rc.16
+
+## 1.2.0-rc.15
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.15
+  - @hot-updater/plugin-core@1.2.0-rc.15
+
+## 1.2.0-rc.14
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.14
+  - @hot-updater/plugin-core@1.2.0-rc.14
+
+## 1.2.0-rc.13
+
+### Patch Changes
+
+- Updated dependencies [b54eddc]
+- Updated dependencies [ad99046]
+- Updated dependencies [1e85609]
+- Updated dependencies [20006f2]
+- Updated dependencies [3d95e55]
+  - @hot-updater/plugin-core@1.2.0-rc.13
+  - @hot-updater/protocol@1.2.0-rc.13
+
+## 1.2.0-rc.12
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.12
+  - @hot-updater/plugin-core@1.2.0-rc.12
+
+## 1.2.0-rc.11
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.11
+  - @hot-updater/plugin-core@1.2.0-rc.11
+
+## 1.2.0-rc.10
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.10
+  - @hot-updater/plugin-core@1.2.0-rc.10
+
+## 1.2.0-rc.9
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.9
+  - @hot-updater/plugin-core@1.2.0-rc.9
+
+## 1.2.0-rc.8
+
+### Patch Changes
+
+- Updated dependencies [c463534]
+- Updated dependencies [5358377]
+  - @hot-updater/plugin-core@1.2.0-rc.8
+  - @hot-updater/protocol@1.2.0-rc.8
+
+## 1.2.0-rc.7
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.7
+  - @hot-updater/plugin-core@1.2.0-rc.7
+
+## 1.2.0-rc.6
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.6
+  - @hot-updater/plugin-core@1.2.0-rc.6
+
+## 1.2.0-rc.5
+
+### Patch Changes
+
+- Updated dependencies [2fd1c83]
+  - @hot-updater/plugin-core@1.2.0-rc.5
+  - @hot-updater/protocol@1.2.0-rc.5
+
+## 1.2.0-rc.4
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.4
+  - @hot-updater/plugin-core@1.2.0-rc.4
+
+## 1.2.0-rc.3
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.3
+  - @hot-updater/plugin-core@1.2.0-rc.3
+
+## 1.2.0-rc.2
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.2
+  - @hot-updater/plugin-core@1.2.0-rc.2
+
+## 1.2.0-rc.1
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.1
+  - @hot-updater/plugin-core@1.2.0-rc.1
+
+## 1.2.0-rc.0
+
+### Patch Changes
+
+- Updated dependencies [8c675a2]
+- Updated dependencies [28dfe97]
+- Updated dependencies [84b21f0]
+- Updated dependencies [0050ff3]
+- Updated dependencies [1ad0ebe]
+- Updated dependencies [89cd5ce]
+- Updated dependencies [79c81f6]
+- Updated dependencies [4d8e0d2]
+- Updated dependencies [ed37acf]
+- Updated dependencies [4e4ddfb]
+- Updated dependencies [f017e61]
+- Updated dependencies [5e7a045]
+  - @hot-updater/plugin-core@1.2.0-rc.0
+  - @hot-updater/protocol@1.2.0-rc.0
+
 ## 1.1.8
 
 ### Patch Changes

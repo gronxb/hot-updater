@@ -126,6 +126,7 @@ vi.mock("@/lib/api", () => ({
     mutateAsync: promote,
   }),
   useReleaseCatalogDiagnosticsQuery: () => ({ data: null }),
+  useReleaseNativeBuildQuery: () => ({ data: null, isPending: false }),
   useReleaseQuery: () => ({ data: releaseValue, isError: false }),
   useUpdateReleaseMutation: () => ({ isPending: false, mutateAsync: update }),
 }));

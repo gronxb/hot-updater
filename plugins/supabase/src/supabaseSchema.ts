@@ -162,7 +162,48 @@ export const supabaseSchemaStatements = ({
   ];
 };
 
+const HEADER = "-- HotUpdater.schema\n\n";
+
+const toSql = (statements: readonly string[]) =>
+  `${HEADER}${statements.map((statement) => `${statement};`).join("\n\n")}\n`;
+
 export const supabaseSchemaSql = (target?: ToolingTarget): string =>
-  `-- HotUpdater.schema\n\n${supabaseSchemaStatements(target)
-    .map((statement) => `${statement};`)
-    .join("\n\n")}\n`;
+  toSql(supabaseSchemaStatements(target));
+
+/** The statements of a migration `supabaseSchemaSql` or `supabaseMigrationSql` wrote. */
+export const supabaseMigrationStatements = (sql: string): string[] =>
+  sql
+    .replace(HEADER, "")
+    .split(";\n\n")
+    .map((statement) => statement.replace(/;\n$/u, "").trim())
+    .filter((statement) => statement !== "");
+
+/**
+ * A managed Supabase migration after the first: each statement of the
+ * target's schema that no earlier migration ran, then every settings row, so
+ * the migration is never empty and the fence passes once it ran. A new table
+ * brings its row-level security and a new apply RPC naming it, which brings
+ * the RPC's grants again. Shipped migrations are frozen; a schema change
+ * goes into the next one.
+ */
+export const supabaseMigrationSql = (
+  target: ToolingTarget,
+  earlier: readonly string[],
+): string => {
+  const statements = supabaseSchemaStatements(target);
+  const settings = Object.keys(target.settings).length;
+  const ran = new Set(earlier.flatMap(supabaseMigrationStatements));
+  const apply = statements.findIndex((sql) =>
+    sql.startsWith(
+      `CREATE OR REPLACE FUNCTION public.${SUPABASE_APPLY_FUNCTION}(`,
+    ),
+  );
+  // The apply RPC's REVOKE and GRANT follow it.
+  const grants = ran.has(statements[apply]!) ? [] : [apply + 1, apply + 2];
+  return toSql([
+    ...statements
+      .slice(0, -settings)
+      .filter((sql, index) => !ran.has(sql) || grants.includes(index)),
+    ...statements.slice(-settings),
+  ]);
+};

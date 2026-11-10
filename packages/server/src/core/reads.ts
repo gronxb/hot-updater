@@ -125,6 +125,17 @@ export const drain = async <T>(
   return rows;
 };
 
+/** A keyset page's range: the keys strictly after `after`, in `order`. */
+export const after = (input: KeysetInput) =>
+  input.after === undefined
+    ? {}
+    : {
+        range:
+          (input.order ?? "asc") === "asc"
+            ? { gt: input.after }
+            : { lt: input.after },
+      };
+
 export interface CoreStorage {
   readonly readStorageText?: (storageUri: string) => Promise<string | null>;
   readonly resolveFileUrl: (
@@ -162,16 +173,6 @@ export const createCoreReads = (
       childCount: row._refs_bundle_patches_base_bundle_id ?? 0,
     };
   };
-
-  const after = (input: KeysetInput) =>
-    input.after === undefined
-      ? {}
-      : {
-          range:
-            (input.order ?? "asc") === "asc"
-              ? { gt: input.after }
-              : { lt: input.after },
-        };
 
   return {
     /** The update check: one point read of its scope's catalog. */

@@ -397,6 +397,53 @@ describe("mobile result contract", () => {
     },
   );
 
+  describe("an iOS link timeout the driver caught", () => {
+    const withLinkFailure = (message: string, count: number) => {
+      const report = reportFixture();
+      report.run.results[1]!.attempts[0]!.steps.push({
+        api: "device.openLink",
+        status: "failed",
+        error: { message },
+      });
+      const input = inputFixture(report);
+      (
+        input.evidence as { scenarios: { expectedLinkTimeouts?: number }[] }
+      ).scenarios[1]!.expectedLinkTimeouts = count;
+      return normalizeMobileResult(context, input).status;
+    };
+
+    it.each([
+      "device.openLink failed: xcrun timed out after 15000ms",
+      "device.openLink failed: xcrun simctl openurl did not answer within 20000ms.",
+    ])("passes with the driver's count: %s", (message) => {
+      expect(withLinkFailure(message, 1)).toBe("passed");
+    });
+
+    it("fails without the driver's count, or with one that is off", () => {
+      const message = "xcrun timed out after 15000ms";
+      expect(withLinkFailure(message, 0)).toBe("failed");
+      expect(withLinkFailure(message, 2)).toBe("failed");
+    });
+
+    it("does not excuse any other link failure", () => {
+      expect(withLinkFailure("route could not be opened", 1)).toBe("failed");
+    });
+
+    it("does not excuse a different failed operation", () => {
+      const report = reportFixture();
+      report.run.results[1]!.attempts[0]!.steps.push({
+        api: "expect.toHaveText",
+        status: "failed",
+        error: { message: "xcrun timed out after 15000ms" },
+      });
+      const input = inputFixture(report);
+      (
+        input.evidence as { scenarios: { expectedLinkTimeouts?: number }[] }
+      ).scenarios[1]!.expectedLinkTimeouts = 1;
+      expect(normalizeMobileResult(context, input).status).toBe("failed");
+    });
+  });
+
   it("does not let a recovery receipt excuse a different failed operation", () => {
     const report = reportFixture();
     report.run.results[1]!.attempts[0]!.steps.push({

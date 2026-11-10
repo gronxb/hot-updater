@@ -59,7 +59,6 @@ export async function verifyInfrastructure(
       status: "blocked",
       message:
         "Select --scope scaffold|infrastructure and --infra-dir <directory>.",
-      fixability: "command",
       resolution:
         "Use the exact scaffold directory returned by infra scaffold or agent infra setup/upgrade.",
     });
@@ -78,7 +77,6 @@ export async function verifyInfrastructure(
       code: "INFRA_TEMPLATE_UNAVAILABLE",
       status: "blocked",
       message: "Cannot read this CLI's packaged infrastructure templates.",
-      fixability: "command",
       resolution: "Reinstall the selected CLI version before retrying doctor.",
     });
   }
@@ -118,7 +116,6 @@ export async function verifyInfrastructure(
         paths: ["deployment.json"],
         message:
           "Deployment record is invalid, has a pending operation or conflicts with the selected endpoint.",
-        fixability: "blocked",
         resolution:
           "Observe the pending operation's actual outcome and reconcile the selected target before retrying. Recorded verifiedSteps cannot replace live checks.",
       });
@@ -149,7 +146,6 @@ export async function verifyInfrastructure(
           status: "blocked",
           message:
             "Resolve the scaffold or deployment prerequisite before probing the server.",
-          fixability: "blocked",
         }),
       ),
     );
@@ -180,7 +176,6 @@ export async function verifyInfrastructure(
         code,
         status: index === 0 ? "blocked" : "fail",
         message: probe.error,
-        fixability: "blocked",
         resolution:
           index === 0
             ? `Provide --server-base-url, --platform, --channel and exactly one of --app-version/--fingerprint.${clientAuth === null ? "" : ` Store the client ${clientAuth.credential.label} in ${clientAuth.credential.env} or scaffold app/${CLIENT_CREDENTIAL_FILE}.`}`
@@ -191,7 +186,6 @@ export async function verifyInfrastructure(
         code,
         status: "blocked",
         message: "A preceding server check did not pass.",
-        fixability: "blocked",
       });
     }
   }

@@ -78,6 +78,13 @@ export const integrationGroups = [
     include: ["plugins/supabase/**/*.integration.spec.ts"],
   },
   {
+    // A self-hosted Infisical in Docker Compose
+    // (packages/hot-updater/src/infisical.compose.yml).
+    name: "infisical",
+    project: "integration:default",
+    include: ["packages/hot-updater/src/infisical.integration.spec.ts"],
+  },
+  {
     // Workers in workerd, with D1 and R2.
     name: "cloudflare",
     project: "integration:cloudflare",

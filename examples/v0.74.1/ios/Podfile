@@ -5,6 +5,8 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
+require_relative './cocoapods_pathname'
+
 # Xcode 27 builds nothing below iOS 15.0; React Native 0.74 supports 13.4.
 IOS_DEPLOYMENT_TARGET = '15.1'
 platform :ios, IOS_DEPLOYMENT_TARGET

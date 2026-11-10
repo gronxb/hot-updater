@@ -34,6 +34,7 @@ import {
   getCrashHistory,
   isReleaseSelectionCurrent,
   isChannelSwitched,
+  resetChannelIfSelectionCurrent,
   stageBundle,
   supportsArtifactFiles,
 } from "./native";
@@ -282,6 +283,25 @@ async function checkForReleaseCatalogUpdate(input: {
       "Rejected a stale or inconsistent Release catalog",
     );
   }
+  // The switched channel holds nothing for this build any more, as a deleted
+  // channel does: the server answers its scope with an accepted catalog
+  // without releases. A scope without a catalog proves nothing, since a
+  // cache can still answer that for a channel deployed seconds ago.
+  if (
+    input.isSwitched &&
+    input.targetChannel === input.currentChannel &&
+    catalog.releases.length === 0 &&
+    catalog.rollbackReleases.length === 0
+  ) {
+    return leaveSwitchedChannel(input, {
+      catalogId,
+      catalogHash: catalog.catalogHash,
+      channel: input.targetChannel,
+      generation: catalog.generation,
+      scopeKey,
+      selectionContextHash,
+    });
+  }
   const stableInTargetScope =
     activeState.stableSelection?.catalogId === catalogId &&
     activeState.stableSelection.scopeKey === scopeKey
@@ -485,6 +505,119 @@ async function checkForReleaseCatalogUpdate(input: {
     transitionKind,
     updateBundle: updateBundleForSelection,
   };
+}
+
+/**
+ * The last channel leave that reset the device, by its channel and catalog
+ * guard: another result of the same check target counts as left too.
+ */
+let lastLeftKey: string | null = null;
+
+/** A channel leave in flight, which another result of the same target joins. */
+let pendingLeave: {
+  readonly key: string;
+  readonly promise: Promise<boolean>;
+} | null = null;
+
+/**
+ * Leaves a switched channel that holds nothing for this build, such as a
+ * deleted one: a rollback to the built-in bundle whose update also clears
+ * the runtime channel with `resetChannel()`, so the next check reads the
+ * build's default channel. A check never resets by itself, since the reset
+ * removes the running bundle's files.
+ */
+function leaveSwitchedChannel(
+  input: {
+    readonly options: InternalCheckForUpdateOptions;
+    readonly currentBundleId: string;
+    readonly currentChannel: string;
+    readonly minimumReleaseId: string;
+  },
+  guard: Parameters<typeof isReleaseSelectionCurrent>[0],
+): CheckForUpdateResult {
+  const { options } = input;
+  const shouldForceUpdate = input.currentBundleId !== input.minimumReleaseId;
+  const errorScope = {
+    bundleId: input.currentBundleId,
+    channel: input.currentChannel,
+    targetBundleId: input.minimumReleaseId,
+    targetReleaseId: null,
+    updateStrategy: options.updateStrategy,
+  };
+  options.emit("onUpdateCheck", () => ({
+    status: "UPDATE_AVAILABLE",
+    channel: input.currentChannel,
+    fromBundleId: input.currentBundleId,
+    fromReleaseId: getRunningReleaseId(
+      input.currentBundleId,
+      input.currentChannel,
+    ),
+    toBundleId: input.minimumReleaseId,
+    toReleaseId: null,
+    transitionKind: "USE_BUILTIN",
+    updateStatus: "ROLLBACK",
+    shouldForceUpdate,
+    updateStrategy: options.updateStrategy,
+  }));
+  const leaveKey = JSON.stringify([
+    input.currentChannel,
+    guard.catalogId,
+    guard.generation,
+    guard.catalogHash,
+    guard.selectionContextHash,
+  ]);
+  const result: CheckForUpdateResult = {
+    id: input.minimumReleaseId,
+    message: null,
+    releaseId: null,
+    rolloutCohortCount: 1000,
+    shouldForceUpdate,
+    status: "ROLLBACK",
+    targetCohorts: [],
+    transitionKind: "USE_BUILTIN",
+    updateBundle: async () => {
+      // This leave, from this or another result of the same catalog, already
+      // happened: calling it again changes nothing.
+      if (lastLeftKey === leaveKey && !isChannelSwitched()) return true;
+      // The same leave in flight: wait for it rather than run it twice.
+      if (pendingLeave?.key === leaveKey) return pendingLeave.promise;
+      const promise = leave();
+      pendingLeave = { key: leaveKey, promise };
+      try {
+        return await promise;
+      } finally {
+        if (pendingLeave?.promise === promise) pendingLeave = null;
+      }
+    },
+  };
+  return result;
+
+  async function leave(): Promise<boolean> {
+    resetProgress();
+    try {
+      // A device that left or changed the channel meanwhile keeps it; a
+      // newer catalog of it accepted meanwhile keeps it too, checked again
+      // in the same native step as the reset.
+      if (
+        !isChannelSwitched() ||
+        getChannel() !== input.currentChannel ||
+        !(await resetChannelIfSelectionCurrent(guard))
+      ) {
+        throw new StaleReleaseCatalogError();
+      }
+      lastLeftKey = leaveKey;
+      return true;
+    } catch (error) {
+      reportUpdateError(
+        options.emit,
+        error,
+        "download",
+        "artifact",
+        errorScope,
+      );
+      throw error;
+    }
+  }
 }
 
 export async function checkForUpdate(

@@ -98,10 +98,10 @@ describe("createPatch", () => {
     const [rendered, title] = mockCli.p.note.mock.calls[0]!;
     const summary = stripVTControlCharacters(String(rendered));
     expect(title).toBe("Patch");
-    expect(summary).toMatch(/Channel:\s+production/);
-    expect(summary).toMatch(/Platform:\s+ios/);
-    expect(summary).toMatch(/Base artifact ID:\s+base-bundle/);
-    expect(summary).toMatch(/Target artifact ID:\s+target-bundle/);
+    expect(summary).toMatch(/^Channel {2,}production/m);
+    expect(summary).toMatch(/^Platform {2,}ios/m);
+    expect(summary).toMatch(/^Base artifact ID {2,}base-bundle/m);
+    expect(summary).toMatch(/^Target artifact ID {2,}target-bundle/m);
     expect(mockServer.createBundleDiff).toHaveBeenCalledWith(
       {
         baseBundleId: "base-bundle",

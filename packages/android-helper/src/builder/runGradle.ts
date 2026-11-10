@@ -1,40 +1,33 @@
 import fs from "fs";
 import path from "path";
 
-import { p } from "@hot-updater/cli-tools";
+import { BuildFailedError, getCwd, p } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 
 import { createGradleLogger } from "../utils/createGradleLogger";
+import { formatCommand } from "../utils/formatCommand";
 
 type RunGradleArgs = {
   tasks: string[];
   logPrefix: string;
   appModuleName: string;
   args: { extraParams?: string[]; port?: string | number };
+  /** Added to the Gradle environment, for values kept off the command line. */
+  env?: Record<string, string>;
   androidProjectPath: string;
+  /** Lines the build log starts with, such as the native build key. */
+  logHeader?: string[];
 };
 
-/**
- * Clean up gradle error message by removing common noise
- */
-const getCleanedErrorMessage = (error: ExecaError) => {
-  const gradleLinesToRemove = [
-    "FAILURE: Build failed with an exception.",
-    "* Try:",
-    "> Run with --stacktrace option to get the stack trace.",
-    "> Run with --info or --debug option to get more log output.",
-    "> Run with --scan to get full insights.",
-    "> Get more help at [undefined](https://help.gradle.org).",
-    "> Get more help at https://help.gradle.org.",
-    "BUILD FAILED",
-  ];
-  return error.message
-    .split("\n")
-    .filter(
-      (line: string) => !gradleLinesToRemove.some((l) => line.includes(l)),
-    )
-    .join("\n")
-    .trim();
+/** Why Gradle failed, without its command line. */
+const describeFailure = (error: unknown) => {
+  if (error instanceof ExecaError) {
+    if (error.signal) return `Gradle was stopped by ${error.signal}.`;
+    if (error.exitCode !== undefined) {
+      return `Gradle exited with code ${error.exitCode}.`;
+    }
+  }
+  return error instanceof Error ? error.message : String(error);
 };
 
 /**
@@ -50,19 +43,55 @@ function getTaskNames(moduleName: string, tasks: string[]): Array<string> {
 const getGradleWrapper = () =>
   process.platform.startsWith("win") ? "gradlew.bat" : "./gradlew";
 
+/** A variable a POSIX shell can't name, as the signing environment's are. */
+const isShellName = (name: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
+
+/**
+ * The command that runs the wrapper with `env`. The wrapper's `#!/bin/sh` is
+ * dash on Debian and Ubuntu, which silently drops a variable whose name isn't
+ * a shell name, such as `ORG_GRADLE_PROJECT_android.injected.signing.store.file`:
+ * the build then signs with the project's own config. bash keeps them.
+ */
+const gradleCommand = (
+  env: Record<string, string> | undefined,
+): [string, string[]] => {
+  const wrapper = getGradleWrapper();
+  return wrapper === "./gradlew" &&
+    Object.keys(env ?? {}).some((name) => !isShellName(name))
+    ? ["bash", [wrapper]]
+    : [wrapper, []];
+};
+
 /**
  * Run gradle build with specified tasks and arguments
  */
-export async function runGradle({
+export async function runGradle(args: RunGradleArgs): Promise<{
+  buildDirectory: string;
+  buildArtifactPath: string;
+  /** The build log, or null without one. */
+  logFilePath: string | null;
+}> {
+  const logFilePath = await runGradleTasks(args);
+  return {
+    ...(await findBuildDirectory({
+      androidProjectPath: args.androidProjectPath,
+      moduleName: args.appModuleName,
+      tasks: args.tasks,
+    })),
+    logFilePath,
+  };
+}
+
+/** Runs tasks that leave no artifact to find, and returns the build log, or null. */
+export async function runGradleTasks({
   tasks,
   logPrefix,
   args,
+  env,
   androidProjectPath,
   appModuleName,
-}: RunGradleArgs): Promise<{
-  buildDirectory: string;
-  buildArtifactPath: string;
-}> {
+  logHeader = [],
+}: RunGradleArgs): Promise<string | null> {
   const gradleArgs = getTaskNames(appModuleName, tasks);
 
   gradleArgs.push("-x", "lint");
@@ -71,54 +100,62 @@ export async function runGradle({
     gradleArgs.push(...args.extraParams);
   }
 
-  p.log.info(`Run Gradle Settings: 
-Project    ${androidProjectPath}
-App Moudle ${appModuleName}
-Tasks      ${tasks.join(", ")}
-Args       ${gradleArgs.join(" ")}
-`);
-
   if ("port" in args && args.port != null) {
     gradleArgs.push(`-PreactNativeDevServerPort=${args.port}`);
   }
 
   const logger = createGradleLogger({ logPrefix });
-  await logger.start();
+  await logger.start({
+    title: `Building ${tasks.join(", ")}`,
+    header: [
+      ...logHeader,
+      `Project     ${path.relative(getCwd(), androidProjectPath) || "."}`,
+      `App module  ${appModuleName}`,
+      `Tasks       ${tasks.join(", ")}`,
+      `$ ${formatCommand([path.basename(getGradleWrapper()), ...gradleArgs])}`,
+      "",
+    ],
+  });
+  let logFilePath: string | null = null;
 
   try {
-    const process = execa(getGradleWrapper(), gradleArgs, {
+    const [command, prefix] = gradleCommand(env);
+    const gradle = execa(command, [...prefix, ...gradleArgs], {
       cwd: androidProjectPath,
+      env,
       all: true,
+      // The output streams to the log file; buffered, it would fill the
+      // error's message.
+      buffer: false,
     });
-    const outputStream = process.all ?? process.stdout;
-    if (outputStream) {
-      await logger.processStream(outputStream);
-    }
-    await process;
+    const outputStream = gradle.all ?? gradle.stdout;
+    // Settled together: Gradle exits before the log finishes reading its
+    // output, and its failure must wait for it.
+    const [gradleResult, loggingResult] = await Promise.allSettled([
+      gradle,
+      outputStream ? logger.processStream(outputStream) : undefined,
+    ]);
+    if (gradleResult.status === "rejected") throw gradleResult.reason;
+    if (loggingResult.status === "rejected") throw loggingResult.reason;
 
-    logger.stop();
+    logger.stop(`Built ${tasks.join(", ")}`);
+    logFilePath = logger.logFilePath;
   } catch (e) {
     logger.writeError(e);
-    logger.stop("Build failed", false);
-
-    if (e instanceof ExecaError) {
-      p.log.error(getCleanedErrorMessage(e));
-    } else if (e instanceof Error) {
-      p.log.error(e.message);
-    }
-
-    throw new Error(
-      "Failed to build the app. See the error above for details from Gradle.",
-    );
+    const reason = describeFailure(e);
+    // One line says the build failed and why: `Build failed · Gradle exited
+    // with code 1`.
+    logger.stop(`Build failed · ${reason.replace(/\.$/, "")}`, false);
+    throw new BuildFailedError(`Build failed: ${reason}`, {
+      logPath: logger.logPath,
+      summary: logger.failureSummary,
+      cause: e,
+    });
   } finally {
     await logger.close();
   }
 
-  return findBuildDirectory({
-    androidProjectPath,
-    moduleName: appModuleName,
-    tasks,
-  });
+  return logFilePath;
 }
 
 /**
@@ -203,6 +240,6 @@ async function getBuildOutputFilePath({
     return outputFilePath;
   }
 
-  p.log.error(`Failed to find the output file for ${outputFilePath}`);
+  p.log.error(`Gradle wrote no ${outputFilePath}.`);
   process.exit(1);
 }

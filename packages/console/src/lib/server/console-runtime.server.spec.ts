@@ -48,7 +48,9 @@ describe("Console config resolution", () => {
         database,
         storage,
         plugins,
-        console: { gitUrl: "https://github.com/example/app" },
+        console: {
+          gitUrl: "https://github.com/example/app",
+        },
       };
       const source = vi.fn(async () => config);
       configModule.source = sourceType === "object" ? config : source;

@@ -1,0 +1,10 @@
+{
+  "title": "Security",
+  "description": "Protect updates, credentials, and client access.",
+  "icon": "ShieldCheck",
+  "pages": [
+    "../policy/security",
+    "../guides/bundle-signing",
+    "../custom/api-key-authentication"
+  ]
+}

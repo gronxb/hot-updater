@@ -66,7 +66,7 @@ Keep it out of the app bundle and exclude local environment files from Git.
 ```typescript title="hot-updater.config.ts (excerpt)"
 import { existsSync } from "node:fs";
 import { azureBlobStorage } from "@hot-updater/azure"; // [!code ++]
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
@@ -74,8 +74,9 @@ if (existsSync(".env.hotupdater")) {
 
 export default defineConfig({
   // ... build, database, plugins, and updateStrategy
-  storage: azureBlobStorage({ // [!code ++]
-    connectionString: process.env.HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING!, // [!code ++]
+  storage: azureBlobStorage({
+    // [!code ++]
+    connectionString: secret("HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING"), // [!code ++]
     containerName: "hot-updater", // [!code ++]
   }), // [!code ++]
 });

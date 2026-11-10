@@ -4,6 +4,7 @@ import {
 } from "@hot-updater/cli-tools";
 
 import { ui } from "../utils/cli-ui";
+import { canPrompt } from "../utils/prompt";
 import { loadHotUpdater } from "./utils/load-hot-updater";
 
 export interface MigrateOptions {
@@ -266,6 +267,7 @@ async function migrateWithMigrator(
 
   // Confirmation
   if (!skipConfirm) {
+    if (!canPrompt("Apply these changes?")) process.exit(1);
     const shouldContinue = await p.confirm({
       message: "Apply these changes?",
       initialValue: true,

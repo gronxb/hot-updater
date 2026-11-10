@@ -100,6 +100,8 @@ describe("IAMManager DynamoDB access", () => {
               "channels#*",
               "bundle_totals",
               "bundle_totals#*",
+              "native_builds",
+              "native_builds#*",
               "bundle_events",
               "bundle_events#*",
               "bundle_event_heads",

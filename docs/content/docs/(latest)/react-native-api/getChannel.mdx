@@ -52,7 +52,7 @@ apply a transition to another channel as part of your
 
 ```tsx
 const updateInfo = await hotUpdater.checkForUpdate({
-  updateStrategy: "appVersion",
+  updateStrategy: "fingerprint",
   channel: "beta", // [!code ++]
 });
 

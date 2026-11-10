@@ -62,25 +62,21 @@ export const createMemoryCore = () => {
      */
     setBundles: async (bundles: readonly Bundle[]): Promise<void> => {
       const engine = createEngine(database);
-      try {
-        await engine.core.transaction(async (tx) => {
-          for (const bundle of bundles) {
-            tx.create("bundles", bundleToRow(bundle));
-            for (const platformKey of [bundle.platform, "*"]) {
-              tx.aggregate(
-                "bundle_totals",
-                { platform_key: platformKey },
-                { bundles: 1 },
-              );
-            }
-            for (const row of bundleToPatchRows(bundle)) {
-              tx.create("bundle_patches", row);
-            }
+      await engine.core.transaction(async (tx) => {
+        for (const bundle of bundles) {
+          tx.create("bundles", bundleToRow(bundle));
+          for (const platformKey of [bundle.platform, "*"]) {
+            tx.aggregate(
+              "bundle_totals",
+              { platform_key: platformKey },
+              { bundles: 1 },
+            );
           }
-        });
-      } finally {
-        await engine.dispose();
-      }
+          for (const row of bundleToPatchRows(bundle)) {
+            tx.create("bundle_patches", row);
+          }
+        }
+      });
     },
     bundles: async (): Promise<Bundle[]> =>
       (await core.listBundles({ limit: 100, order: "desc" })).map(

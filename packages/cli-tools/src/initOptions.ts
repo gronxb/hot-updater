@@ -3,7 +3,24 @@ import type { BuildType } from "./ConfigBuilder";
 export type RunInitOptions = {
   readonly build: BuildType;
   readonly envFile?: string;
+  /**
+   * Credentials the environment and the env files lack, read from the
+   * config's team `secrets` adapter (`InitProviderDefinition.secrets`):
+   * init reads them as if `.env.hotupdater` held them.
+   */
+  readonly secretsEnv?: Readonly<Record<string, string>>;
 };
+
+/**
+ * What a provider's init leaves to init's closing, which runs once the
+ * provider is done and every step of init has printed: its `nextSteps`, each
+ * printed as `Next step: <step>`, then "Done! 🎉". Null when the provider
+ * stopped before setting the project up, as Firebase does after creating a
+ * project, and printed what to do itself.
+ */
+export type RunInitResult = {
+  readonly nextSteps: readonly string[];
+} | null;
 
 export class InitError extends Error {
   readonly name: string = "InitError";

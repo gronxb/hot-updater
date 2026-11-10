@@ -1,4 +1,4 @@
-import type { EngineDatabase } from "@hot-updater/plugin-core";
+import type { EngineDatabase, Lazy } from "@hot-updater/plugin-core";
 import {
   createEngineDatabase,
   createSqlAdapter,
@@ -9,7 +9,44 @@ import pg, { type PoolConfig } from "pg";
 
 const { Pool } = pg;
 
-export type PostgresConfig = PoolConfig & {
+/**
+ * The resource this database reaches, without credentials, under the key
+ * `hot-updater doctor` reads to tell the database `hot-updater init` saved
+ * from another (a convention CLAUDE.md documents).
+ */
+const DATABASE_TARGET = Symbol.for("@hot-updater/database-target");
+
+/** The server and database a pool reaches: `postgres/<host>:<port>/<database>`. */
+const targetOf = ({
+  connectionString,
+  host,
+  port,
+  database,
+}: PostgresPoolConfig): string | undefined => {
+  if (typeof connectionString === "function") return undefined;
+  if (connectionString !== undefined) {
+    try {
+      const url = new URL(connectionString);
+      return `postgres/${url.hostname}:${url.port || "5432"}/${decodeURIComponent(url.pathname.slice(1))}`;
+    } catch {
+      return undefined;
+    }
+  }
+  return host === undefined || database === undefined
+    ? undefined
+    : `postgres/${host}:${port ?? 5432}/${database}`;
+};
+
+type PostgresPoolConfig = Omit<PoolConfig, "connectionString"> & {
+  /**
+   * The database's URL, or a function that returns it, such as
+   * `secret("<name>")` in `hot-updater.config.ts`: called when the pool
+   * first connects, so a config loads without it.
+   */
+  readonly connectionString?: Lazy<string>;
+};
+
+export type PostgresConfig = PostgresPoolConfig & {
   readonly dialect?: Dialect;
 };
 
@@ -21,14 +58,28 @@ export type PostgresConfig = PoolConfig & {
  */
 export const postgres = (config: PostgresConfig): EngineDatabase => {
   const { dialect, ...poolConfig } = config;
+  const target = targetOf(poolConfig);
+  const { connectionString } = poolConfig;
   const db = new Kysely<object>({
-    dialect: dialect ?? new PostgresDialect({ pool: new Pool(poolConfig) }),
+    dialect:
+      dialect ??
+      new PostgresDialect({
+        pool:
+          typeof connectionString === "function"
+            ? async () =>
+                new Pool({
+                  ...poolConfig,
+                  connectionString: await connectionString(),
+                })
+            : new Pool({ ...poolConfig, connectionString }),
+      }),
   });
   return {
     ...createEngineDatabase({
       name: "postgres",
       adapter: createSqlAdapter({ executor: kyselyExecutor(db, "postgresql") }),
     }),
+    ...(target === undefined ? {} : { [DATABASE_TARGET]: target }),
     dispose: () => db.destroy(),
   };
 };

@@ -47,7 +47,10 @@ const mockPlugins = vi.hoisted(() => ({
 }));
 
 // The definition tooling `db generate` runs, from cli-tools.
-vi.mock("@hot-updater/cli-tools", () => ({
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  nonInteractiveReason: (
+    await importOriginal<typeof import("@hot-updater/cli-tools")>()
+  ).nonInteractiveReason,
   createMigrator: mockServer.createMigrator,
   generateSchema: mockServer.generateSchema,
   generatesSchema: mockServer.generatesSchema,
@@ -80,9 +83,15 @@ vi.mock("./utils/load-hot-updater", async (importOriginal) => ({
 const definitionOn = (name: string) =>
   ({ database: { name }, plugins: [] }) as unknown as ServerDefinition;
 
+const stdinIsTTY = process.stdin.isTTY;
+
 describe("generate command", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(process.stdin, "isTTY", {
+      configurable: true,
+      value: true,
+    });
     mockPlugins.findPluginList.mockResolvedValue(undefined);
     mockServer.generatesSchema.mockReturnValue(false);
     mockServer.createMigrator.mockReturnValue({
@@ -97,6 +106,10 @@ describe("generate command", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    Object.defineProperty(process.stdin, "isTTY", {
+      configurable: true,
+      value: stdinIsTTY,
+    });
   });
 
   it("rejects generation for a database without schema files after disposing loaded config", async () => {
@@ -343,4 +356,14 @@ describe("generate command", () => {
     expect(exitSpy).toHaveBeenCalledWith(0);
     expect(events).toEqual(["dispose", "exit:0"]);
   });
+});
+
+// The terminal these specs simulate takes prompts only outside CI, and CI
+// runners set CI.
+beforeEach(() => {
+  vi.stubEnv("CI", "");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });

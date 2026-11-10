@@ -29,6 +29,7 @@
   "runtime-channel-crash-restore",
   "ten-crash-history-safe-bundle",
   "remote-config-fetch-activate",
+  "foreign-signing-key-refused",
   "brownfield-native-required-update",
   "brownfield-native-minor-update",
   "brownfield-instances-update-independently",

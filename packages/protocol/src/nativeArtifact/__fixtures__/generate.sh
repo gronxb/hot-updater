@@ -1,0 +1,259 @@
+#!/bin/zsh
+# Regenerates the native artifact fixtures with the toolchains that make real
+# apps, so the readers are checked against their output, not against a writer
+# of our own: javac and d8 (dex), aapt2 (binary and proto manifests), clang and
+# lipo (Mach-O), and plutil (binary plist). Needs an Android SDK with
+# build-tools and a platform, a JDK, and Xcode's command line tools.
+#
+#   zsh packages/protocol/src/nativeArtifact/__fixtures__/generate.sh
+set -eu
+cd "${0:A:h}"
+
+MIN_BUNDLE_ID=019a2b3c-4d5e-7000-8000-000000000000
+OTHER_UUID_V7=019a2b3c-4d5e-7abc-9def-0123456789ab
+FINGERPRINT=5de1cdbfefdc1f0b4a1b3c36ed83c246dff317dd540c0393ca76fa758026ec8f
+SANDBOX_MARKER=HOT_UPDATER_SANDBOX_NATIVE_LAYER
+
+sdk="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+build_tools=$(print -l "$sdk"/build-tools/*(/) | sort -V | tail -1)
+android_jar=$(print -l "$sdk"/platforms/android-*/android.jar | sort -V | tail -1)
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+# dex: the classes the SDK's Gradle tasks generate, plus a substring that is
+# no whole literal. other.dex holds another UUIDv7; plain.dex neither.
+dex() {
+  local name=$1 min_bundle_id=$2 fingerprint=$3 marker=${4:-}
+  local marker_method=""
+  [[ -n "$marker" ]] && marker_method="static String marker() { return \"$marker\"; }"
+  rm -rf "$tmp/java" "$tmp/classes" "$tmp/dex"
+  mkdir -p "$tmp/java/com/hotupdater" "$tmp/classes" "$tmp/dex"
+  cat > "$tmp/java/com/hotupdater/Generated.java" <<EOF
+package com.hotupdater;
+
+final class Generated {
+  static String minBundleId() { return "$min_bundle_id"; }
+  static String fingerprint() { return "$fingerprint"; }
+  static String label() { return "id=$OTHER_UUID_V7"; }
+  $marker_method
+}
+EOF
+  javac --release 8 -d "$tmp/classes" "$tmp/java/com/hotupdater/Generated.java"
+  "$build_tools/d8" --release --min-api 24 --output "$tmp/dex" \
+    "$tmp/classes/com/hotupdater/Generated.class"
+  cp "$tmp/dex/classes.dex" "$name"
+}
+dex classes.dex "$MIN_BUNDLE_ID" "$FINGERPRINT"
+dex other.dex "$OTHER_UUID_V7" ""
+dex plain.dex "" ""
+dex sandbox.dex "$MIN_BUNDLE_ID" "$FINGERPRINT" "$SANDBOX_MARKER"
+
+# Manifests: aapt2 links each into an .apk (binary XML) and with
+# --proto-format into the form an .aab's module holds.
+mkdir -p "$tmp/res/values"
+cat > "$tmp/res/values/strings.xml" <<'EOF'
+<resources><string name="channel">beta</string></resources>
+EOF
+"$build_tools/aapt2" compile --dir "$tmp/res" -o "$tmp/res.zip"
+manifest() {
+  local name=$1 application=$2 package=${3:-com.example.app}
+  cat > "$tmp/AndroidManifest.xml" <<EOF
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="$package" android:versionCode="42"
+    android:versionName="1.4.0">
+  <application $application
+  </application>
+</manifest>
+EOF
+  "$build_tools/aapt2" link -I "$android_jar" --manifest "$tmp/AndroidManifest.xml" \
+    -o "$tmp/binary.apk" "$tmp/res.zip"
+  "$build_tools/aapt2" link -I "$android_jar" --manifest "$tmp/AndroidManifest.xml" \
+    --proto-format -o "$tmp/proto.apk" "$tmp/res.zip"
+  unzip -p "$tmp/binary.apk" AndroidManifest.xml > "$name.axml"
+  unzip -p "$tmp/proto.apk" AndroidManifest.xml > "$name.pb"
+}
+manifest release '>
+    <meta-data android:name="com.hotupdater.CHANNEL" android:value="beta"/>
+    <meta-data android:name="other" android:value="x"/>'
+manifest debuggable 'android:debuggable="true">'
+manifest reference '>
+    <meta-data android:name="com.hotupdater.CHANNEL" android:value="@string/channel"/>'
+manifest empty '>
+    <meta-data android:name="com.hotupdater.CHANNEL" android:value=""/>'
+manifest resource '>
+    <meta-data android:name="com.hotupdater.CHANNEL" android:resource="@string/channel"/>'
+manifest sandbox '>
+    <meta-data android:name="com.hotupdater.CHANNEL" android:value="sandbox-release"/>
+    <meta-data android:name="com.hotupdater.SANDBOX" android:value="true"/>
+    <activity android:name="com.hotupdater.HotUpdaterSandboxActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="hu-sandbox-com-example-app"/>
+      </intent-filter>
+    </activity>
+    <activity android:name="com.example.app.MainActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:scheme="exampleapp"/>
+      </intent-filter>
+    </activity>' com.example.app.sandbox
+# A sandbox build of a scheme that sets sandbox: { urlScheme }.
+manifest sandbox-custom '>
+    <meta-data android:name="com.hotupdater.CHANNEL" android:value="sandbox-release"/>
+    <meta-data android:name="com.hotupdater.SANDBOX" android:value="true"/>
+    <activity android:name="com.hotupdater.HotUpdaterSandboxActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="acme-preview"/>
+      </intent-filter>
+      <meta-data android:name="com.hotupdater.sandbox.URL_SCHEME" android:value="acme-preview"/>
+    </activity>
+    <activity android:name="com.example.app.MainActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:scheme="exampleapp"/>
+      </intent-filter>
+    </activity>' com.example.app.sandbox
+# Its activity also takes the app's link, in a filter before the sandbox's.
+manifest sandbox-other-first '>
+    <meta-data android:name="com.hotupdater.CHANNEL" android:value="sandbox-release"/>
+    <meta-data android:name="com.hotupdater.SANDBOX" android:value="true"/>
+    <activity android:name="com.hotupdater.HotUpdaterSandboxActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:scheme="exampleapp"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="acme-preview"/>
+      </intent-filter>
+      <meta-data android:name="com.hotupdater.sandbox.URL_SCHEME" android:value="acme-preview"/>
+    </activity>' com.example.app.sandbox
+# One whose meta-data names a scheme its activity doesn't take.
+manifest sandbox-mismatch '>
+    <meta-data android:name="com.hotupdater.CHANNEL" android:value="sandbox-release"/>
+    <meta-data android:name="com.hotupdater.SANDBOX" android:value="true"/>
+    <activity android:name="com.hotupdater.HotUpdaterSandboxActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:scheme="exampleapp"/>
+      </intent-filter>
+      <meta-data android:name="com.hotupdater.sandbox.URL_SCHEME" android:value="acme-preview"/>
+    </activity>' com.example.app.sandbox
+manifest launcher '>
+    <activity android:name="com.example.app.MainActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity>
+    <activity-alias android:name="com.example.app.Launcher" android:targetActivity="com.example.app.MainActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity-alias>'
+
+# Mach-O: an executable whose __cstring holds the literals, one holding
+# another UUIDv7, and a universal binary whose x86_64 slice holds another
+# UUIDv7, so arm64's is the one read.
+macho() {
+  local arch=$1 min_bundle_id=$2 output=$3 marker=${4:-}
+  local marker_call=""
+  [[ -n "$marker" ]] && marker_call="puts(\"$marker\");"
+  cat > "$tmp/app.c" <<EOF
+#include <stdio.h>
+const char *min_bundle_id(void) { return "$min_bundle_id"; }
+const char *fingerprint(void) { return "$FINGERPRINT"; }
+const char *label(void) { return "id=$OTHER_UUID_V7"; }
+int main(void) { puts(min_bundle_id()); puts(fingerprint()); puts(label()); $marker_call return 0; }
+EOF
+  clang -Os -arch "$arch" -o "$output" "$tmp/app.c"
+  strip "$output"
+}
+macho arm64 "$MIN_BUNDLE_ID" App
+macho arm64 "$OTHER_UUID_V7" App-other
+macho arm64 "$MIN_BUNDLE_ID" App-sandbox "$SANDBOX_MARKER"
+macho x86_64 "$OTHER_UUID_V7" "$tmp/App-x86_64"
+lipo -create App "$tmp/App-x86_64" -output App-universal
+
+# Info.plist: XML as written, and binary as Xcode packs it.
+cat > Info.xml.plist <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>App</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.example.app</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.4.0</string>
+  <key>CFBundleVersion</key>
+  <string>42</string>
+  <key>HOT_UPDATER_CHANNEL</key>
+  <string>beta &amp; gamma</string>
+  <key>UIRequiredDeviceCapabilities</key>
+  <array><string>arm64</string></array>
+  <key>NSAppTransportSecurity</key>
+  <dict><key>NSAllowsArbitraryLoads</key><true/></dict>
+</dict>
+</plist>
+EOF
+plutil -convert binary1 -o Info.plist Info.xml.plist
+# A sandbox build's, as the CLI patches it into the archive.
+cp Info.plist Info.sandbox.plist
+plutil -replace HOT_UPDATER_CHANNEL -string sandbox-release Info.sandbox.plist
+plutil -replace HOT_UPDATER_SANDBOX -bool true Info.sandbox.plist
+plutil -replace CFBundleURLTypes -json '[{"CFBundleURLName":"hot-updater-sandbox","CFBundleURLSchemes":["hu-sandbox-com-example-app"]}]' Info.sandbox.plist
+# One with the URL scheme its scheme sets, after the app's own URL type.
+cp Info.sandbox.plist Info.sandbox-custom.plist
+plutil -replace CFBundleURLTypes -json '[{"CFBundleURLName":"com.example.app","CFBundleURLSchemes":["exampleapp"]},{"CFBundleURLName":"hot-updater-sandbox","CFBundleURLSchemes":["acme-preview"]}]' Info.sandbox-custom.plist
+# One whose sandbox URL type has no name, read by the derived scheme's prefix.
+cp Info.sandbox.plist Info.sandbox-unnamed.plist
+plutil -replace CFBundleURLTypes -json '[{"CFBundleURLSchemes":["exampleapp"]},{"CFBundleURLSchemes":["hu-sandbox-com-example-app"]}]' Info.sandbox-unnamed.plist
+# One whose URL type of the sandbox's name holds another scheme too.
+cp Info.sandbox.plist Info.sandbox-two-schemes.plist
+plutil -replace CFBundleURLTypes -json '[{"CFBundleURLName":"hot-updater-sandbox","CFBundleURLSchemes":["acme-preview","app-login"]}]' Info.sandbox-two-schemes.plist
+# One that records its scheme, as the CLI patches it now, and one whose sandbox
+# URL type holds another scheme than the one recorded.
+cp Info.sandbox-custom.plist Info.sandbox-recorded.plist
+plutil -replace HOT_UPDATER_SANDBOX_URL_SCHEME -string acme-preview Info.sandbox-recorded.plist
+cp Info.sandbox-recorded.plist Info.sandbox-recorded-mismatch.plist
+plutil -replace CFBundleURLTypes -json '[{"CFBundleURLName":"hot-updater-sandbox","CFBundleURLSchemes":["app-login"]}]' Info.sandbox-recorded-mismatch.plist
+# Recorded values no rule takes, beside a URL type that holds a scheme.
+for name args in empty "-string ''" int "-integer 42" bool "-bool true"; do
+  cp Info.sandbox-recorded.plist Info.sandbox-recorded-$name.plist
+  eval plutil -replace HOT_UPDATER_SANDBOX_URL_SCHEME $args Info.sandbox-recorded-$name.plist
+done
+# A recorded scheme with no URL type of the sandbox's name, and with two.
+cp Info.sandbox-recorded.plist Info.sandbox-recorded-unnamed.plist
+plutil -replace CFBundleURLTypes -json '[{"CFBundleURLSchemes":["acme-preview"]}]' Info.sandbox-recorded-unnamed.plist
+cp Info.sandbox-recorded.plist Info.sandbox-recorded-twice.plist
+plutil -replace CFBundleURLTypes -json '[{"CFBundleURLName":"hot-updater-sandbox","CFBundleURLSchemes":["acme-preview"]},{"CFBundleURLName":"hot-updater-sandbox","CFBundleURLSchemes":["acme-preview"]}]' Info.sandbox-recorded-twice.plist

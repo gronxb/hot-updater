@@ -3,7 +3,11 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { getCwd, reactNativeCliFingerprint } from "@hot-updater/cli-tools";
+import {
+  fitText,
+  getCwd,
+  reactNativeCliFingerprint,
+} from "@hot-updater/cli-tools";
 import type {
   NativeFingerprint,
   NativeFingerprintOptions,
@@ -21,6 +25,7 @@ const ADAPTER_FINGERPRINTS: Readonly<
 > = {
   bare: { packageName: "@hot-updater/bare", exportName: "bareFingerprint" },
   rock: { packageName: "@hot-updater/rock", exportName: "rockFingerprint" },
+  one: { packageName: "@hot-updater/one", exportName: "oneFingerprint" },
   expo: { packageName: "@hot-updater/expo", exportName: "expoFingerprint" },
 };
 
@@ -80,7 +85,7 @@ export const computeRecordedFingerprintHash = async (
         `fingerprint.json has no ${platform} fingerprint. Run \`npx hot-updater fingerprint create\`.`,
       );
     }
-    console.error(`warning: ${reason} The build embeds ${recorded}.`);
+    console.error(fitText(`warning: ${reason} The build embeds ${recorded}.`));
     return { hash: recorded, recorded };
   };
 
