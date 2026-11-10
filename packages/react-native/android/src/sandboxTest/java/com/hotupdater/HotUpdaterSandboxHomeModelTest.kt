@@ -643,6 +643,32 @@ class HotUpdaterSandboxHomeModelTest {
     }
 
     @Test
+    fun `an iOS link says which QR to scan`() {
+        val ios = HotUpdaterSandboxLink.parse("hu-sandbox-app://hot-updater/preview?channel=pr-12&fingerprint=fp&platform=ios")!!
+        val question =
+            HotUpdaterSandboxQuestion.of(
+                HotUpdaterSandboxPhase.Refused(HotUpdaterSandboxRefusal.OtherPlatform(ios)),
+                isOverApp = false,
+            )
+        assertEquals("This QR is for iOS", question?.title)
+        assertEquals("Scan the Android QR code for pr-12.", question?.message)
+        assertEquals("OK", question?.accept)
+        assertNull(question?.decline)
+    }
+
+    @Test
+    fun `a link without a platform keeps the fingerprint refusal`() {
+        val link = HotUpdaterSandboxLink.parse("hu-sandbox-app://hot-updater/preview?channel=pr-12&fingerprint=fp")!!
+        val question =
+            HotUpdaterSandboxQuestion.of(
+                HotUpdaterSandboxPhase.Refused(HotUpdaterSandboxRefusal.OtherFingerprint(link, "abc")),
+                isOverApp = false,
+            )
+        assertEquals("pr-12 needs another build", question?.title)
+        assertEquals("Its native code differs from this build. Install the sandbox build for that fingerprint.", question?.message)
+    }
+
+    @Test
     fun `the license reflows into paragraphs`() {
         val text =
             listOf(

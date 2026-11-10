@@ -867,6 +867,7 @@ describe("the sandbox layer", () => {
         urlScheme: string;
         channel: string;
         fingerprintHash: string;
+        platform?: "ios" | "android";
       }[];
       invalid: string[];
     };
@@ -909,6 +910,24 @@ describe("the sandbox layer", () => {
         urlScheme: "acme-preview",
         channel: "pr-12",
         fingerprintHash: "abc",
+      });
+    });
+
+    it("names the platform a link is for, which the other platform's build refuses", () => {
+      const link = createPreviewLink({
+        urlScheme: "acme-preview",
+        channel: "pr-12",
+        fingerprintHash: "abc",
+        platform: "android",
+      });
+      expect(link).toBe(
+        "acme-preview://hot-updater/preview?channel=pr-12&fingerprint=abc&platform=android",
+      );
+      expect(parsePreviewLink(link)).toEqual({
+        urlScheme: "acme-preview",
+        channel: "pr-12",
+        fingerprintHash: "abc",
+        platform: "android",
       });
     });
 

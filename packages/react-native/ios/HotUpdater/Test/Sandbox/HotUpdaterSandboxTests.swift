@@ -467,6 +467,46 @@ struct HotUpdaterSandboxCoordinatorTests {
     }
 
     @Test
+    func anAndroidLinkIsRefusedBeforeItsFingerprint() async {
+        let fixture = Fixture()
+        let android = link("pr-1", fingerprintHash: "other") + "&platform=android"
+        fixture.coordinator.receiveLink(android)
+        #expect(fixture.coordinator.state.phase == .refused(.otherPlatform(link: HotUpdaterSandboxLink(url: android)!)))
+        #expect(fixture.host.calls.isEmpty)
+        #expect(fixture.store.pendingLinks.isEmpty)
+    }
+
+    @Test
+    func anAndroidLinkOfAnotherSchemeStillSaysWhichQrToScan() async {
+        // The Android sandbox can register another scheme, and the in-app
+        // scanner takes any preview link.
+        let fixture = Fixture(ownScheme: "acme-preview")
+        let android = link("pr-1") + "&platform=android"
+        fixture.coordinator.receiveLink(android)
+        #expect(fixture.coordinator.state.phase == .refused(.otherPlatform(link: HotUpdaterSandboxLink(url: android)!)))
+    }
+
+    @Test
+    func anIosLinkOrAnUnknownPlatformIsAskedAbout() async {
+        for platform in ["ios", "windows"] {
+            let fixture = Fixture()
+            let url = link("pr-1") + "&platform=\(platform)"
+            fixture.coordinator.receiveLink(url)
+            #expect(fixture.coordinator.state.phase == .confirming(HotUpdaterSandboxLink(url: url)!), "\(platform)")
+        }
+    }
+
+    @Test
+    func aPastedAndroidLinkIsRefusedLikeAScannedOne() async {
+        let fixture = Fixture()
+        fixture.coordinator.switchTo(" \(link("pr-1"))&platform=android ")
+        guard case .refused(.otherPlatform) = fixture.coordinator.state.phase else {
+            Issue.record("expected the other platform's refusal")
+            return
+        }
+    }
+
+    @Test
     func aRefusedLinkDeliveredTwiceAsksOnce() async {
         let fixture = Fixture()
         let refused = link("pr-1", fingerprintHash: "other")
@@ -1065,6 +1105,7 @@ struct HotUpdaterSandboxLinkTests {
             #expect(parsed?.urlScheme == vector["urlScheme"])
             #expect(parsed?.channel == vector["channel"])
             #expect(parsed?.fingerprintHash == vector["fingerprintHash"])
+            #expect(parsed?.platform == vector["platform"])
         }
     }
 
@@ -2050,6 +2091,27 @@ struct HotUpdaterSandboxHomeModelTests {
         // It opens the channel's latest bundle, and says so.
         #expect(before?.title == "Open latest on pr-1?")
         #expect(before?.accept == "Open latest")
+    }
+
+    @Test
+    func anAndroidLinkSaysWhichQrToScan() {
+        let android = HotUpdaterSandboxLink(url: "hu-sandbox-app://hot-updater/preview?channel=pr-12&fingerprint=fp&platform=android")!
+        let question = HotUpdaterSandboxQuestion(phase: .refused(.otherPlatform(link: android)), isOverApp: false)
+        #expect(question?.title == "This QR is for Android")
+        #expect(question?.message == "Scan the iPhone QR code for pr-12.")
+        #expect(question?.accept == "OK")
+        #expect(question?.decline == nil)
+    }
+
+    @Test
+    func aLinkWithoutAPlatformKeepsTheFingerprintRefusal() {
+        let link = HotUpdaterSandboxLink(url: "hu-sandbox-app://hot-updater/preview?channel=pr-12&fingerprint=fp")!
+        let question = HotUpdaterSandboxQuestion(
+            phase: .refused(.otherFingerprint(link: link, buildFingerprintHash: "abc")),
+            isOverApp: false
+        )
+        #expect(question?.title == "pr-12 needs another build")
+        #expect(question?.message == "Its native code differs from this build. Install the sandbox build for that fingerprint.")
     }
 
     @Test

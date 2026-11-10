@@ -24,6 +24,7 @@ class HotUpdaterSandboxLinkTest {
             assertEquals(vector.getString("urlScheme"), parsed!!.urlScheme)
             assertEquals(vector.getString("channel"), parsed.channel)
             assertEquals(vector.getString("fingerprintHash"), parsed.fingerprintHash)
+            assertEquals(vector.optString("platform").ifEmpty { null }, parsed.platform)
         }
     }
 
