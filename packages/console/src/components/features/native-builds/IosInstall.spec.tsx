@@ -394,6 +394,35 @@ describe("InstallCard on an iPhone", () => {
     expect(installEligibilityQuery).toHaveBeenLastCalledWith(BUILD, PHONE);
   });
 
+  it("uses the ID the profile's page passes in the fragment where nothing is kept, and drops it", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("SecurityError");
+    });
+    window.history.replaceState(null, "", `/native-builds/${BUILD}#udid=${PHONE}`);
+    onIphone();
+    answer(installable("included"));
+    render(<InstallCard build={row} />);
+
+    expect(await screen.findByRole("link", { name: "Install" })).toBeTruthy();
+    expect(installEligibilityQuery).toHaveBeenLastCalledWith(BUILD, PHONE);
+    expect(window.location.hash).toBe("");
+  });
+
+  it("prefers the ID this phone kept over one a link carries", async () => {
+    window.localStorage.setItem(IOS_UDID_STORAGE_KEY, PHONE);
+    window.history.replaceState(
+      null,
+      "",
+      `/native-builds/${BUILD}#udid=a1b2c3d4e5f60718293a4b5c6d7e8f9012345678`,
+    );
+    onIphone();
+    answer(installable("included"));
+    render(<InstallCard build={row} />);
+
+    await screen.findByRole("link", { name: "Install" });
+    expect(installEligibilityQuery).toHaveBeenLastCalledWith(BUILD, PHONE);
+  });
+
   it("ignores text in that key that isn't a UDID", async () => {
     window.localStorage.setItem(IOS_UDID_STORAGE_KEY, "<script>");
     onIphone();

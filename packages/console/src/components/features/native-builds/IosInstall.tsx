@@ -37,9 +37,9 @@ export const isIosBrowser = (
   (/Macintosh/u.test(browser.userAgent) && browser.maxTouchPoints > 1);
 
 /**
- * Whether this page is open on an iPhone, and the UDID the phone kept when it
- * checked itself. Read after the page mounts: the server renders it without a
- * browser. Null until then.
+ * Whether this page is open on an iPhone, and its UDID: the one the profile's
+ * page passed in the fragment, else the one this phone kept. Read after the
+ * page mounts: the server renders it without a browser. Null until then.
  */
 export const useIosDevice = () => {
   const [device, setDevice] = useState<{
@@ -47,14 +47,27 @@ export const useIosDevice = () => {
     readonly udid: string | null;
   } | null>(null);
   useEffect(() => {
+    const valid = (udid: string | null | undefined) =>
+      udid != null && IOS_UDID_PATTERN.test(udid) ? udid : null;
+    // A browser that keeps nothing still has the ID from the fragment, in memory.
+    const passed = valid(
+      new URLSearchParams(window.location.hash.slice(1)).get("udid"),
+    );
+    if (passed !== null) {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${window.location.search}`,
+      );
+    }
     const read = () => {
       let udid: string | null = null;
       try {
         udid = window.localStorage.getItem(IOS_UDID_STORAGE_KEY);
       } catch {
-        // A browser that keeps nothing: this iPhone installs the profile each time.
+        // A browser that keeps nothing: the fragment's ID, if any, stands.
       }
-      const kept = udid !== null && IOS_UDID_PATTERN.test(udid) ? udid : null;
+      const kept = valid(udid) ?? passed;
       setDevice((current) =>
         current?.udid === kept && current !== null
           ? current

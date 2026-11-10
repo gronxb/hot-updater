@@ -198,17 +198,15 @@ describe("serveDevicePage", () => {
   const page = (init?: RequestInit) =>
     serveDevicePage(new Request(`${CONSOLE}/device`, init), BUILD);
 
-  it("is a page of its own, with the warning, a link back, and nothing from elsewhere", async () => {
+  it("is a page of its own, with a link back, and nothing from elsewhere", async () => {
     const response = page();
 
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
     const html = await response.text();
-    expect(html).toContain("Send this only if this is your iPhone.");
     expect(html).toContain(`href="../../../native-builds/${BUILD}"`);
     expect(html).toContain("hot-updater-ios-udid");
-    expect(html).toContain("native-build devices add --udid ");
     // No script, style, image, or request from anywhere: its own inline ones.
     expect(html).not.toMatch(/<(?:link|img|iframe)\b/u);
     expect(html).not.toMatch(/\bsrc=/u);
@@ -310,7 +308,10 @@ describe("the device page's script", () => {
     return { document, kept, location, navigations, shown };
   };
 
-  it("keeps the UDID, drops the fragment, and goes straight back to the build's page", async () => {
+  const backOf = (document: Document) =>
+    (document.getElementById("back") as HTMLAnchorElement).href;
+
+  it("keeps the UDID, drops the fragment, and goes straight back to the build's page with it", async () => {
     const { shown, kept, location, navigations, document } = await open(
       `#udid=${PHONE}`,
     );
@@ -319,10 +320,8 @@ describe("the device page's script", () => {
     expect(location.hash).toBe("");
     expect(navigations).toHaveLength(1);
     expect(shown("returning")).toContain("Back to the build");
-    expect(shown("udid")).toBeNull();
-    expect(shown("command")).toBeNull();
-    expect((document.getElementById("back") as HTMLAnchorElement).href).toBe(
-      `https://console.example.com/native-builds/${BUILD}`,
+    expect(backOf(document)).toBe(
+      `https://console.example.com/native-builds/${BUILD}#udid=${PHONE}`,
     );
   });
 
@@ -332,8 +331,8 @@ describe("the device page's script", () => {
     });
 
     expect(navigations).toHaveLength(1);
-    expect((document.getElementById("back") as HTMLAnchorElement).href).toBe(
-      `https://console.example.com/console/native-builds/${BUILD}`,
+    expect(backOf(document)).toBe(
+      `https://console.example.com/console/native-builds/${BUILD}#udid=${PHONE}`,
     );
   });
 
@@ -342,19 +341,15 @@ describe("the device page's script", () => {
     expect(navigations).toHaveLength(1);
   });
 
-  it("shows the UDID and one command where the browser keeps nothing, and stays", async () => {
-    const { shown, navigations } = await open(`#udid=${PHONE}`, undefined, {
+  it("goes back with the UDID in the fragment where the browser keeps nothing", async () => {
+    const { document, navigations } = await open(`#udid=${PHONE}`, undefined, {
       keepsNothing: true,
     });
 
-    expect(navigations).toHaveLength(0);
-    expect(shown("returning")).toBeNull();
-    expect(shown("udid")).toBe(PHONE);
-    expect(shown("warning")).toBe("Send this only if this is your iPhone.");
-    expect(shown("command")).toBe(
-      `npx hot-updater native-build devices add --udid ${PHONE} --name "Teammate's iPhone"`,
+    expect(navigations).toHaveLength(1);
+    expect(backOf(document)).toBe(
+      `https://console.example.com/native-builds/${BUILD}#udid=${PHONE}`,
     );
-    expect(shown("copy")).toBe("Copy command");
   });
 
   it("says where to go without a UDID, keeping nothing", async () => {
@@ -362,22 +357,19 @@ describe("the device page's script", () => {
 
     expect(shown("missing")).toContain("No iPhone ID");
     expect(shown("retry")).toContain("Safari");
-    expect(shown("udid")).toBeNull();
-    expect(shown("command")).toBeNull();
+    expect(shown("returning")).toBeNull();
     expect(kept()).toBeNull();
     expect(navigations).toHaveLength(0);
   });
 
   it("never renders, keeps or follows a crafted fragment", async () => {
     const crafted = encodeURIComponent(`<img src=x onerror=alert(1)>`);
-    const { shown, document, kept, navigations } = await open(
-      `#udid=${crafted}`,
-    );
+    const { document, kept, navigations } = await open(`#udid=${crafted}`);
 
-    expect(shown("udid")).toBeNull();
     expect(document.querySelector("img")).toBeNull();
     expect(kept()).toBeNull();
     expect(navigations).toHaveLength(0);
+    expect(backOf(document)).not.toContain("#");
   });
 
   it("prefers the fragment over what it kept, so a new check replaces an old UDID", async () => {
