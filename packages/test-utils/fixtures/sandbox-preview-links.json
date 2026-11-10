@@ -55,6 +55,19 @@
       "urlScheme": "acme-preview",
       "channel": "pr-12",
       "fingerprintHash": "abc"
+    },
+    {
+      "link": "acme-preview://hot-updater/preview?channel=pr-12&fingerprint=abc&platform=",
+      "urlScheme": "acme-preview",
+      "channel": "pr-12",
+      "fingerprintHash": "abc"
+    },
+    {
+      "link": "acme-preview://hot-updater/preview?channel=pr-12&fingerprint=abc&platform=%69os",
+      "urlScheme": "acme-preview",
+      "channel": "pr-12",
+      "fingerprintHash": "abc",
+      "platform": "ios"
     }
   ],
   "invalid": [

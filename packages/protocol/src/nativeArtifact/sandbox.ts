@@ -170,6 +170,11 @@ export const createPreviewLink = ({
   | { readonly urlScheme?: undefined; readonly appId: string }
 )): string => {
   assertCanonicalChannelName(channel);
+  if (platform !== undefined && !PREVIEW_LINK_PLATFORMS.has(platform)) {
+    throw new Error(
+      `A preview link's platform is ios or android, not ${platform}.`,
+    );
+  }
   const scheme = urlScheme ?? sandboxUrlSchemeOf(appId as string);
   const link = `${scheme.toLowerCase()}://hot-updater/preview?channel=${encodeURIComponent(channel)}&fingerprint=${encodeURIComponent(fingerprintHash)}`;
   return platform === undefined ? link : `${link}&platform=${platform}`;

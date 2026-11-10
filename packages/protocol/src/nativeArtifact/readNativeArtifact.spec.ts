@@ -940,6 +940,17 @@ describe("the sandbox layer", () => {
         }),
       ).toThrow("trimmed");
     });
+
+    it("creates no link for a platform other than ios or android", () => {
+      expect(() =>
+        createPreviewLink({
+          appId: "com.example.app",
+          channel: "pr-12",
+          fingerprintHash: "abc",
+          platform: "Android" as "android",
+        }),
+      ).toThrow("ios or android");
+    });
   });
 
   it("derives the reserved channel and a URL scheme any platform takes", () => {
