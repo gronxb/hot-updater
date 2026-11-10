@@ -158,23 +158,39 @@ class HotUpdaterImplTest {
     fun `a channel reset keeps the bundle React Native runs until a reload`() =
         runBlocking {
             val impl = allocateWithoutConstructor<HotUpdaterImpl>()
-            setField(impl, "bundleStorage", FakeBundleStorageService(bundleId = null, nextLaunchBundleId = "default-bundle"))
+            setField(
+                impl,
+                "bundleStorage",
+                FakeBundleStorageService(
+                    bundleId = null,
+                    nextLaunchBundleId = "default-bundle",
+                    launchedBundleManifests = mapOf("channel-bundle" to mapOf("bundleId" to "channel-bundle")),
+                    launchedBundleBaseURLs = mapOf("channel-bundle" to "file:///bundle-store/channel-bundle"),
+                ),
+            )
             setField(impl, "preferences", MapPreferences())
-            val launched =
+            setCurrentLaunchSelection(
+                impl,
                 LaunchSelection(
                     bundleUrl = "file:///bundle-store/channel-bundle/index.android.bundle",
                     launchedBundleId = "channel-bundle",
                     shouldRollbackOnCrash = false,
-                )
-            setField(impl, "runningLaunchSelection", launched)
-            setCurrentLaunchSelection(impl, launched)
+                ),
+            )
 
             assertTrue(impl.resetChannel())
 
+            // React Native's next read selects again, and the TurboModule's
+            // bundle ID reports that selection, the built-in bundle (null). The
+            // running bundle's files, which its base URL and manifest locate,
+            // stay that bundle's until the reload.
+            assertNull(getField(impl, "currentLaunchSelection"))
             assertEquals("channel-bundle", impl.getBundleIdForUpdateCheck())
             // The instance's getter reports the running bundle; the TurboModule's reads the next launch's.
             assertEquals("channel-bundle", impl.getRunningBundleId())
             assertNull(impl.getBundleId())
+            assertEquals("file:///bundle-store/channel-bundle", impl.getBaseURL())
+            assertEquals(mapOf("bundleId" to "channel-bundle"), impl.getManifest())
         }
 
     @Test
@@ -183,14 +199,14 @@ class HotUpdaterImplTest {
             val storage = CommitGatedStorage(committed = true)
             val impl = allocateWithoutConstructor<HotUpdaterImpl>()
             setField(impl, "bundleStorage", storage)
-            val launched =
+            setCurrentLaunchSelection(
+                impl,
                 LaunchSelection(
                     bundleUrl = "file:///bundle-store/downloaded-bundle/index.android.bundle",
                     launchedBundleId = "downloaded-bundle",
                     shouldRollbackOnCrash = false,
-                )
-            setField(impl, "runningLaunchSelection", launched)
-            setCurrentLaunchSelection(impl, launched)
+                ),
+            )
 
             assertTrue(impl.commitReleaseSelection(selection("BUNDLE", "downloaded-bundle")))
             assertEquals("downloaded-bundle", impl.getBundleId())
@@ -202,10 +218,15 @@ class HotUpdaterImplTest {
             storage.committed = true
             assertTrue(impl.commitReleaseSelection(selection("USE_BUILTIN", "built-in")))
 
-            // React Native's next read picks the built-in bundle; the running bundle stays until a reload.
+            // React Native's next read picks the built-in bundle, which the
+            // bundle ID reports; the running bundle's base URL and manifest stay
+            // that bundle's until the reload.
+            assertNull(getField(impl, "currentLaunchSelection"))
             assertNull(impl.getBundleId())
             assertEquals("downloaded-bundle", impl.getRunningBundleId())
             assertEquals("downloaded-bundle", impl.getBundleIdForUpdateCheck())
+            assertEquals("file:///bundle-store/downloaded-bundle", impl.getBaseURL())
+            assertEquals(mapOf("bundleId" to "downloaded-bundle"), impl.getManifest())
         }
 
     @Test
@@ -286,7 +307,12 @@ class HotUpdaterImplTest {
     private class CommitGatedStorage(
         @Volatile var committed: Boolean,
         private val holdCommit: Boolean = false,
-    ) : BundleStorageService by FakeBundleStorageService(bundleId = null) {
+    ) : BundleStorageService by FakeBundleStorageService(
+            bundleId = null,
+            // The running bundle keeps its files after a built-in commit, as storage keeps them.
+            launchedBundleManifests = mapOf("downloaded-bundle" to mapOf("bundleId" to "downloaded-bundle")),
+            launchedBundleBaseURLs = mapOf("downloaded-bundle" to "file:///bundle-store/downloaded-bundle"),
+        ) {
         val commitEntered = CountDownLatch(1)
         val releaseCommit = CountDownLatch(1)
 
@@ -352,11 +378,22 @@ class HotUpdaterImplTest {
             )
         }
 
+    /** Launches [selection], setting both selections as the launch does. */
     private fun setCurrentLaunchSelection(
         impl: HotUpdaterImpl,
         selection: LaunchSelection,
     ) {
+        setField(impl, "runningLaunchSelection", selection)
         setField(impl, "currentLaunchSelection", selection)
+    }
+
+    private fun getField(
+        target: Any,
+        fieldName: String,
+    ): Any? {
+        val field = HotUpdaterImpl::class.java.getDeclaredField(fieldName)
+        field.isAccessible = true
+        return field.get(target)
     }
 
     private fun setField(

@@ -163,37 +163,10 @@ private func hotUpdaterGetMinBundleId() -> String {
         return false
         #endif
     }()
-    // Read by native update checks on other threads while React Native sets it.
-    private let launchSelectionLock = NSLock()
-    private var launchSelectionValue: LaunchSelection?
-    private var currentLaunchSelection: LaunchSelection? {
-        get {
-            launchSelectionLock.lock()
-            defer { launchSelectionLock.unlock() }
-            return launchSelectionValue
-        }
-        set {
-            launchSelectionLock.lock()
-            launchSelectionValue = newValue
-            launchSelectionLock.unlock()
-        }
-    }
-    // The selection React Native runs in this process. A channel reset clears
-    // currentLaunchSelection, so React Native's next read picks the default
-    // channel's bundle, but the running bundle stays until a reload.
-    private var runningLaunchSelectionValue: LaunchSelection?
-    private var runningLaunchSelection: LaunchSelection? {
-        get {
-            launchSelectionLock.lock()
-            defer { launchSelectionLock.unlock() }
-            return runningLaunchSelectionValue
-        }
-        set {
-            launchSelectionLock.lock()
-            runningLaunchSelectionValue = newValue
-            launchSelectionLock.unlock()
-        }
-    }
+    // The selection React Native's next read returns, and the one it runs in
+    // this process: a channel reset or built-in commit clears only the next
+    // one, so the running bundle's base URL and manifest stay until a reload.
+    private let launchSelections = LaunchSelections()
     // Serializes the launch's bundle selection with the update check's read
     // of it, and with a channel reset or built-in commit, which delete
     // downloaded bundles.
@@ -848,7 +821,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         // A built-in commit deletes every downloaded bundle, so it runs under
         // the launch lock as a channel reset does.
         resolve(launchPreparationLock.commitReleaseSelection(selection, in: bundleStorage) {
-            self.currentLaunchSelection = nil
+            self.launchSelections.clearNext()
         })
     }
 
@@ -942,54 +915,40 @@ private func hotUpdaterGetMinBundleId() -> String {
     }
 
     /**
-     * Gets the base URL for the current active bundle directory.
+     * Gets the base URL for the running bundle's directory.
      * Returns the file:// URL to the bundle directory with trailing slash.
      * This is used for Expo DOM components to construct full asset paths.
+     * A channel reset or built-in commit keeps it until React Native reloads.
      * @return Base URL string (e.g., "file:///var/.../bundle-store/abc123/") or nil
      */
     public func getBaseURL() -> String? {
-        if let currentLaunchSelection {
-            let baseURL = bundleStorage.getBaseURL(forBundleId: currentLaunchSelection.launchedBundleId)
-            return baseURL.isEmpty ? nil : baseURL
-        }
-
-        return nil
+        launchSelections.runningBaseURL(in: bundleStorage)
     }
 
     /**
-     * Gets the current active bundle ID from bundle storage.
-     * Reads the required OTA manifest.json.
+     * Gets the selected bundle's ID, nil for the built-in bundle. A channel
+     * reset or built-in commit changes it before React Native reloads.
      * Built-in bundle fallback is handled in JS.
      */
     public func getBundleId() -> String? {
-        if let currentLaunchSelection {
-            return currentLaunchSelection.launchedBundleId
-        }
-
-        return nil
+        launchSelections.selectedBundleId
     }
 
-    /// The bundle this process runs. A channel reset clears
-    /// currentLaunchSelection for the next launch, but the running bundle
-    /// stays until React Native reloads.
+    /// The bundle this process runs. A channel reset clears the next launch's
+    /// selection, but the running bundle stays until React Native reloads.
     func runningBundleId() -> String? {
-        (currentLaunchSelection ?? runningLaunchSelection)?.launchedBundleId
+        (launchSelections.next ?? launchSelections.running)?.launchedBundleId
     }
 
     /**
-     * Gets the current manifest from bundle storage.
+     * Gets the running bundle's manifest.
      */
     public func getManifest() -> ManifestAssets {
-        if let currentLaunchSelection {
-            return bundleStorage.getManifest(forBundleId: currentLaunchSelection.launchedBundleId)
-        }
-
-        return [:]
+        launchSelections.runningManifest(in: bundleStorage)
     }
 
     public func resetLaunchPreparation() {
-        currentLaunchSelection = nil
-        runningLaunchSelection = nil
+        launchSelections.clear()
     }
 
     /// This named instance's own fatal marked its launch for rollback, and
@@ -1015,7 +974,7 @@ private func hotUpdaterGetMinBundleId() -> String {
      */
     func bundleIdForUpdateCheck() -> String? {
         launchPreparationLock.withLock {
-            if let launchSelection = currentLaunchSelection ?? runningLaunchSelection {
+            if let launchSelection = launchSelections.next ?? launchSelections.running {
                 return launchSelection.launchedBundleId
             }
             // Settles what the previous process left first, so the check reads the
@@ -1049,7 +1008,7 @@ private func hotUpdaterGetMinBundleId() -> String {
             } catch {
                 NSLog("[HotUpdaterImpl] Failed to clear channel override: \(error)")
             }
-            self.currentLaunchSelection = nil
+            self.launchSelections.clearNext()
         }
 
         switch result {
@@ -1080,7 +1039,7 @@ private func hotUpdaterGetMinBundleId() -> String {
             } catch {
                 NSLog("[HotUpdaterImpl] Failed to clear channel override: \(error)")
             }
-            self.currentLaunchSelection = nil
+            self.launchSelections.clearNext()
         }
 
         switch result {
@@ -1098,8 +1057,8 @@ private func hotUpdaterGetMinBundleId() -> String {
     }
 
     private func prepareLaunchLocked(bundle: Bundle) -> LaunchSelection {
-        if let currentLaunchSelection, launchEpoch.isCurrent(currentLaunchSelectionEpoch) {
-            return currentLaunchSelection
+        if let nextLaunchSelection = launchSelections.next, launchEpoch.isCurrent(currentLaunchSelectionEpoch) {
+            return nextLaunchSelection
         }
 
         // The epoch is read before the marker is consumed, and checked again
@@ -1135,8 +1094,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         if environment.isMain {
             markLaunchStartedInForeground(selection, generation: generation)
         }
-        runningLaunchSelection = selection
-        currentLaunchSelection = selection
+        launchSelections.launch(selection)
         currentLaunchSelectionEpoch = epoch
         return selection
     }

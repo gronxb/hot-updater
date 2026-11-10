@@ -114,6 +114,234 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func resetChannelKeepsTheRunningBundleUntilTheNextLaunch() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        for bundleId in ["running-bundle", "older-bundle"] {
+            let directory = try createBundleDirectory(documentsDirectory: root, bundleId: bundleId)
+            try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+            try writeManifest(in: directory, bundleId: bundleId)
+        }
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: "running-bundle"
+        ))
+        let store = root.appendingPathComponent("bundle-store")
+        func exists(_ path: String) -> Bool {
+            FileManager.default.fileExists(atPath: store.appendingPathComponent(path).path)
+        }
+        let service = makeStorageService(documentsDirectory: root)
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "running-bundle")
+
+        #expect(try service.resetChannel().get())
+        // The running JavaScript still loads its files until React Native reloads.
+        #expect(exists("running-bundle/index.ios.bundle"))
+        #expect(!exists("older-bundle"))
+        #expect(service.peekLaunchBundleId() == nil)
+
+        // The next launch runs the built-in bundle and removes them.
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
+        #expect(!exists("running-bundle"))
+        #expect(exists(BundleMetadata.metadataFilename))
+    }
+
+    @Test
+    func aBuiltInCommitKeepsTheRunningBundleUntilTheNextLaunch() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        for bundleId in ["running-bundle", "older-bundle"] {
+            let directory = try createBundleDirectory(documentsDirectory: root, bundleId: bundleId)
+            try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+            try writeManifest(in: directory, bundleId: bundleId)
+        }
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: "running-bundle"
+        ))
+        let store = root.appendingPathComponent("bundle-store")
+        func exists(_ path: String) -> Bool {
+            FileManager.default.fileExists(atPath: store.appendingPathComponent(path).path)
+        }
+        let service = makeStorageService(documentsDirectory: root)
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "running-bundle")
+        #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-production",
+            generation: 1, catalogHash: "hash-1", channel: "production", selectionContextHash: "context-1"))
+
+        // The running bundle's own update check selects the built-in bundle.
+        #expect(service.commitReleaseSelection(PersistedSelection(
+            kind: SelectionKind.builtin.rawValue,
+            releaseId: "release-builtin",
+            bundleId: "builtin-bundle",
+            catalogId: "project-a",
+            scopeKey: "scope-production",
+            generation: 1,
+            catalogHash: "hash-1",
+            channel: "production",
+            selectionContextHash: "context-1"
+        )))
+        // The running JavaScript still loads its files until React Native reloads.
+        #expect(exists("running-bundle/index.ios.bundle"))
+        #expect(service.getBaseURL(forBundleId: "running-bundle").hasSuffix("/bundle-store/running-bundle"))
+        #expect(service.getManifest(forBundleId: "running-bundle")["bundleId"] as? String == "running-bundle")
+        #expect(!exists("older-bundle"))
+        #expect(service.peekLaunchBundleId() == nil)
+
+        // The next launch runs the built-in bundle and removes them.
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
+        #expect(!exists("running-bundle"))
+        #expect(exists(BundleMetadata.metadataFilename))
+    }
+
+    @Test
+    func aNewProcessRemovesTheBundleAResetKept() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let directory = try createBundleDirectory(documentsDirectory: root, bundleId: "running-bundle")
+        try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: directory, bundleId: "running-bundle")
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: "running-bundle"
+        ))
+        let service = makeStorageService(documentsDirectory: root)
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "running-bundle")
+        #expect(try service.resetChannel().get())
+        #expect(FileManager.default.fileExists(atPath: directory.path))
+
+        // A reload that restarts the process, as Android's does, launches from a new store.
+        let nextProcess = makeStorageService(documentsDirectory: root)
+        #expect(nextProcess.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
+        #expect(!FileManager.default.fileExists(atPath: directory.path))
+        let store = root.appendingPathComponent("bundle-store")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: store.path).sorted() == [BundleMetadata.metadataFilename])
+    }
+
+    /// The app stages the next bundle without a reload after a reset, as the
+    /// running JavaScript does: the install's cleanup keeps the running bundle,
+    /// whose files that JavaScript still loads, for the next launch to remove.
+    @Test(arguments: [true, false])
+    func anInstallAfterAResetKeepsTheRunningBundleUntilTheNextLaunch(keepsMarker: Bool) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let running = try createBundleDirectory(documentsDirectory: root, bundleId: "running-bundle")
+        try writeBundle(in: running, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: running, bundleId: "running-bundle")
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: "running-bundle"
+        ))
+        let store = root.appendingPathComponent("bundle-store")
+        func exists(_ path: String) -> Bool {
+            FileManager.default.fileExists(atPath: store.appendingPathComponent(path).path)
+        }
+        let bytes = Data("next bundle".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "next-bundle", assets: ["index.ios.bundle": hash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let service = makeStorageService(
+            documentsDirectory: root,
+            downloadService: MappingDownloadService(contents: [manifestURL: manifest, fileURL: bytes]),
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:])
+        )
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "running-bundle")
+        #expect(try service.resetChannel().get())
+        if !keepsMarker {
+            // A reset that couldn't name the bundle it kept: the running one still runs.
+            try FileManager.default.removeItem(at: store.appendingPathComponent("retained-bundle"))
+        }
+        let stale = try createBundleDirectory(documentsDirectory: root, bundleId: "stale-bundle")
+        try writeBundle(in: stale, bundleFileName: "index.ios.bundle")
+
+        let result = updateBundle(service, bundleId: "next-bundle", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
+        #expect(result.failureError == nil)
+        // The install's cleanup runs after it; the stale bundle's removal shows it ran.
+        let deadline = Date().addingTimeInterval(5)
+        while exists("stale-bundle"), Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        #expect(!exists("stale-bundle"))
+        #expect(exists("running-bundle/index.ios.bundle"))
+        #expect(service.getBaseURL(forBundleId: "running-bundle").hasSuffix("/bundle-store/running-bundle"))
+        #expect(exists("next-bundle/index.ios.bundle"))
+
+        // The next launch runs the staged bundle; the one the reset named goes with it.
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "next-bundle")
+        #expect(exists(BundleMetadata.metadataFilename))
+        if keepsMarker {
+            #expect(!exists("running-bundle"))
+        }
+    }
+
+    /// A built-in commit removes every bundle it can: one that fails to go
+    /// doesn't stop the rest, and the running bundle is still named for the
+    /// next launch to remove.
+    @Test
+    func aBuiltInCommitRemovesTheOtherBundlesPastAFailure() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        for bundleId in ["a-stuck-bundle", "b-running-bundle", "c-older-bundle"] {
+            let directory = try createBundleDirectory(documentsDirectory: root, bundleId: bundleId)
+            try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+            try writeManifest(in: directory, bundleId: bundleId)
+        }
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: "b-running-bundle"
+        ))
+        let store = root.appendingPathComponent("bundle-store")
+        func exists(_ path: String) -> Bool {
+            FileManager.default.fileExists(atPath: store.appendingPathComponent(path).path)
+        }
+        let service = makeStorageService(
+            documentsDirectory: root,
+            fileSystem: FailingBundleRemovalFileSystemService(documentsDirectory: root, failing: "a-stuck-bundle")
+        )
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "b-running-bundle")
+        #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-production",
+            generation: 1, catalogHash: "hash-1", channel: "production", selectionContextHash: "context-1"))
+
+        #expect(service.commitReleaseSelection(PersistedSelection(
+            kind: SelectionKind.builtin.rawValue,
+            releaseId: "release-builtin",
+            bundleId: "builtin-bundle",
+            catalogId: "project-a",
+            scopeKey: "scope-production",
+            generation: 1,
+            catalogHash: "hash-1",
+            channel: "production",
+            selectionContextHash: "context-1"
+        )))
+        #expect(exists("a-stuck-bundle"))
+        #expect(!exists("c-older-bundle"))
+        #expect(exists("b-running-bundle/index.ios.bundle"))
+        #expect((try? String(contentsOf: store.appendingPathComponent("retained-bundle"), encoding: .utf8)) == "b-running-bundle")
+
+        // The next launch runs the built-in bundle and removes the running one.
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
+        #expect(!exists("b-running-bundle"))
+    }
+
+    @Test
+    func resetChannelBeforeALaunchRemovesEveryBundle() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let directory = try createBundleDirectory(documentsDirectory: root, bundleId: "stable-bundle")
+        try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: directory, bundleId: "stable-bundle")
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: "stable-bundle"
+        ))
+        let service = makeStorageService(documentsDirectory: root)
+
+        #expect(try service.resetChannel().get())
+        #expect(!FileManager.default.fileExists(atPath: directory.path))
+    }
+
+    @Test
     func peekLaunchBundleIdSkipsAStagedBundleWithoutItsFile() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
@@ -4400,6 +4628,28 @@ private final class FailingArchivePromotionFileSystemService:
             )
         }
         try super.moveItem(atPath: srcPath, toPath: dstPath)
+    }
+}
+
+/// Fails to remove one bundle directory, and lists the store in name order so
+/// that one comes first.
+private final class FailingBundleRemovalFileSystemService: TestFileSystemService {
+    private let failing: String
+
+    init(documentsDirectory: URL, failing: String) {
+        self.failing = failing
+        super.init(documentsDirectory: documentsDirectory)
+    }
+
+    override func removeItem(atPath path: String) throws {
+        if (path as NSString).lastPathComponent == failing {
+            throw NSError(domain: "FailingBundleRemovalFileSystemService", code: 1)
+        }
+        try super.removeItem(atPath: path)
+    }
+
+    override func contentsOfDirectory(atPath path: String) throws -> [String] {
+        try super.contentsOfDirectory(atPath: path).sorted()
     }
 }
 

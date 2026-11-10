@@ -52,6 +52,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,7 +77,9 @@ import androidx.core.view.WindowCompat
 import androidx.window.layout.FoldingFeature
 import androidx.window.layout.WindowInfoTracker
 import androidx.window.layout.WindowLayoutInfo
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val TAG = "HotUpdaterSandbox"
 private const val HELP_URL = "https://hot-updater.dev/docs/native-builds/sandbox"
@@ -422,7 +425,11 @@ internal class HotUpdaterSandboxScreen(
                     SandboxRow(
                         lead =
                             SandboxLead.Primary(
-                                if (home.bigRow.isReload) R.drawable.hot_updater_sandbox_reload else R.drawable.hot_updater_sandbox_play,
+                                if (home.bigRow.action.opens) {
+                                    R.drawable.hot_updater_sandbox_play
+                                } else {
+                                    R.drawable.hot_updater_sandbox_reload
+                                },
                             ),
                         title = home.bigRow.title,
                         titleStyle = SandboxType.headline,
@@ -434,11 +441,7 @@ internal class HotUpdaterSandboxScreen(
                     ) {
                         SandboxHaptic.tap(haptics)
                         focus.clearFocus()
-                        when {
-                            !home.bigRow.isReload -> coordinator.open()
-                            devServer.isRunningDevServer -> devServer.reloadDevServer()
-                            else -> coordinator.reloadApp()
-                        }
+                        coordinator.tap(home.bigRow.action, devServer)
                     }
                     if (home.bigRow.showsBack) {
                         SandboxDivider()
@@ -806,7 +809,10 @@ internal class HotUpdaterSandboxScreen(
     // MARK: questions
 
     @Composable
-    private fun ResetDialog(onDone: () -> Unit) {
+    private fun ResetDialog(
+        scope: CoroutineScope,
+        onDone: () -> Unit,
+    ) {
         val haptics = LocalView.current
         SandboxDialog(
             title = "Reset to built-in bundle?",
@@ -818,7 +824,11 @@ internal class HotUpdaterSandboxScreen(
             onConfirm = {
                 onDone()
                 SandboxHaptic.tap(haptics)
-                coordinator.resetToBuiltIn()
+                // A reset opens nothing: Home comes into view, its top first, where the row opens the built-in bundle.
+                if (coordinator.resetToBuiltIn()) {
+                    tab = 0
+                    scope.launch { homeScroll.scrollTo(0) }
+                }
             },
             onDismiss = onDone,
         )
@@ -827,6 +837,8 @@ internal class HotUpdaterSandboxScreen(
     @Composable
     private fun Questions() {
         val haptics = LocalView.current
+        // Outlives a dialog, whose own scope ends as it closes.
+        val scope = rememberCoroutineScope()
         when (confirming) {
             CONFIRM_CLEAR ->
                 SandboxDialog(
@@ -842,7 +854,7 @@ internal class HotUpdaterSandboxScreen(
                     },
                     onDismiss = { confirming = null },
                 )
-            CONFIRM_RESET -> ResetDialog { confirming = null }
+            CONFIRM_RESET -> ResetDialog(scope) { confirming = null }
         }
         menuFor?.let { row ->
             SandboxActionsDialog(

@@ -156,11 +156,8 @@ private final class HotUpdaterSandboxFallbackScreen: UIViewController {
 
     @objc private func openTapped() {
         guard let state else { return }
-        if HotUpdaterSandboxHomeModel(state: state, isOverApp: isOverApp(), nowMs: 0).bigRow.isReload {
-            coordinator.reloadApp()
-        } else {
-            Task { await coordinator.open() }
-        }
+        // Without a dev server's host, the row never reloads one.
+        coordinator.tap(HotUpdaterSandboxHomeModel(state: state, isOverApp: isOverApp(), nowMs: 0).bigRow.action, devServer: nil)
     }
 
     @objc private func channelTapped() {

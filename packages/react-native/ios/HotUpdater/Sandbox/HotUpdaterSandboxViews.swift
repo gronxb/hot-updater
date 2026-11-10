@@ -174,17 +174,17 @@ final class HotUpdaterSandboxScreenModel: ObservableObject {
         }
     }
 
+    /// A reset opens nothing: Home comes into view, its top first, where the row opens the built-in bundle.
+    func resetToBuiltIn() {
+        guard coordinator.resetToBuiltIn() else { return }
+        tab = 0
+        showsInfo = false
+        homeAnchor = "header"
+    }
+
     func openOrReload() {
         SandboxHaptic.tap()
-        if home.bigRow.isReload {
-            if devServer.isRunningDevServer {
-                devServer.reloadDevServer()
-            } else {
-                coordinator.reloadApp()
-            }
-            return
-        }
-        Task { await coordinator.open() }
+        coordinator.tap(home.bigRow.action, devServer: devServer)
     }
 }
 
@@ -458,7 +458,7 @@ private struct HomeScreen: View {
         SandboxSection(title: home.bigRow.caption) {
             SandboxCard {
                 SandboxRow(
-                    lead: .primary(home.bigRow.isReload ? "arrow.clockwise" : "play.fill"),
+                    lead: .primary(home.bigRow.action.opens ? "play.fill" : "arrow.clockwise"),
                     title: home.bigRow.title,
                     titleFont: SandboxFont.headline,
                     subtitle: home.bigRow.subtitle,
@@ -795,7 +795,7 @@ private extension View {
         confirmationDialog("Reset to built-in bundle?", isPresented: model.isConfirming(which), titleVisibility: .visible) {
             Button("Reset", role: .destructive) {
                 SandboxHaptic.tap()
-                model.coordinator.resetToBuiltIn()
+                model.resetToBuiltIn()
             }
         } message: {
             Text(HotUpdaterSandboxHomeModel.resetNote)

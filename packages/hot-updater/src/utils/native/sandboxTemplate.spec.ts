@@ -288,18 +288,22 @@ describe("the sandbox template", () => {
         line,
       ).toHaveLength(1);
     }
-    // A stored session answers each of the three getters before its first statement.
-    expect(generator).toContain(
-      '"val launchSelection = currentLaunchSelection"',
-    );
-    expect(
-      impl
-        .split("\n")
-        .filter(
-          (text) =>
-            text === "        val launchSelection = currentLaunchSelection",
-        ),
-    ).toHaveLength(3);
+    // A stored session answers each of the three getters before its first
+    // statement: the bundle ID reads the selection, the base URL and manifest
+    // the running bundle.
+    for (const [selection, getters] of [
+      ["currentLaunchSelection", 1],
+      ["runningLaunchSelection", 2],
+    ] as const) {
+      expect(generator).toContain(`"val launchSelection = ${selection}"`);
+      expect(
+        impl
+          .split("\n")
+          .filter(
+            (text) => text === `        val launchSelection = ${selection}`,
+          ),
+      ).toHaveLength(getters);
+    }
     // Its insertions hold for main only.
     expect(generator).toContain(
       "if (environment.isMain) HotUpdaterSandboxDev.bundleOfThisProcess(context)",

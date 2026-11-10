@@ -230,6 +230,177 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `a channel reset keeps the running bundle until the next launch`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val running = createCompleteBundle(rootDir, "running-bundle", "running")
+            val older = createCompleteBundle(rootDir, "older-bundle", "older")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "running-bundle"))
+            val service = createService(rootDir)
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+
+            assertTrue(service.resetChannel())
+            // The running JavaScript still loads its files until React Native reloads.
+            assertTrue(File(running, "index.android.bundle").exists())
+            assertFalse(older.exists())
+            assertNull(service.peekLaunchBundleId())
+
+            // The next launch runs the built-in bundle and removes them.
+            assertNull(service.prepareLaunch(null).launchedBundleId)
+            assertFalse(running.exists())
+            assertTrue(File(bundleStoreDir(rootDir), BundleMetadata.METADATA_FILENAME).exists())
+        }
+
+    @Test
+    fun `a built-in commit keeps the running bundle until the next launch`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val running = createCompleteBundle(rootDir, "running-bundle", "running")
+            val older = createCompleteBundle(rootDir, "older-bundle", "older")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "running-bundle"))
+            val service = createService(rootDir)
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 1, "hash-1", "production", "context-1"))
+
+            // The running bundle's own update check selects the built-in bundle.
+            assertTrue(
+                service.commitReleaseSelection(
+                    PersistedSelection(
+                        kind = "BUILTIN",
+                        releaseId = "release-builtin",
+                        bundleId = "builtin-bundle",
+                        catalogId = "project-a",
+                        scopeKey = "scope-production",
+                        generation = 1,
+                        catalogHash = "hash-1",
+                        channel = "production",
+                        selectionContextHash = "context-1",
+                    ),
+                ),
+            )
+            // The running JavaScript still loads its files until React Native reloads.
+            assertTrue(File(running, "index.android.bundle").exists())
+            assertEquals("file://${running.absolutePath}", service.getBaseURLForBundle("running-bundle"))
+            assertFalse(older.exists())
+            assertNull(service.peekLaunchBundleId())
+
+            // The next launch runs the built-in bundle and removes them.
+            assertNull(service.prepareLaunch(null).launchedBundleId)
+            assertFalse(running.exists())
+        }
+
+    @Test
+    fun `a new process removes the bundle a reset kept`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val running = createCompleteBundle(rootDir, "running-bundle", "running")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "running-bundle"))
+            val service = createService(rootDir)
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertTrue(service.resetChannel())
+            assertTrue(running.exists())
+
+            // Android's reload restarts the process, which launches from a new store.
+            val nextProcess = createService(rootDir)
+            assertNull(nextProcess.prepareLaunch(null).launchedBundleId)
+            assertFalse(running.exists())
+            assertEquals(listOf(BundleMetadata.METADATA_FILENAME), bundleStoreDir(rootDir).list()?.sorted())
+        }
+
+    @Test
+    fun `an install after a channel reset keeps the running bundle until the next launch`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val running = createCompleteBundle(rootDir, "running-bundle", "running")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "running-bundle"))
+            val bundleContent = "next-bundle"
+            val assets = linkedMapOf("index.android.bundle" to sha256(rootDir, bundleContent))
+            val manifest = manifestJson("next-bundle", assets)
+            val service =
+                createService(
+                    rootDir,
+                    downloadService =
+                        MappingDownloadService(
+                            mapOf(
+                                "https://example.com/manifest.json" to manifest,
+                                "https://example.com/index.android.bundle" to bundleContent,
+                            ),
+                        ),
+                )
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertTrue(service.resetChannel())
+            val stale = createCompleteBundle(rootDir, "stale-bundle", "stale")
+
+            // The app stages the next bundle without a reload, as the running JavaScript does after a reset.
+            service.updateBundle(
+                bundleId = "next-bundle",
+                manifestUrl = "https://example.com/manifest.json",
+                manifestFileHash = sha256(rootDir, manifest),
+                assets = assets.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) },
+                progressCallback = {},
+            )
+
+            // The install's cleanup ran, and the running JavaScript still loads its files.
+            assertFalse(stale.exists())
+            assertTrue(File(running, "index.android.bundle").exists())
+            assertEquals("file://${running.absolutePath}", service.getBaseURLForBundle("running-bundle"))
+            assertEquals("next-bundle", loadMetadata(rootDir)?.stagingBundleId)
+
+            // The next launch runs the staged bundle and removes the one the reset kept.
+            assertEquals("next-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertFalse(running.exists())
+            assertTrue(File(bundleStoreDir(rootDir), "next-bundle/index.android.bundle").exists())
+        }
+
+    @Test
+    fun `an install keeps the running bundle even when the reset could not name it`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val running = createCompleteBundle(rootDir, "running-bundle", "running")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "running-bundle"))
+            val bundleContent = "next-bundle"
+            val assets = linkedMapOf("index.android.bundle" to sha256(rootDir, bundleContent))
+            val manifest = manifestJson("next-bundle", assets)
+            val service =
+                createService(
+                    rootDir,
+                    downloadService =
+                        MappingDownloadService(
+                            mapOf(
+                                "https://example.com/manifest.json" to manifest,
+                                "https://example.com/index.android.bundle" to bundleContent,
+                            ),
+                        ),
+                )
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertTrue(service.resetChannel())
+            // The retained-bundle marker is lost; the running bundle still runs.
+            File(bundleStoreDir(rootDir), "retained-bundle").delete()
+
+            service.updateBundle(
+                bundleId = "next-bundle",
+                manifestUrl = "https://example.com/manifest.json",
+                manifestFileHash = sha256(rootDir, manifest),
+                assets = assets.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) },
+                progressCallback = {},
+            )
+
+            assertTrue(File(running, "index.android.bundle").exists())
+        }
+
+    @Test
+    fun `a channel reset before a launch removes every bundle`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val stable = createCompleteBundle(rootDir, "stable-bundle", "stable")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "stable-bundle"))
+            val service = createService(rootDir)
+
+            assertTrue(service.resetChannel())
+            assertFalse(stable.exists())
+        }
+
+    @Test
     fun `settling keeps the stable bundle when only the staged one lost its files`() {
         val rootDir = temporaryFolder.newFolder()
         val stable = createBundleDir(rootDir, "stable-bundle")

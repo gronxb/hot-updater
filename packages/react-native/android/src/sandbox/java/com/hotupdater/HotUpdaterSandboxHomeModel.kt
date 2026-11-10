@@ -29,12 +29,31 @@ internal data class HotUpdaterSandboxHomeModel(
         val offersReset: Boolean,
     )
 
+    /** What a tap on the big row does, worked out with its words, so the two agree. */
+    enum class Action {
+        /** Opens the app on the selection. */
+        OPEN,
+
+        /** Over the app, runs the selection in place of what runs. */
+        OPEN_OVER_APP,
+
+        /** Runs the app again: what a launch selects now, or the stored bundle. */
+        RELOAD_APP,
+
+        /** Loads the dev server's JavaScript again. */
+        RELOAD_DEV_SERVER,
+        ;
+
+        /** Open's icon, or Reload's. */
+        val opens: Boolean get() = this == OPEN || this == OPEN_OVER_APP
+    }
+
     data class BigRow(
         val caption: String,
         val title: String,
         val subtitle: String?,
         val detail: String?,
-        val isReload: Boolean,
+        val action: Action,
         /** A stored bundle runs: a row under it goes back to the current bundle. */
         val showsBack: Boolean = false,
     )
@@ -130,7 +149,7 @@ internal data class HotUpdaterSandboxHomeModel(
             runningDevServerHost: String?,
         ): BigRow {
             if (isOverApp && runningDevServerHost != null) {
-                return BigRow("Running", "Reload", "Running the dev server", runningDevServerHost, isReload = true)
+                return BigRow("Running", "Reload", "Running the dev server", runningDevServerHost, Action.RELOAD_DEV_SERVER)
             }
             state.storedSessionBundleId?.let { stored ->
                 val entry = state.downloaded.firstOrNull { it.bundleId == stored }
@@ -138,7 +157,7 @@ internal data class HotUpdaterSandboxHomeModel(
                 val shown = entry?.shownId ?: stored
                 // Its deploy message, as a running row shows one, or its bundle.
                 val detail = entry?.message ?: "Bundle ${shortId(shown)}"
-                return BigRow("Running", "Reload", "Running stored$channel", detail, isReload = true, showsBack = true)
+                return BigRow("Running", "Reload", "Running stored$channel", detail, Action.RELOAD_APP, showsBack = true)
             }
             val selection =
                 state.selection
@@ -147,7 +166,7 @@ internal data class HotUpdaterSandboxHomeModel(
                         if (isOverApp) "Reload" else "Open",
                         null,
                         null,
-                        isOverApp,
+                        if (isOverApp) Action.RELOAD_APP else Action.OPEN,
                     )
             if (isOverApp) {
                 return runningRow(
@@ -164,7 +183,7 @@ internal data class HotUpdaterSandboxHomeModel(
                     "Open built-in bundle",
                     "The bundle this build shipped with",
                     "Channel ${selection.channel}",
-                    isReload = false,
+                    Action.OPEN,
                 )
             }
             return BigRow(
@@ -172,7 +191,7 @@ internal data class HotUpdaterSandboxHomeModel(
                 "Open ${selection.channel}",
                 state.selectedMessage,
                 "Bundle ${shortId(bundleId)}",
-                isReload = false,
+                Action.OPEN,
             )
         }
 
@@ -190,7 +209,17 @@ internal data class HotUpdaterSandboxHomeModel(
                     "Reload",
                     if (runsBuiltIn) "Running the built-in bundle" else "Running ${next.channel}",
                     if (runsBuiltIn) "Channel ${next.channel}" else message ?: "Bundle ${shortId(running.orEmpty())}",
-                    isReload = true,
+                    Action.RELOAD_APP,
+                )
+            }
+            // The built-in bundle is next and another runs: the reload opens it.
+            if (next.isBuiltIn) {
+                return BigRow(
+                    "Current bundle",
+                    "Open built-in bundle",
+                    "The bundle this build shipped with",
+                    "Running bundle ${shortId(running.orEmpty())}",
+                    Action.OPEN_OVER_APP,
                 )
             }
             return BigRow(
@@ -198,7 +227,7 @@ internal data class HotUpdaterSandboxHomeModel(
                 "Reload",
                 if (runsBuiltIn) "Running the built-in bundle" else "Running bundle ${shortId(running.orEmpty())}",
                 "Next launch: ${if (next.isBuiltIn) "the built-in bundle" else "bundle ${shortId(next.bundleId.orEmpty())}"}",
-                isReload = true,
+                Action.RELOAD_APP,
             )
         }
 

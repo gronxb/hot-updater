@@ -288,6 +288,9 @@ class BundleFileStorageService(
         private const val NIL_UUID = "00000000-0000-0000-0000-000000000000"
         private val SHA256_PATTERN = Regex("^[0-9a-f]{64}$")
 
+        /** Names the bundle a channel reset or built-in commit kept for its running JavaScript, for the next launch to remove. */
+        private const val RETAINED_BUNDLE_FILENAME = "retained-bundle"
+
         /** Files downloaded at once when the archive is not used. */
         private const val PARALLEL_FILE_DOWNLOADS = 16
 
@@ -727,6 +730,12 @@ class BundleFileStorageService(
 
     // A bundle waiting for its retry that this process keeps refusing, see InterruptedLaunch.
     private var retryHeldBundleId: String? = null
+
+    // The bundle this process's last launch runs, under releaseStateLock. A
+    // channel reset or built-in commit keeps its files, which its JavaScript still loads, and
+    // names them in RETAINED_BUNDLE_FILENAME for the next launch to remove: a
+    // reload restarts the process, so the next one does.
+    private var runningBundleId: String? = null
 
     @Volatile
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot? = null
@@ -1563,11 +1572,7 @@ class BundleFileStorageService(
                 } else {
                     preferences.setItem("HotUpdaterChannel", selection.channel)
                 }
-                if (selection.kind != "BUNDLE") {
-                    getBundleStoreDir().listFiles()?.forEach { file ->
-                        if (file.isDirectory) file.deleteRecursively()
-                    }
-                }
+                if (selection.kind != "BUNDLE") removeDownloadedBundles()
                 true
             }
         }
@@ -1856,11 +1861,48 @@ class BundleFileStorageService(
         // A launch is recorded only once it can show UI (markLaunchStarted).
         val selection = selectLaunch()
         pendingLaunchBundleId = selection.launchedBundleId.takeIf { selection.shouldRollbackOnCrash }
+        synchronized(releaseStateLock) {
+            removeRetainedBundle(launching = selection.launchedBundleId)
+            runningBundleId = selection.launchedBundleId
+        }
         Log.d(
             TAG,
             "prepareLaunch: bundleId=${selection.launchedBundleId} shouldRollback=${selection.shouldRollbackOnCrash} url=${selection.bundleUrl}",
         )
         return selection
+    }
+
+    /**
+     * The bundles an install's cleanup keeps for the JavaScript this process
+     * runs: its launch's bundle, and the one a channel reset or built-in commit
+     * named in [RETAINED_BUNDLE_FILENAME]. The next launch removes the retained one.
+     */
+    private fun bundlesInUseUntilNextLaunch(): Set<String> {
+        val running = synchronized(releaseStateLock) { runningBundleId }
+        val retained = readRetainedBundleId()
+        return setOfNotNull(running, retained)
+    }
+
+    /** The bundle directory [RETAINED_BUNDLE_FILENAME] names, null without a valid one. */
+    private fun readRetainedBundleId(): String? {
+        val marker = File(getBundleStoreDir(), RETAINED_BUNDLE_FILENAME)
+        if (!marker.exists()) return null
+        val retained = runCatching { marker.readText().trim() }.getOrDefault("")
+        // Only a bundle directory's name: never the store itself or a path out of it.
+        if (retained.isEmpty() || retained.contains('/') || retained == "." || retained == "..") return null
+        return retained
+    }
+
+    /** Removes the files a channel reset or built-in commit kept for the launch it replaced, unless this launch or the metadata uses them again. */
+    private fun removeRetainedBundle(launching: String?) {
+        val marker = File(getBundleStoreDir(), RETAINED_BUNDLE_FILENAME)
+        if (!marker.exists()) return
+        val retained = readRetainedBundleId()
+        marker.delete()
+        if (retained == null) return
+        val metadata = loadMetadataOrNull()
+        if (retained == launching || retained == metadata?.stableBundleId || retained == metadata?.stagingBundleId) return
+        File(getBundleStoreDir(), retained).takeIf { it.isDirectory }?.deleteRecursively()
     }
 
     override fun peekLaunchBundleId(): String? {
@@ -2762,8 +2804,11 @@ class BundleFileStorageService(
                             !file.name.endsWith(".install-backup")
                     }?.toList() ?: return
 
-            // Keep only the specified bundle IDs (filter out null values)
-            val bundleIdsToKeep = setOfNotNull(currentBundleId, bundleId).filter { it.isNotBlank() }
+            // Keep only the specified bundle IDs (filter out null values), and
+            // the bundle this process runs, whose JavaScript still loads its
+            // files after a channel reset or built-in commit until the next launch.
+            val bundleIdsToKeep =
+                (setOfNotNull(currentBundleId, bundleId) + bundlesInUseUntilNextLaunch()).filter { it.isNotBlank() }
 
             bundles.forEach { bundle ->
                 try {
@@ -2922,21 +2967,27 @@ class BundleFileStorageService(
         }
 
         saveLaunchReport(null)
+        removeDownloadedBundles()
+        return true
+    }
 
+    /**
+     * Removes every downloaded bundle once the selection no longer names any,
+     * after a channel reset or a built-in commit. The running JavaScript still
+     * loads its own bundle's files, such as images, until React Native
+     * reloads, so that one stays, named in [RETAINED_BUNDLE_FILENAME] for the
+     * next launch to remove. Called under releaseStateLock.
+     */
+    private fun removeDownloadedBundles() {
         getBundleStoreDir().listFiles()?.forEach { file ->
-            if (
-                file.name == BundleMetadata.METADATA_FILENAME ||
-                file.name == CrashedHistory.CRASHED_HISTORY_FILENAME ||
-                file.name == LaunchReport.LAUNCH_REPORT_FILENAME
-            ) {
+            if (!file.isDirectory) return@forEach
+            if (file.name == runningBundleId) {
+                // Best effort: an install's cleanup keeps the running bundle without it.
+                runCatching { File(getBundleStoreDir(), RETAINED_BUNDLE_FILENAME).writeText(file.name) }
+                    .onFailure { Log.w(TAG, "Failed to name the retained bundle ${file.name}: ${it.message}") }
                 return@forEach
             }
-
-            if (file.isDirectory) {
-                file.deleteRecursively()
-            }
+            if (!file.deleteRecursively()) Log.w(TAG, "Failed to remove bundle: ${file.name}")
         }
-
-        return true
     }
 }

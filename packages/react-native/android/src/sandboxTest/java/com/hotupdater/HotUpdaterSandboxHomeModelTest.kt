@@ -141,16 +141,7 @@ private class ScreenHost : HotUpdaterSandboxHost {
 private class ScreenStore(
     override var pendingLinks: List<String> = emptyList(),
 ) : HotUpdaterSandboxStore {
-    val opened = ArrayList<String>()
-    val openedBundles = ArrayList<String?>()
     override var lastLaunch: HotUpdaterSandboxLastLaunch? = null
-
-    override fun recordSelected(selection: HotUpdaterSandboxSelection) = Unit
-
-    override fun recordOpened(selection: HotUpdaterSandboxSelection) {
-        opened += selection.channel
-        openedBundles += selection.bundleId
-    }
 }
 
 private class ScreenFixture(
@@ -319,14 +310,13 @@ class HotUpdaterSandboxScreenStateTest {
     }
 
     @Test
-    fun `open records what opens, over the app and before it`() {
+    fun `open restarts a fixed launch only before the app starts`() {
         val over = ScreenFixture()
         over.host.channel = "pr-2"
         over.host.bundleId = "staged"
         over.host.launchOverride = "running"
         over.host.appRunning = true
         over.coordinator.open()
-        assertEquals("running", over.store.openedBundles.last())
         assertEquals(false, over.opens.last().second)
 
         // Before the app starts, a fixed launch's Open restarts into what's selected.
@@ -335,7 +325,6 @@ class HotUpdaterSandboxScreenStateTest {
         before.host.bundleId = "staged"
         before.host.launchOverride = "running"
         before.coordinator.open()
-        assertEquals("staged", before.store.openedBundles.last())
         assertEquals(true, before.opens.last().second)
     }
 
@@ -345,7 +334,7 @@ class HotUpdaterSandboxScreenStateTest {
         fixture.host.channel = "pr-3"
         fixture.coordinator.refresh()
         fixture.coordinator.open()
-        assertEquals(listOf("pr-3"), fixture.store.opened)
+        assertEquals(1, fixture.opens.size)
         assertTrue(fixture.shelf.entries.isEmpty())
     }
 
@@ -423,23 +412,70 @@ class HotUpdaterSandboxHomeModelTest {
     }
 
     @Test
+    fun `the row's tap comes with its words`() {
+        fun action(
+            state: HotUpdaterSandboxState,
+            isOverApp: Boolean,
+            devServer: String? = null,
+        ) = HotUpdaterSandboxHomeModel.of(state, isOverApp, devServer, 0).bigRow.action
+        val open = HotUpdaterSandboxHomeModel.Action.OPEN
+        val openOverApp = HotUpdaterSandboxHomeModel.Action.OPEN_OVER_APP
+        val reloadApp = HotUpdaterSandboxHomeModel.Action.RELOAD_APP
+        val reloadDevServer = HotUpdaterSandboxHomeModel.Action.RELOAD_DEV_SERVER
+        // Before the app starts, the row opens it, a dev server or not.
+        assertEquals(open, action(state(null), isOverApp = false))
+        assertEquals(open, action(state(selection()), isOverApp = false))
+        assertEquals(open, action(state(selection(bundleId = "built-in")), isOverApp = false))
+        assertEquals(open, action(state(selection()), isOverApp = false, devServer = "localhost:8081"))
+        // Over the app.
+        assertEquals(reloadApp, action(state(null), isOverApp = true))
+        assertEquals(reloadApp, action(state(selection()), isOverApp = true))
+        assertEquals(reloadApp, action(state(selection(bundleId = "ota"), running = "built-in"), isOverApp = true))
+        assertEquals(openOverApp, action(state(selection(bundleId = "built-in"), running = "ota"), isOverApp = true))
+        assertEquals(reloadApp, action(state(selection(bundleId = "built-in"), running = "built-in"), isOverApp = true))
+        val stored = state(selection(), history = listOf(entry("019a3f00aabbc2", "pr-12")), storedSession = "019a3f00aabbc2")
+        assertEquals(reloadApp, action(stored, isOverApp = true))
+        assertEquals(reloadDevServer, action(state(selection()), isOverApp = true, devServer = "localhost:8081"))
+        // Open's icon only where the row opens something.
+        assertEquals(listOf(true, true, false, false), listOf(open, openOverApp, reloadApp, reloadDevServer).map { it.opens })
+    }
+
+    @Test
     fun `over the app it says Running and Reload`() {
         val row = home(state(selection()), isOverApp = true).bigRow
         assertEquals("Running", row.caption)
         assertEquals("Reload", row.title)
         assertEquals("Running pr-1", row.subtitle)
-        assertTrue(row.isReload)
+        assertEquals(HotUpdaterSandboxHomeModel.Action.RELOAD_APP, row.action)
     }
 
     @Test
     fun `over the app, running and next are separate when they differ`() {
-        val toBuiltIn = home(state(selection(bundleId = "built-in"), running = "ota"), isOverApp = true).bigRow
-        assertEquals("Running bundle ota", toBuiltIn.subtitle)
-        assertEquals("Next launch: the built-in bundle", toBuiltIn.detail)
-
         val toOta = home(state(selection(bundleId = "ota"), running = "built-in"), isOverApp = true).bigRow
+        assertEquals("Reload", toOta.title)
         assertEquals("Running the built-in bundle", toOta.subtitle)
         assertEquals("Next launch: bundle ota", toOta.detail)
+        assertEquals(HotUpdaterSandboxHomeModel.Action.RELOAD_APP, toOta.action)
+    }
+
+    @Test
+    fun `over the app, a built-in bundle next is opened by its reload`() {
+        val row = home(state(selection(bundleId = "built-in"), running = "019a3f00aabbc2"), isOverApp = true).bigRow
+        assertEquals("Current bundle", row.caption)
+        assertEquals("Open built-in bundle", row.title)
+        assertEquals("The bundle this build shipped with", row.subtitle)
+        assertEquals("Running bundle 019a3f…c2", row.detail)
+        assertEquals(HotUpdaterSandboxHomeModel.Action.OPEN_OVER_APP, row.action)
+    }
+
+    @Test
+    fun `over the app, the built-in bundle running stays a reload`() {
+        val row = home(state(selection(bundleId = "built-in"), running = "built-in"), isOverApp = true).bigRow
+        assertEquals("Running", row.caption)
+        assertEquals("Reload", row.title)
+        assertEquals("Running the built-in bundle", row.subtitle)
+        assertEquals("Channel pr-1", row.detail)
+        assertEquals(HotUpdaterSandboxHomeModel.Action.RELOAD_APP, row.action)
     }
 
     @Test
@@ -554,7 +590,7 @@ class HotUpdaterSandboxHomeModelTest {
         val row = home(current, isOverApp = true).bigRow
         assertEquals("Running stored pr-12", row.subtitle)
         assertEquals("Bundle 019a3f…c2", row.detail)
-        assertTrue(row.isReload)
+        assertEquals(HotUpdaterSandboxHomeModel.Action.RELOAD_APP, row.action)
         assertTrue(row.showsBack)
         val info = HotUpdaterSandboxInfoModel.of(current, "1", "Release", isOverApp = true)
         assertEquals("Stored 019a3f…c2", info.bundle.first { it.name == "Current" }.value)

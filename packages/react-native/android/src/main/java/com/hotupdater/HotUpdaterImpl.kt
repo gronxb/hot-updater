@@ -551,13 +551,14 @@ class HotUpdaterImpl {
     fun clearCrashHistory(): Boolean = bundleStorage.clearCrashHistory()
 
     /**
-     * Gets the base URL for the current active bundle directory.
+     * Gets the base URL for the running bundle's directory.
      * Returns the file:// URL to the bundle directory with trailing slash.
      * This is used for Expo DOM components to construct full asset paths.
+     * A channel reset or built-in commit keeps it until React Native reloads.
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123/") or null
      */
     fun getBaseURL(): String? {
-        val launchSelection = currentLaunchSelection
+        val launchSelection = runningLaunchSelection
         if (launchSelection != null) {
             val baseURL = bundleStorage.getBaseURLForBundle(launchSelection.launchedBundleId)
             return baseURL
@@ -568,7 +569,8 @@ class HotUpdaterImpl {
     }
 
     /**
-     * Gets the current launched bundle ID.
+     * Gets the selected bundle's ID, null for the built-in bundle. A channel
+     * reset or built-in commit changes it before React Native reloads.
      * Built-in bundle fallback is handled in JS.
      */
     fun getBundleId(): String? {
@@ -613,10 +615,10 @@ class HotUpdaterImpl {
         }
 
     /**
-     * Gets the current manifest from bundle storage.
+     * Gets the running bundle's manifest, kept as [getBaseURL] is.
      */
     fun getManifest(): Map<String, Any?> {
-        val launchSelection = currentLaunchSelection
+        val launchSelection = runningLaunchSelection
         if (launchSelection != null) {
             return bundleStorage.getManifestForBundle(launchSelection.launchedBundleId)
         }

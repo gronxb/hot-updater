@@ -426,6 +426,12 @@ class BundleFileStorageService: BundleStorageService {
     private let crashedHistoryLock = NSLock()
     // A bundle waiting for its retry that this process keeps refusing, see InterruptedLaunch.
     private var retryHeldBundleId: String?
+    // The bundle this process's last launch runs, under releaseStateLock. A
+    // channel reset or built-in commit keeps its files, which its JavaScript still loads, and
+    // names them in retainedBundleFilename for the next launch to remove, in
+    // this process or, after a restart, the next one.
+    private var runningBundleId: String?
+    private static let retainedBundleFilename = "retained-bundle"
     private let activeBundleMetadataLock = NSLock()
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot?
     private let builtInBundleIdProvider: () -> String
@@ -447,6 +453,7 @@ class BundleFileStorageService: BundleStorageService {
         "builtin-index-v1.json",
         // Written when a launch crashes, read at the next start.
         HotUpdaterCrashMarker.filename,
+        BundleFileStorageService.retainedBundleFilename,
     ]
 
     private func createDiffProgressFiles(
@@ -1736,11 +1743,7 @@ class BundleFileStorageService: BundleStorageService {
             return false
         }
         if selection.kind != "BUNDLE", case .success(let storeDir) = bundleStoreDir() {
-            for item in (try? fileSystem.contentsOfDirectory(atPath: storeDir)) ?? [] {
-                guard !protectedBundleStoreEntries.contains(item) else { continue }
-                let path = (storeDir as NSString).appendingPathComponent(item)
-                try? fileSystem.removeItem(atPath: path)
-            }
+            try? removeDownloadedBundles(in: storeDir)
         }
         return true
     }
@@ -1945,7 +1948,10 @@ class BundleFileStorageService: BundleStorageService {
 
             return (!item.hasSuffix(".tmp") && self.fileSystem.fileExists(atPath: fullPath)) ? fullPath : nil
         }
-        let bundleIdsToKeepSet = Set(bundleIdsToKeep)
+        // The bundle this process runs stays too: its JavaScript still loads
+        // its files after a channel reset or built-in commit, until the next
+        // launch removes it.
+        let bundleIdsToKeepSet = Set(bundleIdsToKeep).union(bundlesInUseUntilNextLaunch(in: storeDir))
 
         bundles.forEach { bundlePath in
             let bundleName = (bundlePath as NSString).lastPathComponent
@@ -2264,7 +2270,53 @@ class BundleFileStorageService: BundleStorageService {
         // A launch is recorded only once it can show UI (markLaunchStarted).
         let selection = selectLaunch(bundle: bundle)
         pendingLaunchBundleId = selection.shouldRollbackOnCrash ? selection.launchedBundleId : nil
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
+        removeRetainedBundle(launching: selection.launchedBundleId)
+        runningBundleId = selection.launchedBundleId
         return selection
+    }
+
+    /// The bundles an install's cleanup keeps for the JavaScript this process
+    /// runs: its launch's bundle, and the one a channel reset or built-in
+    /// commit named in retainedBundleFilename. The next launch removes the
+    /// retained one.
+    private func bundlesInUseUntilNextLaunch(in storeDir: String) -> Set<String> {
+        releaseStateLock.lock()
+        let running = runningBundleId
+        releaseStateLock.unlock()
+        return Set([running, retainedBundleId(in: storeDir)].compactMap { $0 })
+    }
+
+    /// The bundle directory retainedBundleFilename names, nil without a valid one.
+    private func retainedBundleId(in storeDir: String) -> String? {
+        let marker = (storeDir as NSString).appendingPathComponent(Self.retainedBundleFilename)
+        guard fileSystem.fileExists(atPath: marker) else { return nil }
+        let retained = (try? String(contentsOfFile: marker, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // Only a bundle directory's name: never the store itself or a path out of it.
+        guard !retained.isEmpty, !retained.contains("/"), retained != ".", retained != "..",
+              !protectedBundleStoreEntries.contains(retained) else { return nil }
+        return retained
+    }
+
+    /// Removes the files a channel reset or built-in commit kept for the launch
+    /// it replaced, unless this launch or the metadata uses them again.
+    private func removeRetainedBundle(launching launchedBundleId: String?) {
+        guard case .success(let storeDir) = bundleStoreDir() else { return }
+        let marker = (storeDir as NSString).appendingPathComponent(Self.retainedBundleFilename)
+        guard fileSystem.fileExists(atPath: marker) else { return }
+        let retained = retainedBundleId(in: storeDir)
+        try? fileSystem.removeItem(atPath: marker)
+        let metadata = loadMetadataOrNull()
+        guard let retained,
+              retained != launchedBundleId,
+              retained != metadata?.stableBundleId,
+              retained != metadata?.stagingBundleId else { return }
+        let path = (storeDir as NSString).appendingPathComponent(retained)
+        if fileSystem.fileExists(atPath: path) {
+            try? fileSystem.removeItem(atPath: path)
+        }
     }
     
     // MARK: - Bundle Update
@@ -3416,8 +3468,30 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         do {
-            for item in try fileSystem.contentsOfDirectory(atPath: storeDir) {
-                if protectedBundleStoreEntries.contains(item) {
+            try removeDownloadedBundles(in: storeDir)
+            return .success(true)
+        } catch {
+            return .failure(BundleStorageError.moveOperationFailed(error))
+        }
+    }
+
+    /// Removes every downloaded bundle once the selection no longer names any,
+    /// after a channel reset or a built-in commit. The running JavaScript still
+    /// loads its own bundle's files, such as images, until React Native
+    /// reloads, so that one stays, named in retainedBundleFilename for the next
+    /// launch to remove. Each entry goes on its own: one that fails doesn't
+    /// stop the rest, and the first failure is thrown once every entry was
+    /// tried. Called under releaseStateLock.
+    private func removeDownloadedBundles(in storeDir: String) throws {
+        var firstError: Error?
+        for item in try fileSystem.contentsOfDirectory(atPath: storeDir) {
+            if protectedBundleStoreEntries.contains(item) {
+                continue
+            }
+            do {
+                if item == runningBundleId {
+                    let marker = (storeDir as NSString).appendingPathComponent(Self.retainedBundleFilename)
+                    try Data(item.utf8).write(to: URL(fileURLWithPath: marker), options: .atomic)
                     continue
                 }
 
@@ -3425,10 +3499,13 @@ class BundleFileStorageService: BundleStorageService {
                 if fileSystem.fileExists(atPath: bundlePath) {
                     try fileSystem.removeItem(atPath: bundlePath)
                 }
+            } catch {
+                NSLog("[BundleStorage] Failed to remove bundle store entry \(item): \(error)")
+                firstError = firstError ?? error
             }
-            return .success(true)
-        } catch {
-            return .failure(BundleStorageError.moveOperationFailed(error))
+        }
+        if let firstError {
+            throw firstError
         }
     }
 }

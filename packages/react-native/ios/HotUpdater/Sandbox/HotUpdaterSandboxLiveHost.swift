@@ -258,14 +258,6 @@ final class HotUpdaterSandboxDefaults: HotUpdaterSandboxStore {
         set { defaults.set(newValue, forKey: "pendingLinks") }
     }
 
-    func recordSelected(_ selection: HotUpdaterSandboxSelection) {
-        record("selected", selection)
-    }
-
-    func recordOpened(_ selection: HotUpdaterSandboxSelection) {
-        record("opened", selection)
-    }
-
     var lastLaunch: HotUpdaterSandboxLastLaunch? {
         get { read("lastLaunch") }
         set {
@@ -275,10 +267,6 @@ final class HotUpdaterSandboxDefaults: HotUpdaterSandboxStore {
                 defaults.removeObject(forKey: "lastLaunch")
             }
         }
-    }
-
-    private func record(_ key: String, _ selection: HotUpdaterSandboxSelection) {
-        defaults.set(["channel": selection.channel, "bundleId": selection.bundleId], forKey: key)
     }
 
     private func read<T: Decodable>(_ key: String) -> T? {

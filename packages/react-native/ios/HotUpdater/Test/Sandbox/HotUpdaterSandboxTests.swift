@@ -109,8 +109,22 @@ private final class FakeHost: HotUpdaterSandboxHost {
         MainActor.assumeIsolated { serverConfig }
     }
 
+    /// While true, a read of the selection waits for `releaseSelection()`.
+    var holdsSelection = false
+    private var heldSelections: [CheckedContinuation<Void, Never>] = []
+
+    func releaseSelection() {
+        holdsSelection = false
+        let held = heldSelections
+        heldSelections = []
+        held.forEach { $0.resume() }
+    }
+
     func selection() async -> HotUpdaterSandboxSelection {
-        HotUpdaterSandboxSelection(
+        if holdsSelection {
+            await withCheckedContinuation { heldSelections.append($0) }
+        }
+        return HotUpdaterSandboxSelection(
             channel: channel,
             defaultChannel: "sandbox-release",
             bundleId: bundleId,
@@ -161,21 +175,28 @@ private final class FakeHost: HotUpdaterSandboxHost {
     }
 }
 
+@MainActor
+private final class FakeDevServer: HotUpdaterSandboxDevServer {
+    var isRunningDevServer: Bool
+    var runningDevServerHost: String?
+    var devServerHosts: [HotUpdaterSandboxDevServerHost] = []
+    var lastDevServerError: String?
+    var onDevServerChange: (() -> Void)?
+    var reloads = 0
+
+    init(isRunning: Bool, host: String?) {
+        isRunningDevServer = isRunning
+        runningDevServerHost = host
+    }
+
+    func connect(host _: String, completion: @escaping (String?) -> Void) { completion(nil) }
+    func reloadDevServer() { reloads += 1 }
+    func exitDevServer() {}
+}
+
 private final class FakeStore: HotUpdaterSandboxStore {
     var pendingLinks: [String] = []
-    var selected: [String] = []
-    var opened: [String] = []
     var lastLaunch: HotUpdaterSandboxLastLaunch?
-    var openedBundles: [String] = []
-
-    func recordSelected(_ selection: HotUpdaterSandboxSelection) {
-        selected.append(selection.channel)
-    }
-
-    func recordOpened(_ selection: HotUpdaterSandboxSelection) {
-        opened.append(selection.channel)
-        openedBundles.append(selection.bundleId)
-    }
 }
 
 /// Lets the coordinator's tasks run, including a copy off the main actor.
@@ -322,11 +343,10 @@ struct HotUpdaterSandboxCoordinatorTests {
     }
 
     @Test
-    func openingInADevSessionRecordsNoBundleAsOpened() async {
+    func openingInADevSessionOpensTheApp() async {
         let fixture = Fixture()
         fixture.host.runsDevServer = true
         await fixture.coordinator.open()
-        #expect(fixture.store.opened.isEmpty)
         #expect(fixture.opens.count == 1)
     }
 
@@ -346,7 +366,6 @@ struct HotUpdaterSandboxCoordinatorTests {
         await dev.coordinator.refresh()
         await dev.coordinator.open()
         #expect(dev.opens.first?.1 == false)
-        #expect(dev.store.opened.isEmpty)
     }
 
     @Test
@@ -450,8 +469,6 @@ struct HotUpdaterSandboxCoordinatorTests {
         #expect(fixture.opens.count == 1)
         #expect(fixture.opens[0] == (true, false))
         #expect(fixture.store.pendingLinks.isEmpty)
-        #expect(fixture.store.selected == ["pr-1"])
-        #expect(fixture.store.opened == ["pr-1"])
     }
 
     @Test
@@ -721,7 +738,6 @@ struct HotUpdaterSandboxCoordinatorTests {
         }
         #expect(selection.bundleId == "built-in")
         #expect(selection.isBuiltIn)
-        #expect(fixture.store.selected == ["sandbox-release"])
     }
 
     @Test
@@ -746,13 +762,12 @@ struct HotUpdaterSandboxCoordinatorTests {
     }
 
     @Test
-    func openOverARunningAppRecordsWhatItRunsAndLeavesWhatsStagedForItsLaunch() async {
+    func openOverARunningAppLeavesWhatsStagedForItsLaunch() async {
         let fixture = Fixture()
         fixture.host.bundleId = "next"
         fixture.host.runningBundleId = "ota-0"
         fixture.host.appRunning = true
         await fixture.coordinator.open()
-        #expect(fixture.store.openedBundles == ["ota-0"])
         #expect(fixture.opens[0] == (false, false))
     }
 
@@ -762,7 +777,6 @@ struct HotUpdaterSandboxCoordinatorTests {
         fixture.host.bundleId = "built-in"
         fixture.host.runningBundleId = "ota-0"
         await fixture.coordinator.open()
-        #expect(fixture.store.openedBundles == ["built-in"])
         #expect(fixture.opens[0] == (false, true))
     }
 
@@ -782,15 +796,104 @@ struct HotUpdaterSandboxCoordinatorTests {
     }
 
     @Test
-    func resetNeedsAReloadOverAFixedLaunch() async {
+    func resetOverTheAppOpensNothingAndItsRowRunsTheBuiltInBundle() async {
         let fixture = Fixture()
         fixture.host.channel = "pr-1"
         fixture.host.bundleId = "ota-1"
         fixture.host.runningBundleId = "ota-1"
-        fixture.coordinator.resetToBuiltIn()
+        fixture.host.appRunning = true
+        #expect(fixture.coordinator.resetToBuiltIn())
+        await settle()
+        #expect(fixture.host.calls == ["reset"])
+        #expect(fixture.opens.isEmpty, "a reset ran the app")
+        #expect(fixture.coordinator.state.phase == .idle)
+        #expect(fixture.coordinator.state.selection?.isBuiltIn == true)
+        let row = HotUpdaterSandboxHomeModel(state: fixture.coordinator.state, isOverApp: true, nowMs: 0).bigRow
+        #expect(row.title == "Open built-in bundle")
+        #expect(row.action == .openOverApp)
+        // Its reload is what runs the built-in bundle over a fixed launch.
+        fixture.coordinator.tap(row.action, devServer: nil)
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens.first?.0 == true)
+        #expect(fixture.opens.first?.1 == true)
+    }
+
+    @Test
+    func resetBeforeTheAppStartsOpensNothingAndItsRowOpensTheBuiltInBundle() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        #expect(fixture.coordinator.resetToBuiltIn())
+        await settle()
+        #expect(fixture.opens.isEmpty, "a reset ran the app")
+        let row = HotUpdaterSandboxHomeModel(state: fixture.coordinator.state, isOverApp: false, nowMs: 0).bigRow
+        #expect(row.title == "Open built-in bundle")
+        #expect(row.action == .open)
+        #expect(fixture.coordinator.state.selection?.isBuiltIn == true)
+        fixture.coordinator.tap(row.action, devServer: nil)
         await settle()
         #expect(fixture.opens.count == 1)
-        #expect(fixture.opens[0] == (true, true))
+        #expect(fixture.opens.first?.0 == false)
+        #expect(fixture.opens.first?.1 == false)
+    }
+
+    @Test
+    func aDevServerRunningWithoutAHostLeavesTheRowAndItsTapToTheApp() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.runningBundleId = "ota-1"
+        fixture.host.appRunning = true
+        #expect(fixture.coordinator.resetToBuiltIn())
+        await settle()
+        let devServer = FakeDevServer(isRunning: true, host: nil)
+        let row = HotUpdaterSandboxHomeModel(
+            state: fixture.coordinator.state,
+            isOverApp: true,
+            runningDevServerHost: devServer.runningDevServerHost,
+            nowMs: 0
+        ).bigRow
+        #expect(row.title == "Open built-in bundle")
+        #expect(row.action == .openOverApp)
+        // The tap does what the row says: it runs the built-in bundle.
+        fixture.coordinator.tap(row.action, devServer: devServer)
+        #expect(devServer.reloads == 0)
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens.first?.0 == true)
+        #expect(fixture.opens.first?.1 == true)
+    }
+
+    @Test
+    func aRunningDevServersRowReloadsIt() async {
+        let fixture = Fixture()
+        let devServer = FakeDevServer(isRunning: true, host: "localhost:8081")
+        let row = HotUpdaterSandboxHomeModel(
+            state: fixture.coordinator.state,
+            isOverApp: true,
+            runningDevServerHost: devServer.runningDevServerHost,
+            nowMs: 0
+        ).bigRow
+        #expect(row.action == .reloadDevServer)
+        fixture.coordinator.tap(row.action, devServer: devServer)
+        await settle()
+        #expect(devServer.reloads == 1)
+        #expect(fixture.opens.isEmpty)
+    }
+
+    @Test
+    func aSecondOpenWhileOneRunsOpensNothingMore() async {
+        let fixture = Fixture()
+        fixture.host.holdsSelection = true
+        fixture.coordinator.tap(.open, devServer: nil)
+        await settle()
+        fixture.coordinator.tap(.open, devServer: nil)
+        await settle()
+        fixture.host.releaseSelection()
+        await settle()
+        #expect(fixture.opens.count == 1)
+        // Once it opened, Open opens again.
+        await fixture.coordinator.open()
+        #expect(fixture.opens.count == 2)
     }
 
     @Test
@@ -1045,13 +1148,11 @@ struct HotUpdaterSandboxCoordinatorTests {
     }
 
     @Test
-    func openRecordsWhatOpenedAndDoesNotReadAsASwitch() async {
+    func openDoesNotReadAsASwitch() async {
         let fixture = Fixture()
         await fixture.coordinator.open()
         #expect(fixture.opens.count == 1)
         #expect(fixture.opens[0] == (false, false))
-        #expect(fixture.store.opened == ["sandbox-release"])
-        #expect(fixture.store.selected.isEmpty)
     }
 
     @Test
@@ -1448,14 +1549,13 @@ struct HotUpdaterSandboxScreenStateTests {
     }
 
     @Test
-    func openRecordsWhatOpensOverTheAppAndBeforeIt() async {
+    func openReloadsAFixedLaunchOnlyBeforeTheAppStarts() async {
         let over = Fixture()
         over.host.channel = "pr-2"
         over.host.bundleId = "staged"
         over.host.runningBundleId = "running"
         over.host.appRunning = true
         await over.coordinator.open()
-        #expect(over.store.openedBundles.last == "running")
         #expect(over.opens.last?.1 == false)
 
         // Before the app starts, a fixed launch's Open reloads into what's selected.
@@ -1464,7 +1564,6 @@ struct HotUpdaterSandboxScreenStateTests {
         before.host.bundleId = "staged"
         before.host.runningBundleId = "running"
         await before.coordinator.open()
-        #expect(before.store.openedBundles.last == "staged")
         #expect(before.opens.last?.1 == true)
     }
 
@@ -1474,7 +1573,7 @@ struct HotUpdaterSandboxScreenStateTests {
         fixture.host.channel = "pr-3"
         await fixture.coordinator.refresh()
         await fixture.coordinator.open()
-        #expect(fixture.store.opened == ["pr-3"])
+        #expect(fixture.opens.count == 1)
         #expect(fixture.shelf.entries.isEmpty)
     }
 
@@ -1894,18 +1993,66 @@ struct HotUpdaterSandboxHomeModelTests {
         #expect(row.caption == "Running")
         #expect(row.title == "Reload")
         #expect(row.subtitle == "Running pr-1")
-        #expect(row.isReload)
+        #expect(row.action == .reloadApp)
     }
 
     @Test
     func overTheAppRunningAndNextAreSeparateWhenTheyDiffer() {
-        let toBuiltIn = home(state(selection: selection(bundleId: "built-in"), running: "ota"), isOverApp: true).bigRow
-        #expect(toBuiltIn.subtitle == "Running bundle ota")
-        #expect(toBuiltIn.detail == "Next launch: the built-in bundle")
-
         let toOta = home(state(selection: selection(bundleId: "ota"), running: "built-in"), isOverApp: true).bigRow
+        #expect(toOta.title == "Reload")
         #expect(toOta.subtitle == "Running the built-in bundle")
         #expect(toOta.detail == "Next launch: bundle ota")
+        #expect(toOta.action == .reloadApp)
+    }
+
+    @Test
+    func overTheAppABuiltInBundleNextIsOpenedByItsReload() {
+        let row = home(state(selection: selection(bundleId: "built-in"), running: "019a3f00aabbc2"), isOverApp: true).bigRow
+        #expect(row.caption == "Current bundle")
+        #expect(row.title == "Open built-in bundle")
+        #expect(row.subtitle == "The bundle this build shipped with")
+        #expect(row.detail == "Running bundle 019a3f…c2")
+        #expect(row.action == .openOverApp)
+    }
+
+    @Test
+    func overTheAppTheBuiltInBundleRunningStaysAReload() {
+        let row = home(state(selection: selection(bundleId: "built-in"), running: "built-in"), isOverApp: true).bigRow
+        #expect(row.caption == "Running")
+        #expect(row.title == "Reload")
+        #expect(row.subtitle == "Running the built-in bundle")
+        #expect(row.detail == "Channel pr-1")
+        #expect(row.action == .reloadApp)
+    }
+
+    @Test
+    func theRowsTapComesWithItsWords() {
+        func action(
+            _ state: HotUpdaterSandboxState,
+            isOverApp: Bool,
+            devServer: String? = nil
+        ) -> HotUpdaterSandboxHomeModel.Action {
+            HotUpdaterSandboxHomeModel(state: state, isOverApp: isOverApp, runningDevServerHost: devServer, nowMs: 0).bigRow.action
+        }
+        // Before the app starts, the row opens it, a dev server or not.
+        #expect(action(state(selection: nil), isOverApp: false) == .open)
+        #expect(action(state(selection: selection()), isOverApp: false) == .open)
+        #expect(action(state(selection: selection(bundleId: "built-in")), isOverApp: false) == .open)
+        #expect(action(state(selection: selection()), isOverApp: false, devServer: "localhost:8081") == .open)
+        // Over the app.
+        #expect(action(state(selection: nil), isOverApp: true) == .reloadApp)
+        #expect(action(state(selection: selection()), isOverApp: true) == .reloadApp)
+        #expect(action(state(selection: selection(bundleId: "ota"), running: "built-in"), isOverApp: true) == .reloadApp)
+        #expect(action(state(selection: selection(bundleId: "built-in"), running: "ota"), isOverApp: true) == .openOverApp)
+        #expect(action(state(selection: selection(bundleId: "built-in"), running: "built-in"), isOverApp: true) == .reloadApp)
+        let stored = state(selection: selection(), history: [entry("019a3f00aabbc2", "pr-12")], storedSession: "019a3f00aabbc2")
+        #expect(action(stored, isOverApp: true) == .reloadApp)
+        #expect(action(state(selection: selection()), isOverApp: true, devServer: "localhost:8081") == .reloadDevServer)
+        // Open's icon only where the row opens something.
+        #expect(HotUpdaterSandboxHomeModel.Action.open.opens)
+        #expect(HotUpdaterSandboxHomeModel.Action.openOverApp.opens)
+        #expect(!HotUpdaterSandboxHomeModel.Action.reloadApp.opens)
+        #expect(!HotUpdaterSandboxHomeModel.Action.reloadDevServer.opens)
     }
 
     @Test
@@ -2013,7 +2160,7 @@ struct HotUpdaterSandboxHomeModelTests {
         let row = home(current, isOverApp: true).bigRow
         #expect(row.subtitle == "Running stored pr-12")
         #expect(row.detail == "Bundle 019a3f…c2")
-        #expect(row.isReload)
+        #expect(row.action == .reloadApp)
         #expect(row.showsBack)
         let info = HotUpdaterSandboxInfoModel(state: current, version: "1", configuration: "Release", isOverApp: true)
         #expect(info.bundle.first { $0.name == "Current" }?.value == "Stored 019a3f…c2")
