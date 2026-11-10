@@ -1,5 +1,18 @@
 # @hot-updater/console
 
+## 1.2.0-rc.27
+
+### Patch Changes
+
+- dbf78b0: Bundle tar 7.5.22 and workspace-tools 0.42.3 (js-yaml 4.3.2), leave out workspace-tools' lockfile parsers and their minimatch 3.0.4 copy, and regenerate the `inlinedDependencies` field on every build so it lists what dist bundles.
+- Updated dependencies [dbf78b0]
+- Updated dependencies [dbf78b0]
+  - @hot-updater/cli-tools@1.2.0-rc.27
+  - @hot-updater/bsdiff@1.2.0-rc.27
+  - @hot-updater/protocol@1.2.0-rc.27
+  - @hot-updater/server@1.2.0-rc.27
+  - @hot-updater/plugin-core@1.2.0-rc.27
+
 ## 1.2.0-rc.26
 
 ### Patch Changes

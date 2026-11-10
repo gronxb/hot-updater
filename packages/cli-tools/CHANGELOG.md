@@ -1,5 +1,15 @@
 # @hot-updater/cli-tools
 
+## 1.2.0-rc.27
+
+### Patch Changes
+
+- dbf78b0: Bundle tar 7.5.22 and workspace-tools 0.42.3 (js-yaml 4.3.2), leave out workspace-tools' lockfile parsers and their minimatch 3.0.4 copy, and regenerate the `inlinedDependencies` field on every build so it lists what dist bundles.
+- dbf78b0: Let tsdown generate the package's `exports` map instead of a hand-written copy. `import` and `require` still resolve `dist/index.mjs`, and its types still resolve `dist/index.d.mts`.
+- @hot-updater/protocol@1.2.0-rc.27
+  - @hot-updater/server@1.2.0-rc.27
+  - @hot-updater/plugin-core@1.2.0-rc.27
+
 ## 1.2.0-rc.26
 
 ### Patch Changes

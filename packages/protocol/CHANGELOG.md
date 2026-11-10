@@ -1,5 +1,7 @@
 # @hot-updater/protocol
 
+## 1.2.0-rc.27
+
 ## 1.2.0-rc.26
 
 ### Patch Changes
