@@ -569,11 +569,12 @@ class HotUpdaterImpl {
     }
 
     /**
-     * Gets the running bundle's ID, null for the built-in bundle.
+     * Gets the selected bundle's ID, null for the built-in bundle. A channel
+     * reset or built-in commit changes it before React Native reloads.
      * Built-in bundle fallback is handled in JS.
      */
     fun getBundleId(): String? {
-        val launchSelection = runningLaunchSelection
+        val launchSelection = currentLaunchSelection
         if (launchSelection != null) {
             return launchSelection.launchedBundleId
         }
@@ -585,7 +586,7 @@ class HotUpdaterImpl {
      * The bundle this process runs. A channel reset clears [currentLaunchSelection]
      * for the next launch, but the running bundle stays until React Native reloads.
      */
-    fun getRunningBundleId(): String? = runningLaunchSelection?.launchedBundleId
+    fun getRunningBundleId(): String? = (currentLaunchSelection ?: runningLaunchSelection)?.launchedBundleId
 
     /** Takes the queued native update events for JavaScript's `takeNativeUpdateEvents`. */
     fun takeNativeUpdateEvents(): String? =
@@ -604,7 +605,7 @@ class HotUpdaterImpl {
      */
     fun getBundleIdForUpdateCheck(): String? =
         synchronized(launchPreparationLock) {
-            val launchSelection = runningLaunchSelection
+            val launchSelection = currentLaunchSelection ?: runningLaunchSelection
             if (launchSelection != null) {
                 return@synchronized launchSelection.launchedBundleId
             }

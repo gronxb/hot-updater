@@ -79,10 +79,11 @@ final class LaunchPreparationLock {
 
 /// The two launch selections of one instance: the one React Native's next read
 /// of the bundle URL returns, and the one React Native runs in this process. A
-/// channel reset or built-in commit clears only the next one, so what
-/// JavaScript reads about the running bundle (its ID, base URL, and manifest)
-/// stays that bundle's until React Native reloads. Read by native update
-/// checks on other threads while React Native sets it.
+/// channel reset or built-in commit clears only the next one: the bundle ID
+/// JavaScript reads follows the selection, while the running bundle's base URL
+/// and manifest, which locate the files its JavaScript loads, stay that
+/// bundle's until React Native reloads. Read by native update checks on other
+/// threads while React Native sets it.
 final class LaunchSelections: @unchecked Sendable {
     private let lock = NSLock()
     private var nextValue: LaunchSelection?
@@ -124,6 +125,13 @@ final class LaunchSelections: @unchecked Sendable {
         nextValue = nil
         runningValue = nil
         lock.unlock()
+    }
+
+    /// The selected bundle's ID, which getBundleId() reports: nil for the
+    /// built-in bundle once a reset or built-in commit clears the next
+    /// selection, before React Native reloads.
+    var selectedBundleId: String? {
+        next?.launchedBundleId
     }
 
     var runningBundleId: String? {

@@ -68,12 +68,18 @@ class HotUpdaterSandboxImplGeneratorTest {
         )
     }
 
-    private val storedAnchor = "        val launchSelection = runningLaunchSelection"
+    // The bundle ID reports the selection; the base URL and manifest locate the running bundle's files.
+    private val selectedAnchor = "        val launchSelection = currentLaunchSelection"
+    private val runningAnchor = "        val launchSelection = runningLaunchSelection"
 
     @Test
-    fun `a stored session answers what JavaScript reads of the running bundle first`() {
+    fun `a stored session answers what JavaScript reads of the launched bundle first`() {
         val lines = generate(packaged).split("\n")
-        for ((function, field) in listOf("getBaseURL" to "baseURL", "getBundleId" to "bundleId", "getManifest" to "manifest")) {
+        for ((function, field, storedAnchor) in listOf(
+            Triple("getBaseURL", "baseURL", runningAnchor),
+            Triple("getBundleId", "bundleId", selectedAnchor),
+            Triple("getManifest", "manifest", runningAnchor),
+        )) {
             val line = "        HotUpdaterSandboxDev.storedBundle(context, environment)?.let { return it.$field }"
             val at = lines.indexOf(line)
             assertEquals(1, lines.count { it == line })
@@ -84,8 +90,20 @@ class HotUpdaterSandboxImplGeneratorTest {
 
     @Test
     fun `work moved before a stored getter's anchor refuses`() {
+        for ((signature, storedAnchor) in listOf(
+            "    fun getBundleId(): String? {" to selectedAnchor,
+            "    fun getBaseURL(): String? {" to runningAnchor,
+        )) {
+            val message = refusal(packaged.replace("$signature\n$storedAnchor", "$signature\n        log()\n$storedAnchor"))
+            val name = signature.trim().split(" ", "(")[1]
+            assertTrue(message, message.contains("`$name` does something else before"))
+        }
+    }
+
+    @Test
+    fun `a getter reading the other selection refuses`() {
         val signature = "    fun getBundleId(): String? {"
-        val message = refusal(packaged.replace("$signature\n$storedAnchor", "$signature\n        log()\n$storedAnchor"))
+        val message = refusal(packaged.replace("$signature\n$selectedAnchor", "$signature\n$runningAnchor"))
         assertTrue(message, message.contains("`getBundleId` does something else before"))
     }
 

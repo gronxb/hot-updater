@@ -19,12 +19,17 @@ class HotUpdaterSandboxImplGenerator {
   static final String GETTER_ANCHOR = "val bundleUrl = prepareLaunchIfNeeded().bundleUrl"
   static final String GETTER_LINE = "        if (environment.isMain) HotUpdaterSandboxDev.bundleOfThisProcess(context)?.let { return it }"
 
-  /** What JavaScript reads of the running bundle, each answered by a stored session's bundle first. */
-  static final String STORED_ANCHOR = "val launchSelection = runningLaunchSelection"
-  static final Map<String, String> STORED_GETTERS = [
-    "    fun getBaseURL(): String? {": "baseURL",
-    "    fun getBundleId(): String? {": "bundleId",
-    "    fun getManifest(): Map<String, Any?> {": "manifest",
+  /**
+   * What JavaScript reads of the launched bundle, each answered by a stored
+   * session's bundle first: the bundle ID reports the selection, the base URL
+   * and manifest the running bundle's files.
+   */
+  static final String SELECTED_ANCHOR = "val launchSelection = currentLaunchSelection"
+  static final String RUNNING_ANCHOR = "val launchSelection = runningLaunchSelection"
+  static final Map<String, List<String>> STORED_GETTERS = [
+    "    fun getBaseURL(): String? {": ["baseURL", RUNNING_ANCHOR],
+    "    fun getBundleId(): String? {": ["bundleId", SELECTED_ANCHOR],
+    "    fun getManifest(): Map<String, Any?> {": ["manifest", RUNNING_ANCHOR],
   ]
 
   static String storedLine(String field) {
@@ -66,9 +71,10 @@ class HotUpdaterSandboxImplGenerator {
     def restartAt = uniqueLine(lines, RESTART, refuse)
     def restartAnchorAt = nextStatement(lines, restartAt, [], RESTART_ANCHOR, "restartApplication", refuse)
     def storedAt = [:]
-    STORED_GETTERS.each { signature, field ->
+    STORED_GETTERS.each { signature, getter ->
+      def (field, storedAnchor) = getter
       def name = signature.trim().split(/[ (]/)[1]
-      storedAt[nextStatement(lines, uniqueLine(lines, signature, refuse), [], STORED_ANCHOR, name, refuse)] = storedLine(field)
+      storedAt[nextStatement(lines, uniqueLine(lines, signature, refuse), [], storedAnchor, name, refuse)] = storedLine(field)
     }
 
     def output = []

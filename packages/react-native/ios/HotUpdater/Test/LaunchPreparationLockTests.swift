@@ -76,14 +76,16 @@ struct LaunchPreparationLockTests {
     }
 
     /// A channel reset or built-in commit clears only the next launch's
-    /// selection: what JavaScript reads about the running bundle, its ID, base
-    /// URL, and manifest, stays that bundle's until React Native reloads.
+    /// selection: the selected bundle's ID follows it, while the running
+    /// bundle's base URL and manifest stay that bundle's until React Native
+    /// reloads.
     @Test(arguments: ["commit", "reset"])
     func theRunningBundlesGettersStayUntilTheReload(change: String) {
         let launchPreparation = LaunchPreparationLock()
         let storage = GatedBundleStorage(holdChange: false, events: EventLog())
         let selections = LaunchSelections()
         selections.launch(LaunchSelection(bundleURL: nil, launchedBundleId: "downloaded-bundle", shouldRollbackOnCrash: false))
+        #expect(selections.selectedBundleId == "downloaded-bundle")
 
         if change == "commit" {
             #expect(launchPreparation.commitReleaseSelection(selection("USE_BUILTIN"), in: storage) {
@@ -93,8 +95,12 @@ struct LaunchPreparationLockTests {
             #expect((try? launchPreparation.resetChannel(in: storage) { selections.clearNext() }.get()) == true)
         }
 
-        // React Native's next read selects again.
+        // React Native's next read selects again, and getBundleId() reports
+        // that selection, the built-in bundle (nil): it can change before the
+        // reload. The running bundle's files stay where getBaseURL() and
+        // getManifest() locate them.
         #expect(selections.next == nil)
+        #expect(selections.selectedBundleId == nil)
         #expect(selections.runningBundleId == "downloaded-bundle")
         #expect(selections.runningBaseURL(in: storage) == "file:///bundle-store/downloaded-bundle")
         #expect(selections.runningManifest(in: storage)["bundleId"] as? String == "downloaded-bundle")
@@ -102,6 +108,7 @@ struct LaunchPreparationLockTests {
         // The reload launches the built-in bundle.
         selections.clear()
         selections.launch(LaunchSelection(bundleURL: nil, launchedBundleId: storage.peekLaunchBundleId(), shouldRollbackOnCrash: false))
+        #expect(selections.selectedBundleId == nil)
         #expect(selections.runningBundleId == nil)
         #expect(selections.runningBaseURL(in: storage) == nil)
         #expect(selections.runningManifest(in: storage).isEmpty)

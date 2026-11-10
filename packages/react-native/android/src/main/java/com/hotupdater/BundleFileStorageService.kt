@@ -1872,15 +1872,35 @@ class BundleFileStorageService(
         return selection
     }
 
+    /**
+     * The bundles an install's cleanup keeps for the JavaScript this process
+     * runs: its launch's bundle, and the one a channel reset or built-in commit
+     * named in [RETAINED_BUNDLE_FILENAME]. The next launch removes the retained one.
+     */
+    private fun bundlesInUseUntilNextLaunch(): Set<String> {
+        val running = synchronized(releaseStateLock) { runningBundleId }
+        val retained = readRetainedBundleId()
+        return setOfNotNull(running, retained)
+    }
+
+    /** The bundle directory [RETAINED_BUNDLE_FILENAME] names, null without a valid one. */
+    private fun readRetainedBundleId(): String? {
+        val marker = File(getBundleStoreDir(), RETAINED_BUNDLE_FILENAME)
+        if (!marker.exists()) return null
+        val retained = runCatching { marker.readText().trim() }.getOrDefault("")
+        // Only a bundle directory's name: never the store itself or a path out of it.
+        if (retained.isEmpty() || retained.contains('/') || retained == "." || retained == "..") return null
+        return retained
+    }
+
     /** Removes the files a channel reset or built-in commit kept for the launch it replaced, unless this launch or the metadata uses them again. */
     private fun removeRetainedBundle(launching: String?) {
         val marker = File(getBundleStoreDir(), RETAINED_BUNDLE_FILENAME)
         if (!marker.exists()) return
-        val retained = runCatching { marker.readText().trim() }.getOrDefault("")
+        val retained = readRetainedBundleId()
         marker.delete()
+        if (retained == null) return
         val metadata = loadMetadataOrNull()
-        // Only a bundle directory's name: never the store itself or a path out of it.
-        if (retained.isEmpty() || retained.contains('/') || retained == "." || retained == "..") return
         if (retained == launching || retained == metadata?.stableBundleId || retained == metadata?.stagingBundleId) return
         File(getBundleStoreDir(), retained).takeIf { it.isDirectory }?.deleteRecursively()
     }
@@ -2784,8 +2804,11 @@ class BundleFileStorageService(
                             !file.name.endsWith(".install-backup")
                     }?.toList() ?: return
 
-            // Keep only the specified bundle IDs (filter out null values)
-            val bundleIdsToKeep = setOfNotNull(currentBundleId, bundleId).filter { it.isNotBlank() }
+            // Keep only the specified bundle IDs (filter out null values), and
+            // the bundle this process runs, whose JavaScript still loads its
+            // files after a channel reset or built-in commit until the next launch.
+            val bundleIdsToKeep =
+                (setOfNotNull(currentBundleId, bundleId) + bundlesInUseUntilNextLaunch()).filter { it.isNotBlank() }
 
             bundles.forEach { bundle ->
                 try {
@@ -2959,10 +2982,12 @@ class BundleFileStorageService(
         getBundleStoreDir().listFiles()?.forEach { file ->
             if (!file.isDirectory) return@forEach
             if (file.name == runningBundleId) {
-                File(getBundleStoreDir(), RETAINED_BUNDLE_FILENAME).writeText(file.name)
+                // Best effort: an install's cleanup keeps the running bundle without it.
+                runCatching { File(getBundleStoreDir(), RETAINED_BUNDLE_FILENAME).writeText(file.name) }
+                    .onFailure { Log.w(TAG, "Failed to name the retained bundle ${file.name}: ${it.message}") }
                 return@forEach
             }
-            file.deleteRecursively()
+            if (!file.deleteRecursively()) Log.w(TAG, "Failed to remove bundle: ${file.name}")
         }
     }
 }

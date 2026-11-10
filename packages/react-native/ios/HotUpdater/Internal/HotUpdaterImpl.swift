@@ -165,7 +165,7 @@ private func hotUpdaterGetMinBundleId() -> String {
     }()
     // The selection React Native's next read returns, and the one it runs in
     // this process: a channel reset or built-in commit clears only the next
-    // one, so the running bundle's getters stay until a reload.
+    // one, so the running bundle's base URL and manifest stay until a reload.
     private let launchSelections = LaunchSelections()
     // Serializes the launch's bundle selection with the update check's read
     // of it, and with a channel reset or built-in commit, which delete
@@ -926,17 +926,18 @@ private func hotUpdaterGetMinBundleId() -> String {
     }
 
     /**
-     * Gets the running bundle's ID, nil for the built-in bundle.
+     * Gets the selected bundle's ID, nil for the built-in bundle. A channel
+     * reset or built-in commit changes it before React Native reloads.
      * Built-in bundle fallback is handled in JS.
      */
     public func getBundleId() -> String? {
-        runningBundleId()
+        launchSelections.selectedBundleId
     }
 
     /// The bundle this process runs. A channel reset clears the next launch's
     /// selection, but the running bundle stays until React Native reloads.
     func runningBundleId() -> String? {
-        launchSelections.runningBundleId
+        (launchSelections.next ?? launchSelections.running)?.launchedBundleId
     }
 
     /**
@@ -973,7 +974,7 @@ private func hotUpdaterGetMinBundleId() -> String {
      */
     func bundleIdForUpdateCheck() -> String? {
         launchPreparationLock.withLock {
-            if let launchSelection = launchSelections.running {
+            if let launchSelection = launchSelections.next ?? launchSelections.running {
                 return launchSelection.launchedBundleId
             }
             // Settles what the previous process left first, so the check reads the

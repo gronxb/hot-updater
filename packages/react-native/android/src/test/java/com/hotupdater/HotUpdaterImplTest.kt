@@ -180,12 +180,15 @@ class HotUpdaterImplTest {
 
             assertTrue(impl.resetChannel())
 
-            // React Native's next read selects again; what JavaScript reads
-            // about the running bundle stays that bundle's until the reload.
+            // React Native's next read selects again, and the TurboModule's
+            // bundle ID reports that selection, the built-in bundle (null). The
+            // running bundle's files, which its base URL and manifest locate,
+            // stay that bundle's until the reload.
             assertNull(getField(impl, "currentLaunchSelection"))
             assertEquals("channel-bundle", impl.getBundleIdForUpdateCheck())
+            // The instance's getter reports the running bundle; the TurboModule's reads the next launch's.
             assertEquals("channel-bundle", impl.getRunningBundleId())
-            assertEquals("channel-bundle", impl.getBundleId())
+            assertNull(impl.getBundleId())
             assertEquals("file:///bundle-store/channel-bundle", impl.getBaseURL())
             assertEquals(mapOf("bundleId" to "channel-bundle"), impl.getManifest())
         }
@@ -215,10 +218,11 @@ class HotUpdaterImplTest {
             storage.committed = true
             assertTrue(impl.commitReleaseSelection(selection("USE_BUILTIN", "built-in")))
 
-            // React Native's next read picks the built-in bundle; what JavaScript
-            // reads about the running bundle stays that bundle's until the reload.
+            // React Native's next read picks the built-in bundle, which the
+            // bundle ID reports; the running bundle's base URL and manifest stay
+            // that bundle's until the reload.
             assertNull(getField(impl, "currentLaunchSelection"))
-            assertEquals("downloaded-bundle", impl.getBundleId())
+            assertNull(impl.getBundleId())
             assertEquals("downloaded-bundle", impl.getRunningBundleId())
             assertEquals("downloaded-bundle", impl.getBundleIdForUpdateCheck())
             assertEquals("file:///bundle-store/downloaded-bundle", impl.getBaseURL())
