@@ -160,7 +160,7 @@ describe("native-build devices add", () => {
     );
 
     expect(allLogged("error")).toBe(
-      "not-a-udid isn't an iPhone's UDID.\nCopy it from the page \"Check this iPhone\" opens on the build's Console page.",
+      "not-a-udid isn't an iPhone's UDID.\nOpen the build's Console page on that iPhone and install its profile.",
     );
     expect(resolve).not.toHaveBeenCalled();
     expect(addAscDevices).not.toHaveBeenCalled();

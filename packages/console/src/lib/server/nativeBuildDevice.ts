@@ -74,11 +74,11 @@ export const serveDeviceProfile = (request: Request, id: string): Response => {
   <key>PayloadOrganization</key>
   <string>Hot Updater</string>
   <key>PayloadDisplayName</key>
-  <string>Check this iPhone</string>
+  <string>Hot Updater Device Profile</string>
   <key>PayloadDescription</key>
   <string>Sends this iPhone's ID (UDID) to ${escapePlistText(host)}, to check whether a build can install on it. Nothing stays installed.</string>
   <key>PayloadIdentifier</key>
-  <string>dev.hot-updater.check-this-iphone</string>
+  <string>dev.hot-updater.device-profile</string>
   <key>PayloadUUID</key>
   <string>6D3F4C0E-52C4-4C8B-9E0A-7B1E5A0C2F11</string>
   <key>PayloadVersion</key>
@@ -195,6 +195,10 @@ a.action { border: 1px solid var(--line); color: var(--fg); }
 </head>
 <body>
 <main>
+<div id="returning" hidden>
+  <h1>Back to the build</h1>
+  <p>Opening the build's page to install it.</p>
+</div>
 <div id="found" hidden>
   <h1>This iPhone's ID</h1>
 </div>
@@ -207,7 +211,7 @@ a.action { border: 1px solid var(--line); color: var(--fg); }
 <code id="command" hidden translate="no"></code>
 <button id="copy" type="button" hidden>Copy command</button>
 <p id="retry" hidden>Open the build's page in Safari and check this iPhone again. On a Mac, Finder shows an iPhone's ID, which a maintainer can register with native-build devices add.</p>
-<a class="action" href="../../../native-builds/${encodeURIComponent(buildId)}">Back to the build</a>
+<a class="action" id="back" href="../../../native-builds/${encodeURIComponent(buildId)}">Back to the build</a>
 </main>
 <script nonce="${nonce}">
 (function () {
@@ -220,6 +224,11 @@ a.action { border: 1px solid var(--line); color: var(--fg); }
   if (location.hash) history.replaceState(null, "", location.pathname);
   if (!udid || !pattern.test(udid)) { show("missing"); show("retry"); return; }
   try { localStorage.setItem(c.key, udid); } catch (e) {}
+  if (stored() === udid) {
+    show("returning");
+    location.replace(document.getElementById("back").href);
+    return;
+  }
   var command = c.commandStart + udid + c.commandEnd;
   document.getElementById("udid").textContent = udid;
   document.getElementById("command").textContent = command;
@@ -241,10 +250,11 @@ a.action { border: 1px solid var(--line); color: var(--fg); }
 };
 
 /**
- * The page the callback lands on: the UDID, one command and a copy button,
- * kept in the phone's `localStorage` for the build's page. It takes no session
- * and reads nothing, so Safari with no Console sign-in shows it too, and it
- * works however long a rebuild takes. The UDID comes from the fragment and stays
+ * The page the callback lands on. It keeps the UDID in the phone's
+ * `localStorage` and goes straight back to the build's page, which reads it and
+ * offers Install, or the command for a maintainer. A browser that keeps nothing
+ * gets the UDID, one command and a copy button here instead. It takes no
+ * session and reads nothing, so Safari with no Console sign-in shows it too. The UDID comes from the fragment and stays
  * in the browser; a crafted link can show any text, which is why the page asks
  * who the iPhone belongs to.
  *

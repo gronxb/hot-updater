@@ -116,21 +116,16 @@ function RenewInstallLink({
 function InstallButton({
   build,
   token,
-  secondary = false,
 }: {
   readonly build: NativeBuildRow;
   readonly token: string;
-  readonly secondary?: boolean;
 }) {
   return (
     <a
-      className={buttonVariants({
-        className: ACTION_CLASS,
-        variant: secondary ? "outline" : "default",
-      })}
+      className={buttonVariants({ className: ACTION_CLASS })}
       href={nativeBuildItmsUrl(window.location, build.id, token)}
     >
-      {secondary ? "Install anyway" : "Install"}
+      Install
     </a>
   );
 }
@@ -150,25 +145,17 @@ function InstallNotes() {
 
 /**
  * The link that hands this iPhone the profile that reads its UDID, under the
- * console's path. A plain link, so iOS offers the profile.
+ * console's path. A plain link, so iOS offers the profile. Once it's installed,
+ * the phone comes back to this page, which then offers Install.
  */
-function CheckThisIphone({
-  build,
-  outline = false,
-}: {
-  readonly build: NativeBuildRow;
-  readonly outline?: boolean;
-}) {
+function InstallProfile({ build }: { readonly build: NativeBuildRow }) {
   return (
     <a
-      className={buttonVariants({
-        className: ACTION_CLASS,
-        variant: outline ? "outline" : "default",
-      })}
+      className={buttonVariants({ className: ACTION_CLASS })}
       href={`${consolePathOf(window.location, build.id)}${nativeBuildDeviceProfilePath(build.id)}`}
     >
       <Smartphone data-icon="inline-start" />
-      Check this iPhone
+      Install profile
     </a>
   );
 }
@@ -190,7 +177,8 @@ export function IosInstall({
   const { refetch } = eligibility;
   const expired = useInstallLinkExpired(
     eligibility.dataUpdatedAt,
-    eligibility.data?.status === "installable",
+    eligibility.data?.status === "installable" &&
+      eligibility.data.device === "included",
   );
   useEffect(() => {
     if (expired) void refetch();
@@ -241,20 +229,18 @@ export function IosInstall({
     );
   }
   if (token === null) return null;
-  const install = ({ secondary = false } = {}) =>
-    expired ? (
-      <RenewInstallLink
-        fetching={eligibility.isFetching}
-        onRenew={() => void refetch()}
-      />
-    ) : (
-      <InstallButton build={build} secondary={secondary} token={token} />
-    );
   if (result.device === "included") {
     return (
       <div className="flex min-w-0 flex-col gap-3">
         <p className="text-sm font-medium">This iPhone is in this build.</p>
-        {install()}
+        {expired ? (
+          <RenewInstallLink
+            fetching={eligibility.isFetching}
+            onRenew={() => void refetch()}
+          />
+        ) : (
+          <InstallButton build={build} token={token} />
+        )}
         <InstallNotes />
       </div>
     );
@@ -275,26 +261,21 @@ export function IosInstall({
           value={nativeBuildDeviceAddCommand(udid ?? "")}
           wrap
         />
-        {install({ secondary: true })}
-        <InstallNotes />
       </div>
     );
   }
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex min-w-0 flex-col gap-1">
-        <p className="text-sm font-medium">Is this iPhone in this build?</p>
+        <p className="text-sm font-medium">Install the profile first</p>
         <p className="text-xs text-muted-foreground">
-          iOS installs this IPA only on the devices it lists. A profile reads
+          iOS installs this IPA only on the devices it lists. The profile reads
           this iPhone's ID and nothing else: allow the download, then install it
-          from Settings, where iOS calls it not signed. Nothing stays installed.
+          in Settings, where iOS calls it not signed. Safari comes back here to
+          install the app, and nothing stays installed.
         </p>
       </div>
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-        <CheckThisIphone build={build} />
-        {install({ secondary: true })}
-      </div>
-      <InstallNotes />
+      <InstallProfile build={build} />
     </div>
   );
 }
