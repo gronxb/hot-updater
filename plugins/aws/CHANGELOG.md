@@ -1,5 +1,15 @@
 # @hot-updater/aws
 
+## 1.1.11
+
+### Patch Changes
+
+- Updated dependencies [06b6564]
+  - @hot-updater/cli-tools@1.1.11
+  - @hot-updater/storage-s3@1.1.11
+  - @hot-updater/server@1.1.11
+  - @hot-updater/plugin-core@1.1.11
+
 ## 1.1.10
 
 ### Patch Changes

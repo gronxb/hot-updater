@@ -1,5 +1,14 @@
 # @hot-updater/react-native
 
+## 1.1.11
+
+### Patch Changes
+
+- 395a17a: Resolve React Native's directory with `providers.exec` on Android, so apps can build with Gradle's configuration cache.
+- @hot-updater/protocol@1.1.11
+  - @hot-updater/plugin-insights@1.1.11
+  - @hot-updater/plugin-remote-config@1.1.11
+
 ## 1.1.10
 
 ### Patch Changes
