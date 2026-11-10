@@ -1,5 +1,14 @@
 # @hot-updater/react-native
 
+## 1.1.10
+
+### Patch Changes
+
+- 1f1087e: The Android fingerprint Gradle task locates the hot-updater CLI by running `resolve-hot-updater-cli.js`, a file the package ships, instead of an inline `node -e` script, so no code passes through the command line, whose quoting differs on Windows.
+- @hot-updater/protocol@1.1.10
+  - @hot-updater/plugin-insights@1.1.10
+  - @hot-updater/plugin-remote-config@1.1.10
+
 ## 1.1.9
 
 ### Patch Changes
