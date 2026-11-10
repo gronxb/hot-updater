@@ -937,7 +937,11 @@ class HotUpdaterSandboxCoordinatorTest {
         assertEquals(listOf("reset"), fixture.host.calls)
         assertTrue("a reset ran the app", fixture.opens.isEmpty())
         assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
-        assertEquals(true, fixture.coordinator.state.selection?.isBuiltIn)
+        assertEquals(
+            true,
+            fixture.coordinator.state.selection
+                ?.isBuiltIn,
+        )
         val row = HotUpdaterSandboxHomeModel.of(fixture.coordinator.state, isOverApp = true, nowMs = 0).bigRow
         assertEquals("Open built-in bundle", row.title)
         assertTrue(row.isReload)
