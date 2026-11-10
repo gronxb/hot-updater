@@ -1,5 +1,12 @@
 # @hot-updater/plugin-insights
 
+## 1.2.0-rc.26
+
+### Patch Changes
+
+- Updated dependencies [f424a4e]
+  - @hot-updater/protocol@1.2.0-rc.26
+
 ## 1.2.0-rc.25
 
 ### Patch Changes

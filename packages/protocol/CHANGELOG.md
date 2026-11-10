@@ -1,5 +1,11 @@
 # @hot-updater/protocol
 
+## 1.2.0-rc.26
+
+### Patch Changes
+
+- f424a4e: A preview link names the platform it's for: `createPreviewLink({ platform })` adds `&platform=ios` or `&platform=android`, `parsePreviewLink` returns it, and reads any other value as none. The preview action's links and QR codes name theirs. Both platforms' sandbox builds of an app often register the same URL scheme, so an iPhone's camera opened the Android QR code in the iOS sandbox build, which said only that the channel "needs another build". Now a sandbox build refuses the other platform's link, scanned, pasted, or opened with its own URL scheme, before checking the scheme or fingerprint, with "This QR is for Android" and "Scan the iPhone QR code for pr-12." on iOS, and "This QR is for iOS" and "Scan the Android QR code for pr-12." on Android. A link without `platform` reads as before, and a sandbox build from before this version ignores the parameter.
+
 ## 1.2.0-rc.25
 
 ### Patch Changes

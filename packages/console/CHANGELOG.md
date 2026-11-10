@@ -1,5 +1,20 @@
 # @hot-updater/console
 
+## 1.2.0-rc.26
+
+### Patch Changes
+
+- f6bf745: The build's page on an iPhone keeps the ID the profile passed back when React runs its effects twice, and the Console renders in a browser that keeps nothing in `localStorage`. "Install the profile again" uses the secondary button, which reads as a button in light mode.
+- 73f0eaa: The build's page on an iPhone offers **Install profile** until the iPhone has sent its UDID, then **Install**. The profile is named "Hot Updater Device Profile", and after it installs, Safari goes straight back to the build's page. "Install anyway" is gone: an iPhone the IPA doesn't list gets the command for a maintainer.
+- Updated dependencies [acd3794]
+- Updated dependencies [f424a4e]
+- Updated dependencies [a402c84]
+  - @hot-updater/cli-tools@1.2.0-rc.26
+  - @hot-updater/protocol@1.2.0-rc.26
+  - @hot-updater/server@1.2.0-rc.26
+  - @hot-updater/plugin-core@1.2.0-rc.26
+  - @hot-updater/bsdiff@1.2.0-rc.26
+
 ## 1.2.0-rc.25
 
 ### Minor Changes
