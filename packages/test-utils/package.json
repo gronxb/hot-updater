@@ -88,15 +88,19 @@
     "pg": "catalog:db",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "vitest": "catalog:",
-    "workspace-tools": "^0.41.7"
+    "workspace-tools": "^0.42.3"
   },
   "inlinedDependencies": {
+    "@clack/core": "1.4.3",
+    "@clack/prompts": "1.7.0",
     "@nodelib/fs.scandir": "2.1.5",
     "@nodelib/fs.stat": "2.0.5",
     "@nodelib/fs.walk": "1.2.8",
-    "@yarnpkg/lockfile": "1.1.0",
     "braces": "3.0.3",
     "fast-glob": "3.3.3",
+    "fast-string-truncated-width": "3.0.3",
+    "fast-string-width": "3.0.2",
+    "fast-wrap-ansi": "0.2.2",
     "fastq": "1.20.1",
     "fill-range": "7.1.1",
     "git-up": "8.1.1",
@@ -107,7 +111,7 @@
     "is-number": "7.0.0",
     "is-ssh": "1.4.1",
     "jju": "1.4.0",
-    "js-yaml": "4.2.0",
+    "js-yaml": "4.3.2",
     "merge2": "1.4.1",
     "micromatch": "4.0.8",
     "parse-path": "7.1.0",
@@ -117,8 +121,9 @@
     "queue-microtask": "1.2.3",
     "reusify": "1.1.0",
     "run-parallel": "1.2.0",
+    "sisteransi": "1.0.5",
     "to-regex-range": "5.0.1",
-    "workspace-tools": "0.41.7"
+    "workspace-tools": "0.42.3"
   },
   "publishConfig": {
     "access": "public"

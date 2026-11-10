@@ -3,7 +3,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
-import { findPackageRoot, getWorkspaceInfos } from "workspace-tools";
+import { findPackageRoot } from "workspace-tools/lib/paths.js";
+import { getWorkspaceInfos } from "workspace-tools/lib/workspaces/getWorkspaceInfos.js";
 
 const HOT_UPDATE_DIR_NAME = ".hot-updater";
 
