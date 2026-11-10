@@ -20,6 +20,11 @@ abstract class GenerateHotUpdaterFingerprintHashTask extends DefaultTask {
   @Input
   abstract Property<String> getNodeBinary()
 
+  // resolve-hot-updater-cli.js beside this file, which locates the app's CLI.
+  @InputFile
+  @PathSensitive(PathSensitivity.NONE)
+  abstract RegularFileProperty getCliResolver()
+
   @OutputDirectory
   abstract DirectoryProperty getOutputDirectory()
 
@@ -59,20 +64,7 @@ abstract class GenerateHotUpdaterFingerprintHashTask extends DefaultTask {
         fingerprintHash = recorded?.android?.hash ?: ""
       } else {
         def node = getNodeBinary().get()
-        // The script uses no double quotes: on Windows, ProcessBuilder wraps an
-        // argument with spaces in double quotes without escaping the ones
-        // inside it, so node would receive a broken script.
-        def cli = run([
-          node,
-          "-e",
-          '''
-          const path = require('node:path');
-          const manifest = require.resolve('hot-updater/package.json', { paths: [process.argv[1]] });
-          const { bin } = require(manifest);
-          console.log(path.join(path.dirname(manifest), typeof bin === 'string' ? bin : bin['hot-updater']));
-          ''',
-          appRoot.path,
-        ], appRoot)
+        def cli = run([node, getCliResolver().get().asFile.path, appRoot.path], appRoot)
         fingerprintHash = run([node, cli, "fingerprint", "hash", "-p", "android"], appRoot)
       }
     }
@@ -114,6 +106,7 @@ def registerHotUpdaterFingerprintTask = { String variantName, String buildType -
     appRoot.set(hotUpdaterAppRoot)
     recordedOnly.set(buildType == "debug")
     nodeBinary.set(hotUpdaterNodeBinary)
+    cliResolver.set(layout.projectDirectory.file("resolve-hot-updater-cli.js"))
     outputDirectory.set(layout.buildDirectory.dir("generated/source/hotUpdaterFingerprintHash/${variantName}"))
     outputs.upToDateWhen { false }
   }
