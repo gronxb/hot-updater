@@ -152,6 +152,11 @@ internal sealed class HotUpdaterSandboxRefusal {
         val buildFingerprintHash: String?,
     ) : HotUpdaterSandboxRefusal()
 
+    /** The link is for the other platform's sandbox build. */
+    data class OtherPlatform(
+        val link: HotUpdaterSandboxLink,
+    ) : HotUpdaterSandboxRefusal()
+
     /** Something typed isn't a channel a release can target. */
     data class InvalidChannel(
         val channel: String,
@@ -897,7 +902,15 @@ internal class HotUpdaterSandboxCoordinator(
             publish(state.copy(phase = HotUpdaterSandboxPhase.Idle))
             return
         }
-        val link = HotUpdaterSandboxLink.parse(url)?.takeIf { isOwnScheme(it.urlScheme) }
+        val parsed = HotUpdaterSandboxLink.parse(url)
+        // Before the scheme: the other platform's build can register another.
+        if (parsed?.platform != null && parsed.platform != HotUpdaterSandboxLink.OWN_PLATFORM) {
+            remove(url)
+            refusedLink = url
+            publish(state.copy(phase = HotUpdaterSandboxPhase.Refused(HotUpdaterSandboxRefusal.OtherPlatform(parsed))))
+            return
+        }
+        val link = parsed?.takeIf { isOwnScheme(it.urlScheme) }
         if (link == null) {
             remove(url)
             refusedLink = url

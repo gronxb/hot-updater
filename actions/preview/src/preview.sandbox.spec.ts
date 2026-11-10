@@ -260,6 +260,7 @@ describe("the link", () => {
       urlScheme: sandboxUrlSchemeOf(appId),
       channel: "pr-12",
       fingerprintHash: FINGERPRINT,
+      platform: "android",
     });
 
     expect(link).toBe(
@@ -267,6 +268,7 @@ describe("the link", () => {
         appId,
         channel: "pr-12",
         fingerprintHash: FINGERPRINT,
+        platform: "android",
       }),
     );
     expect(parsePreviewLink(link)).toMatchObject({
@@ -542,7 +544,10 @@ describe("a sandbox .ipa with no store input", () => {
   const inputs = { INPUT_PLATFORMS: "ios", INPUT_IOS_SCHEME: "sandbox" };
 
   it("shows the deep link's QR code, and keeps its page behind Details", async () => {
-    const { body, outputs, written } = await run(fakeCli({ builds: [ipa] }), inputs);
+    const { body, outputs, written } = await run(
+      fakeCli({ builds: [ipa] }),
+      inputs,
+    );
 
     expect(body).toContain(`<img src="${qrImage(IOS_LINK)}"`);
     expect(body).toContain(

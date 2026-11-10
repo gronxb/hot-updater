@@ -16,8 +16,14 @@ internal data class HotUpdaterSandboxLink(
     val urlScheme: String,
     val channel: String,
     val fingerprintHash: String,
+    /** The platform the link is for, `ios` or `android`; null when it names none. */
+    val platform: String? = null,
 ) {
     companion object {
+        /** The platform this build's links are for. */
+        const val OWN_PLATFORM = "android"
+        private val PLATFORMS = setOf("ios", "android")
+
         /** The prefix of the scheme a build registered before it could be set. */
         private const val SCHEME_PREFIX = "hu-sandbox-"
 
@@ -83,7 +89,8 @@ internal data class HotUpdaterSandboxLink(
          * `parsePreviewLink` of `@hot-updater/protocol`, which shares its
          * vectors in test-utils' `sandbox-preview-links.json`: null for
          * anything else, or a channel no release can target. It takes any URL
-         * scheme; whether the link is this build's is [isOwnScheme].
+         * scheme; whether the link is this build's is [isOwnScheme]. A
+         * `platform` other than `ios` or `android` reads as none.
          */
         fun parse(url: String): HotUpdaterSandboxLink? {
             val match = LINK.matchEntire(url) ?: return null
@@ -100,7 +107,13 @@ internal data class HotUpdaterSandboxLink(
             val fingerprintHash = parameters["fingerprint"] ?: return null
             if (fingerprintHash.isEmpty() || fingerprintHash.length > MAX_FINGERPRINT_LENGTH) return null
             if (!isChannelName(channel)) return null
-            return HotUpdaterSandboxLink(url, match.groupValues[1].lowercase(), channel, fingerprintHash)
+            return HotUpdaterSandboxLink(
+                url,
+                match.groupValues[1].lowercase(),
+                channel,
+                fingerprintHash,
+                parameters["platform"]?.takeIf { it in PLATFORMS },
+            )
         }
 
         /** `assertCanonicalChannelName`: non-empty, trimmed, NFC, at most 255 code points. */

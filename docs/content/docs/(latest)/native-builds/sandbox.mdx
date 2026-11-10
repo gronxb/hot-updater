@@ -162,8 +162,11 @@ intent, or your activity as its component, opens your app.
 A sandbox link looks like this:
 
 ```text
-hu-sandbox-com-example-app://hot-updater/preview?channel=staging&fingerprint=<hash>
+hu-sandbox-com-example-app://hot-updater/preview?channel=staging&fingerprint=<hash>&platform=ios
 ```
+
+`platform` is optional. With it, the other platform's sandbox build says which QR
+code to scan instead of opening the channel.
 
 It never reaches your app's `Linking`, or the connection options of a scene
 delegate. On iOS, an app delegate with no scene delegate still finds it in the launch

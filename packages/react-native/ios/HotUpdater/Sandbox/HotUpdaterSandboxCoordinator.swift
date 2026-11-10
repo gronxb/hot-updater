@@ -117,6 +117,8 @@ enum HotUpdaterSandboxRefusal: Equatable {
     case unreadable(url: String)
     /// The channel's bundles need another native build.
     case otherFingerprint(link: HotUpdaterSandboxLink, buildFingerprintHash: String?)
+    /// The link is for the other platform's sandbox build.
+    case otherPlatform(link: HotUpdaterSandboxLink)
     /// Something typed isn't a channel a release can target.
     case invalidChannel(String)
 }
@@ -772,7 +774,15 @@ final class HotUpdaterSandboxCoordinator {
             setPhase(.idle)
             return
         }
-        guard let link = HotUpdaterSandboxLink(url: url), isOwnScheme(link.urlScheme) else {
+        let parsed = HotUpdaterSandboxLink(url: url)
+        // Before the scheme: the other platform's build can register another.
+        if let parsed, let platform = parsed.platform, platform != HotUpdaterSandboxLink.ownPlatform {
+            remove(url)
+            refusedLink = url
+            setPhase(.refused(.otherPlatform(link: parsed)))
+            return
+        }
+        guard let link = parsed, isOwnScheme(link.urlScheme) else {
             remove(url)
             refusedLink = url
             setPhase(.refused(.unreadable(url: url)))

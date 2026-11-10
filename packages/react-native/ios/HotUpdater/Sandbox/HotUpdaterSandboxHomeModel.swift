@@ -384,6 +384,9 @@ struct HotUpdaterSandboxQuestion: Equatable {
             case .otherFingerprint(let link, _):
                 title = "\(link.channel) needs another build"
                 message = "Its native code differs from this build. Install the sandbox build for that fingerprint."
+            case .otherPlatform(let link):
+                title = "This QR is for Android"
+                message = "Scan the iPhone QR code for \(link.channel)."
             }
             accept = "OK"
             decline = nil

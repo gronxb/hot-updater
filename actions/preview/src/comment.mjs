@@ -110,11 +110,17 @@ export const nativeBuildInstallUrl = (consoleUrl, { id, artifactKind }) =>
  * The link a sandbox build opens a channel from, of the URL scheme the build
  * registered. `@hot-updater/protocol` has the same `createPreviewLink`, which
  * an action, with no dependencies, can't import; the specs hold the two
- * together.
- * @param {{ urlScheme: string, channel: string, fingerprintHash: string }} link
+ * together. It names the platform, so the other platform's sandbox build,
+ * which can register the same scheme, says which QR code to scan.
+ * @param {{ urlScheme: string, channel: string, fingerprintHash: string, platform: Platform }} link
  */
-export const previewLink = ({ urlScheme, channel, fingerprintHash }) =>
-  `${urlScheme.toLowerCase()}://hot-updater/preview?channel=${encodeURIComponent(channel)}&fingerprint=${encodeURIComponent(fingerprintHash)}`;
+export const previewLink = ({
+  urlScheme,
+  channel,
+  fingerprintHash,
+  platform,
+}) =>
+  `${urlScheme.toLowerCase()}://hot-updater/preview?channel=${encodeURIComponent(channel)}&fingerprint=${encodeURIComponent(fingerprintHash)}&platform=${platform}`;
 
 /**
  * What each QR code of the comment holds: a sandbox build's link, which opens
