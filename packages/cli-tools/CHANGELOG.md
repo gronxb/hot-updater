@@ -1,5 +1,14 @@
 # @hot-updater/cli-tools
 
+## 1.1.12
+
+### Patch Changes
+
+- ab5d8b7: Let tsdown generate the package's `exports` map instead of a hand-written copy. `import` and `require` still resolve `dist/index.mjs`, and its types still resolve `dist/index.d.mts`.
+- @hot-updater/protocol@1.1.12
+  - @hot-updater/server@1.1.12
+  - @hot-updater/plugin-core@1.1.12
+
 ## 1.1.11
 
 ### Patch Changes
