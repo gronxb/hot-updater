@@ -1,5 +1,16 @@
 # @hot-updater/cli-tools
 
+## 1.2.0-rc.26
+
+### Patch Changes
+
+- acd3794: The native fingerprint of React Native CLI and Rock projects hashes text files with CRLF line endings as LF, so a Windows checkout, where Git converts line endings by default, gets the same fingerprint as macOS and Linux. Binary files, which Git leaves alone, are hashed as they are. A project whose fingerprinted native files are committed with CRLF line endings gets a new fingerprint once.
+- a402c84: Fix two Windows failures: the Android fingerprint Gradle task no longer passes node an inline script with double quotes, which `ProcessBuilder` broke (#1853), and the CLI finds `AndroidManifest.xml` with a `/` glob pattern, so `keys export-public`, `channel set`, and `doctor` see Android manifests again (#1854).
+- Updated dependencies [f424a4e]
+  - @hot-updater/protocol@1.2.0-rc.26
+  - @hot-updater/server@1.2.0-rc.26
+  - @hot-updater/plugin-core@1.2.0-rc.26
+
 ## 1.2.0-rc.25
 
 ### Minor Changes

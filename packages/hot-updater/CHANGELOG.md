@@ -1,5 +1,24 @@
 # hot-updater
 
+## 1.2.0-rc.26
+
+### Patch Changes
+
+- 73f0eaa: The build's page on an iPhone offers **Install profile** until the iPhone has sent its UDID, then **Install**. The profile is named "Hot Updater Device Profile", and after it installs, Safari goes straight back to the build's page. "Install anyway" is gone: an iPhone the IPA doesn't list gets the command for a maintainer.
+- Updated dependencies [f6bf745]
+- Updated dependencies [73f0eaa]
+- Updated dependencies [acd3794]
+- Updated dependencies [f424a4e]
+- Updated dependencies [a402c84]
+  - @hot-updater/console@1.2.0-rc.26
+  - @hot-updater/cli-tools@1.2.0-rc.26
+  - @hot-updater/protocol@1.2.0-rc.26
+  - @hot-updater/android-helper@1.2.0-rc.26
+  - @hot-updater/apple-helper@1.2.0-rc.26
+  - @hot-updater/server@1.2.0-rc.26
+  - @hot-updater/plugin-core@1.2.0-rc.26
+  - @hot-updater/bsdiff@1.2.0-rc.26
+
 ## 1.2.0-rc.25
 
 ### Minor Changes

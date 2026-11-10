@@ -1,5 +1,21 @@
 # @hot-updater/react-native
 
+## 1.2.0-rc.26
+
+### Patch Changes
+
+- 7333c27: The Android fingerprint Gradle task locates the hot-updater CLI by running `resolve-hot-updater-cli.js`, a file the package ships, instead of an inline `node -e` script, so no code passes through the command line, whose quoting differs on Windows.
+- f424a4e: A preview link names the platform it's for: `createPreviewLink({ platform })` adds `&platform=ios` or `&platform=android`, `parsePreviewLink` returns it, and reads any other value as none. The preview action's links and QR codes name theirs. Both platforms' sandbox builds of an app often register the same URL scheme, so an iPhone's camera opened the Android QR code in the iOS sandbox build, which said only that the channel "needs another build". Now a sandbox build refuses the other platform's link, scanned, pasted, or opened with its own URL scheme, before checking the scheme or fingerprint, with "This QR is for Android" and "Scan the iPhone QR code for pr-12." on iOS, and "This QR is for iOS" and "Scan the Android QR code for pr-12." on Android. A link without `platform` reads as before, and a sandbox build from before this version ignores the parameter.
+- 190c0b7: The sandbox's **Reset to built-in bundle**, on the Info tab and on a crash banner, no longer runs the built-in bundle right away. The sandbox screen stays up and shows Home, whose row reads **Open built-in bundle** and runs it when tapped, also over a running app that still runs another bundle.
+
+  `resetChannel()`, and an update check that selects the built-in bundle, keep the files of the bundle the app runs, so its images still load until the app reloads; the next launch removes them. Until then `HotUpdater.getBaseURL()` and `getManifest()` keep describing the running bundle, so Expo DOM components keep loading its content, and an update installed before the reload no longer removes its files. `getBundleId()` reports the selected update, the built-in one after a reset, as before.
+
+- a402c84: Fix two Windows failures: the Android fingerprint Gradle task no longer passes node an inline script with double quotes, which `ProcessBuilder` broke (#1853), and the CLI finds `AndroidManifest.xml` with a `/` glob pattern, so `keys export-public`, `channel set`, and `doctor` see Android manifests again (#1854).
+- Updated dependencies [f424a4e]
+  - @hot-updater/protocol@1.2.0-rc.26
+  - @hot-updater/plugin-insights@1.2.0-rc.26
+  - @hot-updater/plugin-remote-config@1.2.0-rc.26
+
 ## 1.2.0-rc.25
 
 ### Patch Changes
