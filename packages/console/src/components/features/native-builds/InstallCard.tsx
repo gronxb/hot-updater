@@ -324,7 +324,9 @@ function SignedLink({
       <CopyableText label="the download link" value={url} />
       <p className="text-xs text-muted-foreground">
         Anyone with this link can download this build until{" "}
-        {dayjs(link.expiresAt).format("YYYY-MM-DD")}.
+        <span className="whitespace-nowrap">
+          {dayjs(link.expiresAt).format("YYYY-MM-DD")}.
+        </span>
       </p>
     </div>
   );

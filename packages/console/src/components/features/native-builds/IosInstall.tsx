@@ -36,9 +36,16 @@ export const isIosBrowser = (
   /iPhone|iPod|iPad/u.test(browser.userAgent) ||
   (/Macintosh/u.test(browser.userAgent) && browser.maxTouchPoints > 1);
 
+/** The UDID the profile's page passed in the fragment, if any. */
+const fragmentUdid = () => {
+  if (typeof window === "undefined") return null;
+  const udid = new URLSearchParams(window.location.hash.slice(1)).get("udid");
+  return udid !== null && IOS_UDID_PATTERN.test(udid) ? udid : null;
+};
+
 /**
- * Whether this page is open on an iPhone, and its UDID: the one the profile's
- * page passed in the fragment, else the one this phone kept. Read after the
+ * Whether this page is open on an iPhone, and its UDID: the one this phone
+ * kept, else the one the profile's page passed in the fragment. Read after the
  * page mounts: the server renders it without a browser. Null until then.
  */
 export const useIosDevice = () => {
@@ -46,14 +53,14 @@ export const useIosDevice = () => {
     readonly ios: boolean;
     readonly udid: string | null;
   } | null>(null);
+  // Read at the first render, so an effect that runs again (React's
+  // development check) still has it after the fragment is gone.
+  const [passed] = useState(fragmentUdid);
   useEffect(() => {
     const valid = (udid: string | null | undefined) =>
       udid != null && IOS_UDID_PATTERN.test(udid) ? udid : null;
     // A browser that keeps nothing still has the ID from the fragment, in memory.
-    const passed = valid(
-      new URLSearchParams(window.location.hash.slice(1)).get("udid"),
-    );
-    if (passed !== null) {
+    if (passed !== null && window.location.hash !== "") {
       window.history.replaceState(
         window.history.state,
         "",
@@ -88,7 +95,7 @@ export const useIosDevice = () => {
       window.removeEventListener("pageshow", read);
       document.removeEventListener("visibilitychange", read);
     };
-  }, []);
+  }, [passed]);
   return device;
 };
 
@@ -191,7 +198,7 @@ function InstallProfile({
     <a
       className={buttonVariants({
         className: ACTION_CLASS,
-        variant: again ? "outline" : "default",
+        variant: again ? "secondary" : "default",
       })}
       href={`${consolePathOf(window.location, build.id)}${nativeBuildDeviceProfilePath(build.id)}`}
     >

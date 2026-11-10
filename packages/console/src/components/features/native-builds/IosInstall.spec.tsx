@@ -6,6 +6,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -410,6 +411,27 @@ describe("InstallCard on an iPhone", () => {
     expect(await screen.findByRole("link", { name: "Install" })).toBeTruthy();
     expect(installEligibilityQuery).toHaveBeenLastCalledWith(BUILD, PHONE);
     expect(window.location.hash).toBe("");
+  });
+
+  it("keeps the fragment's ID when React runs the effect twice, as its development check does", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("SecurityError");
+    });
+    window.history.replaceState(
+      null,
+      "",
+      `/native-builds/${BUILD}#udid=${PHONE}`,
+    );
+    onIphone();
+    answer(installable("included"));
+    render(
+      <StrictMode>
+        <InstallCard build={row} />
+      </StrictMode>,
+    );
+
+    expect(await screen.findByRole("link", { name: "Install" })).toBeTruthy();
+    expect(installEligibilityQuery).toHaveBeenLastCalledWith(BUILD, PHONE);
   });
 
   it("prefers the ID this phone kept over one a link carries", async () => {
