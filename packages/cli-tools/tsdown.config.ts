@@ -7,19 +7,8 @@ export default defineConfig([
     outDir: "dist",
     dts: true,
     failOnWarn: true,
-    // Writes package.json's exports and the inlinedDependencies field on every
-    // build, so the field lists the versions dist/index.mjs actually bundles.
-    exports: {
-      customExports: {
-        ".": {
-          types: "./dist/index.d.mts",
-          import: "./dist/index.mjs",
-          require: "./dist/index.mjs",
-        },
-      },
-      exclude: ["index"],
-      inlinedDependencies: true,
-      legacy: true,
-    },
+    // tsdown writes exports and inlinedDependencies into package.json on every
+    // build, so inlinedDependencies lists the versions dist actually bundles.
+    exports: true,
   },
 ]);
