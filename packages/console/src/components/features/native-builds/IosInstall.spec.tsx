@@ -82,6 +82,11 @@ const manifestOf = (href: string) => {
 const link = (name: string | RegExp) =>
   screen.getByRole("link", { name }).getAttribute("href")!;
 
+const itmsLinks = () =>
+  screen
+    .queryAllByRole("link")
+    .filter((a) => a.getAttribute("href")?.startsWith("itms-services:"));
+
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
@@ -118,35 +123,34 @@ describe("IosInstall", () => {
     expect(screen.getByLabelText("Reading this IPA")).toBeTruthy();
   });
 
-  it("offers an unknown iPhone the check first, and Install anyway second", () => {
+  it("offers an unknown iPhone the profile alone, and nothing to install yet", () => {
     answer(installable("unknown"));
     render(<IosInstall build={row} udid={null} />);
 
-    expect(link(/Check this iPhone/)).toBe(
+    expect(link(/Install profile/)).toBe(
       `/_hot-updater/native-builds/${BUILD}/device.mobileconfig`,
     );
-    expect(manifestOf(link("Install anyway"))).toBe(
-      `${window.location.origin}/_hot-updater/native-builds/${BUILD}/manifest.plist?t=${encodeURIComponent(TOKEN)}`,
-    );
-    expect(screen.queryByRole("link", { name: "Install" })).toBeNull();
-    const check = screen.getByRole("link", { name: /Check this iPhone/ });
-    expect(
-      check.compareDocumentPosition(
-        screen.getByRole("link", { name: "Install anyway" }),
-      ),
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(itmsLinks()).toHaveLength(0);
   });
 
-  it("keeps the console's own path in both links", () => {
+  it("keeps the console's own path in the profile link", () => {
     window.history.replaceState(null, "", `/console/native-builds/${BUILD}`);
     answer(installable("unknown"));
     render(<IosInstall build={row} udid={null} />);
 
-    expect(link(/Check this iPhone/)).toBe(
+    expect(link(/Install profile/)).toBe(
       `/console/_hot-updater/native-builds/${BUILD}/device.mobileconfig`,
     );
-    expect(manifestOf(link("Install anyway"))).toContain(
-      `/console/_hot-updater/native-builds/${BUILD}/manifest.plist?t=`,
+  });
+
+  it("keeps the console's own path in Install", () => {
+    window.history.replaceState(null, "", `/console/native-builds/${BUILD}`);
+    answer(installable("included"));
+    render(<IosInstall build={row} udid={PHONE} />);
+
+    expect(manifestOf(link("Install"))).toBe(
+      `${window.location.origin}/console/_hot-updater/native-builds/${BUILD}/manifest.plist?t=${encodeURIComponent(TOKEN)}`,
     );
   });
 
@@ -156,25 +160,27 @@ describe("IosInstall", () => {
 
     expect(installEligibilityQuery).toHaveBeenCalledWith(BUILD, PHONE);
     expect(manifestOf(link("Install"))).toContain("/manifest.plist?t=");
-    expect(screen.queryByRole("link", { name: "Install anyway" })).toBeNull();
+    expect(screen.getAllByRole("link")).toHaveLength(1);
     expect(screen.getByText(/Developer Mode/)).toBeTruthy();
     expect(screen.getByText(IOS_STORE_APP_NOTE)).toBeTruthy();
   });
 
-  it("says Not in this build to an iPhone it doesn't list, with the command and Install anyway second", () => {
+  it("says Not in this build to an iPhone it doesn't list, with the command and nothing to install", () => {
     answer(installable("not-included"));
     render(<IosInstall build={row} udid={PHONE} />);
 
     expect(screen.getByText("Not in this build")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Install" })).toBeNull();
-    expect(screen.getByRole("link", { name: "Install anyway" })).toBeTruthy();
+    expect(itmsLinks()).toHaveLength(0);
+    // A kept ID that isn't this phone's own is replaced by installing it again.
+    expect(link("Install the profile again")).toBe(
+      `/_hot-updater/native-builds/${BUILD}/device.mobileconfig`,
+    );
     expect(
       screen.getByText(
         `npx hot-updater native-build devices add --udid ${PHONE} --name "Teammate's iPhone"`,
       ),
     ).toBeTruthy();
     expect(screen.getByText(/only\s+if this is your iPhone/u)).toBeTruthy();
-    expect(screen.getByText(/Developer Mode/)).toBeTruthy();
   });
 
   it.each([
@@ -231,11 +237,6 @@ describe("IosInstall", () => {
 describe("an Install link near its expiry", () => {
   const MINUTE = 60_000;
   const OFFERED_FOR = NATIVE_BUILD_INSTALL_LINK_TTL_MS - 5 * MINUTE;
-  const itmsLinks = () =>
-    screen
-      .queryAllByRole("link")
-      .filter((a) => a.getAttribute("href")?.startsWith("itms-services:"));
-
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
@@ -309,7 +310,7 @@ describe("an Install link near its expiry", () => {
   });
 
   it.each(["unknown", "not-included"] as const)(
-    "takes Install anyway away for %s too, keeping the rest of the page",
+    "keeps no install link to renew for %s",
     (device) => {
       answer(installable(device));
       render(
@@ -317,8 +318,8 @@ describe("an Install link near its expiry", () => {
       );
       act(() => vi.advanceTimersByTime(OFFERED_FOR));
 
-      expect(itmsLinks()).toHaveLength(0);
-      expect(screen.getByRole("status").textContent).toContain("expired");
+      expect(refetch).not.toHaveBeenCalled();
+      expect(screen.queryByRole("status")).toBeNull();
     },
   );
 
@@ -350,7 +351,7 @@ describe("InstallCard on an iPhone", () => {
     render(<InstallCard build={row} />);
 
     expect(
-      await screen.findByRole("link", { name: /Check this iPhone/ }),
+      await screen.findByRole("link", { name: /Install profile/ }),
     ).toBeTruthy();
     expect(screen.queryByRole("img")).toBeNull();
     expect(
@@ -368,13 +369,71 @@ describe("InstallCard on an iPhone", () => {
     expect(installEligibilityQuery).toHaveBeenCalledWith(BUILD, PHONE);
   });
 
+  it("offers Install once another tab keeps the profile's answer", async () => {
+    onIphone();
+    installEligibilityQuery.mockImplementation(
+      (_: string, udid: string | null) => ({
+        isPending: false,
+        isFetching: false,
+        dataUpdatedAt: Date.now(),
+        refetch,
+        data: installable(udid === null ? "unknown" : "included"),
+      }),
+    );
+    render(<InstallCard build={row} />);
+    await screen.findByRole("link", { name: /Install profile/ });
+
+    window.localStorage.setItem(IOS_UDID_STORAGE_KEY, PHONE);
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", { key: IOS_UDID_STORAGE_KEY }),
+      );
+    });
+
+    expect(await screen.findByRole("link", { name: "Install" })).toBeTruthy();
+    expect(installEligibilityQuery).toHaveBeenLastCalledWith(BUILD, PHONE);
+  });
+
+  it("uses the ID the profile's page passes in the fragment where nothing is kept, and drops it", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("SecurityError");
+    });
+    window.history.replaceState(
+      null,
+      "",
+      `/native-builds/${BUILD}#udid=${PHONE}`,
+    );
+    onIphone();
+    answer(installable("included"));
+    render(<InstallCard build={row} />);
+
+    expect(await screen.findByRole("link", { name: "Install" })).toBeTruthy();
+    expect(installEligibilityQuery).toHaveBeenLastCalledWith(BUILD, PHONE);
+    expect(window.location.hash).toBe("");
+  });
+
+  it("prefers the ID this phone kept over one a link carries", async () => {
+    window.localStorage.setItem(IOS_UDID_STORAGE_KEY, PHONE);
+    window.history.replaceState(
+      null,
+      "",
+      `/native-builds/${BUILD}#udid=a1b2c3d4e5f60718293a4b5c6d7e8f9012345678`,
+    );
+    onIphone();
+    answer(installable("included"));
+    render(<InstallCard build={row} />);
+
+    await screen.findByRole("link", { name: "Install" });
+    expect(installEligibilityQuery).toHaveBeenLastCalledWith(BUILD, PHONE);
+  });
+
   it("ignores text in that key that isn't a UDID", async () => {
     window.localStorage.setItem(IOS_UDID_STORAGE_KEY, "<script>");
     onIphone();
     answer(installable("unknown"));
     render(<InstallCard build={row} />);
 
-    await screen.findByRole("link", { name: /Check this iPhone/ });
+    await screen.findByRole("link", { name: /Install profile/ });
     expect(installEligibilityQuery).toHaveBeenLastCalledWith(BUILD, null);
   });
 

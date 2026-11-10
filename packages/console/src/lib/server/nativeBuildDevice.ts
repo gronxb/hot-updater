@@ -4,7 +4,6 @@ import { readProfileServiceUdid } from "@hot-updater/protocol/native-artifact";
 import {
   IOS_UDID_PATTERN,
   IOS_UDID_STORAGE_KEY,
-  nativeBuildDeviceAddCommand,
   nativeBuildDeviceProfilePath,
 } from "../native-builds";
 import { escapePlistText } from "./plistText";
@@ -74,11 +73,11 @@ export const serveDeviceProfile = (request: Request, id: string): Response => {
   <key>PayloadOrganization</key>
   <string>Hot Updater</string>
   <key>PayloadDisplayName</key>
-  <string>Check this iPhone</string>
+  <string>Hot Updater Device Profile</string>
   <key>PayloadDescription</key>
   <string>Sends this iPhone's ID (UDID) to ${escapePlistText(host)}, to check whether a build can install on it. Nothing stays installed.</string>
   <key>PayloadIdentifier</key>
-  <string>dev.hot-updater.check-this-iphone</string>
+  <string>dev.hot-updater.device-profile</string>
   <key>PayloadUUID</key>
   <string>6D3F4C0E-52C4-4C8B-9E0A-7B1E5A0C2F11</string>
   <key>PayloadVersion</key>
@@ -161,13 +160,9 @@ const page = ({
   readonly buildId: string;
   readonly nonce: string;
 }) => {
-  const [commandStart, commandEnd] =
-    nativeBuildDeviceAddCommand("UDID").split("UDID");
   const script = JSON.stringify({
     pattern: IOS_UDID_PATTERN.source,
     key: IOS_UDID_STORAGE_KEY,
-    commandStart,
-    commandEnd,
   }).replaceAll("<", "\\u003c");
   return `<!doctype html>
 <html lang="en">
@@ -176,38 +171,30 @@ const page = ({
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <meta name="robots" content="noindex">
-<title>This iPhone's ID</title>
+<title>Back to the build</title>
 <style nonce="${nonce}">
-:root { color-scheme: dark light; --bg: oklch(1 0 0); --fg: oklch(0.147 0.004 49.25); --muted: oklch(0.553 0.013 58.071); --line: oklch(0.923 0.003 48.717); --panel: oklch(0.97 0.001 106.424); --primary: oklch(0.646 0.222 41.116); --on-primary: oklch(0.98 0.016 73.684); --radius: 0.45rem; }
-@media (prefers-color-scheme: dark) { :root { --bg: oklch(0.147 0.004 49.25); --fg: oklch(0.985 0.001 106.423); --muted: oklch(0.709 0.01 56.259); --line: oklch(1 0 0 / 10%); --panel: oklch(0.268 0.007 34.298); --primary: oklch(0.705 0.213 47.604); } }
+:root { color-scheme: dark light; --bg: oklch(1 0 0); --fg: oklch(0.147 0.004 49.25); --muted: oklch(0.553 0.013 58.071); --line: oklch(0.923 0.003 48.717); --radius: 0.45rem; }
+@media (prefers-color-scheme: dark) { :root { --bg: oklch(0.147 0.004 49.25); --fg: oklch(0.985 0.001 106.423); --muted: oklch(0.709 0.01 56.259); --line: oklch(1 0 0 / 10%); } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 -apple-system, system-ui, sans-serif; }
 main { display: flex; flex-direction: column; gap: 16px; max-width: 32rem; margin: 0 auto; padding: 32px 16px calc(32px + env(safe-area-inset-bottom)); }
 h1 { margin: 0; font-size: 22px; line-height: 1.25; }
 p { margin: 0; color: var(--muted); font-size: 15px; }
-.warning { color: var(--fg); font-weight: 600; }
-code { display: block; padding: 12px; overflow-wrap: anywhere; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); font: 14px/1.4 ui-monospace, Menlo, monospace; }
-button, a.action { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 44px; padding: 8px 16px; border-radius: var(--radius); font: inherit; font-weight: 600; text-decoration: none; }
-button { border: 0; background: var(--primary); color: var(--on-primary); }
-a.action { border: 1px solid var(--line); color: var(--fg); }
+a.action { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 44px; padding: 8px 16px; border-radius: var(--radius); font: inherit; font-weight: 600; text-decoration: none; border: 1px solid var(--line); color: var(--fg); }
 [hidden] { display: none; }
 </style>
 </head>
 <body>
 <main>
-<div id="found" hidden>
-  <h1>This iPhone's ID</h1>
+<div id="returning" hidden>
+  <h1>Back to the build</h1>
+  <p>Opening the build's page to install it.</p>
 </div>
 <div id="missing" hidden>
   <h1>No iPhone ID here</h1>
 </div>
-<code id="udid" hidden translate="no"></code>
-<p class="warning" id="warning" hidden>Send this only if this is your iPhone.</p>
-<p id="next" hidden>A maintainer runs this command to register the iPhone, then rebuilds. Open the build again afterwards to install it.</p>
-<code id="command" hidden translate="no"></code>
-<button id="copy" type="button" hidden>Copy command</button>
-<p id="retry" hidden>Open the build's page in Safari and check this iPhone again. On a Mac, Finder shows an iPhone's ID, which a maintainer can register with native-build devices add.</p>
-<a class="action" href="../../../native-builds/${encodeURIComponent(buildId)}">Back to the build</a>
+<p id="retry" hidden>Open the build's page in Safari and install the profile again. On a Mac, Finder shows an iPhone's ID, which a maintainer can register with native-build devices add.</p>
+<a class="action" id="back" href="../../../native-builds/${encodeURIComponent(buildId)}">Back to the build</a>
 </main>
 <script nonce="${nonce}">
 (function () {
@@ -220,19 +207,11 @@ a.action { border: 1px solid var(--line); color: var(--fg); }
   if (location.hash) history.replaceState(null, "", location.pathname);
   if (!udid || !pattern.test(udid)) { show("missing"); show("retry"); return; }
   try { localStorage.setItem(c.key, udid); } catch (e) {}
-  var command = c.commandStart + udid + c.commandEnd;
-  document.getElementById("udid").textContent = udid;
-  document.getElementById("command").textContent = command;
-  ["found", "udid", "warning", "next", "command", "copy"].forEach(show);
-  var button = document.getElementById("copy");
-  button.addEventListener("click", function () {
-    navigator.clipboard.writeText(command).then(function () {
-      button.textContent = "Copied";
-    }, function () {
-      getSelection().selectAllChildren(document.getElementById("command"));
-      button.textContent = "Select and copy above";
-    });
-  });
+  // The ID goes along in the fragment too, for a browser that keeps nothing.
+  var back = document.getElementById("back");
+  back.href = back.href.split("#")[0] + "#udid=" + encodeURIComponent(udid);
+  show("returning");
+  location.replace(back.href);
 })();
 </script>
 </body>
@@ -241,12 +220,12 @@ a.action { border: 1px solid var(--line); color: var(--fg); }
 };
 
 /**
- * The page the callback lands on: the UDID, one command and a copy button,
- * kept in the phone's `localStorage` for the build's page. It takes no session
- * and reads nothing, so Safari with no Console sign-in shows it too, and it
- * works however long a rebuild takes. The UDID comes from the fragment and stays
- * in the browser; a crafted link can show any text, which is why the page asks
- * who the iPhone belongs to.
+ * The page the callback lands on. It keeps the UDID in the phone's
+ * `localStorage` and goes straight back to the build's page with the UDID in
+ * the fragment too, for a browser that keeps nothing. The build's page offers
+ * Install, or the command for a maintainer, which asks whose iPhone it is,
+ * since a crafted link can carry any ID. The UDID stays in the browser: a
+ * fragment never reaches a server. It takes no session.
  *
  * - 400: the ID isn't a UUIDv7;
  * - 405: a method other than GET or HEAD.

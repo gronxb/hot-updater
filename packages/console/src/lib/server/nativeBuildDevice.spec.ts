@@ -51,6 +51,9 @@ describe("serveDeviceProfile", () => {
       /<key>DeviceAttributes<\/key>\s*<array>\s*<string>UDID<\/string>\s*<\/array>/u,
     );
     expect(text).toContain(`<string>${CONSOLE}/device-response</string>`);
+    expect(text).toMatch(
+      /<key>PayloadDisplayName<\/key>\s*<string>Hot Updater Device Profile<\/string>/u,
+    );
     for (const other of ["IMEI", "SERIAL", "PRODUCT", "VERSION", "MDM"]) {
       expect(text).not.toContain(`<string>${other}</string>`);
     }
@@ -195,17 +198,15 @@ describe("serveDevicePage", () => {
   const page = (init?: RequestInit) =>
     serveDevicePage(new Request(`${CONSOLE}/device`, init), BUILD);
 
-  it("is a page of its own, with the warning, a link back, and nothing from elsewhere", async () => {
+  it("is a page of its own, with a link back, and nothing from elsewhere", async () => {
     const response = page();
 
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
     const html = await response.text();
-    expect(html).toContain("Send this only if this is your iPhone.");
     expect(html).toContain(`href="../../../native-builds/${BUILD}"`);
     expect(html).toContain("hot-updater-ios-udid");
-    expect(html).toContain("native-build devices add --udid ");
     // No script, style, image, or request from anywhere: its own inline ones.
     expect(html).not.toMatch(/<(?:link|img|iframe)\b/u);
     expect(html).not.toMatch(/\bsrc=/u);
@@ -245,8 +246,15 @@ describe("serveDevicePage", () => {
 describe("the device page's script", () => {
   const STORAGE_KEY = "hot-updater-ios-udid";
 
-  const open = async (hash: string, stored?: string) => {
-    const { JSDOM } = (await import(
+  const open = async (
+    hash: string,
+    stored?: string,
+    {
+      keepsNothing = false,
+      base = "",
+    }: { readonly keepsNothing?: boolean; readonly base?: string } = {},
+  ) => {
+    const { JSDOM, VirtualConsole } = (await import(
       // @ts-expect-error jsdom has no types in this workspace.
       "jsdom"
     )) as unknown as {
@@ -255,75 +263,119 @@ describe("the device page's script", () => {
         options: {
           url: string;
           runScripts: "dangerously";
+          virtualConsole: unknown;
           beforeParse: (window: Window) => void;
         },
       ) => { readonly window: Window };
+      readonly VirtualConsole: new () => {
+        on: (event: string, listener: (error: Error) => void) => void;
+      };
     };
     const html = await serveDevicePage(
       new Request(`${CONSOLE}/device`),
       BUILD,
     ).text();
+    // jsdom doesn't navigate: it reports each navigation as an error.
+    const navigations: string[] = [];
+    const virtualConsole = new VirtualConsole();
+    virtualConsole.on("jsdomError", (error) => {
+      if (/navigation/iu.test(error.message)) navigations.push(error.message);
+    });
     const dom = new JSDOM(html, {
-      url: `${CONSOLE}/device${hash}`,
+      url: `https://console.example.com${base}${ROUTES}/device${hash}`,
       runScripts: "dangerously",
+      virtualConsole,
       beforeParse(window) {
         if (stored !== undefined) {
           window.localStorage.setItem(STORAGE_KEY, stored);
         }
+        if (keepsNothing) {
+          Object.defineProperty(window, "localStorage", {
+            get() {
+              throw new Error("SecurityError");
+            },
+          });
+        }
       },
     });
-    const { document, localStorage, location } = dom.window;
+    const { document, location } = dom.window;
     const shown = (id: string) => {
       const element = document.getElementById(id)!;
       return element.hidden ? null : element.textContent;
     };
-    return { document, localStorage, location, shown };
+    const kept = () =>
+      keepsNothing ? null : dom.window.localStorage.getItem(STORAGE_KEY);
+    return { document, kept, location, navigations, shown };
   };
 
-  it("shows the UDID and one command, keeps it in localStorage, and drops the fragment", async () => {
-    const { shown, localStorage, location } = await open(`#udid=${PHONE}`);
+  const backOf = (document: Document) =>
+    (document.getElementById("back") as HTMLAnchorElement).href;
 
-    expect(shown("udid")).toBe(PHONE);
-    expect(shown("warning")).toBe("Send this only if this is your iPhone.");
-    expect(shown("command")).toBe(
-      `npx hot-updater native-build devices add --udid ${PHONE} --name "Teammate's iPhone"`,
+  it("keeps the UDID, drops the fragment, and goes straight back to the build's page with it", async () => {
+    const { shown, kept, location, navigations, document } = await open(
+      `#udid=${PHONE}`,
     );
-    expect(shown("copy")).toBe("Copy command");
-    expect(shown("missing")).toBeNull();
-    expect(localStorage.getItem(STORAGE_KEY)).toBe(PHONE);
+
+    expect(kept()).toBe(PHONE);
     expect(location.hash).toBe("");
-    expect(location.pathname).toBe(`${ROUTES}/device`);
+    expect(navigations).toHaveLength(1);
+    expect(shown("returning")).toContain("Back to the build");
+    expect(backOf(document)).toBe(
+      `https://console.example.com/native-builds/${BUILD}#udid=${PHONE}`,
+    );
   });
 
-  it("shows the phone's own UDID again on a later visit, with no fragment", async () => {
-    const { shown } = await open("", PHONE);
-    expect(shown("udid")).toBe(PHONE);
+  it("goes back to the build's page under the Console's own path", async () => {
+    const { document, navigations } = await open(`#udid=${PHONE}`, undefined, {
+      base: "/console",
+    });
+
+    expect(navigations).toHaveLength(1);
+    expect(backOf(document)).toBe(
+      `https://console.example.com/console/native-builds/${BUILD}#udid=${PHONE}`,
+    );
+  });
+
+  it("goes back to the build's page on a later visit too, with no fragment", async () => {
+    const { navigations } = await open("", PHONE);
+    expect(navigations).toHaveLength(1);
+  });
+
+  it("goes back with the UDID in the fragment where the browser keeps nothing", async () => {
+    const { document, navigations } = await open(`#udid=${PHONE}`, undefined, {
+      keepsNothing: true,
+    });
+
+    expect(navigations).toHaveLength(1);
+    expect(backOf(document)).toBe(
+      `https://console.example.com/native-builds/${BUILD}#udid=${PHONE}`,
+    );
   });
 
   it("says where to go without a UDID, keeping nothing", async () => {
-    const { shown, localStorage } = await open("");
+    const { shown, kept, navigations } = await open("");
 
     expect(shown("missing")).toContain("No iPhone ID");
     expect(shown("retry")).toContain("Safari");
-    expect(shown("udid")).toBeNull();
-    expect(shown("command")).toBeNull();
-    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(shown("returning")).toBeNull();
+    expect(kept()).toBeNull();
+    expect(navigations).toHaveLength(0);
   });
 
-  it("never renders or keeps a crafted fragment as text or markup", async () => {
+  it("never renders, keeps or follows a crafted fragment", async () => {
     const crafted = encodeURIComponent(`<img src=x onerror=alert(1)>`);
-    const { shown, document, localStorage } = await open(`#udid=${crafted}`);
+    const { document, kept, navigations } = await open(`#udid=${crafted}`);
 
-    expect(shown("udid")).toBeNull();
     expect(document.querySelector("img")).toBeNull();
-    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(kept()).toBeNull();
+    expect(navigations).toHaveLength(0);
+    expect(backOf(document)).not.toContain("#");
   });
 
   it("prefers the fragment over what it kept, so a new check replaces an old UDID", async () => {
     const other = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
-    const { shown, localStorage } = await open(`#udid=${other}`, PHONE);
+    const { kept } = await open(`#udid=${other}`, PHONE);
 
-    expect(shown("udid")).toBe(other);
-    expect(localStorage.getItem(STORAGE_KEY)).toBe(other);
+    expect(kept()).toBe(other);
   });
 });
