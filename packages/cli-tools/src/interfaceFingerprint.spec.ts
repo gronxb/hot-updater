@@ -381,6 +381,53 @@ describe("createInterfaceFingerprint", () => {
     expect(await hashOf()).not.toBe(before);
   });
 
+  it("hashes text files the same with the CRLF line endings a Windows checkout writes", async () => {
+    await fs.rm(path.join(root, "packages/local-module/src"), {
+      recursive: true,
+    });
+    await write(
+      path.join(root, "packages/local-module/package.json"),
+      manifest({ name: "local-module", version: "1.0.0" }),
+    );
+    const files = {
+      [path.join(app, "src/specs/NativeDevice.ts")]:
+        "export interface Spec {\n  getModel(): string;\n}\n",
+      [path.join(root, "packages/local-module/ios/Local.swift")]:
+        "final class Local {\n  func ping() {}\n}\n",
+    };
+    for (const [file, contents] of Object.entries(files)) {
+      await write(file, contents);
+    }
+    const lf = await createInterfaceFingerprint(
+      app,
+      { platform: "ios" },
+      nativeInterface(),
+    );
+    for (const [file, contents] of Object.entries(files)) {
+      await write(file, contents.replaceAll("\n", "\r\n"));
+    }
+
+    expect(
+      await createInterfaceFingerprint(
+        app,
+        { platform: "ios" },
+        nativeInterface(),
+      ),
+    ).toEqual(lf);
+  });
+
+  it("hashes a binary file's bytes as they are", async () => {
+    const image = path.join(app, "assets/icon.png");
+    await fs.mkdir(path.dirname(image), { recursive: true });
+    await fs.writeFile(image, Buffer.from([0x89, 0x50, 0x00, 0x0d, 0x0a]));
+    const before = await hashOf({ extraSources: ["assets/icon.png"] });
+    await fs.writeFile(image, Buffer.from([0x89, 0x50, 0x00, 0x0a]));
+
+    expect(await hashOf({ extraSources: ["assets/icon.png"] })).not.toBe(
+      before,
+    );
+  });
+
   it("hashes a local package's native files for a platform its specs don't cover", async () => {
     await fs.rm(path.join(root, "packages/local-module/src"), {
       recursive: true,

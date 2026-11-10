@@ -648,6 +648,20 @@ export const readReactNativeInterface = async ({
 const sha256 = (data: string | Uint8Array) =>
   createHash("sha256").update(data).digest("hex");
 
+/**
+ * A file's contents with CRLF line endings as LF, unless it is binary, so a
+ * checkout that converts line endings, as Git does on Windows by default,
+ * hashes like the commit. A file is binary when its first 8000 bytes hold a
+ * NUL byte, the test Git uses before it converts line endings.
+ */
+const hashableContents = (contents: Buffer): Buffer =>
+  contents.subarray(0, 8000).includes(0) || !contents.includes("\r\n")
+    ? contents
+    : Buffer.from(
+        contents.toString("latin1").replaceAll("\r\n", "\n"),
+        "latin1",
+      );
+
 const toPosix = (filePath: string) => filePath.split(path.sep).join("/");
 
 /** JSON with object keys sorted, so key order in package.json doesn't count. */
@@ -857,7 +871,7 @@ export const createInterfaceFingerprint = async (
       type: "file",
       filePath,
       reasons: [reason],
-      hash: sha256(await fs.readFile(absolutePath)),
+      hash: sha256(hashableContents(await fs.readFile(absolutePath))),
     });
   };
 
