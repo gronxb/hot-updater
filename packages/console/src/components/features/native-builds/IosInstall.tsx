@@ -47,16 +47,34 @@ export const useIosDevice = () => {
     readonly udid: string | null;
   } | null>(null);
   useEffect(() => {
-    let udid: string | null = null;
-    try {
-      udid = window.localStorage.getItem(IOS_UDID_STORAGE_KEY);
-    } catch {
-      // A browser that keeps nothing: this iPhone checks itself each time.
-    }
-    setDevice({
-      ios: isIosBrowser(navigator),
-      udid: udid !== null && IOS_UDID_PATTERN.test(udid) ? udid : null,
-    });
+    const read = () => {
+      let udid: string | null = null;
+      try {
+        udid = window.localStorage.getItem(IOS_UDID_STORAGE_KEY);
+      } catch {
+        // A browser that keeps nothing: this iPhone installs the profile each time.
+      }
+      const kept = udid !== null && IOS_UDID_PATTERN.test(udid) ? udid : null;
+      setDevice((current) =>
+        current?.udid === kept && current !== null
+          ? current
+          : { ios: isIosBrowser(navigator), udid: kept },
+      );
+    };
+    read();
+    // The profile's answer may land in another tab, which keeps the ID there:
+    // this tab reads it when that tab writes it, or when Safari shows it again.
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === IOS_UDID_STORAGE_KEY) read();
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("pageshow", read);
+    document.addEventListener("visibilitychange", read);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("pageshow", read);
+      document.removeEventListener("visibilitychange", read);
+    };
   }, []);
   return device;
 };
@@ -148,14 +166,24 @@ function InstallNotes() {
  * console's path. A plain link, so iOS offers the profile. Once it's installed,
  * the phone comes back to this page, which then offers Install.
  */
-function InstallProfile({ build }: { readonly build: NativeBuildRow }) {
+function InstallProfile({
+  build,
+  again = false,
+}: {
+  readonly build: NativeBuildRow;
+  /** Second to the command: for a phone whose kept ID isn't its own. */
+  readonly again?: boolean;
+}) {
   return (
     <a
-      className={buttonVariants({ className: ACTION_CLASS })}
+      className={buttonVariants({
+        className: ACTION_CLASS,
+        variant: again ? "outline" : "default",
+      })}
       href={`${consolePathOf(window.location, build.id)}${nativeBuildDeviceProfilePath(build.id)}`}
     >
       <Smartphone data-icon="inline-start" />
-      Install profile
+      {again ? "Install the profile again" : "Install profile"}
     </a>
   );
 }
@@ -261,6 +289,7 @@ export function IosInstall({
           value={nativeBuildDeviceAddCommand(udid ?? "")}
           wrap
         />
+        <InstallProfile build={build} again />
       </div>
     );
   }

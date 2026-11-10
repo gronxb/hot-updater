@@ -210,7 +210,7 @@ a.action { border: 1px solid var(--line); color: var(--fg); }
 <p id="next" hidden>A maintainer runs this command to register the iPhone, then rebuilds. Open the build again afterwards to install it.</p>
 <code id="command" hidden translate="no"></code>
 <button id="copy" type="button" hidden>Copy command</button>
-<p id="retry" hidden>Open the build's page in Safari and check this iPhone again. On a Mac, Finder shows an iPhone's ID, which a maintainer can register with native-build devices add.</p>
+<p id="retry" hidden>Open the build's page in Safari and install the profile again. On a Mac, Finder shows an iPhone's ID, which a maintainer can register with native-build devices add.</p>
 <a class="action" id="back" href="../../../native-builds/${encodeURIComponent(buildId)}">Back to the build</a>
 </main>
 <script nonce="${nonce}">
@@ -223,8 +223,10 @@ a.action { border: 1px solid var(--line); color: var(--fg); }
   var udid = fromLink && pattern.test(fromLink) ? fromLink : stored();
   if (location.hash) history.replaceState(null, "", location.pathname);
   if (!udid || !pattern.test(udid)) { show("missing"); show("retry"); return; }
+  // Back to the build only where the browser keeps the ID for it to read.
   try { localStorage.setItem(c.key, udid); } catch (e) {}
-  if (stored() === udid) {
+  var kept = stored() === udid;
+  if (kept) {
     show("returning");
     location.replace(document.getElementById("back").href);
     return;

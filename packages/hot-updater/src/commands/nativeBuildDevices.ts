@@ -112,7 +112,7 @@ const parseDevices = ({ udid, name }: NativeBuildDevicesAddOptions) => {
     const key = normalizeIosUdid(value);
     if (key === null) {
       throw new Error(
-        `${value} isn't an iPhone's UDID.\nOpen the build's Console page on that iPhone and install its profile.`,
+        `${value} isn't an iPhone's UDID.\nCopy it from the build's Console page on that iPhone, or from Finder.`,
       );
     }
     if (seen.has(key)) return [];

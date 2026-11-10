@@ -171,6 +171,10 @@ describe("IosInstall", () => {
 
     expect(screen.getByText("Not in this build")).toBeTruthy();
     expect(itmsLinks()).toHaveLength(0);
+    // A kept ID that isn't this phone's own is replaced by installing it again.
+    expect(link("Install the profile again")).toBe(
+      `/_hot-updater/native-builds/${BUILD}/device.mobileconfig`,
+    );
     expect(
       screen.getByText(
         `npx hot-updater native-build devices add --udid ${PHONE} --name "Teammate's iPhone"`,
@@ -363,6 +367,29 @@ describe("InstallCard on an iPhone", () => {
 
     expect(await screen.findByRole("link", { name: "Install" })).toBeTruthy();
     expect(installEligibilityQuery).toHaveBeenCalledWith(BUILD, PHONE);
+  });
+
+  it("offers Install once another tab keeps the profile's answer", async () => {
+    onIphone();
+    installEligibilityQuery.mockImplementation((_: string, udid: string | null) => ({
+      isPending: false,
+      isFetching: false,
+      dataUpdatedAt: Date.now(),
+      refetch,
+      data: installable(udid === null ? "unknown" : "included"),
+    }));
+    render(<InstallCard build={row} />);
+    await screen.findByRole("link", { name: /Install profile/ });
+
+    window.localStorage.setItem(IOS_UDID_STORAGE_KEY, PHONE);
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", { key: IOS_UDID_STORAGE_KEY }),
+      );
+    });
+
+    expect(await screen.findByRole("link", { name: "Install" })).toBeTruthy();
+    expect(installEligibilityQuery).toHaveBeenLastCalledWith(BUILD, PHONE);
   });
 
   it("ignores text in that key that isn't a UDID", async () => {

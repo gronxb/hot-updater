@@ -251,7 +251,10 @@ describe("the device page's script", () => {
   const open = async (
     hash: string,
     stored?: string,
-    { keepsNothing = false }: { readonly keepsNothing?: boolean } = {},
+    {
+      keepsNothing = false,
+      base = "",
+    }: { readonly keepsNothing?: boolean; readonly base?: string } = {},
   ) => {
     const { JSDOM, VirtualConsole } = (await import(
       // @ts-expect-error jsdom has no types in this workspace.
@@ -281,7 +284,7 @@ describe("the device page's script", () => {
       if (/navigation/iu.test(error.message)) navigations.push(error.message);
     });
     const dom = new JSDOM(html, {
-      url: `${CONSOLE}/device${hash}`,
+      url: `https://console.example.com${base}${ROUTES}/device${hash}`,
       runScripts: "dangerously",
       virtualConsole,
       beforeParse(window) {
@@ -320,6 +323,17 @@ describe("the device page's script", () => {
     expect(shown("command")).toBeNull();
     expect((document.getElementById("back") as HTMLAnchorElement).href).toBe(
       `https://console.example.com/native-builds/${BUILD}`,
+    );
+  });
+
+  it("goes back to the build's page under the Console's own path", async () => {
+    const { document, navigations } = await open(`#udid=${PHONE}`, undefined, {
+      base: "/console",
+    });
+
+    expect(navigations).toHaveLength(1);
+    expect((document.getElementById("back") as HTMLAnchorElement).href).toBe(
+      `https://console.example.com/console/native-builds/${BUILD}`,
     );
   });
 
