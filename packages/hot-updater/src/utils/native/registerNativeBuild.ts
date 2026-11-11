@@ -344,7 +344,10 @@ export const registerNativeBuild = async (
       sandboxUrlScheme: sandbox ? sandboxUrlScheme : null,
       exportMethod:
         build.artifactKind === "ipa"
-          ? await readIpaExportMethod(build.artifactPath)
+          ? await readIpaExportMethod(
+              build.artifactPath,
+              build.exportMethod ?? null,
+            )
           : null,
       artifact: {
         kind: build.artifactKind,

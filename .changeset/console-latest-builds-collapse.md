@@ -3,6 +3,8 @@
 "@hot-updater/server": minor
 "hot-updater": minor
 "@hot-updater/console": minor
+"@hot-updater/standalone": minor
+"@hot-updater/apple-helper": minor
 ---
 
 Native builds and Bundles now lead with the rows that matter and fold the rest where they sit.
@@ -16,12 +18,15 @@ Native builds and Bundles now lead with the rows that matter and fold the rest w
 
 - The Console server reads ahead through the list's own index, at most 200 rows a page, counting the rows it reads to classify them.
 - A run that outlasts the budget ends the page in a fold that goes on, and the next page continues it.
-- A fold's count is exact up to 100 and "100+" beyond. A fold's rows are read when it opens.
-- A page's cursor remembers where the pages before it started, so Previous shows a page exactly as Next did.
+- A fold's count is exact up to 100 and "100+" beyond. A fold's rows are read when it opens, exactly its range, 50 at a time.
+- A page's cursor remembers where the 20 pages before it started, so Previous shows a page exactly as Next did. Past those, Previous reads up from the page's first row: its page breaks may differ, but no row is skipped or repeated.
+- Rows are in build ID order, which is the order they were registered in.
+
+**Keyset reads.** A keyset read, such as `listNativeBuilds`, takes `through`, a key it ends with, so one read covers one range. The admin API and the standalone adapter pass it as the `through` query parameter.
 
 **Newer build.** A native build is older when the list has read a newer build (a greater ID) on its path: on its own page, or above the page through its channel's existing index. A newer build further up than that read reaches leaves the build leading.
 
-**Export method.** `native_builds` records `export_method` (`app-store`, `ad-hoc`, `development`, `enterprise`, or null). The CLI reads it from the `.ipa`'s embedded profile when it registers a build or an import. An `.ipa` with no readable profile records null, and so does a build registered before this. A null `.ipa` is on the plain `ipa` path.
+**Export method.** `native_builds` records `export_method` (`app-store`, `ad-hoc`, `development`, `enterprise`, or null). When the CLI builds an `.ipa`, it takes the `method` of the export options it exported with and confirms it with the `.ipa`'s embedded profile: devices listed mean ad hoc or development, all devices mean enterprise, neither means the App Store. It records null when the two disagree or either is missing, as for an imported `.ipa`, and a build registered before this has null too. A null `.ipa` is on the plain `ipa` path.
 
 If you migrated a database with a 1.2.0 prerelease, add the column by hand:
 

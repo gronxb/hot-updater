@@ -204,6 +204,50 @@ describe("foldedPage", () => {
     );
   });
 
+  it("skips and repeats no row going Previous from a page past the pages its cursor remembers", async () => {
+    // Every other row ordinary: about 40 rows a page, 2,000 rows in all.
+    const list = index(2_000, (n) => n % 2 === 0);
+    const seen: string[] = [];
+    const rowsOf = async (entries: readonly FoldedEntry<Row>[]) => {
+      for (const entry of entries) {
+        if (entry.kind === "row") seen.push(entry.row.id);
+        else {
+          for (let after: string | undefined; ; ) {
+            const chunk = await readFold({
+              read: list.read,
+              ...(entry.from === undefined ? {} : { from: entry.from }),
+              to: entry.to,
+              ...(after === undefined ? {} : { after }),
+            });
+            seen.push(...chunk.rows.map(({ id: rowId }) => rowId));
+            if (chunk.next === undefined) break;
+            after = chunk.next;
+          }
+        }
+      }
+    };
+    // Next 25 times: the cursor forgets the oldest pages.
+    let page = await foldedPage({ ...list });
+    for (let n = 0; n < 25; n += 1) {
+      page = await foldedPage({ ...list, before: page.next });
+    }
+    await rowsOf(page.entries);
+    // Previous to the top: the remembered pages, then up from a row.
+    let fellBack = false;
+    while (page.previous !== undefined) {
+      fellBack ||= "after" in page.previous;
+      page = await foldedPage({ ...list, ...page.previous });
+      await rowsOf(page.entries);
+    }
+
+    expect(fellBack).toBe(true);
+    const lowest = Math.min(...seen.map((rowId) => Number(rowId.slice(4))));
+    expect(seen.length).toBe(new Set(seen).size);
+    expect(seen.sort()).toEqual(
+      Array.from({ length: 2_001 - lowest }, (_, i) => id(lowest + i)),
+    );
+  });
+
   it("shows a page of folded rows alone as one fold with its count", async () => {
     const list = index(30, () => false);
     const page = await foldedPage({ ...list });

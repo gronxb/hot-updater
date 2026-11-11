@@ -230,7 +230,7 @@ describe("registerNativeBuild", () => {
     });
   });
 
-  it("records how an .ipa was exported, read from the .ipa", async () => {
+  it("records how an .ipa was exported, its export options' method confirmed by the .ipa, and none for an import", async () => {
     const { extractBuiltInBundle: extractIos } =
       await import("@hot-updater/apple-helper");
     vi.mocked(extractIos).mockImplementation(async ({ outputPath }) => {
@@ -241,21 +241,37 @@ describe("registerNativeBuild", () => {
     await fs.promises.writeFile(ipaPath, "ipa bytes");
     vi.mocked(readIpaExportMethod).mockResolvedValueOnce("ad-hoc");
 
-    const ipa = await registerNativeBuild(
+    const built = await registerNativeBuild(
       {
         ...android(),
+        platform: "ios",
+        artifactPath: ipaPath,
+        artifactKind: "ipa",
+        exportMethod: "release-testing",
+      },
+      { buildKey: null, sandbox: false },
+    );
+
+    expect(readIpaExportMethod).toHaveBeenLastCalledWith(
+      ipaPath,
+      "release-testing",
+    );
+    expect(built.export_method).toBe("ad-hoc");
+    expect((await harness.core.getNativeBuild(built.id))?.export_method).toBe(
+      "ad-hoc",
+    );
+
+    // An imported .ipa has no export options: nothing confirms a method.
+    await registerNativeBuild(
+      {
+        ...android({ minBundleId: "019b0000-0000-7000-8000-020000000077" }),
         platform: "ios",
         artifactPath: ipaPath,
         artifactKind: "ipa",
       },
       { buildKey: null, sandbox: false },
     );
-
-    expect(readIpaExportMethod).toHaveBeenCalledWith(ipaPath);
-    expect(ipa.export_method).toBe("ad-hoc");
-    expect((await harness.core.getNativeBuild(ipa.id))?.export_method).toBe(
-      "ad-hoc",
-    );
+    expect(readIpaExportMethod).toHaveBeenLastCalledWith(ipaPath, null);
   });
 
   it("refuses a debug build before it loads the config", async () => {
