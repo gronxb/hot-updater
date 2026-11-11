@@ -138,6 +138,65 @@ describe("listReleaseFolds", () => {
     });
   });
 
+  it("keeps a release selected in the fold that ends a full page on that page", async () => {
+    const core = memoryCore();
+    // Oldest first: a reachable release, a disabled one, then 20 reachable
+    // releases, each its fingerprint's only one.
+    // A millisecond apart, so release IDs follow the deploys.
+    const deploy = async (n: number, enabled = true) => {
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      await core.deploy([
+        {
+          bundle: bundle(n),
+          release: {
+            channel: "production",
+            enabled,
+            fingerprintHash: `fp-${n}`,
+            message: `Bundle ${n}`,
+            shouldForceUpdate: false,
+            targetAppVersion: null,
+          },
+        },
+      ]);
+    };
+    await deploy(1);
+    await deploy(2, false);
+    for (let n = 3; n <= 22; n += 1) await deploy(n);
+    /** Entries by bundle: `b2` for bundle 2's release, `[n]` for a fold. */
+    const byBundle = (entries: readonly FoldedEntry<ReleaseListRow>[]) =>
+      entries.map((entry) =>
+        entry.kind === "row"
+          ? `b${Number(entry.row.bundle_id!.slice(-12))}`
+          : `[${entry.count}]`,
+      );
+    const disabled = (
+      await core.listReleases({
+        filter: { kind: "bundle", bundleId: bundleId(2) },
+        limit: 1,
+      })
+    )[0]!.id;
+
+    const page = await listReleaseFolds(core, { filter: all });
+    // 20 reachable releases, then the run under the 20th: the disabled one.
+    expect(byBundle(page.entries).filter((entry) => entry === "[1]")).toEqual([
+      "[1]",
+    ]);
+    expect(byBundle(page.entries).at(-1)).toBe("[1]");
+    expect(page.entries.filter(({ kind }) => kind === "row")).toHaveLength(20);
+
+    // Selecting it from that fold keeps it on this page, as a row, where the
+    // fold was; the next page starts where it did.
+    const selected = await listReleaseFolds(core, {
+      filter: all,
+      releaseId: disabled,
+    });
+    expect(byBundle(selected.entries).at(-1)).toBe("b2");
+    expect(selected.entries.filter(({ kind }) => kind === "row")).toHaveLength(
+      21,
+    );
+    expect(selected.next).toBe(page.next);
+  });
+
   it("folds none under a filter that asks for unreachable releases", async () => {
     const core = memoryCore();
     const ids = await deployAll(core, 4, new Set([2, 3]));

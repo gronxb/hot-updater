@@ -89,6 +89,26 @@ describe("foldedPage", () => {
     expect(back.next).toBe(first.next);
   });
 
+  it("shows a pinned row where it sits without counting it, so its run splits around it and the page keeps its rows", async () => {
+    // Ordinary every 4th row: 20 16 12 8 4; 14 is in the run under 16.
+    const list = index(20, (n) => n % 4 === 0);
+    const first = await foldedPage({ ...list, size: 2, pinned: id(14) });
+
+    expect(shape(first.entries)).toEqual([20, "[3]", 16, "[1]", 14, "[1]"]);
+    expect(first.next).toBe(id(13));
+    // The page below is the same page with or without the pin.
+    const second = await foldedPage({ ...list, size: 2, before: first.next });
+    expect(shape(second.entries)).toEqual([12, "[3]", 8, "[3]"]);
+    // Back up to it: the pinned row is in the run that ends that page.
+    const back = await foldedPage({
+      ...list,
+      size: 2,
+      after: second.previous,
+      pinned: id(14),
+    });
+    expect(back.entries).toEqual(first.entries);
+  });
+
   it("ends a page out of budget in a fold that goes on, which the next page continues", async () => {
     // 300 rows, ordinary: 300 and 1 only.
     const list = index(300, (n) => n === 300 || n === 1);

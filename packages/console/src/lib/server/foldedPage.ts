@@ -59,7 +59,10 @@ export type ClassifyRows<T> = (
 
 interface Scanned<T> {
   readonly row: T;
+  /** Whether it counts toward the page: an ordinary row. */
   readonly ordinary: boolean;
+  /** Whether it shows as a row: an ordinary one, or the pinned one. */
+  readonly shown: boolean;
 }
 
 /**
@@ -74,6 +77,7 @@ async function scan<T extends { readonly id: string }>(
   after: string | undefined,
   size: number,
   budget: number,
+  pinned: string | undefined,
 ): Promise<{ rows: Scanned<T>[]; ended: boolean; beyond: boolean }> {
   const rows: Scanned<T>[] = [];
   let ordinary = 0;
@@ -92,7 +96,11 @@ async function scan<T extends { readonly id: string }>(
         return { rows, ended: false, beyond: true };
       }
       if (isOrdinary) ordinary += 1;
-      rows.push({ row, ordinary: isOrdinary });
+      rows.push({
+        row,
+        ordinary: isOrdinary,
+        shown: isOrdinary || row.id === pinned,
+      });
     }
     if (chunk.length < limit) return { rows, ended: true, beyond: false };
     cursor = chunk.at(-1)!.id;
@@ -120,8 +128,8 @@ const entriesOf = <T extends { readonly id: string }>(
     });
     run = [];
   };
-  for (const { row, ordinary } of rows) {
-    if (ordinary) {
+  for (const { row, shown } of rows) {
+    if (shown) {
       close(false);
       entries.push({ kind: "row", row });
       from = row.id;
@@ -149,6 +157,7 @@ export async function foldedPage<T extends { readonly id: string }>({
   classify,
   before,
   after,
+  pinned,
   size = FOLDED_PAGE_SIZE,
   budget = FOLDED_PAGE_READ_BUDGET,
 }: {
@@ -156,6 +165,12 @@ export async function foldedPage<T extends { readonly id: string }>({
   readonly classify: ClassifyRows<T>;
   readonly before?: string;
   readonly after?: string;
+  /**
+   * A row that shows wherever it sits, folded or not, such as the one a
+   * link selects: it splits its run, and counts toward no page, so it stays
+   * on the page whose run holds it.
+   */
+  readonly pinned?: string;
   readonly size?: number;
   readonly budget?: number;
 }): Promise<FoldedPage<T>> {
@@ -167,6 +182,7 @@ export async function foldedPage<T extends { readonly id: string }>({
       before,
       size,
       budget,
+      pinned,
     );
     const last = rows.at(-1)?.row.id;
     // Out of budget inside a run: the run goes on past this page.
@@ -190,6 +206,7 @@ export async function foldedPage<T extends { readonly id: string }>({
     after,
     size,
     budget,
+    pinned,
   );
   let top = rows.length;
   if (!ended && rows.some(({ ordinary }) => ordinary)) {
@@ -201,7 +218,7 @@ export async function foldedPage<T extends { readonly id: string }>({
   // A page of folded rows alone, out of budget: the row above its fold is
   // the next one up, one more read.
   const above =
-    reachedTop || page[0]?.ordinary !== false
+    reachedTop || page[0]?.shown !== false
       ? undefined
       : (await read({ order: "asc", after: rows.at(-1)!.row.id, limit: 1 }))[0]
           ?.id;

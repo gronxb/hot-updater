@@ -94,8 +94,9 @@ const readingCatalogsOnce = (
 };
 
 /**
- * One page of releases, newest first, that leads with the reachable ones
- * and the selected one: each run of unreachable releases between them folds.
+ * One page of releases, newest first, that leads with the reachable ones:
+ * each run of unreachable releases between them folds, split around the
+ * selected release, which shows where it sits and counts toward no page.
  * It reads the filter's index a chunk at a time (at most
  * `FOLDED_PAGE_READ_BUDGET` rows), and each scope's catalog once. A filter
  * that asks for unreachable releases folds none.
@@ -126,16 +127,13 @@ export function listReleaseFolds(
     classify: async (releases) =>
       new Set(
         releases
-          .filter(
-            (release) =>
-              foldsNone ||
-              !release.currentlyUnreachable ||
-              release.id === releaseId,
-          )
+          .filter((release) => foldsNone || !release.currentlyUnreachable)
           .map(({ id }) => id),
       ),
     ...(beforeReleaseId === undefined ? {} : { before: beforeReleaseId }),
     ...(afterReleaseId === undefined ? {} : { after: afterReleaseId }),
+    // The selected release shows where it sits, and moves no page edge.
+    ...(releaseId === undefined ? {} : { pinned: releaseId }),
   });
 }
 
