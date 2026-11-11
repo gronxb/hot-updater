@@ -163,6 +163,11 @@ describe("Unreachable release groups", () => {
       shown: [],
       collapsed: [],
     });
+    // Selecting one of them collapses none of the others.
+    expect(groupUnreachableReleases(unreachable, { releaseId: "r1" })).toEqual({
+      shown: unreachable,
+      collapsed: [],
+    });
   });
 
   it("keeps the open group across filters and pages, and out of every filter", () => {

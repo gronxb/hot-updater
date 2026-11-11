@@ -147,16 +147,17 @@ export interface ReleaseGroups<T> {
 export function groupUnreachableReleases<
   T extends { readonly id: string; readonly currentlyUnreachable: boolean },
 >(releases: readonly T[], search: ReleaseSearch): ReleaseGroups<T> {
-  if (search.enabled === false || search.bundleId !== undefined) {
+  if (
+    search.enabled === false ||
+    search.bundleId !== undefined ||
+    releases.every((release) => release.currentlyUnreachable)
+  ) {
     return { shown: releases, collapsed: [] };
   }
   const pinned = search.showUnreachable ? undefined : search.releaseId;
   const collapsed = releases.filter(
     (release) => release.currentlyUnreachable && release.id !== pinned,
   );
-  if (collapsed.length === releases.length) {
-    return { shown: releases, collapsed: [] };
-  }
   return {
     shown: releases.filter((release) => !collapsed.includes(release)),
     collapsed,
