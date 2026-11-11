@@ -249,6 +249,20 @@ final class HotUpdaterSandboxCoordinator {
     /// evidence stays readable until the process ends.
     private var acknowledgedBundleId: String?
     private let now: () -> Date
+    /// The server watch looks every second for the first minute, then every 5 s.
+    private static let serverPollFastMs: UInt64 = 1_000
+    private static let serverPollFastLooks = 60
+    private static let serverPollSlowMs: UInt64 = 5_000
+    /// With no screen up, a waiting link stops looking after this many looks: the next launch asks it.
+    private static let serverPollLinkLooks = 600
+    /// The server watch's pause between two looks, in milliseconds.
+    private let serverPoll: (UInt64) async -> Void
+    /// Runs once the watch saw a server answer, after the state has it: a link may ask now.
+    private let onServerAnswer: () -> Void
+    /// The server watch that runs, if any: one at a time.
+    private var serverWatch: Task<Void, Never>?
+    /// Whether `state.hasServerConfig` was read from the host yet, not the initial false.
+    private var serverConfigRead = false
 
     private(set) var state = HotUpdaterSandboxState(
         selection: nil,
@@ -266,8 +280,12 @@ final class HotUpdaterSandboxCoordinator {
         now: @escaping () -> Date = Date.init,
         lock: HotUpdaterSandboxLock = .shared,
         shelfQueue: DispatchQueue = DispatchQueue(label: "hot-updater-sandbox.shelf"),
-        isOwnScheme: @escaping (String) -> Bool = { HotUpdaterSandboxLink.isOwnScheme($0) }
+        isOwnScheme: @escaping (String) -> Bool = { HotUpdaterSandboxLink.isOwnScheme($0) },
+        serverPoll: @escaping (UInt64) async -> Void = { try? await Task.sleep(nanoseconds: $0 * 1_000_000) },
+        onServerAnswer: @escaping () -> Void = {}
     ) {
+        self.serverPoll = serverPoll
+        self.onServerAnswer = onServerAnswer
         self.isOwnScheme = isOwnScheme
         self.shelfQueue = shelfQueue
         self.now = now
@@ -287,7 +305,15 @@ final class HotUpdaterSandboxCoordinator {
         listeners[id] = listener
         listener(state)
         return { [weak self] in
-            Task { @MainActor in self?.listeners[id] = nil }
+            Task { @MainActor in
+                guard let self else { return }
+                self.listeners[id] = nil
+                // The last screen closed, and no link waits: nobody needs a server now.
+                if !self.waitsForServer() {
+                    self.serverWatch?.cancel()
+                    self.serverWatch = nil
+                }
+            }
         }
     }
 
@@ -303,6 +329,54 @@ final class HotUpdaterSandboxCoordinator {
         let selection = await readSelection()
         publish(reading(selection, launched: await host.launchBundleId()))
         pump()
+    }
+
+    /// A screen shows, or a link waits: both turn on once a server answers the app.
+    private func waitsForServer() -> Bool {
+        if case .waitingForServer = state.phase { return true }
+        return !listeners.isEmpty
+    }
+
+    private func readServerConfig() -> Bool {
+        serverConfigRead = true
+        return host.hasServerConfig()
+    }
+
+    /// Until a server answers one of the app's checks, looks for its config after
+    /// each `serverPoll` while someone waits for it. The first answer is read in, so
+    /// Enter a channel turns on and a waiting link asks, then `onServerAnswer` runs.
+    /// Storage has no change signal, and the config can come late: from the app's
+    /// check under the screen, or a native check. A screen keeps it looking; a link
+    /// alone stops at its budget.
+    private func watchServer() {
+        let poll = serverPoll
+        let log = log
+        log("server watch started")
+        serverWatch = Task { @MainActor [weak self] in
+            defer { log("server watch stopped") }
+            var looks = 0
+            while true {
+                await poll(looks < Self.serverPollFastLooks ? Self.serverPollFastMs : Self.serverPollSlowMs)
+                looks += 1
+                // Cancelled: whoever cancelled it cleared it.
+                guard let self, !Task.isCancelled else { return }
+                guard !state.hasServerConfig, waitsForServer() else {
+                    serverWatch = nil
+                    return
+                }
+                if host.hasServerConfig() {
+                    // Its own read publishes the config: that read mustn't cancel it.
+                    serverWatch = nil
+                    await refresh()
+                    onServerAnswer()
+                    return
+                }
+                if listeners.isEmpty, looks >= Self.serverPollLinkLooks {
+                    serverWatch = nil
+                    return
+                }
+            }
+        }
     }
 
     /// Keeps what the last launch left, for a launch that started without the
@@ -568,7 +642,7 @@ final class HotUpdaterSandboxCoordinator {
         var next = state
         next.selection = selection
         next.runningBundleId = launched
-        next.hasServerConfig = host.hasServerConfig()
+        next.hasServerConfig = readServerConfig()
         next.details = host.details()
         next.lastLaunch = settledLastLaunch(launched: launched)
         return reading(next)
@@ -794,7 +868,7 @@ final class HotUpdaterSandboxCoordinator {
             return
         }
         var next = state
-        next.hasServerConfig = host.hasServerConfig()
+        next.hasServerConfig = readServerConfig()
         next.phase = next.hasServerConfig ? .confirming(link) : .waitingForServer(link)
         publish(next)
     }
@@ -834,6 +908,45 @@ final class HotUpdaterSandboxCoordinator {
         for listener in listeners.values {
             listener(published)
         }
+        if state.hasServerConfig {
+            // Known now, by whatever read: nothing waits for a server.
+            serverWatch?.cancel()
+            serverWatch = nil
+        } else if serverConfigRead, serverWatch == nil, waitsForServer() {
+            watchServer()
+        }
+    }
+}
+
+/// The one screen shown at a time, and its subscription to the coordinator's
+/// state: hiding it, by any route, ends that subscription, so a hidden screen
+/// keeps no server watch going. The bridge's window lives here.
+@MainActor
+final class HotUpdaterSandboxScreenSlot<Screen: AnyObject> {
+    private let coordinator: HotUpdaterSandboxCoordinator
+    private(set) var screen: Screen?
+    private var stopObserving: (() -> Void)?
+
+    init(coordinator: HotUpdaterSandboxCoordinator) {
+        self.coordinator = coordinator
+    }
+
+    /// Shows `screen`, which renders every state from now until `hide()`.
+    func show(_ screen: Screen, render: @escaping (Screen, HotUpdaterSandboxState) -> Void) {
+        hide()
+        self.screen = screen
+        stopObserving = coordinator.observe { [weak screen] state in
+            if let screen { render(screen, state) }
+        }
+    }
+
+    /// Hides the screen: it renders nothing more. Returns it, for its window to go.
+    @discardableResult
+    func hide() -> Screen? {
+        stopObserving?()
+        stopObserving = nil
+        defer { screen = nil }
+        return screen
     }
 }
 #endif

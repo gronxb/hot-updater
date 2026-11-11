@@ -6,8 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.os.Process
 import android.util.Log
 import android.view.WindowManager
@@ -20,10 +18,6 @@ import java.lang.ref.WeakReference
 
 private const val TAG = "HotUpdaterSandbox"
 private const val HOST_ACTIVITY = "com.hotupdater.sandbox.HOST_ACTIVITY"
-
-/** How often, and for how long, a waiting link checks whether a server answered the app. */
-private const val SERVER_ANSWER_POLL_MS = 1_000L
-private const val SERVER_ANSWER_ATTEMPTS = 600
 
 /** The process's one coordinator: a switch outlives the activity that started it. */
 internal object HotUpdaterSandbox {
@@ -55,6 +49,7 @@ internal object HotUpdaterSandbox {
                 openApp = { switched, fixed -> open(context.applicationContext, switched, fixed) },
                 log = { Log.i(TAG, it) },
                 isOwnScheme = { HotUpdaterSandboxLink.isOwnScheme(it, HotUpdaterSandboxLink.ownScheme(context)) },
+                onServerAnswer = { askOverApp(context.applicationContext) },
             ).also { coordinator = it }
         }
 
@@ -94,27 +89,17 @@ internal object HotUpdaterSandbox {
     }
 
     /**
-     * A link that waits for the app's first answered check is asked about as
-     * soon as a server answered, while this process lives. After that, the
-     * stored link waits for the next launch.
+     * A link that waited for the app's first answered check asks now, over the
+     * app when no screen is up. After this process, the stored link waits for
+     * the next launch.
      */
-    fun watchForServerAnswer(
-        context: Context,
-        attempts: Int = SERVER_ANSWER_ATTEMPTS,
-    ) {
-        val coordinator = coordinator(context)
-        if (coordinator.state.phase !is HotUpdaterSandboxPhase.WaitingForServer || attempts <= 0) return
-        Handler(Looper.getMainLooper()).postDelayed({
-            if (HotUpdaterSandboxLiveHost(context).hasServerConfig()) {
-                context.startActivity(
-                    Intent(context, HotUpdaterSandboxActivity::class.java)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        .putExtra(HotUpdaterSandboxActivity.EXTRA_OVER_APP, true),
-                )
-            } else {
-                watchForServerAnswer(context, attempts - 1)
-            }
-        }, SERVER_ANSWER_POLL_MS)
+    private fun askOverApp(context: Context) {
+        if (screen?.get() != null || coordinator?.state?.phase !is HotUpdaterSandboxPhase.Confirming) return
+        context.startActivity(
+            Intent(context, HotUpdaterSandboxActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .putExtra(HotUpdaterSandboxActivity.EXTRA_OVER_APP, true),
+        )
     }
 }
 
@@ -206,7 +191,6 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
     }
 
     internal fun openHost(switched: Boolean) {
-        HotUpdaterSandbox.watchForServerAnswer(this)
         if (isOverApp && !switched) {
             finish()
             return

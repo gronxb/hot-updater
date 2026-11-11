@@ -548,10 +548,19 @@ class HotUpdaterSandboxHomeModelTest {
     }
 
     @Test
-    fun `the first launch says a server answer is needed`() {
-        val hint = home(state(selection(bundleId = "built-in"), hasServerConfig = false)).previewHint.orEmpty()
-        assertTrue(hint.contains("Channels open after the app's first update check"))
-        assertFalse(hint.contains("Open the app once"))
+    fun `the first launch says a server answer is needed, and what to do`() {
+        val hint = home(state(selection(bundleId = "built-in"), hasServerConfig = false)).previewHint
+        // The link path's next step: one open doesn't promise a check.
+        assertEquals("No update server yet. Open the app so it can check for updates.", hint)
+        assertEquals(HotUpdaterSandboxHomeModel.NO_SERVER, hint)
+    }
+
+    @Test
+    fun `Enter a channel opens once a server is known and nothing runs`() {
+        assertFalse(home(state(selection(bundleId = "built-in"), hasServerConfig = false)).canEnterChannel)
+        assertTrue(home(state(selection(bundleId = "built-in"))).canEnterChannel)
+        val working = HotUpdaterSandboxPhase.Working(1, "pr-134", HotUpdaterSandboxStep.CHECK)
+        assertFalse(home(state(selection(bundleId = "built-in"), phase = working)).canEnterChannel)
     }
 
     private fun entry(

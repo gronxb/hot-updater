@@ -554,7 +554,7 @@ private struct HomeScreen: View {
                     action: "Open latest",
                     keyboard: .asciiCapable,
                     text: $model.channelText,
-                    isEnabled: !home.isBusy
+                    isEnabled: home.canEnterChannel
                 ) { model.coordinator.switchTo($0) }
             }
         }

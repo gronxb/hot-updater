@@ -525,7 +525,7 @@ internal class HotUpdaterSandboxScreen(
                         fieldLabel = "Channel or link",
                         action = "Open latest",
                         keyboardType = KeyboardType.Ascii,
-                        enabled = !home.isBusy,
+                        enabled = home.canEnterChannel,
                     ) { coordinator.switchTo(it) }
                 }
             }

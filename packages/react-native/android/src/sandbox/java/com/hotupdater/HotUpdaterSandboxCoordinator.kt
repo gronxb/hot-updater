@@ -2,12 +2,23 @@ package com.hotupdater
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.coroutines.CoroutineContext
+
+/** The server watch looks every second for the first minute, then every 5 s. */
+private const val SERVER_POLL_FAST_MS = 1_000L
+private const val SERVER_POLL_FAST_LOOKS = 60
+private const val SERVER_POLL_SLOW_MS = 5_000L
+
+/** With no screen up, a waiting link stops looking after this many looks: the next launch asks it. */
+private const val SERVER_POLL_LINK_LOOKS = 600
 
 /** What a check of the target channel did. */
 internal sealed class HotUpdaterSandboxStaged {
@@ -290,6 +301,10 @@ internal class HotUpdaterSandboxCoordinator(
     private val shelfContext: CoroutineContext = Executors.newSingleThreadExecutor().asCoroutineDispatcher(),
     /** Whether a link's scheme is this build's: another app's link isn't for it. */
     private val isOwnScheme: (String) -> Boolean = { HotUpdaterSandboxLink.isOwnScheme(it, null) },
+    /** The server watch's pause between two looks. */
+    private val serverPoll: suspend (pauseMs: Long) -> Unit = { delay(it) },
+    /** Runs once the watch saw a server answer, after the state has it: a link may ask now. */
+    private val onServerAnswer: () -> Unit = {},
 ) {
     /** The Downloaded list as the shelf last reported it: the screen reads only this. */
     private var downloaded = emptyList<HotUpdaterSandboxShelfEntry>()
@@ -351,11 +366,29 @@ internal class HotUpdaterSandboxCoordinator(
         )
         private set
 
+    /** The server watch that runs, if any: one at a time. */
+    private var serverWatch: Job? = null
+
+    /** Whether [state]'s `hasServerConfig` was read from the host yet, not the initial false. */
+    private var serverConfigRead = false
+
+    private fun readServerConfig(): Boolean {
+        serverConfigRead = true
+        return host.hasServerConfig()
+    }
+
     /** Calls [listener] now and at every change, until the returned function runs. */
     fun observe(listener: (HotUpdaterSandboxState) -> Unit): () -> Unit {
         listeners += listener
         listener(state)
-        return { listeners -= listener }
+        return {
+            listeners -= listener
+            // The last screen closed, and no link waits: nobody needs a server now.
+            if (!waitsForServer()) {
+                serverWatch?.cancel()
+                serverWatch = null
+            }
+        }
     }
 
     /**
@@ -363,14 +396,54 @@ internal class HotUpdaterSandboxCoordinator(
      * Sends no request: opening the screen costs the update server nothing.
      */
     fun refresh() {
+        scope.launch { reread() }
+    }
+
+    private suspend fun reread() {
         // A switch may be copying into the shelf: its partial copy isn't listed yet.
-        val reconciling = state.phase !is HotUpdaterSandboxPhase.Working
-        scope.launch {
-            relist(reconciling)
-            val selection = readSelection()
-            publish(reading(selection, host.launchBundleId()))
-            pump()
-        }
+        relist(state.phase !is HotUpdaterSandboxPhase.Working)
+        val selection = readSelection()
+        publish(reading(selection, host.launchBundleId()))
+        pump()
+    }
+
+    /** A screen shows, or a link waits: both turn on once a server answers the app. */
+    private fun waitsForServer() = listeners.isNotEmpty() || state.phase is HotUpdaterSandboxPhase.WaitingForServer
+
+    /**
+     * Until a server answers one of the app's checks, looks for its config after
+     * each [serverPoll] while someone waits for it. The first answer is read in, so
+     * Enter a channel turns on and a waiting link asks, then [onServerAnswer] runs.
+     * Storage has no change signal, and the config can come late: from the app's
+     * check under the screen, or a native check. A screen keeps it looking; a link
+     * alone stops at its budget.
+     */
+    private fun watchServer() {
+        log("server watch started")
+        val watch =
+            scope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    var looks = 0
+                    while (true) {
+                        serverPoll(if (looks < SERVER_POLL_FAST_LOOKS) SERVER_POLL_FAST_MS else SERVER_POLL_SLOW_MS)
+                        looks += 1
+                        if (state.hasServerConfig || !waitsForServer()) return@launch
+                        if (host.hasServerConfig()) {
+                            // Its own read publishes the config: that read mustn't cancel it.
+                            serverWatch = null
+                            reread()
+                            onServerAnswer()
+                            return@launch
+                        }
+                        if (listeners.isEmpty() && looks >= SERVER_POLL_LINK_LOOKS) return@launch
+                    }
+                } finally {
+                    if (serverWatch === coroutineContext[Job]) serverWatch = null
+                    log("server watch stopped")
+                }
+            }
+        serverWatch = watch
+        watch.start()
     }
 
     /**
@@ -664,7 +737,7 @@ internal class HotUpdaterSandboxCoordinator(
             state.copy(
                 selection = selection,
                 runningBundleId = launched,
-                hasServerConfig = host.hasServerConfig(),
+                hasServerConfig = readServerConfig(),
                 details = host.details(),
                 lastLaunch = settledLastLaunch(launched),
             ),
@@ -942,7 +1015,7 @@ internal class HotUpdaterSandboxCoordinator(
             )
             return
         }
-        val hasServerConfig = host.hasServerConfig()
+        val hasServerConfig = readServerConfig()
         publish(
             state.copy(
                 hasServerConfig = hasServerConfig,
@@ -974,5 +1047,12 @@ internal class HotUpdaterSandboxCoordinator(
             }
         state = next.copy(queuedLinks = queue.count { it != inPhase })
         listeners.toList().forEach { it(state) }
+        if (state.hasServerConfig) {
+            // Known now, by whatever read: nothing waits for a server.
+            serverWatch?.cancel()
+            serverWatch = null
+        } else if (serverConfigRead && serverWatch == null && waitsForServer()) {
+            watchServer()
+        }
     }
 }

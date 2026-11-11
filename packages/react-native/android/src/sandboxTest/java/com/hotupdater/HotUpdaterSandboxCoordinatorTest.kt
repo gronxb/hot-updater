@@ -6,6 +6,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.awaitCancellation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -194,11 +195,42 @@ private class FakeStore(
     override var lastLaunch: HotUpdaterSandboxLastLaunch? = null
 }
 
+/** The server watch's pause, ended by hand: each [tick] is one look at the host. */
+private class ServerTicks {
+    private var pending: CompletableDeferred<Unit>? = null
+
+    /** The pause each look asked for, in milliseconds. */
+    val pauses = ArrayList<Long>()
+
+    /** Whether a watch waits for its next look. */
+    val isWaiting get() = pending != null
+
+    suspend fun next(pauseMs: Long) {
+        pauses += pauseMs
+        val gate = CompletableDeferred<Unit>().also { pending = it }
+        try {
+            gate.await()
+        } finally {
+            // A cancelled watch waits no more.
+            if (pending === gate) pending = null
+        }
+    }
+
+    fun tick() {
+        val waiting = pending
+        pending = null
+        waiting?.complete(Unit)
+    }
+}
+
 private class Fixture(
     pendingLinks: List<String> = emptyList(),
     shelfContext: kotlin.coroutines.CoroutineContext = EmptyCoroutineContext,
     ownScheme: String? = null,
+    // A watch never looks unless a test ticks it.
+    serverPoll: suspend (pauseMs: Long) -> Unit = { awaitCancellation() },
 ) {
+    var serverAnswers = 0
     val host = FakeHost()
     val store = FakeStore(pendingLinks)
     val lock = HotUpdaterSandboxLock()
@@ -216,9 +248,13 @@ private class Fixture(
             lock = lock,
             shelfContext = shelfContext,
             isOwnScheme = { HotUpdaterSandboxLink.isOwnScheme(it, ownScheme) },
+            serverPoll = serverPoll,
+            onServerAnswer = { serverAnswers += 1 },
         )
 
     val phase get() = coordinator.state.phase
+
+    val canEnterChannel get() = HotUpdaterSandboxHomeModel.of(coordinator.state, isOverApp = true, nowMs = 0).canEnterChannel
 }
 
 class HotUpdaterSandboxCoordinatorTest {
@@ -1216,6 +1252,182 @@ class HotUpdaterSandboxCoordinatorTest {
         val second = Fixture(first.store.pendingLinks)
         second.coordinator.refresh()
         assertTrue(second.phase is HotUpdaterSandboxPhase.Confirming)
+    }
+
+    @Test
+    fun `an open Home turns Enter a channel on once the app's first check is answered`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        fixture.host.serverConfig = false
+        val stop = fixture.coordinator.observe {}
+        fixture.coordinator.refresh()
+        assertFalse(fixture.canEnterChannel)
+
+        ticks.tick()
+        assertFalse(fixture.canEnterChannel)
+
+        // The app's check is answered under the screen, which stays up.
+        fixture.host.serverConfig = true
+        ticks.tick()
+        assertTrue(fixture.canEnterChannel)
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Idle)
+        assertTrue(fixture.store.pendingLinks.isEmpty())
+        // Known now: nothing looks again.
+        assertFalse(ticks.isWaiting)
+        stop()
+    }
+
+    @Test
+    fun `an open Home keeps watching past the link's budget, every 5 s after the first minute`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        fixture.host.serverConfig = false
+        val stop = fixture.coordinator.observe {}
+        fixture.coordinator.refresh()
+        repeat(700) {
+            assertTrue(ticks.isWaiting)
+            ticks.tick()
+        }
+        assertFalse(fixture.canEnterChannel)
+        assertEquals(List(60) { 1_000L } + List(641) { 5_000L }, ticks.pauses)
+
+        // The first config arrives long after: offline, or a native check.
+        fixture.host.serverConfig = true
+        ticks.tick()
+        assertTrue(fixture.canEnterChannel)
+        assertFalse(ticks.isWaiting)
+        stop()
+    }
+
+    @Test
+    fun `closing Home stops the watch at once, and the next Home starts one`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        fixture.host.serverConfig = false
+        val stop = fixture.coordinator.observe {}
+        fixture.coordinator.refresh()
+        ticks.tick()
+        assertTrue(ticks.isWaiting)
+
+        stop()
+        assertFalse(ticks.isWaiting)
+
+        fixture.coordinator.observe {}
+        fixture.coordinator.refresh()
+        assertTrue(ticks.isWaiting)
+        fixture.host.serverConfig = true
+        ticks.tick()
+        assertTrue(fixture.canEnterChannel)
+        assertFalse(ticks.isWaiting)
+    }
+
+    @Test
+    fun `a link waiting with no Home stops looking after 600 looks`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        fixture.host.serverConfig = false
+        fixture.coordinator.receiveLink(link("pr-1"))
+        repeat(600) {
+            assertTrue(ticks.isWaiting)
+            ticks.tick()
+        }
+        assertFalse(ticks.isWaiting)
+        assertEquals(600, ticks.pauses.size)
+
+        // The next launch's refresh asks it.
+        fixture.host.serverConfig = true
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.WaitingForServer)
+        assertEquals(0, fixture.serverAnswers)
+    }
+
+    @Test
+    fun `nothing watches for a server once one is known, or while nobody waits for it`() {
+        val ticks = ServerTicks()
+        val known = Fixture(serverPoll = ticks::next)
+        known.coordinator.observe {}
+        known.coordinator.refresh()
+        assertTrue(known.canEnterChannel)
+        assertFalse(ticks.isWaiting)
+
+        val unseen = Fixture(serverPoll = ticks::next)
+        unseen.host.serverConfig = false
+        unseen.coordinator.refresh()
+        assertFalse(ticks.isWaiting)
+    }
+
+    @Test
+    fun `a link waiting for a server is asked once one answers, with no screen up`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        fixture.host.serverConfig = false
+        fixture.coordinator.receiveLink(link("pr-1"))
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.WaitingForServer)
+
+        ticks.tick()
+        assertEquals(0, fixture.serverAnswers)
+        fixture.host.serverConfig = true
+        ticks.tick()
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Confirming)
+        assertEquals(1, fixture.serverAnswers)
+        assertFalse(ticks.isWaiting)
+    }
+
+    // From the round-3 review: config after 1200 looks still enables Home.
+    @Test
+    fun `an open Home learns a config that comes after 1200 looks`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        fixture.host.serverConfig = false
+        val stop = fixture.coordinator.observe {}
+        fixture.coordinator.refresh()
+        repeat(1200) {
+            assertTrue(ticks.isWaiting)
+            ticks.tick()
+        }
+        fixture.host.serverConfig = true
+        ticks.tick()
+        assertTrue(fixture.canEnterChannel)
+        assertFalse(ticks.isWaiting)
+        stop()
+    }
+
+    // From the round-3 review: rapid reopen, then a link's budget.
+    @Test
+    fun `a Home reopened at once keeps one watch, and a link left behind stops at its budget`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        fixture.host.serverConfig = false
+        val stop = fixture.coordinator.observe {}
+        fixture.coordinator.refresh()
+        stop()
+        val stopAgain = fixture.coordinator.observe {}
+        fixture.coordinator.refresh()
+        assertTrue(ticks.isWaiting)
+        assertEquals(2, ticks.pauses.size)
+        fixture.coordinator.receiveLink(link("pr-1"))
+        stopAgain()
+        repeat(600) {
+            assertTrue(ticks.isWaiting)
+            ticks.tick()
+        }
+        assertFalse(ticks.isWaiting)
+        assertEquals(601, ticks.pauses.size)
+    }
+
+    // From the round-3 review: known config cancels the sleeping watch.
+    @Test
+    fun `a config read in by any refresh cancels the sleeping watch at once`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        fixture.host.serverConfig = false
+        val stop = fixture.coordinator.observe {}
+        fixture.coordinator.refresh()
+        assertTrue(ticks.isWaiting)
+        fixture.host.serverConfig = true
+        fixture.coordinator.refresh()
+        assertTrue(fixture.canEnterChannel)
+        assertFalse(ticks.isWaiting)
+        stop()
     }
 
     @Test
