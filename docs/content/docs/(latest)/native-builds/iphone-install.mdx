@@ -149,10 +149,10 @@ Developer Mode.
 
 **Native builds**, then **iOS devices**, lists every device with its status:
 
-| Status     | Means                                                          |
-| ---------- | -------------------------------------------------------------- |
-| Requested  | A tester asked for it. An approver decides.                    |
-| Approved   | The next ad hoc build registers it with Apple.                 |
+| Status     | Means                                                         |
+| ---------- | ------------------------------------------------------------- |
+| Requested  | A tester asked for it. An approver decides.                   |
+| Approved   | The next ad hoc build registers it with Apple.                |
 | Registered | Apple has it, and new ad hoc builds include it while enabled. |
 
 Apple's reason shows under the status when Apple refused a device, has it
@@ -182,16 +182,16 @@ An ad hoc build's page lists the devices its `.ipa` includes, by their registry
 names, read from the `.ipa`'s profile. On an iPhone, the page reads the `.ipa`
 from storage, a few requests whatever its size, and says what this iPhone can do:
 
-| The page shows                   | Because                                                   |
-| -------------------------------- | --------------------------------------------------------- |
-| Check this iPhone                | This iPhone hasn't sent its UDID yet.                     |
-| Install                          | The `.ipa` lists this iPhone.                             |
-| Not in this build                | The `.ipa` was signed without it: Request access.         |
-| Approved, joins the next build   | An approver approved it; the next ad hoc build has it.    |
-| A newer build has it             | Open that build.                                          |
-| An App Store export              | It installs through TestFlight.                           |
-| The build's profile has expired  | Build again.                                              |
-| Installation details unavailable | The storage can't serve part of the file.                 |
+| The page shows                   | Because                                                    |
+| -------------------------------- | ---------------------------------------------------------- |
+| Check this iPhone                | This iPhone hasn't sent its UDID yet.                      |
+| Install                          | The `.ipa` lists this iPhone.                              |
+| Not in this build                | The `.ipa` was signed without it: Request access.          |
+| Joins the next ad hoc build      | It's approved or registered; the next ad hoc build has it. |
+| A newer build has it             | A newer ad hoc build of this app and channel lists it.     |
+| An App Store export              | It installs through TestFlight.                            |
+| The build's profile has expired  | Build again.                                               |
+| Installation details unavailable | The storage can't serve part of the file.                  |
 
 ## Links and privacy
 

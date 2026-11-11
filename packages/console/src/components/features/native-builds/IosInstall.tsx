@@ -318,11 +318,17 @@ function NotInThisBuild({
   build,
   device,
   registry,
+  newerBuild,
   registryReadAt,
 }: {
   readonly build: NativeBuildRow;
   readonly device: IosDevice;
   readonly registry: IosDeviceRow | null;
+  /**
+   * The newer build of this app and channel that lists the iPhone, as the
+   * server matched `registry.build_id`, or null.
+   */
+  readonly newerBuild: string | null;
   /** When the page last read `registry`. */
   readonly registryReadAt: number;
 }) {
@@ -336,10 +342,8 @@ function NotInThisBuild({
     readonly device: IosDeviceRow;
     readonly readBefore: number;
   } | null>(null);
-  const row =
-    requested !== null && registryReadAt <= requested.readBefore
-      ? requested.device
-      : registry;
+  const standIn = requested !== null && registryReadAt <= requested.readBefore;
+  const row = standIn ? requested.device : registry;
   const heading = (
     <div className="flex min-w-0 flex-col gap-1">
       <p className="text-sm font-medium">Not in this build</p>
@@ -349,26 +353,25 @@ function NotInThisBuild({
     </div>
   );
   if (row !== null) {
-    const newer =
-      row.status === "registered" &&
-      row.build_id !== null &&
-      row.build_id > build.id;
+    // The row's build_id may name a sandbox's or another app's build: only the
+    // server's match of it is offered.
+    const newer = standIn ? null : newerBuild;
     return (
       <div className="flex min-w-0 flex-col gap-3">
         {heading}
         <p className="text-sm" role="status">
-          {row.apple_error !== null && !newer
+          {row.apple_error !== null && newer === null
             ? `Apple didn't register ${row.name}: ${row.apple_error} A maintainer can see it on the iOS devices page.`
             : row.status === "pending"
               ? `${row.name} was requested on ${shortDate(row.created_at_ms)}. A maintainer approves it next.`
-              : newer
+              : newer !== null
                 ? `A newer build has ${row.name}.`
-                : `${row.name} is approved. It joins the next ad hoc build.`}
+                : `${row.name} is ${row.status}. It joins the next ad hoc build.`}
         </p>
-        {newer ? (
+        {newer !== null ? (
           <Link
             className={buttonVariants({ className: ACTION_CLASS })}
-            params={{ buildId: row.build_id! }}
+            params={{ buildId: newer }}
             to="/native-builds/$buildId"
           >
             Open the newer build
@@ -535,6 +538,7 @@ export function IosInstall({
         build={build}
         device={device}
         registry={result.registry}
+        newerBuild={result.newerBuild}
         registryReadAt={eligibility.dataUpdatedAt}
       />
     );

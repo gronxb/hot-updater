@@ -130,10 +130,12 @@ const answer = (
 const installable = (
   device: "unknown" | "included" | "not-included",
   registry: IosDeviceRow | null = null,
+  newerBuild: string | null = null,
 ): NativeBuildInstallEligibility => ({
   status: "installable",
   device,
   registry,
+  newerBuild,
   expiresAt: null,
   link: {
     status: "issued",
@@ -375,6 +377,7 @@ describe("IosInstall", () => {
       installable(
         "not-included",
         registryRow({ status: "registered", build_id: newer }),
+        newer,
       ),
     );
     render(<IosInstall build={row} device={phone(PHONE)} />);
@@ -383,6 +386,32 @@ describe("IosInstall", () => {
       "A newer build has Kim's iPhone.",
     );
     expect(link("Open the newer build")).toBe(`/native-builds/${newer}`);
+  });
+
+  it("sends a production page to no build the server didn't match, such as the sandbox build that last listed the iPhone", () => {
+    // One registry for two schemes: the iPhone was approved, then a sandbox
+    // build listed it and became its row's build_id. The server matched that
+    // build against this one's app and channel and gave no newer build.
+    const sandbox = "019a0000-0000-7000-8000-00000000b002";
+    answer(
+      installable(
+        "not-included",
+        registryRow({
+          status: "registered",
+          registered_at_ms: 1,
+          build_id: sandbox,
+        }),
+        null,
+      ),
+    );
+    render(<IosInstall build={row} device={phone(PHONE)} />);
+
+    expect(screen.getByRole("status").textContent).toBe(
+      "Kim's iPhone is registered. It joins the next ad hoc build.",
+    );
+    expect(
+      screen.queryByRole("link", { name: "Open the newer build" }),
+    ).toBeNull();
   });
 
   it.each([
@@ -425,6 +454,7 @@ describe("IosInstall", () => {
       status: "installable",
       device: "included",
       registry: null,
+      newerBuild: null,
       expiresAt: null,
       link: { status: "no-secret", secretName: "BETTER_AUTH_SECRET" },
     });

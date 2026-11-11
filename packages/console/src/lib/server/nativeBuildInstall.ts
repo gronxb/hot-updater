@@ -191,6 +191,13 @@ export type NativeBuildInstallEligibility =
        * registry doesn't know it: read only then.
        */
       readonly registry: IosDeviceRow | null;
+      /**
+       * A newer build of this app on this channel whose IPA lists the device,
+       * which `registry.build_id` names, or null. The row keeps one build per
+       * device, the newest of any ad hoc scheme the CLI checked, so the build
+       * it names may be a sandbox's or another app's.
+       */
+      readonly newerBuild: string | null;
       readonly expiresAt: string | null;
       /** The token of the Install button's manifest and download. */
       readonly link: NativeBuildDownloadLinkResult;
@@ -198,6 +205,57 @@ export type NativeBuildInstallEligibility =
 
 const isExpired = ({ expiresAtMs }: IpaInstallInfo, now: number) =>
   expiresAtMs !== null && expiresAtMs <= now;
+
+/**
+ * The build a registered device's row names, when it is newer than `build`,
+ * of the same app (bundle ID, read from its IPA, and sandbox or not), on the
+ * same channel, ad hoc, unexpired, and its IPA lists the device; null
+ * otherwise, and for a build gone or unreadable. Its row is read only for a
+ * registered device whose row names a newer build, and its IPA only when the
+ * row matches.
+ */
+const newerBuildListing = async (
+  build: NativeBuildRow,
+  info: IpaInstallInfo,
+  device: IosDeviceRow,
+  key: string,
+  {
+    core,
+    storage,
+    fetch,
+    now,
+  }: {
+    readonly core: Pick<HotUpdaterCoreApi, "getNativeBuild">;
+    readonly storage: StorageAdapter;
+    readonly fetch: typeof globalThis.fetch;
+    readonly now: number;
+  },
+): Promise<string | null> => {
+  const id = device.build_id;
+  if (device.status !== "registered" || id === null || id <= build.id) {
+    return null;
+  }
+  const newer = await core.getNativeBuild(id).catch(() => null);
+  if (
+    newer === null ||
+    newer.artifact_kind !== "ipa" ||
+    newer.platform !== build.platform ||
+    newer.channel_id !== build.channel_id ||
+    newer.is_sandbox !== build.is_sandbox ||
+    // Null on an IPA registered before it was recorded: its profile decides.
+    (newer.export_method !== null && newer.export_method !== "ad-hoc")
+  ) {
+    return null;
+  }
+  const listing = await readNativeBuildInstallInfo(newer, storage, fetch);
+  return listing !== null &&
+    listing.bundleId === info.bundleId &&
+    listing.distribution === "ad-hoc" &&
+    listing.devices.includes(key) &&
+    !isExpired(listing, now)
+    ? id
+    : null;
+};
 
 /**
  * What an iPhone can do with a build, for a caller the Console already let in:
@@ -242,13 +300,23 @@ export const checkNativeBuildInstall = async (
       : info.distribution === "enterprise" || info.devices.includes(key)
         ? "included"
         : "not-included";
+  const registry =
+    device === "not-included" && key !== null
+      ? await core.findIosDevice(key)
+      : null;
   return {
     status: "installable",
     device,
-    registry:
-      device === "not-included" && key !== null
-        ? await core.findIosDevice(key)
-        : null,
+    registry,
+    newerBuild:
+      registry === null || key === null
+        ? null
+        : await newerBuildListing(build, info, registry, key, {
+            core,
+            storage,
+            fetch,
+            now,
+          }),
     expiresAt,
     link: await issueNativeBuildDownloadLink(
       id,
