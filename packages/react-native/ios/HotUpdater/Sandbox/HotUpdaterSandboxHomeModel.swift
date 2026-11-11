@@ -59,12 +59,22 @@ struct HotUpdaterSandboxHomeModel: Equatable {
     let downloadedFooter: String
     /// Before a server answered, what previews wait for.
     let previewHint: String?
+    let hasServerConfig: Bool
 
     static let hint = "Shake the device to come back here."
     /// A typed channel doesn't ask first, so this says it up front.
     static let switchNote = "Opening a channel runs its latest bundle. Downloaded bundles stay listed."
     static let resetNote = "Removes the channel switch. Downloaded bundles stay listed."
     static let emptyDownloaded = "Bundles you open from a QR code, a link, or a channel stay here."
+    /// Until a server answers one of the app's checks, the link path's next step.
+    static let noServer = "No update server yet. Open the app so it can check for updates."
+
+    /// Whether Enter a channel's button opens `entry`. A typed channel needs a
+    /// server to ask, so it waits for one; a link waits for it by itself.
+    func canOpen(_ entry: String) -> Bool {
+        let text = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !text.isEmpty && (hasServerConfig || text.contains("://"))
+    }
 
     init(
         state: HotUpdaterSandboxState,
@@ -98,9 +108,8 @@ struct HotUpdaterSandboxHomeModel: Equatable {
         downloadedFooter = history.isEmpty
             ? Self.emptyDownloaded
             : "\(history.count) of \(HotUpdaterSandboxShelf.limit)" + (state.downloadedBytes > 0 ? " · \(Self.sizeText(state.downloadedBytes))" : "")
-        previewHint = state.hasServerConfig
-            ? nil
-            : "No update server yet. Channels open after the app's first update check."
+        previewHint = state.hasServerConfig ? nil : Self.noServer
+        hasServerConfig = state.hasServerConfig
     }
 
     static func downloadedText(atMs: Double, nowMs: Double) -> String {

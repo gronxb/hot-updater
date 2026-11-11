@@ -40,7 +40,7 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
 
     private func requireConfig() throws -> HotUpdaterRecoveryCheckConfig {
         guard let config = config() else {
-            throw NativeUpdateCheckError.hotUpdater("No update server is known yet")
+            throw NativeUpdateCheckError.hotUpdater(HotUpdaterSandboxHomeModel.noServer)
         }
         return config
     }

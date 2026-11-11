@@ -2121,10 +2121,22 @@ struct HotUpdaterSandboxHomeModelTests {
     }
 
     @Test
-    func theFirstLaunchSaysAServerAnswerIsNeeded() {
+    func theFirstLaunchSaysAServerAnswerIsNeededAndWhatToDo() {
         let model = home(state(selection: selection(bundleId: "built-in"), hasServerConfig: false))
-        #expect(model.previewHint?.contains("Channels open after the app's first update check") == true)
-        #expect(model.previewHint?.contains("Open the app once") == false)
+        // The link path's next step: one open doesn't promise a check.
+        #expect(model.previewHint == "No update server yet. Open the app so it can check for updates.")
+        #expect(model.previewHint == HotUpdaterSandboxHomeModel.noServer)
+    }
+
+    @Test
+    func aTypedChannelOpensOnlyOnceAServerIsKnownALinkAlways() {
+        let first = home(state(selection: selection(bundleId: "built-in"), hasServerConfig: false))
+        #expect(!first.canOpen("pr-134"))
+        #expect(first.canOpen(" myapp://hot-updater/preview?channel=pr-134 "))
+        #expect(!first.canOpen("  "))
+        let known = home(state(selection: selection(bundleId: "built-in")))
+        #expect(known.canOpen(" pr-134 "))
+        #expect(!known.canOpen(""))
     }
 
     @Test

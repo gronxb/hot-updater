@@ -22,7 +22,7 @@ internal class HotUpdaterSandboxLiveHost(
 
     private fun config() = RecoveryCheckConfig.parse(impl.getStorageItem(RecoveryCheckConfig.KEY))
 
-    private fun requireConfig() = config() ?: throw IllegalStateException("No update server is known yet")
+    private fun requireConfig() = config() ?: throw IllegalStateException(HotUpdaterSandboxHomeModel.NO_SERVER)
 
     private fun instance(config: RecoveryCheckConfig) =
         HotUpdater.init(

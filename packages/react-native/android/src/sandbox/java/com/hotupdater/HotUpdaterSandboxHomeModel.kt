@@ -22,7 +22,17 @@ internal data class HotUpdaterSandboxHomeModel(
     val downloadedFooter: String,
     /** Before a server answered, what previews wait for. */
     val previewHint: String?,
+    val hasServerConfig: Boolean,
 ) {
+    /**
+     * Whether Enter a channel's button opens [entry]. A typed channel needs a
+     * server to ask, so it waits for one; a link waits for it by itself.
+     */
+    fun canOpen(entry: String): Boolean {
+        val text = entry.trim()
+        return text.isNotEmpty() && (hasServerConfig || text.contains("://"))
+    }
+
     data class Banner(
         val text: String,
         /** A bundle that crashed and stays selected: the way out is a reset. */
@@ -81,6 +91,9 @@ internal data class HotUpdaterSandboxHomeModel(
         const val RESET_NOTE = "Removes the channel switch. Downloaded bundles stay listed."
         const val EMPTY_DOWNLOADED = "Bundles you open from a QR code, a link, or a channel stay here."
 
+        /** Until a server answers one of the app's checks, the link path's next step. */
+        const val NO_SERVER = "No update server yet. Open the app so it can check for updates."
+
         fun of(
             state: HotUpdaterSandboxState,
             isOverApp: Boolean,
@@ -110,12 +123,8 @@ internal data class HotUpdaterSandboxHomeModel(
                         "${history.size} of ${HotUpdaterSandboxShelf.LIMIT}" +
                             if (state.downloadedBytes > 0) " · ${sizeText(state.downloadedBytes)}" else ""
                     },
-                previewHint =
-                    if (state.hasServerConfig) {
-                        null
-                    } else {
-                        "No update server yet. Channels open after the app's first update check."
-                    },
+                previewHint = if (state.hasServerConfig) null else NO_SERVER,
+                hasServerConfig = state.hasServerConfig,
             )
         }
 
