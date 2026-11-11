@@ -249,14 +249,18 @@ final class HotUpdaterSandboxCoordinator {
     /// evidence stays readable until the process ends.
     private var acknowledgedBundleId: String?
     private let now: () -> Date
-    /// How many times the server watch looks for the app's first answered check.
-    private static let serverPollAttempts = 600
-    /// The server watch's pause between two looks.
-    private let serverPoll: () async -> Void
+    /// The server watch looks every second for the first minute, then every 5 s.
+    private static let serverPollFastMs: UInt64 = 1_000
+    private static let serverPollFastLooks = 60
+    private static let serverPollSlowMs: UInt64 = 5_000
+    /// With no screen up, a waiting link stops looking after this many looks: the next launch asks it.
+    private static let serverPollLinkLooks = 600
+    /// The server watch's pause between two looks, in milliseconds.
+    private let serverPoll: (UInt64) async -> Void
     /// Runs once the watch saw a server answer, after the state has it: a link may ask now.
     private let onServerAnswer: () -> Void
-    /// Whether a server watch runs: one at a time.
-    private var watchingServer = false
+    /// The server watch that runs, if any: one at a time.
+    private var serverWatch: Task<Void, Never>?
     /// Whether `state.hasServerConfig` was read from the host yet, not the initial false.
     private var serverConfigRead = false
 
@@ -277,7 +281,7 @@ final class HotUpdaterSandboxCoordinator {
         lock: HotUpdaterSandboxLock = .shared,
         shelfQueue: DispatchQueue = DispatchQueue(label: "hot-updater-sandbox.shelf"),
         isOwnScheme: @escaping (String) -> Bool = { HotUpdaterSandboxLink.isOwnScheme($0) },
-        serverPoll: @escaping () async -> Void = { try? await Task.sleep(nanoseconds: 1_000_000_000) },
+        serverPoll: @escaping (UInt64) async -> Void = { try? await Task.sleep(nanoseconds: $0 * 1_000_000) },
         onServerAnswer: @escaping () -> Void = {}
     ) {
         self.serverPoll = serverPoll
@@ -301,7 +305,15 @@ final class HotUpdaterSandboxCoordinator {
         listeners[id] = listener
         listener(state)
         return { [weak self] in
-            Task { @MainActor in self?.listeners[id] = nil }
+            Task { @MainActor in
+                guard let self else { return }
+                self.listeners[id] = nil
+                // The last screen closed, and no link waits: nobody needs a server now.
+                if !self.waitsForServer() {
+                    self.serverWatch?.cancel()
+                    self.serverWatch = nil
+                }
+            }
         }
     }
 
@@ -333,26 +345,33 @@ final class HotUpdaterSandboxCoordinator {
     /// Until a server answers one of the app's checks, looks for its config after
     /// each `serverPoll` while someone waits for it. The first answer is read in, so
     /// Enter a channel turns on and a waiting link asks, then `onServerAnswer` runs.
-    /// Storage has no change signal, and the app's check runs under the screen.
+    /// Storage has no change signal, and the config can come late: from the app's
+    /// check under the screen, or a native check. A screen keeps it looking; a link
+    /// alone stops at its budget.
     private func watchServer() {
-        watchingServer = true
         let poll = serverPoll
-        Task { @MainActor [weak self] in
-            for _ in 0 ..< Self.serverPollAttempts {
-                await poll()
-                guard let self else { return }
+        serverWatch = Task { @MainActor [weak self] in
+            var looks = 0
+            while true {
+                await poll(looks < Self.serverPollFastLooks ? Self.serverPollFastMs : Self.serverPollSlowMs)
+                looks += 1
+                // Cancelled: whoever cancelled it cleared it.
+                guard let self, !Task.isCancelled else { return }
                 guard !state.hasServerConfig, waitsForServer() else {
-                    watchingServer = false
+                    serverWatch = nil
                     return
                 }
                 if host.hasServerConfig() {
                     await refresh()
-                    watchingServer = false
+                    serverWatch = nil
                     onServerAnswer()
                     return
                 }
+                if listeners.isEmpty, looks >= Self.serverPollLinkLooks {
+                    serverWatch = nil
+                    return
+                }
             }
-            self?.watchingServer = false
         }
     }
 
@@ -885,7 +904,7 @@ final class HotUpdaterSandboxCoordinator {
         for listener in listeners.values {
             listener(published)
         }
-        if serverConfigRead, !state.hasServerConfig, !watchingServer, waitsForServer() {
+        if serverConfigRead, !state.hasServerConfig, serverWatch == nil, waitsForServer() {
             watchServer()
         }
     }

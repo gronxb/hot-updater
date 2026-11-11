@@ -2,6 +2,8 @@ package com.hotupdater
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -10,9 +12,13 @@ import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.coroutines.CoroutineContext
 
-/** How often, and how many times, the server watch looks for the app's first answered check. */
-private const val SERVER_POLL_MS = 1_000L
-private const val SERVER_POLL_ATTEMPTS = 600
+/** The server watch looks every second for the first minute, then every 5 s. */
+private const val SERVER_POLL_FAST_MS = 1_000L
+private const val SERVER_POLL_FAST_LOOKS = 60
+private const val SERVER_POLL_SLOW_MS = 5_000L
+
+/** With no screen up, a waiting link stops looking after this many looks: the next launch asks it. */
+private const val SERVER_POLL_LINK_LOOKS = 600
 
 /** What a check of the target channel did. */
 internal sealed class HotUpdaterSandboxStaged {
@@ -296,7 +302,7 @@ internal class HotUpdaterSandboxCoordinator(
     /** Whether a link's scheme is this build's: another app's link isn't for it. */
     private val isOwnScheme: (String) -> Boolean = { HotUpdaterSandboxLink.isOwnScheme(it, null) },
     /** The server watch's pause between two looks. */
-    private val serverPoll: suspend () -> Unit = { delay(SERVER_POLL_MS) },
+    private val serverPoll: suspend (pauseMs: Long) -> Unit = { delay(it) },
     /** Runs once the watch saw a server answer, after the state has it: a link may ask now. */
     private val onServerAnswer: () -> Unit = {},
 ) {
@@ -360,8 +366,8 @@ internal class HotUpdaterSandboxCoordinator(
         )
         private set
 
-    /** Whether a server watch runs: one at a time. */
-    private var watchingServer = false
+    /** The server watch that runs, if any: one at a time. */
+    private var serverWatch: Job? = null
 
     /** Whether [state]'s `hasServerConfig` was read from the host yet, not the initial false. */
     private var serverConfigRead = false
@@ -375,7 +381,14 @@ internal class HotUpdaterSandboxCoordinator(
     fun observe(listener: (HotUpdaterSandboxState) -> Unit): () -> Unit {
         listeners += listener
         listener(state)
-        return { listeners -= listener }
+        return {
+            listeners -= listener
+            // The last screen closed, and no link waits: nobody needs a server now.
+            if (!waitsForServer()) {
+                serverWatch?.cancel()
+                serverWatch = null
+            }
+        }
     }
 
     /**
@@ -401,25 +414,32 @@ internal class HotUpdaterSandboxCoordinator(
      * Until a server answers one of the app's checks, looks for its config after
      * each [serverPoll] while someone waits for it. The first answer is read in, so
      * Enter a channel turns on and a waiting link asks, then [onServerAnswer] runs.
-     * Storage has no change signal, and the app's check runs under the screen.
+     * Storage has no change signal, and the config can come late: from the app's
+     * check under the screen, or a native check. A screen keeps it looking; a link
+     * alone stops at its budget.
      */
     private fun watchServer() {
-        watchingServer = true
-        scope.launch {
-            try {
-                repeat(SERVER_POLL_ATTEMPTS) {
-                    serverPoll()
-                    if (state.hasServerConfig || !waitsForServer()) return@launch
-                    if (host.hasServerConfig()) {
-                        reread()
-                        onServerAnswer()
-                        return@launch
+        val watch =
+            scope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    var looks = 0
+                    while (true) {
+                        serverPoll(if (looks < SERVER_POLL_FAST_LOOKS) SERVER_POLL_FAST_MS else SERVER_POLL_SLOW_MS)
+                        looks += 1
+                        if (state.hasServerConfig || !waitsForServer()) return@launch
+                        if (host.hasServerConfig()) {
+                            reread()
+                            onServerAnswer()
+                            return@launch
+                        }
+                        if (listeners.isEmpty() && looks >= SERVER_POLL_LINK_LOOKS) return@launch
                     }
+                } finally {
+                    if (serverWatch === coroutineContext[Job]) serverWatch = null
                 }
-            } finally {
-                watchingServer = false
             }
-        }
+        serverWatch = watch
+        watch.start()
     }
 
     /**
@@ -1023,6 +1043,6 @@ internal class HotUpdaterSandboxCoordinator(
             }
         state = next.copy(queuedLinks = queue.count { it != inPhase })
         listeners.toList().forEach { it(state) }
-        if (serverConfigRead && !state.hasServerConfig && !watchingServer && waitsForServer()) watchServer()
+        if (serverConfigRead && !state.hasServerConfig && serverWatch == null && waitsForServer()) watchServer()
     }
 }

@@ -290,11 +290,20 @@ private func makeShelf(_ root: URL, key: String = "key", storesBundles: Bool = t
 private final class ServerTicks {
     private var pending: CheckedContinuation<Void, Never>?
 
+    /// The pause each look asked for, in milliseconds.
+    private(set) var pauses: [UInt64] = []
+
     /// Whether a watch waits for its next look.
     var isWaiting: Bool { pending != nil }
 
-    func next() async {
-        await withCheckedContinuation { pending = $0 }
+    func next(_ pauseMs: UInt64) async {
+        pauses.append(pauseMs)
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { pending = $0 }
+        } onCancel: {
+            // A cancelled watch waits no more.
+            Task { @MainActor in self.tick() }
+        }
     }
 
     func tick() {
@@ -331,7 +340,7 @@ private struct Fixture {
         shelfQueue: DispatchQueue = DispatchQueue(label: "test.shelf"),
         ownScheme: String? = nil,
         // A watch never looks unless a test ticks it.
-        serverPoll: @escaping () async -> Void = { try? await Task.sleep(nanoseconds: 3_600_000_000_000) }
+        serverPoll: @escaping (UInt64) async -> Void = { _ in try? await Task.sleep(nanoseconds: 3_600_000_000_000) }
     ) {
         store.pendingLinks = pendingLinks
         let box = box
@@ -1128,7 +1137,7 @@ struct HotUpdaterSandboxCoordinatorTests {
     @Test
     func anOpenHomeTurnsEnterAChannelOnOnceTheAppsFirstCheckIsAnswered() async {
         let ticks = ServerTicks()
-        let fixture = Fixture(serverPoll: { await ticks.next() })
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
         fixture.host.serverConfig = false
         let stop = fixture.coordinator.observe { _ in }
         await fixture.coordinator.refresh()
@@ -1153,9 +1162,95 @@ struct HotUpdaterSandboxCoordinatorTests {
     }
 
     @Test
+    func anOpenHomeKeepsWatchingPastTheLinksBudgetEvery5sAfterTheFirstMinute() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        fixture.host.serverConfig = false
+        let stop = fixture.coordinator.observe { _ in }
+        await fixture.coordinator.refresh()
+        for _ in 0 ..< 700 {
+            await settle { ticks.isWaiting }
+            guard ticks.isWaiting else {
+                Issue.record("the watch stopped after \(ticks.pauses.count) looks")
+                return
+            }
+            ticks.tick()
+        }
+        await settle { ticks.isWaiting }
+        #expect(!fixture.canEnterChannel)
+        #expect(ticks.pauses == Array(repeating: 1_000, count: 60) + Array(repeating: 5_000, count: 641))
+
+        // The first config arrives long after: offline, or a native check.
+        fixture.host.serverConfig = true
+        ticks.tick()
+        await settle { fixture.canEnterChannel }
+        #expect(fixture.canEnterChannel)
+        await settle()
+        #expect(!ticks.isWaiting)
+        stop()
+    }
+
+    @Test
+    func closingHomeStopsTheWatchAtOnceAndTheNextHomeStartsOne() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        fixture.host.serverConfig = false
+        let stop = fixture.coordinator.observe { _ in }
+        await fixture.coordinator.refresh()
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { ticks.isWaiting }
+        #expect(ticks.isWaiting)
+
+        stop()
+        await settle { !ticks.isWaiting }
+        #expect(!ticks.isWaiting)
+        let looks = ticks.pauses.count
+        await settle()
+        #expect(ticks.pauses.count == looks)
+
+        let stopAgain = fixture.coordinator.observe { _ in }
+        await fixture.coordinator.refresh()
+        await settle { ticks.isWaiting }
+        #expect(ticks.isWaiting)
+        fixture.host.serverConfig = true
+        ticks.tick()
+        await settle { fixture.canEnterChannel }
+        #expect(fixture.canEnterChannel)
+        stopAgain()
+    }
+
+    @Test
+    func aLinkWaitingWithNoHomeStopsLookingAfter600Looks() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        fixture.host.serverConfig = false
+        fixture.coordinator.receiveLink(link("pr-1"))
+        for _ in 0 ..< 600 {
+            await settle { ticks.isWaiting }
+            guard ticks.isWaiting else {
+                Issue.record("the watch stopped after \(ticks.pauses.count) looks")
+                return
+            }
+            ticks.tick()
+        }
+        await settle()
+        #expect(!ticks.isWaiting)
+        #expect(ticks.pauses.count == 600)
+
+        // The next launch's refresh asks it.
+        fixture.host.serverConfig = true
+        guard case .waitingForServer = fixture.coordinator.state.phase else {
+            Issue.record("expected the link to wait")
+            return
+        }
+        #expect(fixture.serverAnswers == 0)
+    }
+
+    @Test
     func nothingWatchesForAServerOnceOneIsKnownOrWhileNobodyWaitsForIt() async {
         let ticks = ServerTicks()
-        let known = Fixture(serverPoll: { await ticks.next() })
+        let known = Fixture(serverPoll: { await ticks.next($0) })
         let stop = known.coordinator.observe { _ in }
         await known.coordinator.refresh()
         #expect(known.canEnterChannel)
@@ -1163,7 +1258,7 @@ struct HotUpdaterSandboxCoordinatorTests {
         #expect(!ticks.isWaiting)
         stop()
 
-        let unseen = Fixture(serverPoll: { await ticks.next() })
+        let unseen = Fixture(serverPoll: { await ticks.next($0) })
         unseen.host.serverConfig = false
         await unseen.coordinator.refresh()
         await settle()
@@ -1173,7 +1268,7 @@ struct HotUpdaterSandboxCoordinatorTests {
     @Test
     func aLinkWaitingForAServerIsAskedOnceOneAnswersWithNoScreenUp() async {
         let ticks = ServerTicks()
-        let fixture = Fixture(serverPoll: { await ticks.next() })
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
         fixture.host.serverConfig = false
         fixture.coordinator.receiveLink(link("pr-1"))
         guard case .waitingForServer = fixture.coordinator.state.phase else {
