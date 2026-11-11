@@ -768,9 +768,15 @@ describe("NativeBuildsTable", () => {
       render(table());
       fireEvent.click(screen.getByRole("button", { name: "2 older builds" }));
 
-      expect(foldQuery).toHaveBeenLastCalledWith(
+      expect(foldQuery).toHaveBeenCalledWith(
         undefined,
         { from: id(80), to: id(78) },
+        true,
+      );
+      // The other fold stays closed, and reads nothing.
+      expect(foldQuery).not.toHaveBeenCalledWith(
+        undefined,
+        { from: id(77), to: id(76) },
         true,
       );
       expect(rowNames()).toEqual([

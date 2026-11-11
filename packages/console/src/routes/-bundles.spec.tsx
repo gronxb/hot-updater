@@ -10,6 +10,8 @@ import type { ComponentType, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  releasesQuery: vi.fn(),
+  foldQuery: vi.fn(),
   isMobile: vi.fn(() => false),
   activity: vi.fn(),
   navigate: vi.fn(),
@@ -101,6 +103,8 @@ const childBundle = {
   platform: "ios",
 } as Bundle;
 let releases = [release];
+/** The page the server gives: `releases` as rows, unless a test sets it. */
+let entries: FoldedEntry<ReleaseListRow>[] | null = null;
 
 vi.mock("@/lib/api", () => ({
   useBundleChildCountsQuery: () => ({
@@ -124,13 +128,12 @@ vi.mock("@/lib/api", () => ({
       },
     ],
   }),
-  useReleasesQuery: () => ({
-    data: { data: releases },
-    error: null,
-    isError: false,
-    isPending: false,
-  }),
+  useReleaseFoldQuery: mocks.foldQuery,
+  useReleasesQuery: mocks.releasesQuery,
 }));
+
+import type { FoldedEntry } from "@/lib/server/foldedPage";
+import type { ReleaseListRow } from "@/lib/server/releaseReachability";
 
 import { Route } from "./index";
 
@@ -215,6 +218,21 @@ describe("BundlesPage", () => {
       },
     });
     releases = [release];
+    entries = null;
+    mocks.releasesQuery.mockImplementation(() => ({
+      data: {
+        entries:
+          entries ?? releases.map((row) => ({ kind: "row" as const, row })),
+      },
+      error: null,
+      isError: false,
+      isPending: false,
+    }));
+    mocks.foldQuery.mockImplementation(() => ({
+      data: undefined,
+      isError: false,
+      isPending: true,
+    }));
     mocks.isMobile.mockReturnValue(false);
     mocks.search.mockReturnValue({});
     mocks.insightsAnalytics = true;
@@ -476,164 +494,306 @@ describe("BundlesPage", () => {
     ).toBe("e7b2a84d…9efb");
   });
 
-  describe("unreachable bundles", () => {
+  describe("unreachable bundles, folded where they sit", () => {
     const at = (id: string, currentlyUnreachable: boolean) => ({
       ...release,
       id,
       currentlyUnreachable,
     });
+    const r = {
+      5: at("release-5", false),
+      4: at("release-4", true),
+      3: at("release-3", false),
+      2: at("release-2", true),
+      1: at("release-1", true),
+    };
+    const row = (n: keyof typeof r) => ({ kind: "row" as const, row: r[n] });
+    const fold = (from: string | undefined, to: string, count: number) => ({
+      kind: "fold" as const,
+      count,
+      more: false,
+      ...(from === undefined ? {} : { from }),
+      to,
+    });
+    // As the server pages them: 5 and 3 reachable, 4 and 2..1 folded.
+    const page = [
+      row(5),
+      fold("release-5", "release-4", 1),
+      row(3),
+      fold("release-3", "release-1", 2),
+    ];
+    /** The fold under `from` answers these rows once it opens. */
+    const foldAnswers = (answers: Record<string, ReleaseListRow[]>) =>
+      mocks.foldQuery.mockImplementation(
+        (_filter: unknown, bounds: { from?: string }, enabled: boolean) =>
+          enabled && answers[bounds.from ?? ""] !== undefined
+            ? {
+                data: { pages: [{ rows: answers[bounds.from ?? ""] }] },
+                isError: false,
+                isPending: false,
+                isFetchingNextPage: false,
+                hasNextPage: false,
+              }
+            : { data: undefined, isError: false, isPending: true },
+      );
     const rowNames = () =>
       screen
         .getAllByRole("row")
         .slice(1)
-        .map((row) => row.getAttribute("aria-label") ?? row.textContent);
-    const GROUP = "2 unreachable bundles on this page";
+        .map((tr) => tr.getAttribute("aria-label") ?? tr.textContent);
+    const LINEAGE = "Advanced artifact diagnostics";
 
     beforeEach(() => {
-      releases = [
-        at("release-3", false),
-        at("release-2", true),
-        at("release-1", true),
-      ];
+      entries = page;
+      foldAnswers({ "release-3": [r[2], r[1]] });
     });
 
-    it("collapses a page's unreachable bundles under one closed group", () => {
+    it("keeps the list's order, each run of unreachable bundles one closed fold where it sits", () => {
       render(<BundlesPage />);
 
-      expect(rowNames()).toEqual(["Open bundle release-3", GROUP]);
-      const group = screen.getByRole("button", { name: GROUP });
-      expect(group.getAttribute("aria-expanded")).toBe("false");
-      expect(group.hasAttribute("aria-controls")).toBe(false);
-      fireEvent.click(group);
-      expect(mocks.navigate).toHaveBeenCalledWith({
-        resetScroll: false,
-        search: { showUnreachable: true },
-        to: "/",
-      });
-      // The pager counts the whole page, collapsed or not.
+      expect(rowNames()).toEqual([
+        "Open bundle release-5",
+        "1 unreachable bundle",
+        "Open bundle release-3",
+        "2 unreachable bundles",
+      ]);
+      for (const name of ["1 unreachable bundle", "2 unreachable bundles"]) {
+        const button = screen.getByRole("button", { name });
+        expect(button.getAttribute("aria-expanded")).toBe("false");
+        const panel = document.getElementById(
+          button.getAttribute("aria-controls")!,
+        );
+        expect(panel?.tagName).toBe("TBODY");
+        expect(panel?.hidden).toBe(true);
+      }
+      expect(
+        mocks.foldQuery.mock.calls.every(([, , enabled]) => enabled === false),
+      ).toBe(true);
+      // The pager counts the reachable rows.
       expect(
         screen.getByText((_, node) =>
-          Boolean(node?.textContent === "3 entries, newest first"),
+          Boolean(node?.textContent === "2 entries, newest first"),
         ),
       ).toBeDefined();
     });
 
-    it("opens the group from the URL, its bundles still subdued, and closes it", () => {
-      mocks.search.mockReturnValue({ showUnreachable: true });
+    it("opens one fold in place: exactly its range, its bundles subdued, saying why by tap or focus", async () => {
       render(<BundlesPage />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "2 unreachable bundles" }),
+      );
 
+      expect(mocks.foldQuery).toHaveBeenCalledWith(
+        { kind: "all" },
+        { from: "release-3", to: "release-1" },
+        true,
+      );
       expect(rowNames()).toEqual([
+        "Open bundle release-5",
+        "1 unreachable bundle",
         "Open bundle release-3",
-        GROUP,
+        "2 unreachable bundles",
         "Open bundle release-2",
         "Open bundle release-1",
       ]);
-      expect(
-        screen.getByRole("row", { name: "Open bundle release-2" }).className,
-      ).toContain("bg-muted/35");
-      fireEvent.click(screen.getByRole("button", { name: GROUP }));
-      expect(mocks.navigate).toHaveBeenCalledWith({
-        resetScroll: false,
-        search: { showUnreachable: undefined },
-        to: "/",
+      const subdued = screen.getByRole("row", {
+        name: "Open bundle release-2",
       });
+      expect(subdued.className).toContain("bg-muted/35");
+      const reason = within(subdued).getByRole("button", {
+        name: /^Unreachable/,
+      });
+      // Not a hover-only title: a touch or a keyboard reaches the reason.
+      expect(reason.hasAttribute("title")).toBe(false);
+      fireEvent.click(reason);
+      expect((await screen.findByRole("tooltip")).textContent).toBe(
+        "No device gets this bundle with the current delivery settings.",
+      );
+      expect(mocks.navigate).not.toHaveBeenCalled();
     });
 
-    it("keeps a selected unreachable bundle in place, out of the group", () => {
+    it("asks the page's read to keep the selected bundle out of every fold, so a link to it shows its row", () => {
       mocks.search.mockReturnValue({ releaseId: "release-2" });
+      // The server keeps it as a row, splitting its run around it.
+      entries = [
+        row(5),
+        fold("release-5", "release-4", 1),
+        row(3),
+        row(2),
+        fold("release-2", "release-1", 1),
+      ];
       render(<BundlesPage />);
 
+      expect(mocks.releasesQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ releaseId: "release-2" }),
+      );
+      const selected = screen.getByRole("row", {
+        name: "Open bundle release-2",
+      });
+      expect(selected.getAttribute("data-state")).toBe("selected");
       expect(rowNames()).toEqual([
+        "Open bundle release-5",
+        "1 unreachable bundle",
         "Open bundle release-3",
         "Open bundle release-2",
-        "1 unreachable bundle on this page",
+        "1 unreachable bundle",
       ]);
+    });
+
+    it("keeps a selected bundle and its lineage while folds open and close", () => {
+      mocks.search.mockReturnValue({ releaseId: "release-2" });
+      entries = [
+        row(5),
+        fold("release-5", "release-4", 1),
+        row(3),
+        row(2),
+        fold("release-2", "release-1", 1),
+      ];
+      render(<BundlesPage />);
+      fireEvent.click(
+        within(
+          screen.getByRole("row", { name: "Open bundle release-2" }),
+        ).getByRole("button", { name: "Show advanced artifact diagnostics" }),
+      );
+      expect(screen.getByText(LINEAGE)).toBeDefined();
+
+      for (const name of ["1 unreachable bundle"]) {
+        const [first] = screen.getAllByRole("button", { name });
+        fireEvent.click(first!);
+        fireEvent.click(first!);
+      }
       expect(
-        screen
-          .getByRole("row", { name: "Open bundle release-2" })
-          .getAttribute("data-state"),
-      ).toBe("selected");
+        screen.getByRole("row", { name: "Open bundle release-2" }),
+      ).toBeDefined();
+      expect(screen.getByText(LINEAGE)).toBeDefined();
     });
 
-    it.each([
-      { channelId: "channel-1", platform: "ios", enabled: false },
-      { bundleId: release.bundle_id },
-    ])("shows every bundle a filter asks for, subdued (%o)", (search) => {
-      mocks.search.mockReturnValue(search);
+    it("closes a lineage panel whose row a fold hides, by a click, and opening the fold brings none back", () => {
       render(<BundlesPage />);
+      const toggle = () =>
+        fireEvent.click(
+          screen.getByRole("button", { name: "2 unreachable bundles" }),
+        );
+      toggle();
+      fireEvent.click(
+        within(
+          screen.getByRole("row", { name: "Open bundle release-2" }),
+        ).getByRole("button", { name: "Show advanced artifact diagnostics" }),
+      );
+      expect(screen.getByText(LINEAGE)).toBeDefined();
 
-      expect(rowNames()).toEqual([
-        "Open bundle release-3",
-        "Open bundle release-2",
-        "Open bundle release-1",
-      ]);
-      expect(screen.getAllByText("Unreachable")).toHaveLength(2);
+      toggle();
+      expect(screen.queryByText(LINEAGE)).toBeNull();
+      toggle();
+      expect(
+        screen.getByRole("row", { name: "Open bundle release-2" }),
+      ).toBeDefined();
+      expect(screen.queryByText(LINEAGE)).toBeNull();
     });
 
-    it("shows a page of only unreachable bundles without the group", () => {
-      releases = [at("release-2", true), at("release-1", true)];
-      render(<BundlesPage />);
-
-      expect(rowNames()).toEqual([
-        "Open bundle release-2",
-        "Open bundle release-1",
-      ]);
-      expect(screen.queryByRole("button", { name: /unreachable/ })).toBeNull();
-    });
-
-    it("closes a collapsed bundle's lineage with the group", () => {
-      mocks.search.mockReturnValue({ showUnreachable: true });
+    it("closes a lineage panel whose row the URL folds, by Back, and Forward brings none back", () => {
+      // Selected: the server keeps release-2 as a row.
+      const selected = [
+        row(5),
+        fold("release-5", "release-4", 1),
+        row(3),
+        row(2),
+        fold("release-2", "release-1", 1),
+      ];
+      mocks.search.mockReturnValue({ releaseId: "release-2" });
+      entries = selected;
       const { rerender } = render(<BundlesPage />);
       fireEvent.click(
         within(
           screen.getByRole("row", { name: "Open bundle release-2" }),
         ).getByRole("button", { name: "Show advanced artifact diagnostics" }),
       );
-      expect(screen.getByText("Advanced artifact diagnostics")).toBeDefined();
+      expect(screen.getByText(LINEAGE)).toBeDefined();
 
-      fireEvent.click(screen.getByRole("button", { name: GROUP }));
+      // Back: no selection, so release-2 folds again; no click on any fold.
       mocks.search.mockReturnValue({});
+      entries = page;
       rerender(<BundlesPage />);
-      expect(screen.queryByText("Advanced artifact diagnostics")).toBeNull();
-      // Opening the group again opens no lineage on its own.
-      mocks.search.mockReturnValue({ showUnreachable: true });
+      expect(screen.queryByText(LINEAGE)).toBeNull();
+
+      // Forward: the row is back, its panel isn't.
+      mocks.search.mockReturnValue({ releaseId: "release-2" });
+      entries = selected;
       rerender(<BundlesPage />);
-      expect(screen.queryByText("Advanced artifact diagnostics")).toBeNull();
+      expect(
+        screen.getByRole("row", { name: "Open bundle release-2" }),
+      ).toBeDefined();
+      expect(screen.queryByText(LINEAGE)).toBeNull();
     });
 
-    it("keeps the group open when filters clear", () => {
-      releases = [];
-      mocks.search.mockReturnValue({
-        bundleId: "missing",
-        showUnreachable: true,
-      });
-      render(<BundlesPage />);
-
-      fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
-      expect(mocks.navigate).toHaveBeenCalledWith({
-        resetScroll: true,
-        search: { showUnreachable: true },
+    it("keeps the rows under a bundle selected in an open fold open, when the selection splits the fold", () => {
+      const { rerender } = render(<BundlesPage />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "2 unreachable bundles" }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Open details for ID release-2" }),
+      );
+      expect(mocks.navigate).toHaveBeenLastCalledWith({
+        resetScroll: false,
+        search: { releaseId: "release-2" },
         to: "/",
       });
+
+      // The server splits the fold around the selected bundle.
+      mocks.search.mockReturnValue({ releaseId: "release-2" });
+      entries = [
+        row(5),
+        fold("release-5", "release-4", 1),
+        row(3),
+        row(2),
+        fold("release-2", "release-1", 1),
+      ];
+      foldAnswers({ "release-2": [r[1]] });
+      rerender(<BundlesPage />);
+
+      expect(rowNames()).toEqual([
+        "Open bundle release-5",
+        "1 unreachable bundle",
+        "Open bundle release-3",
+        "Open bundle release-2",
+        "1 unreachable bundle",
+        "Open bundle release-1",
+      ]);
     });
 
-    it("collapses the unreachable cards on a phone the same way", () => {
+    it("shows a page of unreachable bundles alone as one fold under the empty state", () => {
+      entries = [fold(undefined, "release-1", 3)];
+      render(<BundlesPage />);
+
+      expect(screen.getByText("No device gets the bundles here")).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: "3 unreachable bundles" }),
+      ).toBeTruthy();
+    });
+
+    it("folds the cards on a phone the same way, in place", () => {
       mocks.isMobile.mockReturnValue(true);
       render(<BundlesPage />);
 
-      expect(
+      const cards = () =>
         screen
           .getAllByRole("article")
-          .map((card) => card.getAttribute("aria-label")),
-      ).toEqual(["Bundle release-3"]);
-      const group = screen.getByRole("button", { name: GROUP });
-      expect(group.getAttribute("aria-expanded")).toBe("false");
-      fireEvent.click(group);
-      expect(mocks.navigate).toHaveBeenCalledWith({
-        resetScroll: false,
-        search: { showUnreachable: true },
-        to: "/",
+          .map((card) => card.getAttribute("aria-label"));
+      expect(cards()).toEqual(["Bundle release-5", "Bundle release-3"]);
+      const button = screen.getByRole("button", {
+        name: "2 unreachable bundles",
       });
+      expect(
+        document.getElementById(button.getAttribute("aria-controls")!),
+      ).not.toBeNull();
+      fireEvent.click(button);
+      expect(cards()).toEqual([
+        "Bundle release-5",
+        "Bundle release-3",
+        "Bundle release-2",
+        "Bundle release-1",
+      ]);
     });
   });
 });
