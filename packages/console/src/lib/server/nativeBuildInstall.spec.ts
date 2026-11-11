@@ -377,7 +377,12 @@ describe("checkNativeBuildInstall", () => {
     {
       now,
       registry = [],
-    }: { now?: number; registry?: readonly IosDeviceRow[] } = {},
+      canApprove,
+    }: {
+      now?: number;
+      registry?: readonly IosDeviceRow[];
+      canApprove?: () => Promise<boolean>;
+    } = {},
   ) => {
     const bytes = await ipaBytes(profile);
     const { fetch, served } = rangeServer(bytes);
@@ -386,7 +391,7 @@ describe("checkNativeBuildInstall", () => {
       BUILD,
       udid,
       { core, storage: storageOf() },
-      { fetch, now: now ?? Date.now() },
+      { fetch, now: now ?? Date.now(), canApprove },
     );
     return { result, core, served };
   };
@@ -413,6 +418,31 @@ describe("checkNativeBuildInstall", () => {
     expect(core.findIosDevice).toHaveBeenCalledTimes(1);
     const unknown = await check(adHocProfile([PHONE]), undefined);
     expect(unknown.core.findIosDevice).not.toHaveBeenCalled();
+  });
+
+  it("asks whether the viewer approves only under Apple's refusal of the device", async () => {
+    const canApprove = vi.fn(async () => true);
+    const refused = {
+      ...registryRow(LATER_PHONE, "Kim's iPhone"),
+      status: "approved",
+      apple_error: "The maximum number of devices was reached.",
+    } as IosDeviceRow;
+    const { result } = await check(adHocProfile([PHONE]), LATER_PHONE, {
+      registry: [refused],
+      canApprove,
+    });
+    expect(result).toMatchObject({ registry: refused, canApprove: true });
+    expect(canApprove).toHaveBeenCalledTimes(1);
+
+    canApprove.mockClear();
+    const plain = await check(adHocProfile([PHONE]), LATER_PHONE, {
+      registry: [registryRow(LATER_PHONE, "Kim's iPhone")],
+      canApprove,
+    });
+    expect(plain.result).toMatchObject({ canApprove: false });
+    const listed = await check(adHocProfile([PHONE]), PHONE, { canApprove });
+    expect(listed.result).toMatchObject({ canApprove: false });
+    expect(canApprove).not.toHaveBeenCalled();
   });
 
   it("compares a UDID whatever its case", async () => {

@@ -328,7 +328,7 @@ describe("BundlesPage", () => {
     });
     const state = within(row).getByRole("button", { name: /^Unreachable/ });
 
-    expect(row.className).toContain("bg-muted/35");
+    expect(row.className).toContain("bg-muted/25");
     expect(row.className).toContain("saturate-50");
     expect(row.className).toContain("hover:saturate-100");
     expect(row.className).toContain("motion-reduce:transition-none");
@@ -599,7 +599,7 @@ describe("BundlesPage", () => {
       const subdued = screen.getByRole("row", {
         name: "Open bundle release-2",
       });
-      expect(subdued.className).toContain("bg-muted/35");
+      expect(subdued.className).toContain("bg-muted/25");
       const reason = within(subdued).getByRole("button", {
         name: /^Unreachable/,
       });

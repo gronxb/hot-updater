@@ -205,21 +205,29 @@ function BuildLink({ build }: { readonly build: NativeBuildRow }) {
  * cell the tag sits beside the kind, so a sandbox row is as tall as any other,
  * and the cell is capped at its widest short kind ("AAB Sandbox"): only a
  * longer kind, such as a sandbox "Simulator app", puts its tag under it rather
- * than widen the table past its frame. On a card the tag sits beside the kind,
- * under it only when a narrow card has no room.
+ * than widen the table past its frame. A fold's build says "Older" after them,
+ * as a Bundles row says "Unreachable" beside its ID, wrapping under the kind
+ * within the same cap. On a card the tag sits beside the kind, under it only
+ * when a narrow card has no room.
  */
 function BuildIdentity({
   build,
   inTable = false,
+  older = false,
+  newer,
 }: {
   readonly build: NativeBuildRow;
   readonly inTable?: boolean;
+  /** "Older" after the kind and its tag, where Bundles says "Unreachable". */
+  readonly older?: boolean;
+  readonly newer?: NativeBuildRow;
 }) {
   if (inTable) {
     return (
       <span className="flex max-w-24 flex-wrap items-center gap-x-1.5 gap-y-1">
         <BuildLink build={build} />
         <SandboxBadge build={build} />
+        {older ? <OlderBuildLabel newer={newer} /> : null}
       </span>
     );
   }
@@ -334,7 +342,7 @@ function BuildRow({
   return (
     <DataTableRow
       aria-label={`Open native build ${build.id}`}
-      className="data-[older=true]:bg-muted/35 data-[older=true]:saturate-50 data-[older=true]:hover:bg-muted/50 data-[older=true]:hover:saturate-100 data-[older=true]:focus-within:saturate-100"
+      className="data-[older=true]:bg-muted/25 data-[older=true]:saturate-50 data-[older=true]:hover:bg-muted/50 data-[older=true]:hover:saturate-100 data-[older=true]:focus-within:saturate-100"
       data-older={older ? true : undefined}
       onOpen={() =>
         void navigate({
@@ -344,7 +352,7 @@ function BuildRow({
       }
     >
       <TableCell>
-        <BuildIdentity build={build} inTable />
+        <BuildIdentity build={build} inTable newer={newer} older={older} />
       </TableCell>
       <TableCell>
         <ChannelFilterButton channel={channel} onChannel={onChannel} />
@@ -371,14 +379,7 @@ function BuildRow({
         {formatByteSize(build.byte_size)}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
-        {!older ? (
-          <RelativeTime ms={createdAt(build)} />
-        ) : (
-          <span className="flex flex-col items-start gap-1">
-            <RelativeTime ms={createdAt(build)} />
-            <OlderBuildLabel newer={newer} />
-          </span>
-        )}
+        <RelativeTime ms={createdAt(build)} />
       </TableCell>
       <TableCell className="text-right">
         <DownloadButton build={build} />
@@ -411,7 +412,7 @@ function BuildCard({
   return (
     <DataCard
       aria-label={`Native build ${buildTitle(build)} ${build.id}`}
-      className="gap-3 border-b-0 data-[older=true]:bg-muted/35 data-[older=true]:saturate-50 data-[older=true]:hover:bg-muted/50 data-[older=true]:hover:saturate-100 data-[older=true]:focus-within:saturate-100"
+      className="gap-3 border-b-0 data-[older=true]:bg-muted/25 data-[older=true]:saturate-50 data-[older=true]:hover:bg-muted/50 data-[older=true]:hover:saturate-100 data-[older=true]:focus-within:saturate-100"
       data-older={older ? true : undefined}
       onClick={openOutsideControls(
         () =>

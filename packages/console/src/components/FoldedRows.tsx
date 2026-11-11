@@ -158,7 +158,10 @@ export function FoldStatus({
   columns,
 }: {
   readonly state: "loading" | "more" | "error";
-  /** What loads, for screen readers, such as "Loading older builds". */
+  /**
+   * What loads, such as "Loading older builds" for screen readers, or the
+   * rows themselves, such as "Older builds", which an error names.
+   */
   readonly label: string;
   readonly onMore?: () => void;
   readonly onRetry?: () => void;
@@ -176,7 +179,7 @@ export function FoldStatus({
       <div className="flex items-center gap-3 px-4 py-2 sm:px-3">
         {state === "error" ? (
           <span className="text-xs text-muted-foreground" role="status">
-            These rows couldn't be loaded.
+            {label} couldn't be loaded.
           </span>
         ) : null}
         <Button

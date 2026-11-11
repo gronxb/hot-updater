@@ -59,6 +59,8 @@ export interface IosDevicesView {
   readonly defaultName: string;
   /** Whether iPhones can register through this Console. */
   readonly registration: "ready" | "local-console" | "no-secret";
+  /** The secret that signs iPhone links, which `no-secret` asks to set. */
+  readonly secretName: string;
 }
 
 /** The registry, or one status of it, with what the viewer may do. */
@@ -72,12 +74,19 @@ export const getIosDevices = createServerFn({ method: "GET" })
     return status === undefined ? {} : { status };
   })
   .handler(async ({ data }): Promise<IosDevicesView> => {
-    const { request, core, principal, viewer, devices } = await registry();
+    const [
+      { request, core, principal, viewer, devices },
+      { CONSOLE_SECRET_ENV },
+    ] = await Promise.all([
+      registry(),
+      import("./server/nativeBuildDownloadLink"),
+    ]);
     return {
       devices: await devices.listIosDevices(core, data.status),
       viewer,
       defaultName: devices.defaultDeviceName(principal),
       registration: await devices.deviceRegistration(request),
+      secretName: CONSOLE_SECRET_ENV,
     };
   });
 

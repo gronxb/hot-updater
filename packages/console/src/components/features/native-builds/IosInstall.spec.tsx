@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -55,10 +56,13 @@ vi.mock("@tanstack/react-router", () => ({
     ...props
   }: {
     to: string;
-    params: { buildId: string };
+    params?: { buildId: string };
     children: unknown;
   }) => (
-    <a href={to.replace("$buildId", params.buildId)} {...props}>
+    <a
+      href={params === undefined ? to : to.replace("$buildId", params.buildId)}
+      {...props}
+    >
       {children as never}
     </a>
   ),
@@ -131,11 +135,13 @@ const installable = (
   device: "unknown" | "included" | "not-included",
   registry: IosDeviceRow | null = null,
   newerBuild: string | null = null,
+  canApprove = false,
 ): NativeBuildInstallEligibility => ({
   status: "installable",
   device,
   registry,
   newerBuild,
+  canApprove,
   expiresAt: null,
   link: {
     status: "issued",
@@ -215,6 +221,38 @@ describe("IosInstall", () => {
     expect(itmsLinks()).toHaveLength(0);
   });
 
+  it("says what the check does in two sentences, and the Settings steps under its button", () => {
+    answer(installable("unknown"));
+    render(<IosInstall build={row} device={phone(null)} />);
+
+    const intro = screen.getByText(/only on the devices it lists/);
+    expect(intro.textContent).toBe(
+      "iOS installs this IPA only on the devices it lists. A profile reads this iPhone's ID, then Safari comes back here.",
+    );
+    const button = screen.getByRole("link", { name: "Check this iPhone" });
+    const steps = screen.getByText(/install it in Settings/);
+    expect(
+      button.compareDocumentPosition(steps) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("turns a check that couldn't start into the card's error, with Reload that asks again in place", () => {
+    const refetchLink = vi.fn();
+    profileLinkQuery.mockReturnValue({
+      isError: true,
+      isFetching: false,
+      refetch: refetchLink,
+    });
+    answer(installable("unknown"));
+    render(<IosInstall build={row} device={phone(null)} />);
+
+    const alert = screen.getByRole("alert");
+    expect(within(alert).getByText("The check couldn't start")).toBeTruthy();
+    fireEvent.click(within(alert).getByRole("button", { name: "Reload" }));
+    expect(refetchLink).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
   it("keeps the console's own path in the profile link", () => {
     window.history.replaceState(null, "", `/console/native-builds/${BUILD}`);
     answer(installable("unknown"));
@@ -239,6 +277,7 @@ describe("IosInstall", () => {
     answer(installable("included"));
     render(<IosInstall build={row} device={phone(PHONE)} />);
 
+    expect(screen.getByText("In this build")).toBeTruthy();
     expect(installEligibilityQuery).toHaveBeenCalledWith(BUILD, PHONE);
     expect(manifestOf(link("Install"))).toContain("/manifest.plist?t=");
     expect(screen.getAllByRole("link")).toHaveLength(1);
@@ -355,20 +394,58 @@ describe("IosInstall", () => {
       registryRow({ status: "approved", approved_at_ms: 1 }),
       "Kim's iPhone is approved. It joins the next ad hoc build.",
     ],
-    [
-      "an iPhone Apple refused",
-      registryRow({
-        status: "approved",
-        apple_error: "The maximum number of devices was reached.",
-      }),
-      "Apple didn't register Kim's iPhone: The maximum number of devices was reached. A maintainer can see it on the iOS devices page.",
-    ],
   ])("says where %s stands, with nothing to request", (_, registry, words) => {
     answer(installable("not-included", registry));
     render(<IosInstall build={row} device={phone(PHONE, RECEIPT)} />);
 
     expect(screen.getByRole("status").textContent).toBe(words);
     expect(screen.queryByRole("button", { name: "Request access" })).toBeNull();
+  });
+
+  describe("an iPhone Apple refused", () => {
+    const refused = registryRow({
+      status: "approved",
+      apple_error: "The maximum number of devices was reached.",
+    });
+
+    it("shows the refusal as the card's error, Apple's reason alone, and sends an approver to iOS devices", () => {
+      answer(installable("not-included", refused, null, true));
+      render(<IosInstall build={row} device={phone(PHONE, RECEIPT)} />);
+
+      const alert = screen.getByRole("alert");
+      expect(
+        within(alert).getByText("Apple didn't register this iPhone"),
+      ).toBeTruthy();
+      expect(
+        alert.querySelector("[data-slot=alert-description]")?.textContent,
+      ).toBe("The maximum number of devices was reached.");
+      expect(link("iOS devices")).toBe("/native-builds/devices");
+      expect(screen.getAllByRole("link")).toHaveLength(1);
+      expect(screen.queryByText(/Ask a maintainer/)).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Request access" }),
+      ).toBeNull();
+    });
+
+    it("tells anyone else whom to ask, with no link to a page they can't act on", () => {
+      answer(installable("not-included", refused, null, false));
+      render(<IosInstall build={row} device={phone(PHONE, RECEIPT)} />);
+
+      expect(screen.getByRole("alert")).toBeTruthy();
+      expect(
+        screen.getByText("Ask a maintainer to free a device slot."),
+      ).toBeTruthy();
+      expect(screen.queryByRole("link")).toBeNull();
+    });
+
+    it("offers the newer build that has it over the refusal", () => {
+      const newer = "019a0000-0000-7000-8000-00000000b002";
+      answer(installable("not-included", refused, newer, true));
+      render(<IosInstall build={row} device={phone(PHONE)} />);
+
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(link("Open the newer build")).toBe(`/native-builds/${newer}`);
+    });
   });
 
   it("opens the newer build that has a registered iPhone", () => {
@@ -455,6 +532,7 @@ describe("IosInstall", () => {
       device: "included",
       registry: null,
       newerBuild: null,
+      canApprove: false,
       expiresAt: null,
       link: { status: "no-secret", secretName: "BETTER_AUTH_SECRET" },
     });
@@ -581,7 +659,7 @@ describe("InstallCard on an iPhone", () => {
 
   afterEach(() => vi.restoreAllMocks());
 
-  it("shows the install flow instead of a QR code, and keeps the download", async () => {
+  it("shows the install flow alone, with the computer's ways closed under it", async () => {
     onIphone();
     answer(installable("unknown"));
     render(<InstallCard build={row} />);
@@ -590,6 +668,35 @@ describe("InstallCard on an iPhone", () => {
       await screen.findByRole("link", { name: "Check this iPhone" }),
     ).toBeTruthy();
     expect(screen.queryByRole("img")).toBeNull();
+    expect(
+      screen.queryByRole("link", { name: /Download App\.ipa/ }),
+    ).toBeNull();
+    expect(
+      screen.getByText(/npx hot-updater testflight/).closest("[hidden]"),
+    ).not.toBeNull();
+
+    const other = screen.getByRole("button", { name: "Other ways to install" });
+    expect(other.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(other);
+    expect(other.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      screen.getByRole("link", { name: /Download App\.ipa/ }),
+    ).toBeTruthy();
+  });
+
+  it("keeps the computer's ways open on a computer, beside the QR code", () => {
+    downloadLinkQuery.mockReturnValue({
+      data: {
+        status: "issued",
+        token: TOKEN,
+        expiresAt: "2030-01-01T00:00:00.000Z",
+      },
+    });
+    render(<InstallCard build={row} />);
+
+    expect(
+      screen.queryByRole("button", { name: "Other ways to install" }),
+    ).toBeNull();
     expect(
       screen.getByRole("link", { name: /Download App\.ipa/ }),
     ).toBeTruthy();

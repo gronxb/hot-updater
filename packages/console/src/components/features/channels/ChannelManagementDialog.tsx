@@ -133,7 +133,7 @@ export function ChannelManagementDialog({
                   {createChannel.isPending ? (
                     <Loader2
                       data-icon="inline-start"
-                      className="animate-spin"
+                      className="animate-spin motion-reduce:animate-none"
                     />
                   ) : (
                     <Plus data-icon="inline-start" />
@@ -147,7 +147,7 @@ export function ChannelManagementDialog({
           <div className="max-h-72 overflow-y-auto rounded-lg border">
             {isLoadingChannels ? (
               <div className="flex h-20 items-center justify-center text-muted-foreground">
-                <Loader2 className="mr-2 size-3.5 animate-spin" />
+                <Loader2 className="mr-2 size-3.5 animate-spin motion-reduce:animate-none" />
                 Loading channels
               </div>
             ) : channels.length === 0 ? (

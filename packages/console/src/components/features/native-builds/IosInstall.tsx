@@ -1,10 +1,21 @@
 import type { IosDeviceRow, NativeBuildRow } from "@hot-updater/plugin-core";
 import { Link } from "@tanstack/react-router";
 import dayjs from "dayjs";
-import { AlertTriangle, Loader2, Send, Smartphone } from "lucide-react";
+import {
+  AlertTriangle,
+  Loader2,
+  RefreshCw,
+  Send,
+  Smartphone,
+} from "lucide-react";
 import { useEffect, useReducer, useState } from "react";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Field,
@@ -284,31 +295,91 @@ function CheckThisIphone({
   }
   if (link.data?.status !== "issued") {
     return link.isError ? (
-      <p className="text-xs text-destructive" role="alert">
-        The check couldn't start. Reload the page to try again.
-      </p>
+      <Alert variant="destructive">
+        <AlertTriangle />
+        <AlertTitle>The check couldn't start</AlertTitle>
+        <AlertDescription>
+          Check your connection and try again.
+        </AlertDescription>
+        <AlertAction>
+          <Button
+            disabled={link.isFetching}
+            onClick={() => void link.refetch()}
+            size="xs"
+            variant="outline"
+          >
+            <RefreshCw data-icon="inline-start" />
+            Reload
+          </Button>
+        </AlertAction>
+      </Alert>
     ) : (
       <Skeleton aria-label="Preparing the check" className="h-11 w-full" />
     );
   }
   return (
-    <a
-      className={buttonVariants({
-        className: ACTION_CLASS,
-        variant: again ? "secondary" : "default",
-      })}
-      href={iosDeviceProfileUrl(
-        consolePathOf(window.location, build.id),
-        link.data.token,
-      )}
-    >
-      <Smartphone data-icon="inline-start" />
-      {again ? "Check this iPhone again" : "Check this iPhone"}
-    </a>
+    <>
+      <a
+        className={buttonVariants({
+          className: ACTION_CLASS,
+          variant: again ? "secondary" : "default",
+        })}
+        href={iosDeviceProfileUrl(
+          consolePathOf(window.location, build.id),
+          link.data.token,
+        )}
+      >
+        <Smartphone data-icon="inline-start" />
+        {again ? "Check this iPhone again" : "Check this iPhone"}
+      </a>
+      <p className="text-xs text-muted-foreground">
+        Allow the download, then install it in Settings, where iOS calls it not
+        signed. Nothing stays installed.
+      </p>
+    </>
   );
 }
 
 const shortDate = (ms: number) => dayjs(ms).format("MMM D");
+
+/**
+ * Apple's refusal of this iPhone, in its own words, and the one next step: the
+ * iOS devices page for an approver, else whom to ask.
+ */
+function AppleRefusal({
+  device,
+  canApprove,
+}: {
+  readonly device: IosDeviceRow;
+  readonly canApprove: boolean;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      <Alert>
+        <AlertTriangle />
+        <AlertTitle>Apple didn't register this iPhone</AlertTitle>
+        <AlertDescription>{device.apple_error}</AlertDescription>
+      </Alert>
+      {canApprove ? (
+        <Link
+          className={buttonVariants({
+            className: ACTION_CLASS,
+            variant: "outline",
+          })}
+          to="/native-builds/devices"
+        >
+          iOS devices
+        </Link>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          {device.status === "approved"
+            ? "Ask a maintainer to free a device slot."
+            : "Ask a maintainer to check it on the iOS devices page."}
+        </p>
+      )}
+    </div>
+  );
+}
 
 /**
  * What an iPhone the IPA doesn't list sees: the registry's word on it, or
@@ -319,6 +390,7 @@ function NotInThisBuild({
   device,
   registry,
   newerBuild,
+  canApprove,
   registryReadAt,
 }: {
   readonly build: NativeBuildRow;
@@ -329,6 +401,8 @@ function NotInThisBuild({
    * server matched `registry.build_id`, or null.
    */
   readonly newerBuild: string | null;
+  /** Whether the viewer approves devices, read only under Apple's refusal. */
+  readonly canApprove: boolean;
   /** When the page last read `registry`. */
   readonly registryReadAt: number;
 }) {
@@ -356,17 +430,18 @@ function NotInThisBuild({
     // The row's build_id may name a sandbox's or another app's build: only the
     // server's match of it is offered.
     const newer = standIn ? null : newerBuild;
+    if (row.apple_error !== null && newer === null) {
+      return <AppleRefusal canApprove={canApprove} device={row} />;
+    }
     return (
       <div className="flex min-w-0 flex-col gap-3">
         {heading}
         <p className="text-sm" role="status">
-          {row.apple_error !== null && newer === null
-            ? `Apple didn't register ${row.name}: ${row.apple_error} A maintainer can see it on the iOS devices page.`
-            : row.status === "pending"
-              ? `${row.name} was requested on ${shortDate(row.created_at_ms)}. A maintainer approves it next.`
-              : newer !== null
-                ? `A newer build has ${row.name}.`
-                : `${row.name} is ${row.status}. It joins the next ad hoc build.`}
+          {row.status === "pending"
+            ? `${row.name} was requested on ${shortDate(row.created_at_ms)}. A maintainer approves it next.`
+            : newer !== null
+              ? `A newer build has ${row.name}.`
+              : `${row.name} is ${row.status}. It joins the next ad hoc build.`}
         </p>
         {newer !== null ? (
           <Link
@@ -435,7 +510,10 @@ function NotInThisBuild({
         type="submit"
       >
         {request.isPending ? (
-          <Loader2 className="animate-spin" data-icon="inline-start" />
+          <Loader2
+            className="animate-spin motion-reduce:animate-none"
+            data-icon="inline-start"
+          />
         ) : (
           <Send data-icon="inline-start" />
         )}
@@ -481,8 +559,8 @@ export function IosInstall({
         <AlertTitle>Installation details unavailable</AlertTitle>
         <AlertDescription>
           The Console couldn't read this IPA from storage in parts, which takes
-          an HTTPS download link that answers Range requests. Xcode or Apple
-          Configurator still installs the download over USB.
+          an HTTPS download link that answers Range requests. Other ways to
+          install still work from a computer.
         </AlertDescription>
       </Alert>
     );
@@ -519,7 +597,7 @@ export function IosInstall({
   if (result.device === "included") {
     return (
       <div className="flex min-w-0 flex-col gap-3">
-        <p className="text-sm font-medium">This iPhone is in this build.</p>
+        <p className="text-sm font-medium">In this build</p>
         {expired ? (
           <RenewInstallLink
             fetching={eligibility.isFetching}
@@ -539,6 +617,7 @@ export function IosInstall({
         device={device}
         registry={result.registry}
         newerBuild={result.newerBuild}
+        canApprove={result.canApprove}
         registryReadAt={eligibility.dataUpdatedAt}
       />
     );
@@ -549,9 +628,7 @@ export function IosInstall({
         <p className="text-sm font-medium">Check this iPhone first</p>
         <p className="text-xs text-muted-foreground">
           iOS installs this IPA only on the devices it lists. A profile reads
-          this iPhone's ID and nothing else: allow the download, then install it
-          in Settings, where iOS calls it not signed. Safari comes back here,
-          and nothing stays installed.
+          this iPhone's ID, then Safari comes back here.
         </p>
       </div>
       <CheckThisIphone build={build} />
