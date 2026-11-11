@@ -1,5 +1,16 @@
 # @hot-updater/aws
 
+## 1.2.0-rc.28
+
+### Patch Changes
+
+- Updated dependencies [43605fd]
+- Updated dependencies [b03f1be]
+  - @hot-updater/plugin-core@1.2.0-rc.28
+  - @hot-updater/server@1.2.0-rc.28
+  - @hot-updater/cli-tools@1.2.0-rc.28
+  - @hot-updater/storage-s3@1.2.0-rc.28
+
 ## 1.2.0-rc.27
 
 ### Patch Changes
