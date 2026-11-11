@@ -111,13 +111,17 @@ const STATUS_LABELS: Record<IosDeviceStatus, string> = {
   registered: "Registered",
 };
 
+/**
+ * Only a request waits on someone, so only it takes a status color; the
+ * other states are the normal course and stay neutral.
+ */
 const STATUS_BADGES: Record<
   IosDeviceStatus,
-  "warning" | "secondary" | "success"
+  "warning" | "secondary" | "muted"
 > = {
   pending: "warning",
   approved: "secondary",
-  registered: "success",
+  registered: "muted",
 };
 
 const ALL = "all";
@@ -142,17 +146,28 @@ const actionsFor = (device: IosDeviceRow, viewer: Viewer) => ({
     device.requested_by === viewer.email,
 });
 
-function DeviceStatus({ device }: { readonly device: IosDeviceRow }) {
+function AppleError({ device }: { readonly device: IosDeviceRow }) {
+  return device.apple_error === null ? null : (
+    <span className="max-w-64 text-xs whitespace-normal text-muted-foreground">
+      {device.apple_error}
+    </span>
+  );
+}
+
+function DeviceStatus({
+  device,
+  withError = true,
+}: {
+  readonly device: IosDeviceRow;
+  /** Apple's reason under the badge; a card shows it on its own line. */
+  readonly withError?: boolean;
+}) {
   return (
-    <div className="flex min-w-0 flex-col items-start gap-1">
+    <div className="flex min-w-0 shrink-0 flex-col items-start gap-1">
       <Badge variant={STATUS_BADGES[device.status]}>
         {STATUS_LABELS[device.status]}
       </Badge>
-      {device.apple_error === null ? null : (
-        <span className="max-w-64 text-xs whitespace-normal text-muted-foreground">
-          {device.apple_error}
-        </span>
-      )}
+      {withError ? <AppleError device={device} /> : null}
     </div>
   );
 }
@@ -312,8 +327,9 @@ function DeviceCard({
             {maskIosUdid(device.udid)}
           </p>
         </div>
-        <DeviceStatus device={device} />
+        <DeviceStatus device={device} withError={false} />
       </div>
+      <AppleError device={device} />
       <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
         <span>{device.requested_by ?? "Terminal"}</span>
         <span aria-hidden="true">·</span>
@@ -396,7 +412,9 @@ function NameDialog({
                 </FieldDescription>
               ) : null}
               <FieldError>
-                {mutation.isError ? "That didn't go through. Try again." : null}
+                {mutation.isError
+                  ? `Couldn't ${target.kind === "approve" ? "approve" : "rename"} ${target.device.name}. Check your connection and try again.`
+                  : null}
               </FieldError>
             </Field>
           </FieldGroup>
@@ -450,7 +468,7 @@ function RemoveDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         {decline || !viewer.canApprove ? null : (
-          <div className="flex min-w-0 flex-col gap-1.5 text-xs text-muted-foreground">
+          <div className="flex min-w-0 flex-col gap-1.5 text-xs text-muted-foreground [&_code]:break-words [&_code]:whitespace-normal">
             <p>
               To keep it out of new builds, disable it at Apple from a terminal.
               Its slot isn't returned until the membership year renews.
@@ -464,7 +482,8 @@ function RemoveDialog({
         )}
         {remove.isError ? (
           <p className="text-xs text-destructive" role="alert">
-            That didn't go through. Try again.
+            Couldn't {withdraw ? "withdraw" : decline ? "decline" : "remove"}{" "}
+            {device.name}. Check your connection and try again.
           </p>
         ) : null}
         <AlertDialogFooter>
@@ -516,14 +535,18 @@ function RegisterCard({
     { mode: "register", name: signed || "iPhone" },
     onPhone && view !== undefined,
   );
-  const https =
-    typeof window === "undefined" || window.location.protocol === "https:";
+  const https = phone === null || window.location.protocol === "https:";
   const back =
     phone?.requested && phone.udid !== null
       ? devices?.find((device) => device.udid === phone.udid?.toLowerCase())
       : undefined;
 
   const body = (() => {
+    // The server renders this without a browser: where it is and what it is
+    // are read once the page mounts.
+    if (phone === null) {
+      return <Skeleton aria-label="Loading" className="h-36 w-full" />;
+    }
     if (back !== undefined) {
       return (
         <p className="text-sm" role="status">
