@@ -163,7 +163,7 @@ export interface IosDeviceRow {
   /** Who asked for it, or null for the CLI. */
   readonly requested_by: string | null;
   readonly created_at_ms: number;
-  /** Who approved it, or null for the CLI and a local Console. */
+  /** Who approved it: a Console email, or null for the CLI. */
   readonly approved_by: string | null;
   readonly approved_at_ms: number | null;
   /** When it first counted as registered with Apple. */

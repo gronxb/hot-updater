@@ -302,6 +302,25 @@ describe("the iOS device registry", () => {
     expect(await core.findIosDevice(IPAD)).toBeNull();
   });
 
+  it("deletes a row only while it still matches `only`, in the same transaction", async () => {
+    const core = setup();
+    const device = await requested(core);
+    await core.approveIosDevice(device.id, { approvedBy: "lead@team.dev" });
+    expect(
+      await core.deleteIosDevice(device.id, {
+        status: "pending",
+        requestedBy: "kim@team.dev",
+      }),
+    ).toBeNull();
+    expect((await core.findIosDevice(PHONE))?.status).toBe("approved");
+    expect(
+      await core.deleteIosDevice(device.id, {
+        status: "approved",
+        requestedBy: "Kim@Team.dev",
+      }),
+    ).toMatchObject({ id: device.id });
+  });
+
   it("deletes a row and answers null for an unknown one", async () => {
     const core = setup();
     const device = await requested(core);

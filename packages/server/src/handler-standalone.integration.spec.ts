@@ -436,6 +436,13 @@ describe("Insights through a self-hosted server's admin API", () => {
     await expect(
       remote.requestIosDevice({ udid: "1234", name: "x", requestedBy: null }),
     ).rejects.toThrow();
+    // A conditional delete of a row that no longer matches deletes nothing.
+    await expect(
+      remote.deleteIosDevice(device.id, {
+        status: "pending",
+        requestedBy: "kim@team.dev",
+      }),
+    ).resolves.toBeNull();
     await expect(remote.deleteIosDevice(device.id)).resolves.toMatchObject({
       id: device.id,
     });

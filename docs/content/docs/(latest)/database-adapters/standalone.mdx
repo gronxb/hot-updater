@@ -190,7 +190,7 @@ response wraps its result in `data`.
 | `PATCH`  | `/ios-devices/:id`                      | `{ name }`                                                   | `IosDeviceRow`, or `null`                               |
 | `POST`   | `/ios-devices/:id/outcome`              | `{ seen, issuerId, outcome, reason? }`                       | `IosDeviceRow`, or `null`                               |
 | `POST`   | `/ios-devices/in-build`                 | `{ buildId, ids }`                                           | `204`                                                   |
-| `DELETE` | `/ios-devices/:id`                      |                                                              | `IosDeviceRow`, or `null`                               |
+| `DELETE` | `/ios-devices/:id`                      | Optional `status`, `requestedBy`: only a row that has them   | `IosDeviceRow`, or `null`                               |
 
 `PATCH /releases/:id` takes a `ReleasePolicyPatch`. `promote` copies a Bundle
 Release into `targetChannel`; `action: "move"` also disables the source.

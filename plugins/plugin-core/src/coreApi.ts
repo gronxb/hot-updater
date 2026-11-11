@@ -366,7 +366,7 @@ export interface HotUpdaterCoreApi {
     id: string,
     input: {
       readonly name?: string;
-      /** Who approves, or null for the CLI and a local Console. */
+      /** Who approves: a Console email, or null for the CLI. */
       readonly approvedBy: string | null;
     },
   ): Promise<IosDeviceRow | null>;
@@ -391,7 +391,16 @@ export interface HotUpdaterCoreApi {
   }): Promise<void>;
   /**
    * Deletes a device from the registry. Apple keeps it: a device enabled
-   * there stays in new ad hoc builds. Null for an unknown ID.
+   * there stays in new ad hoc builds. With `only`, it deletes the row only
+   * while it still has that status and requester, read in the same
+   * transaction, such as a request its owner withdraws. Null, with nothing
+   * deleted, for an unknown ID or a row that no longer matches.
    */
-  deleteIosDevice(id: string): Promise<IosDeviceRow | null>;
+  deleteIosDevice(
+    id: string,
+    only?: {
+      readonly status?: IosDeviceStatus;
+      readonly requestedBy?: string;
+    },
+  ): Promise<IosDeviceRow | null>;
 }

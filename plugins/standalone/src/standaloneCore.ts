@@ -456,8 +456,14 @@ export const createStandaloneCoreApi = (
         requiredRoute: "iOS device registry",
       });
     },
-    deleteIosDevice: (id) =>
+    deleteIosDevice: (id, only) =>
       call<IosDeviceRow>("DELETE", `/ios-devices/${encode(id)}`, {
+        query: {
+          ...(only?.status === undefined ? {} : { status: only.status }),
+          ...(only?.requestedBy === undefined
+            ? {}
+            : { requestedBy: only.requestedBy }),
+        },
         requiredRoute: "iOS device registry",
       }),
     deleteNativeBuild: async (id) =>

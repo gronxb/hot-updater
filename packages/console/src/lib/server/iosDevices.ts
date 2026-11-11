@@ -206,11 +206,18 @@ export const removeIosDevice = async (
 ): Promise<IosDeviceRow | null> => {
   const device = await core.findIosDevice(udid);
   if (device === null) return null;
-  if (
-    !viewer.canApprove &&
-    !(device.status === "pending" && device.requested_by === viewer.email)
-  ) {
+  if (viewer.canApprove) return core.deleteIosDevice(device.id);
+  if (device.status !== "pending" || device.requested_by !== viewer.email) {
     throw forbidden("Only a device approver can remove this device.");
   }
-  return core.deleteIosDevice(device.id);
+  // Only while it is still this person's request: an approval meanwhile
+  // makes it an approver's to remove.
+  const withdrawn = await core.deleteIosDevice(device.id, {
+    status: "pending",
+    requestedBy: viewer.email,
+  });
+  if (withdrawn === null && (await core.findIosDevice(udid)) !== null) {
+    throw forbidden("It was approved meanwhile. A device approver removes it.");
+  }
+  return withdrawn;
 };

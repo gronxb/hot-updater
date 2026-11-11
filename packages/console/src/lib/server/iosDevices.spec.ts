@@ -153,6 +153,36 @@ describe("removing a device", () => {
     expect(await core.findIosDevice(PHONE)).toBeNull();
   });
 
+  it("refuses a withdrawal when an approval lands between the read and the delete", async () => {
+    const core = coreOf();
+    const { device } = await core.requestIosDevice({
+      udid: PHONE,
+      name: "Kim's iPhone",
+      requestedBy: "kim@team.dev",
+    });
+    let reads = 0;
+    const racing = {
+      ...core,
+      findIosDevice: async (udid: string) => {
+        const row = await core.findIosDevice(udid);
+        // An approver approves right after the requester's read.
+        if ((reads += 1) === 1) {
+          await core.approveIosDevice(device.id, {
+            approvedBy: "lead@team.dev",
+          });
+        }
+        return row;
+      },
+    };
+    const kim = {
+      email: "kim@team.dev",
+      canApprove: false,
+      approversConfigured: true,
+    };
+    expect(await status(() => removeIosDevice(racing, kim, PHONE))).toBe(403);
+    expect((await core.findIosDevice(PHONE))?.status).toBe("approved");
+  });
+
   it("refuses a requester once the iPhone is approved: an approver removes it", async () => {
     const core = coreOf();
     const { device } = await core.requestIosDevice({

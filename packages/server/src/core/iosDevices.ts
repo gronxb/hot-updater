@@ -337,12 +337,25 @@ export const createIosDeviceApi = (
       }
     },
 
-    async deleteIosDevice(id) {
+    async deleteIosDevice(id, only) {
+      const requestedBy =
+        only?.requestedBy === undefined
+          ? undefined
+          : personOf(only.requestedBy, "requestedBy");
       return db.transaction(async (tx) => {
         const row = await tx.findOne("ios_devices", { id });
         if (row === null) return null;
+        const device = pick(row);
+        // Checked over the row this transaction deletes, so a request
+        // approved meanwhile is no longer its requester's to withdraw.
+        if (
+          (only?.status !== undefined && device.status !== only.status) ||
+          (requestedBy !== undefined && device.requested_by !== requestedBy)
+        ) {
+          return null;
+        }
         await tx.delete("ios_devices", row);
-        return pick(row);
+        return device;
       });
     },
   };

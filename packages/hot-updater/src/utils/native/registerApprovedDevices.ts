@@ -218,8 +218,15 @@ export const registerApprovedDevices = async ({
   const issuer = apiKey.issuerId;
   const pin = registryIssuer(registered);
   const ours = registered.filter((row) => row.apple_issuer_id === issuer);
-  // Approved rows spend a slot only in the registry's own account.
-  const toRegister = pin === null || pin === issuer ? approved : [];
+  // Approved rows spend a slot only in the registry's own account, and never
+  // on a row another account registered before (one sent back to pending).
+  const toRegister =
+    pin === null || pin === issuer
+      ? approved.filter(
+          (row) =>
+            row.apple_issuer_id === null || row.apple_issuer_id === issuer,
+        )
+      : [];
   const otherAccount = () =>
     waiting(
       "signs with another Apple account than the registry's",

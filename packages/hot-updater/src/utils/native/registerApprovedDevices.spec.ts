@@ -228,6 +228,28 @@ describe("registerApprovedDevices", () => {
     });
   });
 
+  it("never sends a re-approved row another account registered before, whatever the pin", async () => {
+    // Registered by account B, gone from it, approved again: B's row.
+    const row = await registered(PHONE, "Kim's iPhone", "issuer-b");
+    const pending = (await core.recordIosDeviceOutcome({
+      id: row.id,
+      seen: { status: "registered", approvedAtMs: row.approved_at_ms },
+      issuerId: "issuer-b",
+      outcome: "missing",
+    }))!;
+    await core.approveIosDevice(pending.id, { approvedBy: null });
+    appleAdds();
+
+    const { expected } = await run();
+
+    expect(addAscDevices).not.toHaveBeenCalled();
+    expect(expected).toEqual([]);
+    expect(await statusOf(PHONE)).toMatchObject({
+      status: "approved",
+      apple_issuer_id: "issuer-b",
+    });
+  });
+
   it("names the account by the earliest registration, whatever two accounts left", () => {
     const row = (id: string, issuer: string, at: number) =>
       ({

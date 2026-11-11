@@ -794,9 +794,23 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     return noContent();
   }),
 
-  deleteIosDevice: onCore(async (core, _request, params) =>
-    json({ data: await core.deleteIosDevice(requireRouteParam(params, "id")) }),
-  ),
+  // With `status` or `requestedBy`, only a row that still has them.
+  deleteIosDevice: onCore(async (core, request, params) => {
+    const url = new URL(request.url);
+    const status = url.searchParams.get("status");
+    const requestedBy = url.searchParams.get("requestedBy");
+    const only = {
+      ...(status === null ? {} : { status: status as IosDeviceStatus }),
+      ...(requestedBy === null ? {} : { requestedBy }),
+    };
+    return json({
+      data: await refusingInvalid(() =>
+        Object.keys(only).length === 0
+          ? core.deleteIosDevice(requireRouteParam(params, "id"))
+          : core.deleteIosDevice(requireRouteParam(params, "id"), only),
+      ),
+    });
+  }),
 
   deleteBundles: onCore(async (core, request) => {
     const { ids } = await body(request);

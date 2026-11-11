@@ -22,7 +22,9 @@ vi.mock("@tanstack/react-router", () => ({
 // The header is under test; the cards have their own specs.
 vi.mock("./BuiltInBundleCard", () => ({ BuiltInBundleCard: () => null }));
 vi.mock("./InstallCard", () => ({ InstallCard: () => null }));
-vi.mock("./IpaDevicesCard", () => ({ IpaDevicesCard: () => null }));
+vi.mock("./IpaDevicesCard", () => ({
+  IpaDevicesCard: () => <p>Devices in this build</p>,
+}));
 vi.mock("./PatchesCard", () => ({ PatchesCard: () => null }));
 vi.mock("./ServedNowCard", () => ({ ServedNowCard: () => null }));
 
@@ -89,5 +91,19 @@ describe("NativeBuildDetailPage", () => {
     const title = show(build({}), "sandbox-release");
     expect(title.textContent).not.toMatch(/Sandbox/);
     expect(title.textContent).toContain("sandbox-release");
+  });
+
+  it("lists an ad hoc IPA's devices, and reads nothing more for a store's IPA or another artifact", () => {
+    show(build({}), "pr-130");
+    expect(screen.getByText("Devices in this build")).toBeTruthy();
+    cleanup();
+    show(
+      build({ submitted_to: "testflight", submitted_at_ms: 1 }),
+      "production",
+    );
+    expect(screen.queryByText("Devices in this build")).toBeNull();
+    cleanup();
+    show(build({ artifact_kind: "app" }), "pr-130");
+    expect(screen.queryByText("Devices in this build")).toBeNull();
   });
 });

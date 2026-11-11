@@ -32,6 +32,7 @@ import { IpaDevicesCard } from "./IpaDevicesCard";
 import { PatchesCard } from "./PatchesCard";
 import { SandboxBadge } from "./SandboxBadge";
 import { ServedNowCard } from "./ServedNowCard";
+import { isSubmitted } from "./StoreSubmission";
 
 export interface NativeBuildDetailSearch {
   /** Patches older than this target bundle: the next page. */
@@ -161,7 +162,9 @@ export function NativeBuildDetailPage({
           ) : (
             <>
               <InstallCard build={detail.build} />
-              {detail.build.artifact_kind === "ipa" ? (
+              {/* A store's IPA lists no devices: its page reads nothing more. */}
+              {detail.build.artifact_kind === "ipa" &&
+              !isSubmitted(detail.build) ? (
                 <IpaDevicesCard build={detail.build} />
               ) : null}
               <BuiltInBundleCard detail={detail} />
