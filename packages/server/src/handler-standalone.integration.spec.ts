@@ -334,6 +334,10 @@ describe("Standalone core API over admin API protocol 2", () => {
     await expect(
       remote.listNativeBuilds({ limit: 1, order: "desc" }),
     ).resolves.toEqual([newer]);
+    // A read through a key ends with it, over the admin API too.
+    await expect(
+      remote.listNativeBuilds({ limit: 10, order: "desc", through: newer.id }),
+    ).resolves.toEqual([newer]);
     await expect(register(newerId)).rejects.toThrow("already registered");
     await expect(remote.countBundles()).resolves.toBe(0);
     await expect(remote.deleteBundles([newerId])).rejects.toThrow(

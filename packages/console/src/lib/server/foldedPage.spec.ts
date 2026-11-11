@@ -20,8 +20,12 @@ const index = (count: number, ordinary: (n: number) => boolean) => {
     id: id(i + 1),
   }));
   const reads: number[] = [];
-  const read: ReadRows<Row> = async ({ order, after, limit }) => {
-    const sorted = order === "desc" ? [...rows].reverse() : [...rows];
+  const read: ReadRows<Row> = async ({ order, after, through, limit }) => {
+    const sorted = (order === "desc" ? [...rows].reverse() : [...rows]).filter(
+      (row) =>
+        through === undefined ||
+        (order === "desc" ? row.id >= through : row.id <= through),
+    );
     const start =
       after === undefined
         ? 0
@@ -259,6 +263,30 @@ describe("readFold", () => {
     });
     expect(rest.rows.map(({ id: rowId }) => rowId)).toEqual([id(13)]);
     expect(rest.next).toBeUndefined();
+  });
+
+  it("reads exactly a fold's range, however small, a chunk at a time however large", async () => {
+    const list = index(1_000, () => false);
+    const one = await readFold({ read: list.read, from: id(900), to: id(899) });
+    expect(one.rows.map(({ id: rowId }) => rowId)).toEqual([id(899)]);
+    // The read stops at the fold's last row: no row under it is read.
+    expect(list.reads).toEqual([1]);
+
+    list.reads.length = 0;
+    let after: string | undefined;
+    const rows: string[] = [];
+    do {
+      const chunk = await readFold({
+        read: list.read,
+        from: id(900),
+        to: id(780),
+        ...(after === undefined ? {} : { after }),
+      });
+      rows.push(...chunk.rows.map(({ id: rowId }) => rowId));
+      after = chunk.next;
+    } while (after !== undefined);
+    expect(rows).toHaveLength(120);
+    expect(list.reads).toEqual([50, 50, 20]);
   });
 
   it("reads a fold at the top of the list from the top", async () => {

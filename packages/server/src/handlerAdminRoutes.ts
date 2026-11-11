@@ -113,7 +113,13 @@ const keyset = (url: URL, maxValue: number = LIMITS.maxValue): KeysetInput => {
     );
   }
   const cursor = url.searchParams.get("cursor");
-  return { order, limit, ...(cursor === null ? {} : { after: cursor }) };
+  const through = url.searchParams.get("through");
+  return {
+    order,
+    limit,
+    ...(cursor === null ? {} : { after: cursor }),
+    ...(through === null ? {} : { through }),
+  };
 };
 
 /** A page and the cursor of the next one, when the page is full. */

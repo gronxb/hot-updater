@@ -82,10 +82,11 @@ const nativeBuildScopeParams = ({
   ...(fingerprintHash === null ? { appVersion } : { fingerprintHash }),
 });
 
-const keysetParams = ({ order, after, limit }: KeysetInput) => ({
+const keysetParams = ({ order, after, through, limit }: KeysetInput) => ({
   limit: String(limit),
   ...(order === undefined ? {} : { order }),
   ...(after === undefined ? {} : { cursor: after }),
+  ...(through === undefined ? {} : { through }),
 });
 
 const filterParams = (filter: ReleaseFilter): Record<string, string> => {

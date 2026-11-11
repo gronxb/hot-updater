@@ -203,7 +203,8 @@ answers them with `404`, which the CLI reports as a server to upgrade.
 
 List routes page by key. `order` is `asc` or `desc` (default `desc`), `limit`
 is 1–500 (default 50, at most 100 for `/bundles`), and `cursor` is the `next`
-value of the previous page. A page carries `next` only when it is full.
+value of the previous page. `through`, a key, ends the page with that key, so
+a page reads one range. A page carries `next` only when it is full.
 `GET /bundles?total=true` adds `total`, the number of Bundles, for `platform`
 when given. The list includes native builds' built-in bundles, which no
 Release publishes; `total` and `/bundles/count` leave them out.

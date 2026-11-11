@@ -31,6 +31,8 @@ export interface KeysetInput {
   readonly order?: "asc" | "desc";
   /** The last key a previous page returned. */
   readonly after?: string;
+  /** The last key this read may return: it ends with that key, if present. */
+  readonly through?: string;
   readonly limit: number;
 }
 

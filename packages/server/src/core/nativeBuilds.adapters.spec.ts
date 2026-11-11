@@ -279,3 +279,40 @@ describe.each(adapters)("the export method on %s", (_name, adapter) => {
     ).rejects.toThrow("exportMethod is an .ipa's");
   });
 });
+
+describe.each(adapters)(
+  "a native build read through a key on %s",
+  (_name, adapter) => {
+    it("ends at that key, either way, past `after` or from the edge", async () => {
+      const core = createInProcessCoreApi(await adapter());
+      for (const n of [1, 2, 3, 4, 5])
+        await core.registerNativeBuild(registration(n));
+      const ids = async (input: Parameters<typeof core.listNativeBuilds>[0]) =>
+        (await core.listNativeBuilds(input)).map(({ id }) => id);
+
+      expect(
+        await ids({
+          order: "desc",
+          after: buildId(5),
+          through: buildId(3),
+          limit: 10,
+        }),
+      ).toEqual([buildId(4), buildId(3)]);
+      expect(
+        await ids({ order: "desc", through: buildId(4), limit: 10 }),
+      ).toEqual([buildId(5), buildId(4)]);
+      expect(
+        await ids({
+          order: "asc",
+          after: buildId(1),
+          through: buildId(3),
+          limit: 10,
+        }),
+      ).toEqual([buildId(2), buildId(3)]);
+      // The limit still ends a read first.
+      expect(
+        await ids({ order: "desc", through: buildId(1), limit: 2 }),
+      ).toEqual([buildId(5), buildId(4)]);
+    });
+  },
+);

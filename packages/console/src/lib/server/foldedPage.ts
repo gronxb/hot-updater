@@ -63,10 +63,14 @@ export interface ReadBudget {
   left: number;
 }
 
-/** One read of the list's index: rows older (`desc`) or newer (`asc`) than `after`. */
+/**
+ * One read of the list's index: rows older (`desc`) or newer (`asc`) than
+ * `after`, up to `through`, which ends the read with that row.
+ */
 export type ReadRows<T> = (input: {
   readonly order: "asc" | "desc";
   readonly after?: string;
+  readonly through?: string;
   readonly limit: number;
 }) => Promise<readonly T[]>;
 
@@ -343,15 +347,14 @@ export async function readFold<T extends { readonly id: string }>({
   readonly limit?: number;
 }): Promise<{ readonly rows: readonly T[]; readonly next?: string }> {
   const cursor = after ?? from;
-  const chunk = await read({
+  // The read ends at `to`, so it reads the fold's rows and no other.
+  const rows = await read({
     order: "desc",
     limit,
+    through: to,
     ...(cursor === undefined ? {} : { after: cursor }),
   });
-  // IDs order the list, so a row older than `to` is past the fold.
-  const rows = chunk.filter(({ id }) => id >= to);
   const last = rows.at(-1)?.id;
-  const done =
-    rows.length < chunk.length || chunk.length < limit || last === to;
+  const done = rows.length < limit || last === to;
   return { rows, ...(done || last === undefined ? {} : { next: last }) };
 }
