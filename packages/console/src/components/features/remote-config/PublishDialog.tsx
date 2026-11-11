@@ -311,7 +311,10 @@ export function PublishDialog({
               type="submit"
             >
               {publish.isPending ? (
-                <Loader2 className="animate-spin" data-icon="inline-start" />
+                <Loader2
+                  className="animate-spin motion-reduce:animate-none"
+                  data-icon="inline-start"
+                />
               ) : (
                 <Upload data-icon="inline-start" />
               )}

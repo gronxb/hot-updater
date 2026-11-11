@@ -585,7 +585,7 @@ describe("NativeBuildsTable", () => {
     const pages = screen.getByRole("navigation", {
       name: "Native build pages",
     });
-    expect(pages.textContent).toContain("1 entry, newest first");
+    expect(pages.textContent).toContain("1 build, newest first");
     expect(
       screen.getByRole("link", { name: "Previous" }).getAttribute("href"),
     ).toBe(`/native-builds?channel=pr-130&after=${id(8)}`);
@@ -751,11 +751,12 @@ describe("NativeBuildsTable", () => {
       expect(
         foldQuery.mock.calls.every(([, , enabled]) => enabled === false),
       ).toBe(true);
-      // The pager counts the ordinary rows.
+      // The pager counts the ordinary rows, and what the folds hold.
       expect(
-        screen.getByRole("navigation", { name: "Native build pages" })
-          .textContent,
-      ).toContain("2 entries, newest first");
+        screen
+          .getByRole("navigation", { name: "Native build pages" })
+          .querySelector("p")?.textContent,
+      ).toBe("2 builds, newest first · , 3 older folded");
     });
 
     it("opens one fold in place: exactly its range, in order, each build shaded and naming its newer build", async () => {
@@ -796,8 +797,16 @@ describe("NativeBuildsTable", () => {
         name: `Open native build ${id(79)}`,
       });
       expect(older.getAttribute("data-older")).toBe("true");
-      expect(older.className).toContain("data-[older=true]:bg-muted/35");
+      expect(older.className).toContain("data-[older=true]:bg-muted/60");
       const reason = within(older).getByRole("button", { name: /^Older/ });
+      // In the first column beside the kind, where Bundles says "Unreachable";
+      // Created keeps only the time.
+      const cells = within(older).getAllByRole("cell");
+      expect(cells[0]!.contains(reason)).toBe(true);
+      expect(cells[0]!.firstElementChild?.className).toContain("max-w-24");
+      expect(
+        cells.slice(1).some((cell) => /Older/.test(cell.textContent ?? "")),
+      ).toBe(false);
       expect(reason.getAttribute("aria-label")).toBe(
         "Older: a newer TestFlight build exists, iOS 1.7.0 (80)",
       );
@@ -852,6 +861,30 @@ describe("NativeBuildsTable", () => {
       ).toBe("Older: a newer build on its channel reaches people the same way");
     });
 
+    it("names the rows an open fold couldn't load, with Retry", () => {
+      const failed = {
+        data: undefined,
+        isPending: false,
+        isError: true,
+        isFetchingNextPage: false,
+        hasNextPage: false,
+        fetchNextPage: vi.fn(),
+        refetch: vi.fn(),
+      };
+      foldQuery.mockImplementation(
+        (_channel: unknown, _bounds: unknown, enabled: boolean) =>
+          enabled ? failed : { data: undefined, isPending: true },
+      );
+      render(table());
+      fireEvent.click(screen.getByRole("button", { name: "2 older builds" }));
+
+      expect(screen.getByRole("status").textContent).toBe(
+        "Older builds couldn't be loaded.",
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      expect(failed.refetch).toHaveBeenCalled();
+    });
+
     it("says 100+ for a fold past its cap, and loads more of it on request", () => {
       const more = foldPage({ rows: [testflight(79)], hasNextPage: true });
       foldQuery.mockImplementation(
@@ -865,6 +898,12 @@ describe("NativeBuildsTable", () => {
       fireEvent.click(screen.getByRole("button", { name: "Show more" }));
 
       expect(more.fetchNextPage).toHaveBeenCalled();
+      // A capped fold makes the total a floor.
+      expect(
+        screen
+          .getByRole("navigation", { name: "Native build pages" })
+          .querySelector("p")?.textContent,
+      ).toBe("1 build, newest first · , 100+ older folded");
     });
 
     it("shows a page of older builds alone as one fold under the empty state", () => {

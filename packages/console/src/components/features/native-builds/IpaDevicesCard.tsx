@@ -6,10 +6,14 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNativeBuildIpaDevicesQuery } from "@/lib/ios-devices-api";
+import { maskIosUdid } from "@/lib/native-builds";
+
+import { ShortHash } from "./ShortHash";
 
 /**
  * The devices an ad hoc IPA installs on, read from its signing profile: each
- * by the registry's name when the registry knows it, else by its UDID. Read
+ * by the registry's name when the registry knows it, else as an unknown
+ * device, over its UDID's last characters, which copy the whole UDID. Read
  * only: the IPA decides, and a new build is what adds a device.
  */
 export function IpaDevicesCard({ build }: { readonly build: NativeBuildRow }) {
@@ -79,24 +83,24 @@ export function IpaDevicesCard({ build }: { readonly build: NativeBuildRow }) {
                   aria-hidden="true"
                   className="size-4 shrink-0 text-muted-foreground"
                 />
-                {device.name === null ? (
+                <span className="flex min-w-0 flex-col items-start">
                   <span
-                    className="min-w-0 font-mono text-xs [overflow-wrap:anywhere]"
-                    translate="no"
+                    className={
+                      device.name === null
+                        ? "truncate text-muted-foreground"
+                        : "truncate"
+                    }
                   >
-                    {device.udid}
+                    {device.name ?? "Unknown device"}
                   </span>
-                ) : (
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate">{device.name}</span>
-                    <span
-                      className="font-mono text-xs text-muted-foreground"
-                      translate="no"
-                    >
-                      …{device.udid.slice(-6)}
-                    </span>
+                  <span className="text-muted-foreground">
+                    <ShortHash
+                      label="UDID"
+                      shown={maskIosUdid(device.udid)}
+                      value={device.udid}
+                    />
                   </span>
-                )}
+                </span>
               </li>
             ))}
           </ul>

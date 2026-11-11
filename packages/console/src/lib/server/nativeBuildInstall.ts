@@ -198,6 +198,11 @@ export type NativeBuildInstallEligibility =
        * it names may be a sandbox's or another app's.
        */
       readonly newerBuild: string | null;
+      /**
+       * Whether the viewer approves devices, which decides the next step under
+       * Apple's refusal: asked only when `registry` carries one, else false.
+       */
+      readonly canApprove: boolean;
       readonly expiresAt: string | null;
       /** The token of the Install button's manifest and download. */
       readonly link: NativeBuildDownloadLinkResult;
@@ -277,10 +282,13 @@ export const checkNativeBuildInstall = async (
     request,
     now = Date.now(),
     fetch = globalThis.fetch,
+    canApprove = async () => false,
   }: {
     readonly request?: Request;
     readonly now?: number;
     readonly fetch?: typeof globalThis.fetch;
+    /** Whether the viewer approves devices, asked only under Apple's refusal. */
+    readonly canApprove?: () => Promise<boolean>;
   } = {},
 ): Promise<NativeBuildInstallEligibility> => {
   const build = await core.getNativeBuild(id);
@@ -317,6 +325,7 @@ export const checkNativeBuildInstall = async (
             fetch,
             now,
           }),
+    canApprove: registry?.apple_error == null ? false : await canApprove(),
     expiresAt,
     link: await issueNativeBuildDownloadLink(
       id,

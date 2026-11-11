@@ -87,6 +87,7 @@ const viewAs = (
   },
   defaultName: "Lead's iPhone",
   registration: "ready",
+  secretName: "BETTER_AUTH_SECRET",
 });
 
 const show = (view: IosDevicesView, search = {}) => {
@@ -184,6 +185,10 @@ describe("IosDevicesPage", () => {
       ),
     ).toBeTruthy();
     expect(within(dialog).getByText("kim@team.dev")).toBeTruthy();
+    // The whole UDID, to check against the device: a phone never hovers.
+    const udid = within(dialog).getByText("00008030-001c2d3e4f5a6b7c");
+    expect(udid.className).toContain("select-all");
+    expect(udid.className).toContain("font-mono");
     fireEvent.change(within(dialog).getByLabelText("Name"), {
       target: { value: "Kim's work iPhone" },
     });
@@ -213,7 +218,7 @@ describe("IosDevicesPage", () => {
     expect(within(other).queryAllByRole("button")).toEqual([]);
   });
 
-  it("says a removed device stays in builds while Apple has it enabled, with the terminal step for approvers", () => {
+  it("says in one line that a removed device stays in builds until Apple disables it, with the command for approvers", () => {
     show(
       viewAs({}, [
         device({
@@ -232,8 +237,11 @@ describe("IosDevicesPage", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
     const dialog = screen.getByRole("alertdialog");
     expect(
-      within(dialog).getByText(/stays in new ad hoc builds while it's enabled/),
+      within(dialog).getByText(
+        "It leaves the list. New ad hoc builds keep it until it's disabled at Apple.",
+      ),
     ).toBeTruthy();
+    expect(within(dialog).queryByText(/membership year/)).toBeNull();
     expect(
       within(dialog).getByText(
         "npx hot-updater native-build devices remove --udid 00008030-001c2d3e4f5a6b7c",
@@ -246,7 +254,49 @@ describe("IosDevicesPage", () => {
     );
   });
 
-  it("shows Apple's refusal under the status, and the build that lists a device", () => {
+  it("marks Apple's refusal of an approved device with a warning in place of Approved, its reason under it", () => {
+    show(
+      viewAs({}, [
+        device({
+          status: "approved",
+          approved_at_ms: 1,
+          apple_error: "The maximum number of devices was reached.",
+        }),
+        device({
+          id: "01a1c984-724b-7de1-89a1-c93003b4ff50",
+          udid: "a".repeat(40),
+          name: "Lee's iPad",
+          status: "approved",
+          approved_at_ms: 1,
+        }),
+      ]),
+    );
+    const refused = screen.getByRole("row", { name: /Kim's iPhone/ });
+    const badge = within(refused).getByText("Apple refused");
+    expect(badge.getAttribute("data-variant")).toBe("warning");
+    expect(within(refused).queryByText("Approved")).toBeNull();
+    expect(
+      within(refused).getByText("The maximum number of devices was reached."),
+    ).toBeTruthy();
+    const approved = screen.getByRole("row", { name: /Lee's iPad/ });
+    expect(
+      within(approved).getByText("Approved").getAttribute("data-variant"),
+    ).toBe("secondary");
+  });
+
+  it("names a device the CLI added as added from a terminal, and shows a device with no build as -", () => {
+    show(
+      viewAs({}, [
+        device({ requested_by: null, status: "approved", approved_at_ms: 1 }),
+      ]),
+    );
+    const row = screen.getByRole("row", { name: /Kim's iPhone/ });
+    expect(within(row).getByText("Added from a terminal")).toBeTruthy();
+    expect(within(row).getByText("-")).toBeTruthy();
+    expect(within(row).queryByText("—")).toBeNull();
+  });
+
+  it("shows Apple's reason under a registered device's status, and the build that lists a device", () => {
     show(
       viewAs({}, [
         device({
@@ -257,6 +307,7 @@ describe("IosDevicesPage", () => {
       ]),
     );
     const row = screen.getByRole("row", { name: /Kim's iPhone/ });
+    expect(within(row).getByText("Registered")).toBeTruthy();
     expect(
       within(row).getByText("Disabled in the Apple account."),
     ).toBeTruthy();

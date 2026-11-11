@@ -1,3 +1,4 @@
+import { NoValue } from "@/components/TargetDisplay";
 import { useConfigQuery } from "@/lib/api";
 import { getCommitUrl } from "@/lib/git";
 
@@ -10,7 +11,7 @@ import { ShortHash } from "./ShortHash";
  */
 export function CommitLink({ hash }: { readonly hash: string | null }) {
   const config = useConfigQuery();
-  if (hash === null) return <span className="text-muted-foreground">—</span>;
+  if (hash === null) return <NoValue />;
   const url = getCommitUrl(config.data?.console.gitUrl, hash);
   return url === null ? (
     <ShortHash label="commit" length={7} value={hash} />

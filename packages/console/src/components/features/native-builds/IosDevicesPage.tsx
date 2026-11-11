@@ -30,6 +30,7 @@ import {
 } from "@/components/DataTable";
 import { QrCode } from "@/components/QrCode";
 import { RelativeTime } from "@/components/RelativeTime";
+import { NoValue } from "@/components/TargetDisplay";
 import {
   Alert,
   AlertAction,
@@ -146,6 +147,17 @@ const actionsFor = (device: IosDeviceRow, viewer: Viewer) => ({
     device.requested_by === viewer.email,
 });
 
+/**
+ * Apple's refusal of an approved device is the row an approver acts on, so it
+ * takes the warning in place of Approved; the other states stay neutral.
+ */
+const appleRefused = (device: IosDeviceRow) =>
+  device.status === "approved" && device.apple_error !== null;
+
+/** Who asked for a device: a person, or a terminal for one the CLI added. */
+const requesterOf = (device: IosDeviceRow) =>
+  device.requested_by ?? "Added from a terminal";
+
 function AppleError({ device }: { readonly device: IosDeviceRow }) {
   return device.apple_error === null ? null : (
     <span className="max-w-64 text-xs whitespace-normal text-muted-foreground">
@@ -164,9 +176,13 @@ function DeviceStatus({
 }) {
   return (
     <div className="flex min-w-0 shrink-0 flex-col items-start gap-1">
-      <Badge variant={STATUS_BADGES[device.status]}>
-        {STATUS_LABELS[device.status]}
-      </Badge>
+      {appleRefused(device) ? (
+        <Badge variant="warning">Apple refused</Badge>
+      ) : (
+        <Badge variant={STATUS_BADGES[device.status]}>
+          {STATUS_LABELS[device.status]}
+        </Badge>
+      )}
       {withError ? <AppleError device={device} /> : null}
     </div>
   );
@@ -174,7 +190,7 @@ function DeviceStatus({
 
 function DeviceBuild({ device }: { readonly device: IosDeviceRow }) {
   if (device.build_id === null) {
-    return <span className="text-muted-foreground">—</span>;
+    return <NoValue />;
   }
   let label = "A build";
   try {
@@ -217,7 +233,7 @@ function DeviceActions({
     <div className="flex items-center justify-end gap-1">
       {can.approve ? (
         <Button
-          className="h-11 sm:h-7"
+          className="h-11 sm:h-8"
           onClick={() => onOpen({ kind: "approve", device })}
           size="sm"
         >
@@ -227,7 +243,7 @@ function DeviceActions({
       ) : null}
       {can.withdraw ? (
         <Button
-          className="h-11 sm:h-7"
+          className="h-11 sm:h-8"
           onClick={() => onOpen({ kind: "remove", device })}
           size="sm"
           variant="outline"
@@ -241,7 +257,7 @@ function DeviceActions({
             render={
               <Button
                 aria-label={`More actions for ${device.name}`}
-                className="size-11 sm:size-7"
+                className="size-11 sm:size-8"
                 size="icon-sm"
                 variant="ghost"
               />
@@ -290,7 +306,7 @@ function DeviceRow({
       </TableCell>
       <TableCell className="text-xs">
         {device.requested_by ?? (
-          <span className="text-muted-foreground">Terminal</span>
+          <span className="text-muted-foreground">{requesterOf(device)}</span>
         )}
       </TableCell>
       <TableCell>
@@ -331,7 +347,7 @@ function DeviceCard({
       </div>
       <AppleError device={device} />
       <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-        <span>{device.requested_by ?? "Terminal"}</span>
+        <span>{requesterOf(device)}</span>
         <span aria-hidden="true">·</span>
         <RelativeTime ms={device.created_at_ms} />
         {device.build_id === null ? null : (
@@ -388,11 +404,15 @@ function NameDialog({
               <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
                 <dt className="text-muted-foreground">Requested by</dt>
                 <dd className="truncate">
-                  {target.device.requested_by ?? "Terminal"}
+                  {target.device.requested_by ?? "Terminal (CLI)"}
                 </dd>
                 <dt className="text-muted-foreground">UDID</dt>
-                <dd className="font-mono text-xs" translate="no">
-                  {maskIosUdid(target.device.udid)}
+                {/* All of it, to check against Finder: a phone has no hover. */}
+                <dd
+                  className="font-mono text-xs break-all select-all"
+                  translate="no"
+                >
+                  {target.device.udid}
                 </dd>
               </dl>
             ) : null}
@@ -425,7 +445,10 @@ function NameDialog({
               type="submit"
             >
               {mutation.isPending ? (
-                <Loader2 className="animate-spin" data-icon="inline-start" />
+                <Loader2
+                  className="animate-spin motion-reduce:animate-none"
+                  data-icon="inline-start"
+                />
               ) : (
                 <Check data-icon="inline-start" />
               )}
@@ -464,15 +487,11 @@ function RemoveDialog({
           <AlertDialogDescription>
             {decline
               ? "It leaves the list. Its owner can request it again."
-              : "It leaves the registry, but it stays in new ad hoc builds while it's enabled in your Apple account: Xcode's automatic ad hoc profile takes every enabled device on the team. A build that is running may already have registered it."}
+              : "It leaves the list. New ad hoc builds keep it until it's disabled at Apple."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         {decline || !viewer.canApprove ? null : (
-          <div className="flex min-w-0 flex-col gap-1.5 text-xs text-muted-foreground [&_code]:break-words [&_code]:whitespace-normal">
-            <p>
-              To keep it out of new builds, disable it at Apple from a terminal.
-              Its slot isn't returned until the membership year renews.
-            </p>
+          <div className="flex min-w-0 flex-col text-xs text-muted-foreground [&_code]:break-words [&_code]:whitespace-normal">
             <CopyableText
               label="the command that disables it"
               value={`npx hot-updater native-build devices remove --udid ${device.udid}`}
@@ -499,13 +518,34 @@ function RemoveDialog({
             variant="destructive"
           >
             {remove.isPending ? (
-              <Loader2 className="animate-spin" data-icon="inline-start" />
+              <Loader2
+                className="animate-spin motion-reduce:animate-none"
+                data-icon="inline-start"
+              />
             ) : null}
             {withdraw ? "Withdraw" : decline ? "Decline" : "Remove"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  );
+}
+
+/** Why iPhones can't register through this Console. */
+function RegistrationNotice({
+  status,
+  secretName,
+}: {
+  readonly status: "local-console" | "no-secret";
+  /** The secret to set, for `no-secret`. */
+  readonly secretName?: string;
+}) {
+  return (
+    <p className="text-xs text-muted-foreground" role="status">
+      {status === "local-console"
+        ? "iPhones register through your hosted Console: an iPhone can't reach this computer's."
+        : `Set ${secretName} on this Console to register iPhones.`}
+    </p>
   );
 }
 
@@ -558,19 +598,16 @@ function RegisterCard({
         </p>
       );
     }
-    if (view?.registration === "local-console") {
+    if (
+      view !== undefined &&
+      (view.registration === "local-console" ||
+        view.registration === "no-secret")
+    ) {
       return (
-        <p className="text-xs text-muted-foreground" role="status">
-          iPhones register through your hosted Console: an iPhone can't reach
-          this computer's.
-        </p>
-      );
-    }
-    if (view?.registration === "no-secret") {
-      return (
-        <p className="text-xs text-muted-foreground" role="status">
-          Set BETTER_AUTH_SECRET on this Console to register iPhones.
-        </p>
+        <RegistrationNotice
+          secretName={view.secretName}
+          status={view.registration}
+        />
       );
     }
     if (!onPhone) {
@@ -601,18 +638,14 @@ function RegisterCard({
       );
     }
     if (link.data?.status === "local-console") {
-      return (
-        <p className="text-xs text-muted-foreground" role="status">
-          iPhones register through your hosted Console: an iPhone can't reach
-          this computer's.
-        </p>
-      );
+      return <RegistrationNotice status="local-console" />;
     }
     if (link.data?.status === "no-secret") {
       return (
-        <p className="text-xs text-muted-foreground" role="status">
-          Set {link.data.secretName} on this Console to register iPhones.
-        </p>
+        <RegistrationNotice
+          secretName={link.data.secretName}
+          status="no-secret"
+        />
       );
     }
     return (
@@ -700,7 +733,7 @@ export function IosDevicesPage({
         <p>Open this page on an iPhone to register it.</p>
       ) : (
         <Button
-          className="h-11 sm:h-7"
+          className="h-11 sm:h-8"
           onClick={() => onSearchChange({})}
           size="sm"
           variant="outline"

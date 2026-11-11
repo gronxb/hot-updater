@@ -328,7 +328,7 @@ describe("BundlesPage", () => {
     });
     const state = within(row).getByRole("button", { name: /^Unreachable/ });
 
-    expect(row.className).toContain("bg-muted/35");
+    expect(row.className).toContain("bg-muted/60");
     expect(row.className).toContain("saturate-50");
     expect(row.className).toContain("hover:saturate-100");
     expect(row.className).toContain("motion-reduce:transition-none");
@@ -403,7 +403,7 @@ describe("BundlesPage", () => {
     expect(screen.queryByLabelText("Target app version")).toBeNull();
     expect(
       screen.getByText((_, node) =>
-        Boolean(node?.textContent === "1 entry, newest first"),
+        Boolean(node?.textContent === "1 bundle, newest first"),
       ),
     ).toBeDefined();
     expect(screen.queryByText(/^Page /)).toBeNull();
@@ -569,12 +569,12 @@ describe("BundlesPage", () => {
       expect(
         mocks.foldQuery.mock.calls.every(([, , enabled]) => enabled === false),
       ).toBe(true);
-      // The pager counts the reachable rows.
+      // The pager counts the reachable rows, and what its folds hold.
       expect(
-        screen.getByText((_, node) =>
-          Boolean(node?.textContent === "2 entries, newest first"),
-        ),
-      ).toBeDefined();
+        screen
+          .getByRole("navigation", { name: "Bundle pagination" })
+          .querySelector("p")?.textContent,
+      ).toBe("2 bundles, newest first · , 3 unreachable folded");
     });
 
     it("opens one fold in place: exactly its range, its bundles subdued, saying why by tap or focus", async () => {
@@ -599,7 +599,7 @@ describe("BundlesPage", () => {
       const subdued = screen.getByRole("row", {
         name: "Open bundle release-2",
       });
-      expect(subdued.className).toContain("bg-muted/35");
+      expect(subdued.className).toContain("bg-muted/60");
       const reason = within(subdued).getByRole("button", {
         name: /^Unreachable/,
       });

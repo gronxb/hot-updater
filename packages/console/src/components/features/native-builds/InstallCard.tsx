@@ -1,6 +1,12 @@
 import type { NativeBuildRow } from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
-import { AlertTriangle, Download, ExternalLink } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronRight,
+  Download,
+  ExternalLink,
+} from "lucide-react";
+import { type ReactNode, useId, useState } from "react";
 
 import { QrCode } from "@/components/QrCode";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -350,6 +356,35 @@ export function InstallCard({ build }: { readonly build: NativeBuildRow }) {
   );
 }
 
+/**
+ * On the iPhone, what installs the IPA from a computer, closed under the one
+ * action this phone takes: over USB, TestFlight, the download, and its link.
+ */
+function OtherWaysToInstall({ children }: { readonly children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <div className="flex min-w-0 flex-col gap-3 border-t pt-3">
+      <button
+        aria-controls={id}
+        aria-expanded={open}
+        className="group/other -mx-1 flex min-h-11 items-center gap-1.5 self-start rounded-md px-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none sm:min-h-8"
+        onClick={() => setOpen((value) => !value)}
+        type="button"
+      >
+        <ChevronRight
+          aria-hidden="true"
+          className="size-3.5 shrink-0 transition-transform group-aria-expanded/other:rotate-90 motion-reduce:transition-none"
+        />
+        Other ways to install
+      </button>
+      <div hidden={!open} id={id}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function FileInstallCard({ build }: { readonly build: NativeBuildRow }) {
   const fileName = nativeBuildFileName(build);
   const link = useNativeBuildDownloadLinkQuery(build.id);
@@ -360,6 +395,26 @@ function FileInstallCard({ build }: { readonly build: NativeBuildRow }) {
   const device = useIosDevice();
   const ipa = build.artifact_kind === "ipa";
   const onPhone = ipa && device?.ios === true;
+  const otherWays = (
+    <div className="flex min-w-0 flex-col gap-4">
+      <InstallSteps build={build} />
+      <a
+        className={buttonVariants({
+          className:
+            "h-auto min-h-11 w-full min-w-0 py-2 whitespace-normal sm:min-h-8 sm:w-fit",
+          variant: "outline",
+        })}
+        download
+        href={signedUrl ?? nativeBuildDownloadPath(build.id)}
+      >
+        <Download data-icon="inline-start" />
+        <span className="text-left [overflow-wrap:anywhere]">
+          Download {fileName}
+        </span>
+      </a>
+      <SignedLink link={link.data} url={signedUrl} />
+    </div>
+  );
   return (
     <Card className="overflow-hidden shadow-sm">
       <CardHeader className="border-b px-4 py-3">
@@ -367,45 +422,27 @@ function FileInstallCard({ build }: { readonly build: NativeBuildRow }) {
           <h2>Install</h2>
         </CardTitle>
       </CardHeader>
-      <CardContent
-        className={
-          onPhone
-            ? "flex min-w-0 flex-col gap-6 p-4 sm:p-6"
-            : "grid gap-6 p-4 sm:grid-cols-[12rem_minmax(0,1fr)] sm:p-6"
-        }
-      >
-        {onPhone ? (
+      {onPhone ? (
+        <CardContent className="flex min-w-0 flex-col gap-4 p-4 sm:p-6">
           <IosInstall build={build} device={device} />
-        ) : ipa && signedUrl !== null ? (
-          <ScannablePage />
-        ) : signedUrl !== null ? (
-          <ScannableUrl build={build} url={signedUrl} />
-        ) : link.data !== undefined ? (
-          <StorageQrCode build={build} />
-        ) : link.isError ? (
-          <QrProblem message={link.error.message} />
-        ) : (
-          <Skeleton className="size-48" />
-        )}
-        <div className="flex min-w-0 flex-col gap-4">
-          <InstallSteps build={build} />
-          <a
-            className={buttonVariants({
-              className:
-                "h-auto min-h-11 w-full min-w-0 py-2 whitespace-normal sm:min-h-8 sm:w-fit",
-              variant: "outline",
-            })}
-            download
-            href={signedUrl ?? nativeBuildDownloadPath(build.id)}
-          >
-            <Download data-icon="inline-start" />
-            <span className="text-left [overflow-wrap:anywhere]">
-              Download {fileName}
-            </span>
-          </a>
-          <SignedLink link={link.data} url={signedUrl} />
-        </div>
-      </CardContent>
+          <OtherWaysToInstall>{otherWays}</OtherWaysToInstall>
+        </CardContent>
+      ) : (
+        <CardContent className="grid gap-6 p-4 sm:grid-cols-[12rem_minmax(0,1fr)] sm:p-6">
+          {ipa && signedUrl !== null ? (
+            <ScannablePage />
+          ) : signedUrl !== null ? (
+            <ScannableUrl build={build} url={signedUrl} />
+          ) : link.data !== undefined ? (
+            <StorageQrCode build={build} />
+          ) : link.isError ? (
+            <QrProblem message={link.error.message} />
+          ) : (
+            <Skeleton className="size-48" />
+          )}
+          {otherWays}
+        </CardContent>
+      )}
     </Card>
   );
 }

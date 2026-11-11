@@ -7,11 +7,14 @@ import { toast } from "sonner";
 export function ShortHash({
   value,
   length,
+  shown = value.slice(0, length),
   label,
 }: {
   readonly value: string;
   /** How many leading characters show, such as 7 for a commit. */
-  readonly length: number;
+  readonly length?: number;
+  /** What shows in place of the prefix, such as a masked UDID. */
+  readonly shown?: string;
   /** What the value is, for the copy button, such as "commit". */
   readonly label: string;
 }) {
@@ -35,7 +38,7 @@ export function ShortHash({
       translate="no"
       type="button"
     >
-      {value.slice(0, length)}
+      {shown}
     </button>
   );
 }

@@ -158,7 +158,10 @@ export function FoldStatus({
   columns,
 }: {
   readonly state: "loading" | "more" | "error";
-  /** What loads, for screen readers, such as "Loading older builds". */
+  /**
+   * What loads, such as "Loading older builds" for screen readers, or the
+   * rows themselves, such as "Older builds", which an error names.
+   */
   readonly label: string;
   readonly onMore?: () => void;
   readonly onRetry?: () => void;
@@ -176,7 +179,7 @@ export function FoldStatus({
       <div className="flex items-center gap-3 px-4 py-2 sm:px-3">
         {state === "error" ? (
           <span className="text-xs text-muted-foreground" role="status">
-            These rows couldn't be loaded.
+            {label} couldn't be loaded.
           </span>
         ) : null}
         <Button
@@ -199,3 +202,18 @@ export function FoldStatus({
     </TableRow>
   );
 }
+
+/**
+ * What a page's folds hold: their counts summed, and whether any holds more
+ * than it says (past its cap, or past the page), so the total is a floor.
+ */
+export const foldedTotal = (entries: readonly FoldedEntry<unknown>[]) => {
+  let count = 0;
+  let more = false;
+  for (const entry of entries) {
+    if (entry.kind !== "fold") continue;
+    count += entry.count;
+    more ||= entry.more;
+  }
+  return { count, more };
+};

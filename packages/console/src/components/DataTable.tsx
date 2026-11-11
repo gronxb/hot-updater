@@ -224,13 +224,27 @@ export type PageLink = Pick<LinkProps, "to" | "search">;
  */
 export function DataTablePagination({
   count,
+  noun,
+  folded,
   label,
   pending = false,
   newest,
   previous,
   next,
 }: {
+  /** The page's rows outside its folds. */
   readonly count: number;
+  /** What `count` counts, such as ["build", "builds"]. */
+  readonly noun: readonly [one: string, other: string];
+  /**
+   * What the page folds, such as "older": its total, a floor when a fold says
+   * "100+" or continues on the next page. Nothing when the page folds none.
+   */
+  readonly folded?: {
+    readonly count: number;
+    readonly more: boolean;
+    readonly label: string;
+  };
   /** The navigation's name, such as "Bundle pagination". */
   readonly label: string;
   /**
@@ -252,7 +266,18 @@ export function DataTablePagination({
     >
       <p className="text-xs font-medium text-muted-foreground">
         <span className="text-foreground">{count}</span>{" "}
-        {count === 1 ? "entry" : "entries"}, newest first
+        {count === 1 ? noun[0] : noun[1]}, newest first
+        {folded === undefined || folded.count === 0 ? null : (
+          <>
+            <span aria-hidden="true"> · </span>
+            <span className="sr-only">, </span>
+            <span className="text-foreground">
+              {folded.count}
+              {folded.more ? "+" : ""}
+            </span>{" "}
+            {folded.label} folded
+          </>
+        )}
       </p>
       <div className="flex flex-wrap items-center gap-3 sm:justify-end">
         {newest && !pending ? (

@@ -414,5 +414,18 @@ export const getNativeBuildInstallEligibility = createServerFn({
       prepare(),
       import("./server/nativeBuildInstall"),
     ]);
-    return checkNativeBuildInstall(data.id, data.udid, deps);
+    return checkNativeBuildInstall(data.id, data.udid, deps, {
+      // Under Apple's refusal only: an approver gets the iOS devices page.
+      canApprove: async () => {
+        const [{ getRequest }, { requireConsoleAccess }, { iosDeviceViewer }] =
+          await Promise.all([
+            import("@tanstack/react-start/server"),
+            import("./server/auth.server"),
+            import("./server/iosDevices"),
+          ]);
+        const principal = await requireConsoleAccess(getRequest());
+        return (await iosDeviceViewer(principal, deps.config.deviceApprovers))
+          .canApprove;
+      },
+    });
   });
