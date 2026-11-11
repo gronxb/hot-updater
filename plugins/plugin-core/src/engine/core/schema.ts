@@ -250,6 +250,50 @@ const nativeBuilds = defineTable(
   },
 );
 
+/**
+ * The iPhones a team asks to install ad hoc builds on. A row decides what the
+ * CLI registers with Apple, not what an export includes: Xcode's automatic ad
+ * hoc profile lists every device the Apple account has enabled. `status` is
+ * `pending` until someone approves it, `approved` until a build or
+ * `native-build devices add` registers it with Apple, then `registered`;
+ * declining or removing one deletes its row. `udid` is the UDID in lower case.
+ * `apple_issuer_id` is the App Store Connect issuer whose key registered it,
+ * set once: a build signed by another account never registers these rows.
+ * `apple_error` is Apple's refusal of the device, or why it stopped counting
+ * it, cleared by the next success. `build_id` is the newest native build whose
+ * .ipa the CLI checked lists it; deleting that build never touches the row.
+ * It holds personal data: a UDID, a name, and the emails of who asked and who
+ * approved, null for the CLI.
+ */
+const iosDevices = defineTable(
+  {
+    id: { type: "string", maxLength: 36 },
+    udid: { type: "string", maxLength: 40, ascii: true, unique: true },
+    name: { type: "string", maxLength: 100 },
+    status: { type: "string", maxLength: 16 },
+    requested_by: { type: "string", maxLength: 320, required: false },
+    created_at_ms: { type: "integer" },
+    approved_by: { type: "string", maxLength: 320, required: false },
+    approved_at_ms: { type: "integer", required: false },
+    registered_at_ms: { type: "integer", required: false },
+    apple_issuer_id: {
+      type: "string",
+      maxLength: 64,
+      ascii: true,
+      required: false,
+    },
+    apple_error: { type: "string", maxLength: 512, required: false },
+    build_id: { type: "string", maxLength: 36, required: false },
+  },
+  {
+    key: ["id"],
+    indexes: {
+      byStatus: { eq: ["status"], sort: ["id"] },
+      all: { eq: [], sort: ["id"] },
+    },
+  },
+);
+
 /** Bundles per platform and in total (`platform_key` is a platform or `*`). */
 const bundleTotals = defineAggregate(
   { platform_key: { type: "string", maxLength: 16 } },
@@ -268,6 +312,7 @@ export const coreSchema = {
   channels,
   bundle_totals: bundleTotals,
   native_builds: nativeBuilds,
+  ios_devices: iosDevices,
 } as const;
 
 /**

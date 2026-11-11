@@ -12,7 +12,15 @@ CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byChannel" ON "hot_upda
 
 CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_min_bundle_id" ON "hot_updater_v1_native_builds" ("min_bundle_id");
 
+CREATE TABLE IF NOT EXISTS "hot_updater_v1_ios_devices" ("id" varchar(36) COLLATE "C" NOT NULL, "udid" varchar(40) COLLATE "C" NOT NULL, "name" varchar(100) COLLATE "C" NOT NULL, "status" varchar(16) COLLATE "C" NOT NULL, "requested_by" varchar(320) COLLATE "C", "created_at_ms" bigint NOT NULL, "approved_by" varchar(320) COLLATE "C", "approved_at_ms" bigint, "registered_at_ms" bigint, "apple_issuer_id" varchar(64) COLLATE "C", "apple_error" varchar(512) COLLATE "C", "build_id" varchar(36) COLLATE "C", "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
+CREATE INDEX IF NOT EXISTS "hot_updater_v1_ios_devices_byStatus" ON "hot_updater_v1_ios_devices" ("status", "id");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_ios_devices_udid" ON "hot_updater_v1_ios_devices" ("udid");
+
 ALTER TABLE "hot_updater_v1_native_builds" ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE "hot_updater_v1_ios_devices" ENABLE ROW LEVEL SECURITY;
 
 CREATE OR REPLACE FUNCTION public.hot_updater_v1_apply(p_statements jsonb)
 RETURNS jsonb
@@ -33,7 +41,7 @@ BEGIN
   FOR item IN SELECT value FROM jsonb_array_elements(p_statements) LOOP
     statement := item->>'sql';
     FOR target IN SELECT (regexp_matches(statement, '(?:FROM|INTO|UPDATE|JOIN) "([^"]+)"', 'g'))[1] LOOP
-      IF NOT target = ANY (ARRAY['hot_updater_v1_bundles', 'hot_updater_v1_bundle_patches', 'hot_updater_v1_releases', 'hot_updater_v1_release_catalogs', 'hot_updater_v1_channels', 'hot_updater_v1_bundle_totals', 'hot_updater_v1_native_builds', 'hot_updater_v1_bundle_events', 'hot_updater_v1_bundle_events__byBundle', 'hot_updater_v1_bundle_event_heads', 'hot_updater_v1_insights_overview', 'hot_updater_v1_insights_sketches', 'hot_updater_v1_insights_overview_daily', 'hot_updater_v1_insights_sketches_daily', 'hot_updater_v1_insights_overview_lifetime', 'hot_updater_v1_insights_sketches_lifetime', 'hot_updater_v1_insights_distribution', 'hot_updater_v1_insights_builtin_distribution', 'hot_updater_v1_insights_latest_by_bundle', 'hot_updater_v1_insights_outcomes', 'hot_updater_v1_insights_failures', 'hot_updater_v1_api_keys', 'hot_updater_v1_remote_config_active', 'hot_updater_v1_remote_config_versions', 'hot_updater_v1_private_hot_updater_settings', 'hot_updater_v1__hu_write']) THEN
+      IF NOT target = ANY (ARRAY['hot_updater_v1_bundles', 'hot_updater_v1_bundle_patches', 'hot_updater_v1_releases', 'hot_updater_v1_release_catalogs', 'hot_updater_v1_channels', 'hot_updater_v1_bundle_totals', 'hot_updater_v1_native_builds', 'hot_updater_v1_ios_devices', 'hot_updater_v1_bundle_events', 'hot_updater_v1_bundle_events__byBundle', 'hot_updater_v1_bundle_event_heads', 'hot_updater_v1_insights_overview', 'hot_updater_v1_insights_sketches', 'hot_updater_v1_insights_overview_daily', 'hot_updater_v1_insights_sketches_daily', 'hot_updater_v1_insights_overview_lifetime', 'hot_updater_v1_insights_sketches_lifetime', 'hot_updater_v1_insights_distribution', 'hot_updater_v1_insights_builtin_distribution', 'hot_updater_v1_insights_latest_by_bundle', 'hot_updater_v1_insights_outcomes', 'hot_updater_v1_insights_failures', 'hot_updater_v1_api_keys', 'hot_updater_v1_remote_config_active', 'hot_updater_v1_remote_config_versions', 'hot_updater_v1_private_hot_updater_settings', 'hot_updater_v1__hu_write']) THEN
         RAISE EXCEPTION 'hot_updater_v1_apply: % is not a Hot Updater table', target USING ERRCODE = '42501';
       END IF;
     END LOOP;

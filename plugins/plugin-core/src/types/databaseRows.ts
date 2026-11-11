@@ -144,3 +144,34 @@ export interface NativeBuildRow {
    */
   readonly sandbox_url_scheme: string | null;
 }
+
+/** Where an iOS device is in the registry: requested, approved, or registered with Apple. */
+export type IosDeviceStatus = "pending" | "approved" | "registered";
+
+/**
+ * An iPhone or iPad a team asked to install ad hoc builds on: the device
+ * registry the CLI registers with Apple from. Holds personal data: a UDID, a
+ * name, and emails.
+ */
+export interface IosDeviceRow {
+  readonly id: string;
+  /** The UDID in lower case, in whichever of Apple's two formats it came. */
+  readonly udid: string;
+  /** The name App Store Connect shows once it is registered. */
+  readonly name: string;
+  readonly status: IosDeviceStatus;
+  /** Who asked for it, or null for the CLI. */
+  readonly requested_by: string | null;
+  readonly created_at_ms: number;
+  /** Who approved it, or null for the CLI and a local Console. */
+  readonly approved_by: string | null;
+  readonly approved_at_ms: number | null;
+  /** When it first counted as registered with Apple. */
+  readonly registered_at_ms: number | null;
+  /** The App Store Connect issuer of the account that registered it, set once. */
+  readonly apple_issuer_id: string | null;
+  /** Why Apple didn't take it or stopped counting it, in Apple's words or ours. */
+  readonly apple_error: string | null;
+  /** The newest native build whose .ipa the CLI checked lists it. */
+  readonly build_id: string | null;
+}

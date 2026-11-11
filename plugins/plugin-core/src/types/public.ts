@@ -23,6 +23,8 @@ export type {
   DatabaseBundleMetadata,
   DatabaseJsonObject,
   DatabaseJsonValue,
+  IosDeviceRow,
+  IosDeviceStatus,
   NativeBuildArtifactKind,
   NativeBuildRow,
   NativeBuildSubmissionDestination,
