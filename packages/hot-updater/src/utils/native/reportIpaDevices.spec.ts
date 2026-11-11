@@ -91,11 +91,10 @@ describe("reportIpaDevices", () => {
     expect(log.success).not.toHaveBeenCalled();
     expect(logged("warn")).toContain(`${LATER_PHONE} isn't in this .ipa.`);
     expect(logged("warn")).toContain(
-      "native-build devices list --scheme sandbox",
+      `npx hot-updater native-build devices add --scheme sandbox --udid ${LATER_PHONE}`,
     );
-    expect(logged("warn")).toContain(
-      `grep -laF -e 'Ad Hoc Provisioning Profile: com.example.app</string>' -e 'XC Ad Hoc: com.example.app</string>' ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"/*`,
-    );
+    // The build removes saved profiles itself: no shell command to run.
+    expect(logged("warn")).not.toContain("grep");
     expect(process.exitCode).toBe(1);
 
     vi.clearAllMocks();
@@ -111,39 +110,6 @@ describe("reportIpaDevices", () => {
     expect(logged("success")).toBe(`${LATER_PHONE} included`);
     expect(log.warn).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(0);
-  });
-
-  it("says to remove the saved profile of each bundle the .ipa signs, its extensions too", async () => {
-    const archive = new JSZip();
-    archive.file(`${APP}/Info.plist`, INFO_PLIST);
-    const forApp = (applicationId: string) =>
-      `\u0000<?xml version="1.0"?><plist version="1.0"><dict><key>Entitlements</key><dict><key>application-identifier</key><string>${applicationId}</string></dict><key>ProvisionedDevices</key><array><string>${PHONE}</string></array></dict></plist>\u0000`;
-    archive.file(
-      `${APP}/embedded.mobileprovision`,
-      forApp("TEAM.com.example.app"),
-    );
-    archive.file(
-      `${APP}/PlugIns/Share.appex/embedded.mobileprovision`,
-      forApp("TEAM.com.example.app.share"),
-    );
-    const artifactPath = path.join(directory, "extensions.ipa");
-    await fs.writeFile(
-      artifactPath,
-      await archive.generateAsync({ type: "uint8array" }),
-    );
-
-    await reportIpaDevices({
-      artifactPath,
-      scheme: "sandbox",
-      udids: [LATER_PHONE],
-    });
-
-    expect(logged("warn")).toContain(
-      "-e 'Ad Hoc Provisioning Profile: com.example.app</string>'",
-    );
-    expect(logged("warn")).toContain(
-      "-e 'Ad Hoc Provisioning Profile: com.example.app.share</string>'",
-    );
   });
 
   it("prints nothing for an App Store export, which lists no devices", async () => {

@@ -12,6 +12,8 @@ const ascApiKey = {
 const serviceAccount = { json: '{"client_email":"uploader@example.com"}' };
 
 vi.mock("@hot-updater/apple-helper", () => ({
+  // An ad hoc export runs the device registry step; these specs build none.
+  exportsForRegisteredDevices: vi.fn(async () => false),
   TestFlightBuildExistsError: class TestFlightBuildExistsError extends Error {},
   assertTestFlightExportOptions: vi.fn(async () => {}),
   buildIos: vi.fn(async () => ({ logFilePath: null })),

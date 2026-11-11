@@ -33,6 +33,8 @@ vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
   }),
 }));
 vi.mock("@hot-updater/apple-helper", () => ({
+  // An ad hoc export runs the device registry step; these specs build none.
+  exportsForRegisteredDevices: vi.fn(async () => false),
   buildIos: vi.fn(),
   TestFlightBuildExistsError: class extends Error {},
 }));
