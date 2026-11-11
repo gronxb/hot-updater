@@ -1372,6 +1372,64 @@ class HotUpdaterSandboxCoordinatorTest {
         assertFalse(ticks.isWaiting)
     }
 
+    // From the round-3 review: config after 1200 looks still enables Home.
+    @Test
+    fun `an open Home learns a config that comes after 1200 looks`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        fixture.host.serverConfig = false
+        val stop = fixture.coordinator.observe {}
+        fixture.coordinator.refresh()
+        repeat(1200) {
+            assertTrue(ticks.isWaiting)
+            ticks.tick()
+        }
+        fixture.host.serverConfig = true
+        ticks.tick()
+        assertTrue(fixture.canEnterChannel)
+        assertFalse(ticks.isWaiting)
+        stop()
+    }
+
+    // From the round-3 review: rapid reopen, then a link's budget.
+    @Test
+    fun `a Home reopened at once keeps one watch, and a link left behind stops at its budget`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        fixture.host.serverConfig = false
+        val stop = fixture.coordinator.observe {}
+        fixture.coordinator.refresh()
+        stop()
+        val stopAgain = fixture.coordinator.observe {}
+        fixture.coordinator.refresh()
+        assertTrue(ticks.isWaiting)
+        assertEquals(2, ticks.pauses.size)
+        fixture.coordinator.receiveLink(link("pr-1"))
+        stopAgain()
+        repeat(600) {
+            assertTrue(ticks.isWaiting)
+            ticks.tick()
+        }
+        assertFalse(ticks.isWaiting)
+        assertEquals(601, ticks.pauses.size)
+    }
+
+    // From the round-3 review: known config cancels the sleeping watch.
+    @Test
+    fun `a config read in by any refresh cancels the sleeping watch at once`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        fixture.host.serverConfig = false
+        val stop = fixture.coordinator.observe {}
+        fixture.coordinator.refresh()
+        assertTrue(ticks.isWaiting)
+        fixture.host.serverConfig = true
+        fixture.coordinator.refresh()
+        assertTrue(fixture.canEnterChannel)
+        assertFalse(ticks.isWaiting)
+        stop()
+    }
+
     @Test
     fun `a pending link revalidates its fingerprint`() {
         val fixture = Fixture(listOf(link("pr-1", "old")))

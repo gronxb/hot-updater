@@ -419,6 +419,7 @@ internal class HotUpdaterSandboxCoordinator(
      * alone stops at its budget.
      */
     private fun watchServer() {
+        log("server watch started")
         val watch =
             scope.launch(start = CoroutineStart.LAZY) {
                 try {
@@ -428,6 +429,8 @@ internal class HotUpdaterSandboxCoordinator(
                         looks += 1
                         if (state.hasServerConfig || !waitsForServer()) return@launch
                         if (host.hasServerConfig()) {
+                            // Its own read publishes the config: that read mustn't cancel it.
+                            serverWatch = null
                             reread()
                             onServerAnswer()
                             return@launch
@@ -436,6 +439,7 @@ internal class HotUpdaterSandboxCoordinator(
                     }
                 } finally {
                     if (serverWatch === coroutineContext[Job]) serverWatch = null
+                    log("server watch stopped")
                 }
             }
         serverWatch = watch
@@ -1043,6 +1047,12 @@ internal class HotUpdaterSandboxCoordinator(
             }
         state = next.copy(queuedLinks = queue.count { it != inPhase })
         listeners.toList().forEach { it(state) }
-        if (serverConfigRead && !state.hasServerConfig && serverWatch == null && waitsForServer()) watchServer()
+        if (state.hasServerConfig) {
+            // Known now, by whatever read: nothing waits for a server.
+            serverWatch?.cancel()
+            serverWatch = null
+        } else if (serverConfigRead && serverWatch == null && waitsForServer()) {
+            watchServer()
+        }
     }
 }

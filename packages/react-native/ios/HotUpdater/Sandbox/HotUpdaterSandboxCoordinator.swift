@@ -350,7 +350,10 @@ final class HotUpdaterSandboxCoordinator {
     /// alone stops at its budget.
     private func watchServer() {
         let poll = serverPoll
+        let log = log
+        log("server watch started")
         serverWatch = Task { @MainActor [weak self] in
+            defer { log("server watch stopped") }
             var looks = 0
             while true {
                 await poll(looks < Self.serverPollFastLooks ? Self.serverPollFastMs : Self.serverPollSlowMs)
@@ -362,8 +365,9 @@ final class HotUpdaterSandboxCoordinator {
                     return
                 }
                 if host.hasServerConfig() {
-                    await refresh()
+                    // Its own read publishes the config: that read mustn't cancel it.
                     serverWatch = nil
+                    await refresh()
                     onServerAnswer()
                     return
                 }
@@ -904,9 +908,45 @@ final class HotUpdaterSandboxCoordinator {
         for listener in listeners.values {
             listener(published)
         }
-        if serverConfigRead, !state.hasServerConfig, serverWatch == nil, waitsForServer() {
+        if state.hasServerConfig {
+            // Known now, by whatever read: nothing waits for a server.
+            serverWatch?.cancel()
+            serverWatch = nil
+        } else if serverConfigRead, serverWatch == nil, waitsForServer() {
             watchServer()
         }
+    }
+}
+
+/// The one screen shown at a time, and its subscription to the coordinator's
+/// state: hiding it, by any route, ends that subscription, so a hidden screen
+/// keeps no server watch going. The bridge's window lives here.
+@MainActor
+final class HotUpdaterSandboxScreenSlot<Screen: AnyObject> {
+    private let coordinator: HotUpdaterSandboxCoordinator
+    private(set) var screen: Screen?
+    private var stopObserving: (() -> Void)?
+
+    init(coordinator: HotUpdaterSandboxCoordinator) {
+        self.coordinator = coordinator
+    }
+
+    /// Shows `screen`, which renders every state from now until `hide()`.
+    func show(_ screen: Screen, render: @escaping (Screen, HotUpdaterSandboxState) -> Void) {
+        hide()
+        self.screen = screen
+        stopObserving = coordinator.observe { [weak screen] state in
+            if let screen { render(screen, state) }
+        }
+    }
+
+    /// Hides the screen: it renders nothing more. Returns it, for its window to go.
+    @discardableResult
+    func hide() -> Screen? {
+        stopObserving?()
+        stopObserving = nil
+        defer { screen = nil }
+        return screen
     }
 }
 #endif

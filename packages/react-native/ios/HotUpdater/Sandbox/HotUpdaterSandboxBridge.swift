@@ -9,7 +9,10 @@ public final class HotUpdaterSandboxBridge: NSObject {
     private static var release: (() -> Void)?
     private static var reload: (() -> Bool)?
     private static var isReleased: (() -> Bool)?
-    private static var window: UIWindow?
+    /// The screen's window, and its subscription to the coordinator.
+    private static let slot = HotUpdaterSandboxScreenSlot<UIWindow>(coordinator: coordinator)
+    private static var window: UIWindow? { slot.screen }
+    private static var isWatchingScenes = false
     private static let devServer = HotUpdaterSandboxLiveDevServer(
         start: { launchWasPrepared in startDevSession(launchWasPrepared: launchWasPrepared) },
         reload: { NSLog("[HotUpdaterSandbox] reload triggered=%d", reload?() == true) }
@@ -82,8 +85,7 @@ public final class HotUpdaterSandboxBridge: NSObject {
 
     /// The screen's window goes, when the app starts by another route.
     @objc public static func hideScreen() {
-        window?.isHidden = true
-        window = nil
+        slot.hide()?.isHidden = true
     }
 
     /// Text entry and alerts stay in the screen when the app makes its own window key after it.
@@ -106,9 +108,10 @@ public final class HotUpdaterSandboxBridge: NSObject {
     private static func present(in scene: UIWindowScene?) {
         Task { await coordinator.refresh() }
         guard window == nil else { return }
+        watchScenes()
         let shown = screenScene(scene).map { UIWindow(windowScene: $0) } ?? UIWindow(frame: UIScreen.main.bounds)
         shown.windowLevel = .normal + 1
-        shown.rootViewController = HotUpdaterSandboxScreen(
+        let screen = HotUpdaterSandboxScreen(
             coordinator: coordinator,
             devServer: devServer,
             isOverApp: { isReleased?() == true },
@@ -117,7 +120,11 @@ public final class HotUpdaterSandboxBridge: NSObject {
                 hideScreen()
             }
         )
-        window = shown
+        shown.rootViewController = screen
+        screen.loadViewIfNeeded()
+        slot.show(shown) { window, state in
+            (window.rootViewController as? HotUpdaterSandboxScreen)?.render(state)
+        }
         shown.makeKeyAndVisible()
         NSLog("[HotUpdaterSandbox] screen shown overApp=%d inScene=%d", isReleased?() == true, shown.windowScene != nil)
     }
@@ -151,6 +158,22 @@ public final class HotUpdaterSandboxBridge: NSObject {
             NSLog("[HotUpdaterSandbox] launch already fixed, reload triggered=%d", reload?() == true)
         }
         release?()
+    }
+
+    /// A scene that goes takes the screen's window with it: the next screen opens a new one.
+    private static func watchScenes() {
+        guard !isWatchingScenes else { return }
+        isWatchingScenes = true
+        NotificationCenter.default.addObserver(
+            forName: UIScene.didDisconnectNotification,
+            object: nil,
+            queue: .main
+        ) { note in
+            MainActor.assumeIsolated {
+                guard let scene = note.object as? UIWindowScene, scene === window?.windowScene else { return }
+                hideScreen()
+            }
+        }
     }
 
     /// A link that waited for the app's first answered check asks now, over the

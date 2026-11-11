@@ -1292,6 +1292,118 @@ struct HotUpdaterSandboxCoordinatorTests {
         #expect(!ticks.isWaiting)
     }
 
+    /// The bridge's own show and hide: a hidden screen renders nothing more, and
+    /// with no link waiting, its server watch ends with it.
+    @Test
+    func hidingTheScreenEndsItsSubscriptionAndItsServerWatch() async {
+        final class Shown {}
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        fixture.host.serverConfig = false
+        let slot = HotUpdaterSandboxScreenSlot<Shown>(coordinator: fixture.coordinator)
+        var renders = 0
+        let shown = Shown()
+        slot.show(shown) { _, _ in renders += 1 }
+        await fixture.coordinator.refresh()
+        await settle { ticks.isWaiting }
+        #expect(ticks.isWaiting)
+        #expect(slot.screen === shown)
+
+        #expect(slot.hide() === shown)
+        #expect(slot.screen == nil)
+        await settle { !ticks.isWaiting }
+        #expect(!ticks.isWaiting)
+        let rendered = renders
+        await fixture.coordinator.refresh()
+        #expect(renders == rendered)
+    }
+
+    @Test
+    func showingAnotherScreenEndsThePreviousOnesSubscription() async {
+        final class Shown {}
+        let fixture = Fixture()
+        let slot = HotUpdaterSandboxScreenSlot<Shown>(coordinator: fixture.coordinator)
+        var first = 0
+        var second = 0
+        let firstScreen = Shown()
+        let secondScreen = Shown()
+        slot.show(firstScreen) { _, _ in first += 1 }
+        slot.show(secondScreen) { _, _ in second += 1 }
+        await settle()
+        let firstRenders = first
+        let secondRenders = second
+        await fixture.coordinator.refresh()
+        #expect(first == firstRenders)
+        #expect(second > secondRenders)
+        #expect(slot.hide() === secondScreen)
+        withExtendedLifetime(firstScreen) {}
+    }
+
+    /// From the round-3 review: config after 1200 looks still enables Home.
+    @Test
+    func anOpenHomeLearnsAConfigThatComesAfter1200Looks() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        fixture.host.serverConfig = false
+        let stop = fixture.coordinator.observe { _ in }
+        await fixture.coordinator.refresh()
+        for _ in 0 ..< 1200 {
+            await settle { ticks.isWaiting }
+            #expect(ticks.isWaiting)
+            ticks.tick()
+        }
+        await settle { ticks.isWaiting }
+        fixture.host.serverConfig = true
+        ticks.tick()
+        await settle { fixture.canEnterChannel }
+        #expect(fixture.canEnterChannel)
+        stop()
+    }
+
+    /// From the round-3 review: rapid reopen, then a link's budget.
+    @Test
+    func aHomeReopenedAtOnceKeepsOneWatchAndALinkLeftBehindStopsAtItsBudget() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        fixture.host.serverConfig = false
+        let stop = fixture.coordinator.observe { _ in }
+        await fixture.coordinator.refresh()
+        await settle { ticks.isWaiting }
+        stop()
+        let stopAgain = fixture.coordinator.observe { _ in }
+        await fixture.coordinator.refresh()
+        await settle { ticks.isWaiting }
+        #expect(ticks.pauses.count == 1)
+        fixture.coordinator.receiveLink(link("pr-1"))
+        stopAgain()
+        await settle()
+        for _ in 0 ..< 600 {
+            await settle { ticks.isWaiting }
+            #expect(ticks.isWaiting)
+            ticks.tick()
+        }
+        await settle()
+        #expect(!ticks.isWaiting)
+        #expect(ticks.pauses.count == 600)
+    }
+
+    /// From the round-3 review: known config cancels the sleeping watch.
+    @Test
+    func aConfigReadInByAnyRefreshCancelsTheSleepingWatchAtOnce() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        fixture.host.serverConfig = false
+        let stop = fixture.coordinator.observe { _ in }
+        await fixture.coordinator.refresh()
+        await settle { ticks.isWaiting }
+        fixture.host.serverConfig = true
+        await fixture.coordinator.refresh()
+        #expect(fixture.canEnterChannel)
+        await settle()
+        #expect(!ticks.isWaiting)
+        stop()
+    }
+
     @Test
     func aPendingLinkRevalidatesItsFingerprint() async {
         let fixture = Fixture(pendingLinks: [link("pr-1", fingerprintHash: "old")])

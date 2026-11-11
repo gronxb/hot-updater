@@ -36,7 +36,8 @@ final class HotUpdaterSandboxScreen: UIViewController {
     private let devServer: HotUpdaterSandboxDevServer
     private let isOverApp: () -> Bool
     private let onClose: () -> Void
-    private var stopObserving: (() -> Void)?
+    /// Set once the content is up. The bridge's slot calls `render` while the screen shows.
+    private var renderContent: ((HotUpdaterSandboxState) -> Void)?
 
     init(
         coordinator: HotUpdaterSandboxCoordinator,
@@ -84,7 +85,11 @@ final class HotUpdaterSandboxScreen: UIViewController {
         content.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(content.view)
         content.didMove(toParent: self)
-        stopObserving = coordinator.observe(render)
+        renderContent = render
+    }
+
+    func render(_ state: HotUpdaterSandboxState) {
+        renderContent?(state)
     }
 }
 
