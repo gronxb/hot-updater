@@ -1106,10 +1106,12 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     check: (device) => expect(device?.udid).toBe(BUDGET_PENDING_UDID),
   }),
   budget({
-    api: "iOS device account, first claim: its one row's read and 1 write",
+    api: "iOS device account, first claim: its one row's read, the registry's rows once, and 1 write",
+    // No account yet: the registry's rows (the requested iPhone and the one
+    // issuer-a registered) say whose it is, before the claim writes.
     read: ({ core }) => core.claimIosDeviceAccount("issuer-a"),
-    adapter: reads(1, 1, 0, 0),
-    engine: { calls: 1, rows: 0 },
+    adapter: reads(1, 1, 1, 2),
+    engine: { calls: 2, rows: 2 },
     writes: 1,
     check: (claim) =>
       expect(claim).toEqual({ issuerId: "issuer-a", claimed: true }),

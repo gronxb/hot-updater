@@ -139,6 +139,9 @@ vi.mock("../utils/loadServer", () => ({
   }),
 }));
 
+import { loadConfig } from "@hot-updater/cli-tools";
+
+import { loadServer } from "../utils/loadServer";
 import { handleNativeBuildCreate } from "./buildNative";
 
 const PHONE = "00008030-001c2d3e4f5a6b7c";
@@ -192,6 +195,24 @@ describe("native-build ios of an ad hoc scheme with the device registry", () => 
       String(vi.mocked(console.log).mock.calls.at(-1)?.[0]),
     );
     expect(json.devices).toEqual(REPORT);
+  });
+
+  it("records the build's devices in the database the config picks for iOS, as the build loaded it", async () => {
+    readIpaDevices.mockResolvedValue([PHONE]);
+    vi.mocked(loadConfig).mockImplementation(
+      async (options) =>
+        ({
+          database: {
+            ...openDatabase(),
+            target:
+              options?.platform === "ios" ? "ios-registry" : "default-registry",
+          },
+        }) as never,
+    );
+    await handleNativeBuildCreate("ios", { scheme: "testers", json: true });
+    expect(vi.mocked(loadServer).mock.calls.at(-1)?.[0]).toMatchObject({
+      database: { target: "ios-registry" },
+    });
   });
 
   it("fails before tracking when the .ipa lacks a device Apple enabled, and keeps the .ipa", async () => {

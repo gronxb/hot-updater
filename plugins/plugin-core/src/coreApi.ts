@@ -390,9 +390,11 @@ export interface HotUpdaterCoreApi {
     input: IosDeviceOutcomeInput,
   ): Promise<IosDeviceRow | null>;
   /**
-   * Claims the device registry for an Apple account before anything is sent
-   * to Apple: the first claim wins, atomically, and holds for good. Answers
-   * the registry's account and whether it is `issuerId`'s; a build of another
+   * Claims the device registry for an Apple account before a build records
+   * or sends anything at Apple: the first claim wins, atomically, and holds
+   * for good. A registry with no claim yet whose rows already name an account
+   * (any status) goes to the earliest of them, not to the caller. Answers the
+   * registry's account and whether it is `issuerId`'s; a build of another
    * account registers nothing.
    */
   claimIosDeviceAccount(issuerId: string): Promise<IosDeviceAccountClaim>;

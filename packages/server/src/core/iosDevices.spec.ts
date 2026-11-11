@@ -345,6 +345,35 @@ describe("the iOS device registry", () => {
     );
   });
 
+  it("gives a registry with no claim yet to the earliest account its rows name, a pending row's too", async () => {
+    const core = setup();
+    // Registered by B first, then by A; B's device went back to pending.
+    const b = await approved(core, PHONE);
+    const registeredB = (await core.recordIosDeviceOutcome({
+      id: b.id,
+      seen: seenOf(b),
+      issuerId: OTHER_ISSUER,
+      outcome: "registered",
+    }))!;
+    const a = await approved(core, IPAD);
+    await core.recordIosDeviceOutcome({
+      id: a.id,
+      seen: seenOf(a),
+      issuerId: ISSUER,
+      outcome: "registered",
+    });
+    await core.recordIosDeviceOutcome({
+      id: b.id,
+      seen: seenOf(registeredB),
+      issuerId: OTHER_ISSUER,
+      outcome: "missing",
+    });
+    expect(await core.claimIosDeviceAccount(ISSUER)).toEqual({
+      issuerId: OTHER_ISSUER,
+      claimed: false,
+    });
+  });
+
   it("deletes a row and answers null for an unknown one", async () => {
     const core = setup();
     const device = await requested(core);

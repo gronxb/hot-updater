@@ -328,14 +328,16 @@ function NotInThisBuild({
 }) {
   const request = useRequestIosDeviceAccessMutation();
   const [name, setName] = useState("");
-  // The request's answer stands in only until the page reads the registry
-  // again: a later read wins, an approval or a removal too.
+  // The request's answer stands in only while the page still shows the
+  // registry read before the request started: any read after that wins, an
+  // approval or a removal too, even one the mutation's own refresh finished
+  // before its answer reached this component.
   const [requested, setRequested] = useState<{
     readonly device: IosDeviceRow;
-    readonly at: number;
+    readonly readBefore: number;
   } | null>(null);
   const row =
-    requested !== null && registryReadAt <= requested.at
+    requested !== null && registryReadAt <= requested.readBefore
       ? requested.device
       : registry;
   const heading = (
@@ -393,11 +395,12 @@ function NotInThisBuild({
       onSubmit={(event) => {
         event.preventDefault();
         if (trimmed === "") return;
+        const readBefore = registryReadAt;
         request.mutate(
           { receipt: device.receipt!, name: trimmed },
           {
             onSuccess: ({ device: saved }) =>
-              setRequested({ device: saved, at: Date.now() }),
+              setRequested({ device: saved, readBefore }),
           },
         );
       }}

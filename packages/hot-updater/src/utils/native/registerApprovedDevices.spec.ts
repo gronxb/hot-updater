@@ -23,7 +23,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 import {
   missingIpaDevices,
   registerApprovedDevices,
-  registryIssuer,
 } from "./registerApprovedDevices";
 
 const PHONE = "00008030-001c2d3e4f5a6b7c";
@@ -280,16 +279,19 @@ describe("registerApprovedDevices", () => {
 
   it("lets only one of two first builds of two accounts send Apple anything", async () => {
     await approved(PHONE, "Kim's iPhone");
-    // Both builds read Apple's list before either registers.
+    // Both builds reach the account claim before either has claimed.
+    const claim = core.claimIosDeviceAccount.bind(core);
     let release!: () => void;
     const both = new Promise<void>((resolve) => (release = resolve));
-    let reads = 0;
-    listAscDevices.mockImplementation(async () => {
-      reads += 1;
-      if (reads === 2) release();
-      await both;
-      return [];
-    });
+    let claims = 0;
+    vi.spyOn(core, "claimIosDeviceAccount").mockImplementation(
+      async (issuerId) => {
+        claims += 1;
+        if (claims === 2) release();
+        await both;
+        return claim(issuerId);
+      },
+    );
     appleAdds();
 
     await Promise.all([
@@ -305,23 +307,6 @@ describe("registerApprovedDevices", () => {
       status: "registered",
       apple_issuer_id: sentWith,
     });
-  });
-
-  it("names the account by the earliest registration, whatever two accounts left", () => {
-    const row = (id: string, issuer: string, at: number) =>
-      ({
-        id,
-        apple_issuer_id: issuer,
-        registered_at_ms: at,
-      }) as IosDeviceRow;
-    expect(
-      registryIssuer([
-        row("b", "issuer-b", 20),
-        row("a", "issuer-a", 10),
-        row("c", "issuer-c", 10),
-      ]),
-    ).toBe("issuer-a");
-    expect(registryIssuer([])).toBeNull();
   });
 
   it("sends a registered device Apple no longer lists back to pending, without a POST", async () => {
@@ -405,6 +390,44 @@ describe("registerApprovedDevices", () => {
       "iOS devices · 1 approved; a real run registers those Apple lacks",
     );
     expect((await statusOf(PHONE))?.status).toBe("approved");
+  });
+});
+
+describe("one Apple account, whatever path registers a device", () => {
+  it("keeps the account when the first registration needed no Apple POST, through a removal at Apple", async () => {
+    await approved(PHONE, "Existing A phone");
+    listAscDevices.mockResolvedValue([atApple(PHONE)]);
+    await run();
+    expect((await statusOf(PHONE))?.apple_issuer_id).toBe("issuer-a");
+    listAscDevices.mockResolvedValue([]);
+    await run();
+    expect((await statusOf(PHONE))?.status).toBe("pending");
+    await approved(IPAD, "New phone");
+    appleAdds();
+    await run({
+      resolveApiKey: async () => ({ ...API_KEY, issuerId: "issuer-b" }),
+    });
+    expect(addAscDevices).not.toHaveBeenCalled();
+  });
+
+  it("never lets another account record a device it already has, after the registry's account spent a slot whose outcome was lost", async () => {
+    await approved(PHONE, "First phone");
+    appleAdds();
+    const record = vi
+      .spyOn(core, "recordIosDeviceOutcome")
+      .mockRejectedValueOnce(new Error("database down"));
+    await expect(run()).rejects.toThrow("database down");
+    record.mockRestore();
+    // A spent its slot but the outcome was lost. B already has this phone.
+    listAscDevices.mockResolvedValue([atApple(PHONE)]);
+    await run({
+      resolveApiKey: async () => ({ ...API_KEY, issuerId: "issuer-b" }),
+    });
+    await approved(IPAD, "Next phone");
+    addAscDevices.mockClear();
+    await run();
+    expect(addAscDevices).toHaveBeenCalledOnce();
+    expect((await statusOf(PHONE))?.apple_issuer_id).not.toBe("issuer-b");
   });
 });
 

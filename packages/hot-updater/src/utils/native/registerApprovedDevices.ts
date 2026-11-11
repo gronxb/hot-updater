@@ -82,21 +82,6 @@ const listAll = async (
   }
 };
 
-/**
- * The account the registry belongs to: the issuer of its earliest registered
- * row, by when and then by ID, or null before the first registration.
- */
-export const registryIssuer = (
-  registered: readonly IosDeviceRow[],
-): string | null =>
-  registered
-    .filter((row) => row.apple_issuer_id !== null)
-    .sort(
-      (a, b) =>
-        (a.registered_at_ms ?? 0) - (b.registered_at_ms ?? 0) ||
-        (a.id < b.id ? -1 : 1),
-    )[0]?.apple_issuer_id ?? null;
-
 /** The export options as a dictionary: XML read directly, binary through plutil. */
 const readExportOptions = async (
   file: string,
@@ -219,26 +204,27 @@ export const registerApprovedDevices = async ({
 
   const apiKey = await resolveApiKey();
   const issuer = apiKey.issuerId;
-  // The account rows already name: an approved row keeps the issuer that
-  // registered it before Apple dropped it and someone approved it again.
-  const pin = registryIssuer([...registered, ...approved]);
   const ours = registered.filter((row) => row.apple_issuer_id === issuer);
-  // Approved rows spend a slot only in the registry's own account, and never
-  // on a row another account registered before (one sent back to pending).
-  const toRegister =
-    pin === null || pin === issuer
-      ? approved.filter(
-          (row) =>
-            row.apple_issuer_id === null || row.apple_issuer_id === issuer,
-        )
-      : [];
   const otherAccount = () =>
     waiting(
       "signs with another Apple account than the registry's",
       "Build with a scheme whose signing.ascApiKey is in the registry's account.",
     );
+  // One decision says whose registry this is, before anything at Apple is
+  // read, recorded, or sent: the account claimed in the server's database,
+  // atomically, which a registry whose rows already name an account (any
+  // status) keeps. Approved devices are registered, by a POST or by finding
+  // them at Apple, only by a build of that account, and never a device
+  // another account registered before.
+  const owns =
+    approved.length > 0 && (await core.claimIosDeviceAccount(issuer)).claimed;
+  const toRegister = owns
+    ? approved.filter(
+        (row) => row.apple_issuer_id === null || row.apple_issuer_id === issuer,
+      )
+    : [];
   if (toRegister.length === 0 && ours.length === 0) return otherAccount();
-  if (toRegister.length === 0) otherAccount();
+  if (toRegister.length < approved.length) otherAccount();
 
   const atApple = new Map<string, AscDevice>(
     (await listAscDevices({ apiKey })).map((device) => [
@@ -274,15 +260,6 @@ export const registerApprovedDevices = async ({
   };
   const include = (row: IosDeviceRow) =>
     expected.push({ id: row.id, udid: row.udid, name: row.name });
-  // Before the first slot is spent, the registry's account is claimed in the
-  // server's database, atomically: of two builds of two accounts, one wins,
-  // and the other sends Apple nothing.
-  let claim: Promise<boolean> | undefined;
-  const ownsRegistry = () =>
-    (claim ??= core.claimIosDeviceAccount(issuer).then(({ claimed }) => {
-      if (!claimed) otherAccount();
-      return claimed;
-    }));
 
   for (const row of ours) {
     const device = atApple.get(row.udid);
@@ -321,10 +298,6 @@ export const registerApprovedDevices = async ({
       current.approved_at_ms !== row.approved_at_ms ||
       (current.apple_issuer_id !== null && current.apple_issuer_id !== issuer)
     ) {
-      continue;
-    }
-    if (!(await ownsRegistry())) {
-      report.waiting += 1;
       continue;
     }
     const [result] = await addAscDevices({

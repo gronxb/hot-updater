@@ -302,6 +302,36 @@ describe("IosInstall", () => {
     expect(screen.getByRole("button", { name: "Request access" })).toBeTruthy();
   });
 
+  it("lets the refresh the request triggers win even when it lands before the request's own answer, as onSettled runs before mutate's onSuccess", () => {
+    let complete!: (r: unknown) => void;
+    requestAccess.mutate.mockImplementation(
+      (_input: unknown, options: { onSuccess: (r: unknown) => void }) => {
+        complete = options.onSuccess;
+      },
+    );
+    answer(installable("not-included"), { dataUpdatedAt: 1 });
+    const { rerender } = render(
+      <IosInstall build={row} device={phone(PHONE, RECEIPT)} />,
+    );
+    fireEvent.change(screen.getByLabelText("This iPhone's name"), {
+      target: { value: "Kim's iPhone" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Request access" }));
+    // The real hook awaits invalidateQueries in onSettled, before mutate's onSuccess.
+    answer(
+      installable(
+        "not-included",
+        registryRow({ status: "approved", approved_at_ms: 1 }),
+      ),
+      { dataUpdatedAt: Date.now() - 1 },
+    );
+    rerender(<IosInstall build={row} device={phone(PHONE, RECEIPT)} />);
+    act(() => complete({ device: registryRow(), created: true }));
+    expect(screen.getByRole("status").textContent).toBe(
+      "Kim's iPhone is approved. It joins the next ad hoc build.",
+    );
+  });
+
   it("without a receipt, checks the iPhone again before Request access: a link's UDID is never trusted", () => {
     answer(installable("not-included"));
     render(<IosInstall build={row} device={phone(PHONE)} />);
