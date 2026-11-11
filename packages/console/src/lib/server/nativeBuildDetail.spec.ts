@@ -291,7 +291,7 @@ describe("getNativeBuildDetail", () => {
 });
 
 describe("the native build list and patch pages", () => {
-  it("lists only a channel's builds, leading with its path's newest: one read of the channel's index and one of each path", async () => {
+  it("lists only a channel's builds, leading with its path's newest, in one read of the channel's index", async () => {
     const memory = memoryCore();
     await register(memory, 1, id(10));
     await register(memory, 2, id(11), fingerprintScope("fp-a", "pr-130"));
@@ -307,7 +307,8 @@ describe("the native build list and patch pages", () => {
       { kind: "row", row: expect.objectContaining({ id: buildId(3) }) },
       { kind: "fold", count: 1, more: false, from: buildId(3), to: buildId(2) },
     ]);
-    expect(calls).toEqual(["listNativeBuilds", "findNativeBuildOnPath"]);
+    // The newest page needs no read above it.
+    expect(calls).toEqual(["listNativeBuilds"]);
   });
 
   it("folds a build whose newer build on its path is on an earlier page", async () => {

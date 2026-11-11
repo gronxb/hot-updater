@@ -318,12 +318,15 @@ const createdAt = (build: NativeBuildRow) =>
 
 function BuildRow({
   build,
+  older = false,
   newer,
   onChannel,
 }: {
   readonly build: NativeBuildRow;
-  /** The newer build on its path that passes it over, if any. */
-  readonly newer: NativeBuildRow | undefined;
+  /** Whether a newer build on its path passes it over: a fold's build. */
+  readonly older?: boolean;
+  /** That newer build, when it was found. */
+  readonly newer?: NativeBuildRow;
   readonly onChannel: (channel: string) => void;
 }) {
   const navigate = useNavigate();
@@ -332,7 +335,7 @@ function BuildRow({
     <DataTableRow
       aria-label={`Open native build ${build.id}`}
       className="data-[older=true]:bg-muted/35 data-[older=true]:saturate-50 data-[older=true]:hover:bg-muted/50 data-[older=true]:hover:saturate-100 data-[older=true]:focus-within:saturate-100"
-      data-older={newer === undefined ? undefined : true}
+      data-older={older ? true : undefined}
       onOpen={() =>
         void navigate({
           to: "/native-builds/$buildId",
@@ -368,7 +371,7 @@ function BuildRow({
         {formatByteSize(build.byte_size)}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
-        {newer === undefined ? (
+        {!older ? (
           <RelativeTime ms={createdAt(build)} />
         ) : (
           <span className="flex flex-col items-start gap-1">
@@ -391,12 +394,15 @@ function BuildRow({
  */
 function BuildCard({
   build,
+  older = false,
   newer,
   onChannel,
 }: {
   readonly build: NativeBuildRow;
-  /** The newer build on its path that passes it over, if any. */
-  readonly newer: NativeBuildRow | undefined;
+  /** Whether a newer build on its path passes it over: a fold's build. */
+  readonly older?: boolean;
+  /** That newer build, when it was found. */
+  readonly newer?: NativeBuildRow;
   readonly onChannel: (channel: string) => void;
 }) {
   const navigate = useNavigate();
@@ -406,7 +412,7 @@ function BuildCard({
     <DataCard
       aria-label={`Native build ${buildTitle(build)} ${build.id}`}
       className="gap-3 border-b-0 data-[older=true]:bg-muted/35 data-[older=true]:saturate-50 data-[older=true]:hover:bg-muted/50 data-[older=true]:hover:saturate-100 data-[older=true]:focus-within:saturate-100"
-      data-older={newer === undefined ? undefined : true}
+      data-older={older ? true : undefined}
       onClick={openOutsideControls(
         () =>
           void navigate({
@@ -423,7 +429,7 @@ function BuildCard({
             platform={build.platform}
           />
           <BuildIdentity build={build} />
-          {newer === undefined ? null : <OlderBuildLabel newer={newer} />}
+          {older ? <OlderBuildLabel newer={newer} /> : null}
         </div>
         <DownloadButton build={build} />
       </div>
@@ -542,6 +548,7 @@ function OlderBuildsFold({
           <BuildCard
             build={build}
             newer={newer[build.id]}
+            older
             onChannel={onChannel}
           />
         </div>
@@ -555,6 +562,7 @@ function OlderBuildsFold({
           build={build}
           key={build.id}
           newer={newer[build.id]}
+          older
           onChannel={onChannel}
         />
       ))}
@@ -662,11 +670,7 @@ export function NativeBuildsTable({
                       key={entry.row.id}
                       role="listitem"
                     >
-                      <BuildCard
-                        build={entry.row}
-                        newer={undefined}
-                        onChannel={onChannel}
-                      />
+                      <BuildCard build={entry.row} onChannel={onChannel} />
                     </div>
                   ),
                 )}
@@ -722,7 +726,6 @@ export function NativeBuildsTable({
                         <BuildRow
                           build={build}
                           key={build.id}
-                          newer={undefined}
                           onChannel={onChannel}
                         />
                       ))}
@@ -756,7 +759,7 @@ export function NativeBuildsTable({
             previous === undefined
               ? undefined
               : {
-                  search: { ...channelSearch(channel), after: previous },
+                  search: { ...channelSearch(channel), ...previous },
                   to: "/native-builds",
                 }
           }

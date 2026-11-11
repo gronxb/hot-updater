@@ -17,7 +17,6 @@ import type {
   DatabaseBundleMetadata,
   NativeBuildArtifactKind,
   NativeBuildDeleteResult,
-  NativeBuildDistribution,
   NativeBuildExportMethod,
   NativeBuildMarkResult,
   NativeBuildRow,
@@ -96,18 +95,6 @@ export type NativeBuildScope = {
   | { readonly fingerprintHash: string; readonly appVersion: null }
   | { readonly fingerprintHash: null; readonly appVersion: string }
 );
-
-/**
- * A distribution path: the builds of one platform and channel, sandbox or
- * not, that reach people one way (`nativeBuildDistribution`). A newer build
- * on a path is the one people get there.
- */
-export type NativeBuildPath = {
-  readonly platform: Platform;
-  readonly channel: string;
-  readonly sandbox: boolean;
-  readonly distribution: NativeBuildDistribution;
-};
 
 /** A native build to register: its stored artifact and its built-in bundle. */
 export type NativeBuildRegistration = NativeBuildScope & {
@@ -229,12 +216,6 @@ export interface HotUpdaterCoreApi {
       readonly builtInOlderThan?: string;
     },
   ): Promise<NativeBuildRow | null>;
-  /**
-   * The newest native build on a distribution path, the one the registry
-   * recorded last (its server time, then its ID), or null: one read of its
-   * index.
-   */
-  findNativeBuildOnPath(path: NativeBuildPath): Promise<NativeBuildRow | null>;
   /**
    * One page of native builds, by ID: oldest or newest first. With
    * `channelId`, only the builds that embed that channel, also one read.

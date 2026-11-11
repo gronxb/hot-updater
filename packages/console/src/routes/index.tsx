@@ -608,8 +608,10 @@ function BundlesPage() {
   const previousSearch: ReleaseSearch | null = previousCursor
     ? {
         ...search,
-        afterReleaseId: previousCursor,
-        beforeReleaseId: undefined,
+        afterReleaseId:
+          "after" in previousCursor ? previousCursor.after : undefined,
+        beforeReleaseId:
+          "before" in previousCursor ? previousCursor.before : undefined,
         releaseId: undefined,
       }
     : null;

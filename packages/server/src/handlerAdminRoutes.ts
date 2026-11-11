@@ -6,8 +6,6 @@ import {
   ReleaseManagementError,
   type Deployment,
   type KeysetInput,
-  type NativeBuildDistribution,
-  type NativeBuildPath,
   type NativeBuildRegistration,
   type NativeBuildScope,
   type ReleaseFilter,
@@ -288,31 +286,6 @@ const nativeBuildScopeOf = (url: URL): NativeBuildScope => {
   return fingerprintHash !== null
     ? { platform, channel, fingerprintHash, appVersion: null }
     : { platform, channel, fingerprintHash: null, appVersion: appVersion! };
-};
-
-/** The distribution path a newest-on-path lookup names. */
-const nativeBuildPathOf = (url: URL): NativeBuildPath => {
-  const params = url.searchParams;
-  const platform = platformOf(url);
-  const channel = params.get("channel");
-  const sandbox = params.get("sandbox");
-  const distribution = params.get("distribution");
-  if (
-    platform === undefined ||
-    !isText(channel) ||
-    (sandbox !== "true" && sandbox !== "false") ||
-    !isText(distribution)
-  ) {
-    throw new HandlerBadRequestError(
-      "A distribution path lookup needs platform, channel, sandbox, and distribution.",
-    );
-  }
-  return {
-    platform,
-    channel,
-    sandbox: sandbox === "true",
-    distribution: distribution as NativeBuildDistribution,
-  };
 };
 
 /** A native build or scope core refuses: a bad request. */
@@ -615,16 +588,6 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     });
   }),
 
-  // A path without a build answers 200 with null data, so a 404 means a
-  // server without the route.
-  findNativeBuildOnPath: onCore(async (core, request) =>
-    json({
-      data: await refusingInvalid(() =>
-        core.findNativeBuildOnPath(nativeBuildPathOf(new URL(request.url))),
-      ),
-    }),
-  ),
-
   // An unknown ID answers 200 with null data, as a scope without a build
   // does, so a 404 means a server without the route.
   getNativeBuild: onCore(async (core, _request, params) =>
@@ -772,11 +735,6 @@ export const ADMIN_ROUTES: readonly {
   },
   { method: "POST", path: "/native-builds", handler: "registerNativeBuild" },
   { method: "GET", path: "/native-builds/latest", handler: "findNativeBuild" },
-  {
-    method: "GET",
-    path: "/native-builds/on-path",
-    handler: "findNativeBuildOnPath",
-  },
   { method: "GET", path: "/native-builds/:id", handler: "getNativeBuild" },
   { method: "GET", path: "/native-builds", handler: "listNativeBuilds" },
   {

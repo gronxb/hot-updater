@@ -36,15 +36,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS "channels_name" ON "channels" ("name");
 
 CREATE TABLE IF NOT EXISTS "bundle_totals" ("platform_key" TEXT NOT NULL, "_shard" INTEGER NOT NULL, "bundles" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("platform_key", "_shard"));
 
-CREATE TABLE IF NOT EXISTS "native_builds" ("id" TEXT NOT NULL, "scope_key" TEXT NOT NULL, "platform" TEXT NOT NULL, "channel_id" TEXT NOT NULL, "fingerprint_hash" TEXT, "app_version" TEXT, "min_bundle_id" TEXT NOT NULL, "artifact_kind" TEXT NOT NULL, "artifact_storage_uri" TEXT NOT NULL, "byte_size" INTEGER NOT NULL, "git_commit_hash" TEXT, "created_at_ms" INTEGER NOT NULL, "build_key" TEXT, "build_number" TEXT, "submitted_to" TEXT, "submitted_at_ms" INTEGER, "submitted_version" TEXT, "is_store_build" INTEGER NOT NULL, "is_sandbox" INTEGER NOT NULL, "sandbox_url_scheme" TEXT, "export_method" TEXT, "store_build_scope_key" TEXT, "distribution" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+CREATE TABLE IF NOT EXISTS "native_builds" ("id" TEXT NOT NULL, "scope_key" TEXT NOT NULL, "platform" TEXT NOT NULL, "channel_id" TEXT NOT NULL, "fingerprint_hash" TEXT, "app_version" TEXT, "min_bundle_id" TEXT NOT NULL, "artifact_kind" TEXT NOT NULL, "artifact_storage_uri" TEXT NOT NULL, "byte_size" INTEGER NOT NULL, "git_commit_hash" TEXT, "created_at_ms" INTEGER NOT NULL, "build_key" TEXT, "build_number" TEXT, "submitted_to" TEXT, "submitted_at_ms" INTEGER, "submitted_version" TEXT, "is_store_build" INTEGER NOT NULL, "is_sandbox" INTEGER NOT NULL, "sandbox_url_scheme" TEXT, "export_method" TEXT, "store_build_scope_key" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
 CREATE INDEX IF NOT EXISTS "native_builds_byScope" ON "native_builds" ("scope_key", "id");
 
 CREATE INDEX IF NOT EXISTS "native_builds_byBuildKey" ON "native_builds" ("scope_key", "build_key", "id");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "native_builds_byStoreBuild" ON "native_builds" ("store_build_scope_key");
-
-CREATE INDEX IF NOT EXISTS "native_builds_byDistributionPath" ON "native_builds" ("channel_id", "platform", "is_sandbox", "distribution", "created_at_ms", "id");
 
 CREATE INDEX IF NOT EXISTS "native_builds_byChannel" ON "native_builds" ("channel_id", "id");
 

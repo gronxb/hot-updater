@@ -1,7 +1,3 @@
-import {
-  nativeBuildDistribution,
-  type NativeBuildRow,
-} from "../../types/databaseRows";
 import { defineAggregate, defineTable } from "../database/schema";
 
 /** A channel's id is `channel:` and its name's channel key, so ids share channel_key's bound. */
@@ -189,12 +185,9 @@ const channels = defineTable(
  * which its preview links open; null on any other build, and on a sandbox
  * build registered before the column, which registered the derived one.
  * `export_method` is how an `.ipa` was exported, read from its profile when
- * it registers and never changed; null on any other artifact and on an
- * `.ipa` registered before the column. The engine derives `distribution`
- * (`nativeBuildDistribution`) from the submission, the artifact, and the
- * export method, so `byDistributionPath` keeps each distribution path's
- * builds in the order the registry recorded them and its newest is one
- * read. Boolean columns follow one rule: `is_*` for a fact about the row or
+ * it registers and never changed; null on any other artifact, on an `.ipa`
+ * whose profile couldn't be read, and on one registered before the column.
+ * Boolean columns follow one rule: `is_*` for a fact about the row or
  * `should_*` for an instruction to the client, never null; a unique index over
  * the rows where one is true keys a derived slot, not the boolean.
  */
@@ -245,30 +238,11 @@ const nativeBuilds = defineTable(
         ascii: true,
         compute: (row) => (row.is_store_build ? row.scope_key : null),
       },
-      /** How the build reaches people: `nativeBuildDistribution`. */
-      distribution: {
-        type: "string",
-        maxLength: 32,
-        ascii: true,
-        compute: (row) =>
-          nativeBuildDistribution({
-            submitted_to: row.submitted_to as NativeBuildRow["submitted_to"],
-            artifact_kind: row.artifact_kind as NativeBuildRow["artifact_kind"],
-            export_method: (row.export_method ??
-              null) as NativeBuildRow["export_method"],
-          }),
-      },
     },
     indexes: {
       byScope: { eq: ["scope_key"], sort: ["id"] },
       byBuildKey: { eq: ["scope_key", "build_key"], sort: ["id"] },
       byStoreBuild: { eq: ["store_build_scope_key"], sort: [], unique: true },
-      // A distribution path's builds in the order the registry recorded
-      // them, so its newest is one read.
-      byDistributionPath: {
-        eq: ["channel_id", "platform", "is_sandbox", "distribution"],
-        sort: ["created_at_ms", "id"],
-      },
       // Rooted at the channel, so deleting a channel reads its builds under
       // the channel row a registration bumps.
       byChannel: {

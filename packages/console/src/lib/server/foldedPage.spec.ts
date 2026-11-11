@@ -32,7 +32,10 @@ const index = (count: number, ordinary: (n: number) => boolean) => {
     reads.push(page.length);
     return page;
   };
-  const classify = async (chunk: readonly Row[]) =>
+  const classify = async (
+    chunk: readonly Row[],
+    _context?: { readonly budget: { left: number } },
+  ) =>
     new Set(
       chunk
         .filter(({ id: rowId }) => ordinary(Number(rowId.slice(4))))
@@ -74,19 +77,14 @@ describe("foldedPage", () => {
 
     // 20, [19 18 17], 16, then the run under 16 down to 13.
     expect(shape(first.entries)).toEqual([20, "[3]", 16, "[3]"]);
-    expect(first.next).toBe(id(13));
+    expect(first.previous).toBeUndefined();
 
     const second = await foldedPage({ ...list, size: 2, before: first.next });
     expect(shape(second.entries)).toEqual([12, "[3]", 8, "[3]"]);
-    expect(second.previous).toBe(id(12));
+    expect(second.entries[0]).toMatchObject({ row: { id: id(12) } });
     // Back up: the same page, its run above 12 is the end of the first.
-    const back = await foldedPage({
-      ...list,
-      size: 2,
-      after: second.previous,
-    });
-    expect(back.entries).toEqual(first.entries.map((entry) => entry));
-    expect(back.next).toBe(first.next);
+    const back = await foldedPage({ ...list, size: 2, ...second.previous });
+    expect(back).toEqual(first);
   });
 
   it("shows a pinned row where it sits without counting it, so its run splits around it and the page keeps its rows", async () => {
@@ -95,15 +93,15 @@ describe("foldedPage", () => {
     const first = await foldedPage({ ...list, size: 2, pinned: id(14) });
 
     expect(shape(first.entries)).toEqual([20, "[3]", 16, "[1]", 14, "[1]"]);
-    expect(first.next).toBe(id(13));
     // The page below is the same page with or without the pin.
     const second = await foldedPage({ ...list, size: 2, before: first.next });
     expect(shape(second.entries)).toEqual([12, "[3]", 8, "[3]"]);
-    // Back up to it: the pinned row is in the run that ends that page.
+    expect(first.next).toBe((await foldedPage({ ...list, size: 2 })).next);
+    // Back up to it, pinned: the pinned row is in the run that ends it.
     const back = await foldedPage({
       ...list,
       size: 2,
-      after: second.previous,
+      ...second.previous,
       pinned: id(14),
     });
     expect(back.entries).toEqual(first.entries);
@@ -116,11 +114,90 @@ describe("foldedPage", () => {
 
     expect(shape(first.entries)).toEqual([300, "[100+]"]);
     expect(list.reads.reduce((sum, rows) => sum + rows, 0)).toBe(200);
-    expect(first.next).toBe(id(101));
 
     const second = await foldedPage({ ...list, before: first.next });
     expect(shape(second.entries)).toEqual(["[99]", 1]);
     expect(second.entries[0]).toMatchObject({ from: id(101), to: id(2) });
+  });
+
+  it("goes Next and back to the same page at the read budget, its leading and trailing folds kept", async () => {
+    // 1,000 rows, only 950 ordinary: the first page runs out of budget.
+    const list = index(1_000, (n) => n === 950);
+    const first = await foldedPage({ ...list });
+    expect(shape(first.entries)).toEqual(["[50]", 950, "[100+]"]);
+
+    const second = await foldedPage({ ...list, before: first.next });
+    const third = await foldedPage({ ...list, before: second.next });
+    const backToSecond = await foldedPage({ ...list, ...third.previous });
+    const backToFirst = await foldedPage({ ...list, ...backToSecond.previous });
+
+    expect(backToSecond).toEqual(second);
+    expect(backToFirst).toEqual(first);
+    expect(backToFirst.previous).toBeUndefined();
+  });
+
+  it("reads at most 200 rows a page in either direction, its classification's reads included", async () => {
+    const list = index(1_000, (n) => n === 950);
+    let spent = 0;
+    const read: typeof list.read = async (input) => {
+      const rows = await list.read(input);
+      spent += rows.length;
+      return rows;
+    };
+    // A rule that reads 10 rows of its own per chunk, from its budget.
+    const classify: typeof list.classify = async (chunk, context) => {
+      const budget = context?.budget ?? { left: 10 };
+      const own = await read({
+        order: "desc",
+        limit: Math.min(10, budget.left),
+      });
+      budget.left -= own.length;
+      return list.classify(chunk, { budget });
+    };
+    for (const input of [
+      {},
+      { before: "s.row-0700" },
+      { after: id(600) },
+      { after: id(999) },
+    ]) {
+      spent = 0;
+      await foldedPage({ read, classify, ...input });
+      expect(spent, JSON.stringify(input)).toBeLessThanOrEqual(200);
+    }
+  });
+
+  it("drops no row reading up from a link that remembers no page", async () => {
+    const list = index(1_000, (n) => n === 950);
+    const seen: string[] = [];
+    const rowsOf = async (entries: readonly FoldedEntry<Row>[]) => {
+      for (const entry of entries) {
+        if (entry.kind === "row") seen.push(entry.row.id);
+        else {
+          for (let after: string | undefined; ; ) {
+            const chunk = await readFold({
+              read: list.read,
+              ...(entry.from === undefined ? {} : { from: entry.from }),
+              to: entry.to,
+              ...(after === undefined ? {} : { after }),
+            });
+            seen.push(...chunk.rows.map(({ id: rowId }) => rowId));
+            if (chunk.next === undefined) break;
+            after = chunk.next;
+          }
+        }
+      }
+    };
+    // Up from 800, as a bare cursor's Previous does, to the top.
+    let page = await foldedPage({ ...list, after: id(800) });
+    await rowsOf(page.entries);
+    while (page.previous !== undefined) {
+      page = await foldedPage({ ...list, ...page.previous });
+      await rowsOf(page.entries);
+    }
+
+    expect(seen.sort()).toEqual(
+      Array.from({ length: 200 }, (_, i) => id(801 + i)),
+    );
   });
 
   it("shows a page of folded rows alone as one fold with its count", async () => {

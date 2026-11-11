@@ -62,6 +62,10 @@ describe("readIpaExportMethod", () => {
     expect(await readIpaExportMethod(await ipa(""))).toBe("app-store");
   });
 
+  it("records nothing for an .ipa with no profile, which proves no export method", async () => {
+    expect(await readIpaExportMethod(await ipa(null))).toBeNull();
+  });
+
   it("records nothing for a file it can't read", async () => {
     const file = path.join(dir, "broken.ipa");
     await fs.promises.writeFile(file, "not a zip");

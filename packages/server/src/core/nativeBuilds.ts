@@ -142,17 +142,6 @@ export const nativeBuildScopeKey = (scope: NativeBuildScope): string => {
   return scopeKey;
 };
 
-/** The ID of the channel row a distribution path names. */
-const nativeBuildChannelId = (channel: string): string => {
-  try {
-    return `channel:${encodeChannelKey(channel)}`;
-  } catch (error) {
-    throw new NativeBuildInputError(
-      `Invalid distribution path: ${error instanceof Error ? error.message : String(error)}.`,
-    );
-  }
-};
-
 /** Whether `bundleId` is a native build's built-in bundle: one unique read. */
 export const isBuiltInBundle = async (
   db: Pick<CoreDatabase | CoreTransaction, "findOne">,
@@ -252,7 +241,6 @@ export const createNativeBuildApi = (
   | "registerNativeBuild"
   | "getNativeBuild"
   | "findNativeBuild"
-  | "findNativeBuildOnPath"
   | "listNativeBuilds"
   | "deleteNativeBuild"
   | "recordNativeBuildSubmission"
@@ -389,23 +377,6 @@ export const createNativeBuildApi = (
       if (older.length < OLDER_BUILDS_PAGE || last === undefined) return null;
       before = last.id;
     }
-  },
-
-  async findNativeBuildOnPath(path) {
-    const channelId = nativeBuildChannelId(path.channel);
-    const { rows } = await db.findMany("native_builds", {
-      index: "byDistributionPath",
-      where: {
-        channel_id: channelId,
-        platform: path.platform,
-        is_sandbox: path.sandbox,
-        distribution: path.distribution,
-      },
-      order: "desc",
-      limit: 1,
-    });
-    const newest = rows[0];
-    return newest === undefined ? null : pick(newest);
   },
 
   async recordNativeBuildSubmission(id, { destination, version }) {

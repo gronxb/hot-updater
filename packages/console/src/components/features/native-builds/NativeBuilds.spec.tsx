@@ -575,7 +575,7 @@ describe("NativeBuildsTable", () => {
   it("pages with Previous and Next as Bundles does, and offers Newest past the first page", () => {
     render(
       <NativeBuildsTable
-        builds={builds([build()], { next: id(9), previous: id(8) })}
+        builds={builds([build()], { next: id(9), previous: { after: id(8) } })}
         channel="pr-130"
         onChannel={vi.fn()}
         paged
@@ -601,7 +601,7 @@ describe("NativeBuildsTable", () => {
     render(
       <NativeBuildsTable
         builds={{
-          ...builds([build()], { next: id(9), previous: id(8) }),
+          ...builds([build()], { next: id(9), previous: { after: id(8) } }),
           isPlaceholderData: true,
         }}
         channel="pr-131"
@@ -812,7 +812,10 @@ describe("NativeBuildsTable", () => {
       foldAnswers({ 80: { rows: [testflight(79), testflight(78)] } });
       render(
         <NativeBuildsTable
-          builds={builds(page, { next: id(76), previous: id(80) })}
+          builds={builds(page, {
+            next: id(76),
+            previous: { before: `s.${id(80)}` },
+          })}
           channel="production"
           onChannel={vi.fn()}
           paged
@@ -827,10 +830,26 @@ describe("NativeBuildsTable", () => {
 
       expect(links()).toEqual(before);
       expect(before).toEqual([
-        `/native-builds?channel=production&after=${id(80)}`,
+        `/native-builds?channel=production&before=s.${id(80)}`,
         `/native-builds?channel=production&before=${id(76)}`,
         "/native-builds?channel=production",
       ]);
+    });
+
+    it("shades a fold's build and says it is older though its newer build wasn't found", () => {
+      foldAnswers({ 80: { rows: [testflight(79)] } });
+      render(table());
+      fireEvent.click(screen.getByRole("button", { name: "2 older builds" }));
+
+      const older = screen.getByRole("row", {
+        name: `Open native build ${id(79)}`,
+      });
+      expect(older.getAttribute("data-older")).toBe("true");
+      expect(
+        within(older)
+          .getByRole("button", { name: /^Older/ })
+          .getAttribute("aria-label"),
+      ).toBe("Older: a newer build on its channel reaches people the same way");
     });
 
     it("says 100+ for a fold past its cap, and loads more of it on request", () => {
