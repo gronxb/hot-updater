@@ -24,6 +24,19 @@ describe("native build list search", () => {
   });
 });
 
+describe("native build list view", () => {
+  it("keeps the older builds open, and only as true", () => {
+    expect(
+      validateNativeBuildsSearch({ channel: "pr-130", showOlder: "true" }),
+    ).toEqual({ channel: "pr-130", showOlder: true });
+    expect(validateNativeBuildsSearch({ showOlder: true })).toEqual({
+      showOlder: true,
+    });
+    expect(validateNativeBuildsSearch({ showOlder: "false" })).toEqual({});
+    expect(validateNativeBuildsSearch({ showOlder: "1" })).toEqual({});
+  });
+});
+
 describe("native build page search", () => {
   it("keeps one page of patches", () => {
     expect(

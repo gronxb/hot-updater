@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  groupUnreachableReleases,
   hasReleaseFilters,
   releaseFilterOf,
   updateReleaseFilters,
@@ -93,5 +94,102 @@ describe("Release search state", () => {
     expect(
       releaseFilterOf(updateReleaseFilters(byBundle, { bundleId: undefined })),
     ).toEqual({ kind: "all" });
+  });
+});
+
+describe("Unreachable release groups", () => {
+  const row = (id: string, currentlyUnreachable: boolean) => ({
+    id,
+    currentlyUnreachable,
+  });
+  const ids = (rows: readonly { readonly id: string }[]) =>
+    rows.map(({ id }) => id);
+  const page = [
+    row("r5", false),
+    row("r4", true),
+    row("r3", false),
+    row("r2", true),
+    row("r1", true),
+  ];
+
+  it("collapses a page's unreachable releases under the others, in order", () => {
+    const groups = groupUnreachableReleases(page, {});
+    expect(ids(groups.shown)).toEqual(["r5", "r3"]);
+    expect(ids(groups.collapsed)).toEqual(["r4", "r2", "r1"]);
+  });
+
+  it("keeps the selected release where it is, and out of the count", () => {
+    const groups = groupUnreachableReleases(page, { releaseId: "r2" });
+    expect(ids(groups.shown)).toEqual(["r5", "r3", "r2"]);
+    expect(ids(groups.collapsed)).toEqual(["r4", "r1"]);
+  });
+
+  it("keeps the selected release in an open group, so selecting it moves no row", () => {
+    const groups = groupUnreachableReleases(page, {
+      releaseId: "r2",
+      showUnreachable: true,
+    });
+    expect(ids(groups.shown)).toEqual(["r5", "r3"]);
+    expect(ids(groups.collapsed)).toEqual(["r4", "r2", "r1"]);
+  });
+
+  it("collapses none under a filter that asks for unreachable releases", () => {
+    for (const search of [
+      validateReleaseSearch({ channelId: "c", enabled: "false" }),
+      validateReleaseSearch({ scopeKey: "s", enabled: "false" }),
+      validateReleaseSearch({ bundleId: "bundle-1" }),
+    ]) {
+      const groups = groupUnreachableReleases(page, search);
+      expect(ids(groups.shown)).toEqual(["r5", "r4", "r3", "r2", "r1"]);
+      expect(groups.collapsed).toEqual([]);
+    }
+    expect(
+      ids(
+        groupUnreachableReleases(
+          page,
+          validateReleaseSearch({ channelId: "c", enabled: "true" }),
+        ).collapsed,
+      ),
+    ).toEqual(["r4", "r2", "r1"]);
+  });
+
+  it("collapses none on a page with no other release", () => {
+    const unreachable = [row("r2", true), row("r1", true)];
+    expect(groupUnreachableReleases(unreachable, {})).toEqual({
+      shown: unreachable,
+      collapsed: [],
+    });
+    expect(groupUnreachableReleases([], {})).toEqual({
+      shown: [],
+      collapsed: [],
+    });
+  });
+
+  it("keeps the open group across filters and pages, and out of every filter", () => {
+    const open = validateReleaseSearch({
+      channelId: "channel-1",
+      showUnreachable: "true",
+    });
+    expect(open.showUnreachable).toBe(true);
+    expect(
+      validateReleaseSearch({ showUnreachable: "1" }).showUnreachable,
+    ).toBe(undefined);
+    expect(releaseFilterOf(open)).toEqual({
+      kind: "channelPlatform",
+      channelId: "channel-1",
+      platform: "ios",
+    });
+    expect(
+      hasReleaseFilters(validateReleaseSearch({ showUnreachable: true })),
+    ).toBe(false);
+    for (const filters of [
+      { platform: "android" as const },
+      { bundleId: "bundle-1" },
+      { scopeKey: "scope-1" },
+      { enabled: false },
+      { channelId: undefined },
+    ]) {
+      expect(updateReleaseFilters(open, filters).showUnreachable).toBe(true);
+    }
   });
 });

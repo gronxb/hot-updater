@@ -12,6 +12,8 @@ export interface ReleaseSearch {
   releaseId?: string;
   /** One catalog scope: a channel, platform, and target kind. */
   scopeKey?: string;
+  /** Whether a page's unreachable releases show; view state, no filter. */
+  showUnreachable?: true;
 }
 
 const optionalString = (value: unknown) =>
@@ -57,6 +59,10 @@ export function validateReleaseSearch(
     platform,
     releaseId: optionalString(search.releaseId),
     scopeKey,
+    showUnreachable:
+      search.showUnreachable === true || search.showUnreachable === "true"
+        ? true
+        : undefined,
   };
 }
 
@@ -84,7 +90,8 @@ export function hasReleaseFilters(search: ReleaseSearch): boolean {
 
 /**
  * A new filter starts from the first page. A bundle or scope filter replaces
- * the others, and choosing a channel or platform clears them.
+ * the others, and choosing a channel or platform clears them. An open group
+ * of unreachable releases stays open.
  */
 export function updateReleaseFilters(
   current: ReleaseSearch,
@@ -96,12 +103,14 @@ export function updateReleaseFilters(
   >,
 ): ReleaseSearch {
   const next = { ...current, ...filters };
+  const { showUnreachable } = current;
   if (filters.bundleId)
-    return validateReleaseSearch({ bundleId: next.bundleId });
+    return validateReleaseSearch({ bundleId: next.bundleId, showUnreachable });
   if (filters.scopeKey) {
     return validateReleaseSearch({
       scopeKey: next.scopeKey,
       enabled: next.enabled,
+      showUnreachable,
     });
   }
   if ("channelId" in filters || "platform" in filters) {
@@ -109,6 +118,7 @@ export function updateReleaseFilters(
       channelId: next.channelId,
       enabled: next.enabled,
       platform: next.platform,
+      showUnreachable,
     });
   }
   return validateReleaseSearch({
@@ -117,5 +127,38 @@ export function updateReleaseFilters(
     enabled: next.enabled,
     platform: next.platform,
     scopeKey: next.scopeKey,
+    showUnreachable,
   });
+}
+
+/** What a page of releases shows: its rows, and those collapsed under them. */
+export interface ReleaseGroups<T> {
+  readonly shown: readonly T[];
+  readonly collapsed: readonly T[];
+}
+
+/**
+ * Collapses a page's unreachable releases under its other ones, in their
+ * order. A filter that asks for unreachable releases, Disabled or one
+ * bundle, collapses none, nor does a page of only unreachable ones. The
+ * selected release shows while the group is closed, among the others; in
+ * an open group it stays where it is, so selecting it moves no row.
+ */
+export function groupUnreachableReleases<
+  T extends { readonly id: string; readonly currentlyUnreachable: boolean },
+>(releases: readonly T[], search: ReleaseSearch): ReleaseGroups<T> {
+  if (search.enabled === false || search.bundleId !== undefined) {
+    return { shown: releases, collapsed: [] };
+  }
+  const pinned = search.showUnreachable ? undefined : search.releaseId;
+  const collapsed = releases.filter(
+    (release) => release.currentlyUnreachable && release.id !== pinned,
+  );
+  if (collapsed.length === releases.length) {
+    return { shown: releases, collapsed: [] };
+  }
+  return {
+    shown: releases.filter((release) => !collapsed.includes(release)),
+    collapsed,
+  };
 }

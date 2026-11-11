@@ -13,6 +13,10 @@ import {
 
 import { ChannelBadge } from "@/components/ChannelBadge";
 import {
+  DataCardCollapsedRows,
+  DataTableCollapsedRows,
+} from "@/components/CollapsedRows";
+import {
   DataCard,
   DataCardSkeletons,
   DataCardsEmpty,
@@ -42,6 +46,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { TableCell, TableHead } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { newerBuildsOnPath } from "@/lib/native-build-paths";
 import {
   formatByteSize,
   nativeBuildArtifacts,
@@ -54,6 +59,7 @@ import type { NativeBuildListResult } from "@/lib/server/nativeBuilds";
 
 import { CopyableText } from "./CopyableText";
 import { IMPORT_COMMAND, IMPORT_GUIDE_URL } from "./ImportBuild";
+import { OlderBuildLabel } from "./OlderBuildLabel";
 import { SandboxBadge } from "./SandboxBadge";
 import { isSubmitted, StoreSubmissionBadge } from "./StoreSubmission";
 
@@ -62,17 +68,27 @@ export const NATIVE_BUILD_GUIDE_URL =
 
 const COLUMNS = 10;
 
-/** The page of the list that shows `channel`'s builds, or every build. */
-const channelSearch = (channel: string | undefined) =>
-  channel === undefined ? {} : { channel };
+/**
+ * The page of the list that shows `channel`'s builds, or every build, with
+ * the older builds open when they are.
+ */
+const channelSearch = (channel: string | undefined, showOlder: boolean) => ({
+  ...(channel === undefined ? {} : { channel }),
+  ...(showOlder ? { showOlder: true as const } : {}),
+});
+
+/** The older builds' group: "1 older build", "2 older builds". */
+const OLDER_BUILDS = { one: "older build", other: "older builds" } as const;
 
 function EmptyState({
   channel,
   paged,
+  showOlder,
   onClearChannel,
 }: {
   readonly channel: string | undefined;
   readonly paged: boolean;
+  readonly showOlder: boolean;
   readonly onClearChannel: () => void;
 }) {
   if (paged) {
@@ -83,7 +99,7 @@ function EmptyState({
             className: "mt-1 min-h-11 sm:min-h-8",
             variant: "outline",
           })}
-          search={channelSearch(channel)}
+          search={channelSearch(channel, showOlder)}
           to="/native-builds"
         >
           Show the newest builds
@@ -294,9 +310,12 @@ const createdAt = (build: NativeBuildRow) =>
 
 function BuildRow({
   build,
+  newer,
   onChannel,
 }: {
   readonly build: NativeBuildRow;
+  /** The newer build on its path that passes it over, if any. */
+  readonly newer: NativeBuildRow | undefined;
   readonly onChannel: (channel: string) => void;
 }) {
   const navigate = useNavigate();
@@ -304,6 +323,8 @@ function BuildRow({
   return (
     <DataTableRow
       aria-label={`Open native build ${build.id}`}
+      className="data-[older=true]:bg-muted/35 data-[older=true]:saturate-50 data-[older=true]:hover:bg-muted/50 data-[older=true]:hover:saturate-100 data-[older=true]:focus-within:saturate-100"
+      data-older={newer === undefined ? undefined : true}
       onOpen={() =>
         void navigate({
           to: "/native-builds/$buildId",
@@ -339,7 +360,14 @@ function BuildRow({
         {formatByteSize(build.byte_size)}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
-        <RelativeTime ms={createdAt(build)} />
+        {newer === undefined ? (
+          <RelativeTime ms={createdAt(build)} />
+        ) : (
+          <span className="flex flex-col items-start gap-1">
+            <RelativeTime ms={createdAt(build)} />
+            <OlderBuildLabel newer={newer} />
+          </span>
+        )}
       </TableCell>
       <TableCell className="text-right">
         <DownloadButton build={build} />
@@ -355,9 +383,12 @@ function BuildRow({
  */
 function BuildCard({
   build,
+  newer,
   onChannel,
 }: {
   readonly build: NativeBuildRow;
+  /** The newer build on its path that passes it over, if any. */
+  readonly newer: NativeBuildRow | undefined;
   readonly onChannel: (channel: string) => void;
 }) {
   const navigate = useNavigate();
@@ -366,7 +397,8 @@ function BuildCard({
   return (
     <DataCard
       aria-label={`Native build ${buildTitle(build)} ${build.id}`}
-      className="gap-3 border-b-0"
+      className="gap-3 border-b-0 data-[older=true]:bg-muted/35 data-[older=true]:saturate-50 data-[older=true]:hover:bg-muted/50 data-[older=true]:hover:saturate-100 data-[older=true]:focus-within:saturate-100"
+      data-older={newer === undefined ? undefined : true}
       onClick={openOutsideControls(
         () =>
           void navigate({
@@ -383,6 +415,7 @@ function BuildCard({
             platform={build.platform}
           />
           <BuildIdentity build={build} />
+          {newer === undefined ? null : <OlderBuildLabel newer={newer} />}
         </div>
         <DownloadButton build={build} />
       </div>
@@ -435,12 +468,16 @@ function BuildCard({
  * The registered native builds, newest first, one page at a time, as a
  * column table like Bundles' on wide screens and cards on narrow ones. A
  * row opens the build's page; its channel filters the list by that channel.
+ * The newest build of each distribution path leads; the page's older ones
+ * collapse under them into one group, shaded when it opens.
  */
 export function NativeBuildsTable({
   builds,
   channel,
   paged,
+  showOlder = false,
   onChannel,
+  onShowOlderChange,
 }: {
   readonly builds: {
     readonly data: NativeBuildListResult | undefined;
@@ -453,11 +490,23 @@ export function NativeBuildsTable({
   readonly channel: string | undefined;
   /** Whether the list shows a page other than the newest. */
   readonly paged: boolean;
+  /** Whether the page's older builds show, as the URL keeps it. */
+  readonly showOlder?: boolean;
   readonly onChannel: (channel: string | undefined) => void;
+  readonly onShowOlderChange: (open: boolean) => void;
 }) {
   const isMobile = useIsMobile();
   const rows = builds.data?.data;
   const { next, previous } = builds.data ?? {};
+  const newer = newerBuildsOnPath(rows ?? []);
+  const newest = rows?.filter((build) => !newer.has(build.id)) ?? [];
+  const older = rows?.filter((build) => newer.has(build.id)) ?? [];
+  const group = {
+    count: older.length,
+    noun: OLDER_BUILDS,
+    open: showOlder,
+    onOpenChange: onShowOlderChange,
+  };
 
   if (builds.isError) {
     return (
@@ -486,6 +535,7 @@ export function NativeBuildsTable({
       channel={channel}
       onClearChannel={() => onChannel(undefined)}
       paged={paged}
+      showOlder={showOlder}
     />
   );
 
@@ -504,15 +554,41 @@ export function NativeBuildsTable({
             ) : rows?.length === 0 ? (
               <DataCardsEmpty>{empty}</DataCardsEmpty>
             ) : (
-              rows?.map((build) => (
-                <div
-                  className="border-b last:border-b-0"
-                  key={build.id}
-                  role="listitem"
-                >
-                  <BuildCard build={build} onChannel={onChannel} />
-                </div>
-              ))
+              <>
+                {newest.map((build) => (
+                  <div
+                    className="border-b last:border-b-0"
+                    key={build.id}
+                    role="listitem"
+                  >
+                    <BuildCard
+                      build={build}
+                      newer={undefined}
+                      onChannel={onChannel}
+                    />
+                  </div>
+                ))}
+                {older.length > 0 ? (
+                  <div role="listitem">
+                    <DataCardCollapsedRows {...group} />
+                  </div>
+                ) : null}
+                {showOlder
+                  ? older.map((build) => (
+                      <div
+                        className="border-b last:border-b-0"
+                        key={build.id}
+                        role="listitem"
+                      >
+                        <BuildCard
+                          build={build}
+                          newer={newer.get(build.id)}
+                          onChannel={onChannel}
+                        />
+                      </div>
+                    ))
+                  : null}
+              </>
             )}
           </div>
         ) : (
@@ -546,9 +622,29 @@ export function NativeBuildsTable({
             ) : rows?.length === 0 ? (
               <DataTableFullRow columns={COLUMNS}>{empty}</DataTableFullRow>
             ) : (
-              rows?.map((build) => (
-                <BuildRow build={build} key={build.id} onChannel={onChannel} />
-              ))
+              <>
+                {newest.map((build) => (
+                  <BuildRow
+                    build={build}
+                    key={build.id}
+                    newer={undefined}
+                    onChannel={onChannel}
+                  />
+                ))}
+                {older.length > 0 ? (
+                  <DataTableCollapsedRows columns={COLUMNS} {...group} />
+                ) : null}
+                {showOlder
+                  ? older.map((build) => (
+                      <BuildRow
+                        build={build}
+                        key={build.id}
+                        newer={newer.get(build.id)}
+                        onChannel={onChannel}
+                      />
+                    ))
+                  : null}
+              </>
             )}
           </DataTable>
         )}
@@ -560,14 +656,20 @@ export function NativeBuildsTable({
           pending={builds.isPlaceholderData}
           newest={
             paged
-              ? { search: channelSearch(channel), to: "/native-builds" }
+              ? {
+                  search: channelSearch(channel, showOlder),
+                  to: "/native-builds",
+                }
               : undefined
           }
           next={
             next === undefined
               ? undefined
               : {
-                  search: { ...channelSearch(channel), before: next },
+                  search: {
+                    ...channelSearch(channel, showOlder),
+                    before: next,
+                  },
                   to: "/native-builds",
                 }
           }
@@ -575,7 +677,10 @@ export function NativeBuildsTable({
             previous === undefined
               ? undefined
               : {
-                  search: { ...channelSearch(channel), after: previous },
+                  search: {
+                    ...channelSearch(channel, showOlder),
+                    after: previous,
+                  },
                   to: "/native-builds",
                 }
           }

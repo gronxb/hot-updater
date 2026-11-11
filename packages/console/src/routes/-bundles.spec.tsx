@@ -301,22 +301,27 @@ describe("BundlesPage", () => {
     expect(within(row).queryByText("rev 1")).toBeNull();
   });
 
-  it("subdues a Bundle that no catalog path currently selects first", () => {
+  it("subdues a Bundle that no catalog path currently selects first, and says why on a tap or focus", async () => {
     release.currentlyUnreachable = true;
 
     render(<BundlesPage />);
     const row = screen.getByRole("row", {
       name: "Open bundle release-1",
     });
-    const state = within(row).getByText("Unreachable");
+    const state = within(row).getByRole("button", { name: /^Unreachable/ });
 
     expect(row.className).toContain("bg-muted/35");
     expect(row.className).toContain("saturate-50");
     expect(row.className).toContain("hover:saturate-100");
     expect(row.className).toContain("motion-reduce:transition-none");
-    expect(state.getAttribute("title")).toBe(
+    expect(state.textContent).toBe("Unreachable");
+    // Not a hover-only title: a touch or a keyboard reaches the reason.
+    expect(state.hasAttribute("title")).toBe(false);
+    fireEvent.click(state);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
       "No device gets this bundle with the current delivery settings.",
     );
+    expect(mocks.navigate).not.toHaveBeenCalled();
   });
 
   it("expands the base-to-patch relationship from the Bundle row", () => {
@@ -469,5 +474,166 @@ describe("BundlesPage", () => {
       screen.getByRole("button", { name: `Copy full value: ${fingerprint}` })
         .textContent,
     ).toBe("e7b2a84d…9efb");
+  });
+
+  describe("unreachable bundles", () => {
+    const at = (id: string, currentlyUnreachable: boolean) => ({
+      ...release,
+      id,
+      currentlyUnreachable,
+    });
+    const rowNames = () =>
+      screen
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => row.getAttribute("aria-label") ?? row.textContent);
+    const GROUP = "2 unreachable bundles on this page";
+
+    beforeEach(() => {
+      releases = [
+        at("release-3", false),
+        at("release-2", true),
+        at("release-1", true),
+      ];
+    });
+
+    it("collapses a page's unreachable bundles under one closed group", () => {
+      render(<BundlesPage />);
+
+      expect(rowNames()).toEqual(["Open bundle release-3", GROUP]);
+      const group = screen.getByRole("button", { name: GROUP });
+      expect(group.getAttribute("aria-expanded")).toBe("false");
+      expect(group.hasAttribute("aria-controls")).toBe(false);
+      fireEvent.click(group);
+      expect(mocks.navigate).toHaveBeenCalledWith({
+        resetScroll: false,
+        search: { showUnreachable: true },
+        to: "/",
+      });
+      // The pager counts the whole page, collapsed or not.
+      expect(
+        screen.getByText((_, node) =>
+          Boolean(node?.textContent === "3 entries, newest first"),
+        ),
+      ).toBeDefined();
+    });
+
+    it("opens the group from the URL, its bundles still subdued, and closes it", () => {
+      mocks.search.mockReturnValue({ showUnreachable: true });
+      render(<BundlesPage />);
+
+      expect(rowNames()).toEqual([
+        "Open bundle release-3",
+        GROUP,
+        "Open bundle release-2",
+        "Open bundle release-1",
+      ]);
+      expect(
+        screen.getByRole("row", { name: "Open bundle release-2" }).className,
+      ).toContain("bg-muted/35");
+      fireEvent.click(screen.getByRole("button", { name: GROUP }));
+      expect(mocks.navigate).toHaveBeenCalledWith({
+        resetScroll: false,
+        search: { showUnreachable: undefined },
+        to: "/",
+      });
+    });
+
+    it("keeps a selected unreachable bundle in place, out of the group", () => {
+      mocks.search.mockReturnValue({ releaseId: "release-2" });
+      render(<BundlesPage />);
+
+      expect(rowNames()).toEqual([
+        "Open bundle release-3",
+        "Open bundle release-2",
+        "1 unreachable bundle on this page",
+      ]);
+      expect(
+        screen
+          .getByRole("row", { name: "Open bundle release-2" })
+          .getAttribute("data-state"),
+      ).toBe("selected");
+    });
+
+    it.each([
+      { channelId: "channel-1", platform: "ios", enabled: false },
+      { bundleId: release.bundle_id },
+    ])("shows every bundle a filter asks for, subdued (%o)", (search) => {
+      mocks.search.mockReturnValue(search);
+      render(<BundlesPage />);
+
+      expect(rowNames()).toEqual([
+        "Open bundle release-3",
+        "Open bundle release-2",
+        "Open bundle release-1",
+      ]);
+      expect(screen.getAllByText("Unreachable")).toHaveLength(2);
+    });
+
+    it("shows a page of only unreachable bundles without the group", () => {
+      releases = [at("release-2", true), at("release-1", true)];
+      render(<BundlesPage />);
+
+      expect(rowNames()).toEqual([
+        "Open bundle release-2",
+        "Open bundle release-1",
+      ]);
+      expect(screen.queryByRole("button", { name: /unreachable/ })).toBeNull();
+    });
+
+    it("closes a collapsed bundle's lineage with the group", () => {
+      mocks.search.mockReturnValue({ showUnreachable: true });
+      const { rerender } = render(<BundlesPage />);
+      fireEvent.click(
+        within(
+          screen.getByRole("row", { name: "Open bundle release-2" }),
+        ).getByRole("button", { name: "Show advanced artifact diagnostics" }),
+      );
+      expect(screen.getByText("Advanced artifact diagnostics")).toBeDefined();
+
+      fireEvent.click(screen.getByRole("button", { name: GROUP }));
+      mocks.search.mockReturnValue({});
+      rerender(<BundlesPage />);
+      expect(screen.queryByText("Advanced artifact diagnostics")).toBeNull();
+      // Opening the group again opens no lineage on its own.
+      mocks.search.mockReturnValue({ showUnreachable: true });
+      rerender(<BundlesPage />);
+      expect(screen.queryByText("Advanced artifact diagnostics")).toBeNull();
+    });
+
+    it("keeps the group open when filters clear", () => {
+      releases = [];
+      mocks.search.mockReturnValue({
+        bundleId: "missing",
+        showUnreachable: true,
+      });
+      render(<BundlesPage />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+      expect(mocks.navigate).toHaveBeenCalledWith({
+        resetScroll: true,
+        search: { showUnreachable: true },
+        to: "/",
+      });
+    });
+
+    it("collapses the unreachable cards on a phone the same way", () => {
+      mocks.isMobile.mockReturnValue(true);
+      render(<BundlesPage />);
+
+      expect(
+        screen
+          .getAllByRole("article")
+          .map((card) => card.getAttribute("aria-label")),
+      ).toEqual(["Bundle release-3"]);
+      const group = screen.getByRole("button", { name: GROUP });
+      expect(group.getAttribute("aria-expanded")).toBe("false");
+      fireEvent.click(group);
+      expect(mocks.navigate).toHaveBeenCalledWith({
+        resetScroll: false,
+        search: { showUnreachable: true },
+        to: "/",
+      });
+    });
   });
 });

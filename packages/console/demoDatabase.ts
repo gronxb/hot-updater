@@ -716,6 +716,45 @@ const demoNativeBuilds: DemoNativeBuild[] = [
       gitCommitHash: `a${String(index).padStart(2, "0")}c4e19`,
     }),
   ),
+  // Builds a newer one on their distribution path passes over: TestFlight,
+  // Play internal, a staging APK, and a sandbox TestFlight build.
+  {
+    n: 16,
+    platform: "ios",
+    channel: "production",
+    target: { fingerprint: "fp-ios-production-1-0-0" },
+    minBundleId: "019f6300-00c6-7000-8000-000000000000",
+    kind: "ipa",
+    gitCommitHash: "6e2a9d40",
+  },
+  {
+    n: 17,
+    platform: "android",
+    channel: "production",
+    target: { appVersion: "1.3.0" },
+    minBundleId: "019f6300-00c7-7000-8000-000000000000",
+    kind: "aab",
+    gitCommitHash: "48c1f0b2",
+  },
+  {
+    n: 18,
+    platform: "android",
+    channel: "staging",
+    target: { fingerprint: "fp-android-camera-v2" },
+    minBundleId: "019f6300-00c8-7000-8000-000000000000",
+    kind: "apk",
+    gitCommitHash: "0b7d3e95",
+  },
+  {
+    n: 19,
+    platform: "ios",
+    channel: "sandbox-release",
+    target: { fingerprint: "fp-ios-sandbox" },
+    minBundleId: "019f6300-00c9-7000-8000-000000000000",
+    kind: "ipa",
+    gitCommitHash: "3f9a1c27",
+    sandbox: true,
+  },
   {
     n: 20,
     platform: "android",
@@ -907,6 +946,18 @@ for (const build of demoNativeBuilds) {
 
 // The production IPAs went to TestFlight and the AAB to Google Play's
 // internal track, which the CLI records once the store took each.
+await core.recordNativeBuildSubmission(nativeBuildId(16), {
+  destination: "testflight",
+  version: "1.0.0 (116)",
+});
+await core.recordNativeBuildSubmission(nativeBuildId(17), {
+  destination: "play-internal",
+  version: "1.3.0 (117)",
+});
+await core.recordNativeBuildSubmission(nativeBuildId(19), {
+  destination: "testflight",
+  version: "1.0.0 (119)",
+});
 await core.recordNativeBuildSubmission(nativeBuildId(21), {
   destination: "testflight",
   version: "1.4.2 (121)",

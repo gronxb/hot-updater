@@ -1,7 +1,7 @@
 import { assertCanonicalChannelName } from "@hot-updater/protocol";
 
 import type { NativeBuildDetailSearch } from "@/components/features/native-builds/NativeBuildDetailPage";
-import type { NativeBuildPage } from "@/lib/api";
+import type { NativeBuildsSearch } from "@/components/features/native-builds/NativeBuildsPage";
 
 const text = (value: unknown) =>
   typeof value === "string" && value.length > 0 ? value : undefined;
@@ -24,17 +24,22 @@ const defined = <T extends object>(values: T): T =>
   ) as T;
 
 /**
- * The native build list's URL: a channel the builds embed, and one keyset
- * page. A page has one direction, so `before` wins over `after`.
+ * The native build list's URL: a channel the builds embed, one keyset page,
+ * and whether the older builds show. A page has one direction, so `before`
+ * wins over `after`.
  */
 export const validateNativeBuildsSearch = (
   search: Record<string, unknown>,
-): NativeBuildPage => {
+): NativeBuildsSearch => {
   const before = text(search.before);
   return defined({
     channel: channelName(search.channel),
     before,
     after: before === undefined ? text(search.after) : undefined,
+    showOlder:
+      search.showOlder === true || search.showOlder === "true"
+        ? (true as const)
+        : undefined,
   });
 };
 

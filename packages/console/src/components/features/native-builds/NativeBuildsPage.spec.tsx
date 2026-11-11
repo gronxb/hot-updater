@@ -4,6 +4,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { NativeBuildsPage } from "./NativeBuildsPage";
 
+const { nativeBuildsQuery } = vi.hoisted(() => ({
+  nativeBuildsQuery: vi.fn((_page: unknown) => ({
+    data: { data: [] },
+    isError: false,
+    isLoading: false,
+    isPlaceholderData: false,
+    refetch: vi.fn(),
+  })),
+}));
+
 vi.mock("@/lib/api", () => ({
   useChannelsQuery: () => ({
     data: [
@@ -13,13 +23,7 @@ vi.mock("@/lib/api", () => ({
     refetch: vi.fn(),
   }),
   useConfigQuery: () => ({ data: { console: {} } }),
-  useNativeBuildsQuery: () => ({
-    data: { data: [] },
-    isError: false,
-    isLoading: false,
-    isPlaceholderData: false,
-    refetch: vi.fn(),
-  }),
+  useNativeBuildsQuery: nativeBuildsQuery,
 }));
 vi.mock("@/components/ui/sidebar", () => ({
   SidebarTrigger: () => null,
@@ -88,5 +92,27 @@ describe("NativeBuildsPage", () => {
     expect(trigger.textContent).not.toContain("All channels");
     await choose("All channels");
     expect(onSearchChange).toHaveBeenLastCalledWith({});
+  });
+
+  it("reads the same page with the older builds open, and keeps them open across a channel change", async () => {
+    const onSearchChange = vi.fn();
+    render(
+      <NativeBuildsPage
+        onSearchChange={onSearchChange}
+        search={{ channel: "pr-130", before: "b", showOlder: true }}
+      />,
+    );
+
+    // The query key of the closed list's page, not one of its own.
+    expect(nativeBuildsQuery.mock.lastCall).toStrictEqual([
+      { channel: "pr-130", before: "b" },
+    ]);
+    await choose("all");
+    expect(onSearchChange).toHaveBeenLastCalledWith({
+      channel: "all",
+      showOlder: true,
+    });
+    await choose("All channels");
+    expect(onSearchChange).toHaveBeenLastCalledWith({ showOlder: true });
   });
 });

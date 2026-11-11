@@ -19,6 +19,23 @@ import {
 import { ImportBuildDialog } from "./ImportBuild";
 import { NativeBuildsTable } from "./NativeBuildsTable";
 
+/** The native build list's URL: the page it reads, and how it shows it. */
+export type NativeBuildsSearch = NativeBuildPage & {
+  /** Whether the builds a newer one on their path passes over show. */
+  readonly showOlder?: true;
+};
+
+/**
+ * The page a list URL reads, its view state left out, so opening the older
+ * builds reads nothing: the same query, kept on screen.
+ */
+const pageOf = ({ channel, before, after }: NativeBuildsSearch) =>
+  Object.fromEntries(
+    Object.entries({ channel, before, after }).filter(
+      ([, value]) => value !== undefined,
+    ),
+  ) as NativeBuildPage;
+
 /**
  * The filter's values: a channel's is its name behind a prefix, so no channel
  * name, `all` included, can be taken for "All channels".
@@ -30,17 +47,21 @@ const channelValue = (name: string) => `${CHANNEL_VALUE_PREFIX}${name}`;
 /**
  * The native builds Hot Updater tracks: one page at a time, newest first,
  * optionally only those that embed one channel. The page and the channel
- * are in the URL, so a pull request links to its channel's builds.
+ * are in the URL, so a pull request links to its channel's builds, and so
+ * is whether the older builds show, which reads nothing.
  */
 export function NativeBuildsPage({
   search,
   onSearchChange,
 }: {
-  readonly search: NativeBuildPage;
-  readonly onSearchChange: (search: NativeBuildPage) => void;
+  readonly search: NativeBuildsSearch;
+  readonly onSearchChange: (
+    search: NativeBuildsSearch,
+    options?: { readonly resetScroll: boolean },
+  ) => void;
 }) {
-  const { channel, before, after } = search;
-  const builds = useNativeBuildsQuery(search);
+  const { channel, before, after, showOlder } = search;
+  const builds = useNativeBuildsQuery(pageOf(search));
   // The filter's choices; the rows decode their channel from its ID.
   const channels = useChannelsQuery();
   const channelNames = channels.data?.map(({ name }) => name) ?? [];
@@ -49,8 +70,9 @@ export function NativeBuildsPage({
     channel === undefined || channelNames.includes(channel)
       ? channelNames
       : [channel, ...channelNames];
+  const view = showOlder ? { showOlder } : {};
   const filterBy = (next: string | undefined) =>
-    onSearchChange(next === undefined ? {} : { channel: next });
+    onSearchChange(next === undefined ? view : { channel: next, ...view });
 
   return (
     <div className="flex h-svh min-h-0 min-w-0 flex-col">
@@ -130,7 +152,17 @@ export function NativeBuildsPage({
           builds={builds}
           channel={channel}
           onChannel={filterBy}
+          onShowOlderChange={(open) =>
+            onSearchChange(
+              {
+                ...search,
+                showOlder: open ? true : undefined,
+              },
+              { resetScroll: false },
+            )
+          }
           paged={before !== undefined || after !== undefined}
+          showOlder={showOlder === true}
         />
       </div>
     </div>
