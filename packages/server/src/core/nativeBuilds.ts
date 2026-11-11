@@ -73,7 +73,16 @@ const pick = (row: Readonly<Record<string, unknown>>): NativeBuildRow => ({
   is_store_build: row.is_store_build === true,
   is_sandbox: row.is_sandbox === true,
   sandbox_url_scheme: (row.sandbox_url_scheme ?? null) as string | null,
+  export_method: (row.export_method ?? null) as NativeBuildRow["export_method"],
 });
+
+/** The export methods an `.ipa` registers with. */
+const EXPORT_METHODS: ReadonlySet<string> = new Set([
+  "app-store",
+  "ad-hoc",
+  "development",
+  "enterprise",
+] satisfies NonNullable<NativeBuildRow["export_method"]>[]);
 
 /**
  * The channels only sandbox builds register on: a registration's `sandbox`
@@ -133,6 +142,17 @@ export const nativeBuildScopeKey = (scope: NativeBuildScope): string => {
   return scopeKey;
 };
 
+/** The ID of the channel row a distribution path names. */
+const nativeBuildChannelId = (channel: string): string => {
+  try {
+    return `channel:${encodeChannelKey(channel)}`;
+  } catch (error) {
+    throw new NativeBuildInputError(
+      `Invalid distribution path: ${error instanceof Error ? error.message : String(error)}.`,
+    );
+  }
+};
+
 /** Whether `bundleId` is a native build's built-in bundle: one unique read. */
 export const isBuiltInBundle = async (
   db: Pick<CoreDatabase | CoreTransaction, "findOne">,
@@ -152,6 +172,7 @@ const problemOf = ({
   buildNumber,
   isSandbox,
   sandboxUrlScheme,
+  exportMethod,
   artifact,
 }: NativeBuildRegistration): string | null => {
   if (!isUUIDv7(id)) return "id must be a UUIDv7";
@@ -208,6 +229,14 @@ const problemOf = ({
   if (!kinds.includes(artifact.kind)) {
     return `artifact.kind of an ${platform} build must be ${kinds.join(" or ")}`;
   }
+  if (exportMethod !== undefined && exportMethod !== null) {
+    if (artifact.kind !== "ipa") {
+      return "exportMethod is an .ipa's, and this artifact isn't one";
+    }
+    if (!EXPORT_METHODS.has(exportMethod)) {
+      return `exportMethod must be ${[...EXPORT_METHODS].join(", ")}, or null`;
+    }
+  }
   if (!Number.isSafeInteger(artifact.byteSize) || artifact.byteSize < 0) {
     return "artifact.byteSize must be a byte count";
   }
@@ -223,6 +252,7 @@ export const createNativeBuildApi = (
   | "registerNativeBuild"
   | "getNativeBuild"
   | "findNativeBuild"
+  | "findNativeBuildOnPath"
   | "listNativeBuilds"
   | "deleteNativeBuild"
   | "recordNativeBuildSubmission"
@@ -258,6 +288,7 @@ export const createNativeBuildApi = (
       is_store_build: false,
       is_sandbox: registration.isSandbox === true,
       sandbox_url_scheme: registration.sandboxUrlScheme ?? null,
+      export_method: registration.exportMethod ?? null,
     };
     // A channel deleted between ensuring it and the write refuses the write
     // through `byChannel`'s root, so it runs again and ensures it anew.
@@ -358,6 +389,23 @@ export const createNativeBuildApi = (
       if (older.length < OLDER_BUILDS_PAGE || last === undefined) return null;
       before = last.id;
     }
+  },
+
+  async findNativeBuildOnPath(path) {
+    const channelId = nativeBuildChannelId(path.channel);
+    const { rows } = await db.findMany("native_builds", {
+      index: "byDistributionPath",
+      where: {
+        channel_id: channelId,
+        platform: path.platform,
+        is_sandbox: path.sandbox,
+        distribution: path.distribution,
+      },
+      order: "desc",
+      limit: 1,
+    });
+    const newest = rows[0];
+    return newest === undefined ? null : pick(newest);
   },
 
   async recordNativeBuildSubmission(id, { destination, version }) {

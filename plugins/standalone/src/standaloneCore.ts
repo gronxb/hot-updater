@@ -316,6 +316,16 @@ export const createStandaloneCoreApi = (
       if (options?.storeBuild && row?.is_store_build !== true) return null;
       return row;
     },
+    findNativeBuildOnPath: ({ platform, channel, sandbox, distribution }) =>
+      call<NativeBuildRow>("GET", "/native-builds/on-path", {
+        query: {
+          platform,
+          channel,
+          sandbox: String(sandbox),
+          distribution,
+        },
+        requiredRoute: "native build",
+      }),
     // A server without the native build routes holds no native builds: its
     // schema fence refuses a database whose schema has them. So its 404
     // lists none, which keeps doctor working against it.

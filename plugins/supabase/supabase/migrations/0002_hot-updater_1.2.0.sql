@@ -1,12 +1,14 @@
 -- HotUpdater.schema
 
-CREATE TABLE IF NOT EXISTS "hot_updater_v1_native_builds" ("id" varchar(36) COLLATE "C" NOT NULL, "scope_key" varchar(2048) COLLATE "C" NOT NULL, "platform" varchar(16) COLLATE "C" NOT NULL, "channel_id" varchar(1408) COLLATE "C" NOT NULL, "fingerprint_hash" varchar(255) COLLATE "C", "app_version" text COLLATE "C", "min_bundle_id" varchar(36) COLLATE "C" NOT NULL, "artifact_kind" varchar(16) COLLATE "C" NOT NULL, "artifact_storage_uri" text COLLATE "C" NOT NULL, "byte_size" bigint NOT NULL, "git_commit_hash" varchar(255) COLLATE "C", "created_at_ms" bigint NOT NULL, "build_key" varchar(69) COLLATE "C", "build_number" varchar(64) COLLATE "C", "submitted_to" varchar(16) COLLATE "C", "submitted_at_ms" bigint, "submitted_version" varchar(255) COLLATE "C", "is_store_build" boolean NOT NULL, "is_sandbox" boolean NOT NULL, "sandbox_url_scheme" varchar(255) COLLATE "C", "store_build_scope_key" varchar(2048) COLLATE "C", "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+CREATE TABLE IF NOT EXISTS "hot_updater_v1_native_builds" ("id" varchar(36) COLLATE "C" NOT NULL, "scope_key" varchar(2048) COLLATE "C" NOT NULL, "platform" varchar(16) COLLATE "C" NOT NULL, "channel_id" varchar(1408) COLLATE "C" NOT NULL, "fingerprint_hash" varchar(255) COLLATE "C", "app_version" text COLLATE "C", "min_bundle_id" varchar(36) COLLATE "C" NOT NULL, "artifact_kind" varchar(16) COLLATE "C" NOT NULL, "artifact_storage_uri" text COLLATE "C" NOT NULL, "byte_size" bigint NOT NULL, "git_commit_hash" varchar(255) COLLATE "C", "created_at_ms" bigint NOT NULL, "build_key" varchar(69) COLLATE "C", "build_number" varchar(64) COLLATE "C", "submitted_to" varchar(16) COLLATE "C", "submitted_at_ms" bigint, "submitted_version" varchar(255) COLLATE "C", "is_store_build" boolean NOT NULL, "is_sandbox" boolean NOT NULL, "sandbox_url_scheme" varchar(255) COLLATE "C", "export_method" varchar(16) COLLATE "C", "store_build_scope_key" varchar(2048) COLLATE "C", "distribution" varchar(32) COLLATE "C", "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byScope" ON "hot_updater_v1_native_builds" ("scope_key", "id");
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byBuildKey" ON "hot_updater_v1_native_builds" ("scope_key", "build_key", "id");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byStoreBuild" ON "hot_updater_v1_native_builds" ("store_build_scope_key");
+
+CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byDistributionPath" ON "hot_updater_v1_native_builds" ("channel_id", "platform", "is_sandbox", "distribution", "created_at_ms", "id");
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byChannel" ON "hot_updater_v1_native_builds" ("channel_id", "id");
 

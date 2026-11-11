@@ -17,6 +17,7 @@ import { createDatabaseHarness } from "../../commands/database.testFixtures";
 import { loadServer } from "../loadServer";
 import { testServer } from "../testServer";
 import type { NativeBuildResult } from "./createNativeBuild";
+import { readIpaExportMethod } from "./ipaExportMethod";
 import {
   isNativeBuildConflict,
   issueMinBundleId,
@@ -38,6 +39,9 @@ vi.mock("@hot-updater/android-helper", () => ({
 vi.mock("@hot-updater/apple-helper", () => ({
   archiveAppBundle: vi.fn(),
   extractBuiltInBundle: vi.fn(),
+}));
+vi.mock("./ipaExportMethod", () => ({
+  readIpaExportMethod: vi.fn(async () => null),
 }));
 
 const harness = createDatabaseHarness();
@@ -224,6 +228,34 @@ describe("registerNativeBuild", () => {
     await expect(harness.core.getBundle(MIN_BUNDLE_ID)).resolves.toMatchObject({
       bundle: { metadata: { app_version: "1.2.0" } },
     });
+  });
+
+  it("records how an .ipa was exported, read from the .ipa", async () => {
+    const { extractBuiltInBundle: extractIos } =
+      await import("@hot-updater/apple-helper");
+    vi.mocked(extractIos).mockImplementation(async ({ outputPath }) => {
+      await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
+      await fs.promises.writeFile(outputPath, "ios bytecode");
+    });
+    const ipaPath = path.join(dir, "App.ipa");
+    await fs.promises.writeFile(ipaPath, "ipa bytes");
+    vi.mocked(readIpaExportMethod).mockResolvedValueOnce("ad-hoc");
+
+    const ipa = await registerNativeBuild(
+      {
+        ...android(),
+        platform: "ios",
+        artifactPath: ipaPath,
+        artifactKind: "ipa",
+      },
+      { buildKey: null, sandbox: false },
+    );
+
+    expect(readIpaExportMethod).toHaveBeenCalledWith(ipaPath);
+    expect(ipa.export_method).toBe("ad-hoc");
+    expect((await harness.core.getNativeBuild(ipa.id))?.export_method).toBe(
+      "ad-hoc",
+    );
   });
 
   it("refuses a debug build before it loads the config", async () => {

@@ -334,6 +334,23 @@ describe("Standalone core API over admin API protocol 2", () => {
     await expect(
       remote.listNativeBuilds({ limit: 1, order: "desc" }),
     ).resolves.toEqual([newer]);
+    // Both are APKs on production: the newer is its path's newest.
+    await expect(
+      remote.findNativeBuildOnPath({
+        platform: "android",
+        channel: "production",
+        sandbox: false,
+        distribution: "apk",
+      }),
+    ).resolves.toEqual(newer);
+    await expect(
+      remote.findNativeBuildOnPath({
+        platform: "android",
+        channel: "production",
+        sandbox: false,
+        distribution: "aab",
+      }),
+    ).resolves.toBeNull();
     await expect(register(newerId)).rejects.toThrow("already registered");
     await expect(remote.countBundles()).resolves.toBe(0);
     await expect(remote.deleteBundles([newerId])).rejects.toThrow(

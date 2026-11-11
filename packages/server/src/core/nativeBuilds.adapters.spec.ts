@@ -7,6 +7,7 @@ import {
   createSqlAdapter,
   type DatabaseAdapter,
   generateEngineSql,
+  type NativeBuildPath,
   type NativeBuildRegistration,
   toolingTargetOf,
 } from "@hot-updater/plugin-core";
@@ -237,5 +238,140 @@ describe("a native build row written before sandbox_url_scheme", () => {
         ({ sandbox_url_scheme }) => sandbox_url_scheme,
       ),
     ).toEqual([null]);
+  });
+});
+
+describe.each(adapters)("distribution paths on %s", (_name, adapter) => {
+  /** A core whose clock reads `clock.ms`, so registration order is the test's. */
+  const setup = async () => {
+    const clock = { ms: 1_000 };
+    const core = createInProcessCoreApi(await adapter(), {
+      now: () => clock.ms,
+    });
+    const register = async (
+      n: number,
+      ms: number,
+      overrides: Partial<NativeBuildRegistration> = {},
+    ) => {
+      clock.ms = ms;
+      return core.registerNativeBuild(registration(n, overrides));
+    };
+    return { core, clock, register };
+  };
+  const path = (
+    distribution: NativeBuildPath["distribution"],
+    overrides: Partial<NativeBuildPath> = {},
+  ): NativeBuildPath => ({
+    platform: "ios",
+    channel: "production",
+    sandbox: false,
+    distribution,
+    ...overrides,
+  });
+  const newestOn = async (
+    core: Awaited<ReturnType<typeof setup>>["core"],
+    onPath: NativeBuildPath,
+  ) => (await core.findNativeBuildOnPath(onPath))?.id ?? null;
+
+  it("records an .ipa's export method, and null when it has none", async () => {
+    const { core, register } = await setup();
+    const adHoc = await register(1, 1_000, { exportMethod: "ad-hoc" });
+    await register(2, 2_000);
+
+    expect(adHoc.export_method).toBe("ad-hoc");
+    expect((await core.getNativeBuild(buildId(1)))?.export_method).toBe(
+      "ad-hoc",
+    );
+    expect((await core.getNativeBuild(buildId(2)))?.export_method).toBeNull();
+    await expect(
+      register(3, 3_000, {
+        exportMethod: "ad-hoc",
+        artifact: {
+          kind: "app",
+          storageUri: "storage://native-builds/ios/3/App.app.zip",
+          byteSize: 1,
+        },
+      }),
+    ).rejects.toThrow("exportMethod is an .ipa's");
+  });
+
+  it("keeps each path's newest: an ad hoc, App Store, and unrecorded IPA, TestFlight, sandbox, and each channel", async () => {
+    const { core, register } = await setup();
+    await register(1, 1_000, { exportMethod: "ad-hoc" });
+    await register(2, 2_000, { exportMethod: "ad-hoc" });
+    await register(3, 3_000, { exportMethod: "app-store" });
+    await register(4, 4_000);
+    await register(5, 5_000, { exportMethod: "app-store" });
+    await core.recordNativeBuildSubmission(buildId(5), {
+      destination: "testflight",
+      version: "1.0.0 (5)",
+    });
+    await register(6, 6_000, { channel: "staging", exportMethod: "ad-hoc" });
+    await register(7, 7_000, {
+      channel: "sandbox-release",
+      isSandbox: true,
+      exportMethod: "app-store",
+    });
+
+    expect(await newestOn(core, path("ipa-ad-hoc"))).toBe(buildId(2));
+    expect(await newestOn(core, path("ipa-app-store"))).toBe(buildId(3));
+    expect(await newestOn(core, path("ipa"))).toBe(buildId(4));
+    expect(await newestOn(core, path("testflight"))).toBe(buildId(5));
+    expect(
+      await newestOn(core, path("ipa-ad-hoc", { channel: "staging" })),
+    ).toBe(buildId(6));
+    expect(
+      await newestOn(
+        core,
+        path("ipa-app-store", { channel: "sandbox-release", sandbox: true }),
+      ),
+    ).toBe(buildId(7));
+    expect(await newestOn(core, path("ipa-enterprise"))).toBeNull();
+    expect(
+      await newestOn(core, path("ipa-ad-hoc", { platform: "android" })),
+    ).toBeNull();
+  });
+
+  it("moves a build to its store track's path when a store takes it", async () => {
+    const { core, register } = await setup();
+    await register(1, 1_000, { exportMethod: "app-store" });
+    await register(2, 2_000, { exportMethod: "app-store" });
+    expect(await newestOn(core, path("ipa-app-store"))).toBe(buildId(2));
+
+    await core.recordNativeBuildSubmission(buildId(2), {
+      destination: "testflight",
+      version: "1.0.0 (2)",
+    });
+
+    expect(await newestOn(core, path("ipa-app-store"))).toBe(buildId(1));
+    expect(await newestOn(core, path("testflight"))).toBe(buildId(2));
+  });
+
+  it("makes the next build the newest when the newest is deleted", async () => {
+    const { core, register } = await setup();
+    await register(1, 1_000, { exportMethod: "ad-hoc" });
+    await register(2, 2_000, { exportMethod: "ad-hoc" });
+    await core.deleteNativeBuild(buildId(2));
+
+    expect(await newestOn(core, path("ipa-ad-hoc"))).toBe(buildId(1));
+    await core.deleteNativeBuild(buildId(1));
+    expect(await newestOn(core, path("ipa-ad-hoc"))).toBeNull();
+  });
+
+  it("orders a path by the registry's server time, then by ID", async () => {
+    const { core, register } = await setup();
+    // Build 2's ID is newer; the server registered build 1 later.
+    await register(2, 1_000, { exportMethod: "ad-hoc" });
+    await register(1, 2_000, { exportMethod: "ad-hoc" });
+    expect(await newestOn(core, path("ipa-ad-hoc"))).toBe(buildId(1));
+
+    // Two registrations in one millisecond: the newer ID.
+    const { core: same, clock } = await setup();
+    clock.ms = 5_000;
+    await Promise.all([
+      same.registerNativeBuild(registration(3, { exportMethod: "ad-hoc" })),
+      same.registerNativeBuild(registration(4, { exportMethod: "ad-hoc" })),
+    ]);
+    expect(await newestOn(same, path("ipa-ad-hoc"))).toBe(buildId(4));
   });
 });

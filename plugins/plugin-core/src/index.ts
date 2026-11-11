@@ -9,6 +9,7 @@ export type {
   DeployReleasePolicy,
   HotUpdaterCoreApi,
   KeysetInput,
+  NativeBuildPath,
   NativeBuildRegistration,
   NativeBuildScope,
   ReleaseFilter,

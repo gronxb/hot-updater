@@ -24,8 +24,11 @@ export type {
   DatabaseJsonObject,
   DatabaseJsonValue,
   NativeBuildArtifactKind,
+  NativeBuildDistribution,
+  NativeBuildExportMethod,
   NativeBuildRow,
   NativeBuildSubmissionDestination,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "./databaseRows";
+export { nativeBuildDistribution } from "./databaseRows";

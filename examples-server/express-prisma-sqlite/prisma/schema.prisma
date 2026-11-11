@@ -133,12 +133,15 @@ model native_builds {
   is_store_build BigInt
   is_sandbox BigInt
   sandbox_url_scheme String?
+  export_method String?
   store_build_scope_key String?
+  distribution String?
   hu_v BigInt @default(0) @map("_v")
   @@id([id])
   @@index([scope_key, id], map: "native_builds_byScope")
   @@index([scope_key, build_key, id], map: "native_builds_byBuildKey")
   @@unique([store_build_scope_key], map: "native_builds_byStoreBuild")
+  @@index([channel_id, platform, is_sandbox, distribution, created_at_ms, id], map: "native_builds_byDistributionPath")
   @@index([channel_id, id], map: "native_builds_byChannel")
   @@unique([min_bundle_id], map: "native_builds_min_bundle_id")
 }

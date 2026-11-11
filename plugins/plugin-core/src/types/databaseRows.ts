@@ -92,6 +92,27 @@ export type NativeBuildSubmissionDestination =
   | "play-production";
 
 /**
+ * How an iOS `.ipa` was exported, as its embedded provisioning profile says:
+ * for the App Store (no device list), ad hoc or development (a device list,
+ * development's with `get-task-allow`), or enterprise (every device).
+ */
+export type NativeBuildExportMethod =
+  | "app-store"
+  | "ad-hoc"
+  | "development"
+  | "enterprise";
+
+/**
+ * How a native build reaches people: the store track it was submitted to,
+ * else its artifact, and an `.ipa`'s export method when the registry has it.
+ */
+export type NativeBuildDistribution =
+  | NativeBuildSubmissionDestination
+  | Exclude<NativeBuildArtifactKind, "ipa">
+  | "ipa"
+  | `ipa-${NativeBuildExportMethod}`;
+
+/**
  * A registered native build: its artifact in storage, the scope it serves,
  * and `min_bundle_id`, the `bundles` row of the bundle built into it.
  */
@@ -143,4 +164,27 @@ export interface NativeBuildRow {
    * before it was recorded, which registered `hu-sandbox-<app ID>`.
    */
   readonly sandbox_url_scheme: string | null;
+  /**
+   * How an `.ipa` was exported, read from its profile when it registered and
+   * never changed. Null on any other artifact, and on an `.ipa` registered
+   * before it was recorded.
+   */
+  readonly export_method: NativeBuildExportMethod | null;
 }
+
+/**
+ * How a native build reaches people, from its row: the store track it was
+ * submitted to, else its artifact, an `.ipa` by its export method. Builds
+ * of one platform, channel and sandbox flag with one distribution form a
+ * distribution path, whose newest build `findNativeBuildOnPath` reads.
+ */
+export const nativeBuildDistribution = (
+  build: Pick<
+    NativeBuildRow,
+    "submitted_to" | "artifact_kind" | "export_method"
+  >,
+): NativeBuildDistribution =>
+  build.submitted_to ??
+  (build.artifact_kind === "ipa" && build.export_method !== null
+    ? `ipa-${build.export_method}`
+    : build.artifact_kind);
