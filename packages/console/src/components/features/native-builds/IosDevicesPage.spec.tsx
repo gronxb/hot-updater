@@ -86,6 +86,7 @@ const viewAs = (
     ...viewer,
   },
   defaultName: "Lead's iPhone",
+  registration: "ready",
 });
 
 const show = (view: IosDevicesView, search = {}) => {
@@ -264,6 +265,14 @@ describe("IosDevicesPage", () => {
         .getByRole("link", { name: /Build of/ })
         .getAttribute("href"),
     ).toBe("/native-builds/01a1c997-60fe-7475-bd6c-3a90777fe9f3");
+  });
+
+  it("shows no QR code on the local Console, which an iPhone can't reach", () => {
+    show({ ...viewAs({}, []), registration: "local-console" });
+    expect(screen.queryByRole("img", { name: /iPhone/ })).toBeNull();
+    expect(
+      screen.getByText(/iPhones register through your hosted Console/),
+    ).toBeTruthy();
   });
 
   it("points to the terminal when nobody approves in this Console", () => {

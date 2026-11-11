@@ -11,8 +11,9 @@ export const Route = createFileRoute("/_hot-updater/devices/device-response")({
           import("@/lib/server/iosDeviceProfile"),
           import("@/lib/server/config.server"),
         ]);
-        return receiveDeviceResponse(request, async () =>
-          (await loadConsole(request)).core,
+        return receiveDeviceResponse(
+          request,
+          async () => (await loadConsole(request)).core,
         );
       },
     },

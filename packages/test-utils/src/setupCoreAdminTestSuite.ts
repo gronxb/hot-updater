@@ -702,6 +702,26 @@ export const setupCoreAdminTestSuite = (options: {
           device: requested.data.device,
           created: false,
         });
+        // Two first requests of another UDID at once: its unique index keeps
+        // one row, and both answer with it.
+        const raced = `${udid.slice(0, 39)}f`;
+        const racing = (await Promise.all(
+          ["Other", "Another"].map((name) =>
+            adminJson(
+              "/ios-devices",
+              jsonRequest("POST", { udid: raced, name, requestedBy: null }),
+            ),
+          ),
+        )) as { data: { device: IosDeviceRow; created: boolean } }[];
+        expect(racing.map(({ data }) => data.created).sort()).toEqual([
+          false,
+          true,
+        ]);
+        expect(racing[0]!.data.device.id).toBe(racing[1]!.data.device.id);
+        await adminJson(
+          `/ios-devices/${racing[0]!.data.device.id}`,
+          jsonRequest("DELETE"),
+        );
         expect(await device(`/ios-devices/udid/${udid}`)).toEqual(
           requested.data.device,
         );

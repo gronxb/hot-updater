@@ -109,7 +109,10 @@ describe("addAscDevices", () => {
       },
     });
     const read = asc.requests[0]!;
-    expect(read.url.searchParams.get("filter[udid]")).toBe(PHONE);
+    // As given and in both cases: Apple keeps a device's own case.
+    expect(read.url.searchParams.get("filter[udid]")).toBe(
+      `${PHONE},${PHONE.toLowerCase()}`,
+    );
     expect(read.url.searchParams.get("filter[platform]")).toBe("IOS");
   });
 
@@ -152,7 +155,7 @@ describe("addAscDevices", () => {
       1,
     );
     expect(asc.requests[0]!.url.searchParams.get("filter[udid]")).toBe(
-      `${PHONE},${OTHER_PHONE}`,
+      `${PHONE},${PHONE.toLowerCase()},${OTHER_PHONE},${OTHER_PHONE.toLowerCase()}`,
     );
     expect(asc.registry[0]!.name).toBe("Existing");
   });
@@ -381,10 +384,12 @@ describe("findAscDevice and updateAscDevice", () => {
         requests.push({ method, path: url.pathname + url.search, body });
         if (method === "GET") {
           return json(200, {
-            data:
-              url.searchParams.get("filter[udid]") === PHONE
-                ? [row({ udid: PHONE, name: "Kim", status: "ENABLED" }, 7)]
-                : [],
+            data: url.searchParams
+              .get("filter[udid]")
+              ?.split(",")
+              .includes(PHONE)
+              ? [row({ udid: PHONE, name: "Kim", status: "ENABLED" }, 7)]
+              : [],
           });
         }
         return json(200, {
@@ -402,9 +407,12 @@ describe("findAscDevice and updateAscDevice", () => {
     return { fetch, requests };
   };
 
-  it("finds a device by UDID, and null for one the account lacks", async () => {
+  it("finds a device by UDID in either case, and null for one the account lacks", async () => {
     const { fetch } = fakeFetch();
-    expect(await findAscDevice({ udid: PHONE, apiKey, fetch })).toMatchObject({
+    // The registry's lower-case copy finds Apple's upper-case record.
+    expect(
+      await findAscDevice({ udid: PHONE.toLowerCase(), apiKey, fetch }),
+    ).toMatchObject({
       id: "D7",
       name: "Kim",
     });

@@ -533,7 +533,7 @@ function RegisterCard({
   const onPhone = phone?.ios === true;
   const link = useIosDeviceProfileLinkQuery(
     { mode: "register", name: signed || "iPhone" },
-    onPhone && view !== undefined,
+    onPhone && view?.registration === "ready",
   );
   const https = phone === null || window.location.protocol === "https:";
   const back =
@@ -555,6 +555,21 @@ function RegisterCard({
           {back.status === "pending"
             ? "A maintainer approves it next, and it joins the next ad hoc build."
             : "It joins the next ad hoc build."}
+        </p>
+      );
+    }
+    if (view?.registration === "local-console") {
+      return (
+        <p className="text-xs text-muted-foreground" role="status">
+          iPhones register through your hosted Console: an iPhone can't reach
+          this computer's.
+        </p>
+      );
+    }
+    if (view?.registration === "no-secret") {
+      return (
+        <p className="text-xs text-muted-foreground" role="status">
+          Set BETTER_AUTH_SECRET on this Console to register iPhones.
         </p>
       );
     }

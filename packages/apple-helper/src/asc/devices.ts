@@ -138,13 +138,31 @@ export type AscDeviceOutcome =
 
 const keyOf = (udid: string) => normalizeIosUdid(udid) ?? udid.toLowerCase();
 
+/**
+ * The account's devices of these UDIDs, by their normalized form. The filter
+ * names each UDID as given and in both cases: App Store Connect keeps a
+ * device's own case, which a registry's lower-case copy may not match.
+ */
 const findDevices = async (
   request: AppStoreConnectRequest,
   udids: readonly string[],
 ) =>
   new Map(
     (
-      await readPages(request, listPath({ "filter[udid]": udids.join(",") }))
+      await readPages(
+        request,
+        listPath({
+          "filter[udid]": [
+            ...new Set(
+              udids.flatMap((udid) => [
+                udid.trim(),
+                udid.trim().toLowerCase(),
+                udid.trim().toUpperCase(),
+              ]),
+            ),
+          ].join(","),
+        }),
+      )
     ).map((device) => [keyOf(device.udid), device]),
   );
 

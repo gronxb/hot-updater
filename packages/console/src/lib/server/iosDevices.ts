@@ -111,6 +111,17 @@ export const defaultDeviceName = (principal: ConsolePrincipal) => {
     : `${owner}'s iPhone`.slice(0, NAME_MAX_LENGTH);
 };
 
+/**
+ * Whether an iPhone can register through this Console: not through the local
+ * one, which an iPhone can't reach, nor without the secret that signs links.
+ */
+export const deviceRegistration = async (
+  request: Request,
+): Promise<"ready" | "local-console" | "no-secret"> => {
+  if (await isLocalConsole()) return "local-console";
+  return readConsoleSecret(request) === undefined ? "no-secret" : "ready";
+};
+
 export type DeviceProfileLinkResult =
   | {
       readonly status: "issued";

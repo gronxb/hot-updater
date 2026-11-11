@@ -67,6 +67,25 @@ describe("the iOS device registry", () => {
     expect(await core.findIosDevice("not a udid")).toBeNull();
   });
 
+  it("keeps one row when two requests for one UDID race, and answers both with it", async () => {
+    const core = setup();
+    const [kim, mallory] = await Promise.all([
+      core.requestIosDevice({
+        udid: PHONE,
+        name: "Kim's iPhone",
+        requestedBy: "kim@team.dev",
+      }),
+      core.requestIosDevice({
+        udid: PHONE.toLowerCase(),
+        name: "Mallory's iPhone",
+        requestedBy: "mallory@team.dev",
+      }),
+    ]);
+    expect([kim.created, mallory.created].sort()).toEqual([false, true]);
+    expect(mallory.device).toEqual(kim.device);
+    expect(await core.listIosDevices({ limit: 10 })).toEqual([kim.device]);
+  });
+
   it("refuses a UDID or name it can't store", async () => {
     const core = setup();
     await expect(
