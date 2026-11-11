@@ -381,3 +381,34 @@ describe("the iOS device registry", () => {
     expect(await core.deleteIosDevice(device.id)).toBeNull();
   });
 });
+
+it("r3: recovers the earliest registration on a later page, including its pending state", async () => {
+  const core = setup();
+  const lateRegistration = await approved(core, PHONE);
+  for (let i = 1; i <= 201; i += 1) {
+    await requested(core, i.toString(16).padStart(40, "0"));
+  }
+  const firstRegistration = await approved(core, IPAD);
+  const first = (await core.recordIosDeviceOutcome({
+    id: firstRegistration.id,
+    seen: seenOf(firstRegistration),
+    issuerId: OTHER_ISSUER,
+    outcome: "registered",
+  }))!;
+  await core.recordIosDeviceOutcome({
+    id: lateRegistration.id,
+    seen: seenOf(lateRegistration),
+    issuerId: ISSUER,
+    outcome: "registered",
+  });
+  await core.recordIosDeviceOutcome({
+    id: first.id,
+    seen: seenOf(first),
+    issuerId: OTHER_ISSUER,
+    outcome: "missing",
+  });
+  expect(await core.claimIosDeviceAccount(ISSUER)).toEqual({
+    issuerId: OTHER_ISSUER,
+    claimed: false,
+  });
+});

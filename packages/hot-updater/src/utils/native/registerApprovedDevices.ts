@@ -211,18 +211,18 @@ export const registerApprovedDevices = async ({
       "Build with a scheme whose signing.ascApiKey is in the registry's account.",
     );
   // One decision says whose registry this is, before anything at Apple is
-  // read, recorded, or sent: the account claimed in the server's database,
-  // atomically, which a registry whose rows already name an account (any
-  // status) keeps. Approved devices are registered, by a POST or by finding
-  // them at Apple, only by a build of that account, and never a device
-  // another account registered before.
-  const owns =
-    approved.length > 0 && (await core.claimIosDeviceAccount(issuer)).claimed;
-  const toRegister = owns
-    ? approved.filter(
-        (row) => row.apple_issuer_id === null || row.apple_issuer_id === issuer,
-      )
-    : [];
+  // read, recorded, or sent, on every path: the account claimed in the
+  // server's database, atomically, which a registry whose rows already name
+  // an account (any status) keeps. A build of another account touches
+  // nothing at Apple and records nothing. Approved devices are registered, by
+  // a POST or by finding them at Apple, only by a build of that account, and
+  // never a device another account registered before.
+  if (!(await core.claimIosDeviceAccount(issuer)).claimed) {
+    return otherAccount();
+  }
+  const toRegister = approved.filter(
+    (row) => row.apple_issuer_id === null || row.apple_issuer_id === issuer,
+  );
   if (toRegister.length === 0 && ours.length === 0) return otherAccount();
   if (toRegister.length < approved.length) otherAccount();
 

@@ -441,3 +441,51 @@ describe("missingIpaDevices", () => {
     expect(missingIpaDevices(expected, [PHONE, IPAD])).toEqual([]);
   });
 });
+
+describe("the registry's account on the registered-only path", () => {
+  it("claims a legacy registered-only registry before reading Apple, so concurrent removal cannot move it", async () => {
+    const old = await registered(PHONE, "Original A phone", "issuer-a");
+    appleAdds();
+    let nested = false;
+    listAscDevices.mockImplementation(async () => {
+      if (!nested) {
+        nested = true;
+        // A is already reading Apple. The maintainer removes its last row
+        // while a new approved request is picked up by B's build.
+        await core.deleteIosDevice(old.id);
+        await approved(IPAD, "New request");
+        await run({
+          resolveApiKey: async () => ({ ...API_KEY, issuerId: "issuer-b" }),
+        });
+      }
+      return [];
+    });
+    await run();
+    expect(addAscDevices).not.toHaveBeenCalled();
+    expect(await core.claimIosDeviceAccount("issuer-a")).toEqual({
+      issuerId: "issuer-a",
+      claimed: true,
+    });
+  });
+
+  it("does not let a lost claim acknowledgement permit another account's Apple read, and retries safely", async () => {
+    await approved(PHONE, "Phone");
+    const claim = core.claimIosDeviceAccount.bind(core);
+    const spy = vi
+      .spyOn(core, "claimIosDeviceAccount")
+      .mockImplementationOnce(async (issuer) => {
+        await claim(issuer);
+        throw new Error("lost acknowledgement");
+      });
+    await expect(run()).rejects.toThrow("lost acknowledgement");
+    expect(listAscDevices).not.toHaveBeenCalled();
+    spy.mockRestore();
+    await run({
+      resolveApiKey: async () => ({ ...API_KEY, issuerId: "issuer-b" }),
+    });
+    expect(listAscDevices).not.toHaveBeenCalled();
+    appleAdds();
+    await run();
+    expect(addAscDevices).toHaveBeenCalledOnce();
+  });
+});
