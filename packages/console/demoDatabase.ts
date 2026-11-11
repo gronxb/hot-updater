@@ -625,9 +625,28 @@ const iosCanaryPatchA = createBundle({
   targetCohorts: ["design-review", "ios-lab"],
 });
 
+// Newer pull request previews, each the only release of its channel, so the
+// first page of bundles is full and ends in a fold.
+const pullRequestPreviews = Array.from({ length: 6 }, (_, index) =>
+  createBundle({
+    id: `01972200-1aa1-7445-8b8c-27272727272${index}`,
+    enabled: true,
+    shouldForceUpdate: false,
+    fileHash: `file-android-pr-${140 + index}`,
+    gitCommitHash: `d${index}4e8a10`,
+    platform: "android",
+    targetAppVersion: null,
+    message: `Pull request #${140 + index} preview`,
+    channel: `pr-${140 + index}`,
+    fingerprintHash: `fp-android-pr-${140 + index}`,
+    rolloutCohortCount: 1000,
+  }),
+);
+
 // Seed lineages so filters, pagination, detail sheets, and patch tables all
 // have enough variety to be useful during local development.
 const bundles: DemoDeployment[] = [
+  ...pullRequestPreviews,
   iosCanaryPatchA,
   androidBetaPatchA,
   androidDevPatchA,
@@ -692,6 +711,8 @@ type DemoNativeBuild = {
   readonly gitCommitHash: string | null;
   /** A sandbox scheme's build, on its reserved `sandbox-*` channel. */
   readonly sandbox?: true;
+  /** How an `.ipa` was exported, as its profile says. */
+  readonly exportMethod?: "app-store" | "ad-hoc";
   /** The demo bundles that patch from this build's built-in bundle. */
   readonly patchTargets?: readonly DemoDeployment[];
 };
@@ -725,6 +746,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     target: { fingerprint: "fp-ios-production-1-0-0" },
     minBundleId: "019f6300-00c6-7000-8000-000000000000",
     kind: "ipa",
+    exportMethod: "app-store",
     gitCommitHash: "6e2a9d40",
   },
   {
@@ -752,6 +774,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     target: { fingerprint: "fp-ios-sandbox" },
     minBundleId: "019f6300-00c9-7000-8000-000000000000",
     kind: "ipa",
+    exportMethod: "app-store",
     gitCommitHash: "3f9a1c27",
     sandbox: true,
   },
@@ -772,6 +795,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     target: { appVersion: "1.4.2" },
     minBundleId: "01971f0f-0000-7000-8000-01c4d2e8a7f3",
     kind: "ipa",
+    exportMethod: "app-store",
     gitCommitHash: "9c12ab40",
     patchTargets: [iosProdCorePatchA, iosProdCorePatchB],
   },
@@ -841,6 +865,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     target: { appVersion: "1.4.2" },
     minBundleId: "01971f10-0000-7000-8000-000000000000",
     kind: "ipa",
+    exportMethod: "ad-hoc",
     gitCommitHash: "b48e0c21",
   },
   // A production IPA on the fingerprint strategy, which TestFlight took and
@@ -852,6 +877,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     target: { fingerprint: "fp-ios-production-1-0-0" },
     minBundleId: "01971f60-0000-7000-8000-000000000000",
     kind: "ipa",
+    exportMethod: "app-store",
     gitCommitHash: "7f3c2d18",
   },
   // A sandbox scheme's builds, which pull request previews open: an APK, and
@@ -873,6 +899,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     target: { fingerprint: "fp-ios-sandbox" },
     minBundleId: "019f6300-00b1-7000-8000-000000000000",
     kind: "ipa",
+    exportMethod: "app-store",
     gitCommitHash: "5a6b7c8d",
     sandbox: true,
   },
@@ -886,6 +913,30 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     kind: "apk",
     gitCommitHash: "9e8d7c6b",
   },
+  // A newer ad hoc production IPA, which build 28 is older than.
+  {
+    n: 33,
+    platform: "ios",
+    channel: "production",
+    target: { appVersion: "1.4.2" },
+    minBundleId: "019f6300-00b3-7000-8000-000000000000",
+    kind: "ipa",
+    exportMethod: "ad-hoc",
+    gitCommitHash: "c3d9e0f1",
+  },
+  // Newer pull request builds, so the first page ends in a fold.
+  ...Array.from(
+    { length: 8 },
+    (_, index): DemoNativeBuild => ({
+      n: 34 + index,
+      platform: "android",
+      channel: `pr-${131 + index}`,
+      target: { fingerprint: `fp-android-pr-${131 + index}` },
+      minBundleId: `019f6300-00${(0xc0 + index).toString(16)}-7000-8000-000000000001`,
+      kind: "apk",
+      gitCommitHash: `b${String(index).padStart(2, "0")}d5f20`,
+    }),
+  ),
 ];
 for (const build of demoNativeBuilds) {
   const id = nativeBuildId(build.n);
@@ -910,6 +961,7 @@ for (const build of demoNativeBuilds) {
         : `nbk1:${toSeedHash("build-key", `${build.n}`)}`,
     buildNumber: String(100 + build.n),
     isSandbox: build.sandbox === true,
+    exportMethod: build.exportMethod ?? null,
     artifact: {
       kind: build.kind,
       storageUri: `storage://my-app/native-builds/${build.platform}/${id}/${file}`,
