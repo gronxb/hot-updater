@@ -223,6 +223,9 @@ const approveAndRegister = async (
   if (approved === null) {
     throw new Error(`${row.name} left the registry. Nothing was registered.`);
   }
+  // A terminal registers with the key it was given, whoever's account the
+  // registry has; a registry with none takes this one, as a build would.
+  await server.core.claimIosDeviceAccount(apiKey.issuerId);
   const [result] = await addAscDevices({
     devices: [{ udid: approved.udid, name: approved.name }],
     apiKey,

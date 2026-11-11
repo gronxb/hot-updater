@@ -160,6 +160,15 @@ export const ios_devices = pgTable("ios_devices", {
   uniqueIndex("ios_devices_udid").on(table["udid"]),
 ]);
 
+export const ios_device_account = pgTable("ios_device_account", {
+  "id": column("varchar(16) COLLATE \"C\"")("id").notNull(),
+  "apple_issuer_id": column("varchar(64) COLLATE \"C\"")("apple_issuer_id").notNull(),
+  "claimed_at_ms": column("bigint")("claimed_at_ms").notNull(),
+  "_v": column("bigint")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["id"]] }),
+]);
+
 export const bundle_events = pgTable("bundle_events", {
   "id": column("varchar(36) COLLATE \"C\"")("id").notNull(),
   "type": column("varchar(32) COLLATE \"C\"")("type").notNull(),

@@ -125,7 +125,8 @@ refused or has disabled only warns.
 Approved devices wait, with one line saying why, when the scheme has no
 `signing.ascApiKey`, pins a provisioning profile, or signs with another Apple
 account than the one the registry first registered with. The registry belongs
-to one Apple account.
+to one Apple account: the first build that registers a device claims it, and a
+build signed by another account registers nothing.
 
 A build that reuses an existing native build registers nothing: devices join an
 `.ipa` only when a new ad hoc build runs. A [CI job](/docs/guides/ci-native-build)

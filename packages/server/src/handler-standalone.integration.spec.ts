@@ -428,6 +428,14 @@ describe("Insights through a self-hosted server's admin API", () => {
         outcome: "missing",
       }),
     ).resolves.toBeNull();
+    await expect(remote.claimIosDeviceAccount("issuer-a")).resolves.toEqual({
+      issuerId: "issuer-a",
+      claimed: true,
+    });
+    await expect(remote.claimIosDeviceAccount("issuer-b")).resolves.toEqual({
+      issuerId: "issuer-a",
+      claimed: false,
+    });
     const buildId = uuidv7();
     await remote.markIosDevicesInBuild({ buildId, ids: [device.id] });
     await expect(remote.findIosDevice(udid)).resolves.toMatchObject({

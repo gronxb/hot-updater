@@ -31,6 +31,9 @@ const EMAIL_MAX_LENGTH = 320;
 /** `ios_devices.apple_issuer_id`'s bound. */
 const ISSUER_MAX_LENGTH = 64;
 
+/** The one row of `ios_device_account`. */
+const ACCOUNT_ROW = "registry";
+
 /** `ios_devices.apple_error`'s bound. */
 const ERROR_MAX_LENGTH = 512;
 
@@ -132,6 +135,7 @@ export const createIosDeviceApi = (
   | "recordIosDeviceOutcome"
   | "markIosDevicesInBuild"
   | "deleteIosDevice"
+  | "claimIosDeviceAccount"
 > => {
   const findIosDevice = async (udid: string) => {
     const key = normalizeIosUdid(udid);
@@ -334,6 +338,50 @@ export const createIosDeviceApi = (
           }
           tx.update("ios_devices", row, { build_id: buildId });
         });
+      }
+    },
+
+    async claimIosDeviceAccount(issuerId) {
+      if (
+        typeof issuerId !== "string" ||
+        issuerId.trim().length === 0 ||
+        issuerId.length > ISSUER_MAX_LENGTH
+      ) {
+        throw new IosDeviceInputError(
+          `Invalid iOS device account: issuerId must be an App Store Connect issuer of at most ${ISSUER_MAX_LENGTH} characters.`,
+        );
+      }
+      const answer = (held: string) => ({
+        issuerId: held,
+        claimed: held === issuerId,
+      });
+      const existing = await db.findOne("ios_device_account", {
+        id: ACCOUNT_ROW,
+      });
+      if (existing !== null) return answer(existing.apple_issuer_id as string);
+      try {
+        await db.transaction(async (tx) => {
+          tx.create("ios_device_account", {
+            id: ACCOUNT_ROW,
+            apple_issuer_id: issuerId,
+            claimed_at_ms: now(),
+          });
+        });
+        return answer(issuerId);
+      } catch (error) {
+        // Another build claimed it first: the key admits one row.
+        if (
+          error instanceof DatabaseConstraintError &&
+          (error.reason === "exists" || error.reason === "unique")
+        ) {
+          const winner = await db.findOne("ios_device_account", {
+            id: ACCOUNT_ROW,
+          });
+          if (winner !== null) {
+            return answer(winner.apple_issuer_id as string);
+          }
+        }
+        throw error;
       }
     },
 

@@ -318,15 +318,26 @@ function NotInThisBuild({
   build,
   device,
   registry,
+  registryReadAt,
 }: {
   readonly build: NativeBuildRow;
   readonly device: IosDevice;
   readonly registry: IosDeviceRow | null;
+  /** When the page last read `registry`. */
+  readonly registryReadAt: number;
 }) {
   const request = useRequestIosDeviceAccessMutation();
   const [name, setName] = useState("");
-  const [requested, setRequested] = useState<IosDeviceRow | null>(null);
-  const row = requested ?? registry;
+  // The request's answer stands in only until the page reads the registry
+  // again: a later read wins, an approval or a removal too.
+  const [requested, setRequested] = useState<{
+    readonly device: IosDeviceRow;
+    readonly at: number;
+  } | null>(null);
+  const row =
+    requested !== null && registryReadAt <= requested.at
+      ? requested.device
+      : registry;
   const heading = (
     <div className="flex min-w-0 flex-col gap-1">
       <p className="text-sm font-medium">Not in this build</p>
@@ -384,7 +395,10 @@ function NotInThisBuild({
         if (trimmed === "") return;
         request.mutate(
           { receipt: device.receipt!, name: trimmed },
-          { onSuccess: ({ device: saved }) => setRequested(saved) },
+          {
+            onSuccess: ({ device: saved }) =>
+              setRequested({ device: saved, at: Date.now() }),
+          },
         );
       }}
     >
@@ -518,6 +532,7 @@ export function IosInstall({
         build={build}
         device={device}
         registry={result.registry}
+        registryReadAt={eligibility.dataUpdatedAt}
       />
     );
   }

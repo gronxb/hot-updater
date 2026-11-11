@@ -610,7 +610,6 @@ const buildNativeInternal = async ({
           deviceRegistry.expected.length > 0
         ) {
           await markDevicesInBuild(
-            config,
             registered.id,
             deviceRegistry.expected.map(({ id }) => id),
           );
@@ -1116,13 +1115,13 @@ const runDeviceRegistry = async ({
   }
 };
 
-/** Records which registry devices the tracked build's .ipa lists. */
-const markDevicesInBuild = async (
-  config: Parameters<typeof loadServer>[0],
-  buildId: string,
-  ids: readonly string[],
-) => {
-  const server = await loadServer(config);
+/**
+ * Records which registry devices the tracked build's .ipa lists, over a
+ * database of its own: the registry step disposed the one it read with, and
+ * an adapter such as postgres() closes its connection when disposed.
+ */
+const markDevicesInBuild = async (buildId: string, ids: readonly string[]) => {
+  const server = await loadServer(await loadConfig(null));
   try {
     await server.core.markIosDevicesInBuild({ buildId, ids });
   } catch (error) {

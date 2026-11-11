@@ -54,6 +54,8 @@ CREATE INDEX IF NOT EXISTS "ios_devices_byStatus" ON "ios_devices" ("status", "i
 
 CREATE UNIQUE INDEX IF NOT EXISTS "ios_devices_udid" ON "ios_devices" ("udid");
 
+CREATE TABLE IF NOT EXISTS "ios_device_account" ("id" TEXT NOT NULL, "apple_issuer_id" TEXT NOT NULL, "claimed_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
 CREATE TABLE IF NOT EXISTS "bundle_events" ("id" TEXT NOT NULL, "type" TEXT NOT NULL, "install_id" TEXT NOT NULL, "user_id" TEXT, "from_release_id" TEXT, "from_bundle_id" TEXT, "to_release_id" TEXT, "to_bundle_id" TEXT NOT NULL, "platform" TEXT NOT NULL, "app_version" TEXT NOT NULL, "channel" TEXT NOT NULL, "metadata" TEXT NOT NULL, "received_at_ms" INTEGER NOT NULL, "day" INTEGER, "movement_install_id" TEXT, "bundle_ref" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
 CREATE INDEX IF NOT EXISTS "bundle_events_movementsByInstall" ON "bundle_events" ("movement_install_id", "received_at_ms", "id");

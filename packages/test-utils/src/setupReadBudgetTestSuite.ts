@@ -1106,6 +1106,23 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     check: (device) => expect(device?.udid).toBe(BUDGET_PENDING_UDID),
   }),
   budget({
+    api: "iOS device account, first claim: its one row's read and 1 write",
+    read: ({ core }) => core.claimIosDeviceAccount("issuer-a"),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 0 },
+    writes: 1,
+    check: (claim) =>
+      expect(claim).toEqual({ issuerId: "issuer-a", claimed: true }),
+  }),
+  budget({
+    api: "iOS device account, claimed: its one row's read",
+    read: ({ core }) => core.claimIosDeviceAccount("issuer-b"),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    check: (claim) =>
+      expect(claim).toEqual({ issuerId: "issuer-a", claimed: false }),
+  }),
+  budget({
     api: "record an insights event: 2 dependent rounds of batch gets and 1 write",
     // The event and install 2's head; then, in one batch get per aggregate,
     // the event's 4 sketch rows (its platform's usage of every app version

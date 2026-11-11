@@ -49,7 +49,10 @@ export interface IosDeviceRegistryStep {
 
 type RegistryCore = Pick<
   HotUpdaterCoreApi,
-  "listIosDevices" | "findIosDevice" | "recordIosDeviceOutcome"
+  | "listIosDevices"
+  | "findIosDevice"
+  | "recordIosDeviceOutcome"
+  | "claimIosDeviceAccount"
 >;
 
 /** A registry page: past the account's yearly limit, so one page holds every row. */
@@ -216,7 +219,9 @@ export const registerApprovedDevices = async ({
 
   const apiKey = await resolveApiKey();
   const issuer = apiKey.issuerId;
-  const pin = registryIssuer(registered);
+  // The account rows already name: an approved row keeps the issuer that
+  // registered it before Apple dropped it and someone approved it again.
+  const pin = registryIssuer([...registered, ...approved]);
   const ours = registered.filter((row) => row.apple_issuer_id === issuer);
   // Approved rows spend a slot only in the registry's own account, and never
   // on a row another account registered before (one sent back to pending).
@@ -269,6 +274,15 @@ export const registerApprovedDevices = async ({
   };
   const include = (row: IosDeviceRow) =>
     expected.push({ id: row.id, udid: row.udid, name: row.name });
+  // Before the first slot is spent, the registry's account is claimed in the
+  // server's database, atomically: of two builds of two accounts, one wins,
+  // and the other sends Apple nothing.
+  let claim: Promise<boolean> | undefined;
+  const ownsRegistry = () =>
+    (claim ??= core.claimIosDeviceAccount(issuer).then(({ claimed }) => {
+      if (!claimed) otherAccount();
+      return claimed;
+    }));
 
   for (const row of ours) {
     const device = atApple.get(row.udid);
@@ -304,8 +318,13 @@ export const registerApprovedDevices = async ({
     if (
       current === null ||
       current.status !== "approved" ||
-      current.approved_at_ms !== row.approved_at_ms
+      current.approved_at_ms !== row.approved_at_ms ||
+      (current.apple_issuer_id !== null && current.apple_issuer_id !== issuer)
     ) {
+      continue;
+    }
+    if (!(await ownsRegistry())) {
+      report.waiting += 1;
       continue;
     }
     const [result] = await addAscDevices({

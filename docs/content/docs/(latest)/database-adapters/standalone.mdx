@@ -190,6 +190,7 @@ response wraps its result in `data`.
 | `PATCH`  | `/ios-devices/:id`                      | `{ name }`                                                   | `IosDeviceRow`, or `null`                               |
 | `POST`   | `/ios-devices/:id/outcome`              | `{ seen, issuerId, outcome, reason? }`                       | `IosDeviceRow`, or `null`                               |
 | `POST`   | `/ios-devices/in-build`                 | `{ buildId, ids }`                                           | `204`                                                   |
+| `POST`   | `/ios-devices/account`                  | `{ issuerId }`                                               | `{ issuerId, claimed }`                                 |
 | `DELETE` | `/ios-devices/:id`                      | Optional `status`, `requestedBy`: only a row that has them   | `IosDeviceRow`, or `null`                               |
 
 `PATCH /releases/:id` takes a `ReleasePolicyPatch`. `promote` copies a Bundle
@@ -209,7 +210,9 @@ answers them with `404`, which the CLI reports as a server to upgrade.
 
 The `/ios-devices` routes are the
 [iOS device registry](/docs/native-builds/iphone-install). A request for a UDID
-already there answers its row unchanged, with `created: false`. An outcome
+already there answers its row unchanged, with `created: false`.
+`/ios-devices/account` claims the registry for an Apple account: the first
+claim wins and holds, and every later one answers that account. An outcome
 writes only over the row as `seen` describes it, and only for the account that
 registered it, so a removed or changed row answers `null` and stays as it is.
 They are admin routes only, like every route here, and a server without them

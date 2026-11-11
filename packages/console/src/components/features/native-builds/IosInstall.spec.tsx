@@ -160,6 +160,7 @@ const itmsLinks = () =>
 beforeEach(() => {
   vi.clearAllMocks();
   requestAccess.isError = false;
+  requestAccess.mutate.mockReset();
   profileLinkQuery.mockReturnValue({
     data: { status: "issued", token: CAPABILITY, expiresAt: "2030-01-01" },
   });
@@ -263,6 +264,42 @@ describe("IosInstall", () => {
         "A maintainer approves it, and it joins the next ad hoc build.",
       ),
     ).toBeTruthy();
+  });
+
+  it("shows the request it just made until the page reads the registry again, which then wins, a removal too", () => {
+    requestAccess.mutate.mockImplementation(
+      (_input: unknown, { onSuccess }: { onSuccess: (r: unknown) => void }) =>
+        onSuccess({ device: registryRow(), created: true }),
+    );
+    answer(installable("not-included"), { dataUpdatedAt: 1 });
+    const { rerender } = render(
+      <IosInstall build={row} device={phone(PHONE, RECEIPT)} />,
+    );
+    fireEvent.change(screen.getByLabelText("This iPhone's name"), {
+      target: { value: "Kim's iPhone" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Request access" }));
+    expect(screen.getByRole("status").textContent).toContain(
+      "A maintainer approves it next.",
+    );
+
+    // The refreshed eligibility read says a maintainer approved it.
+    answer(
+      installable(
+        "not-included",
+        registryRow({ status: "approved", approved_at_ms: 1 }),
+      ),
+      { dataUpdatedAt: Date.now() + 1000 },
+    );
+    rerender(<IosInstall build={row} device={phone(PHONE, RECEIPT)} />);
+    expect(screen.getByRole("status").textContent).toBe(
+      "Kim's iPhone is approved. It joins the next ad hoc build.",
+    );
+
+    // Then declined: the registry has no row, and Request access returns.
+    answer(installable("not-included"), { dataUpdatedAt: Date.now() + 2000 });
+    rerender(<IosInstall build={row} device={phone(PHONE, RECEIPT)} />);
+    expect(screen.getByRole("button", { name: "Request access" })).toBeTruthy();
   });
 
   it("without a receipt, checks the iPhone again before Request access: a link's UDID is never trusted", () => {

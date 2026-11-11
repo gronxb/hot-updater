@@ -294,6 +294,23 @@ const iosDevices = defineTable(
   },
 );
 
+/**
+ * The Apple account the iOS device registry belongs to: one row, keyed
+ * `registry`, holding the App Store Connect issuer that first registered a
+ * device. A build claims it before it sends Apple anything, and its key makes
+ * the claim atomic on every store, so two builds of two accounts can't both
+ * spend a slot; another account's build then registers nothing. Removing
+ * devices never releases it.
+ */
+const iosDeviceAccount = defineTable(
+  {
+    id: { type: "string", maxLength: 16, ascii: true },
+    apple_issuer_id: { type: "string", maxLength: 64, ascii: true },
+    claimed_at_ms: { type: "integer" },
+  },
+  { key: ["id"], indexes: { all: { eq: [], sort: ["id"] } } },
+);
+
 /** Bundles per platform and in total (`platform_key` is a platform or `*`). */
 const bundleTotals = defineAggregate(
   { platform_key: { type: "string", maxLength: 16 } },
@@ -313,6 +330,7 @@ export const coreSchema = {
   bundle_totals: bundleTotals,
   native_builds: nativeBuilds,
   ios_devices: iosDevices,
+  ios_device_account: iosDeviceAccount,
 } as const;
 
 /**

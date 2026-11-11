@@ -8,6 +8,7 @@ export type {
   Deployment,
   DeployReleasePolicy,
   HotUpdaterCoreApi,
+  IosDeviceAccountClaim,
   IosDeviceOutcome,
   IosDeviceOutcomeInput,
   IosDeviceRequestResult,

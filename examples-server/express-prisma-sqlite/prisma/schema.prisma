@@ -160,6 +160,13 @@ model ios_devices {
   @@index([status, id], map: "ios_devices_byStatus")
   @@unique([udid], map: "ios_devices_udid")
 }
+model ios_device_account {
+  id String
+  apple_issuer_id String
+  claimed_at_ms BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+}
 model bundle_events {
   id String
   type String

@@ -321,6 +321,30 @@ describe("the iOS device registry", () => {
     ).toMatchObject({ id: device.id });
   });
 
+  it("lets exactly one of two accounts claim the registry, and keeps it", async () => {
+    const core = setup();
+    const claims = await Promise.all([
+      core.claimIosDeviceAccount(ISSUER),
+      core.claimIosDeviceAccount(OTHER_ISSUER),
+    ]);
+    const winner = claims.find(({ claimed }) => claimed)!.issuerId;
+    expect(claims.filter(({ claimed }) => claimed)).toHaveLength(1);
+    expect(claims.map(({ issuerId }) => issuerId)).toEqual([winner, winner]);
+    // Later claims answer the same account, whoever asks.
+    const loser = winner === ISSUER ? OTHER_ISSUER : ISSUER;
+    expect(await core.claimIosDeviceAccount(loser)).toEqual({
+      issuerId: winner,
+      claimed: false,
+    });
+    expect(await core.claimIosDeviceAccount(winner)).toEqual({
+      issuerId: winner,
+      claimed: true,
+    });
+    await expect(core.claimIosDeviceAccount(" ")).rejects.toBeInstanceOf(
+      IosDeviceInputError,
+    );
+  });
+
   it("deletes a row and answers null for an unknown one", async () => {
     const core = setup();
     const device = await requested(core);

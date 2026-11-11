@@ -778,6 +778,18 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     });
   }),
 
+  claimIosDeviceAccount: onCore(async (core, request) => {
+    const { issuerId } = await body(request);
+    if (!isText(issuerId)) {
+      throw new HandlerBadRequestError(
+        "Claiming the iOS device account needs issuerId.",
+      );
+    }
+    return json({
+      data: await refusingInvalid(() => core.claimIosDeviceAccount(issuerId)),
+    });
+  }),
+
   markIosDevicesInBuild: onCore(async (core, request) => {
     const input = await body(request);
     const { buildId, ids } = input;
@@ -911,6 +923,11 @@ export const ADMIN_ROUTES: readonly {
     method: "POST",
     path: "/ios-devices/in-build",
     handler: "markIosDevicesInBuild",
+  },
+  {
+    method: "POST",
+    path: "/ios-devices/account",
+    handler: "claimIosDeviceAccount",
   },
   {
     method: "POST",

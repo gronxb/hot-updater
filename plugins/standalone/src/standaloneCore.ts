@@ -9,6 +9,7 @@ import type {
   ChannelDeleteResult,
   ChannelRow,
   HotUpdaterCoreApi,
+  IosDeviceAccountClaim,
   IosDeviceRequestResult,
   IosDeviceRow,
   KeysetInput,
@@ -456,6 +457,11 @@ export const createStandaloneCoreApi = (
         requiredRoute: "iOS device registry",
       });
     },
+    claimIosDeviceAccount: async (issuerId) =>
+      (await call<IosDeviceAccountClaim>("POST", "/ios-devices/account", {
+        body: { issuerId },
+        requiredRoute: "iOS device registry",
+      }))!,
     deleteIosDevice: (id, only) =>
       call<IosDeviceRow>("DELETE", `/ios-devices/${encode(id)}`, {
         query: {

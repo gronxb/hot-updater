@@ -61,6 +61,7 @@ const RC_IOS_DEVICES_STATEMENTS = [
   'CREATE TABLE IF NOT EXISTS "ios_devices" ("id" TEXT NOT NULL, "udid" TEXT NOT NULL, "name" TEXT NOT NULL, "status" TEXT NOT NULL, "requested_by" TEXT, "created_at_ms" INTEGER NOT NULL, "approved_by" TEXT, "approved_at_ms" INTEGER, "registered_at_ms" INTEGER, "apple_issuer_id" TEXT, "apple_error" TEXT, "build_id" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"))',
   'CREATE INDEX IF NOT EXISTS "ios_devices_byStatus" ON "ios_devices" ("status", "id")',
   'CREATE UNIQUE INDEX IF NOT EXISTS "ios_devices_udid" ON "ios_devices" ("udid")',
+  'CREATE TABLE IF NOT EXISTS "ios_device_account" ("id" TEXT NOT NULL, "apple_issuer_id" TEXT NOT NULL, "claimed_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"))',
 ];
 
 const readMigration = (name: string) =>
@@ -177,7 +178,9 @@ describe("d1 schema", () => {
       for (const statement of d1MigrationStatements(
         await readMigration(name),
       )) {
-        if (!statement.includes('"ios_devices"')) prerelease.exec(statement);
+        if (!/"ios_device(?:s|_account)"/u.test(statement)) {
+          prerelease.exec(statement);
+        }
       }
     }
     const core = createHotUpdater({

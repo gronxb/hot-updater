@@ -19,7 +19,7 @@ const {
     error: vi.fn(),
     warn: vi.fn(),
   },
-  markIosDevicesInBuild: vi.fn(async () => {}),
+  markIosDevicesInBuild: vi.fn(async (_input: unknown) => {}),
   readIpaDevices: vi.fn(async (): Promise<readonly string[] | null> => []),
   registerApprovedDevices: vi.fn(),
   registerNativeBuild: vi.fn(async () => ({
@@ -32,8 +32,11 @@ vi.mock("@hot-updater/apple-helper", () => ({
   buildIos,
   exportsForRegisteredDevices,
 }));
+// Each load of the config opens its own database, as a real config does.
+const openDatabase = () => ({ closed: false });
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
+  loadConfig: vi.fn(async () => ({ database: openDatabase() })),
   p: { log },
   withCredentialResolver: vi.fn(async (run) =>
     run({ resolve: vi.fn(), dispose: vi.fn() }),
@@ -56,7 +59,7 @@ vi.mock("@/utils/native/prepareNativeBuild", () => ({
     });
     return {
       buildAdapter: { name: "bare" },
-      config: { cacheDir: null },
+      config: { cacheDir: null, database: openDatabase() },
       outputPath: "/out",
       scheme: "testers",
       target: { fingerprintHash: null, appVersion: "1.0.0" },
@@ -117,11 +120,23 @@ vi.mock("../utils/native/reportIpaDevices", () => ({
   readIpaDevices,
   reportIpaDevices: vi.fn(async () => {}),
 }));
+// A server over a database it closes when disposed, as postgres() does: a
+// closed database refuses every write.
 vi.mock("../utils/loadServer", () => ({
-  loadServer: vi.fn(async () => ({
-    core: { markIosDevicesInBuild },
-    dispose: vi.fn(async () => {}),
-  })),
+  loadServer: vi.fn(async (config: { database?: { closed: boolean } } = {}) => {
+    const database = config.database ?? { closed: false };
+    return {
+      core: {
+        markIosDevicesInBuild: async (input: unknown) => {
+          if (database.closed) throw new Error("the database is closed");
+          return markIosDevicesInBuild(input);
+        },
+      },
+      dispose: vi.fn(async () => {
+        database.closed = true;
+      }),
+    };
+  }),
 }));
 
 import { handleNativeBuildCreate } from "./buildNative";
@@ -167,10 +182,12 @@ describe("native-build ios of an ad hoc scheme with the device registry", () => 
       expect.objectContaining({ expectedDevices: [PHONE] }),
     );
     expect(registerNativeBuild).toHaveBeenCalledOnce();
+    // Over a database of its own: the registry step closed the first one.
     expect(markIosDevicesInBuild).toHaveBeenCalledWith({
       buildId: "0190a1b2-c3d4-7000-8000-00000000b001",
       ids: ["dev-1"],
     });
+    expect(log.warn).not.toHaveBeenCalled();
     const json = JSON.parse(
       String(vi.mocked(console.log).mock.calls.at(-1)?.[0]),
     );

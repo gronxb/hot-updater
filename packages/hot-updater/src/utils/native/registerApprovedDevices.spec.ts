@@ -250,6 +250,63 @@ describe("registerApprovedDevices", () => {
     });
   });
 
+  it("keeps a registry to its account through a removal at Apple and a new approval, for that device and a new one", async () => {
+    const API_KEY_B = { ...API_KEY, issuerId: "issuer-b" };
+    // Account A registers the registry's first device.
+    await approved(PHONE, "Kim's iPhone");
+    appleAdds();
+    await run();
+    expect((await statusOf(PHONE))?.apple_issuer_id).toBe("issuer-a");
+    // A's next build finds it gone from A's account: back to pending.
+    addAscDevices.mockClear();
+    listAscDevices.mockResolvedValue([]);
+    await run();
+    expect((await statusOf(PHONE))?.status).toBe("pending");
+    // Someone approves it again, and a new iPhone too.
+    await core.approveIosDevice((await statusOf(PHONE))!.id, {
+      approvedBy: null,
+    });
+    await approved(IPAD, "Lee's iPad");
+
+    const { report } = await run({ resolveApiKey: async () => API_KEY_B });
+
+    expect(addAscDevices).not.toHaveBeenCalled();
+    expect(report.waiting).toBe(2);
+    expect(await statusOf(IPAD)).toMatchObject({
+      status: "approved",
+      apple_issuer_id: null,
+    });
+  });
+
+  it("lets only one of two first builds of two accounts send Apple anything", async () => {
+    await approved(PHONE, "Kim's iPhone");
+    // Both builds read Apple's list before either registers.
+    let release!: () => void;
+    const both = new Promise<void>((resolve) => (release = resolve));
+    let reads = 0;
+    listAscDevices.mockImplementation(async () => {
+      reads += 1;
+      if (reads === 2) release();
+      await both;
+      return [];
+    });
+    appleAdds();
+
+    await Promise.all([
+      run(),
+      run({
+        resolveApiKey: async () => ({ ...API_KEY, issuerId: "issuer-b" }),
+      }),
+    ]);
+
+    expect(addAscDevices).toHaveBeenCalledOnce();
+    const sentWith = addAscDevices.mock.calls[0]![0].apiKey.issuerId;
+    expect(await statusOf(PHONE)).toMatchObject({
+      status: "registered",
+      apple_issuer_id: sentWith,
+    });
+  });
+
   it("names the account by the earliest registration, whatever two accounts left", () => {
     const row = (id: string, issuer: string, at: number) =>
       ({

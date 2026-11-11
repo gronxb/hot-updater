@@ -770,6 +770,18 @@ export const setupCoreAdminTestSuite = (options: {
             }),
           ),
         ).toBeNull();
+        // The registry's Apple account: of two claims at once, one wins.
+        const claims = (await Promise.all(
+          ["issuer-a", "issuer-b"].map((issuerId) =>
+            adminJson(
+              "/ios-devices/account",
+              jsonRequest("POST", { issuerId }),
+            ),
+          ),
+        )) as { data: { issuerId: string; claimed: boolean } }[];
+        const owner = claims.find(({ data }) => data.claimed)?.data.issuerId;
+        expect(claims.filter(({ data }) => data.claimed)).toHaveLength(1);
+        expect(claims.map(({ data }) => data.issuerId)).toEqual([owner, owner]);
         const buildId = bundleRow("90").id;
         const marked = await admin(
           "/ios-devices/in-build",
