@@ -6,15 +6,10 @@ import UIKit
 @objc(HotUpdaterSandboxBridge)
 @MainActor
 public final class HotUpdaterSandboxBridge: NSObject {
-    /// How often, and for how long, a waiting link checks whether a server answered the app.
-    private static let serverAnswerPollSeconds: UInt64 = 1
-    private static let serverAnswerAttempts = 600
-
     private static var release: (() -> Void)?
     private static var reload: (() -> Bool)?
     private static var isReleased: (() -> Bool)?
     private static var window: UIWindow?
-    private static var isWatchingForServerAnswer = false
     private static let devServer = HotUpdaterSandboxLiveDevServer(
         start: { launchWasPrepared in startDevSession(launchWasPrepared: launchWasPrepared) },
         reload: { NSLog("[HotUpdaterSandbox] reload triggered=%d", reload?() == true) }
@@ -31,7 +26,8 @@ public final class HotUpdaterSandboxBridge: NSObject {
         store: HotUpdaterSandboxDefaults(),
         shelf: HotUpdaterSandboxLiveHost.shelf,
         openApp: { switched, fixed in open(switched: switched, fixed: fixed) },
-        log: { NSLog("[HotUpdaterSandbox] %@", $0) }
+        log: { NSLog("[HotUpdaterSandbox] %@", $0) },
+        onServerAnswer: { askOverApp() }
     )
 
     /// What only the gate can do: start the held React Native, ask the SDK for a reload.
@@ -141,7 +137,6 @@ public final class HotUpdaterSandboxBridge: NSObject {
     }
 
     private static func open(switched: Bool, fixed: Bool) {
-        watchForServerAnswer(attempts: serverAnswerAttempts)
         if isReleased?() == true {
             if switched || fixed {
                 NSLog("[HotUpdaterSandbox] reload triggered=%d", reload?() == true)
@@ -158,22 +153,12 @@ public final class HotUpdaterSandboxBridge: NSObject {
         release?()
     }
 
-    /// A link that waits for the app's first answered check is asked about as
-    /// soon as a server answered, while this process lives. After that, the
-    /// stored link waits for the next launch.
-    private static func watchForServerAnswer(attempts: Int) {
-        guard case .waitingForServer = coordinator.state.phase, !isWatchingForServerAnswer else { return }
-        isWatchingForServerAnswer = true
-        Task { @MainActor in
-            for _ in 0 ..< attempts {
-                try? await Task.sleep(nanoseconds: serverAnswerPollSeconds * 1_000_000_000)
-                guard host.hasServerConfig() else { continue }
-                isWatchingForServerAnswer = false
-                present(in: nil)
-                return
-            }
-            isWatchingForServerAnswer = false
-        }
+    /// A link that waited for the app's first answered check asks now, over the
+    /// app when no screen is up. After this process, the stored link waits for
+    /// the next launch.
+    private static func askOverApp() {
+        guard window == nil, case .confirming = coordinator.state.phase else { return }
+        present(in: nil)
     }
 }
 #endif

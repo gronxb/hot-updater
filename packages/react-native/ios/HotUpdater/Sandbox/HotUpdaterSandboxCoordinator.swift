@@ -249,6 +249,16 @@ final class HotUpdaterSandboxCoordinator {
     /// evidence stays readable until the process ends.
     private var acknowledgedBundleId: String?
     private let now: () -> Date
+    /// How many times the server watch looks for the app's first answered check.
+    private static let serverPollAttempts = 600
+    /// The server watch's pause between two looks.
+    private let serverPoll: () async -> Void
+    /// Runs once the watch saw a server answer, after the state has it: a link may ask now.
+    private let onServerAnswer: () -> Void
+    /// Whether a server watch runs: one at a time.
+    private var watchingServer = false
+    /// Whether `state.hasServerConfig` was read from the host yet, not the initial false.
+    private var serverConfigRead = false
 
     private(set) var state = HotUpdaterSandboxState(
         selection: nil,
@@ -266,8 +276,12 @@ final class HotUpdaterSandboxCoordinator {
         now: @escaping () -> Date = Date.init,
         lock: HotUpdaterSandboxLock = .shared,
         shelfQueue: DispatchQueue = DispatchQueue(label: "hot-updater-sandbox.shelf"),
-        isOwnScheme: @escaping (String) -> Bool = { HotUpdaterSandboxLink.isOwnScheme($0) }
+        isOwnScheme: @escaping (String) -> Bool = { HotUpdaterSandboxLink.isOwnScheme($0) },
+        serverPoll: @escaping () async -> Void = { try? await Task.sleep(nanoseconds: 1_000_000_000) },
+        onServerAnswer: @escaping () -> Void = {}
     ) {
+        self.serverPoll = serverPoll
+        self.onServerAnswer = onServerAnswer
         self.isOwnScheme = isOwnScheme
         self.shelfQueue = shelfQueue
         self.now = now
@@ -303,6 +317,43 @@ final class HotUpdaterSandboxCoordinator {
         let selection = await readSelection()
         publish(reading(selection, launched: await host.launchBundleId()))
         pump()
+    }
+
+    /// A screen shows, or a link waits: both turn on once a server answers the app.
+    private func waitsForServer() -> Bool {
+        if case .waitingForServer = state.phase { return true }
+        return !listeners.isEmpty
+    }
+
+    private func readServerConfig() -> Bool {
+        serverConfigRead = true
+        return host.hasServerConfig()
+    }
+
+    /// Until a server answers one of the app's checks, looks for its config after
+    /// each `serverPoll` while someone waits for it. The first answer is read in, so
+    /// Enter a channel turns on and a waiting link asks, then `onServerAnswer` runs.
+    /// Storage has no change signal, and the app's check runs under the screen.
+    private func watchServer() {
+        watchingServer = true
+        let poll = serverPoll
+        Task { @MainActor [weak self] in
+            for _ in 0 ..< Self.serverPollAttempts {
+                await poll()
+                guard let self else { return }
+                guard !state.hasServerConfig, waitsForServer() else {
+                    watchingServer = false
+                    return
+                }
+                if host.hasServerConfig() {
+                    await refresh()
+                    watchingServer = false
+                    onServerAnswer()
+                    return
+                }
+            }
+            self?.watchingServer = false
+        }
     }
 
     /// Keeps what the last launch left, for a launch that started without the
@@ -568,7 +619,7 @@ final class HotUpdaterSandboxCoordinator {
         var next = state
         next.selection = selection
         next.runningBundleId = launched
-        next.hasServerConfig = host.hasServerConfig()
+        next.hasServerConfig = readServerConfig()
         next.details = host.details()
         next.lastLaunch = settledLastLaunch(launched: launched)
         return reading(next)
@@ -794,7 +845,7 @@ final class HotUpdaterSandboxCoordinator {
             return
         }
         var next = state
-        next.hasServerConfig = host.hasServerConfig()
+        next.hasServerConfig = readServerConfig()
         next.phase = next.hasServerConfig ? .confirming(link) : .waitingForServer(link)
         publish(next)
     }
@@ -833,6 +884,9 @@ final class HotUpdaterSandboxCoordinator {
         state = published
         for listener in listeners.values {
             listener(published)
+        }
+        if serverConfigRead, !state.hasServerConfig, !watchingServer, waitsForServer() {
+            watchServer()
         }
     }
 }

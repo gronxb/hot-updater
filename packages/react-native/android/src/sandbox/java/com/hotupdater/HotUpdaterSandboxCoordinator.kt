@@ -3,11 +3,16 @@ package com.hotupdater
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.coroutines.CoroutineContext
+
+/** How often, and how many times, the server watch looks for the app's first answered check. */
+private const val SERVER_POLL_MS = 1_000L
+private const val SERVER_POLL_ATTEMPTS = 600
 
 /** What a check of the target channel did. */
 internal sealed class HotUpdaterSandboxStaged {
@@ -290,6 +295,10 @@ internal class HotUpdaterSandboxCoordinator(
     private val shelfContext: CoroutineContext = Executors.newSingleThreadExecutor().asCoroutineDispatcher(),
     /** Whether a link's scheme is this build's: another app's link isn't for it. */
     private val isOwnScheme: (String) -> Boolean = { HotUpdaterSandboxLink.isOwnScheme(it, null) },
+    /** The server watch's pause between two looks. */
+    private val serverPoll: suspend () -> Unit = { delay(SERVER_POLL_MS) },
+    /** Runs once the watch saw a server answer, after the state has it: a link may ask now. */
+    private val onServerAnswer: () -> Unit = {},
 ) {
     /** The Downloaded list as the shelf last reported it: the screen reads only this. */
     private var downloaded = emptyList<HotUpdaterSandboxShelfEntry>()
@@ -351,6 +360,17 @@ internal class HotUpdaterSandboxCoordinator(
         )
         private set
 
+    /** Whether a server watch runs: one at a time. */
+    private var watchingServer = false
+
+    /** Whether [state]'s `hasServerConfig` was read from the host yet, not the initial false. */
+    private var serverConfigRead = false
+
+    private fun readServerConfig(): Boolean {
+        serverConfigRead = true
+        return host.hasServerConfig()
+    }
+
     /** Calls [listener] now and at every change, until the returned function runs. */
     fun observe(listener: (HotUpdaterSandboxState) -> Unit): () -> Unit {
         listeners += listener
@@ -363,13 +383,42 @@ internal class HotUpdaterSandboxCoordinator(
      * Sends no request: opening the screen costs the update server nothing.
      */
     fun refresh() {
+        scope.launch { reread() }
+    }
+
+    private suspend fun reread() {
         // A switch may be copying into the shelf: its partial copy isn't listed yet.
-        val reconciling = state.phase !is HotUpdaterSandboxPhase.Working
+        relist(state.phase !is HotUpdaterSandboxPhase.Working)
+        val selection = readSelection()
+        publish(reading(selection, host.launchBundleId()))
+        pump()
+    }
+
+    /** A screen shows, or a link waits: both turn on once a server answers the app. */
+    private fun waitsForServer() = listeners.isNotEmpty() || state.phase is HotUpdaterSandboxPhase.WaitingForServer
+
+    /**
+     * Until a server answers one of the app's checks, looks for its config after
+     * each [serverPoll] while someone waits for it. The first answer is read in, so
+     * Enter a channel turns on and a waiting link asks, then [onServerAnswer] runs.
+     * Storage has no change signal, and the app's check runs under the screen.
+     */
+    private fun watchServer() {
+        watchingServer = true
         scope.launch {
-            relist(reconciling)
-            val selection = readSelection()
-            publish(reading(selection, host.launchBundleId()))
-            pump()
+            try {
+                repeat(SERVER_POLL_ATTEMPTS) {
+                    serverPoll()
+                    if (state.hasServerConfig || !waitsForServer()) return@launch
+                    if (host.hasServerConfig()) {
+                        reread()
+                        onServerAnswer()
+                        return@launch
+                    }
+                }
+            } finally {
+                watchingServer = false
+            }
         }
     }
 
@@ -664,7 +713,7 @@ internal class HotUpdaterSandboxCoordinator(
             state.copy(
                 selection = selection,
                 runningBundleId = launched,
-                hasServerConfig = host.hasServerConfig(),
+                hasServerConfig = readServerConfig(),
                 details = host.details(),
                 lastLaunch = settledLastLaunch(launched),
             ),
@@ -942,7 +991,7 @@ internal class HotUpdaterSandboxCoordinator(
             )
             return
         }
-        val hasServerConfig = host.hasServerConfig()
+        val hasServerConfig = readServerConfig()
         publish(
             state.copy(
                 hasServerConfig = hasServerConfig,
@@ -974,5 +1023,6 @@ internal class HotUpdaterSandboxCoordinator(
             }
         state = next.copy(queuedLinks = queue.count { it != inPhase })
         listeners.toList().forEach { it(state) }
+        if (serverConfigRead && !state.hasServerConfig && !watchingServer && waitsForServer()) watchServer()
     }
 }

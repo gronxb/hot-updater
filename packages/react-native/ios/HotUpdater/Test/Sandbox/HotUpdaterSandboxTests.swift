@@ -285,6 +285,25 @@ private func makeShelf(_ root: URL, key: String = "key", storesBundles: Bool = t
     )
 }
 
+/// The server watch's pause, ended by hand: each `tick()` is one look at the host.
+@MainActor
+private final class ServerTicks {
+    private var pending: CheckedContinuation<Void, Never>?
+
+    /// Whether a watch waits for its next look.
+    var isWaiting: Bool { pending != nil }
+
+    func next() async {
+        await withCheckedContinuation { pending = $0 }
+    }
+
+    func tick() {
+        let waiting = pending
+        pending = nil
+        waiting?.resume()
+    }
+}
+
 @MainActor
 private struct Fixture {
     let host = FakeHost()
@@ -293,18 +312,26 @@ private struct Fixture {
     let files = temporaryDirectory()
     let shelf: HotUpdaterSandboxShelf
     var opens: [(Bool, Bool)] { box.opens }
+    var serverAnswers: Int { box.serverAnswers }
     private let box = Box()
     let coordinator: HotUpdaterSandboxCoordinator
 
+    var canEnterChannel: Bool {
+        HotUpdaterSandboxHomeModel(state: coordinator.state, isOverApp: true, nowMs: 0).canEnterChannel
+    }
+
     private final class Box {
         var opens: [(Bool, Bool)] = []
+        var serverAnswers = 0
     }
 
     init(
         pendingLinks: [String] = [],
         storesBundles: Bool = true,
         shelfQueue: DispatchQueue = DispatchQueue(label: "test.shelf"),
-        ownScheme: String? = nil
+        ownScheme: String? = nil,
+        // A watch never looks unless a test ticks it.
+        serverPoll: @escaping () async -> Void = { try? await Task.sleep(nanoseconds: 3_600_000_000_000) }
     ) {
         store.pendingLinks = pendingLinks
         let box = box
@@ -319,7 +346,9 @@ private struct Fixture {
             now: { Date(timeIntervalSince1970: 1000) },
             lock: lock,
             shelfQueue: shelfQueue,
-            isOwnScheme: { HotUpdaterSandboxLink.isOwnScheme($0, own: ownScheme) }
+            isOwnScheme: { HotUpdaterSandboxLink.isOwnScheme($0, own: ownScheme) },
+            serverPoll: serverPoll,
+            onServerAnswer: { box.serverAnswers += 1 }
         )
     }
 }
@@ -1094,6 +1123,78 @@ struct HotUpdaterSandboxCoordinatorTests {
             Issue.record("expected the link's confirmation")
             return
         }
+    }
+
+    @Test
+    func anOpenHomeTurnsEnterAChannelOnOnceTheAppsFirstCheckIsAnswered() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next() })
+        fixture.host.serverConfig = false
+        let stop = fixture.coordinator.observe { _ in }
+        await fixture.coordinator.refresh()
+        #expect(!fixture.canEnterChannel)
+
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { ticks.isWaiting }
+        #expect(!fixture.canEnterChannel)
+
+        // The app's check is answered under the screen, which stays up.
+        fixture.host.serverConfig = true
+        ticks.tick()
+        await settle { fixture.canEnterChannel }
+        #expect(fixture.canEnterChannel)
+        #expect(fixture.coordinator.state.phase == .idle)
+        #expect(fixture.store.pendingLinks.isEmpty)
+        // Known now: nothing looks again.
+        await settle()
+        #expect(!ticks.isWaiting)
+        stop()
+    }
+
+    @Test
+    func nothingWatchesForAServerOnceOneIsKnownOrWhileNobodyWaitsForIt() async {
+        let ticks = ServerTicks()
+        let known = Fixture(serverPoll: { await ticks.next() })
+        let stop = known.coordinator.observe { _ in }
+        await known.coordinator.refresh()
+        #expect(known.canEnterChannel)
+        await settle()
+        #expect(!ticks.isWaiting)
+        stop()
+
+        let unseen = Fixture(serverPoll: { await ticks.next() })
+        unseen.host.serverConfig = false
+        await unseen.coordinator.refresh()
+        await settle()
+        #expect(!ticks.isWaiting)
+    }
+
+    @Test
+    func aLinkWaitingForAServerIsAskedOnceOneAnswersWithNoScreenUp() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next() })
+        fixture.host.serverConfig = false
+        fixture.coordinator.receiveLink(link("pr-1"))
+        guard case .waitingForServer = fixture.coordinator.state.phase else {
+            Issue.record("expected the link to wait")
+            return
+        }
+
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { ticks.isWaiting }
+        #expect(fixture.serverAnswers == 0)
+        fixture.host.serverConfig = true
+        ticks.tick()
+        await settle { fixture.serverAnswers > 0 }
+        guard case .confirming = fixture.coordinator.state.phase else {
+            Issue.record("expected the link's confirmation")
+            return
+        }
+        #expect(fixture.serverAnswers == 1)
+        await settle()
+        #expect(!ticks.isWaiting)
     }
 
     @Test

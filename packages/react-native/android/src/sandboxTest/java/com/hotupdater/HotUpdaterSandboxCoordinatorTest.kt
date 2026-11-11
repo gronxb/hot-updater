@@ -6,6 +6,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.awaitCancellation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -194,11 +195,32 @@ private class FakeStore(
     override var lastLaunch: HotUpdaterSandboxLastLaunch? = null
 }
 
+/** The server watch's pause, ended by hand: each [tick] is one look at the host. */
+private class ServerTicks {
+    private var pending: CompletableDeferred<Unit>? = null
+
+    /** Whether a watch waits for its next look. */
+    val isWaiting get() = pending != null
+
+    suspend fun next() {
+        CompletableDeferred<Unit>().also { pending = it }.await()
+    }
+
+    fun tick() {
+        val waiting = pending
+        pending = null
+        waiting?.complete(Unit)
+    }
+}
+
 private class Fixture(
     pendingLinks: List<String> = emptyList(),
     shelfContext: kotlin.coroutines.CoroutineContext = EmptyCoroutineContext,
     ownScheme: String? = null,
+    // A watch never looks unless a test ticks it.
+    serverPoll: suspend () -> Unit = { awaitCancellation() },
 ) {
+    var serverAnswers = 0
     val host = FakeHost()
     val store = FakeStore(pendingLinks)
     val lock = HotUpdaterSandboxLock()
@@ -216,9 +238,13 @@ private class Fixture(
             lock = lock,
             shelfContext = shelfContext,
             isOwnScheme = { HotUpdaterSandboxLink.isOwnScheme(it, ownScheme) },
+            serverPoll = serverPoll,
+            onServerAnswer = { serverAnswers += 1 },
         )
 
     val phase get() = coordinator.state.phase
+
+    val canEnterChannel get() = HotUpdaterSandboxHomeModel.of(coordinator.state, isOverApp = true, nowMs = 0).canEnterChannel
 }
 
 class HotUpdaterSandboxCoordinatorTest {
@@ -1216,6 +1242,61 @@ class HotUpdaterSandboxCoordinatorTest {
         val second = Fixture(first.store.pendingLinks)
         second.coordinator.refresh()
         assertTrue(second.phase is HotUpdaterSandboxPhase.Confirming)
+    }
+
+    @Test
+    fun `an open Home turns Enter a channel on once the app's first check is answered`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        fixture.host.serverConfig = false
+        val stop = fixture.coordinator.observe {}
+        fixture.coordinator.refresh()
+        assertFalse(fixture.canEnterChannel)
+
+        ticks.tick()
+        assertFalse(fixture.canEnterChannel)
+
+        // The app's check is answered under the screen, which stays up.
+        fixture.host.serverConfig = true
+        ticks.tick()
+        assertTrue(fixture.canEnterChannel)
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Idle)
+        assertTrue(fixture.store.pendingLinks.isEmpty())
+        // Known now: nothing looks again.
+        assertFalse(ticks.isWaiting)
+        stop()
+    }
+
+    @Test
+    fun `nothing watches for a server once one is known, or while nobody waits for it`() {
+        val ticks = ServerTicks()
+        val known = Fixture(serverPoll = ticks::next)
+        known.coordinator.observe {}
+        known.coordinator.refresh()
+        assertTrue(known.canEnterChannel)
+        assertFalse(ticks.isWaiting)
+
+        val unseen = Fixture(serverPoll = ticks::next)
+        unseen.host.serverConfig = false
+        unseen.coordinator.refresh()
+        assertFalse(ticks.isWaiting)
+    }
+
+    @Test
+    fun `a link waiting for a server is asked once one answers, with no screen up`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        fixture.host.serverConfig = false
+        fixture.coordinator.receiveLink(link("pr-1"))
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.WaitingForServer)
+
+        ticks.tick()
+        assertEquals(0, fixture.serverAnswers)
+        fixture.host.serverConfig = true
+        ticks.tick()
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Confirming)
+        assertEquals(1, fixture.serverAnswers)
+        assertFalse(ticks.isWaiting)
     }
 
     @Test
