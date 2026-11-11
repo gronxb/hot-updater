@@ -116,7 +116,13 @@ const keyset = (url: URL, maxValue: number = LIMITS.maxValue): KeysetInput => {
     );
   }
   const cursor = url.searchParams.get("cursor");
-  return { order, limit, ...(cursor === null ? {} : { after: cursor }) };
+  const through = url.searchParams.get("through");
+  return {
+    order,
+    limit,
+    ...(cursor === null ? {} : { after: cursor }),
+    ...(through === null ? {} : { through }),
+  };
 };
 
 /** A page and the cursor of the next one, when the page is full. */
@@ -324,6 +330,7 @@ const isNativeBuildRegistration = (
   (value.isSandbox === undefined || typeof value.isSandbox === "boolean") &&
   (value.sandboxUrlScheme === undefined ||
     isTextOrNull(value.sandboxUrlScheme)) &&
+  (value.exportMethod === undefined || isTextOrNull(value.exportMethod)) &&
   isRecord(value.artifact) &&
   typeof value.artifact.kind === "string" &&
   NATIVE_BUILD_ARTIFACT_KINDS.has(value.artifact.kind) &&

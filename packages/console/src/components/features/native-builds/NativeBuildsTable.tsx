@@ -17,6 +17,7 @@ import {
   DataCardSkeletons,
   DataCardsEmpty,
   DataTable,
+  DataTableBody,
   DataTableEmpty,
   DataTableFrame,
   DataTableFullRow,
@@ -25,6 +26,15 @@ import {
   DataTableSkeletonRows,
   openOutsideControls,
 } from "@/components/DataTable";
+import {
+  DataCardFold,
+  DataTableFold,
+  foldKey,
+  foldLabel,
+  FoldStatus,
+  groupsOf,
+  useOpenFolds,
+} from "@/components/FoldedRows";
 import { PlatformIcon, PlatformLabel } from "@/components/PlatformIcon";
 import { RelativeTime } from "@/components/RelativeTime";
 import {
@@ -42,6 +52,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { TableCell, TableHead } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useNativeBuildFoldQuery } from "@/lib/api";
 import {
   formatByteSize,
   nativeBuildArtifacts,
@@ -50,10 +61,12 @@ import {
   nativeBuildFileName,
   platformLabel,
 } from "@/lib/native-builds";
-import type { NativeBuildListResult } from "@/lib/server/nativeBuilds";
+import type { Fold } from "@/lib/server/foldedPage";
+import type { NativeBuildFoldedPage } from "@/lib/server/nativeBuilds";
 
 import { CopyableText } from "./CopyableText";
 import { IMPORT_COMMAND, IMPORT_GUIDE_URL } from "./ImportBuild";
+import { OlderBuildLabel } from "./OlderBuildLabel";
 import { SandboxBadge } from "./SandboxBadge";
 import { isSubmitted, StoreSubmissionBadge } from "./StoreSubmission";
 
@@ -66,18 +79,29 @@ const COLUMNS = 10;
 const channelSearch = (channel: string | undefined) =>
   channel === undefined ? {} : { channel };
 
+/** A fold of older builds: "1 older build", "12 older builds". */
+const OLDER_BUILDS = { one: "older build", other: "older builds" } as const;
+
 function EmptyState({
   channel,
   paged,
+  folded,
   onClearChannel,
 }: {
   readonly channel: string | undefined;
   readonly paged: boolean;
+  /** Whether the page holds older builds alone, folded. */
+  readonly folded: boolean;
   readonly onClearChannel: () => void;
 }) {
-  if (paged) {
+  if (paged || folded) {
     return (
-      <DataTableEmpty icon={HardDrive} title="No more native builds">
+      <DataTableEmpty
+        icon={HardDrive}
+        title={
+          folded ? "Each build here has a newer one" : "No more native builds"
+        }
+      >
         <Link
           className={buttonVariants({
             className: "mt-1 min-h-11 sm:min-h-8",
@@ -294,9 +318,15 @@ const createdAt = (build: NativeBuildRow) =>
 
 function BuildRow({
   build,
+  older = false,
+  newer,
   onChannel,
 }: {
   readonly build: NativeBuildRow;
+  /** Whether a newer build on its path passes it over: a fold's build. */
+  readonly older?: boolean;
+  /** That newer build, when it was found. */
+  readonly newer?: NativeBuildRow;
   readonly onChannel: (channel: string) => void;
 }) {
   const navigate = useNavigate();
@@ -304,6 +334,8 @@ function BuildRow({
   return (
     <DataTableRow
       aria-label={`Open native build ${build.id}`}
+      className="data-[older=true]:bg-muted/35 data-[older=true]:saturate-50 data-[older=true]:hover:bg-muted/50 data-[older=true]:hover:saturate-100 data-[older=true]:focus-within:saturate-100"
+      data-older={older ? true : undefined}
       onOpen={() =>
         void navigate({
           to: "/native-builds/$buildId",
@@ -339,7 +371,14 @@ function BuildRow({
         {formatByteSize(build.byte_size)}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
-        <RelativeTime ms={createdAt(build)} />
+        {!older ? (
+          <RelativeTime ms={createdAt(build)} />
+        ) : (
+          <span className="flex flex-col items-start gap-1">
+            <RelativeTime ms={createdAt(build)} />
+            <OlderBuildLabel newer={newer} />
+          </span>
+        )}
       </TableCell>
       <TableCell className="text-right">
         <DownloadButton build={build} />
@@ -355,9 +394,15 @@ function BuildRow({
  */
 function BuildCard({
   build,
+  older = false,
+  newer,
   onChannel,
 }: {
   readonly build: NativeBuildRow;
+  /** Whether a newer build on its path passes it over: a fold's build. */
+  readonly older?: boolean;
+  /** That newer build, when it was found. */
+  readonly newer?: NativeBuildRow;
   readonly onChannel: (channel: string) => void;
 }) {
   const navigate = useNavigate();
@@ -366,7 +411,8 @@ function BuildCard({
   return (
     <DataCard
       aria-label={`Native build ${buildTitle(build)} ${build.id}`}
-      className="gap-3 border-b-0"
+      className="gap-3 border-b-0 data-[older=true]:bg-muted/35 data-[older=true]:saturate-50 data-[older=true]:hover:bg-muted/50 data-[older=true]:hover:saturate-100 data-[older=true]:focus-within:saturate-100"
+      data-older={older ? true : undefined}
       onClick={openOutsideControls(
         () =>
           void navigate({
@@ -383,6 +429,7 @@ function BuildCard({
             platform={build.platform}
           />
           <BuildIdentity build={build} />
+          {older ? <OlderBuildLabel newer={newer} /> : null}
         </div>
         <DownloadButton build={build} />
       </div>
@@ -432,9 +479,105 @@ function BuildCard({
 }
 
 /**
+ * A fold of older builds, where they sit in the list: closed, the number it
+ * holds; open, those builds in order, each shaded and saying which newer
+ * build passes it over, read a chunk at a time once it opens.
+ */
+function OlderBuildsFold({
+  fold,
+  channel,
+  isMobile,
+  open,
+  onOpenChange,
+  onChannel,
+}: {
+  readonly fold: Fold;
+  readonly channel: string | undefined;
+  readonly isMobile: boolean;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly onChannel: (channel: string) => void;
+}) {
+  const query = useNativeBuildFoldQuery(
+    channel,
+    { ...(fold.from === undefined ? {} : { from: fold.from }), to: fold.to },
+    open,
+  );
+  const pages = query.data?.pages ?? [];
+  const newer = Object.assign({}, ...pages.map((page) => page.newer)) as Record<
+    string,
+    NativeBuildRow
+  >;
+  const rows = pages.flatMap((page) => page.rows);
+  const columns = isMobile ? undefined : COLUMNS;
+  const status = query.isError ? (
+    <FoldStatus
+      columns={columns}
+      label="Older builds"
+      onRetry={() => void query.refetch()}
+      state="error"
+    />
+  ) : query.isPending || query.isFetchingNextPage ? (
+    <FoldStatus
+      columns={columns}
+      label="Loading older builds"
+      state="loading"
+    />
+  ) : query.hasNextPage ? (
+    <FoldStatus
+      columns={columns}
+      label="Older builds"
+      onMore={() => void query.fetchNextPage()}
+      state="more"
+    />
+  ) : null;
+  const props = {
+    label: foldLabel(fold, OLDER_BUILDS),
+    open,
+    onOpenChange,
+    panelId: `native-build-fold-${fold.to}`,
+  };
+  return isMobile ? (
+    <DataCardFold {...props} inList>
+      {rows.map((build) => (
+        <div
+          className="border-b last:border-b-0"
+          key={build.id}
+          role="listitem"
+        >
+          <BuildCard
+            build={build}
+            newer={newer[build.id]}
+            older
+            onChannel={onChannel}
+          />
+        </div>
+      ))}
+      {status}
+    </DataCardFold>
+  ) : (
+    <DataTableFold {...props} columns={COLUMNS}>
+      {rows.map((build) => (
+        <BuildRow
+          build={build}
+          key={build.id}
+          newer={newer[build.id]}
+          older
+          onChannel={onChannel}
+        />
+      ))}
+      {status}
+    </DataTableFold>
+  );
+}
+
+/**
  * The registered native builds, newest first, one page at a time, as a
  * column table like Bundles' on wide screens and cards on narrow ones. A
  * row opens the build's page; its channel filters the list by that channel.
+ * A page counts the newest build of each distribution path and the store
+ * build; the builds a newer one passes over fold where they sit, each run
+ * one fold that opens on its own.
  */
 export function NativeBuildsTable({
   builds,
@@ -443,7 +586,7 @@ export function NativeBuildsTable({
   onChannel,
 }: {
   readonly builds: {
-    readonly data: NativeBuildListResult | undefined;
+    readonly data: NativeBuildFoldedPage | undefined;
     readonly isError: boolean;
     readonly isLoading: boolean;
     readonly isPlaceholderData: boolean;
@@ -456,8 +599,10 @@ export function NativeBuildsTable({
   readonly onChannel: (channel: string | undefined) => void;
 }) {
   const isMobile = useIsMobile();
-  const rows = builds.data?.data;
+  const folds = useOpenFolds();
+  const entries = builds.data?.entries;
   const { next, previous } = builds.data ?? {};
+  const count = entries?.filter(({ kind }) => kind === "row").length ?? 0;
 
   if (builds.isError) {
     return (
@@ -484,8 +629,20 @@ export function NativeBuildsTable({
   const empty = (
     <EmptyState
       channel={channel}
+      folded={(entries?.length ?? 0) > 0}
       onClearChannel={() => onChannel(undefined)}
       paged={paged}
+    />
+  );
+  const fold = (entry: Fold) => (
+    <OlderBuildsFold
+      channel={channel}
+      fold={entry}
+      isMobile={isMobile}
+      key={`fold-${entry.to}`}
+      onChannel={onChannel}
+      onOpenChange={(open) => folds.set(foldKey(entry), open)}
+      open={folds.isOpen(foldKey(entry))}
     />
   );
 
@@ -501,18 +658,23 @@ export function NativeBuildsTable({
           >
             {builds.isLoading ? (
               <DataCardSkeletons label="Loading native builds" />
-            ) : rows?.length === 0 ? (
-              <DataCardsEmpty>{empty}</DataCardsEmpty>
             ) : (
-              rows?.map((build) => (
-                <div
-                  className="border-b last:border-b-0"
-                  key={build.id}
-                  role="listitem"
-                >
-                  <BuildCard build={build} onChannel={onChannel} />
-                </div>
-              ))
+              <>
+                {count === 0 ? <DataCardsEmpty>{empty}</DataCardsEmpty> : null}
+                {entries?.map((entry) =>
+                  entry.kind === "fold" ? (
+                    fold(entry)
+                  ) : (
+                    <div
+                      className="border-b last:border-b-0"
+                      key={entry.row.id}
+                      role="listitem"
+                    >
+                      <BuildCard build={entry.row} onChannel={onChannel} />
+                    </div>
+                  ),
+                )}
+              </>
             )}
           </div>
         ) : (
@@ -537,25 +699,47 @@ export function NativeBuildsTable({
                 </TableHead>
               </>
             }
+            rowGroups
           >
             {builds.isLoading ? (
-              <DataTableSkeletonRows
-                columns={COLUMNS}
-                label="Loading native builds"
-              />
-            ) : rows?.length === 0 ? (
-              <DataTableFullRow columns={COLUMNS}>{empty}</DataTableFullRow>
+              <DataTableBody>
+                <DataTableSkeletonRows
+                  columns={COLUMNS}
+                  label="Loading native builds"
+                />
+              </DataTableBody>
             ) : (
-              rows?.map((build) => (
-                <BuildRow build={build} key={build.id} onChannel={onChannel} />
-              ))
+              <>
+                {count === 0 ? (
+                  <DataTableBody>
+                    <DataTableFullRow columns={COLUMNS}>
+                      {empty}
+                    </DataTableFullRow>
+                  </DataTableBody>
+                ) : null}
+                {groupsOf(entries ?? []).map((group) =>
+                  group.kind === "fold" ? (
+                    fold(group.fold)
+                  ) : (
+                    <DataTableBody key={`rows-${group.rows[0]!.id}`}>
+                      {group.rows.map((build) => (
+                        <BuildRow
+                          build={build}
+                          key={build.id}
+                          onChannel={onChannel}
+                        />
+                      ))}
+                    </DataTableBody>
+                  ),
+                )}
+              </>
             )}
           </DataTable>
         )}
       </DataTableFrame>
-      {builds.isLoading || rows === undefined ? null : (
+      {builds.isLoading || entries === undefined ? null : (
         <DataTablePagination
-          count={rows.length}
+          count={count}
           label="Native build pages"
           pending={builds.isPlaceholderData}
           newest={
@@ -575,7 +759,7 @@ export function NativeBuildsTable({
             previous === undefined
               ? undefined
               : {
-                  search: { ...channelSearch(channel), after: previous },
+                  search: { ...channelSearch(channel), ...previous },
                   to: "/native-builds",
                 }
           }

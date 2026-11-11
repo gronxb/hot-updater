@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { qrCodePath } from "@/lib/qr-code";
+import type { Fold } from "@/lib/server/foldedPage";
 import type {
   NativeBuildDetail,
   NativeBuildPatchPage,
@@ -25,6 +26,7 @@ import { firstDownloadOf, ServedNowCard } from "./ServedNowCard";
 const {
   downloadLinkQuery,
   downloadUrlQuery,
+  foldQuery,
   installEligibilityQuery,
   markMutate,
   patchesQuery,
@@ -32,6 +34,7 @@ const {
 } = vi.hoisted(() => ({
   downloadLinkQuery: vi.fn(),
   downloadUrlQuery: vi.fn(),
+  foldQuery: vi.fn(),
   installEligibilityQuery: vi.fn(),
   markMutate: vi.fn(),
   patchesQuery: vi.fn(),
@@ -43,6 +46,7 @@ vi.mock("@/lib/api", () => ({
   useMarkNativeBuildMutation: () => ({ mutate: markMutate, isPending: false }),
   useNativeBuildDownloadLinkQuery: downloadLinkQuery,
   useNativeBuildDownloadUrlQuery: downloadUrlQuery,
+  useNativeBuildFoldQuery: foldQuery,
   useNativeBuildInstallEligibilityQuery: installEligibilityQuery,
   useNativeBuildPatchesQuery: patchesQuery,
 }));
@@ -100,6 +104,7 @@ const build = (overrides: Partial<NativeBuildRow> = {}): NativeBuildRow => ({
   is_store_build: false,
   is_sandbox: false,
   sandbox_url_scheme: null,
+  export_method: null,
   ...overrides,
 });
 
@@ -138,8 +143,14 @@ afterEach(() => {
 });
 
 describe("NativeBuildsTable", () => {
-  const builds = (data: readonly NativeBuildRow[], page = {}) => ({
-    data: { data, ...page },
+  /** A page of builds, each an ordinary row, or a mix of rows and folds. */
+  const builds = (data: readonly (NativeBuildRow | Fold)[], page = {}) => ({
+    data: {
+      entries: data.map((entry) =>
+        "kind" in entry ? entry : { kind: "row" as const, row: entry },
+      ),
+      ...page,
+    },
     isError: false,
     isLoading: false,
     isPlaceholderData: false,
@@ -564,7 +575,7 @@ describe("NativeBuildsTable", () => {
   it("pages with Previous and Next as Bundles does, and offers Newest past the first page", () => {
     render(
       <NativeBuildsTable
-        builds={builds([build()], { next: id(9), previous: id(8) })}
+        builds={builds([build()], { next: id(9), previous: { after: id(8) } })}
         channel="pr-130"
         onChannel={vi.fn()}
         paged
@@ -590,7 +601,7 @@ describe("NativeBuildsTable", () => {
     render(
       <NativeBuildsTable
         builds={{
-          ...builds([build()], { next: id(9), previous: id(8) }),
+          ...builds([build()], { next: id(9), previous: { after: id(8) } }),
           isPlaceholderData: true,
         }}
         channel="pr-131"
@@ -628,6 +639,284 @@ describe("NativeBuildsTable", () => {
       screen.getByRole("button", { name: "Next" }).hasAttribute("disabled"),
     ).toBe(true);
     expect(screen.queryByRole("link", { name: "Newest" })).toBeNull();
+  });
+
+  describe("older builds, folded where they sit", () => {
+    const production = `channel:${encodeChannelKey("production")}`;
+    const ios = (n: number, overrides: Partial<NativeBuildRow> = {}) =>
+      build({
+        id: id(n),
+        platform: "ios",
+        channel_id: production,
+        app_version: "1.7.0",
+        fingerprint_hash: null,
+        artifact_kind: "ipa",
+        build_number: String(n),
+        created_at_ms: n,
+        ...overrides,
+      });
+    const testflight = (n: number, overrides: Partial<NativeBuildRow> = {}) =>
+      ios(n, {
+        submitted_to: "testflight",
+        submitted_at_ms: n,
+        submitted_version: `1.7.0 (${n})`,
+        ...overrides,
+      });
+    const fold = (from: number, to: number, count: number, more = false) =>
+      ({
+        kind: "fold",
+        count,
+        more,
+        from: id(from),
+        to: id(to),
+      }) as const satisfies Fold;
+    // As the server pages them: TestFlight 80 leads, 79 and 78 fold under it;
+    // the store build 77 leads; 76 folds under it.
+    const page = [
+      testflight(80),
+      fold(80, 78, 2),
+      testflight(77, { is_store_build: true }),
+      fold(77, 76, 1),
+    ];
+    /** What the fold query answers once the fold under `from` opens. */
+    const foldAnswers = (
+      answers: Record<number, Parameters<typeof foldPage>[0]>,
+    ) =>
+      foldQuery.mockImplementation(
+        (_channel: unknown, bounds: { from?: string }, enabled: boolean) => {
+          const from = Number(bounds.from?.slice(-12));
+          return enabled && answers[from] !== undefined
+            ? foldPage(answers[from])
+            : { data: undefined, isPending: true, isError: false };
+        },
+      );
+    const foldPage = ({
+      rows,
+      newer = {},
+      hasNextPage = false,
+    }: {
+      rows: NativeBuildRow[];
+      newer?: Record<string, NativeBuildRow>;
+      hasNextPage?: boolean;
+    }) => ({
+      data: { pages: [{ rows, newer }] },
+      isPending: false,
+      isError: false,
+      isFetchingNextPage: false,
+      hasNextPage,
+      fetchNextPage: vi.fn(),
+      refetch: vi.fn(),
+    });
+    const rowNames = () =>
+      screen
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => row.getAttribute("aria-label") ?? row.textContent);
+    const table = (data = page, props = {}) => (
+      <NativeBuildsTable
+        builds={builds(data)}
+        channel={undefined}
+        onChannel={vi.fn()}
+        paged={false}
+        {...props}
+      />
+    );
+
+    beforeEach(() => {
+      foldAnswers({});
+    });
+
+    it("keeps the list's order, each run of older builds one closed fold where it sits", () => {
+      render(table());
+
+      expect(rowNames()).toEqual([
+        `Open native build ${id(80)}`,
+        "2 older builds",
+        `Open native build ${id(77)}`,
+        "1 older build",
+      ]);
+      for (const name of ["2 older builds", "1 older build"]) {
+        const button = screen.getByRole("button", { name });
+        expect(button.getAttribute("aria-expanded")).toBe("false");
+        // It names the group its rows open in, which exists while closed.
+        const panel = document.getElementById(
+          button.getAttribute("aria-controls")!,
+        );
+        expect(panel?.tagName).toBe("TBODY");
+        expect(panel?.hidden).toBe(true);
+      }
+      // No "Unreachable": an older build may still install.
+      expect(screen.queryByText(/Unreachable/)).toBeNull();
+      // Nothing of a closed fold is read.
+      expect(
+        foldQuery.mock.calls.every(([, , enabled]) => enabled === false),
+      ).toBe(true);
+      // The pager counts the ordinary rows.
+      expect(
+        screen.getByRole("navigation", { name: "Native build pages" })
+          .textContent,
+      ).toContain("2 entries, newest first");
+    });
+
+    it("opens one fold in place: exactly its range, in order, each build shaded and naming its newer build", async () => {
+      foldAnswers({
+        80: {
+          rows: [testflight(79), testflight(78)],
+          newer: { [id(79)]: testflight(80), [id(78)]: testflight(80) },
+        },
+      });
+      render(table());
+      fireEvent.click(screen.getByRole("button", { name: "2 older builds" }));
+
+      expect(foldQuery).toHaveBeenCalledWith(
+        undefined,
+        { from: id(80), to: id(78) },
+        true,
+      );
+      // The other fold stays closed, and reads nothing.
+      expect(foldQuery).not.toHaveBeenCalledWith(
+        undefined,
+        { from: id(77), to: id(76) },
+        true,
+      );
+      expect(rowNames()).toEqual([
+        `Open native build ${id(80)}`,
+        "2 older builds",
+        `Open native build ${id(79)}`,
+        `Open native build ${id(78)}`,
+        `Open native build ${id(77)}`,
+        "1 older build",
+      ]);
+      expect(
+        screen
+          .getByRole("button", { name: "1 older build" })
+          .getAttribute("aria-expanded"),
+      ).toBe("false");
+      const older = screen.getByRole("row", {
+        name: `Open native build ${id(79)}`,
+      });
+      expect(older.getAttribute("data-older")).toBe("true");
+      expect(older.className).toContain("data-[older=true]:bg-muted/35");
+      const reason = within(older).getByRole("button", { name: /^Older/ });
+      expect(reason.getAttribute("aria-label")).toBe(
+        "Older: a newer TestFlight build exists, iOS 1.7.0 (80)",
+      );
+      fireEvent.click(reason);
+      expect((await screen.findByRole("tooltip")).textContent).toBe(
+        "A newer TestFlight build exists: iOS 1.7.0 (80)",
+      );
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it("keeps the page's links when a fold opens: opening reads only the fold", () => {
+      foldAnswers({ 80: { rows: [testflight(79), testflight(78)] } });
+      render(
+        <NativeBuildsTable
+          builds={builds(page, {
+            next: id(76),
+            previous: { before: `s.${id(80)}` },
+          })}
+          channel="production"
+          onChannel={vi.fn()}
+          paged
+        />,
+      );
+      const links = () =>
+        ["Previous", "Next", "Newest"].map((name) =>
+          screen.getByRole("link", { name }).getAttribute("href"),
+        );
+      const before = links();
+      fireEvent.click(screen.getByRole("button", { name: "2 older builds" }));
+
+      expect(links()).toEqual(before);
+      expect(before).toEqual([
+        `/native-builds?channel=production&before=s.${id(80)}`,
+        `/native-builds?channel=production&before=${id(76)}`,
+        "/native-builds?channel=production",
+      ]);
+    });
+
+    it("shades a fold's build and says it is older though its newer build wasn't found", () => {
+      foldAnswers({ 80: { rows: [testflight(79)] } });
+      render(table());
+      fireEvent.click(screen.getByRole("button", { name: "2 older builds" }));
+
+      const older = screen.getByRole("row", {
+        name: `Open native build ${id(79)}`,
+      });
+      expect(older.getAttribute("data-older")).toBe("true");
+      expect(
+        within(older)
+          .getByRole("button", { name: /^Older/ })
+          .getAttribute("aria-label"),
+      ).toBe("Older: a newer build on its channel reaches people the same way");
+    });
+
+    it("says 100+ for a fold past its cap, and loads more of it on request", () => {
+      const more = foldPage({ rows: [testflight(79)], hasNextPage: true });
+      foldQuery.mockImplementation(
+        (_channel: unknown, _bounds: unknown, enabled: boolean) =>
+          enabled ? more : { data: undefined, isPending: true },
+      );
+      render(table([testflight(80), fold(80, 1, 100, true)]));
+      fireEvent.click(
+        screen.getByRole("button", { name: "100+ older builds" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+
+      expect(more.fetchNextPage).toHaveBeenCalled();
+    });
+
+    it("shows a page of older builds alone as one fold under the empty state", () => {
+      render(table([fold(90, 60, 30)], { paged: true }));
+
+      expect(screen.getByText("Each build here has a newer one")).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: "30 older builds" }),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("link", { name: "Show the newest builds" }),
+      ).toBeTruthy();
+    });
+
+    it("folds the cards on a phone the same way, in place", () => {
+      const width = window.innerWidth;
+      window.innerWidth = 390;
+      try {
+        foldAnswers({ 80: { rows: [testflight(79), testflight(78)] } });
+        render(table());
+
+        const items = () =>
+          within(screen.getByRole("list", { name: "Native builds" }))
+            .getAllByRole("listitem")
+            .map(
+              (item) =>
+                item.querySelector("article")?.getAttribute("aria-label") ??
+                item.textContent,
+            );
+        expect(items()).toEqual([
+          `Native build iOS IPA ${id(80)}`,
+          "2 older builds",
+          `Native build iOS IPA ${id(77)}`,
+          "1 older build",
+        ]);
+        const button = screen.getByRole("button", { name: "2 older builds" });
+        expect(
+          document.getElementById(button.getAttribute("aria-controls")!),
+        ).not.toBeNull();
+        fireEvent.click(button);
+        expect(items()).toEqual([
+          `Native build iOS IPA ${id(80)}`,
+          "2 older builds",
+          `Native build iOS IPA ${id(79)}`,
+          `Native build iOS IPA ${id(78)}`,
+          `Native build iOS IPA ${id(77)}`,
+          "1 older build",
+        ]);
+      } finally {
+        window.innerWidth = width;
+      }
+    });
   });
 
   it("opens a build from the keyboard, as a Bundles row does", () => {

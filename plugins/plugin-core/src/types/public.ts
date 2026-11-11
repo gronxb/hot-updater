@@ -26,6 +26,7 @@ export type {
   IosDeviceRow,
   IosDeviceStatus,
   NativeBuildArtifactKind,
+  NativeBuildExportMethod,
   NativeBuildRow,
   NativeBuildSubmissionDestination,
   ReleaseCatalogRow,

@@ -28,16 +28,22 @@ export function DataTableFrame({ children }: { readonly children: ReactNode }) {
   );
 }
 
-/** A table as wide as its columns, with an uppercase header row. */
+/**
+ * A table as wide as its columns, with an uppercase header row. With
+ * `rowGroups`, its children are `DataTableBody` groups, such as a list's
+ * folds, each a group a control can name.
+ */
 export function DataTable({
   header,
   children,
   className,
+  rowGroups = false,
   ...props
 }: Omit<ComponentProps<typeof Table>, "children"> & {
   /** The header row's cells. */
   readonly header: ReactNode;
   readonly children: ReactNode;
+  readonly rowGroups?: boolean;
 }) {
   return (
     <Table className={cn("min-w-max", className)} {...props}>
@@ -46,8 +52,21 @@ export function DataTable({
           {header}
         </TableRow>
       </TableHeader>
-      <TableBody>{children}</TableBody>
+      {rowGroups ? children : <TableBody>{children}</TableBody>}
     </Table>
+  );
+}
+
+/** One group of a `rowGroups` table's rows, its last row ruled like the others. */
+export function DataTableBody({
+  className,
+  ...props
+}: ComponentProps<typeof TableBody>) {
+  return (
+    <TableBody
+      className={cn("[&_tr:last-child]:border-b", className)}
+      {...props}
+    />
   );
 }
 

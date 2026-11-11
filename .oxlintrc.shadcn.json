@@ -4,8 +4,10 @@
     {
       "files": [
         "packages/console/src/components/ChannelBadge.tsx",
+        "packages/console/src/components/FoldedRows.tsx",
         "packages/console/src/components/DataTable.tsx",
         "packages/console/src/components/RelativeTime.tsx",
+        "packages/console/src/components/RowReason.tsx",
         "packages/console/src/components/TargetDisplay.tsx",
         "packages/console/src/components/features/insights/**/*.tsx",
         "packages/console/src/components/features/native-builds/**/*.tsx",

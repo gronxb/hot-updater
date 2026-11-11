@@ -23,6 +23,49 @@ export const nativeBuildArtifacts: Record<
   ipa: { label: "IPA", installs: "registered iOS devices" },
 };
 
+/**
+ * How a native build reaches people: the store track it was submitted to,
+ * else its artifact, an `.ipa` by its export method when the registry has
+ * it. Builds of one channel, platform and sandbox flag with one
+ * distribution form a distribution path; a newer build on it is the one
+ * people get there.
+ */
+export type NativeBuildDistribution =
+  | NonNullable<NativeBuildRow["submitted_to"]>
+  | NativeBuildArtifactKind
+  | `ipa-${NonNullable<NativeBuildRow["export_method"]>}`;
+
+/** A build's distribution, from its row. */
+export const nativeBuildDistribution = (
+  build: Pick<
+    NativeBuildRow,
+    "submitted_to" | "artifact_kind" | "export_method"
+  >,
+): NativeBuildDistribution =>
+  build.submitted_to ??
+  (build.artifact_kind === "ipa" && build.export_method !== null
+    ? `ipa-${build.export_method}`
+    : build.artifact_kind);
+
+/** The distribution path a build is on, as one key. */
+export const nativeBuildPathKey = (
+  build: Pick<
+    NativeBuildRow,
+    | "channel_id"
+    | "platform"
+    | "is_sandbox"
+    | "submitted_to"
+    | "artifact_kind"
+    | "export_method"
+  >,
+): string =>
+  JSON.stringify([
+    build.channel_id,
+    build.platform,
+    build.is_sandbox,
+    nativeBuildDistribution(build),
+  ]);
+
 /** A platform's name as the console shows it. */
 export const platformLabel = (platform: "ios" | "android") =>
   platform === "ios" ? "iOS" : "Android";

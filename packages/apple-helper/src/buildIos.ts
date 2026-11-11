@@ -27,6 +27,7 @@ import { removeSavedAdHocProfiles } from "./utils/savedAdHocProfiles";
 import {
   exportsForAppStoreConnect,
   exportsForRegisteredDevices,
+  readExportMethod,
   resolveSandboxExportOptions,
   resolveXcodeSigning,
   writeAppStoreConnectExportOptions,
@@ -73,6 +74,11 @@ export const buildIos = async ({
   buildArtifactPath: string;
   /** The build log, which an archive's export appends to, or null. */
   logFilePath: string | null;
+  /**
+   * The `method` of the export options the `.ipa` was exported with, as
+   * they say it; absent for an archive, a simulator app, or none read.
+   */
+  exportMethod?: string;
   /** What the built app reports, from its Info.plist. */
   builtApp?: {
     appVersion: string | null;
@@ -286,8 +292,12 @@ const archiveAndExport = async ({
     };
   }
 
-  const runExport = (exportOptionsPlist: string) =>
-    exportXcodeArchive({
+  let exportMethod: string | undefined;
+  const runExport = async (exportOptionsPlist: string) => {
+    // What the registry confirms against the .ipa; one it can't read is none.
+    exportMethod =
+      (await readExportMethod(exportOptionsPlist).catch(() => "")) || undefined;
+    await exportXcodeArchive({
       archivePath,
       exportPath: exportDir,
       authenticationArgs,
@@ -299,6 +309,7 @@ const archiveAndExport = async ({
       logFilePath: logFilePath ?? undefined,
       title: schemeConfig.scheme,
     });
+  };
   // Each export starts from an empty folder and leaves only its .ipa, even
   // when it throws: Packaging.log holds the API key's bearer token.
   const exportOnce = async (exportOptionsPlist: string) => {
@@ -368,6 +379,7 @@ const archiveAndExport = async ({
     buildDirectory: buildDirectory,
     buildArtifactPath: path.join(exportDir, ipaFile),
     logFilePath,
+    ...(exportMethod === undefined ? {} : { exportMethod }),
     builtApp: archivedAppPath ? await readBuiltApp(archivedAppPath) : undefined,
   };
 };

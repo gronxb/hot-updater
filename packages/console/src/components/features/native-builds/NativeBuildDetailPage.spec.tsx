@@ -54,6 +54,7 @@ const build = (overrides: Partial<NativeBuildRow>): NativeBuildRow => ({
   is_store_build: false,
   is_sandbox: false,
   sandbox_url_scheme: null,
+  export_method: null,
   ...overrides,
 });
 

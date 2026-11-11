@@ -650,6 +650,7 @@ export const setupCoreAdminTestSuite = (options: {
         is_sandbox: false,
         is_store_build: false,
         sandbox_url_scheme: null,
+        export_method: null,
       });
       expect(
         (await adminJson(`/native-builds/${sandboxBuild.id}`)).data,

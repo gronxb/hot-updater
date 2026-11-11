@@ -183,7 +183,11 @@ const channels = defineTable(
  * `is_sandbox` is true on a sandbox build, set when it registers and never
  * changed, and `sandbox_url_scheme` is the URL scheme its artifact registers,
  * which its preview links open; null on any other build, and on a sandbox
- * build registered before the column, which registered the derived one. Boolean columns follow one rule: `is_*` for a fact about the row or
+ * build registered before the column, which registered the derived one.
+ * `export_method` is how an `.ipa` was exported, read from its profile when
+ * it registers and never changed; null on any other artifact, on an `.ipa`
+ * whose profile couldn't be read, and on one registered before the column.
+ * Boolean columns follow one rule: `is_*` for a fact about the row or
  * `should_*` for an instruction to the client, never null; a unique index over
  * the rows where one is true keys a derived slot, not the boolean.
  */
@@ -222,6 +226,7 @@ const nativeBuilds = defineTable(
       ascii: true,
       required: false,
     },
+    export_method: { type: "string", maxLength: 16, required: false },
   },
   {
     key: ["id"],

@@ -126,15 +126,23 @@ export const drain = async <T>(
 };
 
 /** A keyset page's range: the keys strictly after `after`, in `order`. */
-export const after = (input: KeysetInput) =>
-  input.after === undefined
-    ? {}
-    : {
-        range:
-          (input.order ?? "asc") === "asc"
-            ? { gt: input.after }
-            : { lt: input.after },
-      };
+/** A keyset read's range on its index's order: past `after`, up to `through`. */
+export const after = (input: KeysetInput) => {
+  const asc = (input.order ?? "asc") === "asc";
+  const range = {
+    ...(input.after === undefined
+      ? {}
+      : asc
+        ? { gt: input.after }
+        : { lt: input.after }),
+    ...(input.through === undefined
+      ? {}
+      : asc
+        ? { lte: input.through }
+        : { gte: input.through }),
+  };
+  return Object.keys(range).length === 0 ? {} : { range };
+};
 
 export interface CoreStorage {
   readonly readStorageText?: (storageUri: string) => Promise<string | null>;

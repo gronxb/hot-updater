@@ -38,6 +38,12 @@ export type NativeBuildResult = NativeBuildTarget & {
    * cached before it was recorded.
    */
   buildNumber?: string | null;
+  /**
+   * The `method` of the export options an `.ipa` was exported with, as they
+   * say it: absent for an import, which has none, and for any other
+   * artifact.
+   */
+  exportMethod?: string;
 };
 
 const ARTIFACT_KINDS: Record<string, NativeBuildArtifactKind> = {
@@ -80,6 +86,8 @@ export const createNativeBuild = async ({
   builder: () => Promise<{
     buildDirectory: string;
     buildArtifactPath: string;
+    /** The `method` of the export options an `.ipa` was exported with. */
+    exportMethod?: string;
     /**
      * What the built app reports at runtime, read from the artifact, which
      * an `xcconfig`, `extraParams`, flavors and build types shape.
@@ -101,7 +109,7 @@ export const createNativeBuild = async ({
     dispose?: () => Promise<void>;
   }>;
 }): Promise<NativeBuildResult> => {
-  const { buildDirectory, buildArtifactPath, builtApp, dispose } =
+  const { buildDirectory, buildArtifactPath, builtApp, exportMethod, dispose } =
     await builder();
   try {
     // run postbuild hook
@@ -145,6 +153,7 @@ export const createNativeBuild = async ({
       ...(builtApp?.buildNumber === undefined
         ? {}
         : { buildNumber: builtApp.buildNumber }),
+      ...(exportMethod === undefined ? {} : { exportMethod }),
     };
   } finally {
     await dispose?.();
