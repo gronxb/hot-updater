@@ -91,7 +91,7 @@ describe("reportIpaDevices", () => {
     expect(log.success).not.toHaveBeenCalled();
     expect(logged("warn")).toContain(`${LATER_PHONE} isn't in this .ipa.`);
     expect(logged("warn")).toContain(
-      `npx hot-updater native-build devices add --scheme sandbox --udid ${LATER_PHONE}`,
+      `npx hot-updater native-build devices add --scheme sandbox --udid ${LATER_PHONE} --name "<device name>"`,
     );
     // The build removes saved profiles itself: no shell command to run.
     expect(logged("warn")).not.toContain("grep");

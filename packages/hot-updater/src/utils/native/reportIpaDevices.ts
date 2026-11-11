@@ -60,7 +60,7 @@ export const reportIpaDevices = async ({
       p.log.warn(
         [
           `${udid} isn't in this .ipa.`,
-          `Register it, then build again: npx hot-updater native-build devices add --scheme ${scheme} --udid ${udid}`,
+          `Register it, then build again: npx hot-updater native-build devices add --scheme ${scheme} --udid ${udid} --name "<device name>"`,
         ].join("\n"),
       );
       process.exitCode = 1;
