@@ -228,3 +228,54 @@ export const addAscDevices = async ({
     return outcomes;
   });
 };
+
+/** The Apple account's device for a UDID, in either case, or null. */
+export const findAscDevice = async ({
+  udid,
+  apiKey,
+  fetch = globalThis.fetch,
+}: {
+  udid: string;
+  apiKey: AppStoreConnectApiKey;
+  fetch?: typeof globalThis.fetch;
+}): Promise<AscDevice | null> => {
+  const privateKey = await readPrivateKey(apiKey.keyPath);
+  const request = createAppStoreConnectRequest({ apiKey, privateKey, fetch });
+  return describingAccess(
+    async () => (await findDevices(request, [udid])).get(keyOf(udid)) ?? null,
+  );
+};
+
+/**
+ * Changes a registered device's name or status in the Apple account: the name
+ * App Store Connect shows, or `DISABLED`, which keeps it out of every new
+ * profile of every app on the team. Disabling never returns its slot: the
+ * account's device count resets only with its membership year.
+ */
+export const updateAscDevice = async ({
+  device,
+  change,
+  apiKey,
+  fetch = globalThis.fetch,
+}: {
+  device: Pick<AscDevice, "id" | "udid">;
+  change: { readonly name: string } | { readonly status: "DISABLED" };
+  apiKey: AppStoreConnectApiKey;
+  fetch?: typeof globalThis.fetch;
+}): Promise<AscDevice> => {
+  const privateKey = await readPrivateKey(apiKey.keyPath);
+  const request = createAppStoreConnectRequest({ apiKey, privateKey, fetch });
+  return describingAccess(async () => {
+    const { data } = await retrying(() =>
+      request<{ data: DevicePage["data"][number] }>(
+        "name" in change
+          ? `Renaming ${device.udid}`
+          : `Disabling ${device.udid}`,
+        "PATCH",
+        `/v1/devices/${encodeURIComponent(device.id)}`,
+        { data: { type: "devices", id: device.id, attributes: change } },
+      ),
+    );
+    return deviceOf(data);
+  });
+};

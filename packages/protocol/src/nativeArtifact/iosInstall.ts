@@ -56,6 +56,11 @@ export interface IpaInstallInfo {
    * the app's first: what signing a new `.ipa` needs a profile for.
    */
   readonly profileBundleIds: readonly string[];
+  /**
+   * The Apple Developer team the app's profile belongs to, its
+   * `TeamIdentifier`: null for an IPA with no profile.
+   */
+  readonly teamId: string | null;
 }
 
 /** A device's UDID: 40 hex digits, or 8 and 16 joined by a hyphen. */
@@ -122,6 +127,13 @@ interface Profile {
   readonly expiresAtMs: number | null;
   /** What it is for, without its team prefix: null for a wildcard. */
   readonly bundleId: string | null;
+  /** Its `application-identifier` entitlement, with the team prefix. */
+  readonly applicationIdentifier: string | null;
+  /** The first of its `TeamIdentifier`s. */
+  readonly teamId: string | null;
+  /** Whether Xcode made it and manages it: `IsXcodeManaged`. */
+  readonly xcodeManaged: boolean;
+  readonly uuid: string | null;
 }
 
 const readProfile = (bytes: Uint8Array, name: string): Profile => {
@@ -158,6 +170,9 @@ const readProfile = (bytes: Uint8Array, name: string): Profile => {
     typeof applicationId === "string"
       ? applicationId.slice(applicationId.indexOf(".") + 1)
       : null;
+  const teams = plist["TeamIdentifier"];
+  const team = Array.isArray(teams) ? teams[0] : undefined;
+  const uuid = plist["UUID"];
   return {
     allDevices: plist["ProvisionsAllDevices"] === true,
     devices: devices === undefined ? null : new Set(devices),
@@ -165,6 +180,11 @@ const readProfile = (bytes: Uint8Array, name: string): Profile => {
       isDict(entitlements) && entitlements["get-task-allow"] === true,
     expiresAtMs,
     bundleId: bundleId === null || bundleId.includes("*") ? null : bundleId,
+    applicationIdentifier:
+      typeof applicationId === "string" ? applicationId : null,
+    teamId: typeof team === "string" && team !== "" ? team : null,
+    xcodeManaged: plist["IsXcodeManaged"] === true,
+    uuid: typeof uuid === "string" && uuid !== "" ? uuid : null,
   };
 };
 
@@ -173,6 +193,42 @@ const distributionOf = (profile: Profile | null): IpaDistribution => {
   if (profile.allDevices) return "enterprise";
   if (profile.devices === null) return "store";
   return profile.getTaskAllow ? "development" : "ad-hoc";
+};
+
+/** What a provisioning profile file says it is for and whom it lists. */
+export interface ProvisioningProfileInfo {
+  /** Its `UUID`, which Xcode names the file it saves after. */
+  readonly uuid: string | null;
+  readonly distribution: IpaDistribution;
+  /** The first of its `TeamIdentifier`s. */
+  readonly teamId: string | null;
+  /** Its `application-identifier` entitlement, such as `ABCDE12345.com.example.app`. */
+  readonly applicationIdentifier: string | null;
+  /** Whether Xcode made it and manages it: `IsXcodeManaged`. */
+  readonly xcodeManaged: boolean;
+  /** The normalized UDIDs it lists: empty for one that lists none. */
+  readonly devices: readonly string[];
+  readonly expiresAtMs: number | null;
+}
+
+/**
+ * What a provisioning profile's bytes (a `.mobileprovision`, a CMS message
+ * around a plist) say: the same reading an `.ipa`'s profiles get. It verifies
+ * no signature. Throws `NativeArtifactError` for one it can't read.
+ */
+export const readProvisioningProfile = (
+  bytes: Uint8Array,
+): ProvisioningProfileInfo => {
+  const profile = readProfile(bytes, "provisioning profile");
+  return {
+    uuid: profile.uuid,
+    distribution: distributionOf(profile),
+    teamId: profile.teamId,
+    applicationIdentifier: profile.applicationIdentifier,
+    xcodeManaged: profile.xcodeManaged,
+    devices: [...(profile.devices ?? [])].sort(),
+    expiresAtMs: profile.expiresAtMs,
+  };
 };
 
 /**
@@ -269,5 +325,6 @@ export const readIpaInstallInfo = async (
         ...profiles.flatMap((item) => item.bundleId ?? []),
       ]),
     ],
+    teamId: profile?.teamId ?? null,
   };
 };

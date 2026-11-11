@@ -5,7 +5,12 @@ import path from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { addAscDevices, listAscDevices } from "./devices";
+import {
+  addAscDevices,
+  findAscDevice,
+  listAscDevices,
+  updateAscDevice,
+} from "./devices";
 
 const PHONE = "00008030-001C2D3E4F5A6B7C";
 const OTHER_PHONE = "00008110-000A1B2C3D4E5F60";
@@ -362,5 +367,94 @@ describe("listAscDevices", () => {
       /another host/u,
     );
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("findAscDevice and updateAscDevice", () => {
+  const fakeFetch = () => {
+    const requests: { method: string; path: string; body: any }[] = [];
+    const fetch = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(String(input));
+        const method = init?.method ?? "GET";
+        const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+        requests.push({ method, path: url.pathname + url.search, body });
+        if (method === "GET") {
+          return json(200, {
+            data:
+              url.searchParams.get("filter[udid]") === PHONE
+                ? [row({ udid: PHONE, name: "Kim", status: "ENABLED" }, 7)]
+                : [],
+          });
+        }
+        return json(200, {
+          data: row(
+            {
+              udid: PHONE,
+              name: body.data.attributes.name ?? "Kim",
+              status: body.data.attributes.status ?? "ENABLED",
+            },
+            7,
+          ),
+        });
+      },
+    ) as unknown as typeof globalThis.fetch;
+    return { fetch, requests };
+  };
+
+  it("finds a device by UDID, and null for one the account lacks", async () => {
+    const { fetch } = fakeFetch();
+    expect(await findAscDevice({ udid: PHONE, apiKey, fetch })).toMatchObject({
+      id: "D7",
+      name: "Kim",
+    });
+    expect(
+      await findAscDevice({ udid: OTHER_PHONE, apiKey, fetch }),
+    ).toBeNull();
+  });
+
+  it("renames or disables one device with one PATCH", async () => {
+    const { fetch, requests } = fakeFetch();
+    const device = { id: "D7", udid: PHONE };
+    expect(
+      await updateAscDevice({
+        device,
+        change: { name: "Kim's iPhone" },
+        apiKey,
+        fetch,
+      }),
+    ).toMatchObject({ name: "Kim's iPhone", status: "ENABLED" });
+    expect(
+      await updateAscDevice({
+        device,
+        change: { status: "DISABLED" },
+        apiKey,
+        fetch,
+      }),
+    ).toMatchObject({ status: "DISABLED" });
+    expect(requests).toEqual([
+      {
+        method: "PATCH",
+        path: "/v1/devices/D7",
+        body: {
+          data: {
+            type: "devices",
+            id: "D7",
+            attributes: { name: "Kim's iPhone" },
+          },
+        },
+      },
+      {
+        method: "PATCH",
+        path: "/v1/devices/D7",
+        body: {
+          data: {
+            type: "devices",
+            id: "D7",
+            attributes: { status: "DISABLED" },
+          },
+        },
+      },
+    ]);
   });
 });

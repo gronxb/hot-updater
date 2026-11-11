@@ -11,7 +11,9 @@ export {
   type AscDevice,
   type AscDeviceOutcome,
   addAscDevices,
+  findAscDevice,
   listAscDevices,
+  updateAscDevice,
 } from "./asc/devices";
 export { buildIos } from "./buildIos";
 export {
@@ -47,7 +49,15 @@ export {
 export type { AppleDeviceType } from "./types";
 export { installPodsIfNeeded } from "./utils/cocoapods";
 export { readIpaHasExportComplianceKey } from "./utils/readIpaInfo";
-export { assertSandboxExportOptions } from "./utils/xcodeSigning";
+export {
+  provisioningProfileDirs,
+  removeSavedAdHocProfiles,
+  type SavedAdHocProfileRemoval,
+} from "./utils/savedAdHocProfiles";
+export {
+  assertSandboxExportOptions,
+  exportsForRegisteredDevices,
+} from "./utils/xcodeSigning";
 export type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 export { enrichNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 export {

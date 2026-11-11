@@ -6,6 +6,7 @@ import {
   normalizeIosUdid,
   readIpaInstallInfo,
   readProfileServiceUdid,
+  readProvisioningProfile,
 } from "./iosInstall";
 
 const PHONE = "00008030-001C2D3E4F5A6B7C";
@@ -32,11 +33,17 @@ const profile = ({
   allDevices = false,
   getTaskAllow = false,
   expires = "2030-01-02T03:04:05Z",
+  team,
+  applicationId,
+  xcodeManaged,
 }: {
   devices?: readonly string[];
   allDevices?: boolean;
   getTaskAllow?: boolean;
   expires?: string;
+  team?: string;
+  applicationId?: string;
+  xcodeManaged?: boolean;
 } = {}) =>
   inCms(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -45,7 +52,10 @@ const profile = ({
   <key>AppIDName</key><string>App &amp; Co</string>
   <key>DeveloperCertificates</key><array><data>QUJD
   REVG</data></array>
-  <key>Entitlements</key><dict><key>get-task-allow</key><${getTaskAllow}/></dict>
+  <key>Entitlements</key><dict><key>get-task-allow</key><${getTaskAllow}/>${applicationId === undefined ? "" : `<key>application-identifier</key><string>${applicationId}</string>`}</dict>
+  ${team === undefined ? "" : `<key>TeamIdentifier</key><array><string>${team}</string></array>`}
+  ${xcodeManaged === undefined ? "" : `<key>IsXcodeManaged</key><${xcodeManaged}/>`}
+  <key>UUID</key><string>5D3C2B1A-0000-4000-8000-000000000001</string>
   <key>ExpirationDate</key><date>${expires}</date>
   ${allDevices ? "<key>ProvisionsAllDevices</key><true/>" : ""}
   ${devices === undefined ? "" : `<key>ProvisionedDevices</key><array>${devices.map((udid) => `<string>${udid}</string>`).join("")}</array>`}
@@ -93,7 +103,17 @@ describe("readIpaInstallInfo", () => {
       devices: [PHONE.toLowerCase(), OLD_PHONE].sort(),
       expiresAtMs: Date.parse("2030-01-02T03:04:05Z"),
       profileBundleIds: ["com.example.app"],
+      teamId: null,
     });
+    const signed = await ipa({
+      [`${APP}/Info.plist`]: INFO_PLIST,
+      [`${APP}/embedded.mobileprovision`]: profile({
+        devices: [PHONE],
+        team: "ABCDE12345",
+        applicationId: "ABCDE12345.com.example.app",
+      }),
+    });
+    expect((await readIpaInstallInfo(signed)).teamId).toBe("ABCDE12345");
   });
 
   it("falls back to the bundle name, then the bundle ID, for the title", async () => {
@@ -399,5 +419,45 @@ describe("readProfileServiceUdid", () => {
     ],
   ])("finds no UDID in %s", (_, body) => {
     expect(readProfileServiceUdid(body)).toBeNull();
+  });
+});
+
+describe("readProvisioningProfile", () => {
+  it("reads a saved profile's team, app ID, owner and devices", () => {
+    expect(
+      readProvisioningProfile(
+        profile({
+          devices: [PHONE, OLD_PHONE],
+          team: "ABCDE12345",
+          applicationId: "ABCDE12345.com.example.app",
+          xcodeManaged: true,
+        }),
+      ),
+    ).toEqual({
+      uuid: "5D3C2B1A-0000-4000-8000-000000000001",
+      distribution: "ad-hoc",
+      teamId: "ABCDE12345",
+      applicationIdentifier: "ABCDE12345.com.example.app",
+      xcodeManaged: true,
+      devices: [PHONE.toLowerCase(), OLD_PHONE].sort(),
+      expiresAtMs: Date.parse("2030-01-02T03:04:05Z"),
+    });
+  });
+
+  it("tells a manual, development, or store profile from Xcode's ad hoc one", () => {
+    expect(
+      readProvisioningProfile(profile({ devices: [PHONE] })),
+    ).toMatchObject({ xcodeManaged: false, teamId: null });
+    expect(
+      readProvisioningProfile(profile({ devices: [PHONE], getTaskAllow: true }))
+        .distribution,
+    ).toBe("development");
+    expect(readProvisioningProfile(profile()).distribution).toBe("store");
+  });
+
+  it("refuses bytes with no property list", () => {
+    expect(() => readProvisioningProfile(new Uint8Array([1, 2, 3]))).toThrow(
+      NativeArtifactError,
+    );
   });
 });

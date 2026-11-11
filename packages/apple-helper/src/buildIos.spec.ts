@@ -84,11 +84,33 @@ vi.mock("./builder/exportXcodeArchive", () => ({
       exportOptions.push(
         await fs.readFile(exportOptionsPlist, "utf-8").catch(() => ""),
       );
+      exportCount += 1;
       await fs.mkdir(exportPath, { recursive: true });
-      await fs.writeFile(path.join(exportPath, "App.ipa"), "ipa");
+      await fs.writeFile(
+        path.join(exportPath, "App.ipa"),
+        `ipa ${exportCount}`,
+      );
       return { exportPath };
     },
   ),
+}));
+
+// What each export's .ipa lists, in order; past the list, the last.
+let exportedDevices: (readonly string[])[];
+let exportCount: number;
+vi.mock("./utils/readIpaSigning", () => ({
+  readIpaSigning: vi.fn(async () => ({
+    distribution: "ad-hoc",
+    teamId: "ABCDE12345",
+    devices: exportedDevices[Math.min(exportCount, exportedDevices.length) - 1],
+    profileBundleIds: ["com.example", "com.example.widget"],
+  })),
+}));
+vi.mock("./utils/savedAdHocProfiles", () => ({
+  removeSavedAdHocProfiles: vi.fn(async () => ({
+    removed: ["saved-profile"],
+    failed: [],
+  })),
 }));
 
 vi.mock("./utils/sandboxInfoPlist", () => ({
@@ -105,10 +127,12 @@ import { buildIos } from "./buildIos";
 import { withSigningKeychain } from "./utils/ciSigningKeychain";
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 import { readBuiltApp } from "./utils/readBuiltApp";
+import { readIpaSigning } from "./utils/readIpaSigning";
 import {
   patchSandboxArchive,
   patchSandboxSimulatorApp,
 } from "./utils/sandboxInfoPlist";
+import { removeSavedAdHocProfiles } from "./utils/savedAdHocProfiles";
 
 const MIN_BUNDLE_ID = "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5";
 
@@ -148,6 +172,8 @@ const AUTHENTICATION_ARGS = [
 beforeEach(async () => {
   vi.clearAllMocks();
   exportOptions = [];
+  exportedDevices = [[]];
+  exportCount = 0;
   root = await fs.mkdtemp(path.join(os.tmpdir(), "apple-helper-spec-"));
 });
 
@@ -475,5 +501,116 @@ describe("buildIos", () => {
     expect(vi.mocked(buildXcodeProject).mock.calls[0]![0].minBundleId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-7000-8000-000000000000$/,
     );
+  });
+});
+
+describe("buildIos of an ad hoc scheme with devices the registry expects", () => {
+  const PHONE = "00008030-001c2d3e4f5a6b7c";
+  const IPAD = "a".repeat(40);
+  const adHocScheme = async (sandbox = false) => {
+    const exportOptionsPlist = path.join(root, "ExportOptions.plist");
+    await fs.writeFile(exportOptionsPlist, "release-testing");
+    return scheme({
+      exportOptionsPlist,
+      sandbox,
+      signing: { ascApiKey: secret("app-store-key") },
+    });
+  };
+
+  it("exports once when the .ipa lists every expected device, and deletes no profile", async () => {
+    exportedDevices = [[PHONE, IPAD]];
+    await buildIos({
+      schemeConfig: await adHocScheme(),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials: ascKeyResolver(),
+      expectedDevices: [PHONE.toUpperCase()],
+    });
+    expect(exportXcodeArchive).toHaveBeenCalledOnce();
+    expect(removeSavedAdHocProfiles).not.toHaveBeenCalled();
+  });
+
+  it("reads nothing and exports once with no expected device", async () => {
+    await buildIos({
+      schemeConfig: await adHocScheme(),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials: ascKeyResolver(),
+    });
+    expect(readIpaSigning).not.toHaveBeenCalled();
+    expect(exportXcodeArchive).toHaveBeenCalledOnce();
+  });
+
+  it("deletes the app's saved profiles and exports once more, with the same options file, when a device is missing", async () => {
+    exportedDevices = [[PHONE], [PHONE, IPAD]];
+    const exportPlists: string[] = [];
+    vi.mocked(exportXcodeArchive).mockImplementation(
+      async ({ exportPath, exportOptionsPlist }) => {
+        // The options file exists at each export: a sandbox's is temporary.
+        await fs.access(exportOptionsPlist);
+        exportPlists.push(exportOptionsPlist);
+        exportCount += 1;
+        await fs.mkdir(exportPath, { recursive: true });
+        await fs.writeFile(path.join(exportPath, "Packaging.log"), "Bearer x");
+        await fs.writeFile(
+          path.join(exportPath, "App.ipa"),
+          `ipa ${exportCount}`,
+        );
+        return { exportPath };
+      },
+    );
+    const { buildArtifactPath, buildDirectory } = await buildIos({
+      schemeConfig: await adHocScheme(true),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials: ascKeyResolver(),
+      expectedDevices: [PHONE, IPAD],
+    });
+    expect(removeSavedAdHocProfiles).toHaveBeenCalledWith({
+      teamId: "ABCDE12345",
+      bundleIds: ["com.example", "com.example.widget"],
+    });
+    expect(exportPlists).toHaveLength(2);
+    expect(exportPlists[1]).toBe(exportPlists[0]);
+    expect(await fs.readFile(buildArtifactPath, "utf-8")).toBe("ipa 2");
+    const files = await fs.readdir(buildDirectory, { recursive: true });
+    expect(files.filter((file) => file.includes("Packaging"))).toEqual([]);
+  });
+
+  it("exports once more only after deleting a profile: with none saved, the .ipa stands for the build to judge", async () => {
+    exportedDevices = [[PHONE]];
+    vi.mocked(removeSavedAdHocProfiles).mockResolvedValueOnce({
+      removed: [],
+      failed: [],
+    });
+    await buildIos({
+      schemeConfig: await adHocScheme(),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials: ascKeyResolver(),
+      expectedDevices: [IPAD],
+    });
+    expect(exportXcodeArchive).toHaveBeenCalledOnce();
+  });
+
+  it("leaves no Packaging.log when an export throws", async () => {
+    let buildDirectory = "";
+    vi.mocked(exportXcodeArchive).mockImplementationOnce(
+      async ({ exportPath }) => {
+        buildDirectory = path.dirname(exportPath);
+        await fs.mkdir(exportPath, { recursive: true });
+        await fs.writeFile(path.join(exportPath, "Packaging.log"), "Bearer x");
+        throw new Error("export failed");
+      },
+    );
+    const { removeTmpDir } = await import("./utils/createRandomTmpDir");
+    vi.mocked(removeTmpDir).mockImplementationOnce(async () => {
+      // The build folder outlives the throw here, so the spec can look.
+    });
+    await expect(
+      buildIos({
+        schemeConfig: await adHocScheme(),
+        minBundleId: MIN_BUNDLE_ID,
+        credentials: ascKeyResolver(),
+        expectedDevices: [PHONE],
+      }),
+    ).rejects.toThrow("export failed");
+    expect(await fs.readdir(path.join(buildDirectory, "export"))).toEqual([]);
   });
 });

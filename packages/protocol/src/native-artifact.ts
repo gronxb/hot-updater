@@ -23,8 +23,10 @@ export {
   normalizeIosUdid,
   readIpaInstallInfo,
   readProfileServiceUdid,
+  readProvisioningProfile,
   type IpaDistribution,
   type IpaInstallInfo,
+  type ProvisioningProfileInfo,
 } from "./nativeArtifact/iosInstall";
 export {
   readNativeArtifact,
