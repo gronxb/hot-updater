@@ -334,14 +334,15 @@ export type NativeBuildFoldedPage = FoldedPage<NativeBuildRow>;
 const SIBLING_READ_CAP = 100;
 
 /**
- * Finds the nearest build newer than a build on its distribution path, by
- * the channel's own index, read upward from where its caller starts and
- * kept, so each channel's rows are read once. Newer is the registry's order:
- * a greater ID. A path is the channel, platform, sandbox flag and
- * distribution (`nativeBuildPathKey`), worked out from the row, so a build
- * registered at any time is found. It spends `budget`, at most
- * `SIBLING_READ_CAP` rows: a build it can't find a newer one for within
- * that has none it knows of.
+ * Finds the nearest build newer than each of some builds on its
+ * distribution path, by each channel's own index, read upward from where
+ * its caller starts and kept, so each channel's rows are read once. The
+ * channels are read side by side. Newer is the registry's order: a greater
+ * ID. A path is the channel, platform, sandbox flag and distribution
+ * (`nativeBuildPathKey`), worked out from the row, so a build registered at
+ * any time is found. It spends `budget`, at most `SIBLING_READ_CAP` rows in
+ * all, shared out among the channels: a build it can't find a newer one for
+ * within that has none it knows of.
  */
 const newerOnPathFinder = (
   core: Pick<HotUpdaterCoreApi, "listNativeBuilds">,
@@ -351,10 +352,10 @@ const newerOnPathFinder = (
     { from: string; rows: NativeBuildRow[]; last?: string; ended: boolean }
   >();
   let spent = 0;
-  return async (
+  const lookUp = async (
     build: NativeBuildRow,
     from: string,
-    budget: ReadBudget,
+    share: ReadBudget,
   ): Promise<NativeBuildRow | undefined> => {
     let channel = channels.get(build.channel_id);
     if (channel === undefined || from < channel.from) {
@@ -368,11 +369,7 @@ const newerOnPathFinder = (
         (row) => row.id > build.id && nativeBuildPathKey(row) === key,
       );
       if (newer !== undefined) return newer;
-      const limit = Math.min(
-        FOLDED_PAGE_CHUNK,
-        budget.left,
-        SIBLING_READ_CAP - spent,
-      );
+      const limit = Math.min(FOLDED_PAGE_CHUNK, share.left);
       if (channel.ended || limit <= 0) return undefined;
       const rows = await core.listNativeBuilds({
         channelId: build.channel_id,
@@ -380,12 +377,43 @@ const newerOnPathFinder = (
         after: channel.last ?? channel.from,
         limit,
       });
-      budget.left -= rows.length;
-      spent += rows.length;
+      share.left -= rows.length;
       channel.rows.push(...rows);
       channel.last = rows.at(-1)?.id ?? channel.last;
       if (rows.length < limit) channel.ended = true;
     }
+  };
+  return async (
+    builds: readonly NativeBuildRow[],
+    from: string,
+    budget: ReadBudget,
+  ): Promise<ReadonlyMap<string, NativeBuildRow | undefined>> => {
+    const byChannel = new Map<string, NativeBuildRow[]>();
+    for (const build of builds) {
+      byChannel.set(build.channel_id, [
+        ...(byChannel.get(build.channel_id) ?? []),
+        build,
+      ]);
+    }
+    const allowance = Math.max(
+      0,
+      Math.min(budget.left, SIBLING_READ_CAP - spent),
+    );
+    const share = Math.floor(allowance / Math.max(byChannel.size, 1));
+    const found = new Map<string, NativeBuildRow | undefined>();
+    const used = await Promise.all(
+      [...byChannel.values()].map(async (channelBuilds) => {
+        const left: ReadBudget = { left: share };
+        for (const build of channelBuilds) {
+          found.set(build.id, await lookUp(build, from, left));
+        }
+        return share - left.left;
+      }),
+    );
+    const total = used.reduce((sum, rows) => sum + rows, 0);
+    budget.left -= total;
+    spent += total;
+    return found;
   };
 };
 
@@ -420,18 +448,34 @@ export function listNativeBuildFolds(
       }),
     classify: async (builds, { budget, order, newerThan }) => {
       const ordinary = new Set<string>();
+      if (order === "asc") {
+        // Oldest first, each build looks above itself.
+        const newer = await findNewer(builds, builds[0]!.id, budget);
+        for (const build of builds) {
+          if (build.is_store_build || newer.get(build.id) === undefined) {
+            ordinary.add(build.id);
+          }
+        }
+        return ordinary;
+      }
+      // Newest first, a path's first build on the page looks above the
+      // page, and the rest have it as their newer build.
+      const firsts: NativeBuildRow[] = [];
+      const keys = new Set(seen.keys());
       for (const build of builds) {
         const key = nativeBuildPathKey(build);
-        // Newest first, a path's first build here has the newer builds
-        // above the page to look at, and the rest have it. Oldest first,
-        // each looks above itself.
-        const newer =
-          order === "desc"
-            ? (seen.get(key) ??
-              (newerThan === undefined
-                ? undefined
-                : await findNewer(build, newerThan, budget)))
-            : await findNewer(build, builds[0]!.id, budget);
+        if (!keys.has(key)) {
+          keys.add(key);
+          firsts.push(build);
+        }
+      }
+      const above =
+        newerThan === undefined
+          ? new Map<string, NativeBuildRow | undefined>()
+          : await findNewer(firsts, newerThan, budget);
+      for (const build of builds) {
+        const key = nativeBuildPathKey(build);
+        const newer = seen.get(key) ?? above.get(build.id);
         if (!seen.has(key)) seen.set(key, build);
         if (build.is_store_build || newer === undefined) {
           ordinary.add(build.id);
@@ -480,12 +524,14 @@ export async function readNativeBuildFold(
   const budget: ReadBudget = {
     left: FOLDED_PAGE_READ_BUDGET - chunk.rows.length,
   };
-  const findNewer = newerOnPathFinder(core);
   const oldest = chunk.rows.at(-1)?.id;
+  const found =
+    oldest === undefined
+      ? new Map<string, NativeBuildRow | undefined>()
+      : await newerOnPathFinder(core)(chunk.rows, oldest, budget);
   const newer: Record<string, NativeBuildRow> = {};
-  for (const build of chunk.rows) {
-    const found = await findNewer(build, oldest!, budget);
-    if (found !== undefined) newer[build.id] = found;
+  for (const [id, row] of found) {
+    if (row !== undefined) newer[id] = row;
   }
   return { ...chunk, newer };
 }

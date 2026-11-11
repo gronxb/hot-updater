@@ -627,7 +627,7 @@ const iosCanaryPatchA = createBundle({
 
 // Newer pull request previews, each the only release of its channel, so the
 // first page of bundles is full and ends in a fold.
-const pullRequestPreviews = Array.from({ length: 6 }, (_, index) =>
+const pullRequestPreviews = Array.from({ length: 4 }, (_, index) =>
   createBundle({
     id: `01972200-1aa1-7445-8b8c-27272727272${index}`,
     enabled: true,
