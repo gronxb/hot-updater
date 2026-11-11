@@ -44,7 +44,9 @@ export function useIosDevicesQuery(status?: IosDeviceStatus) {
 /**
  * A signed link to this iPhone's profile, signed again before it expires:
  * the link stays a plain `<a href>`, so nothing waits on a request when it is
- * tapped.
+ * tapped. The token signs its input, the name to register or the build to
+ * return to, so it has no data while another input's token loads: keeping
+ * the previous one would register the old name.
  */
 export function useIosDeviceProfileLinkQuery(
   input:
@@ -58,7 +60,6 @@ export function useIosDeviceProfileLinkQuery(
     enabled,
     staleTime: PROFILE_LINK_REFRESH_MS,
     refetchInterval: PROFILE_LINK_REFRESH_MS,
-    placeholderData: keepPreviousData,
   });
 }
 
