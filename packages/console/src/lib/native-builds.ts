@@ -137,23 +137,45 @@ export const nativeBuildDetailPath = (id: string) =>
  */
 export const NATIVE_BUILD_INSTALL_LINK_TTL_MS = 60 * 60 * 1000;
 
-/** The phone's own copy of its UDID, which the Console's server never keeps. */
+/** This iPhone's own copy of its UDID, as its profile reported it. */
 export const IOS_UDID_STORAGE_KEY = "hot-updater-ios-udid";
+
+/**
+ * This iPhone's receipt of its UDID: what its profile's answer signed for the
+ * signed-in person, which Request access takes.
+ */
+export const IOS_DEVICE_RECEIPT_STORAGE_KEY = "hot-updater-ios-device-receipt";
 
 /** A device's UDID: 40 hex digits, or 8 and 16 joined by a hyphen. */
 export const IOS_UDID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{8}-[0-9a-f]{16})$/iu;
 
+/** The Console page of the iOS device registry, inside Native builds. */
+export const IOS_DEVICES_PATH = "/native-builds/devices";
+
 /** The route that hands an iPhone the profile that reads its UDID. */
-export const nativeBuildDeviceProfilePath = (id: string) =>
-  `/_hot-updater/native-builds/${encodeURIComponent(id)}/device.mobileconfig`;
+export const IOS_DEVICE_PROFILE_PATH =
+  "/_hot-updater/devices/device.mobileconfig";
+
+/** Where iOS posts the profile's answer. */
+export const IOS_DEVICE_RESPONSE_PATH = "/_hot-updater/devices/device-response";
+
+/** The query parameter of the profile routes: the capability that signs them. */
+export const IOS_DEVICE_TOKEN_PARAM = "t";
+
+/** A device profile's link, under the Console's path on the page's own address. */
+export const iosDeviceProfileUrl = (consolePath: string, token: string) =>
+  `${consolePath}${IOS_DEVICE_PROFILE_PATH}?${IOS_DEVICE_TOKEN_PARAM}=${encodeURIComponent(token)}`;
+
+/** The command that registers requested iPhones from a terminal. */
+export const IOS_DEVICES_ADD_COMMAND =
+  "npx hot-updater native-build devices add";
+
+/** The UDID as the iOS devices page shows it: its last six characters. */
+export const maskIosUdid = (udid: string) => `…${udid.slice(-6)}`;
 
 /** The route of a build's install manifest, as `itms-services` opens it. */
 export const nativeBuildManifestPath = (id: string) =>
   `/_hot-updater/native-builds/${encodeURIComponent(id)}/manifest.plist`;
-
-/** The command a maintainer runs to register an iPhone. */
-export const nativeBuildDeviceAddCommand = (udid: string) =>
-  `npx hot-updater native-build devices add --udid ${udid} --name "Teammate's iPhone"`;
 
 /**
  * What an iPhone opens to install a build: the manifest's URL, signed with a

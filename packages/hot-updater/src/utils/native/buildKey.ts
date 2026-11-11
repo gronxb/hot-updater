@@ -6,6 +6,7 @@ import path from "node:path";
 import { parseEnv } from "node:util";
 
 import { parse as parsePbxproj } from "@bacons/xcode/json";
+import { provisioningProfileDirs } from "@hot-updater/apple-helper";
 import {
   autolinkingConfigCommand,
   CREDENTIAL_ENV_NAMES,
@@ -1315,18 +1316,6 @@ const DEVICE_LIST_METHODS = new Set([
   "debugging",
 ]);
 
-const PROFILE_DIRS = [
-  path.join(os.homedir(), "Library", "MobileDevice", "Provisioning Profiles"),
-  path.join(
-    os.homedir(),
-    "Library",
-    "Developer",
-    "Xcode",
-    "UserData",
-    "Provisioning Profiles",
-  ),
-];
-
 /** The export options plist, or why the key can't read it. */
 const readExportOptions = async (
   file: string,
@@ -1351,7 +1340,7 @@ const readExportOptions = async (
  */
 const findProfiles = async (reference: string): Promise<Buffer[]> => {
   const found: Buffer[] = [];
-  for (const dir of PROFILE_DIRS) {
+  for (const dir of provisioningProfileDirs()) {
     const names = await fs.readdir(dir).catch(() => [] as string[]);
     for (const name of names) {
       if (!/\.(mobileprovision|provisionprofile)$/.test(name)) continue;

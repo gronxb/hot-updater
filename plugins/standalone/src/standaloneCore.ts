@@ -9,6 +9,9 @@ import type {
   ChannelDeleteResult,
   ChannelRow,
   HotUpdaterCoreApi,
+  IosDeviceAccountClaim,
+  IosDeviceRequestResult,
+  IosDeviceRow,
   KeysetInput,
   NativeBuildDeleteResult,
   NativeBuildMarkResult,
@@ -414,6 +417,62 @@ export const createStandaloneCoreApi = (
         `/native-builds/${encode(id)}/store-build`,
         { body: mark, requiredRoute: "native build store mark" },
       ),
+    // A server without the device registry's routes answers 404, which these
+    // turn into an upgrade request: an empty list would make a build skip the
+    // devices a team approved.
+    listIosDevices: async ({ status, ...input }) =>
+      (await call<IosDeviceRow[]>("GET", "/ios-devices", {
+        query: {
+          ...keysetParams(input),
+          ...(status === undefined ? {} : { status }),
+        },
+        requiredRoute: "iOS device registry",
+      })) ?? [],
+    findIosDevice: (udid) =>
+      call<IosDeviceRow>("GET", `/ios-devices/udid/${encode(udid)}`, {
+        requiredRoute: "iOS device registry",
+      }),
+    requestIosDevice: async (input) =>
+      (await call<IosDeviceRequestResult>("POST", "/ios-devices", {
+        body: input,
+        requiredRoute: "iOS device registry",
+      }))!,
+    approveIosDevice: (id, input) =>
+      call<IosDeviceRow>("POST", `/ios-devices/${encode(id)}/approval`, {
+        body: input,
+        requiredRoute: "iOS device registry",
+      }),
+    renameIosDevice: (id, name) =>
+      call<IosDeviceRow>("PATCH", `/ios-devices/${encode(id)}`, {
+        body: { name },
+        requiredRoute: "iOS device registry",
+      }),
+    recordIosDeviceOutcome: ({ id, ...input }) =>
+      call<IosDeviceRow>("POST", `/ios-devices/${encode(id)}/outcome`, {
+        body: input,
+        requiredRoute: "iOS device registry",
+      }),
+    markIosDevicesInBuild: async (input) => {
+      await request("POST", "/ios-devices/in-build", {
+        body: input,
+        requiredRoute: "iOS device registry",
+      });
+    },
+    claimIosDeviceAccount: async (issuerId) =>
+      (await call<IosDeviceAccountClaim>("POST", "/ios-devices/account", {
+        body: { issuerId },
+        requiredRoute: "iOS device registry",
+      }))!,
+    deleteIosDevice: (id, only) =>
+      call<IosDeviceRow>("DELETE", `/ios-devices/${encode(id)}`, {
+        query: {
+          ...(only?.status === undefined ? {} : { status: only.status }),
+          ...(only?.requestedBy === undefined
+            ? {}
+            : { requestedBy: only.requestedBy }),
+        },
+        requiredRoute: "iOS device registry",
+      }),
     deleteNativeBuild: async (id) =>
       (await call<NativeBuildDeleteResult>(
         "DELETE",

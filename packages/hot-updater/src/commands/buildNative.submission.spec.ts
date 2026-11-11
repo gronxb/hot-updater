@@ -52,6 +52,8 @@ const buildResult = () =>
       };
 
 vi.mock("@hot-updater/apple-helper", async (importOriginal) => ({
+  // An ad hoc export runs the device registry step; these specs build none.
+  exportsForRegisteredDevices: vi.fn(async () => false),
   // The store's own refusal, as the upload throws it.
   TestFlightBuildExistsError: (
     await importOriginal<typeof import("@hot-updater/apple-helper")>()

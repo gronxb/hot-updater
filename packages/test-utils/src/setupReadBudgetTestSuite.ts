@@ -357,6 +357,22 @@ const seed = async (database: MeasuredDatabase) => {
   await core.markNativeBuild(createBundleFixture("8011").id, {
     storeBuild: true,
   });
+  // Two requested iPhones, one approved and one still pending.
+  const pendingDevice = (
+    await core.requestIosDevice({
+      udid: BUDGET_PENDING_UDID,
+      name: "Pending iPhone",
+      requestedBy: "kim@team.dev",
+    })
+  ).device;
+  const { device: requestedDevice } = await core.requestIosDevice({
+    udid: BUDGET_APPROVED_UDID,
+    name: "Approved iPhone",
+    requestedBy: "kim@team.dev",
+  });
+  const approvedDevice = (await core.approveIosDevice(requestedDevice.id, {
+    approvedBy: "lead@team.dev",
+  }))!;
   const { apiKey } = await api.apiKeys.create({ name: "Read budgets" });
   for (let n = 1; n <= 24; n += 1) await api.insights.recordEvent(eventOf(n));
   // Install 1 leaves bundle-b before it applies it again: an apply of the
@@ -403,6 +419,8 @@ const seed = async (database: MeasuredDatabase) => {
     apiKey,
     productionId,
     nightlyId: (await channel("nightly")).id,
+    pendingDevice,
+    approvedDevice,
     /** The auto-patch base key of a new production iOS 1.0.0 bundle. */
     candidateKey: targetBaseCandidateKey({
       channel: "production",
@@ -433,6 +451,9 @@ interface ReadBudget<T = unknown> {
 }
 
 const budget = <T>(entry: ReadBudget<T>): ReadBudget => entry;
+
+const BUDGET_PENDING_UDID = "00008030-000000000000000a";
+const BUDGET_APPROVED_UDID = "00008030-000000000000000b";
 
 const reads = (
   gets: number,
@@ -1009,6 +1030,99 @@ const READ_BUDGETS: readonly ReadBudget[] = [
         deleted: true,
         nativeBuild: { min_bundle_id: createBundleFixture("011").id },
       }),
+  }),
+  budget({
+    api: "iOS devices by status: 1 query, the rows used",
+    read: ({ core }) => core.listIosDevices({ status: "approved", limit: 50 }),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    returned: (rows) => rows.length,
+    check: (rows) =>
+      expect(rows.map((row) => row.udid)).toEqual([BUDGET_APPROVED_UDID]),
+  }),
+  budget({
+    api: "iOS device by UDID: 1 unique read",
+    read: ({ core }) => core.findIosDevice(BUDGET_PENDING_UDID.toUpperCase()),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (device) => expect(device?.status).toBe("pending"),
+  }),
+  budget({
+    api: "iOS device request: the UDID's read and 1 write",
+    read: ({ core }) =>
+      core.requestIosDevice({
+        udid: "00008030-000000000000000c",
+        name: "New iPhone",
+        requestedBy: null,
+      }),
+    adapter: reads(0, 0, 1, 0),
+    engine: { calls: 1, rows: 0 },
+    writes: 1,
+    check: (result) => expect(result.created).toBe(true),
+  }),
+  budget({
+    api: "iOS device approval: the row and 1 write",
+    read: ({ core, pendingDevice }) =>
+      core.approveIosDevice(pendingDevice.id, { approvedBy: null }),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    writes: 1,
+    check: (device) => expect(device?.status).toBe("approved"),
+  }),
+  budget({
+    api: "iOS device outcome: the row and 1 write",
+    read: ({ core, approvedDevice }) =>
+      core.recordIosDeviceOutcome({
+        id: approvedDevice.id,
+        seen: {
+          status: "approved",
+          approvedAtMs: approvedDevice.approved_at_ms,
+        },
+        issuerId: "issuer-a",
+        outcome: "registered",
+      }),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    writes: 1,
+    check: (device) => expect(device?.status).toBe("registered"),
+  }),
+  budget({
+    api: "iOS devices in a build: the row and 1 write each",
+    read: ({ core, approvedDevice }) =>
+      core.markIosDevicesInBuild({
+        buildId: createBundleFixture("8012").id,
+        ids: [approvedDevice.id],
+      }),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    writes: 1,
+  }),
+  budget({
+    api: "iOS device delete: the row and 1 write",
+    read: ({ core, pendingDevice }) => core.deleteIosDevice(pendingDevice.id),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    writes: 1,
+    check: (device) => expect(device?.udid).toBe(BUDGET_PENDING_UDID),
+  }),
+  budget({
+    api: "iOS device account, first claim: its one row's read, the registry's rows once, and 1 write",
+    // No account yet: the registry's rows (the requested iPhone and the one
+    // issuer-a registered) say whose it is, before the claim writes.
+    read: ({ core }) => core.claimIosDeviceAccount("issuer-a"),
+    adapter: reads(1, 1, 1, 2),
+    engine: { calls: 2, rows: 2 },
+    writes: 1,
+    check: (claim) =>
+      expect(claim).toEqual({ issuerId: "issuer-a", claimed: true }),
+  }),
+  budget({
+    api: "iOS device account, claimed: its one row's read",
+    read: ({ core }) => core.claimIosDeviceAccount("issuer-b"),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    check: (claim) =>
+      expect(claim).toEqual({ issuerId: "issuer-a", claimed: false }),
   }),
   budget({
     api: "record an insights event: 2 dependent rounds of batch gets and 1 write",

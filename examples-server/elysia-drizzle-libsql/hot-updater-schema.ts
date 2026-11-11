@@ -141,6 +141,35 @@ export const native_builds = sqliteTable("native_builds", {
   uniqueIndex("native_builds_min_bundle_id").on(table["min_bundle_id"]),
 ]);
 
+export const ios_devices = sqliteTable("ios_devices", {
+  "id": column("TEXT")("id").notNull(),
+  "udid": column("TEXT")("udid").notNull(),
+  "name": column("TEXT")("name").notNull(),
+  "status": column("TEXT")("status").notNull(),
+  "requested_by": column("TEXT")("requested_by"),
+  "created_at_ms": column("INTEGER")("created_at_ms").notNull(),
+  "approved_by": column("TEXT")("approved_by"),
+  "approved_at_ms": column("INTEGER")("approved_at_ms"),
+  "registered_at_ms": column("INTEGER")("registered_at_ms"),
+  "apple_issuer_id": column("TEXT")("apple_issuer_id"),
+  "apple_error": column("TEXT")("apple_error"),
+  "build_id": column("TEXT")("build_id"),
+  "_v": column("INTEGER")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["id"]] }),
+  index("ios_devices_byStatus").on(table["status"], table["id"]),
+  uniqueIndex("ios_devices_udid").on(table["udid"]),
+]);
+
+export const ios_device_account = sqliteTable("ios_device_account", {
+  "id": column("TEXT")("id").notNull(),
+  "apple_issuer_id": column("TEXT")("apple_issuer_id").notNull(),
+  "claimed_at_ms": column("INTEGER")("claimed_at_ms").notNull(),
+  "_v": column("INTEGER")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["id"]] }),
+]);
+
 export const bundle_events = sqliteTable("bundle_events", {
   "id": column("TEXT")("id").notNull(),
   "type": column("TEXT")("type").notNull(),

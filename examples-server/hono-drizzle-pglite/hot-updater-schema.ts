@@ -141,6 +141,35 @@ export const native_builds = pgTable("native_builds", {
   uniqueIndex("native_builds_min_bundle_id").on(table["min_bundle_id"]),
 ]);
 
+export const ios_devices = pgTable("ios_devices", {
+  "id": column("varchar(36) COLLATE \"C\"")("id").notNull(),
+  "udid": column("varchar(40) COLLATE \"C\"")("udid").notNull(),
+  "name": column("varchar(100) COLLATE \"C\"")("name").notNull(),
+  "status": column("varchar(16) COLLATE \"C\"")("status").notNull(),
+  "requested_by": column("varchar(320) COLLATE \"C\"")("requested_by"),
+  "created_at_ms": column("bigint")("created_at_ms").notNull(),
+  "approved_by": column("varchar(320) COLLATE \"C\"")("approved_by"),
+  "approved_at_ms": column("bigint")("approved_at_ms"),
+  "registered_at_ms": column("bigint")("registered_at_ms"),
+  "apple_issuer_id": column("varchar(64) COLLATE \"C\"")("apple_issuer_id"),
+  "apple_error": column("varchar(512) COLLATE \"C\"")("apple_error"),
+  "build_id": column("varchar(36) COLLATE \"C\"")("build_id"),
+  "_v": column("bigint")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["id"]] }),
+  index("ios_devices_byStatus").on(table["status"], table["id"]),
+  uniqueIndex("ios_devices_udid").on(table["udid"]),
+]);
+
+export const ios_device_account = pgTable("ios_device_account", {
+  "id": column("varchar(16) COLLATE \"C\"")("id").notNull(),
+  "apple_issuer_id": column("varchar(64) COLLATE \"C\"")("apple_issuer_id").notNull(),
+  "claimed_at_ms": column("bigint")("claimed_at_ms").notNull(),
+  "_v": column("bigint")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["id"]] }),
+]);
+
 export const bundle_events = pgTable("bundle_events", {
   "id": column("varchar(36) COLLATE \"C\"")("id").notNull(),
   "type": column("varchar(32) COLLATE \"C\"")("type").notNull(),

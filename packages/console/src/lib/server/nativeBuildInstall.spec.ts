@@ -5,7 +5,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type { NativeBuildRow, StorageAdapter } from "@hot-updater/plugin-core";
+import type {
+  IosDeviceRow,
+  NativeBuildRow,
+  StorageAdapter,
+} from "@hot-updater/plugin-core";
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,6 +31,7 @@ import {
   httpRangeSource,
   RangeSourceError,
   readNativeBuildInstallInfo,
+  readNativeBuildIpaDevices,
   serveNativeBuildManifest,
 } from "./nativeBuildInstall";
 
@@ -52,9 +57,16 @@ const adHocProfile = (
   );
 const INFO_PLIST = `<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.example.app</string><key>CFBundleVersion</key><string>42</string><key>CFBundleDisplayName</key><string>Tom &amp; Jerry's &lt;App&gt;</string></dict></plist>`;
 
-const ipaBytes = async (profile: string, padding = 1024) => {
+const ipaBytes = async (
+  profile: string,
+  padding = 1024,
+  bundleId = "com.example.app",
+) => {
   const archive = new JSZip();
-  archive.file(`${APP}/Info.plist`, INFO_PLIST);
+  archive.file(
+    `${APP}/Info.plist`,
+    INFO_PLIST.replace("com.example.app", bundleId),
+  );
   // Incompressible bytes, so the file is as large as it looks.
   const large = new Uint8Array(padding);
   for (let i = 0; i < padding; i += 1) large[i] = (i * 2654435761) >>> 24;
@@ -106,9 +118,25 @@ const rowOf = (size: number, overrides: Partial<NativeBuildRow> = {}) =>
     ...overrides,
   }) as NativeBuildRow;
 
-const coreOf = (row: NativeBuildRow | null) => ({
+const coreOf = (
+  row: NativeBuildRow | null,
+  registry: readonly IosDeviceRow[] = [],
+) => ({
   getNativeBuild: vi.fn(async () => row),
+  findIosDevice: vi.fn(
+    async (udid: string) =>
+      registry.find((device) => device.udid === udid.toLowerCase()) ?? null,
+  ),
+  listIosDevices: vi.fn(async () => [...registry]),
 });
+
+const registryRow = (udid: string, name: string) =>
+  ({
+    id: `device-${name}`,
+    udid: udid.toLowerCase(),
+    name,
+    status: "registered",
+  }) as IosDeviceRow;
 
 beforeEach(() => {
   vi.stubEnv(CONSOLE_SECRET_ENV, SECRET);
@@ -346,11 +374,14 @@ describe("checkNativeBuildInstall", () => {
   const check = async (
     profile: string,
     udid: string | undefined,
-    { now }: { now?: number } = {},
+    {
+      now,
+      registry = [],
+    }: { now?: number; registry?: readonly IosDeviceRow[] } = {},
   ) => {
     const bytes = await ipaBytes(profile);
     const { fetch, served } = rangeServer(bytes);
-    const core = coreOf(rowOf(bytes.length));
+    const core = coreOf(rowOf(bytes.length), registry);
     const result = await checkNativeBuildInstall(
       BUILD,
       udid,
@@ -363,9 +394,25 @@ describe("checkNativeBuildInstall", () => {
   it("reads one row and the IPA's few parts, and asks nothing else", async () => {
     const { result, core, served } = await check(adHocProfile([PHONE]), PHONE);
 
-    expect(result).toMatchObject({ status: "installable", device: "included" });
+    expect(result).toMatchObject({
+      status: "installable",
+      device: "included",
+      registry: null,
+    });
     expect(core.getNativeBuild).toHaveBeenCalledTimes(1);
+    expect(core.findIosDevice).not.toHaveBeenCalled();
     expect(served.requests).toBeLessThanOrEqual(4);
+  });
+
+  it("reads the registry's row of a phone the IPA doesn't list, once, and only then", async () => {
+    const kim = registryRow(LATER_PHONE, "Kim's iPhone");
+    const { result, core } = await check(adHocProfile([PHONE]), LATER_PHONE, {
+      registry: [kim],
+    });
+    expect(result).toMatchObject({ device: "not-included", registry: kim });
+    expect(core.findIosDevice).toHaveBeenCalledTimes(1);
+    const unknown = await check(adHocProfile([PHONE]), undefined);
+    expect(unknown.core.findIosDevice).not.toHaveBeenCalled();
   });
 
   it("compares a UDID whatever its case", async () => {
@@ -465,6 +512,163 @@ describe("checkNativeBuildInstall", () => {
     expect(after.result).toMatchObject({ device: "included" });
     const again = await check(adHocProfile([PHONE]), LATER_PHONE);
     expect(again.result).toMatchObject({ device: "not-included" });
+  });
+});
+
+describe("checkNativeBuildInstall: the newer build a registered device's row names", () => {
+  // One registry for every scheme: the row keeps the newest build the CLI
+  // checked, whichever scheme built it.
+  const NEWER = OTHER_BUILD;
+  const production = {
+    id: BUILD,
+    platform: "ios",
+    channel_id: "production",
+    is_sandbox: false,
+    export_method: "ad-hoc",
+    artifact_kind: "ipa",
+  } as const;
+  type Ipa = {
+    readonly row: Partial<NativeBuildRow>;
+    readonly devices: readonly string[];
+    readonly bundleId?: string;
+  };
+  const check = async (newer: Ipa | null) => {
+    const builds: (Ipa & { readonly id: string })[] = [
+      { id: BUILD, row: production, devices: [PHONE] },
+      ...(newer === null ? [] : [{ id: NEWER, ...newer }]),
+    ];
+    const files = new Map<string, Uint8Array>();
+    const rows = new Map<string, NativeBuildRow>();
+    for (const { id, row, devices, bundleId } of builds) {
+      const bytes = await ipaBytes(adHocProfile(devices), 1024, bundleId);
+      const uri = `s3://bucket/native-builds/ios/${id}.ipa`;
+      files.set(`https://storage.example.com/${id}.ipa`, bytes);
+      rows.set(id, {
+        ...production,
+        ...row,
+        id,
+        artifact_storage_uri: uri,
+        byte_size: bytes.length,
+      } as NativeBuildRow);
+    }
+    const urls: string[] = [];
+    const servers = new Map(
+      [...files].map(([url, bytes]) => [url, rangeServer(bytes)]),
+    );
+    const fetch = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        urls.push(String(input));
+        return servers.get(String(input))!.fetch(input, init);
+      },
+    ) as unknown as typeof globalThis.fetch;
+    const kim = {
+      ...registryRow(LATER_PHONE, "Kim's iPhone"),
+      build_id: NEWER,
+    } as IosDeviceRow;
+    const core = {
+      getNativeBuild: vi.fn(async (id: string) => rows.get(id) ?? null),
+      findIosDevice: vi.fn(async () => kim),
+    };
+    const storage = storageOf({
+      getDownloadUrl: vi.fn(async ({ storageUri }: { storageUri: string }) => ({
+        url: `https://storage.example.com/${storageUri.split("/").at(-1)}`,
+      })),
+    });
+    const result = await checkNativeBuildInstall(
+      BUILD,
+      LATER_PHONE,
+      { core, storage },
+      { fetch },
+    );
+    return { result, core, urls };
+  };
+  const sameApp = (row: Partial<NativeBuildRow> = {}): Ipa => ({
+    row,
+    devices: [PHONE, LATER_PHONE],
+  });
+  const newerUrl = `https://storage.example.com/${NEWER}.ipa`;
+
+  it("offers a newer build of this app and channel whose IPA lists the device", async () => {
+    const { result } = await check(sameApp());
+    expect(result).toMatchObject({
+      device: "not-included",
+      newerBuild: NEWER,
+    });
+  });
+
+  it("offers it when its export method predates being recorded, and its profile says ad hoc", async () => {
+    const { result } = await check(sameApp({ export_method: null }));
+    expect(result).toMatchObject({ newerBuild: NEWER });
+  });
+
+  it("two schemes on one registry: a production page never sends the iPhone to the sandbox build that listed it last", async () => {
+    const { result, core, urls } = await check(
+      sameApp({ is_sandbox: true, channel_id: "production" }),
+    );
+    expect(result).toMatchObject({ device: "not-included", newerBuild: null });
+    // The sandbox build's row decides, without reading its IPA.
+    expect(core.getNativeBuild).toHaveBeenCalledTimes(2);
+    expect(urls).not.toContain(newerUrl);
+  });
+
+  it.each<[string, Partial<NativeBuildRow>]>([
+    ["another channel", { channel_id: "staging" }],
+    ["an App Store export", { export_method: "app-store" }],
+    ["a development export", { export_method: "development" }],
+    ["an APK", { platform: "android", artifact_kind: "apk" }],
+  ])("offers nothing for %s, reading no IPA", async (_, row) => {
+    const { result, urls } = await check(sameApp(row));
+    expect(result).toMatchObject({ newerBuild: null });
+    expect(urls).not.toContain(newerUrl);
+  });
+
+  it("offers nothing for another app on the same channel, which only its IPA tells apart", async () => {
+    const { result, urls } = await check({
+      ...sameApp(),
+      bundleId: "com.example.app.staging",
+    });
+    expect(result).toMatchObject({ newerBuild: null });
+    expect(urls).toContain(newerUrl);
+  });
+
+  it("offers nothing when the newer IPA doesn't list the device, or the build is gone", async () => {
+    expect((await check({ row: {}, devices: [PHONE] })).result).toMatchObject({
+      newerBuild: null,
+    });
+    expect((await check(null)).result).toMatchObject({ newerBuild: null });
+  });
+});
+
+describe("readNativeBuildIpaDevices", () => {
+  it("lists the IPA's devices, named by the registry where it knows them, in one registry read", async () => {
+    const bytes = await ipaBytes(adHocProfile([PHONE, LATER_PHONE]));
+    const { fetch } = rangeServer(bytes);
+    const core = coreOf(rowOf(bytes.length), [
+      registryRow(PHONE, "Kim's iPhone"),
+      registryRow("a".repeat(40), "Not in this IPA"),
+    ]);
+    expect(
+      await readNativeBuildIpaDevices(
+        BUILD,
+        { core, storage: storageOf() },
+        fetch,
+      ),
+    ).toEqual({
+      status: "listed",
+      devices: [
+        { udid: PHONE.toLowerCase(), name: "Kim's iPhone" },
+        { udid: LATER_PHONE.toLowerCase(), name: null },
+      ].sort((a, b) => (a.udid < b.udid ? -1 : 1)),
+    });
+    expect(core.listIosDevices).toHaveBeenCalledTimes(1);
+  });
+
+  it("is unavailable for a missing build, and reads no registry", async () => {
+    const core = coreOf(null);
+    expect(
+      await readNativeBuildIpaDevices(BUILD, { core, storage: storageOf() }),
+    ).toEqual({ status: "unavailable" });
+    expect(core.listIosDevices).not.toHaveBeenCalled();
   });
 });
 

@@ -1027,6 +1027,66 @@ await core.recordNativeBuildSubmission(nativeBuildId(31), {
   version: "1.0.0 (131)",
 });
 
+// The iOS device registry: a tester's request, an approved iPad, an iPhone
+// the newer production IPA lists, and one Apple refused.
+const demoIssuer = "69a6de70-0000-47e3-e053-5b8c7c11a4d1";
+const demoDevice = async (
+  udid: string,
+  name: string,
+  requestedBy: string | null,
+  then?: (device: {
+    id: string;
+    approved_at_ms: number | null;
+  }) => Promise<unknown>,
+) => {
+  const { device } = await core.requestIosDevice({ udid, name, requestedBy });
+  if (then !== undefined) await then(device);
+};
+const approveDemo = (id: string) =>
+  core.approveIosDevice(id, { approvedBy: "lead@hot-updater.dev" });
+await demoDevice(
+  "00008110-001a2b3c4d5e6f70",
+  "QA iPhone 15",
+  "lead@hot-updater.dev",
+  async ({ id }) => {
+    const approved = (await approveDemo(id))!;
+    await core.recordIosDeviceOutcome({
+      id,
+      seen: { status: "approved", approvedAtMs: approved.approved_at_ms },
+      issuerId: demoIssuer,
+      outcome: "registered",
+    });
+    await core.markIosDevicesInBuild({ buildId: nativeBuildId(28), ids: [id] });
+  },
+);
+await demoDevice(
+  "00008120-0019283a4b5c6d7e",
+  "Mina's iPhone",
+  "mina@hot-updater.dev",
+  async ({ id }) => {
+    const approved = (await approveDemo(id))!;
+    await core.recordIosDeviceOutcome({
+      id,
+      seen: { status: "approved", approvedAtMs: approved.approved_at_ms },
+      issuerId: demoIssuer,
+      outcome: "refused",
+      reason:
+        "The maximum number of devices for this membership year was reached.",
+    });
+  },
+);
+await demoDevice(
+  "1a2b3c4d5e6f708192a3b4c5d6e7f80910a1b2c3",
+  "Lee's iPad",
+  "lee@hot-updater.dev",
+  async ({ id }) => approveDemo(id),
+);
+await demoDevice(
+  "00008130-000e1f2a3b4c5d6e",
+  "Kim's iPhone",
+  "kim@hot-updater.dev",
+);
+
 // What the store sells of the production IPA's scope.
 await core.markNativeBuild(nativeBuildId(21), { storeBuild: true });
 await core.markNativeBuild(nativeBuildId(29), { storeBuild: true });

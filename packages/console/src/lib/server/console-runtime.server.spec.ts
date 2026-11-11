@@ -50,6 +50,7 @@ describe("Console config resolution", () => {
         plugins,
         console: {
           gitUrl: "https://github.com/example/app",
+          deviceApprovers: [" Lead@Team.dev ", ""],
         },
       };
       const source = vi.fn(async () => config);
@@ -59,6 +60,8 @@ describe("Console config resolution", () => {
 
       expect(resolved).toMatchObject({
         gitUrl: "https://github.com/example/app",
+        // Compared as the session's email is: trimmed and lower-cased.
+        deviceApprovers: ["lead@team.dev"],
         database,
         storage,
         plugins,
@@ -146,6 +149,7 @@ describe("Console config resolution", () => {
     configModule.source = { database, storage, plugins };
 
     await expect(resolveConsoleConfig(request)).resolves.toEqual({
+      deviceApprovers: [],
       database,
       core: database.core,
       storage,

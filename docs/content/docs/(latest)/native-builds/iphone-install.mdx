@@ -1,15 +1,20 @@
 ---
 title: "Install on an iPhone"
-description: "Install an ad hoc build from the Console on an iPhone App Store Connect has registered."
+description: "Register iOS devices for ad hoc builds, approve them, and install from the Console."
 icon: Smartphone
 ---
 
 import { Step, Steps } from "fumadocs-ui/components/steps";
 
-An iPhone installs an `.ipa` only when its signing profile lists that iPhone's
-UDID. The Console finds the UDID and installs the build. Registering the iPhone
-and signing a new build stay with the CLI, and the Console never holds an Apple
-key.
+An iPhone or iPad installs an `.ipa` only when its signing profile lists that
+device's UDID. Hot Updater keeps the devices your team asked for in your
+server's database, the **iOS device registry**. Testers register their iPhones
+from the Console, a maintainer approves them, and the next ad hoc
+`native-build ios` registers the approved ones with Apple and signs them in.
+Android builds need none of this.
+
+The Console never holds an Apple key: only the CLI talks to Apple, with the
+scheme's App Store Connect API key.
 
 ## What it takes
 
@@ -18,7 +23,8 @@ key.
 - A storage whose download URL is HTTPS and answers HTTP Range requests. Without
   one, the build's page says "Installation details unavailable", and the IPA
   still downloads for Xcode or Apple Configurator.
-- A scheme with `signing.ascApiKey` that exports for registered devices:
+- A scheme with `signing.ascApiKey` that exports for registered devices, with
+  automatic signing:
 
 ```xml title="ExportOptions.plist"
 <?xml version="1.0" encoding="UTF-8"?>
@@ -56,107 +62,149 @@ A [sandbox](/docs/native-builds/sandbox) scheme can export this way too. Its
 <Steps>
 <Step>
 
-### Check the iPhone
-
-On the iPhone, open the build's page in Safari: scan the QR code on the page or
-in a [pull request's comment](/docs/guides/pull-request-previews), and sign in.
-Tap **Install profile**, allow the download, and install **Hot Updater Device
-Profile** in Settings. It asks for the UDID and nothing else, iOS calls it not
-signed, and nothing stays installed.
-
-Safari comes back to the build's page, which keeps the UDID on that iPhone. The
-Console stores no UDID. An iPhone the `.ipa` lists gets **Install**. Any other
-gets one command: send it to a maintainer, only if this is your iPhone. If Safari
-doesn't come back, Finder shows the UDID of a connected iPhone, which a
-maintainer can register the same way.
-
-</Step>
-<Step>
-
 ### Register it
 
-The maintainer decides whether the iPhone gets a slot, then runs the command with
-the project's credentials:
+On the iPhone, open the Console in Safari and go to **Native builds**, then
+**iOS devices**: on a computer, that page shows a QR code of itself to scan.
+Name the iPhone and tap **Install profile**. Allow the download, then install
+**Hot Updater Device Profile** in Settings. It asks for the UDID and nothing
+else, iOS calls it not signed, and nothing stays installed.
 
-```package-install
-npx hot-updater native-build devices add --scheme testers --udid <UDID> --name "Kim's iPhone"
-```
+Safari comes back to **iOS devices**, which lists the iPhone as **Requested**.
 
-`--scheme` picks whose API key to use, and may be left out with one device
-scheme. Repeat `--udid` to add several, with one `--name` for all of them or one
-for each. A device already registered succeeds and changes nothing. The key needs
-the Admin role.
-
-`native-build devices list --scheme testers` shows what App Store Connect has.
-
-An Apple account registers 100 iPhones per membership year, and disabling one
-doesn't free its slot. A larger group of testers installs through
-[TestFlight](/docs/native-builds/testflight).
+On a build's page, an iPhone the `.ipa` doesn't list gets **Request access**
+instead, which does the same from there.
 
 </Step>
 <Step>
 
-### Rebuild
+### Approve it
 
-An `.ipa` signed earlier never gains a device, so the phone needs a new one:
+Each new device uses one of your Apple account's 100 device slots for the
+membership year, and removing it never gives the slot back. So a person decides:
+
+- **In the Console**, the emails in `console.deviceApprovers` see **Approve** on
+  each request. The [local Console](/docs/guides/console) approves too. Without
+  `deviceApprovers`, nobody approves in a hosted Console.
+- **From a terminal**, with the project's credentials:
 
 ```package-install
-npx hot-updater native-build ios --scheme testers --udid <UDID>
+npx hot-updater native-build devices add
 ```
 
-The build prints how many devices the `.ipa` lists, and whether each `--udid` is
-included. A missing one fails the command, after the build is tracked.
+Without `--udid`, it lists the requested devices to pick from, approves the
+ones you pick, and registers them with Apple right away. `--udid` and `--name`
+add a device by its UDID, as from Finder.
 
-A [CI job](/docs/guides/ci-native-build) on a fresh runner has no saved profile,
-so its export gets a new one that lists every enabled device. A Mac or self-hosted
-runner reuses its saved profile without asking Apple, so a new iPhone can't reach
-that export until the profile is gone. `native-build devices add` prints this
-command for your app, and a missing `--udid` prints it with your extensions too.
-It removes those exact ad hoc profiles from Xcode's folder, and Xcode makes new
-ones at the next export:
+The device's UDID is what the tester's iPhone reported: approve devices you
+recognize.
 
-```bash
-grep -laF -e 'Ad Hoc Provisioning Profile: com.example.app</string>' -e 'XC Ad Hoc: com.example.app</string>' ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"/* | xargs -I{} rm {}
+</Step>
+<Step>
+
+### Build
+
+```package-install
+npx hot-updater native-build ios --scheme testers
 ```
 
-Each rebuild becomes its scope's newest build, so bundles deployed before it no
-longer reach an install of it until they are deployed again, and new deploys
-patch from it unless a [store build is marked](/docs/guides/native-build#mark-the-store-build).
-Register iPhones together, then rebuild once.
+Before it archives, an ad hoc build registers the approved devices with the
+Apple account of the scheme's key, one at a time, and prints the ones it added:
+
+```
+iOS devices · registered 1 with Apple: Kim's iPhone
+```
+
+Xcode's automatic ad hoc profile lists every device the account has enabled.
+When the exported `.ipa` still lacks an approved device because this Mac kept an
+older profile, the build deletes the app's saved ad hoc profiles, matched by
+team and bundle ID, and exports once more. A device Apple has enabled that the
+final `.ipa` still lacks fails the build before it is tracked. A device Apple
+refused or has disabled only warns.
+
+Approved devices wait, with one line saying why, when the scheme has no
+`signing.ascApiKey`, pins a provisioning profile, or signs with another Apple
+account than the one the registry first registered with. The registry belongs
+to one Apple account: the first build that registers a device claims it, and a
+build signed by another account registers nothing.
+
+A build that reuses an existing native build registers nothing: devices join an
+`.ipa` only when a new ad hoc build runs. A [CI job](/docs/guides/ci-native-build)
+runs the same step.
 
 </Step>
 <Step>
 
 ### Install
 
-Open the newest build's page on the iPhone. **Install** opens the system's
-install prompt, and the app appears on the Home Screen. On iOS 16 or later, the
-app opens only with Developer Mode on: Settings, Privacy & Security, Developer
-Mode.
+Open the new build's page on the iPhone. **Check this iPhone** reads its UDID
+once, and **Install** opens the system's install prompt. On iOS 16 or later,
+the app opens only with Developer Mode on: Settings, Privacy & Security,
+Developer Mode.
 
 </Step>
 </Steps>
 
-## What the page says
+## Manage devices
 
-The page reads the `.ipa`'s `Info.plist` and provisioning profiles from storage,
-a few requests whatever its size, only when an iPhone opens it. App Store Connect
-isn't asked, because what the `.ipa` holds is what iOS enforces.
+**Native builds**, then **iOS devices**, lists every device with its status:
 
-| The page shows                     | Because                                                                  |
-| ---------------------------------- | ------------------------------------------------------------------------ |
-| Install profile                    | This iPhone hasn't sent its UDID yet.                                    |
-| Install                            | The `.ipa` lists this iPhone.                                            |
-| Not in this build                  | The `.ipa` was signed without it: add it above.                          |
-| An App Store export                | It installs through TestFlight.                                          |
-| The build's profile has expired    | Rebuild it.                                                              |
-| Installation details unavailable   | The storage can't serve part of the file.                                |
+| Status     | Means                                                         |
+| ---------- | ------------------------------------------------------------- |
+| Requested  | A tester asked for it. An approver decides.                   |
+| Approved   | The next ad hoc build registers it with Apple.                |
+| Registered | Apple has it, and new ad hoc builds include it while enabled. |
+
+Apple's reason shows under the status when Apple refused a device, has it
+disabled, or no longer lists it. A registered device Apple no longer lists, as
+after the yearly reset, goes back to Requested until someone approves it again.
+Filter the list by status.
+
+Approvers rename and remove devices in the Console, and the person who asked can
+withdraw a request. Removing a device deletes it from the registry only: Apple
+keeps it, and new ad hoc builds keep including it while it's enabled there. The
+CLI covers the Apple side:
+
+```package-install
+npx hot-updater native-build devices list
+npx hot-updater native-build devices rename --udid <UDID> --name "Kim's iPhone"
+npx hot-updater native-build devices remove --udid <UDID>
+```
+
+`list` shows the registry and the Apple account side by side. `rename` renames
+the device in both. `remove` deletes it from the registry and, once you confirm
+(or with `--yes`), disables it at Apple. Disabling affects every app on that
+Apple team, and its slot isn't returned until the membership year renews.
+
+## What the build page says
+
+An ad hoc build's page lists the devices its `.ipa` includes, by their registry
+names, read from the `.ipa`'s profile. On an iPhone, the page reads the `.ipa`
+from storage, a few requests whatever its size, and says what this iPhone can do:
+
+| The page shows                   | Because                                                    |
+| -------------------------------- | ---------------------------------------------------------- |
+| Check this iPhone                | This iPhone hasn't sent its UDID yet.                      |
+| Install                          | The `.ipa` lists this iPhone.                              |
+| Not in this build                | The `.ipa` was signed without it: Request access.          |
+| Joins the next ad hoc build      | It's approved or registered; the next ad hoc build has it. |
+| A newer build has it             | A newer ad hoc build of this app and channel lists it.     |
+| An App Store export              | It installs through TestFlight.                            |
+| The build's profile has expired  | Build again.                                               |
+| Installation details unavailable | The storage can't serve part of the file.                  |
 
 ## Links and privacy
 
+- The registry holds each device's UDID, its name, who asked and who approved
+  (their Console emails), and Apple's last answer. Every signed-in Console user
+  sees it, with UDIDs shortened. Removing a device deletes its row.
+- The profile link is signed for the person who opened it and lasts 15 minutes.
+  A check's answer lasts an hour, and only that person's session can request
+  access with it. Nothing checks that a UDID came from a real iPhone, so the
+  approver's decision is what protects the account's slots.
 - **Install** carries a signed link that lasts about an hour. It lets its holder
   download this one build, whose profile lists its devices' UDIDs. iOS still
   installs only on those devices.
-- The profile, the page it returns to, and the QR code take no session and read
-  nothing. Nothing checks that a UDID came from a real iPhone, so the maintainer's
-  decision is what protects the account's slots.
+- A Console whose config is chosen per request gets the profile's answer
+  without a session: pick its database without one for iPhone registration to
+  work.

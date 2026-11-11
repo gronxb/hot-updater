@@ -375,7 +375,7 @@ function FileInstallCard({ build }: { readonly build: NativeBuildRow }) {
         }
       >
         {onPhone ? (
-          <IosInstall build={build} udid={device.udid} />
+          <IosInstall build={build} device={device} />
         ) : ipa && signedUrl !== null ? (
           <ScannablePage />
         ) : signedUrl !== null ? (

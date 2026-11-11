@@ -143,6 +143,31 @@ model native_builds {
   @@index([channel_id, id], map: "native_builds_byChannel")
   @@unique([min_bundle_id], map: "native_builds_min_bundle_id")
 }
+model ios_devices {
+  id String
+  udid String
+  name String
+  status String
+  requested_by String?
+  created_at_ms BigInt
+  approved_by String?
+  approved_at_ms BigInt?
+  registered_at_ms BigInt?
+  apple_issuer_id String?
+  apple_error String?
+  build_id String?
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+  @@index([status, id], map: "ios_devices_byStatus")
+  @@unique([udid], map: "ios_devices_udid")
+}
+model ios_device_account {
+  id String
+  apple_issuer_id String
+  claimed_at_ms BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+}
 model bundle_events {
   id String
   type String

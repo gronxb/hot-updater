@@ -46,6 +46,14 @@ CREATE INDEX IF NOT EXISTS "native_builds_byChannel" ON "native_builds" ("channe
 
 CREATE UNIQUE INDEX IF NOT EXISTS "native_builds_min_bundle_id" ON "native_builds" ("min_bundle_id");
 
+CREATE TABLE IF NOT EXISTS "ios_devices" ("id" varchar(36) COLLATE "C" NOT NULL, "udid" varchar(40) COLLATE "C" NOT NULL, "name" varchar(100) COLLATE "C" NOT NULL, "status" varchar(16) COLLATE "C" NOT NULL, "requested_by" varchar(320) COLLATE "C", "created_at_ms" bigint NOT NULL, "approved_by" varchar(320) COLLATE "C", "approved_at_ms" bigint, "registered_at_ms" bigint, "apple_issuer_id" varchar(64) COLLATE "C", "apple_error" varchar(512) COLLATE "C", "build_id" varchar(36) COLLATE "C", "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
+CREATE INDEX IF NOT EXISTS "ios_devices_byStatus" ON "ios_devices" ("status", "id");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "ios_devices_udid" ON "ios_devices" ("udid");
+
+CREATE TABLE IF NOT EXISTS "ios_device_account" ("id" varchar(16) COLLATE "C" NOT NULL, "apple_issuer_id" varchar(64) COLLATE "C" NOT NULL, "claimed_at_ms" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
 CREATE TABLE IF NOT EXISTS "private_hot_updater_settings" ("key" varchar(255) COLLATE "C" NOT NULL, "value" varchar(255) COLLATE "C" NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("key"));
 
 INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.engine', '1', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";

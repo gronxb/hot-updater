@@ -29,6 +29,8 @@ const ascApiKey = {
 };
 
 vi.mock("@hot-updater/apple-helper", () => ({
+  // An ad hoc export runs the device registry step; these specs build none.
+  exportsForRegisteredDevices: vi.fn(async () => false),
   TestFlightBuildExistsError: class TestFlightBuildExistsError extends Error {},
   assertTestFlightExportOptions: vi.fn(),
   assertIpaIsInternalOnly: vi.fn(async () => {

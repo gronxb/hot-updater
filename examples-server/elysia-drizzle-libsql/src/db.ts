@@ -42,6 +42,8 @@ export async function resetDecisionFixtures() {
       "DELETE FROM channels",
       "DELETE FROM bundle_totals",
       "DELETE FROM native_builds",
+      "DELETE FROM ios_devices",
+      "DELETE FROM ios_device_account",
     ],
     "write",
   );

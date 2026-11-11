@@ -12,6 +12,14 @@ CREATE INDEX IF NOT EXISTS "native_builds_byChannel" ON "native_builds" ("channe
 
 CREATE UNIQUE INDEX IF NOT EXISTS "native_builds_min_bundle_id" ON "native_builds" ("min_bundle_id");
 
+CREATE TABLE IF NOT EXISTS "ios_devices" ("id" TEXT NOT NULL, "udid" TEXT NOT NULL, "name" TEXT NOT NULL, "status" TEXT NOT NULL, "requested_by" TEXT, "created_at_ms" INTEGER NOT NULL, "approved_by" TEXT, "approved_at_ms" INTEGER, "registered_at_ms" INTEGER, "apple_issuer_id" TEXT, "apple_error" TEXT, "build_id" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
+CREATE INDEX IF NOT EXISTS "ios_devices_byStatus" ON "ios_devices" ("status", "id");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "ios_devices_udid" ON "ios_devices" ("udid");
+
+CREATE TABLE IF NOT EXISTS "ios_device_account" ("id" TEXT NOT NULL, "apple_issuer_id" TEXT NOT NULL, "claimed_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
 INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.engine', '1', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
 
 INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.core', '1.2.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";

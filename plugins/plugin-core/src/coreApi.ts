@@ -15,6 +15,8 @@ import type {
   ChannelDeleteResult,
   ChannelRow,
   DatabaseBundleMetadata,
+  IosDeviceRow,
+  IosDeviceStatus,
   NativeBuildArtifactKind,
   NativeBuildDeleteResult,
   NativeBuildExportMethod,
@@ -148,6 +150,51 @@ export type NativeBuildRegistration = NativeBuildScope & {
     readonly metadata?: DatabaseBundleMetadata;
   };
 };
+
+/**
+ * What a build or `native-build devices add` learned from Apple about one
+ * registry row: Apple has it enabled (`registered`), refused to add it
+ * (`refused`), has it disabled (`disabled`), or no longer lists a device the
+ * row says it registered (`missing`).
+ */
+export type IosDeviceOutcome =
+  | "registered"
+  | "refused"
+  | "disabled"
+  | "missing";
+
+/** A device registry row's outcome at Apple, written only over the row the caller read. */
+export interface IosDeviceOutcomeInput {
+  readonly id: string;
+  /**
+   * The row as the caller read it before asking Apple: a row that changed
+   * since, such as one removed and requested again, is left alone.
+   */
+  readonly seen: {
+    readonly status: IosDeviceStatus;
+    readonly approvedAtMs: number | null;
+  };
+  /** The App Store Connect issuer of the key that asked Apple. */
+  readonly issuerId: string;
+  readonly outcome: IosDeviceOutcome;
+  /** Apple's words for `refused`, kept as the row's `apple_error`. */
+  readonly reason?: string;
+}
+
+/** The device registry's Apple account, after a build tried to claim it. */
+export interface IosDeviceAccountClaim {
+  /** The App Store Connect issuer the registry belongs to. */
+  readonly issuerId: string;
+  /** Whether that is the issuer that asked: false means another account's. */
+  readonly claimed: boolean;
+}
+
+/** A device request's row, and whether the request created it. */
+export interface IosDeviceRequestResult {
+  readonly device: IosDeviceRow;
+  /** False when the UDID was already in the registry, whose row is unchanged. */
+  readonly created: boolean;
+}
 
 export interface ReleaseTarget {
   readonly releaseId: string;
@@ -306,4 +353,79 @@ export interface HotUpdaterCoreApi {
     id: string,
     mark: { readonly storeBuild: boolean },
   ): Promise<NativeBuildMarkResult | null>;
+
+  /**
+   * One page of the iOS device registry, by ID: oldest or newest first. With
+   * `status`, only the rows in it, also one read.
+   */
+  listIosDevices(
+    input: KeysetInput & { readonly status?: IosDeviceStatus },
+  ): Promise<IosDeviceRow[]>;
+  /** The registry's row of a UDID, in either case: one read. Null for none. */
+  findIosDevice(udid: string): Promise<IosDeviceRow | null>;
+  /**
+   * Adds a UDID to the registry as `pending`. A UDID already there keeps its
+   * row unchanged, so nobody takes over another person's request.
+   */
+  requestIosDevice(input: {
+    readonly udid: string;
+    readonly name: string;
+    /** Who asks, or null for the CLI. */
+    readonly requestedBy: string | null;
+  }): Promise<IosDeviceRequestResult>;
+  /**
+   * Approves a pending device, so the next ad hoc build registers it with
+   * Apple. A device past `pending` stays as it is. With `name`, renames it.
+   * Null for an unknown ID.
+   */
+  approveIosDevice(
+    id: string,
+    input: {
+      readonly name?: string;
+      /** Who approves: a Console email, or null for the CLI. */
+      readonly approvedBy: string | null;
+    },
+  ): Promise<IosDeviceRow | null>;
+  /** Renames a device in the registry, whatever its status. Null for an unknown ID. */
+  renameIosDevice(id: string, name: string): Promise<IosDeviceRow | null>;
+  /**
+   * Records what Apple said of a device, only over the row the caller read
+   * (`seen`) and only for the account that registered it: null, with nothing
+   * written, for a row that changed, is gone, or belongs to another issuer.
+   * It never creates a row.
+   */
+  recordIosDeviceOutcome(
+    input: IosDeviceOutcomeInput,
+  ): Promise<IosDeviceRow | null>;
+  /**
+   * Claims the device registry for an Apple account before a build records
+   * or sends anything at Apple: the first claim wins, atomically, and holds
+   * for good. A registry with no claim yet whose rows already name an account
+   * (any status) goes to the earliest of them, not to the caller. Answers the
+   * registry's account and whether it is `issuerId`'s; a build of another
+   * account registers nothing.
+   */
+  claimIosDeviceAccount(issuerId: string): Promise<IosDeviceAccountClaim>;
+  /**
+   * Records that a native build's .ipa lists these devices, one write per
+   * row: a row removed meanwhile is skipped.
+   */
+  markIosDevicesInBuild(input: {
+    readonly buildId: string;
+    readonly ids: readonly string[];
+  }): Promise<void>;
+  /**
+   * Deletes a device from the registry. Apple keeps it: a device enabled
+   * there stays in new ad hoc builds. With `only`, it deletes the row only
+   * while it still has that status and requester, read in the same
+   * transaction, such as a request its owner withdraws. Null, with nothing
+   * deleted, for an unknown ID or a row that no longer matches.
+   */
+  deleteIosDevice(
+    id: string,
+    only?: {
+      readonly status?: IosDeviceStatus;
+      readonly requestedBy?: string;
+    },
+  ): Promise<IosDeviceRow | null>;
 }

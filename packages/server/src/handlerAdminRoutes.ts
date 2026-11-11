@@ -11,10 +11,13 @@ import {
   type ReleaseFilter,
   type ReleasePolicyPatch,
   DatabaseRowReferencedError,
+  type IosDeviceOutcome,
+  type IosDeviceStatus,
 } from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
 
 import type { CoreApi } from "./core/api";
+import { IosDeviceInputError } from "./core/iosDevices";
 import { NATIVE_BUILD_SUBMISSION_DESTINATIONS } from "./core/nativeBuildDestinations";
 import { NativeBuildInputError } from "./core/nativeBuilds";
 import { HandlerBadRequestError } from "./handlerErrors";
@@ -299,7 +302,10 @@ const refusingInvalid = async <T>(operation: () => Promise<T>): Promise<T> => {
   try {
     return await operation();
   } catch (error) {
-    if (error instanceof NativeBuildInputError) {
+    if (
+      error instanceof NativeBuildInputError ||
+      error instanceof IosDeviceInputError
+    ) {
       throw new HandlerBadRequestError(error.message);
     }
     throw error;
@@ -670,6 +676,161 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     }),
   ),
 
+  // The iOS device registry. An unknown ID or UDID answers 200 with null
+  // data, so a 404 means a server without these routes.
+  listIosDevices: onCore(async (core, request) => {
+    const url = new URL(request.url);
+    const input = keyset(url);
+    const status = url.searchParams.get("status");
+    return page(
+      await refusingInvalid(() =>
+        core.listIosDevices({
+          ...input,
+          ...(status === null ? {} : { status: status as IosDeviceStatus }),
+        }),
+      ),
+      input,
+      ({ id }) => id,
+    );
+  }),
+
+  findIosDevice: onCore(async (core, _request, params) =>
+    json({ data: await core.findIosDevice(requireRouteParam(params, "udid")) }),
+  ),
+
+  requestIosDevice: onCore(async (core, request) => {
+    const input = await body(request);
+    if (
+      !isText(input.udid) ||
+      !isText(input.name) ||
+      !isTextOrNull(input.requestedBy)
+    ) {
+      throw new HandlerBadRequestError(
+        "An iOS device request needs udid, name, and requestedBy, an email or null.",
+      );
+    }
+    const device = {
+      udid: input.udid,
+      name: input.name,
+      requestedBy: input.requestedBy as string | null,
+    };
+    return json({
+      data: await refusingInvalid(() => core.requestIosDevice(device)),
+    });
+  }),
+
+  approveIosDevice: onCore(async (core, request, params) => {
+    const input = await body(request);
+    if (
+      !isTextOrNull(input.approvedBy) ||
+      (input.name !== undefined && !isText(input.name))
+    ) {
+      throw new HandlerBadRequestError(
+        "An iOS device approval needs approvedBy, an email or null, and an optional name.",
+      );
+    }
+    const approval = {
+      approvedBy: input.approvedBy as string | null,
+      ...(input.name === undefined ? {} : { name: input.name as string }),
+    };
+    return json({
+      data: await refusingInvalid(() =>
+        core.approveIosDevice(requireRouteParam(params, "id"), approval),
+      ),
+    });
+  }),
+
+  renameIosDevice: onCore(async (core, request, params) => {
+    const input = await body(request);
+    if (!isText(input.name)) {
+      throw new HandlerBadRequestError("An iOS device's new name is required.");
+    }
+    const name = input.name;
+    return json({
+      data: await refusingInvalid(() =>
+        core.renameIosDevice(requireRouteParam(params, "id"), name),
+      ),
+    });
+  }),
+
+  recordIosDeviceOutcome: onCore(async (core, request, params) => {
+    const input = await body(request);
+    const seen = input.seen;
+    if (
+      !isRecord(seen) ||
+      typeof seen.status !== "string" ||
+      !(
+        seen.approvedAtMs === null || Number.isSafeInteger(seen.approvedAtMs)
+      ) ||
+      !isText(input.issuerId) ||
+      typeof input.outcome !== "string" ||
+      (input.reason !== undefined && typeof input.reason !== "string")
+    ) {
+      throw new HandlerBadRequestError(
+        "An iOS device outcome needs seen { status, approvedAtMs }, issuerId, outcome, and an optional reason.",
+      );
+    }
+    const outcome = {
+      id: requireRouteParam(params, "id"),
+      seen: {
+        status: seen.status as IosDeviceStatus,
+        approvedAtMs: seen.approvedAtMs as number | null,
+      },
+      issuerId: input.issuerId,
+      outcome: input.outcome as IosDeviceOutcome,
+      ...(input.reason === undefined ? {} : { reason: input.reason as string }),
+    };
+    return json({
+      data: await refusingInvalid(() => core.recordIosDeviceOutcome(outcome)),
+    });
+  }),
+
+  claimIosDeviceAccount: onCore(async (core, request) => {
+    const { issuerId } = await body(request);
+    if (!isText(issuerId)) {
+      throw new HandlerBadRequestError(
+        "Claiming the iOS device account needs issuerId.",
+      );
+    }
+    return json({
+      data: await refusingInvalid(() => core.claimIosDeviceAccount(issuerId)),
+    });
+  }),
+
+  markIosDevicesInBuild: onCore(async (core, request) => {
+    const input = await body(request);
+    const { buildId, ids } = input;
+    if (
+      !isText(buildId) ||
+      !Array.isArray(ids) ||
+      !ids.every((id): id is string => isText(id))
+    ) {
+      throw new HandlerBadRequestError(
+        "Marking iOS devices in a build needs buildId and ids.",
+      );
+    }
+    await core.markIosDevicesInBuild({ buildId, ids });
+    return noContent();
+  }),
+
+  // With `status` or `requestedBy`, only a row that still has them.
+  deleteIosDevice: onCore(async (core, request, params) => {
+    const url = new URL(request.url);
+    const status = url.searchParams.get("status");
+    const requestedBy = url.searchParams.get("requestedBy");
+    const only = {
+      ...(status === null ? {} : { status: status as IosDeviceStatus }),
+      ...(requestedBy === null ? {} : { requestedBy }),
+    };
+    return json({
+      data: await refusingInvalid(() =>
+        Object.keys(only).length === 0
+          ? core.deleteIosDevice(requireRouteParam(params, "id"))
+          : core.deleteIosDevice(requireRouteParam(params, "id"), only),
+      ),
+    });
+  }),
+
   deleteBundles: onCore(async (core, request) => {
     const { ids } = await body(request);
     if (
@@ -758,4 +919,33 @@ export const ADMIN_ROUTES: readonly {
     path: "/native-builds/:id",
     handler: "deleteNativeBuild",
   },
+  { method: "GET", path: "/ios-devices", handler: "listIosDevices" },
+  { method: "POST", path: "/ios-devices", handler: "requestIosDevice" },
+  {
+    method: "GET",
+    path: "/ios-devices/udid/:udid",
+    handler: "findIosDevice",
+  },
+  {
+    method: "POST",
+    path: "/ios-devices/in-build",
+    handler: "markIosDevicesInBuild",
+  },
+  {
+    method: "POST",
+    path: "/ios-devices/account",
+    handler: "claimIosDeviceAccount",
+  },
+  {
+    method: "POST",
+    path: "/ios-devices/:id/approval",
+    handler: "approveIosDevice",
+  },
+  {
+    method: "POST",
+    path: "/ios-devices/:id/outcome",
+    handler: "recordIosDeviceOutcome",
+  },
+  { method: "PATCH", path: "/ios-devices/:id", handler: "renameIosDevice" },
+  { method: "DELETE", path: "/ios-devices/:id", handler: "deleteIosDevice" },
 ];

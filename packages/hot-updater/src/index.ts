@@ -94,6 +94,8 @@ import {
 import {
   handleNativeBuildDevicesAdd,
   handleNativeBuildDevicesList,
+  handleNativeBuildDevicesRemove,
+  handleNativeBuildDevicesRename,
 } from "./commands/nativeBuildDevices";
 import { handleNativeBuildImport } from "./commands/nativeBuildImport";
 import { handlePromote } from "./commands/promote";
@@ -382,47 +384,69 @@ nativeBuildCommand
 const nativeBuildDevicesCommand = nativeBuildCommand
   .command("devices")
   .description(
-    "Register the iPhones an ad hoc build installs on, in App Store Connect",
+    "Manage the iPhones and iPads iOS ad hoc builds install on. Android builds need no registration",
+  );
+
+const devicesSchemeOption = () =>
+  new Option(
+    "-s, --scheme <scheme>",
+    "the nativeBuild.ios scheme whose App Store Connect API key to use (default: the only one that builds for a device)",
   );
 
 nativeBuildDevicesCommand
   .command("add")
   .description(
-    "Register iPhones with the Apple account, each at most once. The next .ipa built includes them",
+    "Approve iPhones and iPads and register them with the Apple account. Without --udid, pick from the requested ones",
   )
-  .option(
-    "-s, --scheme <scheme>",
-    "the nativeBuild.ios scheme whose App Store Connect API key to use (default: the only one that builds for a device)",
-  )
+  .addOption(devicesSchemeOption())
   .addOption(
-    new Option("--udid <udid>", "the iPhone's UDID; repeat it for each")
-      .argParser((value: string, previous: readonly string[] = []) => [
-        ...previous,
-        value,
-      ])
-      .makeOptionMandatory(),
+    new Option(
+      "--udid <udid>",
+      "the device's UDID; repeat it for each",
+    ).argParser((value: string, previous: readonly string[] = []) => [
+      ...previous,
+      value,
+    ]),
   )
   .addOption(
     new Option(
       "--name <name>",
       "the name App Store Connect shows: one for all of them, or one for each",
-    )
-      .argParser((value: string, previous: readonly string[] = []) => [
-        ...previous,
-        value,
-      ])
-      .makeOptionMandatory(),
+    ).argParser((value: string, previous: readonly string[] = []) => [
+      ...previous,
+      value,
+    ]),
   )
   .action(handleNativeBuildDevicesAdd);
 
 nativeBuildDevicesCommand
   .command("list")
-  .description("List the iPhones the Apple account has registered")
-  .option(
-    "-s, --scheme <scheme>",
-    "the nativeBuild.ios scheme whose App Store Connect API key to use (default: the only one that builds for a device)",
+  .description(
+    "List the iPhones and iPads in the device registry and the Apple account",
   )
+  .addOption(devicesSchemeOption())
   .action(handleNativeBuildDevicesList);
+
+nativeBuildDevicesCommand
+  .command("rename")
+  .description("Rename an iPhone or iPad in the device registry and at Apple")
+  .addOption(devicesSchemeOption())
+  .requiredOption("--udid <udid>", "the device's UDID")
+  .requiredOption("--name <name>", "the new name")
+  .action(handleNativeBuildDevicesRename);
+
+nativeBuildDevicesCommand
+  .command("remove")
+  .description(
+    "Remove an iPhone or iPad from the device registry, and disable it at Apple once confirmed",
+  )
+  .addOption(devicesSchemeOption())
+  .requiredOption("--udid <udid>", "the device's UDID")
+  .option(
+    "-y, --yes",
+    "disable it at Apple without asking; its slot isn't returned until the membership year renews",
+  )
+  .action(handleNativeBuildDevicesRemove);
 
 nativeBuildCommand
   .command("delete")

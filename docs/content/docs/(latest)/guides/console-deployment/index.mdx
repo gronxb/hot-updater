@@ -63,9 +63,19 @@ export default defineConsoleConfig({
   plugins: [apiKeys(), insights(), remoteConfig()],
   console: {
     gitUrl: "https://github.com/acme/app",
+    // Who approves iPhones for ad hoc builds; without it, nobody here does.
+    deviceApprovers: ["lead@acme.dev"],
   },
 });
 ```
+
+`console.deviceApprovers` lists the signed-in emails that approve iPhones and
+iPads for [ad hoc builds](/docs/native-builds/iphone-install). Each approval
+lets the next ad hoc build spend one of your Apple account's yearly device
+slots. Left out, nobody approves in this Console, and approvals happen with
+`npx hot-updater native-build devices add`. The emails come from the Console's
+sign-in, so a custom auth adapter must supply verified ones. Registering an
+iPhone from this Console also needs HTTPS and `BETTER_AUTH_SECRET`.
 
 The configuration mirrors your server: the same database and bucket, reached
 with the console host's own credentials, and the

@@ -1,6 +1,7 @@
 import type {
   BundleRow,
   ChannelRow,
+  IosDeviceRow,
   NativeBuildRow,
   ReleaseCatalogRow,
   ReleaseRow,
@@ -18,9 +19,9 @@ import type { HttpTestClient } from "./httpTestClient";
 /**
  * Core's operations through admin API protocol 2 that the bundle and catalog
  * suites leave out: channels, deploy refusals, promotion, preflights, a
- * bundle's patch children, and the native build registry. Each test deletes
- * what it wrote, except a native build, which the registry keeps: its IDs
- * and channel are the test's own.
+ * bundle's patch children, the native build registry, and the iOS device
+ * registry. Each test deletes what it wrote, except a native build, which the
+ * registry keeps: its IDs and channel are the test's own.
  */
 export const setupCoreAdminTestSuite = (options: {
   readonly getClient: () => HttpTestClient;
@@ -671,6 +672,140 @@ export const setupCoreAdminTestSuite = (options: {
       );
       expect(marked.status).toBe(400);
       await marked.text();
+    });
+
+    it("requests, approves, renames, records, and removes iOS devices", async () => {
+      // A UDID of the test's own: 40 hex digits from its namespace.
+      const udid = namespace.replaceAll("-", "").padEnd(40, "0");
+      const device = async (path: string, init?: Parameters<typeof admin>[1]) =>
+        (await adminJson(path, init)).data as IosDeviceRow | null;
+      const requested = (await adminJson(
+        "/ios-devices",
+        jsonRequest("POST", {
+          udid: udid.toUpperCase(),
+          name: "Kim's iPhone",
+          requestedBy: "kim@team.dev",
+        }),
+      )) as { data: { device: IosDeviceRow; created: boolean } };
+      expect(requested.data.created).toBe(true);
+      const { id } = requested.data.device;
+      expect(requested.data.device).toMatchObject({
+        udid,
+        status: "pending",
+        requested_by: "kim@team.dev",
+      });
+      try {
+        const again = (await adminJson(
+          "/ios-devices",
+          jsonRequest("POST", { udid, name: "Other", requestedBy: null }),
+        )) as { data: { device: IosDeviceRow; created: boolean } };
+        expect(again.data).toEqual({
+          device: requested.data.device,
+          created: false,
+        });
+        // Two first requests of another UDID at once: its unique index keeps
+        // one row, and both answer with it.
+        const raced = `${udid.slice(0, 39)}f`;
+        const racing = (await Promise.all(
+          ["Other", "Another"].map((name) =>
+            adminJson(
+              "/ios-devices",
+              jsonRequest("POST", { udid: raced, name, requestedBy: null }),
+            ),
+          ),
+        )) as { data: { device: IosDeviceRow; created: boolean } }[];
+        expect(racing.map(({ data }) => data.created).sort()).toEqual([
+          false,
+          true,
+        ]);
+        expect(racing[0]!.data.device.id).toBe(racing[1]!.data.device.id);
+        await adminJson(
+          `/ios-devices/${racing[0]!.data.device.id}`,
+          jsonRequest("DELETE"),
+        );
+        expect(await device(`/ios-devices/udid/${udid}`)).toEqual(
+          requested.data.device,
+        );
+        const pending = (await adminJson(
+          "/ios-devices?status=pending&limit=500",
+        )) as { data: IosDeviceRow[] };
+        expect(pending.data.map((row) => row.id)).toContain(id);
+
+        const approval = await device(
+          `/ios-devices/${id}/approval`,
+          jsonRequest("POST", { approvedBy: "lead@team.dev" }),
+        );
+        expect(approval).toMatchObject({
+          status: "approved",
+          approved_by: "lead@team.dev",
+        });
+        expect(
+          await device(
+            `/ios-devices/${id}`,
+            jsonRequest("PATCH", { name: "Kim's work iPhone" }),
+          ),
+        ).toMatchObject({ name: "Kim's work iPhone", status: "approved" });
+        const registered = await device(
+          `/ios-devices/${id}/outcome`,
+          jsonRequest("POST", {
+            seen: {
+              status: "approved",
+              approvedAtMs: approval!.approved_at_ms,
+            },
+            issuerId: "issuer-a",
+            outcome: "registered",
+          }),
+        );
+        expect(registered).toMatchObject({
+          status: "registered",
+          apple_issuer_id: "issuer-a",
+        });
+        // A stale snapshot writes nothing.
+        expect(
+          await device(
+            `/ios-devices/${id}/outcome`,
+            jsonRequest("POST", {
+              seen: { status: "approved", approvedAtMs: 1 },
+              issuerId: "issuer-a",
+              outcome: "missing",
+            }),
+          ),
+        ).toBeNull();
+        // The registry's Apple account: of two claims at once, one wins.
+        const claims = (await Promise.all(
+          ["issuer-a", "issuer-b"].map((issuerId) =>
+            adminJson(
+              "/ios-devices/account",
+              jsonRequest("POST", { issuerId }),
+            ),
+          ),
+        )) as { data: { issuerId: string; claimed: boolean } }[];
+        const owner = claims.find(({ data }) => data.claimed)?.data.issuerId;
+        expect(claims.filter(({ data }) => data.claimed)).toHaveLength(1);
+        expect(claims.map(({ data }) => data.issuerId)).toEqual([owner, owner]);
+        const buildId = bundleRow("90").id;
+        const marked = await admin(
+          "/ios-devices/in-build",
+          jsonRequest("POST", { buildId, ids: [id] }),
+        );
+        expect(marked.status).toBe(204);
+        expect((await device(`/ios-devices/udid/${udid}`))?.build_id).toBe(
+          buildId,
+        );
+
+        const refused = await admin(
+          "/ios-devices",
+          jsonRequest("POST", { udid: "1234", name: "x", requestedBy: null }),
+        );
+        expect(refused.status).toBe(400);
+        await refused.text();
+      } finally {
+        await adminJson(`/ios-devices/${id}`, jsonRequest("DELETE"));
+      }
+      expect(await device(`/ios-devices/udid/${udid}`)).toBeNull();
+      expect(
+        await device(`/ios-devices/${id}`, jsonRequest("DELETE")),
+      ).toBeNull();
     });
 
     it("lists the patches that start from a bundle", async () => {

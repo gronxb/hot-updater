@@ -7,16 +7,13 @@ import {
   readIpaInstallInfo,
 } from "@hot-updater/protocol/native-artifact";
 
-import { removeSavedAdHocProfileCommand } from "./savedAdHocProfile";
-
 /**
  * Says which devices a built `.ipa` installs on, from the `.ipa` itself: only
  * its bytes decide, whatever the Apple account lists. With `udids` it says
  * whether each is in, and a missing one fails the run, since the person passed
  * it to get a build that has it. An App Store export lists no devices, which is
- * news only to someone who passed a UDID. Registering a device reaches an `.ipa`
- * only when its export gets a new profile, which a CI runner always does, and a
- * machine that keeps a saved profile doesn't, while that profile fits.
+ * news only to someone who passed a UDID. An ad hoc build includes the
+ * device registry's approved devices itself; `--udid` checks the result.
  */
 export const reportIpaDevices = async ({
   artifactPath,
@@ -63,11 +60,24 @@ export const reportIpaDevices = async ({
       p.log.warn(
         [
           `${udid} isn't in this .ipa.`,
-          `If native-build devices list --scheme ${scheme} shows it, this machine reused its saved profile. Remove it, and build again:`,
-          removeSavedAdHocProfileCommand(info.profileBundleIds),
+          `Register it, then build again: npx hot-updater native-build devices add --scheme ${scheme} --udid ${udid} --name "<device name>"`,
         ].join("\n"),
       );
       process.exitCode = 1;
     }
+  }
+};
+
+/** The devices an `.ipa` lists, normalized, or null for one it can't read. */
+export const readIpaDevices = async (
+  artifactPath: string,
+): Promise<readonly string[] | null> => {
+  if (!artifactPath.endsWith(".ipa")) return null;
+  try {
+    return (
+      await readIpaInstallInfo(blobSource(await fs.openAsBlob(artifactPath)))
+    ).devices;
+  } catch {
+    return null;
   }
 };

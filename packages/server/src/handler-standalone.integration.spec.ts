@@ -377,6 +377,91 @@ describe("Insights through a self-hosted server's admin API", () => {
     );
   });
 
+  it("runs the iOS device registry through the admin API, method for method", async () => {
+    const remote = standaloneRepository({
+      baseUrl: `${baseUrl}/hot-updater/admin`,
+    }).core;
+    const udid = "00008030-001C2D3E4F5A6B7C";
+    const { device, created } = await remote.requestIosDevice({
+      udid,
+      name: "Kim's iPhone",
+      requestedBy: "kim@team.dev",
+    });
+    expect(created).toBe(true);
+    expect(device).toMatchObject({
+      udid: udid.toLowerCase(),
+      status: "pending",
+    });
+    await expect(
+      remote.requestIosDevice({ udid, name: "Other", requestedBy: null }),
+    ).resolves.toEqual({ device, created: false });
+    await expect(remote.findIosDevice(udid)).resolves.toEqual(device);
+    await expect(remote.findIosDevice("a".repeat(40))).resolves.toBeNull();
+    await expect(
+      remote.listIosDevices({ status: "pending", limit: 10 }),
+    ).resolves.toEqual([device]);
+
+    const approved = await remote.approveIosDevice(device.id, {
+      approvedBy: "lead@team.dev",
+      name: "Kim's work iPhone",
+    });
+    expect(approved).toMatchObject({
+      status: "approved",
+      name: "Kim's work iPhone",
+      approved_by: "lead@team.dev",
+    });
+    await expect(
+      remote.renameIosDevice(device.id, "Kim's iPhone"),
+    ).resolves.toMatchObject({ name: "Kim's iPhone" });
+    const registered = await remote.recordIosDeviceOutcome({
+      id: device.id,
+      seen: { status: "approved", approvedAtMs: approved!.approved_at_ms },
+      issuerId: "issuer-a",
+      outcome: "registered",
+    });
+    expect(registered).toMatchObject({
+      status: "registered",
+      apple_issuer_id: "issuer-a",
+    });
+    // A stale snapshot answers null and writes nothing.
+    await expect(
+      remote.recordIosDeviceOutcome({
+        id: device.id,
+        seen: { status: "approved", approvedAtMs: 1 },
+        issuerId: "issuer-a",
+        outcome: "missing",
+      }),
+    ).resolves.toBeNull();
+    await expect(remote.claimIosDeviceAccount("issuer-a")).resolves.toEqual({
+      issuerId: "issuer-a",
+      claimed: true,
+    });
+    await expect(remote.claimIosDeviceAccount("issuer-b")).resolves.toEqual({
+      issuerId: "issuer-a",
+      claimed: false,
+    });
+    const buildId = uuidv7();
+    await remote.markIosDevicesInBuild({ buildId, ids: [device.id] });
+    await expect(remote.findIosDevice(udid)).resolves.toMatchObject({
+      build_id: buildId,
+    });
+    await expect(
+      remote.requestIosDevice({ udid: "1234", name: "x", requestedBy: null }),
+    ).rejects.toThrow();
+    // A conditional delete of a row that no longer matches deletes nothing.
+    await expect(
+      remote.deleteIosDevice(device.id, {
+        status: "pending",
+        requestedBy: "kim@team.dev",
+      }),
+    ).resolves.toBeNull();
+    await expect(remote.deleteIosDevice(device.id)).resolves.toMatchObject({
+      id: device.id,
+    });
+    await expect(remote.deleteIosDevice(device.id)).resolves.toBeNull();
+    await expect(remote.listIosDevices({ limit: 10 })).resolves.toEqual([]);
+  });
+
   it("reads events with the repository's headers, and a server without insights() serves no Insights route", async () => {
     const on = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater/admin`,

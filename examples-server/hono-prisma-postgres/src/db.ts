@@ -43,7 +43,9 @@ export async function resetDecisionFixtures() {
       bundles,
       channels,
       bundle_totals,
-      native_builds
+      native_builds,
+      ios_devices,
+      ios_device_account
     CASCADE
   `);
 }

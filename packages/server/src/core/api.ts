@@ -1,3 +1,4 @@
+import { createIosDeviceApi } from "./iosDevices";
 import { createNativeBuildApi } from "./nativeBuilds";
 import { createCoreOperations } from "./operations";
 import { createCoreReads, type CoreDatabase, type CoreStorage } from "./reads";
@@ -60,6 +61,7 @@ export const createCoreApi = (
       options,
     ),
     ...createNativeBuildApi(db, options),
+    ...createIosDeviceApi(db, options),
     /** One read, which checks the schema settings first. */
     ready: async (): Promise<void> => {
       await reads.listReleaseCatalogs({ limit: 1 });

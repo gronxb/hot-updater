@@ -17,6 +17,7 @@ import {
 } from "@/lib/api";
 
 import { ImportBuildDialog } from "./ImportBuild";
+import { NativeBuildsNav } from "./NativeBuildsNav";
 import { NativeBuildsTable } from "./NativeBuildsTable";
 
 /**
@@ -69,6 +70,7 @@ export function NativeBuildsPage({
       </header>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 bg-muted/5 p-3 sm:p-6">
+        <NativeBuildsNav current="builds" />
         <div className="flex items-center gap-2">
           <Select
             items={[

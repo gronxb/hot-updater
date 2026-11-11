@@ -18,10 +18,12 @@ import { withSigningKeychain } from "./utils/ciSigningKeychain";
 import { createRandomTmpDir, removeTmpDir } from "./utils/createRandomTmpDir";
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 import { readBuiltApp } from "./utils/readBuiltApp";
+import { readIpaSigning } from "./utils/readIpaSigning";
 import {
   patchSandboxArchive,
   patchSandboxSimulatorApp,
 } from "./utils/sandboxInfoPlist";
+import { removeSavedAdHocProfiles } from "./utils/savedAdHocProfiles";
 import {
   exportsForAppStoreConnect,
   exportsForRegisteredDevices,
@@ -46,6 +48,7 @@ export const buildIos = async ({
   credentials,
   sandbox,
   logHeader = [],
+  expectedDevices,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
   /** The MIN_BUNDLE_ID the build compiles in. */
@@ -59,6 +62,13 @@ export const buildIos = async ({
   sandbox?: SandboxArchivePlan;
   /** Lines the build log starts with, such as the native build key. */
   logHeader?: string[];
+  /**
+   * The UDIDs an ad hoc export must list, as the device registry expects: when
+   * the `.ipa` lacks one, Xcode's saved ad hoc profiles of the app are deleted
+   * and it exports once more, so Xcode asks Apple for a profile with every
+   * enabled device.
+   */
+  expectedDevices?: readonly string[];
 }): Promise<{
   buildDirectory: string;
   buildArtifactPath: string;
@@ -96,6 +106,7 @@ export const buildIos = async ({
       sandbox,
       buildDirectory,
       logHeader,
+      expectedDevices,
     });
     return { ...built, dispose: () => removeTmpDir(buildDirectory) };
   } catch (error) {
@@ -111,6 +122,7 @@ const buildInto = async ({
   sandbox,
   buildDirectory,
   logHeader,
+  expectedDevices,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
   minBundleId: string;
@@ -118,6 +130,7 @@ const buildInto = async ({
   sandbox?: SandboxArchivePlan;
   buildDirectory: string;
   logHeader: string[];
+  expectedDevices?: readonly string[];
 }) => {
   const iosProjectRoot = path.join(getCwd(), "ios");
 
@@ -160,6 +173,7 @@ const buildInto = async ({
         sandbox,
         buildDirectory,
         logHeader,
+        expectedDevices,
       });
     }
     // In CI, an App Store Connect or ad hoc export signs in a keychain of its
@@ -187,6 +201,7 @@ const buildInto = async ({
           buildDirectory,
           logHeader,
           authenticationArgs: signing.authenticationArgs,
+          expectedDevices,
         }),
     });
   }
@@ -203,6 +218,7 @@ const archiveAndExport = async ({
   buildDirectory,
   logHeader,
   authenticationArgs,
+  expectedDevices,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
   minBundleId: string;
@@ -211,6 +227,8 @@ const archiveAndExport = async ({
   logHeader: string[];
   /** Signing arguments from `resolveXcodeSigning`. */
   authenticationArgs?: string[];
+  /** UDIDs the `.ipa` must list: see `buildIos`. */
+  expectedDevices?: readonly string[];
 }) => {
   const iosProjectRoot = path.join(getCwd(), "ios");
   const archiveDir = path.join(buildDirectory, "archive");
@@ -274,9 +292,8 @@ const archiveAndExport = async ({
     };
   }
 
-  await fs.promises.mkdir(exportDir, { recursive: true });
   let exportMethod: string | undefined;
-  const exportArchive = async (exportOptionsPlist: string) => {
+  const runExport = async (exportOptionsPlist: string) => {
     // What the registry confirms against the .ipa; one it can't read is none.
     exportMethod =
       (await readExportMethod(exportOptionsPlist).catch(() => "")) || undefined;
@@ -292,6 +309,44 @@ const archiveAndExport = async ({
       logFilePath: logFilePath ?? undefined,
       title: schemeConfig.scheme,
     });
+  };
+  // Each export starts from an empty folder and leaves only its .ipa, even
+  // when it throws: Packaging.log holds the API key's bearer token.
+  const exportOnce = async (exportOptionsPlist: string) => {
+    await fs.promises.rm(exportDir, { recursive: true, force: true });
+    await fs.promises.mkdir(exportDir, { recursive: true });
+    try {
+      await runExport(exportOptionsPlist);
+    } finally {
+      await keepOnlyIpas(exportDir);
+    }
+  };
+  // An ad hoc export Xcode signed with a saved profile that lacks a device
+  // the registry expects: the profile goes, and the same options export
+  // again inside the same keychain, so Xcode asks Apple for a new profile.
+  const exportArchive = async (exportOptionsPlist: string) => {
+    await exportOnce(exportOptionsPlist);
+    if (!expectedDevices?.length) return;
+    const ipaFile = findIpa(exportDir);
+    if (ipaFile === undefined) return;
+    const signed = await readIpaSigning(path.join(exportDir, ipaFile));
+    if (signed === null || signed.teamId === null) return;
+    const missing = expectedDevices.filter(
+      (udid) => !signed.devices.includes(udid.toLowerCase()),
+    );
+    if (missing.length === 0 || signed.distribution !== "ad-hoc") return;
+    const { removed, failed } = await removeSavedAdHocProfiles({
+      teamId: signed.teamId,
+      bundleIds: signed.profileBundleIds,
+    });
+    for (const { file, reason } of failed) {
+      p.log.warn(`Couldn't delete the saved profile ${file}: ${reason}`);
+    }
+    if (removed.length === 0) return;
+    p.log.info(
+      `Exporting again · a saved ad hoc profile lacked ${missing.length} approved ${missing.length === 1 ? "device" : "devices"}`,
+    );
+    await exportOnce(exportOptionsPlist);
   };
   const { exportOptionsPlist } = schemeConfig;
   if (exportOptionsPlist && !schemeConfig.sandbox) {
@@ -315,10 +370,7 @@ const archiveAndExport = async ({
     }
   }
 
-  await keepOnlyIpas(exportDir);
-  const ipaFile = fs
-    .readdirSync(exportDir)
-    .find((file) => file.endsWith(".ipa"));
+  const ipaFile = findIpa(exportDir);
 
   if (!ipaFile) {
     throw new Error("IPA file not found after export");
@@ -331,6 +383,9 @@ const archiveAndExport = async ({
     builtApp: archivedAppPath ? await readBuiltApp(archivedAppPath) : undefined,
   };
 };
+
+const findIpa = (exportDir: string) =>
+  fs.readdirSync(exportDir).find((file) => file.endsWith(".ipa"));
 
 /**
  * Leaves only the `.ipa` in an export's folder. Xcode writes `Packaging.log`

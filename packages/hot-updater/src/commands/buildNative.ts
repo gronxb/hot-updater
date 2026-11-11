@@ -22,6 +22,7 @@ import {
   buildIos,
   distributeTestFlightBuild,
   type EnrichedNativeBuildIosScheme,
+  exportsForRegisteredDevices,
   findInternalBetaGroup,
   findTestFlightBuild,
   installPodsIfNeeded,
@@ -82,6 +83,7 @@ import { printBanner } from "@/utils/printBanner";
 import { getChannel } from "@/utils/setChannel";
 
 import { ARTIFACT_PATH_WIDTH, ui } from "../utils/cli-ui";
+import { loadServer } from "../utils/loadServer";
 import { ensureAscApiKey } from "../utils/native/ascApiKey";
 import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
 import type { NativeBuildCacheHit } from "../utils/native/nativeBuildCache";
@@ -98,7 +100,16 @@ import {
   checkGooglePlay,
   formatGooglePlayReadiness,
 } from "../utils/native/playServiceAccount";
-import { reportIpaDevices } from "../utils/native/reportIpaDevices";
+import {
+  type IosDeviceRegistryStep,
+  missingIpaDevices,
+  registerApprovedDevices,
+  resolveSchemeAscApiKey,
+} from "../utils/native/registerApprovedDevices";
+import {
+  readIpaDevices,
+  reportIpaDevices,
+} from "../utils/native/reportIpaDevices";
 import {
   type NativeBuildCache,
   rememberTrackedBuild,
@@ -443,6 +454,22 @@ const buildNativeInternal = async ({
                 }),
               )
             : undefined;
+        // An ad hoc export registers the registry's approved devices with
+        // Apple first, and its .ipa must then list every one Apple enabled.
+        const deviceRegistry =
+          platform === "ios" &&
+          iosSchemeConfig &&
+          !iosSchemeConfig.simulator &&
+          trackingSkipped !== "debug" &&
+          (await exportsForRegisteredDevices(iosSchemeConfig))
+            ? await runDeviceRegistry({
+                config,
+                scheme,
+                iosScheme: iosSchemeConfig,
+                credentials,
+                dryRun,
+              })
+            : null;
         // A sandbox .aab's version code follows the store, as an .ipa's number.
         const highestVersionCode =
           sandbox && androidSchemeConfig && serviceAccount && !dryRun
@@ -516,6 +543,7 @@ const buildNativeInternal = async ({
                   ? undefined
                   : highestVersionCode + 1,
               tracked: trackingSkipped === null,
+              expectedDevices: deviceRegistry?.expected.map(({ udid }) => udid),
               logHeader: [...(cache?.logHeader ?? []), ""],
               onLog: (file) => {
                 buildLog.path = file;
@@ -538,6 +566,26 @@ const buildNativeInternal = async ({
                   }),
                 stays(result.artifactPath),
               );
+        // An approved device Apple has enabled that the .ipa still lacks
+        // fails the build before anything records it: the .ipa stays.
+        if (deviceRegistry && deviceRegistry.expected.length > 0) {
+          const listed = await readIpaDevices(
+            path.resolve(getCwd(), result.artifactPath),
+          );
+          const missing = missingIpaDevices(
+            deviceRegistry.expected,
+            listed ?? [],
+          );
+          if (missing.length > 0) {
+            throw new NativeBuildFailure(
+              [
+                `The .ipa lacks ${missing.length === 1 ? "1 approved device" : `${missing.length} approved devices`} Apple has enabled: ${missing.map(({ name }) => name).join(", ")}.`,
+                "Apple can take a few minutes to add a new device. Build again.",
+                stays(result.artifactPath),
+              ].join("\n"),
+            );
+          }
+        }
         if (!reused) await cache?.remember(result, null);
         if (dryRun) trackingSkipped = "dry-run";
         // A build reused from storage is tracked already; one reused from
@@ -555,6 +603,17 @@ const buildNativeInternal = async ({
                 });
         if (registered && reused?.source !== "storage" && cache) {
           await rememberTrackedBuild(cache, registered.id);
+        }
+        if (
+          registered &&
+          deviceRegistry &&
+          deviceRegistry.expected.length > 0
+        ) {
+          await markDevicesInBuild(
+            platform,
+            registered.id,
+            deviceRegistry.expected.map(({ id }) => id),
+          );
         }
         // Stores take a build number once. Recorded Play builds promote upward
         // or update the same public track for an explicit rollout change.
@@ -847,6 +906,8 @@ const buildNativeInternal = async ({
               build: result,
               nativeBuild: registered,
               registration: { skipped: trackingSkipped },
+              // What the build did with the iOS device registry, by name.
+              devices: deviceRegistry?.report ?? null,
               submission: {
                 destination: upload ?? null,
                 skipped:
@@ -913,6 +974,7 @@ const buildNow = async ({
   sandboxArchive,
   minVersionCode,
   tracked,
+  expectedDevices,
   logHeader,
   onLog,
 }: {
@@ -930,6 +992,8 @@ const buildNow = async ({
   /** The lowest version code a sandbox `.aab` may have, past the store's. */
   minVersionCode?: number;
   tracked: boolean;
+  /** UDIDs an ad hoc `.ipa` must list, from the device registry. */
+  expectedDevices?: readonly string[];
   /** Lines the build log starts with: the cache's key and what changed. */
   logHeader: string[];
   /** Receives the build log's path once the build has one. */
@@ -990,12 +1054,91 @@ const buildNow = async ({
               credentials,
               sandbox: sandboxArchive,
               logHeader: header,
+              ...(expectedDevices?.length ? { expectedDevices } : {}),
             });
       onLog(built.logFilePath);
       return built;
     },
   });
   return result;
+};
+
+/**
+ * The device registry's step of an ad hoc export, over the config's database:
+ * a database or App Store Connect it can't reach fails the run before
+ * anything is built.
+ */
+const runDeviceRegistry = async ({
+  config,
+  scheme,
+  iosScheme,
+  credentials,
+  dryRun,
+}: {
+  config: Parameters<typeof loadServer>[0];
+  scheme: string;
+  iosScheme: EnrichedNativeBuildIosScheme;
+  credentials: CredentialResolver;
+  dryRun: boolean;
+}): Promise<IosDeviceRegistryStep> => {
+  let server: Awaited<ReturnType<typeof loadServer>>;
+  try {
+    server = await loadServer(config);
+  } catch (error) {
+    throw new NativeBuildFailure(
+      [
+        "Can't reach the server for its iOS devices. Nothing was built.",
+        error instanceof Error ? error.message : String(error),
+      ].join("\n"),
+      { cause: error },
+    );
+  }
+  try {
+    return await registerApprovedDevices({
+      core: server.core,
+      scheme,
+      ascApiKey: iosScheme.signing?.ascApiKey,
+      exportOptionsPlist: iosScheme.exportOptionsPlist,
+      resolveApiKey: () =>
+        resolveSchemeAscApiKey(credentials, iosScheme.signing!.ascApiKey),
+      dryRun,
+    });
+  } catch (error) {
+    throw new NativeBuildFailure(
+      [
+        error instanceof Error ? error.message : String(error),
+        "Nothing was built.",
+      ].join("\n"),
+      { cause: error },
+    );
+  } finally {
+    await server.dispose();
+  }
+};
+
+/**
+ * Records which registry devices the tracked build's .ipa lists, over a
+ * database of its own: the registry step disposed the one it read with, and
+ * an adapter such as postgres() closes its connection when disposed. The
+ * config loads as the build loaded it, for its platform, so a config that
+ * picks its database by platform marks the registry the build read.
+ */
+const markDevicesInBuild = async (
+  platform: Platform,
+  buildId: string,
+  ids: readonly string[],
+) => {
+  const server = await loadServer(await loadConfig({ platform, channel: "" }));
+  try {
+    await server.core.markIosDevicesInBuild({ buildId, ids });
+  } catch (error) {
+    // The build is tracked already: the Console still reads its .ipa.
+    p.log.warn(
+      `Couldn't record the build's devices in the registry: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  } finally {
+    await server.dispose();
+  }
 };
 
 /**
