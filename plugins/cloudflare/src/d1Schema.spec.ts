@@ -53,6 +53,16 @@ const SHIPPED: Readonly<Record<string, string>> = {
  */
 const LATEST = "0002_hot-updater_1.2.0.sql";
 
+/**
+ * What the 1.2.0 release notes tell a database a 1.2 prerelease migrated to
+ * run by hand for the iOS device registry: D1's statements of `LATEST`.
+ */
+const RC_IOS_DEVICES_STATEMENTS = [
+  'CREATE TABLE IF NOT EXISTS "ios_devices" ("id" TEXT NOT NULL, "udid" TEXT NOT NULL, "name" TEXT NOT NULL, "status" TEXT NOT NULL, "requested_by" TEXT, "created_at_ms" INTEGER NOT NULL, "approved_by" TEXT, "approved_at_ms" INTEGER, "registered_at_ms" INTEGER, "apple_issuer_id" TEXT, "apple_error" TEXT, "build_id" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"))',
+  'CREATE INDEX IF NOT EXISTS "ios_devices_byStatus" ON "ios_devices" ("status", "id")',
+  'CREATE UNIQUE INDEX IF NOT EXISTS "ios_devices_udid" ON "ios_devices" ("udid")',
+];
+
 const readMigration = (name: string) =>
   fs.readFile(path.join(MIGRATIONS, name), "utf8");
 
@@ -158,6 +168,39 @@ describe("d1 schema", () => {
         .filter((sql) => sql.startsWith("INSERT"))
         .map((sql) => sql.match(/VALUES \('([^']+)'/u)?.[1]),
     ).toEqual(Object.keys(later.settings));
+  });
+
+  it("brings a database a 1.2 prerelease migrated up to the iOS device registry with the statements the release notes print", async () => {
+    // A prerelease's 0002: this one without the iOS device registry.
+    const prerelease = new DatabaseSync(":memory:");
+    for (const name of [...Object.keys(SHIPPED), LATEST]) {
+      for (const statement of d1MigrationStatements(
+        await readMigration(name),
+      )) {
+        if (!statement.includes('"ios_devices"')) prerelease.exec(statement);
+      }
+    }
+    const core = createHotUpdater({
+      database: sqliteD1(prerelease),
+      storage: createReleaseCatalogTestStorage(),
+      clientAccess: "public",
+    }).core;
+    // The fence compares schema.core, so only the read says the table is missing.
+    await expect(core.listIosDevices({ limit: 1 })).rejects.toThrow();
+    for (const statement of RC_IOS_DEVICES_STATEMENTS)
+      prerelease.exec(statement);
+    await expect(core.listIosDevices({ limit: 1 })).resolves.toEqual([]);
+    const migrated = new DatabaseSync(":memory:");
+    for (const name of [...Object.keys(SHIPPED), LATEST]) {
+      for (const statement of d1MigrationStatements(
+        await readMigration(name),
+      )) {
+        migrated.exec(statement);
+      }
+    }
+    expect(describeSchema(prerelease)).toEqual(describeSchema(migrated));
+    prerelease.close();
+    migrated.close();
   });
 
   it("serves once the schema is applied, writing each change as one batch", async () => {

@@ -323,7 +323,7 @@ describe("registerApprovedDevices", () => {
     expect(resolveApiKey).not.toHaveBeenCalled();
     expect(listAscDevices).not.toHaveBeenCalled();
     expect(log.info).toHaveBeenCalledWith(
-      "iOS devices · would register 1 approved device",
+      "iOS devices · 1 approved; a real run registers those Apple lacks",
     );
     expect((await statusOf(PHONE))?.status).toBe("approved");
   });

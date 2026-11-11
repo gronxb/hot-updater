@@ -208,7 +208,7 @@ export const registerApprovedDevices = async ({
   if (dryRun) {
     if (approved.length > 0) {
       p.log.info(
-        `iOS devices · would register ${plural(approved.length, "approved device", "approved devices")}`,
+        `iOS devices · ${approved.length} approved; a real run registers those Apple lacks`,
       );
     }
     return { ...idle, report: { ...idle.report, waiting: approved.length } };
