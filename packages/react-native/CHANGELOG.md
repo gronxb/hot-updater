@@ -1,5 +1,14 @@
 # @hot-updater/react-native
 
+## 1.2.0-rc.29
+
+### Patch Changes
+
+- e2078e4: Sandbox: before the app's first answered update check, Enter a channel stays disabled, and the Home hint and the error both say to open the app so it can check for updates. The row turns on as soon as a check is answered, even with the screen open.
+- @hot-updater/protocol@1.2.0-rc.29
+  - @hot-updater/plugin-insights@1.2.0-rc.29
+  - @hot-updater/plugin-remote-config@1.2.0-rc.29
+
 ## 1.2.0-rc.28
 
 ### Patch Changes
