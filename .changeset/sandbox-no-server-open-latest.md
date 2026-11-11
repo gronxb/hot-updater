@@ -2,4 +2,4 @@
 "@hot-updater/react-native": patch
 ---
 
-Sandbox: before the app's first answered update check, Enter a channel's Open latest waits for a server, and the Home hint and the error both say to open the app so it can check for updates.
+Sandbox: before the app's first answered update check, Enter a channel stays disabled, and the Home hint and the error both say to open the app so it can check for updates.

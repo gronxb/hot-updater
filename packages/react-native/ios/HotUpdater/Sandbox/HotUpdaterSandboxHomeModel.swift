@@ -59,7 +59,9 @@ struct HotUpdaterSandboxHomeModel: Equatable {
     let downloadedFooter: String
     /// Before a server answered, what previews wait for.
     let previewHint: String?
-    let hasServerConfig: Bool
+    /// Whether Enter a channel opens. A typed channel needs a server to ask, so
+    /// the row waits for one, with `previewHint` under it saying what to do.
+    let canEnterChannel: Bool
 
     static let hint = "Shake the device to come back here."
     /// A typed channel doesn't ask first, so this says it up front.
@@ -69,12 +71,6 @@ struct HotUpdaterSandboxHomeModel: Equatable {
     /// Until a server answers one of the app's checks, the link path's next step.
     static let noServer = "No update server yet. Open the app so it can check for updates."
 
-    /// Whether Enter a channel's button opens `entry`. A typed channel needs a
-    /// server to ask, so it waits for one; a link waits for it by itself.
-    func canOpen(_ entry: String) -> Bool {
-        let text = entry.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !text.isEmpty && (hasServerConfig || text.contains("://"))
-    }
 
     init(
         state: HotUpdaterSandboxState,
@@ -109,7 +105,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
             ? Self.emptyDownloaded
             : "\(history.count) of \(HotUpdaterSandboxShelf.limit)" + (state.downloadedBytes > 0 ? " · \(Self.sizeText(state.downloadedBytes))" : "")
         previewHint = state.hasServerConfig ? nil : Self.noServer
-        hasServerConfig = state.hasServerConfig
+        canEnterChannel = state.hasServerConfig && !isBusy
     }
 
     static func downloadedText(atMs: Double, nowMs: Double) -> String {

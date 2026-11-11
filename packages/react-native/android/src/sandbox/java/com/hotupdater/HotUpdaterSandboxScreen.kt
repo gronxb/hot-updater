@@ -525,8 +525,7 @@ internal class HotUpdaterSandboxScreen(
                         fieldLabel = "Channel or link",
                         action = "Open latest",
                         keyboardType = KeyboardType.Ascii,
-                        enabled = !home.isBusy,
-                        canSend = home::canOpen,
+                        enabled = home.canEnterChannel,
                     ) { coordinator.switchTo(it) }
                 }
             }
@@ -585,7 +584,6 @@ internal class HotUpdaterSandboxScreen(
         action: String,
         keyboardType: KeyboardType,
         enabled: Boolean,
-        canSend: (String) -> Boolean = String::isNotBlank,
         submit: (String) -> Unit,
     ) {
         val haptics = LocalView.current
@@ -623,7 +621,7 @@ internal class HotUpdaterSandboxScreen(
         }
         val send = {
             val value = text.trim()
-            if (canSend(value)) {
+            if (value.isNotEmpty()) {
                 SandboxHaptic.tap(haptics)
                 typed[id] = ""
                 focus.clearFocus()
@@ -645,7 +643,7 @@ internal class HotUpdaterSandboxScreen(
             ) {
                 SandboxField(text, { typed[id] = it }, placeholder, fieldLabel, keyboardType, field, send)
                 Box(Modifier.bringIntoViewRequester(button)) {
-                    SandboxPrimaryButton(action, enabled = canSend(text), onClick = send)
+                    SandboxPrimaryButton(action, enabled = text.isNotBlank(), onClick = send)
                 }
             }
         }

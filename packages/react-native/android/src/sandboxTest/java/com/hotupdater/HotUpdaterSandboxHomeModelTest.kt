@@ -556,14 +556,11 @@ class HotUpdaterSandboxHomeModelTest {
     }
 
     @Test
-    fun `a typed channel opens only once a server is known, a link always`() {
-        val first = home(state(selection(bundleId = "built-in"), hasServerConfig = false))
-        assertFalse(first.canOpen("pr-134"))
-        assertTrue(first.canOpen(" myapp://hot-updater/preview?channel=pr-134 "))
-        assertFalse(first.canOpen("  "))
-        val known = home(state(selection(bundleId = "built-in")))
-        assertTrue(known.canOpen(" pr-134 "))
-        assertFalse(known.canOpen(""))
+    fun `Enter a channel opens once a server is known and nothing runs`() {
+        assertFalse(home(state(selection(bundleId = "built-in"), hasServerConfig = false)).canEnterChannel)
+        assertTrue(home(state(selection(bundleId = "built-in"))).canEnterChannel)
+        val working = HotUpdaterSandboxPhase.Working(1, "pr-134", HotUpdaterSandboxStep.CHECK)
+        assertFalse(home(state(selection(bundleId = "built-in"), phase = working)).canEnterChannel)
     }
 
     private fun entry(

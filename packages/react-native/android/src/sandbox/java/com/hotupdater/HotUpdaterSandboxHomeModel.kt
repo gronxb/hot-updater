@@ -22,17 +22,12 @@ internal data class HotUpdaterSandboxHomeModel(
     val downloadedFooter: String,
     /** Before a server answered, what previews wait for. */
     val previewHint: String?,
-    val hasServerConfig: Boolean,
-) {
     /**
-     * Whether Enter a channel's button opens [entry]. A typed channel needs a
-     * server to ask, so it waits for one; a link waits for it by itself.
+     * Whether Enter a channel opens. A typed channel needs a server to ask, so
+     * the row waits for one, with [previewHint] under it saying what to do.
      */
-    fun canOpen(entry: String): Boolean {
-        val text = entry.trim()
-        return text.isNotEmpty() && (hasServerConfig || text.contains("://"))
-    }
-
+    val canEnterChannel: Boolean,
+) {
     data class Banner(
         val text: String,
         /** A bundle that crashed and stays selected: the way out is a reset. */
@@ -124,7 +119,7 @@ internal data class HotUpdaterSandboxHomeModel(
                             if (state.downloadedBytes > 0) " · ${sizeText(state.downloadedBytes)}" else ""
                     },
                 previewHint = if (state.hasServerConfig) null else NO_SERVER,
-                hasServerConfig = state.hasServerConfig,
+                canEnterChannel = state.hasServerConfig && state.phase !is HotUpdaterSandboxPhase.Working,
             )
         }
 

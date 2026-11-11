@@ -554,8 +554,7 @@ private struct HomeScreen: View {
                     action: "Open latest",
                     keyboard: .asciiCapable,
                     text: $model.channelText,
-                    isEnabled: !home.isBusy,
-                    canSend: home.canOpen
+                    isEnabled: home.canEnterChannel
                 ) { model.coordinator.switchTo($0) }
             }
         }
@@ -625,12 +624,11 @@ private struct HomeScreen: View {
         keyboard: UIKeyboardType,
         text: Binding<String>,
         isEnabled: Bool,
-        canSend: @escaping (String) -> Bool = { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty },
         submit: @escaping (String) -> Void
     ) -> some View {
         let send = {
             let value = text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard canSend(value) else { return }
+            guard !value.isEmpty else { return }
             SandboxHaptic.tap()
             text.wrappedValue = ""
             focus = nil
@@ -666,7 +664,7 @@ private struct HomeScreen: View {
                 .accessibilityLabel(fieldLabel)
             Button(action, action: send)
                 .buttonStyle(SandboxPrimaryButtonStyle())
-                .disabled(!canSend(text.wrappedValue))
+                .disabled(text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .id(entry)
     }

@@ -2129,14 +2129,11 @@ struct HotUpdaterSandboxHomeModelTests {
     }
 
     @Test
-    func aTypedChannelOpensOnlyOnceAServerIsKnownALinkAlways() {
-        let first = home(state(selection: selection(bundleId: "built-in"), hasServerConfig: false))
-        #expect(!first.canOpen("pr-134"))
-        #expect(first.canOpen(" myapp://hot-updater/preview?channel=pr-134 "))
-        #expect(!first.canOpen("  "))
-        let known = home(state(selection: selection(bundleId: "built-in")))
-        #expect(known.canOpen(" pr-134 "))
-        #expect(!known.canOpen(""))
+    func enterAChannelOpensOnceAServerIsKnownAndNothingRuns() {
+        #expect(!home(state(selection: selection(bundleId: "built-in"), hasServerConfig: false)).canEnterChannel)
+        #expect(home(state(selection: selection(bundleId: "built-in"))).canEnterChannel)
+        let working = HotUpdaterSandboxPhase.working(operationId: 1, target: "pr-134", step: .check, progress: nil)
+        #expect(!home(state(selection: selection(bundleId: "built-in"), phase: working)).canEnterChannel)
     }
 
     @Test
