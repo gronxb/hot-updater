@@ -1,5 +1,7 @@
 # @hot-updater/test-utils
 
+## 1.2.0-rc.29
+
 ## 1.2.0-rc.28
 
 ### Patch Changes
