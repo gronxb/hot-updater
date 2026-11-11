@@ -9,11 +9,13 @@ import { assertCanonicalChannelName } from "@hot-updater/protocol";
 import { createServerFn } from "@tanstack/react-start";
 
 import { consoleAccess } from "./console-access";
-import { DEFAULT_PAGE_LIMIT } from "./constants";
 import { channelIdOf, releaseNativeBuildScope } from "./native-builds";
 import { withPublicBundleMutationErrors } from "./public-bundle-error";
-import { listReleases, readReleaseFilter } from "./server/listReleases";
-import { addReleaseReachability } from "./server/releaseReachability";
+import {
+  listReleaseFolds,
+  readReleaseFilter,
+  readReleaseFold,
+} from "./server/listReleases";
 
 type GetBundleInput = {
   bundleId: string;
@@ -34,7 +36,28 @@ type GetReleasesInput = {
   beforeReleaseId?: string;
   /** Releases newer than this id: the previous page. */
   afterReleaseId?: string;
-  limit?: number;
+  /** The selected release, which never folds. */
+  releaseId?: string;
+};
+
+/** A fold of a list's page, as the page gave it, and where its last chunk ended. */
+type FoldInput = { from?: string; to: string; after?: string };
+
+/** The bounds of a fold, checked: IDs as text. */
+const readFoldInput = (input: FoldInput) => {
+  const text = (value: unknown) => typeof value === "string" && value !== "";
+  if (
+    !text(input.to) ||
+    (input.from !== undefined && !text(input.from)) ||
+    (input.after !== undefined && !text(input.after))
+  ) {
+    throw new Error("A fold is its to, and optionally from and after.");
+  }
+  return {
+    to: input.to,
+    ...(input.from === undefined ? {} : { from: input.from }),
+    ...(input.after === undefined ? {} : { after: input.after }),
+  };
 };
 
 type ReleaseMutationInput = {
@@ -46,16 +69,6 @@ type ReleaseMutationInput = {
 type DeleteReleaseInput = {
   expectedRevision?: number;
   releaseId: string;
-};
-
-const MAX_PAGE_LIMIT = 100;
-
-const pageLimit = (limit: number | undefined) => {
-  const value = limit ?? DEFAULT_PAGE_LIMIT;
-  if (!Number.isSafeInteger(value) || value < 1 || value > MAX_PAGE_LIMIT) {
-    throw new Error(`limit must be between 1 and ${MAX_PAGE_LIMIT}.`);
-  }
-  return value;
 };
 
 const prepare = async () => {
@@ -73,16 +86,18 @@ export const getReleases = createServerFn({ method: "GET" })
     ...(input?.beforeReleaseId === undefined
       ? {}
       : { beforeReleaseId: input.beforeReleaseId }),
-    limit: pageLimit(input?.limit),
+    ...(input?.releaseId === undefined ? {} : { releaseId: input.releaseId }),
   }))
-  .handler(async ({ data }) => {
-    const { core } = await prepare();
-    const result = await listReleases(core, data);
-    return {
-      ...result,
-      data: await addReleaseReachability(core, result.data),
-    };
-  });
+  .handler(async ({ data }) => listReleaseFolds((await prepare()).core, data));
+
+/** One chunk of a release page's fold. */
+export const getReleaseFold = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
+  .validator((input: FoldInput & { filter?: ReleaseFilter }) => ({
+    filter: readReleaseFilter(input.filter),
+    ...readFoldInput(input),
+  }))
+  .handler(async ({ data }) => readReleaseFold((await prepare()).core, data));
 
 export const getRelease = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
@@ -257,22 +272,34 @@ export const getNativeBuilds = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
   .validator(
     (
-      input:
-        | { before?: string; after?: string; channel?: string; limit?: number }
-        | undefined,
+      input: { before?: string; after?: string; channel?: string } | undefined,
     ) => ({
       ...(input?.before === undefined ? {} : { before: input.before }),
       ...(input?.after === undefined ? {} : { after: input.after }),
       ...channelIdFilter(input?.channel),
-      limit: pageLimit(input?.limit),
     }),
   )
   .handler(async ({ data }) => {
-    const [{ core }, { listNativeBuilds }] = await Promise.all([
+    const [{ core }, { listNativeBuildFolds }] = await Promise.all([
       prepare(),
       import("./server/nativeBuilds"),
     ]);
-    return listNativeBuilds(core, data);
+    return listNativeBuildFolds(core, data);
+  });
+
+/** One chunk of a native build page's fold. */
+export const getNativeBuildFold = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
+  .validator((input: FoldInput & { channel?: string }) => ({
+    ...channelIdFilter(input.channel),
+    ...readFoldInput(input),
+  }))
+  .handler(async ({ data }) => {
+    const [{ core }, { readNativeBuildFold }] = await Promise.all([
+      prepare(),
+      import("./server/nativeBuilds"),
+    ]);
+    return readNativeBuildFold(core, data);
   });
 
 /** A native build's page: the build, its built-in bundle, what it is served, and its patches. */

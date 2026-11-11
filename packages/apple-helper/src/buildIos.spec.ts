@@ -273,12 +273,20 @@ describe("buildIos", () => {
   it("archives and exports an .ipa with the scheme's export options and the project's signing", async () => {
     const credentials = ascKeyResolver();
     const exportOptionsPlist = path.join(root, "ExportOptions.plist");
+    await fs.writeFile(
+      exportOptionsPlist,
+      "<plist><dict><key>method</key><string>release-testing</string></dict></plist>",
+    );
 
-    const { buildDirectory, buildArtifactPath, builtApp } = await buildIos({
-      schemeConfig: scheme({ exportOptionsPlist }),
-      minBundleId: MIN_BUNDLE_ID,
-      credentials,
-    });
+    const { buildDirectory, buildArtifactPath, builtApp, exportMethod } =
+      await buildIos({
+        schemeConfig: scheme({ exportOptionsPlist }),
+        minBundleId: MIN_BUNDLE_ID,
+        credentials,
+      });
+
+    // The method the .ipa was exported with, for the registry to confirm.
+    expect(exportMethod).toBe("release-testing");
 
     expect(buildArtifactPath).toBe(
       path.join(buildDirectory, "export", "App.ipa"),
@@ -305,13 +313,14 @@ describe("buildIos", () => {
   it("signs the archive and the export with the scheme's App Store Connect API key", async () => {
     const credentials = ascKeyResolver();
 
-    const { buildArtifactPath } = await buildIos({
+    const { buildArtifactPath, exportMethod } = await buildIos({
       schemeConfig: scheme({ signing: { ascApiKey: secret("app-store-key") } }),
       minBundleId: MIN_BUNDLE_ID,
       credentials,
     });
 
     expect(buildArtifactPath.endsWith("App.ipa")).toBe(true);
+    expect(exportMethod).toBe("app-store-connect");
     expect(credentials.resolve).toHaveBeenCalledOnce();
     expect(credentials.resolve).toHaveBeenCalledWith({
       kind: "asc-api-key",

@@ -24,6 +24,7 @@ export type {
   DatabaseJsonObject,
   DatabaseJsonValue,
   NativeBuildArtifactKind,
+  NativeBuildExportMethod,
   NativeBuildRow,
   NativeBuildSubmissionDestination,
   ReleaseCatalogRow,

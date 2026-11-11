@@ -239,3 +239,80 @@ describe("a native build row written before sandbox_url_scheme", () => {
     ).toEqual([null]);
   });
 });
+
+describe.each(adapters)("the export method on %s", (_name, adapter) => {
+  /** A core whose clock reads `clock.ms`, so registration order is the test's. */
+  const setup = async () => {
+    const clock = { ms: 1_000 };
+    const core = createInProcessCoreApi(await adapter(), {
+      now: () => clock.ms,
+    });
+    const register = async (
+      n: number,
+      ms: number,
+      overrides: Partial<NativeBuildRegistration> = {},
+    ) => {
+      clock.ms = ms;
+      return core.registerNativeBuild(registration(n, overrides));
+    };
+    return { core, clock, register };
+  };
+  it("records an .ipa's export method, and null when it has none", async () => {
+    const { core, register } = await setup();
+    const adHoc = await register(1, 1_000, { exportMethod: "ad-hoc" });
+    await register(2, 2_000);
+
+    expect(adHoc.export_method).toBe("ad-hoc");
+    expect((await core.getNativeBuild(buildId(1)))?.export_method).toBe(
+      "ad-hoc",
+    );
+    expect((await core.getNativeBuild(buildId(2)))?.export_method).toBeNull();
+    await expect(
+      register(3, 3_000, {
+        exportMethod: "ad-hoc",
+        artifact: {
+          kind: "app",
+          storageUri: "storage://native-builds/ios/3/App.app.zip",
+          byteSize: 1,
+        },
+      }),
+    ).rejects.toThrow("exportMethod is an .ipa's");
+  });
+});
+
+describe.each(adapters)(
+  "a native build read through a key on %s",
+  (_name, adapter) => {
+    it("ends at that key, either way, past `after` or from the edge", async () => {
+      const core = createInProcessCoreApi(await adapter());
+      for (const n of [1, 2, 3, 4, 5])
+        await core.registerNativeBuild(registration(n));
+      const ids = async (input: Parameters<typeof core.listNativeBuilds>[0]) =>
+        (await core.listNativeBuilds(input)).map(({ id }) => id);
+
+      expect(
+        await ids({
+          order: "desc",
+          after: buildId(5),
+          through: buildId(3),
+          limit: 10,
+        }),
+      ).toEqual([buildId(4), buildId(3)]);
+      expect(
+        await ids({ order: "desc", through: buildId(4), limit: 10 }),
+      ).toEqual([buildId(5), buildId(4)]);
+      expect(
+        await ids({
+          order: "asc",
+          after: buildId(1),
+          through: buildId(3),
+          limit: 10,
+        }),
+      ).toEqual([buildId(2), buildId(3)]);
+      // The limit still ends a read first.
+      expect(
+        await ids({ order: "desc", through: buildId(1), limit: 2 }),
+      ).toEqual([buildId(5), buildId(4)]);
+    });
+  },
+);

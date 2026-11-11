@@ -17,8 +17,9 @@ import { describe, expect, it } from "vitest";
 import { nativeBuildCatalogScopeKey } from "../native-builds";
 import {
   getNativeBuildDetail,
+  listNativeBuildFolds,
   listNativeBuildPatches,
-  listNativeBuilds,
+  readNativeBuildFold,
 } from "./nativeBuilds";
 
 const id = (n: number) =>
@@ -290,20 +291,64 @@ describe("getNativeBuildDetail", () => {
 });
 
 describe("the native build list and patch pages", () => {
-  it("lists only a channel's builds, one read per page", async () => {
+  it("lists only a channel's builds, leading with its path's newest, in one read of the channel's index", async () => {
     const memory = memoryCore();
     await register(memory, 1, id(10));
     await register(memory, 2, id(11), fingerprintScope("fp-a", "pr-130"));
     await register(memory, 3, id(12), fingerprintScope("fp-b", "pr-130"));
     const { core, calls } = counted(memory);
 
-    const page = await listNativeBuilds(core, {
+    const page = await listNativeBuildFolds(core, {
       channelId: `channel:${encodeChannelKey("pr-130")}`,
-      limit: 20,
     });
 
-    expect(page.data.map((row) => row.id)).toEqual([buildId(3), buildId(2)]);
+    // Both APKs of pr-130 are one path: 3 leads, 2 folds under it.
+    expect(page.entries).toEqual([
+      { kind: "row", row: expect.objectContaining({ id: buildId(3) }) },
+      { kind: "fold", count: 1, more: false, from: buildId(3), to: buildId(2) },
+    ]);
+    // The newest page needs no read above it.
     expect(calls).toEqual(["listNativeBuilds"]);
+  });
+
+  it("folds a build whose newer build on its path is on an earlier page", async () => {
+    const core = memoryCore();
+    const channel = (n: number) => `c-${String(n).padStart(2, "0")}`;
+    // Oldest first: an APK of c-01, c-02's only APK, then c-01's newer APK
+    // and the newest APKs of c-03..c-21.
+    await register(core, 1, id(100), fingerprintScope("fp-a", channel(1)));
+    await register(core, 2, id(101), fingerprintScope("fp-a", channel(2)));
+    await register(core, 3, id(102), fingerprintScope("fp-a", channel(1)));
+    for (let n = 3; n <= 21; n += 1) {
+      await register(
+        core,
+        n + 1,
+        id(100 + n),
+        fingerprintScope("fp-a", channel(n)),
+      );
+    }
+
+    const first = await listNativeBuildFolds(core, {});
+    // Twenty paths' newest builds, c-01's newer APK among them.
+    expect(
+      first.entries.flatMap((entry) =>
+        entry.kind === "row" ? [entry.row.id] : ["fold"],
+      ),
+    ).toEqual(Array.from({ length: 20 }, (_, i) => buildId(22 - i)));
+    const second = await listNativeBuildFolds(core, { before: first.next });
+
+    // c-02 leads page 2; c-01's older APK folds, though its newer APK is on
+    // page 1 and no build of its path is on this page.
+    expect(second.entries).toEqual([
+      { kind: "row", row: expect.objectContaining({ id: buildId(2) }) },
+      { kind: "fold", count: 1, more: false, from: buildId(2), to: buildId(1) },
+    ]);
+    const fold = await readNativeBuildFold(core, {
+      from: buildId(2),
+      to: buildId(1),
+    });
+    expect(fold.rows.map(({ id: rowId }) => rowId)).toEqual([buildId(1)]);
+    expect(fold.newer[buildId(1)]?.id).toBe(buildId(3));
   });
 
   it("pages the patches from a built-in bundle by target, newest first", async () => {

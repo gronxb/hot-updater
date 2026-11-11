@@ -133,6 +133,7 @@ model native_builds {
   is_store_build BigInt
   is_sandbox BigInt
   sandbox_url_scheme String?
+  export_method String?
   store_build_scope_key String?
   hu_v BigInt @default(0) @map("_v")
   @@id([id])

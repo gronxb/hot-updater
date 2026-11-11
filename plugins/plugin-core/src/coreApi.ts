@@ -17,6 +17,7 @@ import type {
   DatabaseBundleMetadata,
   NativeBuildArtifactKind,
   NativeBuildDeleteResult,
+  NativeBuildExportMethod,
   NativeBuildMarkResult,
   NativeBuildRow,
   NativeBuildSubmissionDestination,
@@ -30,6 +31,8 @@ export interface KeysetInput {
   readonly order?: "asc" | "desc";
   /** The last key a previous page returned. */
   readonly after?: string;
+  /** The last key this read may return: it ends with that key, if present. */
+  readonly through?: string;
   readonly limit: number;
 }
 
@@ -124,6 +127,11 @@ export type NativeBuildRegistration = NativeBuildScope & {
    * links open; null or left out for any other build.
    */
   readonly sandboxUrlScheme?: string | null;
+  /**
+   * How an `.ipa` was exported, read from its embedded profile; null or left
+   * out for any other artifact, or an `.ipa` whose profile wasn't read.
+   */
+  readonly exportMethod?: NativeBuildExportMethod | null;
   readonly artifact: {
     readonly kind: NativeBuildArtifactKind;
     readonly storageUri: string;

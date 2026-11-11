@@ -2,7 +2,12 @@ import type {
   ReleaseFilter,
   ReleasePolicyPatch,
 } from "@hot-updater/plugin-core";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import {
   createChannel as createChannelApi,
@@ -14,6 +19,7 @@ import {
   getChannels,
   getConfig,
   getNativeBuildDetail,
+  getNativeBuildFold,
   markNativeBuild as markNativeBuildApi,
   createNativeBuildDownloadLink,
   getNativeBuildDownloadUrl,
@@ -23,6 +29,7 @@ import {
   getRelease,
   getReleaseCatalogDiagnostics,
   getReleaseNativeBuild,
+  getReleaseFold,
   getReleases,
   preflightRelease as preflightReleaseApi,
   promoteRelease as promoteReleaseApi,
@@ -38,6 +45,8 @@ export const queryKeys = {
     all: releaseListQueryKey,
     list: (filters?: ReleaseFilters) =>
       [...releaseListQueryKey, filters ?? {}] as const,
+    fold: (filter: ReleaseFilter | undefined, fold: FoldBounds) =>
+      [...releaseListQueryKey, "fold", filter ?? {}, fold] as const,
   },
   release: (releaseId: string) => ["release", releaseId] as const,
   releaseCatalog: (scopeKey: string) => ["release-catalog", scopeKey] as const,
@@ -51,6 +60,8 @@ export const queryKeys = {
   nativeBuilds: {
     all: ["native-builds"] as const,
     list: (page: NativeBuildPage) => ["native-builds", page] as const,
+    fold: (channel: string | undefined, fold: FoldBounds) =>
+      ["native-builds", "fold", channel ?? null, fold] as const,
   },
   nativeBuild: (id: string) => ["native-build", id] as const,
   nativeBuildPatches: (minBundleId: string, page: KeysetPage) =>
@@ -104,6 +115,9 @@ const DOWNLOAD_LINK_STALE_MS = 24 * 60 * 60 * 1000;
  */
 const INSTALL_ELIGIBILITY_STALE_MS = 30 * 60 * 1000;
 
+/** Where a fold of a list's page lies: its bounds, as the page gave them. */
+export type FoldBounds = { readonly from?: string; readonly to: string };
+
 export type ReleaseFilters = {
   /** One of the filter sets the release indexes serve; none lists every release. */
   filter?: ReleaseFilter;
@@ -111,7 +125,8 @@ export type ReleaseFilters = {
   beforeReleaseId?: string;
   /** Releases newer than this id: the previous page. */
   afterReleaseId?: string;
-  limit?: number;
+  /** The selected release, which the page never folds. */
+  releaseId?: string;
 };
 
 // Query Hooks
@@ -136,6 +151,31 @@ export function useReleasesQuery(filters?: ReleaseFilters) {
     queryKey: queryKeys.releases.list(filters),
     queryFn: () => getReleases({ data: filters }),
     placeholderData: (previousData) => previousData,
+  });
+}
+
+/**
+ * A fold's releases, a chunk at a time, read once it opens: the page that
+ * folded them reads nothing more when one opens.
+ */
+export function useReleaseFoldQuery(
+  filter: ReleaseFilter | undefined,
+  fold: FoldBounds,
+  enabled: boolean,
+) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.releases.fold(filter, fold),
+    queryFn: ({ pageParam }) =>
+      getReleaseFold({
+        data: {
+          ...fold,
+          ...(filter === undefined ? {} : { filter }),
+          ...(pageParam === undefined ? {} : { after: pageParam }),
+        },
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next,
+    enabled,
   });
 }
 
@@ -184,6 +224,29 @@ export function useBundleChildCountsQuery(bundleIds: string[]) {
       getBundleChildCounts({ data: { bundleIds: normalizedBundleIds } }),
     staleTime: Infinity,
     enabled: normalizedBundleIds.length > 0,
+  });
+}
+
+/** A fold's native builds, a chunk at a time, read once it opens. */
+export function useNativeBuildFoldQuery(
+  channel: string | undefined,
+  fold: FoldBounds,
+  enabled: boolean,
+) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.nativeBuilds.fold(channel, fold),
+    queryFn: ({ pageParam }) =>
+      getNativeBuildFold({
+        data: {
+          ...fold,
+          ...(channel === undefined ? {} : { channel }),
+          ...(pageParam === undefined ? {} : { after: pageParam }),
+        },
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next,
+    enabled,
+    staleTime: 60_000,
   });
 }
 

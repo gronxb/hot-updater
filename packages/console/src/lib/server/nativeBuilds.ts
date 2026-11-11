@@ -11,8 +11,17 @@ import type { ReleaseCatalogDescriptor } from "@hot-updater/protocol";
 import {
   nativeBuildCatalogScopeKey,
   nativeBuildChannel,
+  nativeBuildPathKey,
   nativeBuildScope,
 } from "../native-builds";
+import {
+  FOLDED_PAGE_CHUNK,
+  FOLDED_PAGE_READ_BUDGET,
+  type FoldedPage,
+  foldedPage,
+  type ReadBudget,
+  readFold,
+} from "./foldedPage";
 
 export interface KeysetPageInput {
   /** Rows older than this key: the next page. */
@@ -61,32 +70,6 @@ async function keysetPage<T>(
       ? { previous: keyOf(first) }
       : {}),
   };
-}
-
-export interface NativeBuildListInput extends KeysetPageInput {
-  /** Only the builds that embed this channel ID. */
-  readonly channelId?: string;
-}
-
-export type NativeBuildListResult = KeysetPage<NativeBuildRow>;
-
-/**
- * One page of native builds, newest first: one read of the registry's ID
- * index, or of its channel index for one channel's builds.
- */
-export function listNativeBuilds(
-  core: Pick<HotUpdaterCoreApi, "listNativeBuilds">,
-  { channelId, ...page }: NativeBuildListInput,
-): Promise<NativeBuildListResult> {
-  return keysetPage(
-    (input) =>
-      core.listNativeBuilds({
-        ...input,
-        ...(channelId === undefined ? {} : { channelId }),
-      }),
-    ({ id }) => id,
-    page,
-  );
 }
 
 /** A patch from a build's built-in bundle: the bundle it updates to, and its size. */
@@ -339,4 +322,216 @@ export async function downloadNativeBuild(
     `No storage adapter for protocol: ${protocolOf(storageUri)}`,
     { status: 503 },
   );
+}
+
+/** A page of native builds that leads with each distribution path's newest. */
+export type NativeBuildFoldedPage = FoldedPage<NativeBuildRow>;
+
+/**
+ * The most rows one page or fold reads looking above its own rows for a
+ * newer build on a path, of its read budget, so its own rows keep the rest.
+ */
+const SIBLING_READ_CAP = 100;
+
+/**
+ * Finds the nearest build newer than each of some builds on its
+ * distribution path, by each channel's own index, read upward from where
+ * its caller starts and kept, so each channel's rows are read once. The
+ * channels are read side by side. Newer is the registry's order: a greater
+ * ID. A path is the channel, platform, sandbox flag and distribution
+ * (`nativeBuildPathKey`), worked out from the row, so a build registered at
+ * any time is found. It spends `budget`, at most `SIBLING_READ_CAP` rows in
+ * all, shared out among the channels: a build it can't find a newer one for
+ * within that has none it knows of.
+ */
+const newerOnPathFinder = (
+  core: Pick<HotUpdaterCoreApi, "listNativeBuilds">,
+) => {
+  const channels = new Map<
+    string,
+    { from: string; rows: NativeBuildRow[]; last?: string; ended: boolean }
+  >();
+  let spent = 0;
+  const lookUp = async (
+    build: NativeBuildRow,
+    from: string,
+    share: ReadBudget,
+  ): Promise<NativeBuildRow | undefined> => {
+    let channel = channels.get(build.channel_id);
+    if (channel === undefined || from < channel.from) {
+      channel = { from, rows: [], ended: false };
+      channels.set(build.channel_id, channel);
+    }
+    const key = nativeBuildPathKey(build);
+    for (;;) {
+      // Oldest first, so the first match is the nearest newer build.
+      const newer = channel.rows.find(
+        (row) => row.id > build.id && nativeBuildPathKey(row) === key,
+      );
+      if (newer !== undefined) return newer;
+      const limit = Math.min(FOLDED_PAGE_CHUNK, share.left);
+      if (channel.ended || limit <= 0) return undefined;
+      const rows = await core.listNativeBuilds({
+        channelId: build.channel_id,
+        order: "asc",
+        after: channel.last ?? channel.from,
+        limit,
+      });
+      share.left -= rows.length;
+      channel.rows.push(...rows);
+      channel.last = rows.at(-1)?.id ?? channel.last;
+      if (rows.length < limit) channel.ended = true;
+    }
+  };
+  return async (
+    builds: readonly NativeBuildRow[],
+    from: string,
+    budget: ReadBudget,
+  ): Promise<ReadonlyMap<string, NativeBuildRow | undefined>> => {
+    const byChannel = new Map<string, NativeBuildRow[]>();
+    for (const build of builds) {
+      byChannel.set(build.channel_id, [
+        ...(byChannel.get(build.channel_id) ?? []),
+        build,
+      ]);
+    }
+    const allowance = Math.max(
+      0,
+      Math.min(budget.left, SIBLING_READ_CAP - spent),
+    );
+    const share = Math.floor(allowance / Math.max(byChannel.size, 1));
+    const found = new Map<string, NativeBuildRow | undefined>();
+    const used = await Promise.all(
+      [...byChannel.values()].map(async (channelBuilds) => {
+        const left: ReadBudget = { left: share };
+        for (const build of channelBuilds) {
+          found.set(build.id, await lookUp(build, from, left));
+        }
+        return share - left.left;
+      }),
+    );
+    const total = used.reduce((sum, rows) => sum + rows, 0);
+    budget.left -= total;
+    spent += total;
+    return found;
+  };
+};
+
+/**
+ * One page of native builds, newest first, that leads with the newest build
+ * of each distribution path, and the store build: every other build folds
+ * into the runs between them. It reads the registry's ID index, or its
+ * channel index, a chunk at a time, and on a later page each path's newer
+ * builds above the page in its channel's index, at most
+ * `FOLDED_PAGE_READ_BUDGET` rows in all.
+ */
+export function listNativeBuildFolds(
+  core: Pick<HotUpdaterCoreApi, "listNativeBuilds">,
+  {
+    channelId,
+    before,
+    after,
+  }: {
+    readonly channelId?: string;
+    readonly before?: string;
+    readonly after?: string;
+  },
+): Promise<NativeBuildFoldedPage> {
+  const findNewer = newerOnPathFinder(core);
+  // The newest build of each path this page has read, newest first.
+  const seen = new Map<string, NativeBuildRow>();
+  return foldedPage({
+    read: (input) =>
+      core.listNativeBuilds({
+        ...input,
+        ...(channelId === undefined ? {} : { channelId }),
+      }),
+    classify: async (builds, { budget, order, newerThan }) => {
+      const ordinary = new Set<string>();
+      if (order === "asc") {
+        // Oldest first, each build looks above itself.
+        const newer = await findNewer(builds, builds[0]!.id, budget);
+        for (const build of builds) {
+          if (build.is_store_build || newer.get(build.id) === undefined) {
+            ordinary.add(build.id);
+          }
+        }
+        return ordinary;
+      }
+      // Newest first, a path's first build on the page looks above the
+      // page, and the rest have it as their newer build.
+      const firsts: NativeBuildRow[] = [];
+      const keys = new Set(seen.keys());
+      for (const build of builds) {
+        const key = nativeBuildPathKey(build);
+        if (!keys.has(key)) {
+          keys.add(key);
+          firsts.push(build);
+        }
+      }
+      const above =
+        newerThan === undefined
+          ? new Map<string, NativeBuildRow | undefined>()
+          : await findNewer(firsts, newerThan, budget);
+      for (const build of builds) {
+        const key = nativeBuildPathKey(build);
+        const newer = seen.get(key) ?? above.get(build.id);
+        if (!seen.has(key)) seen.set(key, build);
+        if (build.is_store_build || newer === undefined) {
+          ordinary.add(build.id);
+        }
+      }
+      return ordinary;
+    },
+    ...(before === undefined ? {} : { before }),
+    ...(after === undefined ? {} : { after }),
+  });
+}
+
+/** One chunk of a fold's builds, each with the newer build on its path. */
+export interface NativeBuildFoldChunk {
+  readonly rows: readonly NativeBuildRow[];
+  /** The nearest newer build on each row's path, by row ID, where one was found. */
+  readonly newer: Readonly<Record<string, NativeBuildRow>>;
+  readonly next?: string;
+}
+
+/**
+ * One chunk of a fold's builds, as `listNativeBuildFolds` folded them: the
+ * builds under `from` down to `to`, and each one's nearest newer build,
+ * read from its channel's index upward within the read budget.
+ */
+export async function readNativeBuildFold(
+  core: Pick<HotUpdaterCoreApi, "listNativeBuilds">,
+  {
+    channelId,
+    ...fold
+  }: {
+    readonly channelId?: string;
+    readonly from?: string;
+    readonly to: string;
+    readonly after?: string;
+  },
+): Promise<NativeBuildFoldChunk> {
+  const chunk = await readFold({
+    read: (input) =>
+      core.listNativeBuilds({
+        ...input,
+        ...(channelId === undefined ? {} : { channelId }),
+      }),
+    ...fold,
+  });
+  const budget: ReadBudget = {
+    left: FOLDED_PAGE_READ_BUDGET - chunk.rows.length,
+  };
+  const oldest = chunk.rows.at(-1)?.id;
+  const found =
+    oldest === undefined
+      ? new Map<string, NativeBuildRow | undefined>()
+      : await newerOnPathFinder(core)(chunk.rows, oldest, budget);
+  const newer: Record<string, NativeBuildRow> = {};
+  for (const [id, row] of found) {
+    if (row !== undefined) newer[id] = row;
+  }
+  return { ...chunk, newer };
 }

@@ -41,6 +41,7 @@ import { getFileHashFromFile } from "../getFileHash";
 import { getLatestGitCommit } from "../git";
 import { type LoadedServer, loadServer } from "../loadServer";
 import type { NativeBuildResult, NativeBuildTarget } from "./createNativeBuild";
+import { readIpaExportMethod } from "./ipaExportMethod";
 
 /** Where a native build's artifact is stored, under the config's storage. */
 export const NATIVE_BUILD_STORAGE_PREFIX = "native-builds";
@@ -341,6 +342,13 @@ export const registerNativeBuild = async (
       buildNumber: build.buildNumber ?? null,
       isSandbox: sandbox,
       sandboxUrlScheme: sandbox ? sandboxUrlScheme : null,
+      exportMethod:
+        build.artifactKind === "ipa"
+          ? await readIpaExportMethod(
+              build.artifactPath,
+              build.exportMethod ?? null,
+            )
+          : null,
       artifact: {
         kind: build.artifactKind,
         storageUri: artifactUpload.storageUri,
