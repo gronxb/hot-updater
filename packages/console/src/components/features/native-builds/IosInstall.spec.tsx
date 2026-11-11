@@ -248,7 +248,7 @@ describe("IosInstall", () => {
 
     const alert = screen.getByRole("alert");
     expect(within(alert).getByText("The check couldn't start")).toBeTruthy();
-    fireEvent.click(within(alert).getByRole("button", { name: "Reload" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
     expect(refetchLink).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("link")).toBeNull();
   });

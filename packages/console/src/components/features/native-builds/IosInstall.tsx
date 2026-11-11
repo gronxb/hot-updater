@@ -10,12 +10,7 @@ import {
 } from "lucide-react";
 import { useEffect, useReducer, useState } from "react";
 
-import {
-  Alert,
-  AlertAction,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Field,
@@ -295,24 +290,22 @@ function CheckThisIphone({
   }
   if (link.data?.status !== "issued") {
     return link.isError ? (
-      <Alert variant="destructive">
-        <AlertTriangle />
-        <AlertTitle>The check couldn't start</AlertTitle>
-        <AlertDescription>
-          Check your connection and try again.
-        </AlertDescription>
-        <AlertAction>
-          <Button
-            disabled={link.isFetching}
-            onClick={() => void link.refetch()}
-            size="xs"
-            variant="outline"
-          >
-            <RefreshCw data-icon="inline-start" />
-            Reload
-          </Button>
-        </AlertAction>
-      </Alert>
+      <>
+        <Alert variant="destructive">
+          <AlertTriangle />
+          <AlertTitle>The check couldn't start</AlertTitle>
+          <AlertDescription>Check your connection and try again.</AlertDescription>
+        </Alert>
+        <Button
+          className={ACTION_CLASS}
+          disabled={link.isFetching}
+          onClick={() => void link.refetch()}
+          variant="outline"
+        >
+          <RefreshCw data-icon="inline-start" />
+          Reload
+        </Button>
+      </>
     ) : (
       <Skeleton aria-label="Preparing the check" className="h-11 w-full" />
     );
