@@ -102,7 +102,6 @@ export type NativeBuildExportMethod =
   | "development"
   | "enterprise";
 
-
 /**
  * A registered native build: its artifact in storage, the scope it serves,
  * and `min_bundle_id`, the `bundles` row of the bundle built into it.
@@ -162,4 +161,3 @@ export interface NativeBuildRow {
    */
   readonly export_method: NativeBuildExportMethod | null;
 }
-
