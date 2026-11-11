@@ -407,8 +407,12 @@ function NameDialog({
                   {target.device.requested_by ?? "Terminal (CLI)"}
                 </dd>
                 <dt className="text-muted-foreground">UDID</dt>
-                <dd className="font-mono text-xs" translate="no">
-                  {maskIosUdid(target.device.udid)}
+                {/* All of it, to check against Finder: a phone has no hover. */}
+                <dd
+                  className="font-mono text-xs break-all select-all"
+                  translate="no"
+                >
+                  {target.device.udid}
                 </dd>
               </dl>
             ) : null}

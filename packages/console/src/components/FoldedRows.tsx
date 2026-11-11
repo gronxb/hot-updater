@@ -202,3 +202,18 @@ export function FoldStatus({
     </TableRow>
   );
 }
+
+/**
+ * What a page's folds hold: their counts summed, and whether any holds more
+ * than it says (past its cap, or past the page), so the total is a floor.
+ */
+export const foldedTotal = (entries: readonly FoldedEntry<unknown>[]) => {
+  let count = 0;
+  let more = false;
+  for (const entry of entries) {
+    if (entry.kind !== "fold") continue;
+    count += entry.count;
+    more ||= entry.more;
+  }
+  return { count, more };
+};

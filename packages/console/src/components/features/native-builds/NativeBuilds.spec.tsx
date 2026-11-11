@@ -585,7 +585,7 @@ describe("NativeBuildsTable", () => {
     const pages = screen.getByRole("navigation", {
       name: "Native build pages",
     });
-    expect(pages.textContent).toContain("1 entry, newest first");
+    expect(pages.textContent).toContain("1 build, newest first");
     expect(
       screen.getByRole("link", { name: "Previous" }).getAttribute("href"),
     ).toBe(`/native-builds?channel=pr-130&after=${id(8)}`);
@@ -751,11 +751,12 @@ describe("NativeBuildsTable", () => {
       expect(
         foldQuery.mock.calls.every(([, , enabled]) => enabled === false),
       ).toBe(true);
-      // The pager counts the ordinary rows.
+      // The pager counts the ordinary rows, and what the folds hold.
       expect(
-        screen.getByRole("navigation", { name: "Native build pages" })
-          .textContent,
-      ).toContain("2 entries, newest first");
+        screen
+          .getByRole("navigation", { name: "Native build pages" })
+          .querySelector("p")?.textContent,
+      ).toBe("2 builds, newest first · , 3 older folded");
     });
 
     it("opens one fold in place: exactly its range, in order, each build shaded and naming its newer build", async () => {
@@ -796,7 +797,7 @@ describe("NativeBuildsTable", () => {
         name: `Open native build ${id(79)}`,
       });
       expect(older.getAttribute("data-older")).toBe("true");
-      expect(older.className).toContain("data-[older=true]:bg-muted/25");
+      expect(older.className).toContain("data-[older=true]:bg-muted/60");
       const reason = within(older).getByRole("button", { name: /^Older/ });
       // In the first column beside the kind, where Bundles says "Unreachable";
       // Created keeps only the time.
@@ -897,6 +898,12 @@ describe("NativeBuildsTable", () => {
       fireEvent.click(screen.getByRole("button", { name: "Show more" }));
 
       expect(more.fetchNextPage).toHaveBeenCalled();
+      // A capped fold makes the total a floor.
+      expect(
+        screen
+          .getByRole("navigation", { name: "Native build pages" })
+          .querySelector("p")?.textContent,
+      ).toBe("1 build, newest first · , 100+ older folded");
     });
 
     it("shows a page of older builds alone as one fold under the empty state", () => {

@@ -32,6 +32,7 @@ import {
   foldKey,
   foldLabel,
   FoldStatus,
+  foldedTotal,
   groupsOf,
   useOpenFolds,
 } from "@/components/FoldedRows";
@@ -342,7 +343,7 @@ function BuildRow({
   return (
     <DataTableRow
       aria-label={`Open native build ${build.id}`}
-      className="data-[older=true]:bg-muted/25 data-[older=true]:saturate-50 data-[older=true]:hover:bg-muted/50 data-[older=true]:hover:saturate-100 data-[older=true]:focus-within:saturate-100"
+      className="data-[older=true]:bg-muted/60 data-[older=true]:saturate-50 data-[older=true]:hover:bg-muted/60 data-[older=true]:hover:saturate-100 data-[older=true]:focus-within:saturate-100"
       data-older={older ? true : undefined}
       onOpen={() =>
         void navigate({
@@ -412,7 +413,7 @@ function BuildCard({
   return (
     <DataCard
       aria-label={`Native build ${buildTitle(build)} ${build.id}`}
-      className="gap-3 border-b-0 data-[older=true]:bg-muted/25 data-[older=true]:saturate-50 data-[older=true]:hover:bg-muted/50 data-[older=true]:hover:saturate-100 data-[older=true]:focus-within:saturate-100"
+      className="gap-3 border-b-0 data-[older=true]:bg-muted/60 data-[older=true]:saturate-50 data-[older=true]:hover:bg-muted/60 data-[older=true]:hover:saturate-100 data-[older=true]:focus-within:saturate-100"
       data-older={older ? true : undefined}
       onClick={openOutsideControls(
         () =>
@@ -741,7 +742,9 @@ export function NativeBuildsTable({
       {builds.isLoading || entries === undefined ? null : (
         <DataTablePagination
           count={count}
+          folded={{ ...foldedTotal(entries), label: "older" }}
           label="Native build pages"
+          noun={["build", "builds"]}
           pending={builds.isPlaceholderData}
           newest={
             paged

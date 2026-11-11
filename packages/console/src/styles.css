@@ -44,8 +44,8 @@ code {
    * A channel's badge, by name, and any other channel's. Each text keeps
    * AA contrast on its own 10% tint.
    */
-  --channel-production: oklch(0.507 0.154 150.069);
-  --channel-staging: oklch(0.534 0.135 66.442);
+  --channel-production: oklch(0.487 0.154 150.069);
+  --channel-staging: oklch(0.514 0.135 66.442);
   --channel-dev: oklch(0.488 0.243 264.376);
   --channel-other: oklch(0.373 0.034 259.733);
   /*

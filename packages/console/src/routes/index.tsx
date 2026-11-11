@@ -42,6 +42,7 @@ import {
   foldKey,
   foldLabel,
   FoldStatus,
+  foldedTotal,
   groupsOf,
   useOpenFolds,
 } from "@/components/FoldedRows";
@@ -648,7 +649,7 @@ function BundlesPage() {
           className={cn(
             "gap-3",
             release.currentlyUnreachable &&
-              "bg-muted/25 saturate-50 hover:bg-muted/50 hover:saturate-100 focus-within:saturate-100",
+              "bg-muted/60 saturate-50 hover:bg-muted/60 hover:saturate-100 focus-within:saturate-100",
             isExpanded && "border-b-0 bg-primary/5",
           )}
           data-state={search.releaseId === release.id ? "selected" : undefined}
@@ -732,7 +733,7 @@ function BundlesPage() {
           aria-label={`Open bundle ${release.id}`}
           className={cn(
             release.currentlyUnreachable &&
-              "bg-muted/25 saturate-50 hover:bg-muted/50 hover:saturate-100 focus-within:saturate-100",
+              "bg-muted/60 saturate-50 hover:bg-muted/60 hover:saturate-100 focus-within:saturate-100",
             isExpanded && "bg-primary/5",
           )}
           data-state={search.releaseId === release.id ? "selected" : undefined}
@@ -987,7 +988,9 @@ function BundlesPage() {
         {!releasesQuery.isError && !releasesQuery.isPending ? (
           <DataTablePagination
             count={releases.length}
+            folded={{ ...foldedTotal(entries), label: "unreachable" }}
             label="Bundle pagination"
+            noun={["bundle", "bundles"]}
             pending={releasesQuery.isPlaceholderData}
             newest={onLaterPage ? { search: newestSearch, to: "/" } : undefined}
             next={nextSearch ? { search: nextSearch, to: "/" } : undefined}

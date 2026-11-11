@@ -294,7 +294,9 @@ function CheckThisIphone({
         <Alert variant="destructive">
           <AlertTriangle />
           <AlertTitle>The check couldn't start</AlertTitle>
-          <AlertDescription>Check your connection and try again.</AlertDescription>
+          <AlertDescription>
+            Check your connection and try again.
+          </AlertDescription>
         </Alert>
         <Button
           className={ACTION_CLASS}

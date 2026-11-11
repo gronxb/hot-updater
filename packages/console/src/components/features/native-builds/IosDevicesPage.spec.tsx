@@ -185,6 +185,10 @@ describe("IosDevicesPage", () => {
       ),
     ).toBeTruthy();
     expect(within(dialog).getByText("kim@team.dev")).toBeTruthy();
+    // The whole UDID, to check against the device: a phone never hovers.
+    const udid = within(dialog).getByText("00008030-001c2d3e4f5a6b7c");
+    expect(udid.className).toContain("select-all");
+    expect(udid.className).toContain("font-mono");
     fireEvent.change(within(dialog).getByLabelText("Name"), {
       target: { value: "Kim's work iPhone" },
     });
