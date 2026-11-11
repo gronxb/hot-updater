@@ -1,4 +1,4 @@
-import type { NativeBuildRow } from "@hot-updater/plugin-core";
+import type { IosDeviceRow, NativeBuildRow } from "@hot-updater/plugin-core";
 import {
   act,
   cleanup,
@@ -10,6 +10,7 @@ import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  IOS_DEVICE_RECEIPT_STORAGE_KEY,
   IOS_UDID_STORAGE_KEY,
   NATIVE_BUILD_INSTALL_LINK_TTL_MS,
 } from "@/lib/native-builds";
@@ -18,22 +19,88 @@ import type { NativeBuildInstallEligibility } from "@/lib/server/nativeBuildInst
 import { InstallCard } from "./InstallCard";
 import { IOS_STORE_APP_NOTE, IosInstall, isIosBrowser } from "./IosInstall";
 
-const { downloadLinkQuery, downloadUrlQuery, installEligibilityQuery } =
-  vi.hoisted(() => ({
-    downloadLinkQuery: vi.fn(),
-    downloadUrlQuery: vi.fn(),
-    installEligibilityQuery: vi.fn(),
-  }));
+const {
+  downloadLinkQuery,
+  downloadUrlQuery,
+  installEligibilityQuery,
+  profileLinkQuery,
+  requestAccess,
+} = vi.hoisted(() => ({
+  downloadLinkQuery: vi.fn(),
+  downloadUrlQuery: vi.fn(),
+  installEligibilityQuery: vi.fn(),
+  profileLinkQuery: vi.fn(),
+  requestAccess: {
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+  },
+}));
 
 vi.mock("@/lib/api", () => ({
   useNativeBuildDownloadLinkQuery: downloadLinkQuery,
   useNativeBuildDownloadUrlQuery: downloadUrlQuery,
   useNativeBuildInstallEligibilityQuery: installEligibilityQuery,
 }));
+vi.mock("@/lib/ios-devices-api", () => ({
+  useIosDeviceProfileLinkQuery: profileLinkQuery,
+  useRequestIosDeviceAccessMutation: () => requestAccess,
+}));
+// The newer build's link renders as an anchor without a router.
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({
+    to,
+    params,
+    children,
+    ...props
+  }: {
+    to: string;
+    params: { buildId: string };
+    children: unknown;
+  }) => (
+    <a href={to.replace("$buildId", params.buildId)} {...props}>
+      {children as never}
+    </a>
+  ),
+}));
 
 const BUILD = "019a0000-0000-7000-8000-00000000b001";
 const PHONE = "00008030-001C2D3E4F5A6B7C";
 const TOKEN = "1893456000.signature";
+const CAPABILITY = "capability.signature";
+const RECEIPT = "receipt.signature";
+
+/** This iPhone as the page knows it: its UDID, and a receipt from a check. */
+const phone = (
+  udid: string | null,
+  receipt: string | null = null,
+): {
+  ios: boolean;
+  udid: string | null;
+  receipt: string | null;
+  requested: boolean;
+} => ({
+  ios: true,
+  udid,
+  receipt,
+  requested: false,
+});
+
+const registryRow = (overrides: Partial<IosDeviceRow> = {}): IosDeviceRow => ({
+  id: "01a1c984-724b-7de1-89a1-c93003b4ff49",
+  udid: PHONE.toLowerCase(),
+  name: "Kim's iPhone",
+  status: "pending",
+  requested_by: "kim@team.dev",
+  created_at_ms: Date.parse("2026-11-11T00:00:00Z"),
+  approved_by: null,
+  approved_at_ms: null,
+  registered_at_ms: null,
+  apple_issuer_id: null,
+  apple_error: null,
+  build_id: null,
+  ...overrides,
+});
 const IPHONE_UA =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1";
 
@@ -62,9 +129,11 @@ const answer = (
 
 const installable = (
   device: "unknown" | "included" | "not-included",
+  registry: IosDeviceRow | null = null,
 ): NativeBuildInstallEligibility => ({
   status: "installable",
   device,
+  registry,
   expiresAt: null,
   link: {
     status: "issued",
@@ -90,6 +159,10 @@ const itmsLinks = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  requestAccess.isError = false;
+  profileLinkQuery.mockReturnValue({
+    data: { status: "issued", token: CAPABILITY, expiresAt: "2030-01-01" },
+  });
   window.localStorage.clear();
   window.history.replaceState(null, "", `/native-builds/${BUILD}`);
 });
@@ -119,17 +192,21 @@ describe("IosInstall", () => {
       dataUpdatedAt: 0,
       refetch,
     });
-    render(<IosInstall build={row} udid={null} />);
+    render(<IosInstall build={row} device={phone(null)} />);
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.getByLabelText("Reading this IPA")).toBeTruthy();
   });
 
-  it("offers an unknown iPhone the profile alone, and nothing to install yet", () => {
+  it("offers an unknown iPhone the check alone, signed for this person, and nothing to install yet", () => {
     answer(installable("unknown"));
-    render(<IosInstall build={row} udid={null} />);
+    render(<IosInstall build={row} device={phone(null)} />);
 
-    expect(link(/Install profile/)).toBe(
-      `/_hot-updater/native-builds/${BUILD}/device.mobileconfig`,
+    expect(profileLinkQuery).toHaveBeenCalledWith({
+      mode: "identify",
+      buildId: BUILD,
+    });
+    expect(link("Check this iPhone")).toBe(
+      `/_hot-updater/devices/device.mobileconfig?t=${encodeURIComponent(CAPABILITY)}`,
     );
     expect(screen.getAllByRole("link")).toHaveLength(1);
     expect(itmsLinks()).toHaveLength(0);
@@ -138,17 +215,17 @@ describe("IosInstall", () => {
   it("keeps the console's own path in the profile link", () => {
     window.history.replaceState(null, "", `/console/native-builds/${BUILD}`);
     answer(installable("unknown"));
-    render(<IosInstall build={row} udid={null} />);
+    render(<IosInstall build={row} device={phone(null)} />);
 
-    expect(link(/Install profile/)).toBe(
-      `/console/_hot-updater/native-builds/${BUILD}/device.mobileconfig`,
+    expect(link("Check this iPhone")).toBe(
+      `/console/_hot-updater/devices/device.mobileconfig?t=${encodeURIComponent(CAPABILITY)}`,
     );
   });
 
   it("keeps the console's own path in Install", () => {
     window.history.replaceState(null, "", `/console/native-builds/${BUILD}`);
     answer(installable("included"));
-    render(<IosInstall build={row} udid={PHONE} />);
+    render(<IosInstall build={row} device={phone(PHONE)} />);
 
     expect(manifestOf(link("Install"))).toBe(
       `${window.location.origin}/console/_hot-updater/native-builds/${BUILD}/manifest.plist?t=${encodeURIComponent(TOKEN)}`,
@@ -157,7 +234,7 @@ describe("IosInstall", () => {
 
   it("offers Install to an iPhone the IPA lists, with the Developer Mode note and the store-app line", () => {
     answer(installable("included"));
-    render(<IosInstall build={row} udid={PHONE} />);
+    render(<IosInstall build={row} device={phone(PHONE)} />);
 
     expect(installEligibilityQuery).toHaveBeenCalledWith(BUILD, PHONE);
     expect(manifestOf(link("Install"))).toContain("/manifest.plist?t=");
@@ -166,22 +243,79 @@ describe("IosInstall", () => {
     expect(screen.getByText(IOS_STORE_APP_NOTE)).toBeTruthy();
   });
 
-  it("says Not in this build to an iPhone it doesn't list, with the command and nothing to install", () => {
+  it("asks an iPhone the IPA doesn't list for its name, and requests it with its receipt, never a command", () => {
     answer(installable("not-included"));
-    render(<IosInstall build={row} udid={PHONE} />);
+    render(<IosInstall build={row} device={phone(PHONE, RECEIPT)} />);
 
     expect(screen.getByText("Not in this build")).toBeTruthy();
     expect(itmsLinks()).toHaveLength(0);
-    // A kept ID that isn't this phone's own is replaced by installing it again.
-    expect(link("Install the profile again")).toBe(
-      `/_hot-updater/native-builds/${BUILD}/device.mobileconfig`,
+    expect(screen.queryByText(/native-build devices add/)).toBeNull();
+    fireEvent.change(screen.getByLabelText("This iPhone's name"), {
+      target: { value: "  Kim's iPhone " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Request access" }));
+    expect(requestAccess.mutate).toHaveBeenCalledWith(
+      { receipt: RECEIPT, name: "Kim's iPhone" },
+      expect.anything(),
     );
     expect(
       screen.getByText(
-        `npx hot-updater native-build devices add --udid ${PHONE} --name "Teammate's iPhone"`,
+        "A maintainer approves it, and it joins the next ad hoc build.",
       ),
     ).toBeTruthy();
-    expect(screen.getByText(/only\s+if this is your iPhone/u)).toBeTruthy();
+  });
+
+  it("without a receipt, checks the iPhone again before Request access: a link's UDID is never trusted", () => {
+    answer(installable("not-included"));
+    render(<IosInstall build={row} device={phone(PHONE)} />);
+
+    expect(screen.queryByRole("button", { name: "Request access" })).toBeNull();
+    expect(link("Check this iPhone again")).toContain(
+      "/_hot-updater/devices/device.mobileconfig?t=",
+    );
+  });
+
+  it.each([
+    [
+      "a requested iPhone",
+      registryRow(),
+      "Kim's iPhone was requested on Nov 11. A maintainer approves it next.",
+    ],
+    [
+      "an approved iPhone",
+      registryRow({ status: "approved", approved_at_ms: 1 }),
+      "Kim's iPhone is approved. It joins the next ad hoc build.",
+    ],
+    [
+      "an iPhone Apple refused",
+      registryRow({
+        status: "approved",
+        apple_error: "The maximum number of devices was reached.",
+      }),
+      "Apple didn't register Kim's iPhone: The maximum number of devices was reached. A maintainer can see it on the iOS devices page.",
+    ],
+  ])("says where %s stands, with nothing to request", (_, registry, words) => {
+    answer(installable("not-included", registry));
+    render(<IosInstall build={row} device={phone(PHONE, RECEIPT)} />);
+
+    expect(screen.getByRole("status").textContent).toBe(words);
+    expect(screen.queryByRole("button", { name: "Request access" })).toBeNull();
+  });
+
+  it("opens the newer build that has a registered iPhone", () => {
+    const newer = "019a0000-0000-7000-8000-00000000b002";
+    answer(
+      installable(
+        "not-included",
+        registryRow({ status: "registered", build_id: newer }),
+      ),
+    );
+    render(<IosInstall build={row} device={phone(PHONE)} />);
+
+    expect(screen.getByRole("status").textContent).toBe(
+      "A newer build has Kim's iPhone.",
+    );
+    expect(link("Open the newer build")).toBe(`/native-builds/${newer}`);
   });
 
   it.each([
@@ -196,7 +330,7 @@ describe("IosInstall", () => {
         dataUpdatedAt: 0,
         refetch,
       });
-      render(<IosInstall build={row} udid={PHONE} />);
+      render(<IosInstall build={row} device={phone(PHONE)} />);
 
       expect(screen.getByText("Installation details unavailable")).toBeTruthy();
       expect(screen.queryByRole("link")).toBeNull();
@@ -205,7 +339,7 @@ describe("IosInstall", () => {
 
   it("sends an App Store export to TestFlight, with no check or install", () => {
     answer({ status: "store" });
-    render(<IosInstall build={row} udid={null} />);
+    render(<IosInstall build={row} device={phone(null)} />);
 
     expect(screen.getByText(/installs through TestFlight/)).toBeTruthy();
     expect(screen.queryByRole("link")).toBeNull();
@@ -213,7 +347,7 @@ describe("IosInstall", () => {
 
   it("says an expired profile needs a rebuild, with no install", () => {
     answer({ status: "expired", expiresAt: "2026-01-02T00:00:00.000Z" });
-    render(<IosInstall build={row} udid={PHONE} />);
+    render(<IosInstall build={row} device={phone(PHONE)} />);
 
     expect(screen.getByText(/profile has expired/)).toBeTruthy();
     expect(screen.queryByRole("link")).toBeNull();
@@ -223,10 +357,11 @@ describe("IosInstall", () => {
     answer({
       status: "installable",
       device: "included",
+      registry: null,
       expiresAt: null,
       link: { status: "no-secret", secretName: "BETTER_AUTH_SECRET" },
     });
-    render(<IosInstall build={row} udid={PHONE} />);
+    render(<IosInstall build={row} device={phone(PHONE)} />);
 
     expect(screen.getByRole("status").textContent).toContain(
       "BETTER_AUTH_SECRET",
@@ -243,7 +378,7 @@ describe("an Install link near its expiry", () => {
 
   it("offers Install until the link is near its expiry, then takes it away and asks for a new one", () => {
     answer(installable("included"));
-    render(<IosInstall build={row} udid={PHONE} />);
+    render(<IosInstall build={row} device={phone(PHONE)} />);
     act(() => vi.advanceTimersByTime(OFFERED_FOR - MINUTE));
     expect(itmsLinks()).toHaveLength(1);
     expect(refetch).not.toHaveBeenCalled();
@@ -259,7 +394,7 @@ describe("an Install link near its expiry", () => {
     "takes the link away on %s after the phone slept, when no timer ran",
     (event) => {
       answer(installable("included"));
-      render(<IosInstall build={row} udid={PHONE} />);
+      render(<IosInstall build={row} device={phone(PHONE)} />);
 
       vi.setSystemTime(Date.now() + 2 * NATIVE_BUILD_INSTALL_LINK_TTL_MS);
       expect(itmsLinks()).toHaveLength(1);
@@ -280,7 +415,7 @@ describe("an Install link near its expiry", () => {
       dataUpdatedAt: readAt,
       isFetching: true,
     });
-    const view = render(<IosInstall build={row} udid={PHONE} />);
+    const view = render(<IosInstall build={row} device={phone(PHONE)} />);
     act(() => vi.advanceTimersByTime(OFFERED_FOR));
     expect(itmsLinks()).toHaveLength(0);
     expect(screen.getByRole("status").textContent).toContain(
@@ -290,7 +425,7 @@ describe("an Install link near its expiry", () => {
 
     // A failed refresh keeps the old data and when it was read.
     answer(installable("included"), { dataUpdatedAt: readAt });
-    view.rerender(<IosInstall build={row} udid={PHONE} />);
+    view.rerender(<IosInstall build={row} device={phone(PHONE)} />);
     expect(itmsLinks()).toHaveLength(0);
     refetch.mockClear();
     fireEvent.click(screen.getByRole("button", { name: "Get a new link" }));
@@ -300,12 +435,12 @@ describe("an Install link near its expiry", () => {
   it("offers Install again once a new link arrives", () => {
     const readAt = Date.now();
     answer(installable("included"), { dataUpdatedAt: readAt });
-    const view = render(<IosInstall build={row} udid={PHONE} />);
+    const view = render(<IosInstall build={row} device={phone(PHONE)} />);
     act(() => vi.advanceTimersByTime(OFFERED_FOR));
     expect(itmsLinks()).toHaveLength(0);
 
     answer(installable("included"));
-    view.rerender(<IosInstall build={row} udid={PHONE} />);
+    view.rerender(<IosInstall build={row} device={phone(PHONE)} />);
 
     expect(itmsLinks()).toHaveLength(1);
   });
@@ -315,7 +450,10 @@ describe("an Install link near its expiry", () => {
     (device) => {
       answer(installable(device));
       render(
-        <IosInstall build={row} udid={device === "unknown" ? null : PHONE} />,
+        <IosInstall
+          build={row}
+          device={phone(device === "unknown" ? null : PHONE)}
+        />,
       );
       act(() => vi.advanceTimersByTime(OFFERED_FOR));
 
@@ -326,7 +464,7 @@ describe("an Install link near its expiry", () => {
 
   it("asks for nothing for an IPA with no link to expire", () => {
     answer({ status: "store" });
-    render(<IosInstall build={row} udid={PHONE} />);
+    render(<IosInstall build={row} device={phone(PHONE)} />);
     act(() => vi.advanceTimersByTime(2 * NATIVE_BUILD_INSTALL_LINK_TTL_MS));
     expect(refetch).not.toHaveBeenCalled();
   });
@@ -352,7 +490,7 @@ describe("InstallCard on an iPhone", () => {
     render(<InstallCard build={row} />);
 
     expect(
-      await screen.findByRole("link", { name: /Install profile/ }),
+      await screen.findByRole("link", { name: "Check this iPhone" }),
     ).toBeTruthy();
     expect(screen.queryByRole("img")).toBeNull();
     expect(
@@ -382,7 +520,7 @@ describe("InstallCard on an iPhone", () => {
       }),
     );
     render(<InstallCard build={row} />);
-    await screen.findByRole("link", { name: /Install profile/ });
+    await screen.findByRole("link", { name: "Check this iPhone" });
 
     window.localStorage.setItem(IOS_UDID_STORAGE_KEY, PHONE);
     act(() => {
@@ -455,7 +593,7 @@ describe("InstallCard on an iPhone", () => {
     answer(installable("unknown"));
     render(<InstallCard build={row} />);
 
-    await screen.findByRole("link", { name: /Install profile/ });
+    await screen.findByRole("link", { name: "Check this iPhone" });
     expect(installEligibilityQuery).toHaveBeenLastCalledWith(BUILD, null);
   });
 
@@ -473,5 +611,30 @@ describe("InstallCard on an iPhone", () => {
       />,
     );
     expect(installEligibilityQuery).not.toHaveBeenCalled();
+  });
+
+  it("keeps the profile's answer, its UDID and receipt, so Request access works after a reload", async () => {
+    window.localStorage.setItem(
+      IOS_UDID_STORAGE_KEY,
+      "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+    );
+    window.history.replaceState(
+      null,
+      "",
+      `/native-builds/${BUILD}#udid=${PHONE}&r=${RECEIPT}`,
+    );
+    onIphone();
+    answer(installable("not-included"));
+    render(<InstallCard build={row} />);
+
+    expect(
+      await screen.findByRole("button", { name: "Request access" }),
+    ).toBeTruthy();
+    expect(installEligibilityQuery).toHaveBeenLastCalledWith(BUILD, PHONE);
+    expect(window.localStorage.getItem(IOS_UDID_STORAGE_KEY)).toBe(PHONE);
+    expect(
+      JSON.parse(window.localStorage.getItem(IOS_DEVICE_RECEIPT_STORAGE_KEY)!),
+    ).toEqual({ udid: PHONE, receipt: RECEIPT });
+    expect(window.location.hash).toBe("");
   });
 });

@@ -1,23 +1,33 @@
-import type { NativeBuildRow } from "@hot-updater/plugin-core";
+import type { IosDeviceRow, NativeBuildRow } from "@hot-updater/plugin-core";
+import { Link } from "@tanstack/react-router";
 import dayjs from "dayjs";
-import { AlertTriangle, Smartphone } from "lucide-react";
+import { AlertTriangle, Loader2, Send, Smartphone } from "lucide-react";
 import { useEffect, useReducer, useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNativeBuildInstallEligibilityQuery } from "@/lib/api";
 import {
+  useIosDeviceProfileLinkQuery,
+  useRequestIosDeviceAccessMutation,
+} from "@/lib/ios-devices-api";
+import {
   consolePathOf,
+  IOS_DEVICE_RECEIPT_STORAGE_KEY,
   IOS_UDID_PATTERN,
   IOS_UDID_STORAGE_KEY,
+  iosDeviceProfileUrl,
   NATIVE_BUILD_INSTALL_LINK_TTL_MS,
-  nativeBuildDeviceAddCommand,
-  nativeBuildDeviceProfilePath,
   nativeBuildItmsUrl,
 } from "@/lib/native-builds";
-
-import { CopyableText } from "./CopyableText";
 
 /**
  * What an install does to the App Store's copy of the app on this iPhone, with
@@ -36,31 +46,77 @@ export const isIosBrowser = (
   /iPhone|iPod|iPad/u.test(browser.userAgent) ||
   (/Macintosh/u.test(browser.userAgent) && browser.maxTouchPoints > 1);
 
-/** The UDID the profile's page passed in the fragment, if any. */
-const fragmentUdid = () => {
-  if (typeof window === "undefined") return null;
-  const udid = new URLSearchParams(window.location.hash.slice(1)).get("udid");
-  return udid !== null && IOS_UDID_PATTERN.test(udid) ? udid : null;
+/**
+ * What the profile's answer passed back in the fragment: the UDID, with a
+ * receipt of it from a check, or `requested` from a registration.
+ */
+const fragmentOf = () => {
+  if (typeof window === "undefined") {
+    return { udid: null, receipt: null, requested: false };
+  }
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  const udid = params.get("udid");
+  const valid = udid !== null && IOS_UDID_PATTERN.test(udid) ? udid : null;
+  return {
+    udid: valid,
+    receipt: valid === null ? null : params.get("r"),
+    requested: valid !== null && params.get("requested") === "1",
+  };
+};
+
+/** This iPhone's view of itself, as its profile last reported it. */
+export interface IosDevice {
+  readonly ios: boolean;
+  readonly udid: string | null;
+  /** The receipt of `udid` that Request access takes, when a check made one. */
+  readonly receipt: string | null;
+  /** Whether this page opened from a registration's answer. */
+  readonly requested: boolean;
+}
+
+const readKept = (key: string) => {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const keep = (key: string, value: string) => {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // A browser that keeps nothing: the fragment's values stand in memory.
+  }
 };
 
 /**
- * Whether this page is open on an iPhone, and its UDID: the one this phone
- * kept, else the one the profile's page passed in the fragment. Read after the
- * page mounts: the server renders it without a browser. Null until then.
+ * Whether this page is open on an iPhone, its UDID, and a receipt of it: the
+ * ones this phone kept, else the ones the profile's answer passed in the
+ * fragment, which are kept then. Read after the page mounts: the server
+ * renders it without a browser. Null until then.
  */
-export const useIosDevice = () => {
-  const [device, setDevice] = useState<{
-    readonly ios: boolean;
-    readonly udid: string | null;
-  } | null>(null);
+export const useIosDevice = (): IosDevice | null => {
+  const [device, setDevice] = useState<IosDevice | null>(null);
   // Read at the first render, so an effect that runs again (React's
   // development check) still has it after the fragment is gone.
-  const [passed] = useState(fragmentUdid);
+  const [passed] = useState(fragmentOf);
   useEffect(() => {
     const valid = (udid: string | null | undefined) =>
       udid != null && IOS_UDID_PATTERN.test(udid) ? udid : null;
-    // A browser that keeps nothing still has the ID from the fragment, in memory.
-    if (passed !== null && window.location.hash !== "") {
+    // Only the profile's own answer, which carries a receipt or says it
+    // registered, replaces the ID this phone kept: a plain link's ID never does.
+    const answered = passed.receipt !== null || passed.requested;
+    if (passed.udid !== null && answered) {
+      keep(IOS_UDID_STORAGE_KEY, passed.udid);
+      if (passed.receipt !== null) {
+        keep(
+          IOS_DEVICE_RECEIPT_STORAGE_KEY,
+          JSON.stringify({ udid: passed.udid, receipt: passed.receipt }),
+        );
+      }
+    }
+    if (passed.udid !== null && window.location.hash !== "") {
       window.history.replaceState(
         window.history.state,
         "",
@@ -68,24 +124,43 @@ export const useIosDevice = () => {
       );
     }
     const read = () => {
-      let udid: string | null = null;
+      // A browser that keeps nothing still has the fragment's, in memory.
+      const udid = valid(readKept(IOS_UDID_STORAGE_KEY)) ?? passed.udid;
+      let receipt: string | null = null;
       try {
-        udid = window.localStorage.getItem(IOS_UDID_STORAGE_KEY);
+        const kept = JSON.parse(
+          readKept(IOS_DEVICE_RECEIPT_STORAGE_KEY) ?? "null",
+        ) as { udid?: unknown; receipt?: unknown } | null;
+        receipt =
+          kept?.udid === udid && typeof kept?.receipt === "string"
+            ? kept.receipt
+            : null;
       } catch {
-        // A browser that keeps nothing: the fragment's ID, if any, stands.
+        receipt = null;
       }
-      const kept = valid(udid) ?? passed;
+      if (receipt === null && passed.udid === udid) receipt = passed.receipt;
       setDevice((current) =>
-        current?.udid === kept && current !== null
+        current !== null && current.udid === udid && current.receipt === receipt
           ? current
-          : { ios: isIosBrowser(navigator), udid: kept },
+          : {
+              ios: isIosBrowser(navigator),
+              udid,
+              receipt,
+              requested: passed.requested,
+            },
       );
     };
     read();
     // The profile's answer may land in another tab, which keeps the ID there:
     // this tab reads it when that tab writes it, or when Safari shows it again.
     const onStorage = (event: StorageEvent) => {
-      if (event.key === null || event.key === IOS_UDID_STORAGE_KEY) read();
+      if (
+        event.key === null ||
+        event.key === IOS_UDID_STORAGE_KEY ||
+        event.key === IOS_DEVICE_RECEIPT_STORAGE_KEY
+      ) {
+        read();
+      }
     };
     window.addEventListener("storage", onStorage);
     window.addEventListener("pageshow", read);
@@ -182,45 +257,189 @@ function InstallNotes() {
 }
 
 /**
- * The link that hands this iPhone the profile that reads its UDID, under the
- * console's path. A plain link, so iOS offers the profile. Once it's installed,
- * the phone comes back to this page, which then offers Install.
+ * The link that hands this iPhone the profile that reads its UDID, signed for
+ * this person, under the Console's path. A plain link, so iOS offers the
+ * profile; the page signs a new one before it expires. Once it's installed,
+ * the phone comes back to this page with the UDID and a receipt of it.
  */
-function InstallProfile({
+function CheckThisIphone({
   build,
   again = false,
 }: {
   readonly build: NativeBuildRow;
-  /** Second to the command: for a phone whose kept ID isn't its own. */
+  /** For a phone whose kept ID isn't its own, or whose check expired. */
   readonly again?: boolean;
 }) {
+  const link = useIosDeviceProfileLinkQuery({
+    mode: "identify",
+    buildId: build.id,
+  });
+  if (link.data?.status === "no-secret") {
+    return (
+      <p className="text-xs text-muted-foreground" role="status">
+        Set {link.data.secretName} on the Console to check iPhones from this
+        page.
+      </p>
+    );
+  }
+  if (link.data?.status !== "issued") {
+    return link.isError ? (
+      <p className="text-xs text-destructive" role="alert">
+        The check couldn't start. Reload the page to try again.
+      </p>
+    ) : (
+      <Skeleton aria-label="Preparing the check" className="h-11 w-full" />
+    );
+  }
   return (
     <a
       className={buttonVariants({
         className: ACTION_CLASS,
         variant: again ? "secondary" : "default",
       })}
-      href={`${consolePathOf(window.location, build.id)}${nativeBuildDeviceProfilePath(build.id)}`}
+      href={iosDeviceProfileUrl(
+        consolePathOf(window.location, build.id),
+        link.data.token,
+      )}
     >
       <Smartphone data-icon="inline-start" />
-      {again ? "Install the profile again" : "Install profile"}
+      {again ? "Check this iPhone again" : "Check this iPhone"}
     </a>
+  );
+}
+
+const shortDate = (ms: number) => dayjs(ms).format("MMM D");
+
+/**
+ * What an iPhone the IPA doesn't list sees: the registry's word on it, or
+ * Request access, which takes the UDID from this person's receipt alone.
+ */
+function NotInThisBuild({
+  build,
+  device,
+  registry,
+}: {
+  readonly build: NativeBuildRow;
+  readonly device: IosDevice;
+  readonly registry: IosDeviceRow | null;
+}) {
+  const request = useRequestIosDeviceAccessMutation();
+  const [name, setName] = useState("");
+  const [requested, setRequested] = useState<IosDeviceRow | null>(null);
+  const row = requested ?? registry;
+  const heading = (
+    <div className="flex min-w-0 flex-col gap-1">
+      <p className="text-sm font-medium">Not in this build</p>
+      <p className="text-xs text-muted-foreground">
+        This IPA was signed without this iPhone, and iOS won't install it here.
+      </p>
+    </div>
+  );
+  if (row !== null) {
+    const newer =
+      row.status === "registered" &&
+      row.build_id !== null &&
+      row.build_id > build.id;
+    return (
+      <div className="flex min-w-0 flex-col gap-3">
+        {heading}
+        <p className="text-sm" role="status">
+          {row.apple_error !== null && !newer
+            ? `Apple didn't register ${row.name}: ${row.apple_error} A maintainer can see it on the iOS devices page.`
+            : row.status === "pending"
+              ? `${row.name} was requested on ${shortDate(row.created_at_ms)}. A maintainer approves it next.`
+              : newer
+                ? `A newer build has ${row.name}.`
+                : `${row.name} is approved. It joins the next ad hoc build.`}
+        </p>
+        {newer ? (
+          <Link
+            className={buttonVariants({ className: ACTION_CLASS })}
+            params={{ buildId: row.build_id! }}
+            to="/native-builds/$buildId"
+          >
+            Open the newer build
+          </Link>
+        ) : null}
+      </div>
+    );
+  }
+  if (device.receipt === null) {
+    return (
+      <div className="flex min-w-0 flex-col gap-3">
+        {heading}
+        <p className="text-xs text-muted-foreground">
+          Check this iPhone once more to request it for the next ad hoc build.
+        </p>
+        <CheckThisIphone build={build} again />
+      </div>
+    );
+  }
+  const trimmed = name.trim();
+  return (
+    <form
+      className="flex min-w-0 flex-col gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (trimmed === "") return;
+        request.mutate(
+          { receipt: device.receipt!, name: trimmed },
+          { onSuccess: ({ device: saved }) => setRequested(saved) },
+        );
+      }}
+    >
+      {heading}
+      <Field data-invalid={request.isError || undefined}>
+        <FieldLabel htmlFor="ios-device-name">This iPhone's name</FieldLabel>
+        <Input
+          autoComplete="off"
+          className="h-11 sm:h-8"
+          id="ios-device-name"
+          maxLength={100}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Kim's iPhone"
+          value={name}
+        />
+        <FieldDescription>
+          A maintainer approves it, and it joins the next ad hoc build.
+        </FieldDescription>
+        <FieldError>
+          {request.isError
+            ? "The request didn't go through. Check this iPhone again, then try once more."
+            : null}
+        </FieldError>
+      </Field>
+      <Button
+        className={ACTION_CLASS}
+        disabled={trimmed === "" || request.isPending}
+        type="submit"
+      >
+        {request.isPending ? (
+          <Loader2 className="animate-spin" data-icon="inline-start" />
+        ) : (
+          <Send data-icon="inline-start" />
+        )}
+        Request access
+      </Button>
+      {request.isError ? <CheckThisIphone again build={build} /> : null}
+    </form>
   );
 }
 
 /**
  * Installing an IPA from this iPhone: the build's IPA says what it allows, read
- * once when the page opens here, so a phone it doesn't list goes to its UDID
- * rather than a download iOS refuses at the end. App Store Connect isn't asked:
- * a device registered after this IPA was signed still isn't in it.
+ * once when the page opens here, so a phone it doesn't list goes to Request
+ * access rather than a download iOS refuses at the end. App Store Connect isn't
+ * asked: a device registered after this IPA was signed still isn't in it.
  */
 export function IosInstall({
   build,
-  udid,
+  device,
 }: {
   readonly build: NativeBuildRow;
-  readonly udid: string | null;
+  readonly device: IosDevice;
 }) {
+  const { udid } = device;
   const eligibility = useNativeBuildInstallEligibilityQuery(build.id, udid);
   const { refetch } = eligibility;
   const expired = useInstallLinkExpired(
@@ -295,36 +514,25 @@ export function IosInstall({
   }
   if (result.device === "not-included") {
     return (
-      <div className="flex min-w-0 flex-col gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <p className="text-sm font-medium">Not in this build</p>
-          <p className="text-xs text-muted-foreground">
-            This IPA was signed without this iPhone. Send a maintainer this
-            command, then open the newer build once they've rebuilt. Send it
-            only if this is your iPhone.
-          </p>
-        </div>
-        <CopyableText
-          label="the command that registers this iPhone"
-          value={nativeBuildDeviceAddCommand(udid ?? "")}
-          wrap
-        />
-        <InstallProfile build={build} again />
-      </div>
+      <NotInThisBuild
+        build={build}
+        device={device}
+        registry={result.registry}
+      />
     );
   }
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex min-w-0 flex-col gap-1">
-        <p className="text-sm font-medium">Install the profile first</p>
+        <p className="text-sm font-medium">Check this iPhone first</p>
         <p className="text-xs text-muted-foreground">
-          iOS installs this IPA only on the devices it lists. The profile reads
+          iOS installs this IPA only on the devices it lists. A profile reads
           this iPhone's ID and nothing else: allow the download, then install it
-          in Settings, where iOS calls it not signed. Safari comes back here to
-          install the app, and nothing stays installed.
+          in Settings, where iOS calls it not signed. Safari comes back here,
+          and nothing stays installed.
         </p>
       </div>
-      <InstallProfile build={build} />
+      <CheckThisIphone build={build} />
     </div>
   );
 }

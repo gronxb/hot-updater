@@ -28,6 +28,7 @@ import {
 
 import { BuiltInBundleCard } from "./BuiltInBundleCard";
 import { InstallCard } from "./InstallCard";
+import { IpaDevicesCard } from "./IpaDevicesCard";
 import { PatchesCard } from "./PatchesCard";
 import { SandboxBadge } from "./SandboxBadge";
 import { ServedNowCard } from "./ServedNowCard";
@@ -160,6 +161,9 @@ export function NativeBuildDetailPage({
           ) : (
             <>
               <InstallCard build={detail.build} />
+              {detail.build.artifact_kind === "ipa" ? (
+                <IpaDevicesCard build={detail.build} />
+              ) : null}
               <BuiltInBundleCard detail={detail} />
               <ServedNowCard detail={detail} />
               <PatchesCard

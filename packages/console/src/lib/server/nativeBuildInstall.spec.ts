@@ -5,7 +5,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type { NativeBuildRow, StorageAdapter } from "@hot-updater/plugin-core";
+import type {
+  IosDeviceRow,
+  NativeBuildRow,
+  StorageAdapter,
+} from "@hot-updater/plugin-core";
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,6 +31,7 @@ import {
   httpRangeSource,
   RangeSourceError,
   readNativeBuildInstallInfo,
+  readNativeBuildIpaDevices,
   serveNativeBuildManifest,
 } from "./nativeBuildInstall";
 
@@ -106,9 +111,25 @@ const rowOf = (size: number, overrides: Partial<NativeBuildRow> = {}) =>
     ...overrides,
   }) as NativeBuildRow;
 
-const coreOf = (row: NativeBuildRow | null) => ({
+const coreOf = (
+  row: NativeBuildRow | null,
+  registry: readonly IosDeviceRow[] = [],
+) => ({
   getNativeBuild: vi.fn(async () => row),
+  findIosDevice: vi.fn(
+    async (udid: string) =>
+      registry.find((device) => device.udid === udid.toLowerCase()) ?? null,
+  ),
+  listIosDevices: vi.fn(async () => [...registry]),
 });
+
+const registryRow = (udid: string, name: string) =>
+  ({
+    id: `device-${name}`,
+    udid: udid.toLowerCase(),
+    name,
+    status: "registered",
+  }) as IosDeviceRow;
 
 beforeEach(() => {
   vi.stubEnv(CONSOLE_SECRET_ENV, SECRET);
@@ -346,11 +367,14 @@ describe("checkNativeBuildInstall", () => {
   const check = async (
     profile: string,
     udid: string | undefined,
-    { now }: { now?: number } = {},
+    {
+      now,
+      registry = [],
+    }: { now?: number; registry?: readonly IosDeviceRow[] } = {},
   ) => {
     const bytes = await ipaBytes(profile);
     const { fetch, served } = rangeServer(bytes);
-    const core = coreOf(rowOf(bytes.length));
+    const core = coreOf(rowOf(bytes.length), registry);
     const result = await checkNativeBuildInstall(
       BUILD,
       udid,
@@ -363,9 +387,25 @@ describe("checkNativeBuildInstall", () => {
   it("reads one row and the IPA's few parts, and asks nothing else", async () => {
     const { result, core, served } = await check(adHocProfile([PHONE]), PHONE);
 
-    expect(result).toMatchObject({ status: "installable", device: "included" });
+    expect(result).toMatchObject({
+      status: "installable",
+      device: "included",
+      registry: null,
+    });
     expect(core.getNativeBuild).toHaveBeenCalledTimes(1);
+    expect(core.findIosDevice).not.toHaveBeenCalled();
     expect(served.requests).toBeLessThanOrEqual(4);
+  });
+
+  it("reads the registry's row of a phone the IPA doesn't list, once, and only then", async () => {
+    const kim = registryRow(LATER_PHONE, "Kim's iPhone");
+    const { result, core } = await check(adHocProfile([PHONE]), LATER_PHONE, {
+      registry: [kim],
+    });
+    expect(result).toMatchObject({ device: "not-included", registry: kim });
+    expect(core.findIosDevice).toHaveBeenCalledTimes(1);
+    const unknown = await check(adHocProfile([PHONE]), undefined);
+    expect(unknown.core.findIosDevice).not.toHaveBeenCalled();
   });
 
   it("compares a UDID whatever its case", async () => {
@@ -465,6 +505,39 @@ describe("checkNativeBuildInstall", () => {
     expect(after.result).toMatchObject({ device: "included" });
     const again = await check(adHocProfile([PHONE]), LATER_PHONE);
     expect(again.result).toMatchObject({ device: "not-included" });
+  });
+});
+
+describe("readNativeBuildIpaDevices", () => {
+  it("lists the IPA's devices, named by the registry where it knows them, in one registry read", async () => {
+    const bytes = await ipaBytes(adHocProfile([PHONE, LATER_PHONE]));
+    const { fetch } = rangeServer(bytes);
+    const core = coreOf(rowOf(bytes.length), [
+      registryRow(PHONE, "Kim's iPhone"),
+      registryRow("a".repeat(40), "Not in this IPA"),
+    ]);
+    expect(
+      await readNativeBuildIpaDevices(
+        BUILD,
+        { core, storage: storageOf() },
+        fetch,
+      ),
+    ).toEqual({
+      status: "listed",
+      devices: [
+        { udid: PHONE.toLowerCase(), name: "Kim's iPhone" },
+        { udid: LATER_PHONE.toLowerCase(), name: null },
+      ].sort((a, b) => (a.udid < b.udid ? -1 : 1)),
+    });
+    expect(core.listIosDevices).toHaveBeenCalledTimes(1);
+  });
+
+  it("is unavailable for a missing build, and reads no registry", async () => {
+    const core = coreOf(null);
+    expect(
+      await readNativeBuildIpaDevices(BUILD, { core, storage: storageOf() }),
+    ).toEqual({ status: "unavailable" });
+    expect(core.listIosDevices).not.toHaveBeenCalled();
   });
 });
 

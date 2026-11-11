@@ -1,5 +1,6 @@
 import type {
   HotUpdaterCoreApi,
+  IosDeviceRow,
   NativeBuildRow,
   StorageAdapter,
 } from "@hot-updater/plugin-core";
@@ -16,6 +17,7 @@ import {
   nativeBuildDownloadPath,
   nativeBuildManifestPath,
 } from "../native-builds";
+import { listIosDevices } from "./iosDevices";
 import {
   issueNativeBuildDownloadLink,
   type NativeBuildDownloadLinkResult,
@@ -184,6 +186,11 @@ export type NativeBuildInstallEligibility =
       readonly status: "installable";
       /** Whether the IPA lists the device: `unknown` without a UDID to look up. */
       readonly device: "unknown" | "included" | "not-included";
+      /**
+       * The registry's row of a device the IPA doesn't list, or null when the
+       * registry doesn't know it: read only then.
+       */
+      readonly registry: IosDeviceRow | null;
       readonly expiresAt: string | null;
       /** The token of the Install button's manifest and download. */
       readonly link: NativeBuildDownloadLinkResult;
@@ -205,7 +212,7 @@ export const checkNativeBuildInstall = async (
     core,
     storage,
   }: {
-    readonly core: Pick<HotUpdaterCoreApi, "getNativeBuild">;
+    readonly core: Pick<HotUpdaterCoreApi, "getNativeBuild" | "findIosDevice">;
     readonly storage: StorageAdapter;
   },
   {
@@ -229,14 +236,19 @@ export const checkNativeBuildInstall = async (
     return { status: "expired", expiresAt };
   }
   const key = udid === undefined ? null : normalizeIosUdid(udid);
+  const device =
+    key === null
+      ? "unknown"
+      : info.distribution === "enterprise" || info.devices.includes(key)
+        ? "included"
+        : "not-included";
   return {
     status: "installable",
-    device:
-      key === null
-        ? "unknown"
-        : info.distribution === "enterprise" || info.devices.includes(key)
-          ? "included"
-          : "not-included",
+    device,
+    registry:
+      device === "not-included" && key !== null
+        ? await core.findIosDevice(key)
+        : null,
     expiresAt,
     link: await issueNativeBuildDownloadLink(
       id,
@@ -352,4 +364,55 @@ export const serveNativeBuildManifest = async (
       "x-content-type-options": "nosniff",
     },
   });
+};
+
+/** One device an ad hoc IPA lists, with the registry's name when it has one. */
+export interface NativeBuildIpaDevice {
+  readonly udid: string;
+  readonly name: string | null;
+}
+
+export type NativeBuildIpaDevices =
+  /** The IPA can't be read in parts. */
+  | { readonly status: "unavailable" }
+  /** An App Store export or an enterprise build, which list no devices. */
+  | { readonly status: "store" | "enterprise" }
+  | { readonly status: "listed"; readonly devices: NativeBuildIpaDevice[] };
+
+/**
+ * The devices an IPA's profile lists, read from storage as the install check
+ * reads it, each named by the device registry when it knows the UDID. The IPA
+ * decides: the registry only names what it lists. One build read, the IPA's
+ * few parts, and the registry a page at a time.
+ */
+export const readNativeBuildIpaDevices = async (
+  id: string,
+  {
+    core,
+    storage,
+  }: {
+    readonly core: Pick<HotUpdaterCoreApi, "getNativeBuild" | "listIosDevices">;
+    readonly storage: StorageAdapter;
+  },
+  fetch: typeof globalThis.fetch = globalThis.fetch,
+): Promise<NativeBuildIpaDevices> => {
+  const build = await core.getNativeBuild(id);
+  if (build === null) return { status: "unavailable" };
+  const info = await readNativeBuildInstallInfo(build, storage, fetch);
+  if (info === null) return { status: "unavailable" };
+  if (info.distribution === "store" || info.distribution === "enterprise") {
+    return { status: info.distribution };
+  }
+  const names = new Map(
+    info.devices.length === 0
+      ? []
+      : (await listIosDevices(core)).map((row) => [row.udid, row.name]),
+  );
+  return {
+    status: "listed",
+    devices: info.devices.map((udid) => ({
+      udid,
+      name: names.get(udid) ?? null,
+    })),
+  };
 };

@@ -22,6 +22,7 @@ vi.mock("@tanstack/react-router", () => ({
 // The header is under test; the cards have their own specs.
 vi.mock("./BuiltInBundleCard", () => ({ BuiltInBundleCard: () => null }));
 vi.mock("./InstallCard", () => ({ InstallCard: () => null }));
+vi.mock("./IpaDevicesCard", () => ({ IpaDevicesCard: () => null }));
 vi.mock("./PatchesCard", () => ({ PatchesCard: () => null }));
 vi.mock("./ServedNowCard", () => ({ ServedNowCard: () => null }));
 

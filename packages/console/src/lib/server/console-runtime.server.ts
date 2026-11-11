@@ -17,6 +17,8 @@ import type {
 /** What the console runs on, assembled from its config as the server is. */
 export interface ResolvedConsoleConfig {
   readonly gitUrl?: string;
+  /** Who may approve iOS devices, trimmed and lower-cased: none when empty. */
+  readonly deviceApprovers: readonly string[];
   /** The server's database, or its admin API. */
   readonly database: ConfiguredDatabase;
   /**
@@ -72,8 +74,13 @@ export const resolveConsoleConfig = async (
 
   const config = typeof source === "function" ? await source(request) : source;
   const { database, storage, plugins = [] } = config;
-  const { gitUrl } = config.console ?? {};
-  const consoleOptions = gitUrl === undefined ? {} : { gitUrl };
+  const { gitUrl, deviceApprovers = [] } = config.console ?? {};
+  const consoleOptions = {
+    ...(gitUrl === undefined ? {} : { gitUrl }),
+    deviceApprovers: deviceApprovers
+      .map((email) => email.trim().toLowerCase())
+      .filter((email) => email.length > 0),
+  };
   // A self-hosted server runs the plugins itself: core is its admin API.
   // The plugins are still checked as the server checks them, on a database
   // nothing reads, so one the server would refuse is refused here too.

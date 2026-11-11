@@ -1,3 +1,4 @@
+import type { IosDeviceStatus } from "@hot-updater/plugin-core";
 import { assertCanonicalChannelName } from "@hot-updater/protocol";
 
 import type { NativeBuildDetailSearch } from "@/components/features/native-builds/NativeBuildDetailPage";
@@ -49,3 +50,22 @@ export const validateNativeBuildDetailSearch = (
       patchesBefore === undefined ? text(search.patchesAfter) : undefined,
   });
 };
+
+const IOS_DEVICE_STATUSES: readonly IosDeviceStatus[] = [
+  "pending",
+  "approved",
+  "registered",
+];
+
+/** The iOS devices page's URL: the status the list shows, all without one. */
+export interface IosDevicesSearch {
+  readonly status?: IosDeviceStatus;
+}
+
+export const validateIosDevicesSearch = (
+  search: Record<string, unknown>,
+): IosDevicesSearch =>
+  typeof search.status === "string" &&
+  IOS_DEVICE_STATUSES.includes(search.status as IosDeviceStatus)
+    ? { status: search.status as IosDeviceStatus }
+    : {};
