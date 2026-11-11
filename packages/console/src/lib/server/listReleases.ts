@@ -1,27 +1,13 @@
 import type {
   HotUpdaterCoreApi,
   ReleaseFilter,
-  ReleaseRow,
 } from "@hot-updater/plugin-core";
 
-export interface ReleaseListInput {
-  /** One of the filter sets the release indexes serve. */
-  readonly filter: ReleaseFilter;
-  /** Releases older than this id: the next page. */
-  readonly beforeReleaseId?: string;
-  /** Releases newer than this id: the previous page. */
-  readonly afterReleaseId?: string;
-  readonly limit: number;
-}
-
-export interface ReleaseListResult {
-  /** Newest first. */
-  readonly data: readonly ReleaseRow[];
-  /** `beforeReleaseId` of the next page, when there may be older releases. */
-  readonly next?: string;
-  /** `afterReleaseId` of the previous page, when there may be newer releases. */
-  readonly previous?: string;
-}
+import { type FoldedPage, foldedPage, readFold } from "./foldedPage";
+import {
+  addReleaseReachability,
+  type ReleaseListRow,
+} from "./releaseReachability";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -76,51 +62,106 @@ export const readReleaseFilter = (value: unknown): ReleaseFilter => {
   }
 };
 
+/** A page of releases that leads with the reachable ones. */
+export type ReleaseFoldedPage = FoldedPage<ReleaseListRow>;
+
 /**
- * One page of releases, newest first, through the index the filter names:
- * each page reads only its own rows. `next` is set for a full page, so the
- * last page may lead to an empty one.
+ * Whether a filter asks for unreachable releases: Disabled, whose every
+ * release no catalog serves, or one bundle. Its releases fold none.
  */
-export async function listReleases(
-  core: Pick<HotUpdaterCoreApi, "listReleases">,
-  input: ReleaseListInput,
-): Promise<ReleaseListResult> {
-  const { filter, limit } = input;
-  if (input.afterReleaseId !== undefined) {
-    // Newer releases, read oldest first from the cursor, then turned around.
-    const data = (
-      await core.listReleases({
-        filter,
-        order: "asc",
-        after: input.afterReleaseId,
-        limit,
-      })
-    ).reverse();
-    const first = data[0]?.id;
-    const last = data.at(-1)?.id;
-    return {
-      data,
-      ...(last === undefined ? {} : { next: last }),
-      ...(first !== undefined && data.length === limit
-        ? { previous: first }
-        : {}),
-    };
-  }
-  const data = await core.listReleases({
-    filter,
-    order: "desc",
-    limit,
-    ...(input.beforeReleaseId === undefined
-      ? {}
-      : { after: input.beforeReleaseId }),
-  });
-  const first = data[0]?.id;
-  const last = data.at(-1)?.id;
+export const asksForUnreachable = (filter: ReleaseFilter): boolean =>
+  filter.kind === "bundle" ||
+  ((filter.kind === "scope" || filter.kind === "channelPlatform") &&
+    filter.enabled === false);
+
+/** The core reads a page makes, with each scope's catalog read once. */
+const readingCatalogsOnce = (
+  core: Pick<HotUpdaterCoreApi, "listReleases" | "getReleaseCatalogRow">,
+) => {
+  const catalogs = new Map<
+    string,
+    ReturnType<HotUpdaterCoreApi["getReleaseCatalogRow"]>
+  >();
   return {
-    data,
-    ...(last !== undefined && data.length === limit ? { next: last } : {}),
-    ...(first !== undefined && input.beforeReleaseId !== undefined
-      ? { previous: first }
-      : {}),
+    listReleases: core.listReleases.bind(core),
+    getReleaseCatalogRow: (scopeKey: string) => {
+      if (!catalogs.has(scopeKey)) {
+        catalogs.set(scopeKey, core.getReleaseCatalogRow(scopeKey));
+      }
+      return catalogs.get(scopeKey)!;
+    },
   };
+};
+
+/**
+ * One page of releases, newest first, that leads with the reachable ones
+ * and the selected one: each run of unreachable releases between them folds.
+ * It reads the filter's index a chunk at a time (at most
+ * `FOLDED_PAGE_READ_BUDGET` rows), and each scope's catalog once. A filter
+ * that asks for unreachable releases folds none.
+ */
+export function listReleaseFolds(
+  core: Pick<HotUpdaterCoreApi, "listReleases" | "getReleaseCatalogRow">,
+  {
+    filter,
+    beforeReleaseId,
+    afterReleaseId,
+    releaseId,
+  }: {
+    readonly filter: ReleaseFilter;
+    readonly beforeReleaseId?: string;
+    readonly afterReleaseId?: string;
+    /** The selected release, which never folds. */
+    readonly releaseId?: string;
+  },
+): Promise<ReleaseFoldedPage> {
+  const reads = readingCatalogsOnce(core);
+  const foldsNone = asksForUnreachable(filter);
+  return foldedPage<ReleaseListRow>({
+    read: async (input) =>
+      addReleaseReachability(
+        reads,
+        await reads.listReleases({ filter, ...input }),
+      ),
+    classify: async (releases) =>
+      new Set(
+        releases
+          .filter(
+            (release) =>
+              foldsNone ||
+              !release.currentlyUnreachable ||
+              release.id === releaseId,
+          )
+          .map(({ id }) => id),
+      ),
+    ...(beforeReleaseId === undefined ? {} : { before: beforeReleaseId }),
+    ...(afterReleaseId === undefined ? {} : { after: afterReleaseId }),
+  });
+}
+
+/** One chunk of a fold's releases, as `listReleaseFolds` folded them. */
+export function readReleaseFold(
+  core: Pick<HotUpdaterCoreApi, "listReleases" | "getReleaseCatalogRow">,
+  {
+    filter,
+    ...fold
+  }: {
+    readonly filter: ReleaseFilter;
+    readonly from?: string;
+    readonly to: string;
+    readonly after?: string;
+  },
+): Promise<{
+  readonly rows: readonly ReleaseListRow[];
+  readonly next?: string;
+}> {
+  const reads = readingCatalogsOnce(core);
+  return readFold<ReleaseListRow>({
+    read: async (input) =>
+      addReleaseReachability(
+        reads,
+        await reads.listReleases({ filter, ...input }),
+      ),
+    ...fold,
+  });
 }

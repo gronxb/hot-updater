@@ -14,9 +14,7 @@ function NativeBuildsRoute() {
   const navigate = Route.useNavigate();
   return (
     <NativeBuildsPage
-      onSearchChange={(next, options) =>
-        void navigate({ search: next, ...options })
-      }
+      onSearchChange={(next) => void navigate({ search: next })}
       search={search}
     />
   );

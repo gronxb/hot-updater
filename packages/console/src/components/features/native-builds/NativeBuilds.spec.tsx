@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { qrCodePath } from "@/lib/qr-code";
+import type { Fold } from "@/lib/server/foldedPage";
 import type {
   NativeBuildDetail,
   NativeBuildPatchPage,
@@ -25,6 +26,7 @@ import { firstDownloadOf, ServedNowCard } from "./ServedNowCard";
 const {
   downloadLinkQuery,
   downloadUrlQuery,
+  foldQuery,
   installEligibilityQuery,
   markMutate,
   patchesQuery,
@@ -32,6 +34,7 @@ const {
 } = vi.hoisted(() => ({
   downloadLinkQuery: vi.fn(),
   downloadUrlQuery: vi.fn(),
+  foldQuery: vi.fn(),
   installEligibilityQuery: vi.fn(),
   markMutate: vi.fn(),
   patchesQuery: vi.fn(),
@@ -43,6 +46,7 @@ vi.mock("@/lib/api", () => ({
   useMarkNativeBuildMutation: () => ({ mutate: markMutate, isPending: false }),
   useNativeBuildDownloadLinkQuery: downloadLinkQuery,
   useNativeBuildDownloadUrlQuery: downloadUrlQuery,
+  useNativeBuildFoldQuery: foldQuery,
   useNativeBuildInstallEligibilityQuery: installEligibilityQuery,
   useNativeBuildPatchesQuery: patchesQuery,
 }));
@@ -100,6 +104,7 @@ const build = (overrides: Partial<NativeBuildRow> = {}): NativeBuildRow => ({
   is_store_build: false,
   is_sandbox: false,
   sandbox_url_scheme: null,
+  export_method: null,
   ...overrides,
 });
 
@@ -138,8 +143,14 @@ afterEach(() => {
 });
 
 describe("NativeBuildsTable", () => {
-  const builds = (data: readonly NativeBuildRow[], page = {}) => ({
-    data: { data, ...page },
+  /** A page of builds, each an ordinary row, or a mix of rows and folds. */
+  const builds = (data: readonly (NativeBuildRow | Fold)[], page = {}) => ({
+    data: {
+      entries: data.map((entry) =>
+        "kind" in entry ? entry : { kind: "row" as const, row: entry },
+      ),
+      ...page,
+    },
     isError: false,
     isLoading: false,
     isPlaceholderData: false,
@@ -162,7 +173,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([build({ is_store_build: true }), build({ id: id(3) })])}
         channel={undefined}
         onChannel={vi.fn()}
-        onShowOlderChange={vi.fn()}
         paged={false}
       />,
     );
@@ -182,7 +192,6 @@ describe("NativeBuildsTable", () => {
         ])}
         channel={undefined}
         onChannel={vi.fn()}
-        onShowOlderChange={vi.fn()}
         paged={false}
       />,
     );
@@ -209,7 +218,6 @@ describe("NativeBuildsTable", () => {
           ])}
           channel={undefined}
           onChannel={vi.fn()}
-          onShowOlderChange={vi.fn()}
           paged={false}
         />,
       );
@@ -258,7 +266,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([build()])}
         channel={undefined}
         onChannel={vi.fn()}
-        onShowOlderChange={vi.fn()}
         paged={false}
       />,
     );
@@ -289,7 +296,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([row], { next: row.id })}
         channel={undefined}
         onChannel={onChannel}
-        onShowOlderChange={vi.fn()}
         paged={false}
       />,
     );
@@ -336,7 +342,6 @@ describe("NativeBuildsTable", () => {
         ])}
         channel={undefined}
         onChannel={vi.fn()}
-        onShowOlderChange={vi.fn()}
         paged={false}
       />,
     );
@@ -367,7 +372,6 @@ describe("NativeBuildsTable", () => {
         ])}
         channel={undefined}
         onChannel={vi.fn()}
-        onShowOlderChange={vi.fn()}
         paged={false}
       />,
     );
@@ -397,7 +401,6 @@ describe("NativeBuildsTable", () => {
           builds={builds([row])}
           channel={undefined}
           onChannel={vi.fn()}
-          onShowOlderChange={vi.fn()}
           paged={false}
         />,
       );
@@ -448,7 +451,6 @@ describe("NativeBuildsTable", () => {
           builds={builds([build({ build_key: null })])}
           channel={undefined}
           onChannel={vi.fn()}
-          onShowOlderChange={vi.fn()}
           paged={false}
         />,
       );
@@ -467,7 +469,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([build({ build_number: "66" })])}
         channel={undefined}
         onChannel={vi.fn()}
-        onShowOlderChange={vi.fn()}
         paged={false}
       />,
     );
@@ -490,7 +491,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([submitted, build()])}
         channel={undefined}
         onChannel={vi.fn()}
-        onShowOlderChange={vi.fn()}
         paged={false}
       />,
     );
@@ -515,7 +515,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([])}
         channel={undefined}
         onChannel={vi.fn()}
-        onShowOlderChange={vi.fn()}
         paged={false}
       />,
     );
@@ -544,7 +543,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([])}
         channel="pr-131"
         onChannel={onChannel}
-        onShowOlderChange={vi.fn()}
         paged={false}
       />,
     );
@@ -562,7 +560,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([])}
         channel="pr-130"
         onChannel={vi.fn()}
-        onShowOlderChange={vi.fn()}
         paged
       />,
     );
@@ -581,7 +578,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([build()], { next: id(9), previous: id(8) })}
         channel="pr-130"
         onChannel={vi.fn()}
-        onShowOlderChange={vi.fn()}
         paged
       />,
     );
@@ -610,7 +606,6 @@ describe("NativeBuildsTable", () => {
         }}
         channel="pr-131"
         onChannel={vi.fn()}
-        onShowOlderChange={vi.fn()}
         paged
       />,
     );
@@ -633,7 +628,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([build()])}
         channel={undefined}
         onChannel={vi.fn()}
-        onShowOlderChange={vi.fn()}
         paged={false}
       />,
     );
@@ -647,7 +641,7 @@ describe("NativeBuildsTable", () => {
     expect(screen.queryByRole("link", { name: "Newest" })).toBeNull();
   });
 
-  describe("older builds on a distribution path", () => {
+  describe("older builds, folded where they sit", () => {
     const production = `channel:${encodeChannelKey("production")}`;
     const ios = (n: number, overrides: Partial<NativeBuildRow> = {}) =>
       build({
@@ -668,88 +662,136 @@ describe("NativeBuildsTable", () => {
         submitted_version: `1.7.0 (${n})`,
         ...overrides,
       });
-    // Newest first, as the registry lists them: TestFlight 80 passes over
-    // 79 and 76; the ad hoc or store IPA 78 is its own path; 77 is marked.
+    const fold = (from: number, to: number, count: number, more = false) =>
+      ({
+        kind: "fold",
+        count,
+        more,
+        from: id(from),
+        to: id(to),
+      }) as const satisfies Fold;
+    // As the server pages them: TestFlight 80 leads, 79 and 78 fold under it;
+    // the store build 77 leads; 76 folds under it.
     const page = [
       testflight(80),
-      testflight(79),
-      ios(78),
+      fold(80, 78, 2),
       testflight(77, { is_store_build: true }),
-      testflight(76),
+      fold(77, 76, 1),
     ];
+    /** What the fold query answers once the fold under `from` opens. */
+    const foldAnswers = (
+      answers: Record<number, Parameters<typeof foldPage>[0]>,
+    ) =>
+      foldQuery.mockImplementation(
+        (_channel: unknown, bounds: { from?: string }, enabled: boolean) => {
+          const from = Number(bounds.from?.slice(-12));
+          return enabled && answers[from] !== undefined
+            ? foldPage(answers[from])
+            : { data: undefined, isPending: true, isError: false };
+        },
+      );
+    const foldPage = ({
+      rows,
+      newer = {},
+      hasNextPage = false,
+    }: {
+      rows: NativeBuildRow[];
+      newer?: Record<string, NativeBuildRow>;
+      hasNextPage?: boolean;
+    }) => ({
+      data: { pages: [{ rows, newer }] },
+      isPending: false,
+      isError: false,
+      isFetchingNextPage: false,
+      hasNextPage,
+      fetchNextPage: vi.fn(),
+      refetch: vi.fn(),
+    });
     const rowNames = () =>
       screen
         .getAllByRole("row")
         .slice(1)
         .map((row) => row.getAttribute("aria-label") ?? row.textContent);
+    const table = (data = page, props = {}) => (
+      <NativeBuildsTable
+        builds={builds(data)}
+        channel={undefined}
+        onChannel={vi.fn()}
+        paged={false}
+        {...props}
+      />
+    );
 
-    it("shows the newest build of each path and collapses the older ones under one closed group", () => {
-      const onShowOlderChange = vi.fn();
-      render(
-        <NativeBuildsTable
-          builds={builds(page)}
-          channel={undefined}
-          onChannel={vi.fn()}
-          onShowOlderChange={onShowOlderChange}
-          paged={false}
-        />,
-      );
+    beforeEach(() => {
+      foldAnswers({});
+    });
+
+    it("keeps the list's order, each run of older builds one closed fold where it sits", () => {
+      render(table());
 
       expect(rowNames()).toEqual([
         `Open native build ${id(80)}`,
-        `Open native build ${id(78)}`,
+        "2 older builds",
         `Open native build ${id(77)}`,
-        "2 older builds on this page",
+        "1 older build",
       ]);
-      const group = screen.getByRole("button", {
-        name: "2 older builds on this page",
-      });
-      expect(group.getAttribute("aria-expanded")).toBe("false");
+      for (const name of ["2 older builds", "1 older build"]) {
+        const button = screen.getByRole("button", { name });
+        expect(button.getAttribute("aria-expanded")).toBe("false");
+        // It names the group its rows open in, which exists while closed.
+        const panel = document.getElementById(
+          button.getAttribute("aria-controls")!,
+        );
+        expect(panel?.tagName).toBe("TBODY");
+        expect(panel?.hidden).toBe(true);
+      }
       // No "Unreachable": an older build may still install.
       expect(screen.queryByText(/Unreachable/)).toBeNull();
-      fireEvent.click(group);
-      expect(onShowOlderChange).toHaveBeenCalledWith(true);
-      // Every entry of the page counts, collapsed or not.
+      // Nothing of a closed fold is read.
+      expect(
+        foldQuery.mock.calls.every(([, , enabled]) => enabled === false),
+      ).toBe(true);
+      // The pager counts the ordinary rows.
       expect(
         screen.getByRole("navigation", { name: "Native build pages" })
           .textContent,
-      ).toContain("5 entries, newest first");
+      ).toContain("2 entries, newest first");
     });
 
-    it("opens the group from the URL, shading each older build and naming the newer one by keyboard or touch", async () => {
-      const onShowOlderChange = vi.fn();
-      render(
-        <NativeBuildsTable
-          builds={builds(page)}
-          channel={undefined}
-          onChannel={vi.fn()}
-          onShowOlderChange={onShowOlderChange}
-          paged={false}
-          showOlder
-        />,
-      );
+    it("opens one fold in place: exactly its range, in order, each build shaded and naming its newer build", async () => {
+      foldAnswers({
+        80: {
+          rows: [testflight(79), testflight(78)],
+          newer: { [id(79)]: testflight(80), [id(78)]: testflight(80) },
+        },
+      });
+      render(table());
+      fireEvent.click(screen.getByRole("button", { name: "2 older builds" }));
 
+      expect(foldQuery).toHaveBeenLastCalledWith(
+        undefined,
+        { from: id(80), to: id(78) },
+        true,
+      );
       expect(rowNames()).toEqual([
         `Open native build ${id(80)}`,
+        "2 older builds",
+        `Open native build ${id(79)}`,
         `Open native build ${id(78)}`,
         `Open native build ${id(77)}`,
-        "2 older builds on this page",
-        `Open native build ${id(79)}`,
-        `Open native build ${id(76)}`,
+        "1 older build",
       ]);
+      expect(
+        screen
+          .getByRole("button", { name: "1 older build" })
+          .getAttribute("aria-expanded"),
+      ).toBe("false");
       const older = screen.getByRole("row", {
         name: `Open native build ${id(79)}`,
       });
       expect(older.getAttribute("data-older")).toBe("true");
       expect(older.className).toContain("data-[older=true]:bg-muted/35");
-      expect(older.className).toContain("data-[older=true]:saturate-50");
-      expect(
-        screen
-          .getByRole("row", { name: `Open native build ${id(77)}` })
-          .hasAttribute("data-older"),
-      ).toBe(false);
       const reason = within(older).getByRole("button", { name: /^Older/ });
-      expect(reason.textContent).toBe("Older");
       expect(reason.getAttribute("aria-label")).toBe(
         "Older: a newer TestFlight build exists, iOS 1.7.0 (80)",
       );
@@ -757,121 +799,95 @@ describe("NativeBuildsTable", () => {
       expect((await screen.findByRole("tooltip")).textContent).toBe(
         "A newer TestFlight build exists: iOS 1.7.0 (80)",
       );
-      // The reason is its own control: it opens no build.
       expect(navigate).not.toHaveBeenCalled();
-
-      fireEvent.click(
-        screen.getByRole("button", { name: "2 older builds on this page" }),
-      );
-      expect(onShowOlderChange).toHaveBeenCalledWith(false);
     });
 
-    it("names a sandbox, Play, or artifact path's newer build the way the registry has it", async () => {
-      const android = (n: number, overrides: Partial<NativeBuildRow>) =>
-        ios(n, { platform: "android", artifact_kind: "apk", ...overrides });
+    it("keeps the page's links when a fold opens: opening reads only the fold", () => {
+      foldAnswers({ 80: { rows: [testflight(79), testflight(78)] } });
       render(
         <NativeBuildsTable
-          builds={builds([
-            testflight(6, { is_sandbox: true }),
-            android(5, {
-              artifact_kind: "aab",
-              submitted_to: "play-internal",
-              submitted_version: "1.7.0 (5)",
-            }),
-            android(4, { app_version: null, build_number: null }),
-            testflight(3, { is_sandbox: true }),
-            android(2, { artifact_kind: "aab", submitted_to: "play-internal" }),
-            android(1, {}),
-          ])}
-          channel={undefined}
+          builds={builds(page, { next: id(76), previous: id(80) })}
+          channel="production"
           onChannel={vi.fn()}
-          onShowOlderChange={vi.fn()}
-          paged={false}
-          showOlder
+          paged
         />,
       );
+      const links = () =>
+        ["Previous", "Next", "Newest"].map((name) =>
+          screen.getByRole("link", { name }).getAttribute("href"),
+        );
+      const before = links();
+      fireEvent.click(screen.getByRole("button", { name: "2 older builds" }));
 
-      expect(
-        screen
-          .getAllByRole("button", { name: /^Older/ })
-          .map((button) => button.getAttribute("aria-label")),
-      ).toEqual([
-        "Older: a newer sandbox TestFlight build exists, iOS 1.7.0 (6)",
-        "Older: a newer Play internal build exists, Android 1.7.0 (5)",
-        "Older: a newer APK exists",
+      expect(links()).toEqual(before);
+      expect(before).toEqual([
+        `/native-builds?channel=production&after=${id(80)}`,
+        `/native-builds?channel=production&before=${id(76)}`,
+        "/native-builds?channel=production",
       ]);
     });
 
-    it("keeps the group open across pages and filters, and out of no link", () => {
-      render(
-        <NativeBuildsTable
-          builds={builds(page, { next: id(9), previous: id(8) })}
-          channel="production"
-          onChannel={vi.fn()}
-          onShowOlderChange={vi.fn()}
-          paged
-          showOlder
-        />,
+    it("says 100+ for a fold past its cap, and loads more of it on request", () => {
+      const more = foldPage({ rows: [testflight(79)], hasNextPage: true });
+      foldQuery.mockImplementation(
+        (_channel: unknown, _bounds: unknown, enabled: boolean) =>
+          enabled ? more : { data: undefined, isPending: true },
       );
+      render(table([testflight(80), fold(80, 1, 100, true)]));
+      fireEvent.click(
+        screen.getByRole("button", { name: "100+ older builds" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Show more" }));
 
-      expect(
-        screen.getByRole("link", { name: "Previous" }).getAttribute("href"),
-      ).toBe(`/native-builds?channel=production&showOlder=true&after=${id(8)}`);
-      expect(
-        screen.getByRole("link", { name: "Next" }).getAttribute("href"),
-      ).toBe(
-        `/native-builds?channel=production&showOlder=true&before=${id(9)}`,
-      );
-      expect(
-        screen.getByRole("link", { name: "Newest" }).getAttribute("href"),
-      ).toBe("/native-builds?channel=production&showOlder=true");
+      expect(more.fetchNextPage).toHaveBeenCalled();
     });
 
-    it("collapses the older builds' cards on a phone the same way", () => {
+    it("shows a page of older builds alone as one fold under the empty state", () => {
+      render(table([fold(90, 60, 30)], { paged: true }));
+
+      expect(screen.getByText("Each build here has a newer one")).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: "30 older builds" }),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("link", { name: "Show the newest builds" }),
+      ).toBeTruthy();
+    });
+
+    it("folds the cards on a phone the same way, in place", () => {
       const width = window.innerWidth;
       window.innerWidth = 390;
       try {
-        const onShowOlderChange = vi.fn();
-        const { rerender } = render(
-          <NativeBuildsTable
-            builds={builds(page)}
-            channel={undefined}
-            onChannel={vi.fn()}
-            onShowOlderChange={onShowOlderChange}
-            paged={false}
-          />,
-        );
+        foldAnswers({ 80: { rows: [testflight(79), testflight(78)] } });
+        render(table());
 
-        expect(screen.getAllByRole("article")).toHaveLength(3);
-        const group = screen.getByRole("button", {
-          name: "2 older builds on this page",
-        });
-        expect(group.getAttribute("aria-expanded")).toBe("false");
-        fireEvent.click(group);
-        expect(onShowOlderChange).toHaveBeenCalledWith(true);
-
-        rerender(
-          <NativeBuildsTable
-            builds={builds(page)}
-            channel={undefined}
-            onChannel={vi.fn()}
-            onShowOlderChange={onShowOlderChange}
-            paged={false}
-            showOlder
-          />,
-        );
-        const cards = screen.getAllByRole("article");
-        expect(cards).toHaveLength(5);
-        expect(cards.map((card) => card.hasAttribute("data-older"))).toEqual([
-          false,
-          false,
-          false,
-          true,
-          true,
+        const items = () =>
+          within(screen.getByRole("list", { name: "Native builds" }))
+            .getAllByRole("listitem")
+            .map(
+              (item) =>
+                item.querySelector("article")?.getAttribute("aria-label") ??
+                item.textContent,
+            );
+        expect(items()).toEqual([
+          `Native build iOS IPA ${id(80)}`,
+          "2 older builds",
+          `Native build iOS IPA ${id(77)}`,
+          "1 older build",
         ]);
+        const button = screen.getByRole("button", { name: "2 older builds" });
         expect(
-          within(cards[3]!).getByRole("button", { name: /^Older/ }),
-        ).toBeTruthy();
+          document.getElementById(button.getAttribute("aria-controls")!),
+        ).not.toBeNull();
+        fireEvent.click(button);
+        expect(items()).toEqual([
+          `Native build iOS IPA ${id(80)}`,
+          "2 older builds",
+          `Native build iOS IPA ${id(79)}`,
+          `Native build iOS IPA ${id(78)}`,
+          `Native build iOS IPA ${id(77)}`,
+          "1 older build",
+        ]);
       } finally {
         window.innerWidth = width;
       }
@@ -885,7 +901,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([row])}
         channel={undefined}
         onChannel={vi.fn()}
-        onShowOlderChange={vi.fn()}
         paged={false}
       />,
     );

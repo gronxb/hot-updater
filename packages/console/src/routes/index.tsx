@@ -11,19 +11,16 @@ import {
   Tags,
   X,
 } from "lucide-react";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useState } from "react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
-import {
-  DataCardCollapsedRows,
-  DataTableCollapsedRows,
-} from "@/components/CollapsedRows";
 import {
   DataCard,
   DataCardSkeletons,
   DataCardsEmpty,
   DataTable,
+  DataTableBody,
   DataTableFrame,
   DataTableEmpty,
   DataTableFullRow,
@@ -39,6 +36,15 @@ import { useReleaseColumns } from "@/components/features/FeatureSlots";
 import { CopyableText } from "@/components/features/native-builds/CopyableText";
 import { ReleaseEditorSheet } from "@/components/features/releases/ReleaseEditorSheet";
 import { ReleaseStateBadge } from "@/components/features/releases/ReleaseStateBadge";
+import {
+  DataCardFold,
+  DataTableFold,
+  foldKey,
+  foldLabel,
+  FoldStatus,
+  groupsOf,
+  useOpenFolds,
+} from "@/components/FoldedRows";
 import { PlatformIcon, PlatformLabel } from "@/components/PlatformIcon";
 import { RelativeTime } from "@/components/RelativeTime";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
@@ -64,13 +70,14 @@ import {
   useBundleChildrenQuery,
   useBundleQuery,
   useChannelsQuery,
+  useReleaseFoldQuery,
   useReleasesQuery,
 } from "@/lib/api";
+import type { Fold } from "@/lib/server/foldedPage";
 import type { ReleaseListRow } from "@/lib/server/releaseReachability";
 import { cn } from "@/lib/utils";
 
 import {
-  groupUnreachableReleases,
   hasReleaseFilters,
   releaseFilterOf,
   type ReleaseSearch,
@@ -78,8 +85,7 @@ import {
   validateReleaseSearch,
 } from "./-releases-search";
 
-const PAGE_SIZE = 20;
-/** The unreachable bundles' group: "1 unreachable bundle", "2 …". */
+/** A fold of unreachable bundles: "1 unreachable bundle", "2 …". */
 const UNREACHABLE_BUNDLES = {
   one: "unreachable bundle",
   other: "unreachable bundles",
@@ -398,21 +404,26 @@ function ReleaseBundleChildrenPanel({
   );
 }
 
-function BundlesPage() {
-  const search = Route.useSearch();
-  const navigate = Route.useNavigate();
-  const isMobile = useIsMobile();
-  const [channelsOpen, setChannelsOpen] = useState(false);
-  const [expandedReleaseId, setExpandedReleaseId] = useState<string>();
-  const releasesQuery = useReleasesQuery({
-    afterReleaseId: search.afterReleaseId,
-    beforeReleaseId: search.beforeReleaseId,
-    filter: releaseFilterOf(search),
-    limit: PAGE_SIZE,
-  });
-  const channelsQuery = useChannelsQuery();
-  const channels = channelsQuery.data ?? [];
-  const releases = releasesQuery.data?.data ?? [];
+/** What a group of release rows renders with: its own patch counts and feature slots. */
+interface RowContext {
+  readonly patchCounts: Readonly<Record<string, number | undefined>>;
+  readonly slotReleases: readonly {
+    readonly releaseId: string;
+    readonly platform: "ios" | "android";
+    readonly channel: string;
+    readonly builtIn: boolean;
+  }[];
+}
+
+/**
+ * The patch counts and feature slots of a group of releases: the page's
+ * reachable ones, or one fold's, so opening a fold reads its own rows'
+ * and changes no other query.
+ */
+function useRowContext(
+  releases: readonly ReleaseListRow[],
+  channels: readonly ChannelRow[],
+): RowContext {
   const bundleIds = Array.from(
     new Set(
       releases.flatMap((release) =>
@@ -421,24 +432,127 @@ function BundlesPage() {
     ),
   );
   const patchCountsQuery = useBundleChildCountsQuery(bundleIds);
-  const patchCountsByBundleId = patchCountsQuery.data ?? {};
+  return {
+    patchCounts: patchCountsQuery.data ?? {},
+    slotReleases: releases.flatMap((release) => {
+      const channel = channels.find(
+        (item) => item.id === release.channel_id,
+      )?.name;
+      return channel
+        ? [
+            {
+              releaseId: release.id,
+              platform: release.platform,
+              channel,
+              builtIn: !release.bundle_id,
+            },
+          ]
+        : [];
+    }),
+  };
+}
+
+/** Whether a fold of the page holds `releaseId`: IDs order the list. */
+const foldHolds = (fold: Fold, releaseId: string) =>
+  releaseId >= fold.to && (fold.from === undefined || releaseId < fold.from);
+
+/**
+ * A fold of unreachable bundles, where they sit in the list: closed, the
+ * number it holds; open, those bundles in order, subdued, read a chunk at a
+ * time once it opens.
+ */
+function UnreachableBundlesFold({
+  fold,
+  filter,
+  channels,
+  columns,
+  isMobile,
+  open,
+  onOpenChange,
+  render,
+}: {
+  readonly fold: Fold;
+  readonly filter: ReturnType<typeof releaseFilterOf>;
+  readonly channels: readonly ChannelRow[];
+  readonly columns: number;
+  readonly isMobile: boolean;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly render: (release: ReleaseListRow, ctx: RowContext) => ReactNode;
+}) {
+  const query = useReleaseFoldQuery(
+    filter,
+    { ...(fold.from === undefined ? {} : { from: fold.from }), to: fold.to },
+    open,
+  );
+  const rows = query.data?.pages.flatMap((page) => page.rows) ?? [];
+  const ctx = useRowContext(rows, channels);
+  const statusColumns = isMobile ? undefined : columns;
+  const status = query.isError ? (
+    <FoldStatus
+      columns={statusColumns}
+      label="Unreachable bundles"
+      onRetry={() => void query.refetch()}
+      state="error"
+    />
+  ) : query.isPending || query.isFetchingNextPage ? (
+    <FoldStatus
+      columns={statusColumns}
+      label="Loading unreachable bundles"
+      state="loading"
+    />
+  ) : query.hasNextPage ? (
+    <FoldStatus
+      columns={statusColumns}
+      label="Unreachable bundles"
+      onMore={() => void query.fetchNextPage()}
+      state="more"
+    />
+  ) : null;
+  const props = {
+    label: foldLabel(fold, UNREACHABLE_BUNDLES),
+    open,
+    onOpenChange,
+    panelId: `bundle-fold-${fold.to}`,
+  };
+  return isMobile ? (
+    <DataCardFold {...props}>
+      {rows.map((release) => render(release, ctx))}
+      {status}
+    </DataCardFold>
+  ) : (
+    <DataTableFold {...props} columns={columns}>
+      {rows.map((release) => render(release, ctx))}
+      {status}
+    </DataTableFold>
+  );
+}
+
+function BundlesPage() {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const isMobile = useIsMobile();
+  const [channelsOpen, setChannelsOpen] = useState(false);
+  const [expandedReleaseId, setExpandedReleaseId] = useState<string>();
+  const folds = useOpenFolds();
+  const filter = releaseFilterOf(search);
+  const releasesQuery = useReleasesQuery({
+    afterReleaseId: search.afterReleaseId,
+    beforeReleaseId: search.beforeReleaseId,
+    filter,
+    // The selected release never folds, so a link to it shows its row.
+    releaseId: search.releaseId,
+  });
+  const channelsQuery = useChannelsQuery();
+  const channels = channelsQuery.data ?? [];
+  const entries = releasesQuery.data?.entries ?? [];
+  // The page's reachable releases (and the selected one), outside its folds.
+  const releases = entries.flatMap((entry) =>
+    entry.kind === "row" ? [entry.row] : [],
+  );
+  const pageContext = useRowContext(releases, channels);
   const nextCursor = releasesQuery.data?.next;
   const previousCursor = releasesQuery.data?.previous;
-  const slotReleases = releases.flatMap((release) => {
-    const channel = channels.find(
-      (item) => item.id === release.channel_id,
-    )?.name;
-    return channel
-      ? [
-          {
-            releaseId: release.id,
-            platform: release.platform,
-            channel,
-            builtIn: !release.bundle_id,
-          },
-        ]
-      : [];
-  });
   // Features add columns, such as release activity where the console reads it.
   const featureColumns = useReleaseColumns();
   const columnCount = 10 + featureColumns.length;
@@ -446,19 +560,37 @@ function BundlesPage() {
     channels.map((channel) => [channel.id, channel.name]),
   );
 
+  // A lineage panel shows only with its row: whatever hides the row, a fold
+  // closing, a filter, a refetch or Back, closes the panel, and opening the
+  // row again opens none.
+  const visible = (releaseId: string) =>
+    releases.some((release) => release.id === releaseId) ||
+    entries.some(
+      (entry) =>
+        entry.kind === "fold" &&
+        folds.isOpen(foldKey(entry)) &&
+        foldHolds(entry, releaseId),
+    );
+  const lineageVisible =
+    expandedReleaseId !== undefined && visible(expandedReleaseId);
   useEffect(() => {
-    if (
-      expandedReleaseId &&
-      !releases.some((release) => release.id === expandedReleaseId)
-    ) {
+    if (expandedReleaseId !== undefined && !lineageVisible) {
       setExpandedReleaseId(undefined);
     }
-  }, [expandedReleaseId, releases]);
+  }, [expandedReleaseId, lineageVisible]);
 
   const go = (nextSearch: ReleaseSearch, resetScroll = true) =>
     void navigate({ resetScroll, search: nextSearch, to: "/" });
   const changeFilters = (filters: Partial<ReleaseSearch>) =>
     go(updateReleaseFilters(search, filters));
+  // Selecting a bundle in an open fold splits the fold around it: the part
+  // under it opens too, so no row moves out of sight.
+  const select = (release: ReleaseListRow) => {
+    if (!releases.some(({ id }) => id === release.id)) {
+      folds.set(release.id, true);
+    }
+    go({ ...search, releaseId: release.id }, false);
+  };
   const openChildBundle = (bundle: Bundle) => {
     const childRelease = releases.find(
       (release) => release.bundle_id === bundle.id,
@@ -496,35 +628,13 @@ function BundlesPage() {
     releaseId: undefined,
   };
 
-  const groups = groupUnreachableReleases(releases, search);
-  const showUnreachable = search.showUnreachable === true;
-  const unreachableGroup = {
-    count: groups.collapsed.length,
-    noun: UNREACHABLE_BUNDLES,
-    open: showUnreachable,
-    onOpenChange: (open: boolean) => {
-      // A lineage panel goes with its bundle.
-      if (
-        !open &&
-        groups.collapsed.some((release) => release.id === expandedReleaseId)
-      ) {
-        setExpandedReleaseId(undefined);
-      }
-      go({ ...search, showUnreachable: open ? true : undefined }, false);
-    },
-  };
-  // Clearing the filters keeps the group as it is.
-  const unfiltered: ReleaseSearch = showUnreachable
-    ? { showUnreachable: true }
-    : {};
-
-  const renderCard = (release: ReleaseListRow) => {
+  const renderCard = (release: ReleaseListRow, ctx: RowContext) => {
     const channelName =
       channelNames.get(release.channel_id) ?? release.channel_id;
     const patchCount = release.bundle_id
-      ? patchCountsByBundleId[release.bundle_id]
+      ? ctx.patchCounts[release.bundle_id]
       : 0;
-    const isExpanded = expandedReleaseId === release.id;
+    const isExpanded = lineageVisible && expandedReleaseId === release.id;
     const panelId = `bundle-lineage-panel-${release.id}`;
 
     return (
@@ -540,14 +650,12 @@ function BundlesPage() {
             isExpanded && "border-b-0 bg-primary/5",
           )}
           data-state={search.releaseId === release.id ? "selected" : undefined}
-          onClick={openOutsideControls(() =>
-            go({ ...search, releaseId: release.id }, false),
-          )}
+          onClick={openOutsideControls(() => select(release))}
         >
           <div className="flex items-start justify-between gap-3">
             <BundleEntry
               expanded={isExpanded}
-              onOpen={() => go({ ...search, releaseId: release.id }, false)}
+              onOpen={() => select(release)}
               onToggleExpand={() =>
                 setExpandedReleaseId(isExpanded ? undefined : release.id)
               }
@@ -592,7 +700,7 @@ function BundlesPage() {
           {featureColumns.map(({ Cell, feature, label }) => (
             <div className="mt-3 text-xs" key={feature}>
               <span className="sr-only">{label}</span>
-              <Cell releaseId={release.id} releases={slotReleases} />
+              <Cell releaseId={release.id} releases={ctx.slotReleases} />
             </div>
           ))}
           {release.message ? (
@@ -612,8 +720,8 @@ function BundlesPage() {
     );
   };
 
-  const renderRow = (release: ReleaseListRow) => {
-    const isExpanded = expandedReleaseId === release.id;
+  const renderRow = (release: ReleaseListRow, ctx: RowContext) => {
+    const isExpanded = lineageVisible && expandedReleaseId === release.id;
     const panelId = `bundle-lineage-panel-${release.id}`;
 
     return (
@@ -626,12 +734,12 @@ function BundlesPage() {
             isExpanded && "bg-primary/5",
           )}
           data-state={search.releaseId === release.id ? "selected" : undefined}
-          onOpen={() => go({ ...search, releaseId: release.id }, false)}
+          onOpen={() => select(release)}
         >
           <TableCell>
             <BundleEntry
               expanded={isExpanded}
-              onOpen={() => go({ ...search, releaseId: release.id }, false)}
+              onOpen={() => select(release)}
               onToggleExpand={() =>
                 setExpandedReleaseId(isExpanded ? undefined : release.id)
               }
@@ -650,15 +758,12 @@ function BundlesPage() {
           </TableCell>
           <TableCell>
             {release.bundle_id &&
-            patchCountsByBundleId[release.bundle_id] === undefined ? (
+            ctx.patchCounts[release.bundle_id] === undefined ? (
               <span className="text-sm text-muted-foreground">Checking</span>
-            ) : release.bundle_id &&
-              patchCountsByBundleId[release.bundle_id]! > 0 ? (
+            ) : release.bundle_id && ctx.patchCounts[release.bundle_id]! > 0 ? (
               <Badge variant="secondary">
-                {patchCountsByBundleId[release.bundle_id]}{" "}
-                {patchCountsByBundleId[release.bundle_id] === 1
-                  ? "patch"
-                  : "patches"}
+                {ctx.patchCounts[release.bundle_id]}{" "}
+                {ctx.patchCounts[release.bundle_id] === 1 ? "patch" : "patches"}
               </Badge>
             ) : (
               <span className="text-muted-foreground">-</span>
@@ -696,7 +801,7 @@ function BundlesPage() {
           </TableCell>
           {featureColumns.map(({ Cell, feature }) => (
             <TableCell key={feature}>
-              <Cell releaseId={release.id} releases={slotReleases} />
+              <Cell releaseId={release.id} releases={ctx.slotReleases} />
             </TableCell>
           ))}
           <TableCell
@@ -724,15 +829,35 @@ function BundlesPage() {
     );
   };
 
+  const fold = (
+    entry: Fold,
+    render: (release: ReleaseListRow, ctx: RowContext) => ReactNode,
+  ) => (
+    <UnreachableBundlesFold
+      channels={channels}
+      columns={columnCount}
+      filter={filter}
+      fold={entry}
+      isMobile={isMobile}
+      key={`fold-${entry.to}`}
+      onOpenChange={(open) => folds.set(foldKey(entry), open)}
+      open={folds.isOpen(foldKey(entry))}
+      render={render}
+    />
+  );
+  // A page of unreachable bundles alone: one fold under the empty state.
+  const foldedOnly = releases.length === 0 && entries.length > 0;
   const empty = (
     <DataTableEmpty
       icon={Package}
       title={
-        onLaterPage
-          ? "No more bundles"
-          : hasReleaseFilters(search)
-            ? "No bundles match these filters"
-            : "No bundles yet"
+        foldedOnly
+          ? "No device gets the bundles here"
+          : onLaterPage
+            ? "No more bundles"
+            : hasReleaseFilters(search)
+              ? "No bundles match these filters"
+              : "No bundles yet"
       }
     >
       {onLaterPage ? (
@@ -749,7 +874,7 @@ function BundlesPage() {
       ) : hasReleaseFilters(search) ? (
         <Button
           className="mt-1 min-h-11 sm:min-h-8"
-          onClick={() => go(unfiltered)}
+          onClick={() => go({})}
           variant="outline"
         >
           Clear filters
@@ -774,7 +899,7 @@ function BundlesPage() {
       <BundleFilterToolbar
         channels={channels}
         onChange={changeFilters}
-        onClear={() => go(unfiltered)}
+        onClear={() => go({})}
         onManageChannels={() => setChannelsOpen(true)}
         search={search}
       />
@@ -792,20 +917,22 @@ function BundlesPage() {
               <div className="h-full overflow-y-auto">
                 {releasesQuery.isPending ? (
                   <DataCardSkeletons />
-                ) : releases.length ? (
-                  <>
-                    {groups.shown.map(renderCard)}
-                    {groups.collapsed.length > 0 ? (
-                      <DataCardCollapsedRows {...unreachableGroup} />
-                    ) : null}
-                    {showUnreachable ? groups.collapsed.map(renderCard) : null}
-                  </>
                 ) : (
-                  <DataCardsEmpty>{empty}</DataCardsEmpty>
+                  <>
+                    {releases.length === 0 ? (
+                      <DataCardsEmpty>{empty}</DataCardsEmpty>
+                    ) : null}
+                    {entries.map((entry) =>
+                      entry.kind === "row"
+                        ? renderCard(entry.row, pageContext)
+                        : fold(entry, renderCard),
+                    )}
+                  </>
                 )}
               </div>
             ) : (
               <DataTable
+                rowGroups
                 header={
                   <>
                     <TableHead>ID</TableHead>
@@ -825,24 +952,31 @@ function BundlesPage() {
                 }
               >
                 {releasesQuery.isPending ? (
-                  <DataTableSkeletonRows columns={columnCount} />
+                  <DataTableBody>
+                    <DataTableSkeletonRows columns={columnCount} />
+                  </DataTableBody>
                 ) : (
                   <>
-                    {groups.shown.map(renderRow)}
-                    {groups.collapsed.length > 0 ? (
-                      <DataTableCollapsedRows
-                        columns={columnCount}
-                        {...unreachableGroup}
-                      />
+                    {releases.length === 0 ? (
+                      <DataTableBody>
+                        <DataTableFullRow columns={columnCount}>
+                          {empty}
+                        </DataTableFullRow>
+                      </DataTableBody>
                     ) : null}
-                    {showUnreachable ? groups.collapsed.map(renderRow) : null}
+                    {groupsOf(entries).map((group) =>
+                      group.kind === "fold" ? (
+                        fold(group.fold, renderRow)
+                      ) : (
+                        <DataTableBody key={`rows-${group.rows[0]!.id}`}>
+                          {group.rows.map((release) =>
+                            renderRow(release, pageContext),
+                          )}
+                        </DataTableBody>
+                      ),
+                    )}
                   </>
                 )}
-                {!releasesQuery.isPending && releases.length === 0 ? (
-                  <DataTableFullRow columns={columnCount}>
-                    {empty}
-                  </DataTableFullRow>
-                ) : null}
               </DataTable>
             )}
           </DataTableFrame>

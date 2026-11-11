@@ -6,7 +6,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   downloadNativeBuild,
-  listNativeBuilds,
   resolveNativeBuildDownloadUrl,
 } from "./nativeBuilds";
 
@@ -25,49 +24,6 @@ const coreWith = (row: NativeBuildRow | null) => ({
 });
 
 const apkUri = "r2://updates/native-builds/android/build-1/app%20release.apk";
-
-describe("listNativeBuilds", () => {
-  const rows = (...ids: string[]) =>
-    ids.map((id) => ({ id }) as NativeBuildRow);
-
-  it("reads the newest page, and the next one after a full page", async () => {
-    const core = {
-      listNativeBuilds: vi.fn(async () => rows("c", "b")),
-    };
-
-    await expect(listNativeBuilds(core, { limit: 2 })).resolves.toEqual({
-      data: rows("c", "b"),
-      next: "b",
-    });
-    expect(core.listNativeBuilds).toHaveBeenCalledWith({
-      order: "desc",
-      limit: 2,
-    });
-    await expect(
-      listNativeBuilds(core, { before: "d", limit: 3 }),
-    ).resolves.toEqual({ data: rows("c", "b"), previous: "c" });
-    expect(core.listNativeBuilds).toHaveBeenLastCalledWith({
-      order: "desc",
-      limit: 3,
-      after: "d",
-    });
-  });
-
-  it("reads a previous page oldest first and shows it newest first", async () => {
-    const core = {
-      listNativeBuilds: vi.fn(async () => rows("b", "c")),
-    };
-
-    await expect(
-      listNativeBuilds(core, { after: "a", limit: 2 }),
-    ).resolves.toEqual({ data: rows("c", "b"), next: "b", previous: "c" });
-    expect(core.listNativeBuilds).toHaveBeenCalledWith({
-      order: "asc",
-      after: "a",
-      limit: 2,
-    });
-  });
-});
 
 describe("downloadNativeBuild", () => {
   it("redirects to the storage's download URL, resolved on each request", async () => {
