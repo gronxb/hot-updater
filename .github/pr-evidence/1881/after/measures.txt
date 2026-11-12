@@ -1,4 +1,0 @@
-  measure v01-devices-1280-l {"tableWidth":974,"frame":974,"moreVisible":[true,true,true,true,true],"cols":[["Name",144],["UDID",73],["Requested by",176],["Status",229],["Added",98],["Build",107],["Actions",146]]}
-  measure v01-devices-1440-l {"tableWidth":1134,"frame":1134,"moreVisible":[true,true,true,true,true],"cols":[["Name",167],["UDID",85],["Requested by",203],["Status",265],["Added",123],["Build",124],["Actions",169]]}
-  measure v01-devices-1280-d {"tableWidth":974,"frame":974,"moreVisible":[true,true,true,true,true],"cols":[["Name",143],["UDID",73],["Requested by",174],["Status",228],["Added",105],["Build",106],["Actions",145]]}
-  measure v01-devices-1440-d {"tableWidth":1134,"frame":1134,"moreVisible":[true,true,true,true,true],"cols":[["Name",167],["UDID",85],["Requested by",203],["Status",265],["Added",123],["Build",124],["Actions",169]]}
