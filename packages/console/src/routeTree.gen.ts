@@ -20,6 +20,8 @@ import { Route as NativeBuildsBuildIdRouteImport } from './routes/native-builds_
 import { Route as NativeBuildsDevicesRouteImport } from './routes/native-builds_.devices'
 import { Route as HotUpdaterDevicesDeviceResponseRouteImport } from './routes/[_]hot-updater/devices/device-response'
 import { Route as HotUpdaterDevicesDeviceDotmobileconfigRouteImport } from './routes/[_]hot-updater/devices/device[.]mobileconfig'
+import { Route as HotUpdaterDevicesReceiptRouteImport } from './routes/[_]hot-updater/devices/receipt'
+import { Route as HotUpdaterDevicesRequestRouteImport } from './routes/[_]hot-updater/devices/request'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as HotUpdaterNativeBuildsBuildIdManifestDotplistRouteImport } from './routes/[_]hot-updater/native-builds/$buildId/manifest[.]plist'
 import { Route as ApiBundlesBundleIdDownloadRouteImport } from './routes/api/bundles/$bundleId/download'
@@ -82,6 +84,18 @@ const HotUpdaterDevicesDeviceDotmobileconfigRoute =
     path: '/_hot-updater/devices/device.mobileconfig',
     getParentRoute: () => rootRouteImport,
   } as any)
+const HotUpdaterDevicesReceiptRoute =
+  HotUpdaterDevicesReceiptRouteImport.update({
+    id: '/_hot-updater/devices/receipt',
+    path: '/_hot-updater/devices/receipt',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const HotUpdaterDevicesRequestRoute =
+  HotUpdaterDevicesRequestRouteImport.update({
+    id: '/_hot-updater/devices/request',
+    path: '/_hot-updater/devices/request',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -118,6 +132,8 @@ export interface FileRoutesByFullPath {
   '/native-builds/devices': typeof NativeBuildsDevicesRoute
   '/_hot-updater/devices/device-response': typeof HotUpdaterDevicesDeviceResponseRoute
   '/_hot-updater/devices/device.mobileconfig': typeof HotUpdaterDevicesDeviceDotmobileconfigRoute
+  '/_hot-updater/devices/receipt': typeof HotUpdaterDevicesReceiptRoute
+  '/_hot-updater/devices/request': typeof HotUpdaterDevicesRequestRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/native-builds/$buildId/manifest.plist': typeof HotUpdaterNativeBuildsBuildIdManifestDotplistRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
@@ -135,6 +151,8 @@ export interface FileRoutesByTo {
   '/native-builds/devices': typeof NativeBuildsDevicesRoute
   '/_hot-updater/devices/device-response': typeof HotUpdaterDevicesDeviceResponseRoute
   '/_hot-updater/devices/device.mobileconfig': typeof HotUpdaterDevicesDeviceDotmobileconfigRoute
+  '/_hot-updater/devices/receipt': typeof HotUpdaterDevicesReceiptRoute
+  '/_hot-updater/devices/request': typeof HotUpdaterDevicesRequestRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/native-builds/$buildId/manifest.plist': typeof HotUpdaterNativeBuildsBuildIdManifestDotplistRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
@@ -153,6 +171,8 @@ export interface FileRoutesById {
   '/native-builds_/devices': typeof NativeBuildsDevicesRoute
   '/_hot-updater/devices/device-response': typeof HotUpdaterDevicesDeviceResponseRoute
   '/_hot-updater/devices/device.mobileconfig': typeof HotUpdaterDevicesDeviceDotmobileconfigRoute
+  '/_hot-updater/devices/receipt': typeof HotUpdaterDevicesReceiptRoute
+  '/_hot-updater/devices/request': typeof HotUpdaterDevicesRequestRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/native-builds/$buildId/manifest.plist': typeof HotUpdaterNativeBuildsBuildIdManifestDotplistRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
@@ -172,6 +192,8 @@ export interface FileRouteTypes {
     | '/native-builds/devices'
     | '/_hot-updater/devices/device-response'
     | '/_hot-updater/devices/device.mobileconfig'
+    | '/_hot-updater/devices/receipt'
+    | '/_hot-updater/devices/request'
     | '/api/auth/$'
     | '/_hot-updater/native-builds/$buildId/manifest.plist'
     | '/api/bundles/$bundleId/download'
@@ -189,6 +211,8 @@ export interface FileRouteTypes {
     | '/native-builds/devices'
     | '/_hot-updater/devices/device-response'
     | '/_hot-updater/devices/device.mobileconfig'
+    | '/_hot-updater/devices/receipt'
+    | '/_hot-updater/devices/request'
     | '/api/auth/$'
     | '/_hot-updater/native-builds/$buildId/manifest.plist'
     | '/api/bundles/$bundleId/download'
@@ -206,6 +230,8 @@ export interface FileRouteTypes {
     | '/native-builds_/devices'
     | '/_hot-updater/devices/device-response'
     | '/_hot-updater/devices/device.mobileconfig'
+    | '/_hot-updater/devices/receipt'
+    | '/_hot-updater/devices/request'
     | '/api/auth/$'
     | '/_hot-updater/native-builds/$buildId/manifest.plist'
     | '/api/bundles/$bundleId/download'
@@ -224,6 +250,8 @@ export interface RootRouteChildren {
   NativeBuildsDevicesRoute: typeof NativeBuildsDevicesRoute
   HotUpdaterDevicesDeviceResponseRoute: typeof HotUpdaterDevicesDeviceResponseRoute
   HotUpdaterDevicesDeviceDotmobileconfigRoute: typeof HotUpdaterDevicesDeviceDotmobileconfigRoute
+  HotUpdaterDevicesReceiptRoute: typeof HotUpdaterDevicesReceiptRoute
+  HotUpdaterDevicesRequestRoute: typeof HotUpdaterDevicesRequestRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   HotUpdaterNativeBuildsBuildIdManifestDotplistRoute: typeof HotUpdaterNativeBuildsBuildIdManifestDotplistRoute
   ApiBundlesBundleIdDownloadRoute: typeof ApiBundlesBundleIdDownloadRoute
@@ -309,6 +337,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HotUpdaterDevicesDeviceDotmobileconfigRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_hot-updater/devices/receipt': {
+      id: '/_hot-updater/devices/receipt'
+      path: '/_hot-updater/devices/receipt'
+      fullPath: '/_hot-updater/devices/receipt'
+      preLoaderRoute: typeof HotUpdaterDevicesReceiptRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_hot-updater/devices/request': {
+      id: '/_hot-updater/devices/request'
+      path: '/_hot-updater/devices/request'
+      fullPath: '/_hot-updater/devices/request'
+      preLoaderRoute: typeof HotUpdaterDevicesRequestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -353,6 +395,8 @@ const rootRouteChildren: RootRouteChildren = {
   HotUpdaterDevicesDeviceResponseRoute: HotUpdaterDevicesDeviceResponseRoute,
   HotUpdaterDevicesDeviceDotmobileconfigRoute:
     HotUpdaterDevicesDeviceDotmobileconfigRoute,
+  HotUpdaterDevicesReceiptRoute: HotUpdaterDevicesReceiptRoute,
+  HotUpdaterDevicesRequestRoute: HotUpdaterDevicesRequestRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   HotUpdaterNativeBuildsBuildIdManifestDotplistRoute:
     HotUpdaterNativeBuildsBuildIdManifestDotplistRoute,

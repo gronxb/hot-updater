@@ -94,6 +94,24 @@ describe("NativeBuildDetailPage", () => {
     expect(title.textContent).toContain("sandbox-release");
   });
 
+  it("says a build it can't find may be deleted, naming no command", () => {
+    detailQuery.mockReturnValue({ data: null, isError: false });
+    render(
+      <NativeBuildDetailPage
+        buildId="019a0000-0000-7000-8000-000000000009"
+        onSearchChange={vi.fn()}
+        search={{}}
+      />,
+    );
+    expect(screen.getByText("Native build not found")).toBeTruthy();
+    expect(screen.queryByText(/native-build delete/)).toBeNull();
+    expect(
+      screen.getByText(
+        /It may have been deleted, or be from another console\./,
+      ),
+    ).toBeTruthy();
+  });
+
   it("lists an ad hoc IPA's devices, and reads nothing more for a store's IPA or another artifact", () => {
     show(build({}), "pr-130");
     expect(screen.getByText("Devices in this build")).toBeTruthy();

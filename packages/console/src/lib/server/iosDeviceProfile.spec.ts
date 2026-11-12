@@ -157,7 +157,7 @@ describe("receiveDeviceResponse", () => {
     expect(loadCore).not.toHaveBeenCalled();
   });
 
-  it("saves a registering iPhone as requested by the capability's email, and returns to the iOS devices page", async () => {
+  it("saves a registering iPhone as requested by the capability's email, and returns to the iOS devices page with a receipt", async () => {
     const requestIosDevice = vi.fn(async () => ({}) as never);
     const response = await receiveDeviceResponse(
       post(await registerToken(), cmsAnswer(PHONE)),
@@ -170,9 +170,19 @@ describe("receiveDeviceResponse", () => {
       name: "Kim's iPhone",
       requestedBy: "kim@team.dev",
     });
-    expect(response.headers.get("location")).toBe(
-      `${CONSOLE}/native-builds/devices#udid=${PHONE}&requested=1`,
+    // With a receipt too, which the page trades for the cookie that lets
+    // this Safari request the iPhone again without the profile.
+    const location = new URL(response.headers.get("location")!);
+    expect(`${location.origin}${location.pathname}`).toBe(
+      `${CONSOLE}/native-builds/devices`,
     );
+    const fragment = new URLSearchParams(location.hash.slice(1));
+    expect(fragment.get("udid")).toBe(PHONE);
+    expect(fragment.get("requested")).toBe("1");
+    expect(await verifyDeviceReceipt(SECRET, fragment.get("r")!)).toEqual({
+      u: PHONE,
+      e: "kim@team.dev",
+    });
   });
 
   it("identifies an iPhone with no database call, returning to the build its capability names with a receipt", async () => {

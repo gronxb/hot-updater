@@ -74,7 +74,7 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
                   {gitCommitUrl ? (
                     <a
                       aria-label="Open git commit"
-                      className="shrink-0 text-primary hover:underline"
+                      className="relative shrink-0 text-primary after:absolute after:-inset-2.5 hover:underline md:after:hidden"
                       href={gitCommitUrl}
                       rel="noopener noreferrer"
                       target="_blank"

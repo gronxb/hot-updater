@@ -25,8 +25,12 @@ const {
   downloadUrlQuery,
   installEligibilityQuery,
   profileLinkQuery,
+  keptQuery,
+  keepReceipt,
   requestAccess,
 } = vi.hoisted(() => ({
+  keptQuery: vi.fn(),
+  keepReceipt: vi.fn(async () => null),
   downloadLinkQuery: vi.fn(),
   downloadUrlQuery: vi.fn(),
   installEligibilityQuery: vi.fn(),
@@ -43,9 +47,14 @@ vi.mock("@/lib/api", () => ({
   useNativeBuildDownloadUrlQuery: downloadUrlQuery,
   useNativeBuildInstallEligibilityQuery: installEligibilityQuery,
 }));
-vi.mock("@/lib/ios-devices-api", () => ({
+vi.mock("@/lib/ios-devices-api", async (importOriginal) => ({
+  keptIsThisIphone: (
+    await importOriginal<typeof import("@/lib/ios-devices-api")>()
+  ).keptIsThisIphone,
   useIosDeviceProfileLinkQuery: profileLinkQuery,
-  useRequestIosDeviceAccessMutation: () => requestAccess,
+  useKeptIosDeviceQuery: keptQuery,
+  keepIosDeviceReceipt: keepReceipt,
+  useRequestThisIphoneMutation: () => requestAccess,
 }));
 // The newer build's link renders as an anchor without a router.
 vi.mock("@tanstack/react-router", () => ({
@@ -169,6 +178,7 @@ const itmsLinks = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  keptQuery.mockReturnValue({ data: { udid: null }, isPending: false });
   requestAccess.isError = false;
   requestAccess.mutate.mockReset();
   profileLinkQuery.mockReturnValue({
@@ -843,10 +853,15 @@ describe("InstallCard on an iPhone", () => {
     expect(installEligibilityQuery).not.toHaveBeenCalled();
   });
 
-  it("keeps the profile's answer, its UDID and receipt, so Request access works after a reload", async () => {
+  it("keeps the profile's UDID, trades its receipt for the cookie, and keeps no receipt where script reads it", async () => {
     window.localStorage.setItem(
       IOS_UDID_STORAGE_KEY,
       "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+    );
+    // What an earlier version kept goes.
+    window.localStorage.setItem(
+      IOS_DEVICE_RECEIPT_STORAGE_KEY,
+      JSON.stringify({ udid: PHONE, receipt: "old" }),
     );
     window.history.replaceState(
       null,
@@ -862,9 +877,100 @@ describe("InstallCard on an iPhone", () => {
     ).toBeTruthy();
     expect(installEligibilityQuery).toHaveBeenLastCalledWith(BUILD, PHONE);
     expect(window.localStorage.getItem(IOS_UDID_STORAGE_KEY)).toBe(PHONE);
-    expect(
-      JSON.parse(window.localStorage.getItem(IOS_DEVICE_RECEIPT_STORAGE_KEY)!),
-    ).toEqual({ udid: PHONE, receipt: RECEIPT });
+    expect(window.localStorage.getItem(IOS_DEVICE_RECEIPT_STORAGE_KEY)).toBe(
+      null,
+    );
+    // The fragment's receipt goes to the trade, which sets the cookie.
+    expect(keepReceipt).toHaveBeenCalledWith("", RECEIPT);
+    expect(keptQuery).toHaveBeenLastCalledWith(
+      "",
+      expect.objectContaining({ udid: PHONE, receipt: RECEIPT }),
+      true,
+    );
     expect(window.location.hash).toBe("");
+  });
+
+  it("keeps the proof as the cookie whatever the page shows next, such as an iPhone already in the build", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      `/console/native-builds/${BUILD}#udid=${PHONE}&r=${RECEIPT}`,
+    );
+    onIphone();
+    answer(installable("included"));
+    render(<InstallCard build={row} />);
+
+    expect(await screen.findByRole("link", { name: "Install" })).toBeTruthy();
+    // Under the Console's own path.
+    expect(keepReceipt).toHaveBeenCalledWith("/console", RECEIPT);
+  });
+
+  it("trades the receipt again after a reload during an outage, from this tab's session, and requests with it", async () => {
+    const held = `${btoa(
+      JSON.stringify({ u: PHONE, x: Date.now() + 60 * 60 * 1000 }),
+    ).replaceAll("=", "")}.sig`;
+    window.localStorage.setItem(IOS_UDID_STORAGE_KEY, PHONE);
+    window.sessionStorage.setItem(
+      "hot-updater-ios-device-pending-receipt",
+      JSON.stringify({ udid: PHONE, receipt: held }),
+    );
+    // The trade failed before the reload: the cookie holds nothing yet.
+    onIphone();
+    answer(installable("not-included"));
+    render(<InstallCard build={row} />);
+
+    expect(keptQuery).toHaveBeenLastCalledWith(
+      "",
+      expect.objectContaining({ udid: PHONE, receipt: held }),
+      true,
+    );
+    fireEvent.change(await screen.findByLabelText("This iPhone's name"), {
+      target: { value: "Kim's iPhone" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Request access" }));
+    expect(requestAccess.mutate).toHaveBeenCalledWith(
+      { receipt: held, name: "Kim's iPhone" },
+      expect.anything(),
+    );
+    window.sessionStorage.clear();
+  });
+
+  it("requests again after a reload with no profile, from the cookie an earlier check left", async () => {
+    window.localStorage.setItem(IOS_UDID_STORAGE_KEY, PHONE);
+    keptQuery.mockReturnValue({
+      data: { udid: PHONE.toLowerCase() },
+      isPending: false,
+    });
+    onIphone();
+    answer(installable("not-included"));
+    render(<InstallCard build={row} />);
+
+    fireEvent.change(await screen.findByLabelText("This iPhone's name"), {
+      target: { value: "Kim's iPhone" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Request access" }));
+    expect(requestAccess.mutate).toHaveBeenCalledWith(
+      { receipt: null, name: "Kim's iPhone" },
+      expect.anything(),
+    );
+    expect(
+      screen.queryByRole("link", { name: "Check this iPhone again" }),
+    ).toBeNull();
+  });
+
+  it("asks for the profile again when the cookie proves another iPhone, or none", async () => {
+    window.localStorage.setItem(IOS_UDID_STORAGE_KEY, PHONE);
+    keptQuery.mockReturnValue({
+      data: { udid: "00008110-001a2b3c4d5e6f70" },
+      isPending: false,
+    });
+    onIphone();
+    answer(installable("not-included"));
+    render(<InstallCard build={row} />);
+
+    expect(
+      await screen.findByRole("link", { name: "Check this iPhone again" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Request access" })).toBeNull();
   });
 });

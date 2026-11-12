@@ -9,9 +9,12 @@ import { sameSecret } from "./local-console";
  * - The capability (`t`) lets the profile routes serve one profile and take
  *   one answer for a signed-in person: `register` saves the iPhone as
  *   requested, `identify` only tells the build page which iPhone it is.
- * - The receipt (`r`) is what `identify` hands back: it names the UDID the
- *   profile read and whose session asked, so Request access takes the UDID
- *   from it, never from a link anyone can craft.
+ * - The receipt (`r`) is what the profile's answer hands back, in the page's
+ *   fragment: it names the UDID the profile read and whose session asked, so
+ *   Request access takes the UDID from it, never from a link anyone can craft.
+ * - The kept receipt says the same for 30 days, in an HttpOnly cookie the
+ *   page trades the fragment's receipt for, so that Safari can request this
+ *   iPhone again without the profile, for the same person only.
  */
 
 /** Separates these tokens' key from every other use of the Console's secret. */
@@ -22,6 +25,9 @@ export const DEVICE_PROFILE_TOKEN_TTL_MS = 15 * 60 * 1000;
 
 /** How long a receipt works, from the profile's answer to Request access. */
 export const DEVICE_RECEIPT_TTL_MS = 60 * 60 * 1000;
+
+/** How long Safari keeps the proof of this iPhone, in its cookie. */
+export const KEPT_DEVICE_RECEIPT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** What a capability lets its bearer do. */
 export interface DeviceProfileGrant {
@@ -127,6 +133,9 @@ const verify = async <T extends object>(
 
 const PROFILE_PURPOSE = "device-profile";
 const RECEIPT_PURPOSE = "device-receipt";
+// Its own purpose: a kept receipt never stands in for the fragment's, nor the
+// other way round.
+const KEPT_RECEIPT_PURPOSE = "device-receipt-kept";
 
 export const createDeviceProfileToken = (
   secret: string,
@@ -176,6 +185,31 @@ export const verifyDeviceReceipt = async (
   const verified = await verify<DeviceReceipt>(
     secret,
     RECEIPT_PURPOSE,
+    token,
+    now,
+  );
+  if (typeof verified === "string") return verified;
+  if (typeof verified.u !== "string" || typeof verified.e !== "string") {
+    return "invalid";
+  }
+  return { u: verified.u, e: verified.e };
+};
+
+export const createKeptDeviceReceipt = (
+  secret: string,
+  receipt: DeviceReceipt,
+  now: number = Date.now(),
+) =>
+  sign(secret, KEPT_RECEIPT_PURPOSE, receipt, now + KEPT_DEVICE_RECEIPT_TTL_MS);
+
+export const verifyKeptDeviceReceipt = async (
+  secret: string,
+  token: string,
+  now: number = Date.now(),
+): Promise<DeviceReceipt | "expired" | "invalid"> => {
+  const verified = await verify<DeviceReceipt>(
+    secret,
+    KEPT_RECEIPT_PURPOSE,
     token,
     now,
   );

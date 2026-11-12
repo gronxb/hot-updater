@@ -131,6 +131,30 @@ export const consolePathOf = (
     : "";
 };
 
+/**
+ * The Console's own path, from where the browser is and where the router says
+ * it is: the prefix a host serves the Console under, or empty at its root.
+ */
+export const consolePathFromRouter = (
+  location: { readonly pathname: string },
+  routerPathname: string,
+) => {
+  const path = location.pathname.replace(/\/$/u, "");
+  const route = routerPathname.replace(/\/$/u, "");
+  return path.endsWith(route) ? path.slice(0, path.length - route.length) : "";
+};
+
+/**
+ * The Console's own path, from one of its Native builds pages, where the
+ * profile's answer lands: empty at the root of its host.
+ */
+export const consolePathOfNativeBuildsPage = (location: {
+  readonly pathname: string;
+}) => {
+  const at = location.pathname.lastIndexOf("/native-builds");
+  return at < 0 ? "" : location.pathname.slice(0, at);
+};
+
 /** The console page of one native build. */
 export const nativeBuildDetailPath = (id: string) =>
   `/native-builds/${encodeURIComponent(id)}`;
@@ -150,6 +174,70 @@ export const IOS_UDID_STORAGE_KEY = "hot-updater-ios-udid";
  * signed-in person, which Request access takes.
  */
 export const IOS_DEVICE_RECEIPT_STORAGE_KEY = "hot-updater-ios-device-receipt";
+
+/**
+ * The profile answer's fresh receipt, in this tab's session storage only until
+ * the page has traded it for the HttpOnly cookie: a reload during an outage
+ * can still trade it. Gone once traded, or once it has expired.
+ */
+export const IOS_DEVICE_PENDING_RECEIPT_KEY =
+  "hot-updater-ios-device-pending-receipt";
+
+/** When a signed receipt expires, from its own body, or 0 when unreadable. */
+export const receiptExpiresAtMs = (receipt: string) => {
+  try {
+    const body = receipt
+      .split(".")[0]!
+      .replaceAll("-", "+")
+      .replaceAll("_", "/");
+    const x = (JSON.parse(atob(body)) as { x?: unknown }).x;
+    return typeof x === "number" ? x : 0;
+  } catch {
+    return 0;
+  }
+};
+
+/** The pending receipt this tab holds for `udid`, unexpired, or null. */
+export const readPendingReceipt = (udid: string | null): string | null => {
+  try {
+    const kept = JSON.parse(
+      window.sessionStorage.getItem(IOS_DEVICE_PENDING_RECEIPT_KEY) ?? "null",
+    ) as { udid?: unknown; receipt?: unknown } | null;
+    if (typeof kept?.receipt !== "string") return null;
+    if (receiptExpiresAtMs(kept.receipt) <= Date.now()) {
+      window.sessionStorage.removeItem(IOS_DEVICE_PENDING_RECEIPT_KEY);
+      return null;
+    }
+    return udid !== null && kept.udid === udid ? kept.receipt : null;
+  } catch {
+    return null;
+  }
+};
+
+export const holdPendingReceipt = (udid: string, receipt: string) => {
+  try {
+    window.sessionStorage.setItem(
+      IOS_DEVICE_PENDING_RECEIPT_KEY,
+      JSON.stringify({ udid, receipt }),
+    );
+  } catch {
+    // A browser that keeps nothing keeps it in memory for this page.
+  }
+};
+
+/** Drops the pending receipt once it is traded, if it is this one. */
+export const releasePendingReceipt = (receipt: string) => {
+  try {
+    const kept = JSON.parse(
+      window.sessionStorage.getItem(IOS_DEVICE_PENDING_RECEIPT_KEY) ?? "null",
+    ) as { receipt?: unknown } | null;
+    if (kept?.receipt === receipt) {
+      window.sessionStorage.removeItem(IOS_DEVICE_PENDING_RECEIPT_KEY);
+    }
+  } catch {
+    // Nothing kept.
+  }
+};
 
 /** A device's UDID: 40 hex digits, or 8 and 16 joined by a hyphen. */
 export const IOS_UDID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{8}-[0-9a-f]{16})$/iu;

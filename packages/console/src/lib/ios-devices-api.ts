@@ -1,4 +1,4 @@
-import type { IosDeviceStatus } from "@hot-updater/plugin-core";
+import type { IosDeviceRow, IosDeviceStatus } from "@hot-updater/plugin-core";
 import {
   keepPreviousData,
   useMutation,
@@ -14,13 +14,15 @@ import {
   getNativeBuildIpaDevices,
   removeIosDevice,
   renameIosDevice,
-  requestIosDeviceAccess,
 } from "./ios-devices-rpc";
+import { releasePendingReceipt } from "./native-builds";
 
 export const iosDeviceKeys = {
   all: ["ios-devices"] as const,
   list: (status?: IosDeviceStatus) => ["ios-devices", status ?? "all"] as const,
   device: (udid: string) => ["ios-devices", "device", udid] as const,
+  kept: (udid: string, receipt: string | null) =>
+    ["ios-devices", "kept", udid, receipt ?? ""] as const,
   ipa: (buildId: string) => ["native-build-ipa-devices", buildId] as const,
 };
 
@@ -119,7 +121,133 @@ export const useRemoveIosDeviceMutation = () =>
     removeIosDevice({ data: input }),
   );
 
-export const useRequestIosDeviceAccessMutation = () =>
-  useInvalidatingMutation((input: { receipt: string; name: string }) =>
-    requestIosDeviceAccess({ data: input }),
+/** The routes this iPhone's kept proof is sent to, under the Console's path. */
+const deviceRoute = (consolePath: string, name: "receipt" | "request") =>
+  `${consolePath}/_hot-updater/devices/${name}`;
+
+const sendDeviceRoute = async <T>(
+  url: string,
+  init: RequestInit & { readonly json?: unknown } = {},
+): Promise<T> => {
+  const { json, ...rest } = init;
+  const response = await fetch(url, {
+    credentials: "same-origin",
+    ...rest,
+    ...(json === undefined
+      ? {}
+      : {
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(json),
+        }),
+  });
+  const body = (await response.json().catch(() => null)) as
+    | (T & { readonly error?: string })
+    | null;
+  if (!response.ok || body === null) {
+    throw new Error(body?.error ?? `Request failed (${response.status}).`);
+  }
+  return body;
+};
+
+/** Trades in flight or done, one per receipt: a failed one is forgotten. */
+const trades = new Map<string, Promise<unknown>>();
+
+/**
+ * Trades the profile answer's fresh receipt for this Safari's HttpOnly cookie,
+ * wherever the answer lands: whatever the build page or the registry says, the
+ * proof is kept. One request per receipt while it is in flight or once it has
+ * succeeded; a failed one rejects and is forgotten, so the next refresh,
+ * refocus, or reload trades it again while it is still valid. Once traded,
+ * the receipt leaves this tab's session storage.
+ */
+export const keepIosDeviceReceipt = (consolePath: string, receipt: string) => {
+  let trade = trades.get(receipt);
+  if (trade === undefined) {
+    trade = sendDeviceRoute(deviceRoute(consolePath, "receipt"), {
+      method: "POST",
+      json: { receipt },
+    }).then(
+      (answer) => {
+        releasePendingReceipt(receipt);
+        return answer;
+      },
+      (error: unknown) => {
+        trades.delete(receipt);
+        throw error;
+      },
+    );
+    trades.set(receipt, trade);
+  }
+  return trade;
+};
+
+/**
+ * The UDID this Safari has proved for the signed-in person, from its HttpOnly
+ * cookie, or null, read after the page's fresh receipt, if any, is traded for
+ * it. Read on an iPhone only.
+ */
+export function useKeptIosDeviceQuery(
+  consolePath: string,
+  device: { readonly udid: string | null; readonly receipt: string | null },
+  enabled: boolean,
+) {
+  const { receipt } = device;
+  return useQuery({
+    queryKey: iosDeviceKeys.kept(device.udid ?? "", receipt),
+    queryFn: async () => {
+      let failed: unknown = null;
+      if (receipt !== null) {
+        await keepIosDeviceReceipt(consolePath, receipt).catch((error) => {
+          failed = error;
+        });
+      }
+      const kept = await sendDeviceRoute<{ udid: string | null }>(
+        deviceRoute(consolePath, "receipt"),
+      );
+      // A trade that failed with no earlier proof leaves the read failed, so
+      // the next refresh or refocus trades the receipt again; no timer does.
+      if (failed !== null && kept.udid === null) throw failed;
+      return kept;
+    },
+    enabled,
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+}
+
+/**
+ * Forgets this Safari's proof of its iPhone before sign-out, so the next
+ * person on this Safari starts from the profile. Only an iPhone or iPad holds
+ * one; a failure leaves the cookie, which the next email ignores anyway.
+ */
+export const forgetKeptIosDevice = async (consolePath: string) => {
+  await sendDeviceRoute(deviceRoute(consolePath, "receipt"), {
+    method: "DELETE",
+  }).catch(() => undefined);
+};
+
+/**
+ * Requests this iPhone for the signed-in person, under `name`: the UDID comes
+ * from the profile's fresh receipt when the page has one, else from the
+ * cookie that proved it before.
+ */
+export const useRequestThisIphoneMutation = (consolePath: string) =>
+  useInvalidatingMutation(
+    (input: { readonly name: string; readonly receipt: string | null }) =>
+      sendDeviceRoute<{ device: IosDeviceRow; created: boolean }>(
+        deviceRoute(consolePath, "request"),
+        {
+          method: "POST",
+          json:
+            input.receipt === null
+              ? { name: input.name }
+              : { name: input.name, receipt: input.receipt },
+        },
+      ),
   );
+
+/** Whether the cookie's UDID is this iPhone's, whatever its case. */
+export const keptIsThisIphone = (
+  kept: string | null | undefined,
+  udid: string | null,
+) => kept != null && udid !== null && kept.toLowerCase() === udid.toLowerCase();

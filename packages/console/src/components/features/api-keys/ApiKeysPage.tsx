@@ -113,7 +113,7 @@ function CreateApiKeyDialog() {
 
   return (
     <>
-      <Button onClick={() => setOpen(true)}>
+      <Button className="max-md:h-11" onClick={() => setOpen(true)}>
         <Plus data-icon="inline-start" />
         Create API key
       </Button>

@@ -89,8 +89,11 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import {
   iosDeviceKeys,
   useApproveIosDeviceMutation,
+  keptIsThisIphone,
   useIosDeviceProfileLinkQuery,
   useIosDeviceQuery,
+  useKeptIosDeviceQuery,
+  useRequestThisIphoneMutation,
   useIosDevicesQuery,
   useRemoveIosDeviceMutation,
   useRenameIosDeviceMutation,
@@ -106,7 +109,7 @@ import {
 import type { IosDevicesSearch } from "@/routes/-native-builds-search";
 
 import { CopyableText } from "./CopyableText";
-import { AppleRefusal, useIosDevice } from "./IosInstall";
+import { AppleRefusal, type IosDevice, useIosDevice } from "./IosInstall";
 import { NativeBuildsNav } from "./NativeBuildsNav";
 
 const STATUS_LABELS: Record<IosDeviceStatus, string> = {
@@ -309,18 +312,37 @@ function DeviceActions({
   );
 }
 
+/**
+ * "This iPhone" on the row of the iPhone this page is open on: a quiet tag,
+ * as "Sandbox" is on a build, so its actions are found where every row's are.
+ */
+function ThisIphoneTag() {
+  return (
+    <Badge className="shrink-0 px-1.5" variant="muted">
+      This iPhone
+    </Badge>
+  );
+}
+
 function DeviceRow({
   device,
   viewer,
   onOpen,
+  isThisIphone,
 }: {
   readonly device: IosDeviceRow;
   readonly viewer: Viewer;
   readonly onOpen: (target: DialogTarget) => void;
+  readonly isThisIphone: boolean;
 }) {
   return (
     <TableRow>
-      <TableCell className="font-medium">{device.name}</TableCell>
+      <TableCell className="font-medium">
+        <span className="flex items-center gap-1.5">
+          {device.name}
+          {isThisIphone ? <ThisIphoneTag /> : null}
+        </span>
+      </TableCell>
       <TableCell>
         <span className="font-mono text-xs" title={device.udid} translate="no">
           {maskIosUdid(device.udid)}
@@ -351,16 +373,21 @@ function DeviceCard({
   device,
   viewer,
   onOpen,
+  isThisIphone,
 }: {
   readonly device: IosDeviceRow;
   readonly viewer: Viewer;
   readonly onOpen: (target: DialogTarget) => void;
+  readonly isThisIphone: boolean;
 }) {
   return (
     <DataCard className="cursor-default gap-3">
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <p className="truncate text-sm font-medium">{device.name}</p>
+          <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+            <span className="truncate">{device.name}</span>
+            {isThisIphone ? <ThisIphoneTag /> : null}
+          </p>
           <p className="font-mono text-xs text-muted-foreground" translate="no">
             {maskIosUdid(device.udid)}
           </p>
@@ -512,15 +539,6 @@ function RemoveDialog({
               : "It leaves the list. New ad hoc builds keep it until it's disabled at Apple."}
           </AlertDialogDescription>
         </AlertDialogHeader>
-        {decline || !viewer.canApprove ? null : (
-          <div className="flex min-w-0 flex-col text-xs text-muted-foreground [&_code]:break-words [&_code]:whitespace-normal">
-            <CopyableText
-              label="the command that disables it"
-              value={`npx hot-updater native-build devices remove --udid ${device.udid}`}
-              wrap
-            />
-          </div>
-        )}
         {remove.isError ? (
           <p className="text-xs text-destructive" role="alert">
             Couldn't {withdraw ? "withdraw" : decline ? "decline" : "remove"}{" "}
@@ -555,18 +573,17 @@ function RemoveDialog({
 
 /**
  * Where this iPhone stands, once its profile has answered: its row's name,
- * status, and next step, in place of the form that registered it. An approver
- * approves it here; Apple's refusal reads as on a build's page.
+ * status, and what happens next, in place of the form that registered it.
+ * It has no actions: they are on its row in the list, tagged "This iPhone",
+ * as every row's are. Apple's refusal reads as on a build's page.
  */
 function ThisIphone({
   device,
   viewer,
-  onOpen,
 }: {
   readonly device: IosDeviceRow;
-  /** Unknown until the list loads: no action until then. */
+  /** Unknown until the list loads. */
   readonly viewer: Viewer | undefined;
-  readonly onOpen: (target: DialogTarget) => void;
 }) {
   const canApprove = viewer?.canApprove === true;
   if (device.apple_error !== null) {
@@ -588,21 +605,12 @@ function ThisIphone({
       <p className="text-xs text-muted-foreground" role="status">
         {device.status === "pending"
           ? canApprove
-            ? "Approve it, and it joins the next ad hoc build."
+            ? "Approve it below, and it joins the next ad hoc build."
             : "A maintainer approves it next."
           : device.status === "approved"
             ? "It joins the next ad hoc build."
             : "New ad hoc builds install on it."}
       </p>
-      {canApprove && device.status === "pending" ? (
-        <Button
-          className="h-11 w-full sm:h-8 sm:w-fit"
-          onClick={() => onOpen({ kind: "approve", device })}
-        >
-          <Check data-icon="inline-start" />
-          Approve
-        </Button>
-      ) : null}
     </div>
   );
 }
@@ -632,12 +640,12 @@ function RegistrationNotice({
  */
 function RegisterCard({
   view,
-  onOpen,
+  phone,
 }: {
   readonly view: IosDevicesView | undefined;
-  readonly onOpen: (target: DialogTarget) => void;
+  /** This iPhone as `useIosDevice` reads it, null until the page mounts. */
+  readonly phone: IosDevice | null;
 }) {
-  const phone = useIosDevice();
   const [name, setName] = useState<string | null>(null);
   const typed = name ?? view?.defaultName ?? "";
   // The link is signed for the name as typed; a pause before signing again.
@@ -669,6 +677,20 @@ function RegisterCard({
       void refetch();
     }
   }, [udid, answers, refetch]);
+  // This Safari's proof of the iPhone, an HttpOnly cookie: the register
+  // answer's fresh receipt is traded for it, and a phone with no row requests
+  // itself again with it, without the profile, for the same person only.
+  const path = phone === null ? "" : consolePath();
+  const kept = useKeptIosDeviceQuery(
+    path,
+    phone ?? { udid: null, receipt: null },
+    onPhone &&
+      udid !== null &&
+      view?.registration === "ready" &&
+      (phone.receipt !== null || mine.data === null),
+  );
+  const again = useRequestThisIphoneMutation(path);
+  const proved = onPhone && keptIsThisIphone(kept.data?.udid, phone.udid);
 
   const body = (() => {
     // The server renders this without a browser: where it is and what it is
@@ -680,9 +702,7 @@ function RegisterCard({
       return <Skeleton aria-label="Loading" className="h-36 w-full" />;
     }
     if (onPhone && mine.data) {
-      return (
-        <ThisIphone device={mine.data} onOpen={onOpen} viewer={view?.viewer} />
-      );
+      return <ThisIphone device={mine.data} viewer={view?.viewer} />;
     }
     if (
       view !== undefined &&
@@ -721,6 +741,59 @@ function RegisterCard({
         <p className="text-xs text-muted-foreground" role="status">
           iPhones need this Console on HTTPS.
         </p>
+      );
+    }
+    if (mine.data === null && kept.isFetching && !proved) {
+      return <Skeleton aria-label="Loading" className="h-36 w-full" />;
+    }
+    if (proved) {
+      const trimmed = typed.trim();
+      return (
+        <form
+          className="flex min-w-0 flex-col gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (trimmed === "") return;
+            again.mutate({ name: trimmed, receipt: phone.receipt });
+          }}
+        >
+          <Field data-invalid={again.isError || undefined}>
+            <FieldLabel htmlFor="ios-device-register-name">
+              This iPhone's name
+            </FieldLabel>
+            <Input
+              autoComplete="off"
+              className="h-11"
+              id="ios-device-register-name"
+              maxLength={100}
+              onChange={(event) => setName(event.target.value)}
+              value={typed}
+            />
+            <FieldDescription>
+              This Safari checked it before, so no profile is needed.
+            </FieldDescription>
+            <FieldError>
+              {again.isError
+                ? "The request didn't go through. Try again."
+                : null}
+            </FieldError>
+          </Field>
+          <Button
+            className="h-11 w-full"
+            disabled={trimmed === "" || again.isPending}
+            type="submit"
+          >
+            {again.isPending ? (
+              <Loader2
+                className="animate-spin motion-reduce:animate-none"
+                data-icon="inline-start"
+              />
+            ) : (
+              <Smartphone data-icon="inline-start" />
+            )}
+            Request this iPhone
+          </Button>
+        </form>
       );
     }
     if (link.data?.status === "local-console") {
@@ -810,6 +883,10 @@ export function IosDevicesPage({
   const refresh = () =>
     void queryClient.invalidateQueries({ queryKey: iosDeviceKeys.all });
   const [dialog, setDialog] = useState<DialogTarget>(null);
+  const phone = useIosDevice();
+  // The row of the iPhone this page is open on, tagged where its actions are.
+  const thisUdid =
+    phone?.ios === true ? (phone.udid?.toLowerCase() ?? null) : null;
   const close = () => setDialog(null);
 
   const empty = (
@@ -854,7 +931,7 @@ export function IosDevicesPage({
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto bg-muted/5 p-3 sm:p-6">
         <NativeBuildsNav current="devices" />
-        <RegisterCard onOpen={setDialog} view={view} />
+        <RegisterCard phone={phone} view={view} />
         {view !== undefined && !view.viewer.approversConfigured ? (
           <div className="flex min-w-0 flex-col gap-1.5 text-xs text-muted-foreground">
             <p>Nobody approves in this Console. Approve from a terminal:</p>
@@ -948,6 +1025,7 @@ export function IosDevicesPage({
                     >
                       <DeviceCard
                         device={device}
+                        isThisIphone={device.udid === thisUdid}
                         onOpen={setDialog}
                         viewer={view!.viewer}
                       />
@@ -987,6 +1065,7 @@ export function IosDevicesPage({
                   rows?.map((device) => (
                     <DeviceRow
                       device={device}
+                      isThisIphone={device.udid === thisUdid}
                       key={device.id}
                       onOpen={setDialog}
                       viewer={view!.viewer}

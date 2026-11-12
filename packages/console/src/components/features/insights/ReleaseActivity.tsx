@@ -238,7 +238,11 @@ export function BundleInsightsSummary({
       </CardContent>
       <CardFooter className="px-4 pb-4">
         <Link
-          className={buttonVariants({ variant: "outline", size: "sm" })}
+          className={buttonVariants({
+            className: "max-md:h-11",
+            variant: "outline",
+            size: "sm",
+          })}
           to="/insights"
           search={{
             platform: input.platform,
