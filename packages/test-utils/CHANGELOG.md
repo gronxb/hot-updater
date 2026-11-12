@@ -1,5 +1,7 @@
 # @hot-updater/test-utils
 
+## 1.2.0-rc.37
+
 ## 1.2.0-rc.36
 
 ## 1.2.0-rc.35
