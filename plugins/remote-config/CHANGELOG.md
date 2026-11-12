@@ -1,5 +1,12 @@
 # @hot-updater/plugin-remote-config
 
+## 1.2.0-rc.31
+
+### Patch Changes
+
+- Updated dependencies [d4341b4]
+  - @hot-updater/protocol@1.2.0-rc.31
+
 ## 1.2.0-rc.30
 
 ### Patch Changes
