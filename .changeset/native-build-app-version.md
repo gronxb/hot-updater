@@ -23,10 +23,10 @@ Every native build now shows the app version its artifact reports, whatever the 
 
 The admin API takes `nativeAppVersion` on `POST /native-builds` and returns `native_app_version` on every native build.
 
-If you migrated a database with a 1.2.0 prerelease, add the column by hand:
+If a 1.2.0 prerelease migrated your database before this release, the column is missing; add it once. A database created from this release's migration already has it, so check first and skip the ALTER when `native_app_version` is listed.
 
-- Cloudflare D1, SQLite: `ALTER TABLE "native_builds" ADD COLUMN "native_app_version" TEXT;`
-- Supabase: `ALTER TABLE "hot_updater_v1_native_builds" ADD COLUMN "native_app_version" text COLLATE "C";`
-- PostgreSQL: `ALTER TABLE "native_builds" ADD COLUMN "native_app_version" text COLLATE "C";`
-- MySQL: ``ALTER TABLE `native_builds` ADD COLUMN `native_app_version` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;``
+- Cloudflare D1, SQLite: run `PRAGMA table_info("native_builds");`. Only when no row is named `native_app_version`, run `ALTER TABLE "native_builds" ADD COLUMN "native_app_version" TEXT;`. SQLite has no `IF NOT EXISTS` for a column, and running the ALTER again fails with `duplicate column name`.
+- Supabase: `ALTER TABLE "hot_updater_v1_native_builds" ADD COLUMN IF NOT EXISTS "native_app_version" text COLLATE "C";` This is safe to run again.
+- PostgreSQL, Neon: `ALTER TABLE "native_builds" ADD COLUMN IF NOT EXISTS "native_app_version" text COLLATE "C";` This is safe to run again.
+- MySQL: run ``SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'native_builds' AND column_name = 'native_app_version';``. Only when it returns 0, run ``ALTER TABLE `native_builds` ADD COLUMN `native_app_version` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;``. MySQL has no `IF NOT EXISTS` for a column.
 - MongoDB, DynamoDB, Firestore, Cosmos DB: nothing to do; a row without the field reads as null.

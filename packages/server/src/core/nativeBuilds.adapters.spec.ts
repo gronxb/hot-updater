@@ -424,50 +424,82 @@ describe("a native build row written before native_app_version", () => {
     );
   });
 
-  it.each([
-    [
-      "SQLite",
-      async (alter: string) => {
-        const db = new DatabaseSync(":memory:");
-        for (const statement of rcEraSql("sqlite")) db.exec(statement);
-        cleanups.push(() => db.close());
-        expect(
-          db.prepare(`PRAGMA table_info("native_builds")`).all(),
-        ).not.toContainEqual(
-          expect.objectContaining({ name: "native_app_version" }),
-        );
-        db.exec(alter);
-        return createSqlAdapter({ executor: sqliteExecutor(db) });
-      },
-      `ALTER TABLE "native_builds" ADD COLUMN "native_app_version" TEXT;`,
-    ],
-    [
-      "PostgreSQL",
-      async (alter: string) => {
-        const pglite = new PGlite();
-        for (const statement of rcEraSql("postgresql")) {
-          await pglite.exec(statement);
-        }
-        cleanups.push(() => pglite.close());
-        await pglite.exec(alter);
-        return createSqlAdapter({ executor: pgliteExecutor(pglite) });
-      },
-      `ALTER TABLE "native_builds" ADD COLUMN "native_app_version" text COLLATE "C";`,
-    ],
-  ] as const)(
-    "takes the release notes' ALTER on a prerelease %s database",
-    async (_name, open, alter) => {
-      const adapter = await open(alter);
-      const core = createInProcessCoreApi(adapter);
-      await core.registerNativeBuild(registration(1));
-      await core.registerNativeBuild(
-        registration(2, { nativeAppVersion: "1.6.0" }),
-      );
-      expect(
-        (await core.listNativeBuilds({ order: "asc", limit: 10 })).map(
-          ({ native_app_version }) => native_app_version,
-        ),
-      ).toEqual([null, "1.6.0"]);
-    },
-  );
+  /**
+   * The release notes' upgrade, as written there: SQLite and D1 list the
+   * table's columns and add it only when it is missing; PostgreSQL adds it
+   * with `IF NOT EXISTS`.
+   */
+  const SQLITE_CHECK = `PRAGMA table_info("native_builds");`;
+  const SQLITE_ALTER = `ALTER TABLE "native_builds" ADD COLUMN "native_app_version" TEXT;`;
+  const POSTGRES_ALTER = `ALTER TABLE "native_builds" ADD COLUMN IF NOT EXISTS "native_app_version" text COLLATE "C";`;
+
+  const sqliteUpgrade = (db: DatabaseSync) => {
+    const has = (db.prepare(SQLITE_CHECK).all() as { name: string }[]).some(
+      ({ name }) => name === "native_app_version",
+    );
+    if (!has) db.exec(SQLITE_ALTER);
+    return !has;
+  };
+
+  const openSqlite = (schema: readonly string[]) => {
+    const db = new DatabaseSync(":memory:");
+    for (const statement of schema) db.exec(statement);
+    cleanups.push(() => db.close());
+    return db;
+  };
+  const openPostgres = async (schema: readonly string[]) => {
+    const pglite = new PGlite();
+    for (const statement of schema) await pglite.exec(statement);
+    cleanups.push(() => pglite.close());
+    return pglite;
+  };
+
+  /** Registers a build without a version and one with, and reads both back. */
+  const expectColumnWorks = async (adapter: DatabaseAdapter) => {
+    const core = createInProcessCoreApi(adapter);
+    await core.registerNativeBuild(registration(1));
+    await core.registerNativeBuild(
+      registration(2, { nativeAppVersion: "1.6.0" }),
+    );
+    expect(
+      (await core.listNativeBuilds({ order: "asc", limit: 10 })).map(
+        ({ native_app_version }) => native_app_version,
+      ),
+    ).toEqual([null, "1.6.0"]);
+  };
+
+  it("takes the release notes' upgrade on a prerelease SQLite database, and skips it on one that has the column", async () => {
+    const prerelease = openSqlite(rcEraSql("sqlite"));
+    expect(sqliteUpgrade(prerelease)).toBe(true);
+    // Run again, as on a database already upgraded: the check skips it.
+    expect(sqliteUpgrade(prerelease)).toBe(false);
+    await expectColumnWorks(
+      createSqlAdapter({ executor: sqliteExecutor(prerelease) }),
+    );
+
+    // Created from this release's schema: the column is there already, and
+    // the bare ALTER would fail, which the check avoids.
+    const current = openSqlite(sql("sqlite"));
+    expect(() => current.exec(SQLITE_ALTER)).toThrow(/duplicate column/);
+    expect(sqliteUpgrade(current)).toBe(false);
+    await expectColumnWorks(
+      createSqlAdapter({ executor: sqliteExecutor(current) }),
+    );
+  });
+
+  it("takes the release notes' upgrade on a prerelease PostgreSQL database, and is a no-op on one that has the column", async () => {
+    const prerelease = await openPostgres(rcEraSql("postgresql"));
+    await prerelease.exec(POSTGRES_ALTER);
+    // Run again, as on a database already upgraded.
+    await prerelease.exec(POSTGRES_ALTER);
+    await expectColumnWorks(
+      createSqlAdapter({ executor: pgliteExecutor(prerelease) }),
+    );
+
+    const current = await openPostgres(sql("postgresql"));
+    await current.exec(POSTGRES_ALTER);
+    await expectColumnWorks(
+      createSqlAdapter({ executor: pgliteExecutor(current) }),
+    );
+  });
 });
