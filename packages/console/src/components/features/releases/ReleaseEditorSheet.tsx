@@ -861,7 +861,8 @@ export function ReleaseEditorSheet({
                 <SelectTrigger className="w-full" id="target-channel">
                   <SelectValue placeholder="Select a channel" />
                 </SelectTrigger>
-                <SelectContent className="max-h-64">
+                {/* A phone's list takes the height it has: 44 px rows. */}
+                <SelectContent className="md:max-h-64">
                   <SelectGroup>
                     {availableChannels.map((channel) => (
                       <SelectItem key={channel.id} value={channel.name}>

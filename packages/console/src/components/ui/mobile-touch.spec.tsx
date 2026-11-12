@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
+import { act } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "./dialog";
@@ -8,6 +9,8 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectScrollDownButton,
+  SelectScrollUpButton,
   SelectTrigger,
   SelectValue,
 } from "./select";
@@ -112,5 +115,60 @@ describe("phone sizes on the shared controls", () => {
     expect(screen.getByText(long).className).toContain(
       "[overflow-wrap:anywhere]",
     );
+  });
+
+  it.each([
+    [390, "false"],
+    [1280, "true"],
+  ])(
+    "at %i px opens a select's list from its top below the trigger on a phone, and over the trigger from md",
+    async (width, alignsWithTrigger) => {
+      const innerWidth = window.innerWidth;
+      window.innerWidth = width;
+      try {
+        await act(async () => {
+          render(
+            <Select defaultOpen defaultValue="production">
+              <SelectTrigger aria-label="Channel">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="production">production</SelectItem>
+              </SelectContent>
+            </Select>,
+          );
+        });
+        expect(
+          screen
+            .getByRole("option", { name: "production" })
+            .closest("[data-slot=select-content]")!
+            .getAttribute("data-align-trigger"),
+        ).toBe(alignsWithTrigger);
+      } finally {
+        window.innerWidth = innerWidth;
+      }
+    },
+  );
+
+  it("hides a select's scroll arrows on a phone, where they would cover an option", () => {
+    render(
+      <Select defaultOpen defaultValue="production">
+        <SelectTrigger aria-label="Channel">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="production">production</SelectItem>
+          <SelectScrollUpButton keepMounted />
+          <SelectScrollDownButton keepMounted />
+        </SelectContent>
+      </Select>,
+    );
+    for (const slot of [
+      "select-scroll-up-button",
+      "select-scroll-down-button",
+    ]) {
+      const arrow = document.querySelector(`[data-slot=${slot}]`)!;
+      expect(arrow.className).toContain("max-md:hidden");
+    }
   });
 });
