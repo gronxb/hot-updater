@@ -61,7 +61,11 @@ export function TargetDisplay({
     if (!nativeAppVersion) return hash;
     return (
       <span className="flex flex-col items-start gap-1" data-target-display="">
-        <AppVersion value={nativeAppVersion} />
+        {/* The build's own version, which OTAs don't target: named so. */}
+        <span title="The app version this build reports">
+          <span className="sr-only">App version </span>
+          <AppVersion value={nativeAppVersion} />
+        </span>
         {hash}
       </span>
     );

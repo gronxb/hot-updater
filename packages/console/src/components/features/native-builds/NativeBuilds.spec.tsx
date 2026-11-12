@@ -417,7 +417,13 @@ describe("NativeBuildsTable", () => {
 
     const [, versioned, byVersion, older, olderServer] =
       screen.getAllByRole("row");
-    expect(cellText(versioned!, "Target")).toBe("1.6.0e7b2a84d…9efb");
+    expect(cellText(versioned!, "Target")).toBe(
+      "App version 1.6.0e7b2a84d…9efb",
+    );
+    expect(
+      within(versioned!).getByTitle("The app version this build reports")
+        .textContent,
+    ).toBe("App version 1.6.0");
     // The version reads first, over the fingerprint it is copied by.
     const target = within(versioned!).getByText("1.6.0");
     expect(
@@ -452,7 +458,7 @@ describe("NativeBuildsTable", () => {
       );
       const hashes = screen.getByRole("article").children[3]!;
       expect(hashes.textContent).toBe(
-        "Target 1.6.01a2b3c4d…9c0dBuild key a1b2c3d4…9f0e",
+        "Target App version 1.6.01a2b3c4d…9c0dBuild key a1b2c3d4…9f0e",
       );
     } finally {
       window.innerWidth = width;
@@ -1606,7 +1612,7 @@ describe("BuiltInBundleCard", () => {
         })}
       />,
     );
-    expect(rowValue("Target")).toBe("1.6.01a2b3c4d…9c0d");
+    expect(rowValue("Target")).toBe("App version 1.6.01a2b3c4d…9c0d");
     // Named as the CLI names it: its version and build number.
     expect(
       screen.getByRole("link", { name: /Android 1\.6\.1 \(122\)/ }),
