@@ -71,6 +71,10 @@ describe("trading the profile's receipt for the cookie", () => {
     expect(window.sessionStorage.getItem(IOS_DEVICE_PENDING_RECEIPT_KEY)).toBe(
       null,
     );
+    // This Safari's other tabs hear it through storage: a timestamp only.
+    expect(
+      Number(window.localStorage.getItem("hot-updater-ios-device-kept")),
+    ).toBeGreaterThan(0);
   });
 
   it("forgets a held receipt once it has expired", () => {

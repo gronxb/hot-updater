@@ -11,6 +11,7 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { keepIosDeviceReceipt } from "@/lib/ios-devices-api";
 import type { IosDevicesView } from "@/lib/ios-devices-rpc";
 
 import { IosDevicesPage } from "./IosDevicesPage";
@@ -302,5 +303,140 @@ describe("this iPhone's row, read with the real query", () => {
       vi.unstubAllGlobals();
       window.sessionStorage.clear();
     }
+  });
+
+  describe("an iPhone whose storage Safari wiped", () => {
+    const routes = () => {
+      const calls: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          calls.push(`${init?.method ?? "GET"} ${url}`);
+          return new Response(JSON.stringify({ udid: PHONE.toLowerCase() }));
+        }),
+      );
+      return calls;
+    };
+
+    it("asks the cookie once for its ID, then reads its row once", async () => {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(IPHONE_UA);
+      const calls = routes();
+      try {
+        show();
+        await waitFor(() => expect(lookups()).toEqual([PHONE.toLowerCase()]));
+        await screen.findByText("Requested");
+        act(() => {
+          window.location.hash = "test";
+          window.dispatchEvent(new HashChangeEvent("hashchange"));
+        });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(calls).toEqual(["GET /_hot-updater/devices/receipt"]);
+        expect(lookups()).toEqual([PHONE.toLowerCase()]);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("reads the cookie again once a receipt is traded in this tab, so a cached 'none' doesn't stick", async () => {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(IPHONE_UA);
+      let traded = false;
+      const calls: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          calls.push(`${init?.method ?? "GET"} ${url}`);
+          if (init?.method === "POST") traded = true;
+          return new Response(
+            JSON.stringify({ udid: traded ? PHONE.toLowerCase() : null }),
+          );
+        }),
+      );
+      try {
+        show();
+        await waitFor(() =>
+          expect(calls).toEqual(["GET /_hot-updater/devices/receipt"]),
+        );
+        await screen.findByText("iPhones need this Console on HTTPS.");
+
+        // The profile's answer traded in this tab, as a build page does.
+        await act(async () => {
+          await keepIosDeviceReceipt("", "fresh.receipt");
+        });
+
+        await waitFor(() =>
+          expect(window.localStorage.getItem("hot-updater-ios-udid")).toBe(
+            PHONE.toLowerCase(),
+          ),
+        );
+        expect(calls).toEqual([
+          "GET /_hot-updater/devices/receipt",
+          "POST /_hot-updater/devices/receipt",
+          "GET /_hot-updater/devices/receipt",
+        ]);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("reads the cookie again when another tab traded the receipt", async () => {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(IPHONE_UA);
+      let traded = false;
+      const calls: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          calls.push(`${init?.method ?? "GET"} ${url}`);
+          return new Response(
+            JSON.stringify({ udid: traded ? PHONE.toLowerCase() : null }),
+          );
+        }),
+      );
+      try {
+        show();
+        await waitFor(() =>
+          expect(calls).toEqual(["GET /_hot-updater/devices/receipt"]),
+        );
+        await screen.findByText("iPhones need this Console on HTTPS.");
+
+        // Another tab took the profile's answer and set the cookie: this tab
+        // hears it only through storage.
+        traded = true;
+        act(() => {
+          window.dispatchEvent(
+            new StorageEvent("storage", {
+              key: "hot-updater-ios-device-kept",
+              newValue: String(Date.now()),
+            }),
+          );
+        });
+
+        await waitFor(() =>
+          expect(window.localStorage.getItem("hot-updater-ios-udid")).toBe(
+            PHONE.toLowerCase(),
+          ),
+        );
+        expect(calls).toEqual([
+          "GET /_hot-updater/devices/receipt",
+          "GET /_hot-updater/devices/receipt",
+        ]);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("asks nothing on a computer", async () => {
+      const calls = routes();
+      try {
+        show();
+        await screen.findByRole("img", {
+          name: "Open this page on an iPhone",
+        });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(calls).toEqual([]);
+        expect(rpc.getIosDevice).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
   });
 });

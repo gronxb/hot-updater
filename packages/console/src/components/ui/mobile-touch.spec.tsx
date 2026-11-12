@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "./dialog";
 import { Input } from "./input";
 import { Switch } from "./switch";
+import { Tabs, TabsList, TabsTrigger } from "./tabs";
 import { Textarea } from "./textarea";
 
 afterEach(cleanup);
@@ -55,5 +56,18 @@ describe("phone sizes on the shared controls", () => {
     const toggle = screen.getByRole("switch", { name: "Enabled" });
     expect(toggle.className).toContain("after:-inset-y-3");
     expect(toggle.className).toContain("md:after:hidden");
+  });
+
+  it("gives a tab a 44 px hit area on a phone without growing its row", () => {
+    render(
+      <Tabs defaultValue="a">
+        <TabsList>
+          <TabsTrigger value="a">24 hours</TabsTrigger>
+        </TabsList>
+      </Tabs>,
+    );
+    const tab = screen.getByRole("tab", { name: "24 hours" });
+    expect(tab.className).toContain("max-md:before:-inset-y-1");
+    expect(tab.className).toContain("max-md:before:absolute");
   });
 });

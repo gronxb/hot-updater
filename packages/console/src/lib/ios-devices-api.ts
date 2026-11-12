@@ -5,6 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useEffect } from "react";
 
 import {
   approveIosDevice,
@@ -21,8 +22,10 @@ export const iosDeviceKeys = {
   all: ["ios-devices"] as const,
   list: (status?: IosDeviceStatus) => ["ios-devices", status ?? "all"] as const,
   device: (udid: string) => ["ios-devices", "device", udid] as const,
-  kept: (udid: string, receipt: string | null) =>
-    ["ios-devices", "kept", udid, receipt ?? ""] as const,
+  // What the cookie names doesn't depend on the ID this page kept: one read
+  // serves the page whether it knew its iPhone or learns it from the answer.
+  kept: (receipt: string | null) =>
+    ["ios-devices", "kept", receipt ?? ""] as const,
   ipa: (buildId: string) => ["native-build-ipa-devices", buildId] as const,
 };
 
@@ -149,6 +152,15 @@ const sendDeviceRoute = async <T>(
   return body;
 };
 
+/** Told when a trade sets the cookie, so a cached "no proof" is read again. */
+const KEPT_EVENT = "hot-updater-ios-device-kept";
+
+/**
+ * The same news for this Safari's other tabs, which share the cookie: a
+ * timestamp only, written where their `storage` event hears it.
+ */
+const KEPT_PING_KEY = "hot-updater-ios-device-kept";
+
 /** Trades in flight or done, one per receipt: a failed one is forgotten. */
 const trades = new Map<string, Promise<unknown>>();
 
@@ -169,6 +181,12 @@ export const keepIosDeviceReceipt = (consolePath: string, receipt: string) => {
     }).then(
       (answer) => {
         releasePendingReceipt(receipt);
+        window.dispatchEvent(new Event(KEPT_EVENT));
+        try {
+          window.localStorage.setItem(KEPT_PING_KEY, String(Date.now()));
+        } catch {
+          // A browser that keeps nothing has no other tab to tell.
+        }
         return answer;
       },
       (error: unknown) => {
@@ -188,12 +206,31 @@ export const keepIosDeviceReceipt = (consolePath: string, receipt: string) => {
  */
 export function useKeptIosDeviceQuery(
   consolePath: string,
-  device: { readonly udid: string | null; readonly receipt: string | null },
+  receipt: string | null,
   enabled: boolean,
 ) {
-  const { receipt } = device;
+  // A trade on this page, or in another tab, sets the cookie the receiptless
+  // read may have found empty: that read, cached for good otherwise, is read
+  // again.
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const onKept = () =>
+      void queryClient.invalidateQueries({
+        queryKey: iosDeviceKeys.kept(null),
+        exact: true,
+      });
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === KEPT_PING_KEY) onKept();
+    };
+    window.addEventListener(KEPT_EVENT, onKept);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(KEPT_EVENT, onKept);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [queryClient]);
   return useQuery({
-    queryKey: iosDeviceKeys.kept(device.udid ?? "", receipt),
+    queryKey: iosDeviceKeys.kept(receipt),
     queryFn: async () => {
       let failed: unknown = null;
       if (receipt !== null) {

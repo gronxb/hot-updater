@@ -159,7 +159,7 @@ export function BuiltInBundleCard({
             <span className="flex flex-wrap items-center gap-1.5">
               <Link
                 aria-label={`Show the builds that embed ${channel}`}
-                className="relative rounded-md after:absolute after:inset-x-0 after:-inset-y-[11px] sm:after:hidden"
+                className="relative rounded-md after:absolute after:-inset-x-1 after:-inset-y-[11px] sm:after:hidden"
                 search={{ channel }}
                 to="/native-builds"
               >

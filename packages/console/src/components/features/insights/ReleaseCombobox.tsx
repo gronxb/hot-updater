@@ -136,7 +136,7 @@ export function ReleaseCombobox({
       className={
         trigger
           ? undefined
-          : "h-11 w-full sm:h-9 sm:w-96 [&_input]:h-full [&_input]:text-base sm:[&_input]:text-xs"
+          : "h-11 w-full sm:h-9 sm:w-96 [&_input]:h-full [&_input]:text-base max-md:[&_[data-slot=input-group-button]]:size-11 max-md:[&_input]:min-h-11 sm:[&_input]:text-xs"
       }
       disabled={disabled}
       placeholder={placeholder}
