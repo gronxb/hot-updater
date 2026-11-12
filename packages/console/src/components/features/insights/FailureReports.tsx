@@ -113,7 +113,7 @@ function FailureDetail({ group }: { readonly group: FailureGroup }) {
             </p>
           ) : null}
           <Button
-            className="w-fit"
+            className="w-fit max-md:h-11"
             variant="outline"
             onClick={() => void copy()}
           >
@@ -175,7 +175,7 @@ function FailureDetail({ group }: { readonly group: FailureGroup }) {
           <EventBundleTransition event={event} />
           <Button
             variant="outline"
-            className="w-fit"
+            className="w-fit max-md:h-11"
             render={
               <Link
                 to="/installations"
