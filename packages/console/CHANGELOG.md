@@ -1,5 +1,26 @@
 # @hot-updater/console
 
+## 1.2.0-rc.32
+
+### Patch Changes
+
+- 919ebd4: The iOS devices page keeps this iPhone's actions in one place. The Register card shows the iPhone's state only. Its row in the list carries Approve and the other actions, with a quiet "This iPhone" tag.
+
+  Console dialogs no longer show a CLI command that does the same thing as the button.
+
+  An iPhone that proved its UDID with the profile once keeps a 30-day HttpOnly, SameSite=Strict cookie, scoped to the device routes. With it, the same signed-in person can request that iPhone again, for example after it was removed, without installing the profile. The cookie is cleared on sign-out.
+
+  Every Console route now works better on a phone:
+  - Inputs use 16 px text, so iOS doesn't zoom in on focus.
+  - Dialog, sheet, sidebar, and page actions are 44 px tall.
+  - Dialogs stay within the dynamic viewport.
+
+- @hot-updater/bsdiff@1.2.0-rc.32
+  - @hot-updater/cli-tools@1.2.0-rc.32
+  - @hot-updater/protocol@1.2.0-rc.32
+  - @hot-updater/server@1.2.0-rc.32
+  - @hot-updater/plugin-core@1.2.0-rc.32
+
 ## 1.2.0-rc.31
 
 ### Patch Changes
