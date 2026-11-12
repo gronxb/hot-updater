@@ -258,6 +258,7 @@ describe("HotUpdater client initialization", () => {
     expect(mocks.createHttpClient).toHaveBeenCalledWith(
       "https://updates.example.com",
       expect.any(Function),
+      undefined,
     );
     expect(mocks.readLaunch).toHaveBeenCalledExactlyOnceWith({
       onError: undefined,
@@ -274,8 +275,26 @@ describe("HotUpdater client initialization", () => {
     expect(mocks.createHttpClient).toHaveBeenCalledWith(
       resolveBaseURL,
       expect.any(Function),
+      undefined,
     );
     expect(resolveBaseURL).not.toHaveBeenCalled();
+  });
+
+  it("gives its fetch to the HTTP client and the plugin host", async () => {
+    const customFetch = vi.fn<typeof fetch>();
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.init({
+      baseURL: "https://updates.example.com",
+      fetch: customFetch,
+    });
+
+    expect(mocks.createHttpClient).toHaveBeenCalledWith(
+      "https://updates.example.com",
+      expect.any(Function),
+      customFetch,
+    );
+    expect(mocks.createAppPluginHost).toHaveBeenCalledWith(customFetch);
   });
 
   it("sets up plugins with the settings they fetch with, before init reads the launch", async () => {

@@ -5,6 +5,8 @@ export interface UpdateRequest {
   readonly resource: UpdateHttpResponse["resource"];
   readonly requestHeaders?: Record<string, string>;
   readonly requestTimeout?: number;
+  /** Defaults to the global `fetch`. */
+  readonly fetch?: typeof fetch;
   readonly onResponse?: (response: UpdateHttpResponse) => void;
 }
 
@@ -17,6 +19,7 @@ export const fetchUpdateResponse = async ({
   resource,
   requestHeaders,
   requestTimeout = DEFAULT_REQUEST_TIMEOUT_MS,
+  fetch: fetchImpl = fetch,
   onResponse,
 }: UpdateRequest): Promise<{ response: Response; body: string | null }> => {
   const controller = new AbortController();
@@ -28,7 +31,7 @@ export const fetchUpdateResponse = async ({
   try {
     const headers = new Headers(requestHeaders);
     if (!headers.has("Accept")) headers.set("Accept", "application/json");
-    const response = await fetch(url, {
+    const response = await fetchImpl(url, {
       headers,
       signal: controller.signal,
     });

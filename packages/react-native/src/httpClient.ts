@@ -144,6 +144,7 @@ const requireArtifactProtocolV2 = (info: ArtifactInfoV2): ArtifactInfoV2 => {
 const createSession = (
   baseURL: string,
   onResponse?: (response: UpdateHttpResponse) => void,
+  fetchImpl?: typeof fetch,
 ): HotUpdaterHttpSession => ({
   baseURL,
   fetchReleaseCatalog: async (params): Promise<ReleaseCatalog | null> => {
@@ -166,6 +167,7 @@ const createSession = (
     return fetchReleaseCatalogWithCache({
       baseURL,
       ...(onResponse ? { onResponse } : {}),
+      ...(fetchImpl ? { fetch: fetchImpl } : {}),
       expectedScope:
         params.updateStrategy === "fingerprint"
           ? {
@@ -189,6 +191,7 @@ const createSession = (
     const route = `${target}/from/${encodeURIComponent(params.currentBundleId)}`;
     const request = {
       ...(onResponse ? { onResponse } : {}),
+      ...(fetchImpl ? { fetch: fetchImpl } : {}),
       requestHeaders: params.requestHeaders,
       requestTimeout: params.requestTimeout,
     };
@@ -232,7 +235,8 @@ const createSession = (
 export const createHttpClient = (
   baseURL: HotUpdaterBaseURL,
   onResponse?: (response: UpdateHttpResponse) => void,
+  fetchImpl?: typeof fetch,
 ): HotUpdaterHttpClient => ({
   createSession: async () =>
-    createSession(await resolveBaseURL(baseURL), onResponse),
+    createSession(await resolveBaseURL(baseURL), onResponse, fetchImpl),
 });
