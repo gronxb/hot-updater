@@ -1,5 +1,15 @@
 # @hot-updater/vercel
 
+## 1.2.0-rc.38
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.38
+  - @hot-updater/protocol@1.2.0-rc.38
+  - @hot-updater/server@1.2.0-rc.38
+  - @hot-updater/plugin-core@1.2.0-rc.38
+  - @hot-updater/postgres@1.2.0-rc.38
+
 ## 1.2.0-rc.37
 
 ### Patch Changes

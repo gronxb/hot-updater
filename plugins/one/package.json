@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/one",
-  "version": "1.2.0-rc.37",
+  "version": "1.2.0-rc.38",
   "description": "Hot Updater build adapter and native patches for One",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",

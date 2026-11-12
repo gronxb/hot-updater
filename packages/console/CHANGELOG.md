@@ -1,5 +1,16 @@
 # @hot-updater/console
 
+## 1.2.0-rc.38
+
+### Patch Changes
+
+- d367d76: On a phone, a dropdown's scroll arrows no longer sit over an option. Since rc.37's 44 px rows, a dropdown that scrolls, such as Native builds' Channel or Promote's Target Channel, opened with an arrow over an option's center, so tapping "All channels" scrolled the list instead of choosing it. Below md, a dropdown now opens below its trigger, showing the list from its first option and scrolled to the chosen one, and has no scroll arrows; a swipe, the wheel, or the keyboard scrolls it. Promote's Target Channel list also takes the height a phone has. Desktop dropdowns are unchanged.
+- @hot-updater/bsdiff@1.2.0-rc.38
+  - @hot-updater/cli-tools@1.2.0-rc.38
+  - @hot-updater/protocol@1.2.0-rc.38
+  - @hot-updater/server@1.2.0-rc.38
+  - @hot-updater/plugin-core@1.2.0-rc.38
+
 ## 1.2.0-rc.37
 
 ### Patch Changes
