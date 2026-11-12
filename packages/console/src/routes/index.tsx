@@ -74,6 +74,7 @@ import {
   useReleaseFoldQuery,
   useReleasesQuery,
 } from "@/lib/api";
+import { ALL_CHANNELS } from "@/lib/constants";
 import type { Fold } from "@/lib/server/foldedPage";
 import type { ReleaseListRow } from "@/lib/server/releaseReachability";
 import { cn } from "@/lib/utils";
@@ -81,7 +82,9 @@ import { cn } from "@/lib/utils";
 import {
   hasReleaseFilters,
   releaseFilterOf,
+  resolveReleaseSearch,
   type ReleaseSearch,
+  showsDefaultReleases,
   updateReleaseFilters,
   validateReleaseSearch,
 } from "./-releases-search";
@@ -107,18 +110,23 @@ export const Route = createFileRoute("/")({
 
 function BundleFilterToolbar({
   channels,
+  clearable,
   onChange,
   onClear,
   onManageChannels,
+  pending,
   search,
 }: {
   channels: readonly ChannelRow[];
+  /** Whether the list shows other than what it opens on. */
+  clearable: boolean;
   onChange: (filters: Partial<ReleaseSearch>) => void;
   onClear: () => void;
   onManageChannels: () => void;
+  /** Whether the channel the list opens on is still unknown. */
+  pending: boolean;
   search: ReleaseSearch;
 }) {
-  const hasFilters = hasReleaseFilters(search);
   // Releases list by channel and platform together: the index serves that pair.
   const channelSelected = search.channelId !== undefined;
   const channelFilterItems = [
@@ -138,13 +146,16 @@ function BundleFilterToolbar({
         <span className="text-xs font-medium">Filters</span>
       </div>
       <Select
+        disabled={pending}
         items={channelFilterItems}
         onValueChange={(value) =>
-          onChange({
-            channelId: value === null || value === "all" ? undefined : value,
-          })
+          onChange(
+            value === null || value === "all"
+              ? { channelId: undefined, channels: ALL_CHANNELS }
+              : { channelId: value },
+          )
         }
-        value={search.channelId ?? "all"}
+        value={pending ? null : (search.channelId ?? "all")}
       >
         <SelectTrigger
           aria-label="Channel"
@@ -256,7 +267,7 @@ function BundleFilterToolbar({
           </button>
         </Badge>
       ) : null}
-      {hasFilters ? (
+      {clearable ? (
         <Button
           className="h-11 px-2 text-xs text-muted-foreground hover:text-foreground max-sm:order-3 sm:ml-auto sm:h-8"
           onClick={onClear}
@@ -530,22 +541,33 @@ function UnreachableBundlesFold({
 }
 
 function BundlesPage() {
-  const search = Route.useSearch();
+  const urlSearch = Route.useSearch();
   const navigate = Route.useNavigate();
   const isMobile = useIsMobile();
   const [channelsOpen, setChannelsOpen] = useState(false);
   const [expandedReleaseId, setExpandedReleaseId] = useState<string>();
   const folds = useOpenFolds();
-  const filter = releaseFilterOf(search);
-  const releasesQuery = useReleasesQuery({
-    afterReleaseId: search.afterReleaseId,
-    beforeReleaseId: search.beforeReleaseId,
-    filter,
-    // The selected release never folds, so a link to it shows its row.
-    releaseId: search.releaseId,
-  });
   const channelsQuery = useChannelsQuery();
   const channels = channelsQuery.data ?? [];
+  // The list the page shows: a URL without a channel opens on the default
+  // one, known once the channel list arrives; with no channel list, every
+  // channel's.
+  const channelRows = channelsQuery.isError ? [] : channelsQuery.data;
+  const resolved = resolveReleaseSearch(urlSearch, channelRows);
+  const search = resolved ?? urlSearch;
+  const filter = releaseFilterOf(search);
+  const releasesQuery = useReleasesQuery(
+    {
+      afterReleaseId: search.afterReleaseId,
+      beforeReleaseId: search.beforeReleaseId,
+      filter,
+      // The selected release never folds, so a link to it shows its row.
+      releaseId: search.releaseId,
+    },
+    // Nothing reads every channel's list on the way to the default one.
+    { enabled: resolved !== undefined },
+  );
+  const clearable = !showsDefaultReleases(urlSearch, channelRows);
   const entries = releasesQuery.data?.entries ?? [];
   // The page's reachable releases (and the selected one), outside its folds.
   const releases = entries.flatMap((entry) =>
@@ -848,6 +870,15 @@ function BundlesPage() {
       render={render}
     />
   );
+  // The list it opens on, when that channel has no bundle for the platform.
+  const openingTitle = (
+    <>
+      No {search.platform === "android" ? "Android" : "iOS"} bundles in{" "}
+      <span translate="no">
+        {channelNames.get(search.channelId ?? "") ?? search.channelId}
+      </span>
+    </>
+  );
   // A page of unreachable bundles alone: one fold under the empty state.
   const foldedOnly = releases.length === 0 && entries.length > 0;
   const empty = (
@@ -858,9 +889,11 @@ function BundlesPage() {
           ? "No device gets the bundles here"
           : onLaterPage
             ? "No more bundles"
-            : hasReleaseFilters(search)
-              ? "No bundles match these filters"
-              : "No bundles yet"
+            : !hasReleaseFilters(search)
+              ? "No bundles yet"
+              : clearable
+                ? "No bundles match these filters"
+                : openingTitle
       }
     >
       {onLaterPage ? (
@@ -874,13 +907,23 @@ function BundlesPage() {
         >
           Show the newest bundles
         </Link>
-      ) : hasReleaseFilters(search) ? (
+      ) : clearable ? (
         <Button
           className="mt-1 min-h-11 sm:min-h-8"
           onClick={() => go({})}
           variant="outline"
         >
           Clear filters
+        </Button>
+      ) : hasReleaseFilters(search) ? (
+        <Button
+          className="mt-1 min-h-11 sm:min-h-8"
+          onClick={() =>
+            changeFilters({ channelId: undefined, channels: ALL_CHANNELS })
+          }
+          variant="outline"
+        >
+          Show all channels
         </Button>
       ) : (
         <>
@@ -901,9 +944,11 @@ function BundlesPage() {
     <div className="flex h-svh min-h-0 min-w-0 flex-col">
       <BundleFilterToolbar
         channels={channels}
+        clearable={clearable}
         onChange={changeFilters}
         onClear={() => go({})}
         onManageChannels={() => setChannelsOpen(true)}
+        pending={resolved === undefined}
         search={search}
       />
 

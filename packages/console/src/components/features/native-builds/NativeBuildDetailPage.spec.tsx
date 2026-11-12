@@ -17,7 +17,9 @@ vi.mock("@/components/ui/sidebar", () => ({
   SidebarTrigger: () => null,
 }));
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,
+  Link: ({ children, search }: { children: ReactNode; search?: unknown }) => (
+    <span data-search={JSON.stringify(search ?? null)}>{children}</span>
+  ),
 }));
 // The header is under test; the cards have their own specs.
 vi.mock("./BuiltInBundleCard", () => ({ BuiltInBundleCard: () => null }));
@@ -110,6 +112,10 @@ describe("NativeBuildDetailPage", () => {
         /It may have been deleted, or be from another console\./,
       ),
     ).toBeTruthy();
+    // The list opens on production unless told otherwise.
+    expect(
+      screen.getByText("Show all native builds").getAttribute("data-search"),
+    ).toBe(JSON.stringify({ channels: "all" }));
   });
 
   it("lists an ad hoc IPA's devices, and reads nothing more for a store's IPA or another artifact", () => {

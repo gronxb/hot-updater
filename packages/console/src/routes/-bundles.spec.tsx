@@ -17,6 +17,13 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   search: vi.fn(),
   insightsAnalytics: true,
+  /** The channel list the page already reads; undefined while it loads. */
+  channels: [
+    {
+      id: "channel-1",
+      name: "e2e-job-20260812132427-qy22fi-android-s2-production",
+    },
+  ] as { id: string; name: string }[] | undefined,
 }));
 
 vi.mock("@/lib/bundle-activity", () => ({
@@ -120,14 +127,7 @@ vi.mock("@/lib/api", () => ({
     isError: false,
     isPending: false,
   }),
-  useChannelsQuery: () => ({
-    data: [
-      {
-        id: "channel-1",
-        name: "e2e-job-20260812132427-qy22fi-android-s2-production",
-      },
-    ],
-  }),
+  useChannelsQuery: () => ({ data: mocks.channels }),
   useReleaseFoldQuery: mocks.foldQuery,
   useReleasesQuery: mocks.releasesQuery,
 }));
@@ -219,14 +219,19 @@ describe("BundlesPage", () => {
     });
     releases = [release];
     entries = null;
-    mocks.releasesQuery.mockImplementation(() => ({
-      data: {
-        entries:
-          entries ?? releases.map((row) => ({ kind: "row" as const, row })),
-      },
+    mocks.releasesQuery.mockImplementation((_, options) => ({
+      data:
+        options?.enabled === false
+          ? undefined
+          : {
+              entries:
+                entries ??
+                releases.map((row) => ({ kind: "row" as const, row })),
+            },
       error: null,
       isError: false,
-      isPending: false,
+      // A query that may not run yet is pending, as TanStack Query's is.
+      isPending: options?.enabled === false,
     }));
     mocks.foldQuery.mockImplementation(() => ({
       data: undefined,
@@ -236,6 +241,12 @@ describe("BundlesPage", () => {
     mocks.isMobile.mockReturnValue(false);
     mocks.search.mockReturnValue({});
     mocks.insightsAnalytics = true;
+    mocks.channels = [
+      {
+        id: "channel-1",
+        name: "e2e-job-20260812132427-qy22fi-android-s2-production",
+      },
+    ];
     release.currentlyUnreachable = false;
   });
 
@@ -626,6 +637,7 @@ describe("BundlesPage", () => {
 
       expect(mocks.releasesQuery).toHaveBeenCalledWith(
         expect.objectContaining({ releaseId: "release-2" }),
+        { enabled: true },
       );
       const selected = screen.getByRole("row", {
         name: "Open bundle release-2",
@@ -793,6 +805,144 @@ describe("BundlesPage", () => {
         "Bundle release-3",
         "Bundle release-2",
         "Bundle release-1",
+      ]);
+    });
+  });
+
+  describe("default channel", () => {
+    const PRODUCTION = { id: "channel-production", name: "production" };
+    const STAGING = { id: "channel-staging", name: "staging" };
+    /** The filter of every list read the page asked for, and whether it ran. */
+    const reads = () =>
+      (
+        mocks.releasesQuery.mock.calls as unknown as [
+          { filter: unknown },
+          { enabled?: boolean }?,
+        ][]
+      ).map(([input, options]) => ({
+        enabled: options?.enabled ?? true,
+        filter: input.filter,
+      }));
+    const productionIos = {
+      kind: "channelPlatform",
+      channelId: PRODUCTION.id,
+      platform: "ios",
+    };
+
+    beforeEach(() => {
+      mocks.channels = [STAGING, PRODUCTION];
+    });
+
+    it("opens on production when the URL names no channel, and reads no other list", () => {
+      render(<BundlesPage />);
+
+      expect(reads().filter(({ enabled }) => enabled)).toEqual([
+        { enabled: true, filter: productionIos },
+      ]);
+      expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
+    });
+
+    it("reads nothing until the channel list it already loads arrives", () => {
+      mocks.channels = undefined;
+      render(<BundlesPage />);
+
+      expect(reads().length).toBeGreaterThan(0);
+      expect(reads().every(({ enabled }) => !enabled)).toBe(true);
+      expect(screen.queryByText("No bundles yet")).toBeNull();
+    });
+
+    it("lists every channel when the URL says so, and its pages keep saying so", () => {
+      mocks.search.mockReturnValue({ channels: "all" });
+      render(<BundlesPage />);
+
+      expect(reads().filter(({ enabled }) => enabled)).toEqual([
+        { enabled: true, filter: { kind: "all" } },
+      ]);
+      fireEvent.click(
+        screen.getByRole("row", { name: "Open bundle release-1" }),
+      );
+      expect(mocks.navigate).toHaveBeenLastCalledWith({
+        resetScroll: false,
+        search: expect.objectContaining({
+          channels: "all",
+          releaseId: "release-1",
+        }),
+        to: "/",
+      });
+      // Back to the default view.
+      fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+      expect(mocks.navigate).toHaveBeenLastCalledWith({
+        resetScroll: true,
+        search: {},
+        to: "/",
+      });
+    });
+
+    it("lists every channel when the project has no production channel", () => {
+      mocks.channels = [STAGING];
+      render(<BundlesPage />);
+
+      expect(reads().filter(({ enabled }) => enabled)).toEqual([
+        { enabled: true, filter: { kind: "all" } },
+      ]);
+    });
+
+    it("keeps the default channel when a platform is chosen or a row opens", () => {
+      render(<BundlesPage />);
+
+      fireEvent.click(
+        screen.getByRole("row", { name: "Open bundle release-1" }),
+      );
+      expect(mocks.navigate).toHaveBeenLastCalledWith({
+        resetScroll: false,
+        search: expect.objectContaining({
+          channelId: PRODUCTION.id,
+          platform: "ios",
+          releaseId: "release-1",
+        }),
+        to: "/",
+      });
+    });
+
+    it("offers every channel when production has no bundles", () => {
+      releases = [];
+      render(<BundlesPage />);
+
+      expect(
+        screen.getByText((_, node) =>
+          Boolean(
+            node?.tagName === "P" &&
+            node.textContent === "No iOS bundles in production",
+          ),
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByText("Clear filters")).toBeNull();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Show all channels" }),
+      );
+      expect(mocks.navigate).toHaveBeenLastCalledWith({
+        resetScroll: true,
+        search: expect.objectContaining({ channels: "all" }),
+        to: "/",
+      });
+    });
+
+    it.each([
+      [
+        { channelId: STAGING.id, platform: "ios" },
+        { kind: "channelPlatform", channelId: STAGING.id, platform: "ios" },
+      ],
+      [{ bundleId: "bundle-1" }, { kind: "bundle", bundleId: "bundle-1" }],
+      [{ scopeKey: "scope-1" }, { kind: "scope", scopeKey: "scope-1" }],
+      // A link to one release, as Insights and a build's page give, shows it
+      // in every channel's list, as before.
+      [{ releaseId: "release-1" }, { kind: "all" }],
+    ])("lands an inbound link %j where it points", (search, filter) => {
+      mocks.search.mockReturnValue(search);
+      render(<BundlesPage />);
+
+      expect(reads().filter(({ enabled }) => enabled)).toEqual([
+        { enabled: true, filter },
       ]);
     });
   });

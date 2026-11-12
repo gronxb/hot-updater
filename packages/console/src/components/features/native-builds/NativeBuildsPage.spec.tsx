@@ -1,25 +1,23 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NativeBuildsPage } from "./NativeBuildsPage";
 
+const DEFAULT_CHANNELS = [
+  { id: "channel:all", name: "all" },
+  { id: "channel:pr-130", name: "pr-130" },
+];
+const mocks = vi.hoisted(() => ({
+  /** The channel list the page already reads; undefined while it loads. */
+  channels: undefined as { id: string; name: string }[] | undefined,
+  nativeBuildsQuery: vi.fn(),
+}));
+
 vi.mock("@/lib/api", () => ({
-  useChannelsQuery: () => ({
-    data: [
-      { id: "channel:all", name: "all" },
-      { id: "channel:pr-130", name: "pr-130" },
-    ],
-    refetch: vi.fn(),
-  }),
+  useChannelsQuery: () => ({ data: mocks.channels, refetch: vi.fn() }),
   useConfigQuery: () => ({ data: { console: {} } }),
-  useNativeBuildsQuery: () => ({
-    data: { data: [] },
-    isError: false,
-    isLoading: false,
-    isPlaceholderData: false,
-    refetch: vi.fn(),
-  }),
+  useNativeBuildsQuery: mocks.nativeBuildsQuery,
 }));
 vi.mock("@/components/ui/sidebar", () => ({
   SidebarTrigger: () => null,
@@ -29,7 +27,27 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => vi.fn(),
 }));
 
-afterEach(cleanup);
+beforeEach(() => {
+  mocks.channels = DEFAULT_CHANNELS;
+  // A query that may not run yet is pending, as TanStack Query's is.
+  mocks.nativeBuildsQuery.mockImplementation((_, options) => ({
+    data: options?.enabled === false ? undefined : { entries: [] },
+    isError: false,
+    isPending: options?.enabled === false,
+    isPlaceholderData: false,
+    refetch: vi.fn(),
+  }));
+});
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+
+/** Every page of builds the page read: the ones it asked to run. */
+const reads = () =>
+  mocks.nativeBuildsQuery.mock.calls
+    .filter(([, options]) => (options?.enabled ?? true) === true)
+    .map(([page]) => page);
 
 const choose = async (option: string) => {
   fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
@@ -87,6 +105,75 @@ describe("NativeBuildsPage", () => {
     expect(trigger.textContent).toContain("all");
     expect(trigger.textContent).not.toContain("All channels");
     await choose("All channels");
-    expect(onSearchChange).toHaveBeenLastCalledWith({});
+    expect(onSearchChange).toHaveBeenLastCalledWith({ channels: "all" });
+  });
+
+  describe("default channel", () => {
+    beforeEach(() => {
+      mocks.channels = [
+        { id: "channel:pr-130", name: "pr-130" },
+        { id: "channel:production", name: "production" },
+      ];
+    });
+
+    it("opens on production when the URL names no channel, and reads no other page", () => {
+      render(<NativeBuildsPage onSearchChange={vi.fn()} search={{}} />);
+
+      expect(reads()).toEqual([{ channel: "production" }]);
+      expect(
+        screen.getByRole("combobox", { name: "Channel" }).textContent,
+      ).toContain("production");
+    });
+
+    it("reads nothing until the channel list it already loads arrives", () => {
+      mocks.channels = undefined;
+      render(<NativeBuildsPage onSearchChange={vi.fn()} search={{}} />);
+
+      expect(mocks.nativeBuildsQuery).toHaveBeenCalled();
+      expect(reads()).toEqual([]);
+      expect(screen.queryByText("No native builds")).toBeNull();
+    });
+
+    it("lists every channel when the URL says so", () => {
+      render(
+        <NativeBuildsPage
+          onSearchChange={vi.fn()}
+          search={{ channels: "all", before: "b" }}
+        />,
+      );
+
+      expect(reads()).toEqual([{ before: "b" }]);
+      expect(
+        screen.getByRole("combobox", { name: "Channel" }).textContent,
+      ).toContain("All channels");
+    });
+
+    it("lists every channel when the project has no production channel", () => {
+      mocks.channels = DEFAULT_CHANNELS;
+      render(<NativeBuildsPage onSearchChange={vi.fn()} search={{}} />);
+
+      expect(reads()).toEqual([{}]);
+    });
+
+    it("keeps an inbound channel link where it points", () => {
+      render(
+        <NativeBuildsPage
+          onSearchChange={vi.fn()}
+          search={{ channel: "pr-130" }}
+        />,
+      );
+
+      expect(reads()).toEqual([{ channel: "pr-130" }]);
+    });
+
+    it("shows every channel from an empty production list", () => {
+      const onSearchChange = vi.fn();
+      render(<NativeBuildsPage onSearchChange={onSearchChange} search={{}} />);
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Show all channels" }),
+      );
+      expect(onSearchChange).toHaveBeenLastCalledWith({ channels: "all" });
+    });
   });
 });

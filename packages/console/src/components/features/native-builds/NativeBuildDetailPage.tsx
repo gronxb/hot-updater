@@ -20,6 +20,7 @@ import {
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { type KeysetPage, useNativeBuildDetailQuery } from "@/lib/api";
+import { ALL_CHANNELS } from "@/lib/constants";
 import {
   formatByteSize,
   nativeBuildArtifacts,
@@ -152,6 +153,7 @@ export function NativeBuildDetailPage({
                     className: "min-h-11 sm:min-h-8",
                     variant: "outline",
                   })}
+                  search={{ channels: ALL_CHANNELS }}
                   to="/native-builds"
                 >
                   Show all native builds

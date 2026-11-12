@@ -146,11 +146,15 @@ export function useChannelsQuery() {
   });
 }
 
-export function useReleasesQuery(filters?: ReleaseFilters) {
+export function useReleasesQuery(
+  filters?: ReleaseFilters,
+  { enabled = true }: { readonly enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: queryKeys.releases.list(filters),
     queryFn: () => getReleases({ data: filters }),
     placeholderData: (previousData) => previousData,
+    enabled,
   });
 }
 
@@ -251,12 +255,16 @@ export function useNativeBuildFoldQuery(
 }
 
 /** One page of native builds, newest first, kept on screen while the next loads. */
-export function useNativeBuildsQuery(page: NativeBuildPage) {
+export function useNativeBuildsQuery(
+  page: NativeBuildPage,
+  { enabled = true }: { readonly enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: queryKeys.nativeBuilds.list(page),
     queryFn: () => getNativeBuilds({ data: page }),
     placeholderData: (previousData) => previousData,
     staleTime: 60_000,
+    enabled,
   });
 }
 

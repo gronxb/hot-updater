@@ -37,15 +37,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { DEFAULT_CHANNEL } from "@/lib/constants";
 import {
   DEFAULT_INSIGHTS_RETENTION,
   type InsightsRetentionDays,
   keepsTwelveMonths,
 } from "@/lib/insights-retention";
-import {
-  DEFAULT_INSIGHTS_CHANNEL,
-  type InsightsSearch,
-} from "@/lib/insights-search";
+import type { InsightsSearch } from "@/lib/insights-search";
 import type { AppUsageReport, UsageWindow } from "@/lib/insights-usage";
 
 import { EstimatedCount } from "./EstimatedCount";
@@ -105,7 +103,7 @@ export function AppUsage({
           <div className="flex min-w-0 flex-col gap-1">
             <CardTitle>App usage</CardTitle>
             <InsightsScope
-              channel={search.channel ?? DEFAULT_INSIGHTS_CHANNEL}
+              channel={search.channel ?? DEFAULT_CHANNEL}
               platform={search.platform ?? "all"}
               narrower={
                 search.appVersion ? [`App version ${search.appVersion}`] : []
