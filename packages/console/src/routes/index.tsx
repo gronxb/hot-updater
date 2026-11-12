@@ -95,6 +95,15 @@ import {
   validateReleaseSearch,
 } from "./-releases-search";
 
+/** The list while its channel is unknown: loading, whatever the cache holds. */
+const PENDING_RELEASES = {
+  data: undefined,
+  error: null,
+  isError: false,
+  isPending: true,
+  isPlaceholderData: false,
+} as const;
+
 /** A fold of unreachable bundles: "1 unreachable bundle", "2 …". */
 const UNREACHABLE_BUNDLES = {
   one: "unreachable bundle",
@@ -576,14 +585,17 @@ function BundlesPage() {
     { enabled: resolved !== undefined },
   );
   const clearable = !showsDefaultReleases(urlSearch, channelRows);
-  const entries = releasesQuery.data?.entries ?? [];
+  // Until the channel is known, the list shows nothing the cache holds: a
+  // cached page of every channel, or a fold that would read more of it.
+  const list = resolved === undefined ? PENDING_RELEASES : releasesQuery;
+  const entries = list.data?.entries ?? [];
   // The page's reachable releases (and the selected one), outside its folds.
   const releases = entries.flatMap((entry) =>
     entry.kind === "row" ? [entry.row] : [],
   );
   const pageContext = useRowContext(releases, channels);
-  const nextCursor = releasesQuery.data?.next;
-  const previousCursor = releasesQuery.data?.previous;
+  const nextCursor = list.data?.next;
+  const previousCursor = list.data?.previous;
   // Features add columns, such as release activity where the console reads it.
   const featureColumns = useReleaseColumns();
   const columnCount = 10 + featureColumns.length;
@@ -980,17 +992,17 @@ function BundlesPage() {
               </Button>
             </AlertAction>
           </Alert>
-        ) : releasesQuery.isError ? (
+        ) : list.isError ? (
           <Alert variant="destructive">
             <AlertTriangle />
             <AlertTitle>Bundles could not be loaded</AlertTitle>
-            <AlertDescription>{releasesQuery.error.message}</AlertDescription>
+            <AlertDescription>{list.error?.message}</AlertDescription>
           </Alert>
         ) : (
           <DataTableFrame>
             {isMobile ? (
               <div className="h-full overflow-y-auto">
-                {releasesQuery.isPending ? (
+                {list.isPending ? (
                   <DataCardSkeletons />
                 ) : (
                   <>
@@ -1026,7 +1038,7 @@ function BundlesPage() {
                   </>
                 }
               >
-                {releasesQuery.isPending ? (
+                {list.isPending ? (
                   <DataTableBody>
                     <DataTableSkeletonRows columns={columnCount} />
                   </DataTableBody>
@@ -1057,15 +1069,13 @@ function BundlesPage() {
           </DataTableFrame>
         )}
 
-        {!channelsFailed &&
-        !releasesQuery.isError &&
-        !releasesQuery.isPending ? (
+        {!channelsFailed && !list.isError && !list.isPending ? (
           <DataTablePagination
             count={releases.length}
             folded={{ ...foldedTotal(entries), label: "unreachable" }}
             label="Bundle pagination"
             noun={["bundle", "bundles"]}
-            pending={releasesQuery.isPlaceholderData}
+            pending={list.isPlaceholderData}
             newest={onLaterPage ? { search: newestSearch, to: "/" } : undefined}
             next={nextSearch ? { search: nextSearch, to: "/" } : undefined}
             previous={

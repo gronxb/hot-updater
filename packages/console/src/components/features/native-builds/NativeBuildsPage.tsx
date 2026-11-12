@@ -32,6 +32,18 @@ import { NativeBuildsTable } from "./NativeBuildsTable";
  * name, `all` included, can be taken for "All channels".
  */
 const CHANNEL_VALUE_PREFIX = "channel:";
+
+/**
+ * The list while its channel is unknown: loading, whatever the cache holds,
+ * and nothing to refresh. A disabled query still reads when refetched.
+ */
+const PENDING_BUILDS = {
+  data: undefined,
+  isError: false,
+  isPending: true,
+  isPlaceholderData: false,
+  refetch: () => undefined,
+} as const;
 const channelValue = (name: string) => `${CHANNEL_VALUE_PREFIX}${name}`;
 
 /**
@@ -59,7 +71,8 @@ export function NativeBuildsPage({
   const channelsFailed = pending && channels.isError;
   const { channel, before, after } = page ?? search;
   // Nothing reads every channel's builds on the way to the default channel's.
-  const builds = useNativeBuildsQuery(page ?? {}, { enabled: !pending });
+  const query = useNativeBuildsQuery(page ?? {}, { enabled: !pending });
+  const builds = pending ? PENDING_BUILDS : query;
   // A filtered channel may be gone, or not loaded yet: it stays a choice.
   const choices =
     channel === undefined || channelNames.includes(channel)
