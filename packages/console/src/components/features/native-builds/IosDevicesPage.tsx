@@ -16,7 +16,7 @@ import {
   Smartphone,
   Trash2,
 } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import {
   DataCard,
@@ -652,15 +652,21 @@ function RegisterCard({
   const https = phone === null || window.location.protocol === "https:";
   // Once its profile has answered, this iPhone's own row, whatever the list
   // shows: after a reload, or in the tab Safari came back to.
-  const mine = useIosDeviceQuery(onPhone ? phone.udid : null);
-  // An answer that comes back to this tab with the same UDID, such as a
-  // removed iPhone registering again, reads its row again.
+  const udid = onPhone ? phone.udid : null;
+  const mine = useIosDeviceQuery(udid);
+  // A new answer with the same UDID, such as a removed iPhone registering
+  // again, reads its row again: the key didn't change, so nothing else would.
+  // A new UDID changes the key, which reads it; a computer reads nothing.
+  const answers = phone?.answers ?? 0;
   const { refetch } = mine;
+  const seen = useRef({ udid, answers });
   useEffect(() => {
-    const onAnswer = () => void refetch();
-    window.addEventListener("hashchange", onAnswer);
-    return () => window.removeEventListener("hashchange", onAnswer);
-  }, [refetch]);
+    const before = seen.current;
+    seen.current = { udid, answers };
+    if (udid !== null && udid === before.udid && answers > before.answers) {
+      void refetch();
+    }
+  }, [udid, answers, refetch]);
 
   const body = (() => {
     // The server renders this without a browser: where it is and what it is

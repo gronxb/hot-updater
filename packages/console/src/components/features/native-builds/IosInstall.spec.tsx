@@ -83,11 +83,13 @@ const phone = (
   udid: string | null;
   receipt: string | null;
   requested: boolean;
+  answers: number;
 } => ({
   ios: true,
   udid,
   receipt,
   requested: false,
+  answers: 0,
 });
 
 const registryRow = (overrides: Partial<IosDeviceRow> = {}): IosDeviceRow => ({

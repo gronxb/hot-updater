@@ -78,6 +78,11 @@ export interface IosDevice {
   readonly receipt: string | null;
   /** Whether this page opened from a registration's answer. */
   readonly requested: boolean;
+  /**
+   * How many of the profile's answers this page has taken, at its opening or
+   * when Safari came back to it: one more for each, the same UDID's too.
+   */
+  readonly answers: number;
 }
 
 const readKept = (key: string) => {
@@ -114,12 +119,14 @@ export const useIosDevice = (): IosDevice | null => {
     // The fragment this page last took: the one it opened with, or one Safari
     // brought back to this same tab, which changes only the fragment.
     let latest = passed;
+    let answers = 0;
     const absorb = (fragment: ReturnType<typeof fragmentOf>) => {
       // Only the profile's own answer, which carries a receipt or says it
       // registered, replaces the ID this phone kept: a plain link's ID never
       // does.
       const answered = fragment.receipt !== null || fragment.requested;
       if (fragment.udid !== null && answered) {
+        answers += 1;
         keep(IOS_UDID_STORAGE_KEY, fragment.udid);
         if (fragment.receipt !== null) {
           keep(
@@ -154,17 +161,20 @@ export const useIosDevice = (): IosDevice | null => {
       }
       if (receipt === null && latest.udid === udid) receipt = latest.receipt;
       const requested = latest.requested;
+      const taken = answers;
       setDevice((current) =>
         current !== null &&
         current.udid === udid &&
         current.receipt === receipt &&
-        current.requested === requested
+        current.requested === requested &&
+        current.answers === taken
           ? current
           : {
               ios: isIosBrowser(navigator),
               udid,
               receipt,
               requested,
+              answers: taken,
             },
       );
     };
