@@ -531,6 +531,18 @@ describe("IosInstall", () => {
     expect(screen.queryByRole("link")).toBeNull();
   });
 
+  it("says a sandbox App Store export doesn't install here, with no TestFlight advice", () => {
+    answer({ status: "store" });
+    const { container } = render(
+      <IosInstall build={{ ...row, is_sandbox: true }} device={phone(null)} />,
+    );
+
+    expect(container.textContent).toContain(
+      "This IPA is an App Store export, which doesn't install from this page.",
+    );
+    expect(container.textContent).not.toMatch(/TestFlight/);
+  });
+
   it("says an expired profile needs a rebuild, with no install", () => {
     answer({ status: "expired", expiresAt: "2026-01-02T00:00:00.000Z" });
     render(<IosInstall build={row} device={phone(PHONE)} />);

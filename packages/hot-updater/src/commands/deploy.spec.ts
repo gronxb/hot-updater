@@ -1911,12 +1911,20 @@ describe("deploy rollout wiring", () => {
     {
       id = "01900000-0000-7000-8000-00000000b001",
       buildNumber,
-    }: { readonly id?: string; readonly buildNumber?: string } = {},
+      channel = "production",
+      isSandbox,
+    }: {
+      readonly id?: string;
+      readonly buildNumber?: string;
+      readonly channel?: string;
+      readonly isSandbox?: true;
+    } = {},
   ) =>
     databaseHarness.core.registerNativeBuild({
       id,
       platform: "ios",
-      channel: "production",
+      channel,
+      ...(isSandbox === undefined ? {} : { isSandbox }),
       ...scope,
       minBundleId,
       gitCommitHash: null,
@@ -1934,7 +1942,7 @@ describe("deploy rollout wiring", () => {
       },
     });
 
-  const deployByFingerprint = async () => {
+  const deployByFingerprint = async (channel = "production") => {
     const fingerprint = { hash: "fingerprint-hash", sources: [] };
     vi.mocked(nativeFingerprint).mockResolvedValueOnce(
       fingerprint as unknown as Awaited<ReturnType<typeof nativeFingerprint>>,
@@ -1945,7 +1953,7 @@ describe("deploy rollout wiring", () => {
     } as unknown as Awaited<ReturnType<typeof readLocalFingerprint>>);
     vi.mocked(isFingerprintEquals).mockReturnValueOnce(true);
     await deploy({
-      channel: "production",
+      channel,
       forceUpdate: false,
       interactive: false,
       platform: "ios",
@@ -2282,6 +2290,42 @@ describe("deploy rollout wiring", () => {
       expect(baseBundleIds()).toEqual([]);
       expect(printed().join("\n")).not.toContain("Built-in base");
       expect(baseWarnings()).toEqual([]);
+    });
+
+    it("patches from no sandbox build", async () => {
+      await configure();
+      await registerNativeBuild(fixtureBundleId(100), FINGERPRINT, {
+        id: buildIdOf(1),
+        channel: "sandbox-release",
+        isSandbox: true,
+      });
+
+      await deployByFingerprint("sandbox-release");
+
+      expect(baseBundleIds()).toEqual([]);
+      expect(printed().join("\n")).not.toContain("Built-in base");
+    });
+
+    it("patches from no sandbox build a server from before answers", async () => {
+      await configure();
+      const sandboxBuild = await registerNativeBuild(
+        fixtureBundleId(100),
+        FINGERPRINT,
+        { id: buildIdOf(1), channel: "sandbox-release", isSandbox: true },
+      );
+      // Such a server answers its newest build to both base reads.
+      const findNativeBuild = vi
+        .spyOn(databaseHarness.core, "findNativeBuild")
+        .mockImplementation(async () => sandboxBuild);
+
+      try {
+        await deployByFingerprint("sandbox-release");
+      } finally {
+        findNativeBuild.mockRestore();
+      }
+
+      expect(baseBundleIds()).toEqual([]);
+      expect(printed().join("\n")).not.toContain("Built-in base");
     });
 
     describe("with a range target", () => {

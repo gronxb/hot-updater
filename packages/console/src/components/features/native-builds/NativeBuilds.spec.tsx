@@ -1470,11 +1470,53 @@ describe("InstallCard", () => {
     expect(screen.getByText("npx hot-updater testflight")).toBeTruthy();
     expect(screen.getByRole("link", { name: /Download App.ipa/ })).toBeTruthy();
   });
+  it("gives a sandbox IPA no TestFlight advice, with or without a QR code", () => {
+    const sandboxIpa = build({
+      platform: "ios",
+      artifact_kind: "ipa",
+      artifact_storage_uri: "r2://bucket/native-builds/ios/019a/App.ipa",
+      is_sandbox: true,
+    });
+    const { container } = render(<InstallCard build={sandboxIpa} />);
+
+    expect(container.textContent).toContain("Over USB, Xcode");
+    expect(container.textContent).not.toMatch(/TestFlight|For testers/);
+    expect(screen.getByRole("link", { name: /Download App.ipa/ })).toBeTruthy();
+    cleanup();
+
+    unsigned(null);
+    const { container: noQr } = render(<InstallCard build={sandboxIpa} />);
+    expect(noQr.textContent).toMatch(/signing profile allows/);
+    expect(noQr.textContent).not.toMatch(/TestFlight/);
+  });
 });
 
 describe("a submitted build's page", () => {
   beforeEach(() => {
     downloadLinkQuery.mockReturnValue({ data: ISSUED_LINK });
+  });
+
+  it("keeps a sandbox build's TestFlight state", () => {
+    render(
+      <InstallCard
+        build={build({
+          platform: "ios",
+          artifact_kind: "ipa",
+          artifact_storage_uri: "r2://bucket/native-builds/ios/019a/App.ipa",
+          is_sandbox: true,
+          submitted_to: "testflight",
+          submitted_at_ms: Date.now(),
+          submitted_version: "1.7.0 (66)",
+        })}
+      />,
+    );
+
+    expect(screen.getByText(/On TestFlight as/).textContent).toContain(
+      "1.7.0 (66)",
+    );
+    expect(
+      screen.getByRole("link", { name: /Open App Store Connect/ }),
+    ).toBeTruthy();
   });
 
   it("says where the store has it instead of how to upload it", () => {
@@ -1745,6 +1787,27 @@ describe("BuiltInBundleCard", () => {
     );
   });
 
+  it("says new deploys don't patch from a sandbox build, whatever the scope's reads", () => {
+    const sandbox = build({ is_sandbox: true });
+    const { container } = render(
+      <BuiltInBundleCard
+        detail={detail({
+          build: sandbox,
+          newestInScope: sandbox,
+          storeBuildInScope: null,
+        })}
+      />,
+    );
+
+    expect(screen.getByText("No patch base.")).toBeTruthy();
+    expect(container.textContent).toContain(
+      "Deploys make no patches from a sandbox build's built-in bundle.",
+    );
+    expect(container.textContent).not.toMatch(
+      /Current baseline|Not the base|first OTA/,
+    );
+  });
+
   it("offers no mark on a sandbox build, by its record and not its channel", () => {
     render(
       <BuiltInBundleCard
@@ -1928,5 +1991,25 @@ describe("PatchesCard", () => {
     render(<PatchesCard detail={detail()} onPage={vi.fn()} page={{}} />);
 
     expect(screen.getByText("No patches from this build")).toBeTruthy();
+  });
+
+  it("says a sandbox build gets no patches, with no guide to adding one", () => {
+    patchesQuery.mockReturnValue({ data: undefined });
+    const { container } = render(
+      <PatchesCard
+        detail={detail({ build: build({ is_sandbox: true }) })}
+        onPage={vi.fn()}
+        page={{}}
+      />,
+    );
+
+    expect(screen.getByText("No patches from this build")).toBeTruthy();
+    expect(container.textContent).toContain(
+      "Deploys make no patches from a sandbox build's built-in bundle.",
+    );
+    expect(container.textContent).not.toMatch(/store build|newest build/);
+    expect(
+      screen.queryByRole("link", { name: /Bundle diffing guide/ }),
+    ).toBeNull();
   });
 });

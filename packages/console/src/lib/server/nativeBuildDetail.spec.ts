@@ -288,6 +288,35 @@ describe("getNativeBuildDetail", () => {
     expect(other?.newestInScope?.id).toBe(buildId(2));
     expect(calls.filter((name) => name === "findNativeBuild")).toHaveLength(2);
   });
+
+  it("names no patch base for a sandbox build, and reads none", async () => {
+    const memory = memoryCore();
+    const sandbox = fingerprintScope("fp-a", "sandbox-release");
+    await memory.registerNativeBuild({
+      ...sandbox,
+      isSandbox: true,
+      id: buildId(1),
+      minBundleId: id(10),
+      gitCommitHash: null,
+      buildKey: null,
+      artifact: {
+        kind: "apk",
+        storageUri: `s3://bucket/native-builds/android/${buildId(1)}/app.apk`,
+        byteSize: 1_000,
+      },
+      embeddedBundle: {
+        manifestStorageUri: `s3://bucket/${id(10)}/manifest.json`,
+        manifestFileHash: `manifest-${id(10)}`,
+        assetBaseStorageUri: "s3://bucket/assets",
+      },
+    } as NativeBuildRegistration);
+    const { core, calls } = counted(memory);
+
+    const detail = await getNativeBuildDetail(core, buildId(1));
+    expect(detail?.newestInScope).toBeNull();
+    expect(detail?.storeBuildInScope).toBeNull();
+    expect(calls).not.toContain("findNativeBuild");
+  });
 });
 
 describe("the native build list and patch pages", () => {

@@ -30,25 +30,40 @@ import { IosInstall, useIosDevice } from "./IosInstall";
 import { PLAY_TRACKS } from "./playTracks";
 import { isSubmitted, type Submitted } from "./StoreSubmission";
 
+const IPA_LIMIT =
+  "The .ipa installs only on devices its signing profile allows (development or ad hoc)";
+
 /**
  * What an artifact installs on, where the file alone isn't enough: the card
- * says it once, under the QR code, or without one, in its place.
+ * says it once, under the QR code, or without one, in its place. A sandbox
+ * build gets no TestFlight advice.
  */
-const INSTALL_LIMITS: Partial<Record<NativeBuildRow["artifact_kind"], string>> =
-  {
-    ipa: "The .ipa installs only on devices its signing profile allows (development or ad hoc); an App Store export reaches testers through TestFlight.",
-    aab: "The .aab installs through Google Play or bundletool, not from the file.",
-  };
+const installLimit = (build: NativeBuildRow): string | undefined => {
+  switch (build.artifact_kind) {
+    case "ipa":
+      return build.is_sandbox
+        ? `${IPA_LIMIT}.`
+        : `${IPA_LIMIT}; an App Store export reaches testers through TestFlight.`;
+    case "aab":
+      return "The .aab installs through Google Play or bundletool, not from the file.";
+    default:
+      return undefined;
+  }
+};
 
 /**
  * What scanning a build's QR code gets, by its artifact. The install steps
  * beside it add only what this doesn't say, so the card says each thing once.
  */
-const QR_CAPTIONS: Record<NativeBuildRow["artifact_kind"], string> = {
-  apk: "Scan with an Android phone's camera, then open the APK to install it.",
-  ipa: `Scan to download. ${INSTALL_LIMITS.ipa}`,
-  aab: `Scan to download. ${INSTALL_LIMITS.aab}`,
-  app: "Scan to download the .app.zip on a Mac.",
+const qrCaption = (build: NativeBuildRow): string => {
+  switch (build.artifact_kind) {
+    case "apk":
+      return "Scan with an Android phone's camera, then open the APK to install it.";
+    case "app":
+      return "Scan to download the .app.zip on a Mac.";
+    default:
+      return `Scan to download. ${installLimit(build)}`;
+  }
 };
 
 /**
@@ -90,7 +105,7 @@ function ScannableUrl({
         value={url}
       />
       <p className="max-w-56 text-center text-xs text-muted-foreground">
-        {QR_CAPTIONS[build.artifact_kind]}
+        {qrCaption(build)}
       </p>
       {note ? (
         <p className="max-w-56 text-center text-xs text-muted-foreground">
@@ -122,7 +137,7 @@ function StorageQrCode({ build }: { readonly build: NativeBuildRow }) {
   // A storage without download URLs serves the build only through the
   // console, which a phone that scans isn't signed in to.
   if (url === null) {
-    const limits = INSTALL_LIMITS[build.artifact_kind];
+    const limits = installLimit(build);
     return (
       <div className="flex flex-col gap-2 text-xs text-muted-foreground">
         <p>
@@ -290,6 +305,10 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
           On TestFlight as <SubmittedVersion build={build} />. Internal testers
           install it from the TestFlight app once App Store Connect has
           processed it, and a preview's pull request comment shows that state.
+        </p>
+      ) : build.is_sandbox ? (
+        <p className="text-xs text-muted-foreground">
+          Over USB, Xcode or Apple Configurator installs it.
         </p>
       ) : (
         <div className="flex min-w-0 flex-col gap-2">

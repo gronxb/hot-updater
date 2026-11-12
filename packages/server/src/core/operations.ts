@@ -24,7 +24,7 @@ import {
   encodeChannelKey,
 } from "@hot-updater/protocol";
 
-import { isBuiltInBundle } from "./nativeBuilds";
+import { isBuiltInBundle, refuseSandboxPatchBase } from "./nativeBuilds";
 import { toBundleRow, toReleaseRow, type CoreDatabase } from "./reads";
 import {
   changeRelease,
@@ -544,10 +544,13 @@ export const createCoreOperations = (
           set.platform === current.platform || !(await isBuiltInBundle(tx, id));
         updateBundle(tx, current, set, { counted });
         if (patches !== undefined) {
+          // Only a new patch is checked, so one stored before a sandbox
+          // build's bundle was refused as a base stays through updates.
           await replaceBundlePatches(
             tx,
             current,
             bundleToPatchRows({ ...next, patches }),
+            (row) => refuseSandboxPatchBase(tx, row.base_bundle_id),
           );
         }
       }),

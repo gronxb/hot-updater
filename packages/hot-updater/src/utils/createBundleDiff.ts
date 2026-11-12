@@ -448,7 +448,18 @@ export async function createBundleDiff(
     ...targetBundle,
     patches,
   };
-  await core.updateBundle(targetBundle.id, { patches });
+  try {
+    await core.updateBundle(targetBundle.id, { patches });
+  } catch (error) {
+    // A refused patch, such as one from a sandbox build's built-in bundle,
+    // leaves no file behind; a stored patch at the same key keeps its file.
+    if (previousPatch?.patchStorageUri !== patchUpload.storageUri) {
+      await deps.storageAdapter
+        .delete({ storageUri: patchUpload.storageUri })
+        .catch(() => undefined);
+    }
+    throw error;
+  }
 
   if (
     previousPatch?.patchStorageUri &&

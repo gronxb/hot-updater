@@ -389,7 +389,9 @@ export const serveNativeBuildManifest = async (
   if (info.distribution === "store") {
     return installRefusal(
       409,
-      "This IPA is an App Store export, which installs through TestFlight.",
+      build.is_sandbox
+        ? "This IPA is an App Store export, which doesn't install from a link."
+        : "This IPA is an App Store export, which installs through TestFlight.",
     );
   }
   if (isExpired(info, Date.now())) {

@@ -261,7 +261,8 @@ export interface HotUpdaterCoreApi {
    * scope whose built-in bundle is older than that bundle: one read when the
    * newest is, and then a page of older builds per read until one is, when
    * builds made after the bundle are in the way. With `buildKey` too, only
-   * builds of that key.
+   * builds of that key. A sandbox build's built-in bundle is no patch base, so
+   * with `builtInOlderThan` a sandbox scope answers null without a read.
    */
   findNativeBuild(
     scope: NativeBuildScope,
@@ -311,7 +312,11 @@ export interface HotUpdaterCoreApi {
   ensureChannel(name: string): Promise<ChannelRow>;
   /** Deletes a channel no release uses. */
   deleteChannel(id: string): Promise<ChannelDeleteResult>;
-  /** Changes a bundle's fields; `patches`, when given, replaces its patches. */
+  /**
+   * Changes a bundle's fields; `patches`, when given, replaces its patches.
+   * It refuses a new patch from a sandbox build's built-in bundle, which is
+   * no patch base: one read of each new patch's base.
+   */
   updateBundle(
     id: string,
     update: Partial<Omit<Bundle, "id" | "patches">> & {

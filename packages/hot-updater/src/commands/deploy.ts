@@ -279,8 +279,8 @@ const readProjectAppVersion = async (
  * store build, or the most recently registered one. A build made after this
  * bundle runs it or a newer one, so it is passed over, marked or not. Registering
  * took its file from the build's artifact, so the patch is made against the bytes
- * the build ships. One indexed read when a mark serves the deploy, and one more
- * when none does.
+ * the build ships. A sandbox build is never the base. One indexed read when a
+ * mark serves the deploy, and one more when none does.
  */
 const getBuiltInBase = async ({
   bundleId,
@@ -321,18 +321,21 @@ const getBuiltInBase = async ({
   } else {
     return null;
   }
-  const isOlder = (build: NativeBuildRow) =>
-    build.min_bundle_id.localeCompare(bundleId) < 0;
+  // A sandbox build's built-in bundle is no patch base. This server answers
+  // none for a sandbox scope, and one from before that answers its newest.
+  const isBase = (build: NativeBuildRow) =>
+    build.min_bundle_id.localeCompare(bundleId) < 0 &&
+    build.is_sandbox !== true;
   try {
     const marked = await core.findNativeBuild(scope, { storeBuild: true });
-    if (marked !== null && isOlder(marked)) {
+    if (marked !== null && isBase(marked)) {
       return { build: marked, marked: true };
     }
     const newest = await core.findNativeBuild(scope, {
       builtInOlderThan: bundleId,
     });
     // A server from before `builtInOlderThan` answers its newest build.
-    return newest !== null && isOlder(newest)
+    return newest !== null && isBase(newest)
       ? { build: newest, marked: false }
       : null;
   } catch (error) {

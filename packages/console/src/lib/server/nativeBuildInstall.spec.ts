@@ -707,10 +707,14 @@ describe("serveNativeBuildManifest", () => {
   const manifestUrl = (token: string, id = BUILD, base = CONSOLE) =>
     `${base}/_hot-updater/native-builds/${id}/manifest.plist?t=${encodeURIComponent(token)}`;
 
-  const serve = async (url: string, profile = adHocProfile([PHONE])) => {
+  const serve = async (
+    url: string,
+    profile = adHocProfile([PHONE]),
+    overrides: Partial<NativeBuildRow> = {},
+  ) => {
     const bytes = await ipaBytes(profile);
     const { fetch, served } = rangeServer(bytes);
-    const core = coreOf(rowOf(bytes.length));
+    const core = coreOf(rowOf(bytes.length, overrides));
     const loadDeps = vi.fn(async () => ({ core, storage: storageOf() }));
     const id = /native-builds\/([^/]+)\//u.exec(url)![1]!;
     const response = await serveNativeBuildManifest(
@@ -908,6 +912,21 @@ describe("serveNativeBuildManifest", () => {
     const { response } = await serve(manifestUrl(token), profile);
     expect(response.status).toBe(status);
     expect(await response.text()).not.toContain("<plist");
+  });
+
+  it("refuses a sandbox App Store export without TestFlight advice", async () => {
+    const token = await createNativeBuildDownloadToken(
+      SECRET,
+      BUILD,
+      Date.now() + 60_000,
+    );
+    const { response } = await serve(manifestUrl(token), mobileprovision(""), {
+      is_sandbox: true,
+    });
+    expect(response.status).toBe(409);
+    expect(await response.text()).toBe(
+      "This IPA is an App Store export, which doesn't install from a link.",
+    );
   });
 
   it("gives 404 for no build or another kind of artifact, and 503 when the IPA can't be read in parts", async () => {

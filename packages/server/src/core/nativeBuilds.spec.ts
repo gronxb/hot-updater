@@ -526,6 +526,59 @@ describe("the native build registry", () => {
     });
   });
 
+  it("takes no patch from a sandbox build's built-in bundle, and keeps one already stored", async () => {
+    const { core, db } = setupWithDb();
+    const bundle = createBundleFixture("1");
+    await core.deploy([
+      {
+        bundle,
+        release: {
+          channel: "sandbox-release",
+          enabled: true,
+          fingerprintHash: "fingerprint-a",
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: null,
+        },
+      },
+    ]);
+    await core.registerNativeBuild(
+      registration(1, { channel: "sandbox-release", isSandbox: true }),
+    );
+    await core.registerNativeBuild(registration(2));
+    await core.registerNativeBuild(registration(3));
+    const patchFrom = (n: number) => ({
+      baseBundleId: minBundleId(n),
+      baseFileHash: `base-hash-${n}`,
+      byteSize: 42,
+      patchFileHash: `patch-hash-${n}`,
+      patchStorageUri: `storage://patches/${bundle.id}/${n}.patch`,
+    });
+
+    await expect(
+      core.updateBundle(bundle.id, { patches: [patchFrom(1)] }),
+    ).rejects.toThrow(
+      new NativeBuildInputError(
+        "A sandbox build's built-in bundle is no patch base.",
+      ),
+    );
+    await expect(
+      core.listPatchesFromBase(minBundleId(1), { limit: 10 }),
+    ).resolves.toEqual([]);
+
+    // A patch stored before the refusal stays through later updates.
+    await core.updateBundle(bundle.id, { patches: [patchFrom(2)] });
+    await setRow(db, buildId(2), { is_sandbox: true });
+    await core.updateBundle(bundle.id, {
+      patches: [patchFrom(2), patchFrom(3)],
+    });
+    expect(
+      (await core.getBundle(bundle.id))?.patches.map(
+        ({ base_bundle_id }) => base_bundle_id,
+      ),
+    ).toEqual(expect.arrayContaining([minBundleId(2), minBundleId(3)]));
+  });
+
   it("answers not_found for a build that is not registered", async () => {
     const core = setup();
     await core.registerNativeBuild(registration(1));
@@ -1186,6 +1239,21 @@ describe("the store build mark", () => {
         builtInOlderThan: "01000000-0000-7000-8000-000000000000",
       }),
     ).toBeNull();
+  });
+
+  it("finds no patch base in a sandbox scope, whose builds the other reads still find", async () => {
+    const core = setup();
+    const sandbox = await core.registerNativeBuild(
+      registration(1, { channel: "sandbox-release", isSandbox: true }),
+    );
+    const sandboxScope = { ...scope, channel: "sandbox-release" };
+
+    expect(
+      await core.findNativeBuild(sandboxScope, {
+        builtInOlderThan: "01ff0000-0000-7000-8000-000000000000",
+      }),
+    ).toBeNull();
+    expect(await core.findNativeBuild(sandboxScope)).toEqual(sandbox);
   });
 });
 

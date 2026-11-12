@@ -690,6 +690,19 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       }),
   }),
   budget({
+    api: "native build older than a bundle in a sandbox scope: no read",
+    // A sandbox build's built-in bundle is no patch base, and only sandbox
+    // builds register on a sandbox-* channel.
+    read: ({ core }) =>
+      core.findNativeBuild(
+        { ...nativeBuildScope, channel: "sandbox-release" },
+        { builtInOlderThan: "ffffffff-ffff-7fff-bfff-ffffffffffff" },
+      ),
+    adapter: reads(0, 0, 0, 0),
+    engine: { calls: 0, rows: 0 },
+    check: (build) => expect(build).toBeNull(),
+  }),
+  budget({
     api: "native build by key: byBuildKey descending, limit 1",
     read: ({ core }) =>
       core.findNativeBuild(nativeBuildScope, { buildKey: nativeBuildKey }),

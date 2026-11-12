@@ -43,6 +43,7 @@ const build = {
 const renderLink = (
   release: Parameters<typeof ReleaseNativeBuildLink>[0]["release"],
   patchBases: readonly string[] = [],
+  channel = "production",
 ) =>
   render(
     <QueryClientProvider
@@ -60,7 +61,7 @@ const renderLink = (
             patchStorageUri: "s3://patch",
           })),
         }}
-        channel="production"
+        channel={channel}
         release={release}
       />
     </QueryClientProvider>,
@@ -129,6 +130,22 @@ describe("ReleaseNativeBuildLink", () => {
         await screen.findByRole("link", { name: "This channel's builds" })
       ).getAttribute("href"),
     ).toBe("/native-builds?channel=production");
+  });
+
+  it("shows no build and reads nothing for a sandbox channel, whose builds are no patch base", () => {
+    renderLink(
+      {
+        platform: "ios",
+        fingerprint_hash: "fp-ios-sandbox",
+        target_app_version: null,
+        bundle_id: "019a0000-0000-7000-8000-0000000000a5",
+      },
+      [],
+      "sandbox-release",
+    );
+
+    expect(screen.queryByText("Native build")).toBeNull();
+    expect(read).not.toHaveBeenCalled();
   });
 
   it("shows no build and reads nothing for an app version range", () => {

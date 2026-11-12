@@ -334,7 +334,8 @@ export const getNativeBuildPatches = createServerFn({ method: "GET" })
 /**
  * The native build new deploys to a release's scope patch from: the scope's
  * store build in one read, or with no mark its newest build in one more. A
- * release of an app version range has no one build, and reads nothing.
+ * release of an app version range has no one build, and a sandbox channel's
+ * builds are no patch base: those read nothing.
  */
 export const getReleaseNativeBuild = createServerFn({ method: "GET" })
   .middleware([consoleAccess])

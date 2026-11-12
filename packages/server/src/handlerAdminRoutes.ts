@@ -469,10 +469,8 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
 
   updateBundle: onCore(async (core, request, params) => {
     const bundleId = requireRouteParam(params, "id");
-    await core.updateBundle(
-      bundleId,
-      bundleUpdateOf(await request.json(), bundleId),
-    );
+    const update = bundleUpdateOf(await request.json(), bundleId);
+    await refusingInvalid(() => core.updateBundle(bundleId, update));
     return noContent();
   }),
 

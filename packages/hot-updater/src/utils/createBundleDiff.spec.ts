@@ -223,6 +223,56 @@ describe("createBundleDiff", () => {
     }
   });
 
+  it("deletes the uploaded patch when core refuses it", async () => {
+    const baseAsset = createAsset([1, 2, 3]);
+    const targetAsset = createAsset([1, 9, 3]);
+    const baseBundle = createBundle(
+      "00000000-0000-0000-0000-000000000001",
+      {},
+      hermesAssets(baseAsset),
+    );
+    const targetBundle = createBundle(
+      "00000000-0000-0000-0000-000000000002",
+      {},
+      hermesAssets(targetAsset),
+    );
+    const core = await createCore([baseBundle, targetBundle]);
+    const refusal = new Error(
+      "A sandbox build's built-in bundle is no patch base.",
+    );
+    vi.spyOn(core, "updateBundle").mockRejectedValue(refusal);
+    const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
+      async ({ key }) => ({
+        storageUri: `s3://test-bucket/${key}`,
+      }),
+    );
+    const storageAdapter = createStorageAdapter(upload);
+    const remove = vi.spyOn(storageAdapter, "delete");
+
+    stubStorageFetch([
+      { bundle: baseBundle, asset: baseAsset },
+      { bundle: targetBundle, asset: targetAsset },
+    ]);
+
+    try {
+      await expect(
+        createBundleDiff(
+          { baseBundleId: baseBundle.id, bundleId: targetBundle.id },
+          { core, storageAdapter },
+        ),
+      ).rejects.toBe(refusal);
+      const uploaded = (await upload.mock.results[0]!.value) as {
+        storageUri: string;
+      };
+      expect(remove).toHaveBeenCalledWith({ storageUri: uploaded.storageUri });
+      await expect(storedBundle(core, targetBundle.id)).resolves.toMatchObject({
+        patches: [],
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("rejects ambiguous Hermes bundle assets in manifests", async () => {
     const baseAssets = {
       "index.ios.bundle": { fileHash: "hash-old" },

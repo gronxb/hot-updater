@@ -671,6 +671,32 @@ export const setupCoreAdminTestSuite = (options: {
           )
         ).data,
       ).toEqual(sandboxBuild);
+      // A sandbox build's built-in bundle is no patch base.
+      expect(
+        (
+          await adminJson(
+            `/native-builds/latest?platform=ios&channel=${encodeURIComponent(sandboxChannel)}&fingerprintHash=sandbox-fingerprint&builtInOlderThan=ffffffff-ffff-7fff-bfff-ffffffffffff`,
+          )
+        ).data,
+      ).toBeNull();
+      const patched = await admin(
+        `/bundles/${plainBuild.min_bundle_id}`,
+        jsonRequest("PATCH", {
+          patches: [
+            {
+              baseBundleId: sandboxBuild.min_bundle_id,
+              baseFileHash: "base-hash",
+              byteSize: 42,
+              patchFileHash: "patch-hash",
+              patchStorageUri: "storage://patches/sandbox.patch",
+            },
+          ],
+        }),
+      );
+      expect(patched.status).toBe(400);
+      expect(await patched.text()).toContain(
+        "A sandbox build's built-in bundle is no patch base.",
+      );
 
       const marked = await admin(
         `/native-builds/${sandboxBuild.id}/store-build`,
