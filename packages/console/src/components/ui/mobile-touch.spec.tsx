@@ -51,10 +51,14 @@ describe("phone sizes on the shared controls", () => {
     ).toContain("max-sm:*:min-h-11");
   });
 
-  it("widens a switch's hit area on a phone only", () => {
+  it("widens a switch's hit area to 44 px on a phone only", () => {
     render(<Switch aria-label="Enabled" />);
     const toggle = screen.getByRole("switch", { name: "Enabled" });
-    expect(toggle.className).toContain("after:-inset-y-3");
+    // `::after` is placed against the padding box, inside the 2 px border:
+    // 16 + 2 * 14 = 44 tall and 32 + 2 * 6 = 44 wide.
+    expect(toggle.className).toContain("border-2");
+    expect(toggle.className).toContain("after:-inset-y-3.5");
+    expect(toggle.className).toContain("after:-inset-x-1.5");
     expect(toggle.className).toContain("md:after:hidden");
   });
 
