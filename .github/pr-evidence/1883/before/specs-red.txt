@@ -1,0 +1,13 @@
+     × takes the check's answer when Safari returns to this tab already open, which changes only the fragment 1022ms
+       × shows the request in place of the form after a reload, from the ID this phone kept 1015ms
+       × takes the answer when Safari returns to this same tab, which changes only the fragment 1030ms
+       × shows the row when the profile's answer opens a new tab, for an iPhone the registry already had 1020ms
+       × reads its row again when an answer with the same ID returns to this tab, as a removed iPhone registering again does 18ms
+       × gives an approver Apple's refusal with no step of its own: the row is in the list below 1010ms
+       × lets an approver approve this iPhone from the card 1009ms
+       × says where an approved iPhone stands, with no form 1009ms
+       × says where an registered iPhone stands, with no form 1018ms
+       × shows Apple's refusal as #1878 does, with whom to ask 1011ms
+     × lets the page scroll past a tall list on a phone: the list's frame never shrinks to the leftover height 16ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 11 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  11 failed | 60 passed (71)

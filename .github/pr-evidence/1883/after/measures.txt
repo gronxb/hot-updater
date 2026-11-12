@@ -1,0 +1,8 @@
+  measure s01-devices-bottom-l {"lastText":"QA iPhone 15…5e6f70Registeredlead@hot-up","lastBottom":831,"visibleBottom":832,"fullyVisible":true,"scrollers":["flex min-h-0 min-w-0 flex-1 flex-col gap","go3747950898"]}
+  measure s02-builds-bottom-l {"lastText":"5 older builds","lastBottom":743,"visibleBottom":743,"fullyVisible":true,"scrollers":["list","go3747950898"]}
+  measure s03-build-detail-bottom-l {"lastText":"QA iPhone 15…5e6f70","lastBottom":-575,"visibleBottom":-574,"fullyVisible":true,"scrollers":["min-h-0 min-w-0 flex-1 overflow-y-auto b","go3747950898"]}
+  measure s04-bundles-bottom-l {"lastText":"01a1cd50-c580-7e27-88cd-fd5038b5e597stag","lastBottom":690,"visibleBottom":735,"fullyVisible":true,"scrollers":["h-full overflow-y-auto","go3747950898"]}
+  measure s01-devices-bottom-d {"lastText":"QA iPhone 15…5e6f70Registeredlead@hot-up","lastBottom":831,"visibleBottom":832,"fullyVisible":true,"scrollers":["flex min-h-0 min-w-0 flex-1 flex-col gap","go3747950898"]}
+  measure s02-builds-bottom-d {"lastText":"5 older builds","lastBottom":743,"visibleBottom":743,"fullyVisible":true,"scrollers":["list","go3747950898"]}
+  measure s03-build-detail-bottom-d {"lastText":"QA iPhone 15…5e6f70","lastBottom":-575,"visibleBottom":-574,"fullyVisible":true,"scrollers":["min-h-0 min-w-0 flex-1 overflow-y-auto b","go3747950898"]}
+  measure s04-bundles-bottom-d {"lastText":"01a1cd50-c580-7e27-88cd-fd5038b5e597stag","lastBottom":690,"visibleBottom":735,"fullyVisible":true,"scrollers":["h-full overflow-y-auto","go3747950898"]}
