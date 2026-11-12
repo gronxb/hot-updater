@@ -3,6 +3,7 @@ import {
   type IosDeviceRow,
   type IosDeviceStatus,
 } from "@hot-updater/plugin-core";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import dayjs from "dayjs";
 import {
@@ -86,6 +87,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
+  iosDeviceKeys,
   useApproveIosDeviceMutation,
   useIosDeviceProfileLinkQuery,
   useIosDeviceQuery,
@@ -801,6 +803,12 @@ export function IosDevicesPage({
   const query = useIosDevicesQuery(search.status);
   const view = query.data;
   const rows = view?.devices;
+  const queryClient = useQueryClient();
+  // Refresh and Retry read every registry query the page shows: the list,
+  // and this iPhone's own row on a phone. A disabled read, such as the row
+  // on a computer, stays unread.
+  const refresh = () =>
+    void queryClient.invalidateQueries({ queryKey: iosDeviceKeys.all });
   const [dialog, setDialog] = useState<DialogTarget>(null);
   const close = () => setDialog(null);
 
@@ -896,7 +904,7 @@ export function IosDevicesPage({
             aria-label="Refresh iOS devices"
             className="ml-auto size-11 sm:size-7"
             disabled={query.isFetching}
-            onClick={() => void query.refetch()}
+            onClick={refresh}
             size="icon-sm"
             variant="ghost"
           >
@@ -911,11 +919,7 @@ export function IosDevicesPage({
               Check your connection and try again.
             </AlertDescription>
             <AlertAction>
-              <Button
-                onClick={() => void query.refetch()}
-                size="xs"
-                variant="outline"
-              >
+              <Button onClick={refresh} size="xs" variant="outline">
                 <RefreshCw data-icon="inline-start" />
                 Retry
               </Button>

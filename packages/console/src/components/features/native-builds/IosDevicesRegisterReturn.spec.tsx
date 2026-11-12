@@ -1,6 +1,13 @@
 import type { IosDeviceRow } from "@hot-updater/plugin-core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -184,5 +191,67 @@ describe("this iPhone's row, read with the real query", () => {
     await waitFor(() => expect(lookups()).toEqual([OTHER, PHONE]));
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(lookups()).toEqual([OTHER, PHONE]);
+  });
+
+  describe("Refresh and Retry", () => {
+    const approved = (udid: string): IosDeviceRow => ({
+      ...row(udid),
+      status: "approved",
+      approved_at_ms: Date.now(),
+    });
+
+    it("read this iPhone's row again with the list, so an approval made elsewhere shows on the card", async () => {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(IPHONE_UA);
+      window.localStorage.setItem("hot-updater-ios-udid", PHONE);
+      show();
+      await screen.findByText("Requested");
+
+      // A maintainer approves it from another session.
+      rpc.getIosDevice.mockImplementation(async ({ data }) =>
+        approved(data.udid),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Refresh iOS devices" }),
+      );
+
+      expect(
+        await screen.findByText("It joins the next ad hoc build."),
+      ).toBeTruthy();
+      expect(lookups()).toEqual([PHONE, PHONE]);
+    });
+
+    it("Retry after a failed list reads this iPhone's row again too", async () => {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(IPHONE_UA);
+      window.localStorage.setItem("hot-updater-ios-udid", PHONE);
+      rpc.getIosDevices.mockRejectedValueOnce(new Error("offline"));
+      show();
+      await screen.findByText("iOS devices couldn't be loaded");
+      await screen.findByText("Requested");
+
+      rpc.getIosDevice.mockImplementation(async ({ data }) =>
+        approved(data.udid),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+      expect(
+        await screen.findByText("It joins the next ad hoc build."),
+      ).toBeTruthy();
+      expect(rpc.getIosDevices).toHaveBeenCalledTimes(2);
+    });
+
+    it("reads no single row on a computer when Refresh is pressed", async () => {
+      window.localStorage.setItem("hot-updater-ios-udid", PHONE);
+      show();
+      await screen.findByRole("img", { name: "Open this page on an iPhone" });
+      await waitFor(() => expect(rpc.getIosDevices).toHaveBeenCalledTimes(1));
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Refresh iOS devices" }),
+      );
+
+      await waitFor(() => expect(rpc.getIosDevices).toHaveBeenCalledTimes(2));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(rpc.getIosDevice).not.toHaveBeenCalled();
+    });
   });
 });

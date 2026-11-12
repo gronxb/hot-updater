@@ -1,4 +1,5 @@
 import type { IosDeviceRow } from "@hot-updater/plugin-core";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
   cleanup,
@@ -29,6 +30,7 @@ const { devicesQuery, deviceQuery, profileLinkQuery, approve, rename, remove } =
   });
 
 vi.mock("@/lib/ios-devices-api", () => ({
+  iosDeviceKeys: { all: ["ios-devices"] },
   useIosDevicesQuery: devicesQuery,
   useIosDeviceQuery: deviceQuery,
   useIosDeviceProfileLinkQuery: profileLinkQuery,
@@ -103,7 +105,11 @@ const show = (view: IosDevicesView, search = {}) => {
     refetch: vi.fn(),
   });
   const onSearchChange = vi.fn();
-  render(<IosDevicesPage onSearchChange={onSearchChange} search={search} />);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <IosDevicesPage onSearchChange={onSearchChange} search={search} />
+    </QueryClientProvider>,
+  );
   return { onSearchChange };
 };
 
