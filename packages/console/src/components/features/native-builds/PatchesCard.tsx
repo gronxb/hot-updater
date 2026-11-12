@@ -35,7 +35,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { type KeysetPage, useNativeBuildPatchesQuery } from "@/lib/api";
-import { formatByteSize } from "@/lib/native-builds";
+import { formatByteSize, SANDBOX_NO_PATCH_BASE } from "@/lib/native-builds";
 import type {
   NativeBuildDetail,
   NativeBuildPatchPage,
@@ -123,27 +123,35 @@ export function PatchesCard({
                 </EmptyMedia>
                 <EmptyTitle>No patches from this build</EmptyTitle>
                 <EmptyDescription>
-                  A deploy adds a patch from this build's bundle while it is its
-                  scope's store build, or its newest build with none marked, and
-                  the deploy config turns patches on, with{" "}
-                  <code className="font-mono">patch</code> in{" "}
-                  <code className="font-mono">hot-updater.config.ts</code>.
+                  {detail.build.is_sandbox ? (
+                    SANDBOX_NO_PATCH_BASE
+                  ) : (
+                    <>
+                      A deploy adds a patch from this build's bundle while it is
+                      its scope's store build, or its newest build with none
+                      marked, and the deploy config turns patches on, with{" "}
+                      <code className="font-mono">patch</code> in{" "}
+                      <code className="font-mono">hot-updater.config.ts</code>.
+                    </>
+                  )}
                 </EmptyDescription>
               </EmptyHeader>
-              <EmptyContent>
-                <a
-                  className={buttonVariants({
-                    className: "min-h-11 sm:min-h-8",
-                    variant: "outline",
-                  })}
-                  href={BUNDLE_DIFFING_GUIDE_URL}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  Bundle diffing guide
-                  <ArrowUpRight data-icon="inline-end" />
-                </a>
-              </EmptyContent>
+              {detail.build.is_sandbox ? null : (
+                <EmptyContent>
+                  <a
+                    className={buttonVariants({
+                      className: "min-h-11 sm:min-h-8",
+                      variant: "outline",
+                    })}
+                    href={BUNDLE_DIFFING_GUIDE_URL}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    Bundle diffing guide
+                    <ArrowUpRight data-icon="inline-end" />
+                  </a>
+                </EmptyContent>
+              )}
             </Empty>
           )
         ) : (

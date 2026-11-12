@@ -662,8 +662,9 @@ export function IosInstall({
   if (result.status === "store") {
     return (
       <p className="text-xs text-muted-foreground">
-        This IPA is an App Store export, which installs through TestFlight, not
-        from this page.
+        {build.is_sandbox
+          ? "This IPA is an App Store export, which doesn't install from this page."
+          : "This IPA is an App Store export, which installs through TestFlight, not from this page."}
       </p>
     );
   }

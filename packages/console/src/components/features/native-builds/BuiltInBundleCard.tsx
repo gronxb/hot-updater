@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, CircleCheck, History } from "lucide-react";
+import { ArrowUpRight, CircleCheck, CircleSlash, History } from "lucide-react";
 import { toast } from "sonner";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
@@ -13,6 +13,7 @@ import {
   nativeBuildArtifacts,
   nativeBuildLabel,
   platformLabel,
+  SANDBOX_NO_PATCH_BASE,
 } from "@/lib/native-builds";
 import type { NativeBuildDetail } from "@/lib/server/nativeBuilds";
 
@@ -73,10 +74,25 @@ function StoreBuildAction({ detail }: { readonly detail: NativeBuildDetail }) {
 
 /**
  * Which build new deploys patch from: this one, as the store build or as the
- * newest with no mark, or another, which it links to.
+ * newest with no mark, or another, which it links to. A sandbox build is never
+ * one, whatever its scope holds.
  */
 function BaselineStatus({ detail }: { readonly detail: NativeBuildDetail }) {
   const { build, newestInScope, storeBuildInScope } = detail;
+  if (build.is_sandbox) {
+    return (
+      <div className="flex items-start gap-2 rounded-md border bg-muted/40 p-3 text-xs">
+        <CircleSlash
+          aria-hidden="true"
+          className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+        />
+        <p>
+          <span className="font-medium">No patch base.</span>{" "}
+          {SANDBOX_NO_PATCH_BASE}
+        </p>
+      </div>
+    );
+  }
   const base = storeBuildInScope ?? newestInScope;
   if (base === null) return null;
   const isBase = base.id === build.id;
@@ -204,9 +220,9 @@ export function BuiltInBundleCard({
         </dl>
         <BaselineStatus detail={detail} />
         <p className="text-xs text-muted-foreground">
-          A store or test install of this build runs this bundle until its first
-          OTA. That OTA downloads as a patch from this bundle when one exists,
-          and as the full bundle otherwise.
+          {build.is_sandbox
+            ? "An install of this build runs this bundle until it opens an OTA."
+            : "A store or test install of this build runs this bundle until its first OTA. That OTA downloads as a patch from this bundle when one exists, and as the full bundle otherwise."}
         </p>
       </CardContent>
     </Card>

@@ -119,4 +119,67 @@ describe("createPatch", () => {
     expect(mockCli.p.outro).toHaveBeenCalledWith("Patch ready.");
     expect(databaseHarness.dispose).toHaveBeenCalledOnce();
   });
+
+  describe("from a native build's built-in bundle", () => {
+    const register = (n: number, channel: string, isSandbox?: true) =>
+      databaseHarness.database.core.registerNativeBuild({
+        id: `01900000-0000-7000-8000-00000000b00${n}`,
+        platform: "ios",
+        channel,
+        fingerprintHash: "fingerprint-hash",
+        appVersion: null,
+        minBundleId: `018f0000-0000-7000-8000-00000000000${n}`,
+        gitCommitHash: null,
+        buildKey: null,
+        ...(isSandbox === undefined ? {} : { isSandbox }),
+        artifact: {
+          kind: "ipa",
+          storageUri: `storage://native-builds/ios/b00${n}/App.ipa`,
+          byteSize: 1_024,
+        },
+        embeddedBundle: {
+          manifestStorageUri: `storage://artifacts/b00${n}/manifest.json`,
+          manifestFileHash: `built-in-manifest-${n}`,
+          assetBaseStorageUri: "storage://assets",
+        },
+      });
+    const patchFrom = (baseBundleId: string) =>
+      createPatch({
+        baseBundleId,
+        bundleId: "target-bundle",
+        channel: "production",
+        interactive: false,
+        platform: "ios",
+      });
+
+    it("refuses a sandbox build's, before making the patch, whatever the server checks", async () => {
+      const exit = vi
+        .spyOn(process, "exit")
+        .mockImplementation(() => undefined as never);
+      try {
+        const sandbox = await register(1, "sandbox-release", true);
+
+        await patchFrom(sandbox.min_bundle_id);
+
+        expect(mockServer.createBundleDiff).not.toHaveBeenCalled();
+        expect(mockCli.p.log.error).toHaveBeenCalledWith(
+          "A sandbox build's built-in bundle is no patch base.",
+        );
+        expect(exit).toHaveBeenCalledWith(1);
+        expect(databaseHarness.dispose).toHaveBeenCalledOnce();
+      } finally {
+        exit.mockRestore();
+      }
+    });
+
+    it("patches from another build's", async () => {
+      await register(1, "sandbox-release", true);
+      const store = await register(2, "production");
+
+      await patchFrom(store.min_bundle_id);
+
+      expect(mockServer.createBundleDiff).toHaveBeenCalledOnce();
+      expect(mockCli.p.outro).toHaveBeenCalledWith("Patch ready.");
+    });
+  });
 });

@@ -334,6 +334,19 @@ export class UnchangedHermesBundleError extends Error {
   }
 }
 
+/**
+ * Whether core refused a write, so nothing of it was stored: core's input
+ * refusal in process, or a server's 400 answer. Server code has no public
+ * class for it, so its name tells it.
+ */
+const isRefusedWrite = (error: unknown): boolean => {
+  const { name, status } = (error ?? {}) as {
+    readonly name?: unknown;
+    readonly status?: unknown;
+  };
+  return name === "NativeBuildInputError" || status === 400;
+};
+
 export async function createBundleDiff(
   { baseBundleId, bundleId }: CreateBundleDiffInput,
   deps: CreateBundleDiffDependencies,
@@ -448,7 +461,23 @@ export async function createBundleDiff(
     ...targetBundle,
     patches,
   };
-  await core.updateBundle(targetBundle.id, { patches });
+  try {
+    await core.updateBundle(targetBundle.id, { patches });
+  } catch (error) {
+    // A refused patch, such as one from a sandbox build's built-in bundle,
+    // leaves no file behind. Any other failure may follow a committed write,
+    // as a lost answer does, so its file stays; so does a stored patch's file
+    // at the same key.
+    if (
+      isRefusedWrite(error) &&
+      previousPatch?.patchStorageUri !== patchUpload.storageUri
+    ) {
+      await deps.storageAdapter
+        .delete({ storageUri: patchUpload.storageUri })
+        .catch(() => undefined);
+    }
+    throw error;
+  }
 
   if (
     previousPatch?.patchStorageUri &&

@@ -143,6 +143,25 @@ export const nativeBuildScopeKey = (scope: NativeBuildScope): string => {
   return scopeKey;
 };
 
+/**
+ * Refuses a patch from a sandbox build's built-in bundle: no deploy patches
+ * from one, so no store or test install of the app gets a patch made for a
+ * sandbox build. One unique read of the base.
+ */
+export const refuseSandboxPatchBase = async (
+  db: Pick<CoreDatabase | CoreTransaction, "findOne">,
+  baseBundleId: string,
+): Promise<void> => {
+  const build = await db.findOne("native_builds", {
+    min_bundle_id: baseBundleId,
+  });
+  if (build?.is_sandbox === true) {
+    throw new NativeBuildInputError(
+      "A sandbox build's built-in bundle is no patch base.",
+    );
+  }
+};
+
 /** Whether `bundleId` is a native build's built-in bundle: one unique read. */
 export const isBuiltInBundle = async (
   db: Pick<CoreDatabase | CoreTransaction, "findOne">,
@@ -366,10 +385,18 @@ export const createNativeBuildApi = (
             ...page,
           });
     };
+    const bundleId = options?.builtInOlderThan;
+    // A deploy's patch base: never a sandbox build's built-in bundle, and
+    // only sandbox builds register on a sandbox-* channel, so no read.
+    if (
+      bundleId !== undefined &&
+      scope.channel.startsWith(SANDBOX_CHANNEL_PREFIX)
+    ) {
+      return null;
+    }
     const { rows } = await read(1);
     const newest = rows[0];
     if (newest === undefined) return null;
-    const bundleId = options?.builtInOlderThan;
     if (bundleId === undefined || newest.min_bundle_id < bundleId) {
       return pick(newest);
     }

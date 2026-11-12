@@ -84,11 +84,14 @@ export const deleteBundlePatches = async (
 /**
  * Replaces a bundle's patches with `rows`: kept patches are updated where
  * they changed, others deleted or created, so no key is written twice.
+ * `checkNew` sees each patch it is about to create, and refuses one by
+ * throwing, which leaves the transaction's writes undone.
  */
 export const replaceBundlePatches = async (
   tx: CoreTransaction,
   bundle: StoredBundle,
   rows: readonly BundlePatchRow[],
+  checkNew?: (row: BundlePatchRow) => Promise<void>,
 ): Promise<void> => {
   const wanted = new Map(rows.map((row) => [row.id, row]));
   const count = bundle._refs_bundle_patches_bundle_id ?? 0;
@@ -121,6 +124,9 @@ export const replaceBundlePatches = async (
     seen += page.rows.length;
     if (page.next === undefined) break;
     cursor = page.next;
+  }
+  if (checkNew !== undefined) {
+    for (const row of wanted.values()) await checkNew(row);
   }
   for (const row of wanted.values()) tx.create("bundle_patches", row);
 };

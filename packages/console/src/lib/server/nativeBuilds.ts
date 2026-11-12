@@ -114,11 +114,14 @@ export interface NativeBuildDetail {
   readonly catalogScopeKey: string;
   /** How many bundles patch from the built-in bundle, or null when its row is gone. */
   readonly builtInBundle: { readonly childCount: number } | null;
-  /** The newest build of the build's scope: this build or a later one. */
+  /**
+   * The newest build of the build's scope: this build or a later one. Null for
+   * a sandbox build, whose scope has no patch base.
+   */
   readonly newestInScope: NativeBuildRow | null;
   /**
    * The build marked as the store build in the scope. New deploys patch from it,
-   * or with no mark from the newest build.
+   * or with no mark from the newest build. Null for a sandbox build.
    */
   readonly storeBuildInScope: NativeBuildRow | null;
   /**
@@ -134,8 +137,8 @@ export interface NativeBuildDetail {
 /**
  * Everything a native build's page shows, in six reads at most: the build,
  * then its built-in bundle, its scope's newest build and its mark, which a
- * marked build's own row answers, its scope's catalog, and one page of patches
- * from it. Null for an unknown ID.
+ * marked build's own row answers and a sandbox build skips, its scope's
+ * catalog, and one page of patches from it. Null for an unknown ID.
  */
 export async function getNativeBuildDetail(
   core: Pick<
@@ -152,13 +155,17 @@ export async function getNativeBuildDetail(
   if (build === null) return null;
   const catalogScopeKey = nativeBuildCatalogScopeKey(build);
   const scope = nativeBuildScope(build);
+  // A sandbox build's built-in bundle is no patch base, so its page names
+  // none and reads none.
   const [builtIn, newestInScope, storeBuildInScope, catalog, patches] =
     await Promise.all([
       core.getBundle(build.min_bundle_id),
-      core.findNativeBuild(scope),
-      build.is_store_build
-        ? build
-        : core.findNativeBuild(scope, { storeBuild: true }),
+      build.is_sandbox ? null : core.findNativeBuild(scope),
+      build.is_sandbox
+        ? null
+        : build.is_store_build
+          ? build
+          : core.findNativeBuild(scope, { storeBuild: true }),
       core.getReleaseCatalogRow(catalogScopeKey),
       listNativeBuildPatches(core, build.min_bundle_id, {
         limit: NATIVE_BUILD_PATCH_PAGE_SIZE,

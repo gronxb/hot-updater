@@ -469,10 +469,8 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
 
   updateBundle: onCore(async (core, request, params) => {
     const bundleId = requireRouteParam(params, "id");
-    await core.updateBundle(
-      bundleId,
-      bundleUpdateOf(await request.json(), bundleId),
-    );
+    const update = bundleUpdateOf(await request.json(), bundleId);
+    await refusingInvalid(() => core.updateBundle(bundleId, update));
     return noContent();
   }),
 
@@ -535,7 +533,10 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
         "Deploy needs deployments, each a bundle and its release policy.",
       );
     }
-    return json({ data: await core.deploy(deployments) }, 201);
+    return json(
+      { data: await refusingInvalid(() => core.deploy(deployments)) },
+      201,
+    );
   }),
 
   promoteRelease: onCore(async (core, request, params) => {
