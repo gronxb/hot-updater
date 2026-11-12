@@ -1,0 +1,674 @@
+{
+  "head": "e29a3ebaf7e82d0f44a1056bb8ea4fd73c9bc0ed",
+  "1 nb-channel first-chosen": {
+    "options": 36,
+    "first": "All channels",
+    "last": "staging",
+    "opened": {
+      "inViewport": true,
+      "side": "bottom",
+      "arrows": [],
+      "covered": [],
+      "scroll": {
+        "top": 0,
+        "max": 1161
+      },
+      "popup": [
+        5,
+        231,
+        383,
+        662
+      ]
+    },
+    "swipe": {
+      "direction": "down",
+      "scroll": {
+        "top": 1161,
+        "max": 1161
+      },
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "tapped": "staging",
+      "chosen": "staging\u25bc",
+      "closed": true
+    },
+    "wheel": {
+      "direction": "up",
+      "scroll": {
+        "top": 0,
+        "max": 1161
+      },
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "clicked": "All channels",
+      "chosen": "All channels\u25bc",
+      "closed": true
+    },
+    "endEnter": {
+      "chosen": "staging\u25bc",
+      "closed": true
+    },
+    "homeEnter": {
+      "chosen": "All channels\u25bc",
+      "closed": true
+    }
+  },
+  "1 nb-channel last-chosen": {
+    "options": 36,
+    "first": "All channels",
+    "last": "staging",
+    "opened": {
+      "inViewport": true,
+      "side": "bottom",
+      "arrows": [],
+      "covered": [],
+      "scroll": {
+        "top": 1157,
+        "max": 1161
+      },
+      "popup": [
+        5,
+        231,
+        383,
+        662
+      ]
+    },
+    "swipe": {
+      "direction": "up",
+      "scroll": {
+        "top": 0,
+        "max": 1161
+      },
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "tapped": "All channels",
+      "chosen": "All channels\u25bc",
+      "closed": true
+    },
+    "wheel": {
+      "direction": "down",
+      "scroll": {
+        "top": 1161,
+        "max": 1161
+      },
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "clicked": "staging",
+      "chosen": "staging\u25bc",
+      "closed": true
+    },
+    "endEnter": {
+      "chosen": "staging\u25bc",
+      "closed": true
+    },
+    "homeEnter": {
+      "chosen": "All channels\u25bc",
+      "closed": true
+    }
+  },
+  "1 promote-target first-chosen": {
+    "options": 34,
+    "first": "beta",
+    "last": "staging",
+    "opened": {
+      "inViewport": true,
+      "side": "top",
+      "arrows": [],
+      "covered": [],
+      "scroll": {
+        "top": 0,
+        "max": 1153
+      },
+      "popup": [
+        6,
+        6,
+        384,
+        357
+      ]
+    },
+    "swipe": {
+      "direction": "down",
+      "scroll": {
+        "top": 1153,
+        "max": 1153
+      },
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "tapped": "staging",
+      "chosen": "staging\u25bc",
+      "closed": true
+    },
+    "wheel": {
+      "direction": "up",
+      "scroll": {
+        "top": 0,
+        "max": 1153
+      },
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "clicked": "beta",
+      "chosen": "beta\u25bc",
+      "closed": true
+    },
+    "endEnter": {
+      "chosen": "staging\u25bc",
+      "closed": true
+    },
+    "homeEnter": {
+      "chosen": "beta\u25bc",
+      "closed": true
+    }
+  },
+  "1 promote-target last-chosen": {
+    "options": 34,
+    "first": "beta",
+    "last": "staging",
+    "opened": {
+      "inViewport": true,
+      "side": "top",
+      "arrows": [],
+      "covered": [],
+      "scroll": {
+        "top": 1149,
+        "max": 1153
+      },
+      "popup": [
+        6,
+        6,
+        384,
+        357
+      ]
+    },
+    "swipe": {
+      "direction": "up",
+      "scroll": {
+        "top": 0,
+        "max": 1153
+      },
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "tapped": "beta",
+      "chosen": "beta\u25bc",
+      "closed": true
+    },
+    "wheel": {
+      "direction": "down",
+      "scroll": {
+        "top": 1153,
+        "max": 1153
+      },
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "clicked": "staging",
+      "chosen": "staging\u25bc",
+      "closed": true
+    },
+    "endEnter": {
+      "chosen": "staging\u25bc",
+      "closed": true
+    },
+    "homeEnter": {
+      "chosen": "beta\u25bc",
+      "closed": true
+    }
+  },
+  "2 nb-channel": {
+    "at390": {
+      "open": true,
+      "side": "bottom",
+      "popup": [
+        5,
+        231,
+        383,
+        662
+      ],
+      "trigger": [
+        12,
+        183,
+        274,
+        227
+      ],
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "scroll": {
+        "top": 300,
+        "max": 1161
+      },
+      "viewport": [
+        390,
+        667
+      ]
+    },
+    "at1024": {
+      "open": true,
+      "side": "bottom",
+      "popup": [
+        187,
+        161,
+        565,
+        662
+      ],
+      "trigger": [
+        280,
+        125,
+        472,
+        157
+      ],
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "scroll": {
+        "top": 300,
+        "max": 515
+      },
+      "viewport": [
+        1024,
+        667
+      ]
+    },
+    "back390": {
+      "open": true,
+      "side": "bottom",
+      "popup": [
+        5,
+        231,
+        383,
+        662
+      ],
+      "trigger": [
+        12,
+        183,
+        274,
+        227
+      ],
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "scroll": {
+        "top": 300,
+        "max": 1161
+      },
+      "viewport": [
+        390,
+        667
+      ]
+    },
+    "reopened390": {
+      "open": true,
+      "side": "bottom",
+      "popup": [
+        5,
+        231,
+        383,
+        662
+      ],
+      "trigger": [
+        12,
+        183,
+        274,
+        227
+      ],
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "scroll": {
+        "top": 1157,
+        "max": 1161
+      },
+      "viewport": [
+        390,
+        667
+      ]
+    },
+    "opened1024": {
+      "open": true,
+      "side": "none",
+      "popup": [
+        277,
+        10,
+        655,
+        511
+      ],
+      "trigger": [
+        280,
+        125,
+        472,
+        157
+      ],
+      "inViewport": true,
+      "arrows": [
+        "up",
+        "down"
+      ],
+      "covered": [
+        "pr-123 3/25",
+        "staging 6/28"
+      ],
+      "scroll": {
+        "top": 511,
+        "max": 515
+      },
+      "viewport": [
+        1024,
+        667
+      ]
+    },
+    "to390": {
+      "open": false
+    },
+    "reopened390AfterResize": {
+      "open": true,
+      "side": "bottom",
+      "popup": [
+        5,
+        231,
+        383,
+        662
+      ],
+      "trigger": [
+        12,
+        183,
+        274,
+        227
+      ],
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "scroll": {
+        "top": 1157,
+        "max": 1161
+      },
+      "viewport": [
+        390,
+        667
+      ]
+    },
+    "to1024": {
+      "open": true,
+      "side": "bottom",
+      "popup": [
+        187,
+        161,
+        565,
+        662
+      ],
+      "trigger": [
+        280,
+        125,
+        472,
+        157
+      ],
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "scroll": {
+        "top": 515,
+        "max": 515
+      },
+      "viewport": [
+        1024,
+        667
+      ]
+    }
+  },
+  "2 promote-target": {
+    "at390": {
+      "open": true,
+      "side": "top",
+      "popup": [
+        6,
+        6,
+        384,
+        357
+      ],
+      "trigger": [
+        32,
+        361,
+        358,
+        389
+      ],
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "scroll": {
+        "top": 300,
+        "max": 1153
+      },
+      "viewport": [
+        390,
+        667
+      ]
+    },
+    "at1024": {
+      "open": true,
+      "side": "top",
+      "popup": [
+        323,
+        135,
+        701,
+        391
+      ],
+      "trigger": [
+        336,
+        395,
+        688,
+        423
+      ],
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "scroll": {
+        "top": 300,
+        "max": 704
+      },
+      "viewport": [
+        1024,
+        667
+      ]
+    },
+    "back390": {
+      "open": true,
+      "side": "top",
+      "popup": [
+        6,
+        6,
+        384,
+        357
+      ],
+      "trigger": [
+        32,
+        361,
+        358,
+        389
+      ],
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "scroll": {
+        "top": 300,
+        "max": 1153
+      },
+      "viewport": [
+        390,
+        667
+      ]
+    },
+    "reopened390": {
+      "open": true,
+      "side": "top",
+      "popup": [
+        6,
+        6,
+        384,
+        357
+      ],
+      "trigger": [
+        32,
+        361,
+        358,
+        389
+      ],
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "scroll": {
+        "top": 1149,
+        "max": 1153
+      },
+      "viewport": [
+        390,
+        667
+      ]
+    },
+    "opened1024": {
+      "open": true,
+      "side": "none",
+      "popup": [
+        333,
+        171,
+        711,
+        427
+      ],
+      "trigger": [
+        336,
+        395,
+        688,
+        423
+      ],
+      "inViewport": true,
+      "arrows": [
+        "up",
+        "down"
+      ],
+      "covered": [
+        "pr-135 0/4",
+        "pr-136 10/28",
+        "staging 6/28"
+      ],
+      "scroll": {
+        "top": 700,
+        "max": 704
+      },
+      "viewport": [
+        1024,
+        667
+      ]
+    },
+    "to390": {
+      "open": false
+    },
+    "reopened390AfterResize": {
+      "open": true,
+      "side": "top",
+      "popup": [
+        6,
+        6,
+        384,
+        357
+      ],
+      "trigger": [
+        32,
+        361,
+        358,
+        389
+      ],
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "scroll": {
+        "top": 1149,
+        "max": 1153
+      },
+      "viewport": [
+        390,
+        667
+      ]
+    },
+    "to1024": {
+      "open": true,
+      "side": "top",
+      "popup": [
+        323,
+        135,
+        701,
+        391
+      ],
+      "trigger": [
+        336,
+        395,
+        688,
+        423
+      ],
+      "inViewport": true,
+      "arrows": [],
+      "covered": [],
+      "scroll": {
+        "top": 609,
+        "max": 704
+      },
+      "viewport": [
+        1024,
+        667
+      ]
+    }
+  },
+  "3 nb-channel": {
+    "side": "none",
+    "alignedOverTrigger": true,
+    "arrows": [
+      "up"
+    ],
+    "maxHeight": "634px",
+    "popupHeight": 149,
+    "inViewport": true
+  },
+  "3 promote-target": {
+    "side": "none",
+    "alignedOverTrigger": true,
+    "arrows": [
+      "up",
+      "down"
+    ],
+    "maxHeight": "256px",
+    "popupHeight": 256,
+    "inViewport": true
+  },
+  "4 insights-platform": {
+    "openedAfterMs": 343,
+    "side": "bottom",
+    "sidesSeen": [
+      "bottom"
+    ],
+    "inViewport": true,
+    "arrows": [],
+    "covered": []
+  },
+  "4 nb-channel": {
+    "triggerReadyMs": 19425,
+    "touch": {
+      "side": "bottom",
+      "sidesSeen": [
+        "bottom"
+      ],
+      "arrows": [],
+      "covered": []
+    },
+    "mouse": {
+      "side": "bottom",
+      "sidesSeen": [
+        "bottom"
+      ],
+      "arrows": [],
+      "covered": []
+    }
+  }
+}
