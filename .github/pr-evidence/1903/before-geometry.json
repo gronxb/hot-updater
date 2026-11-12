@@ -1,0 +1,486 @@
+{
+  "nb-channel 390x844": {
+    "popup": {
+      "top": 10,
+      "bottom": 319,
+      "scrollTop": 1283
+    },
+    "arrows": [
+      {
+        "slot": "up",
+        "top": 10,
+        "bottom": 32,
+        "shown": true
+      }
+    ],
+    "rows": [
+      {
+        "name": "pr-140",
+        "visible": 41,
+        "hit": 19,
+        "centerHit": false,
+        "full": 44
+      },
+      {
+        "name": "pr-141",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-142",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-143",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "production",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "sandbox-release",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "staging",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      }
+    ]
+  },
+  "nb-channel-last 390x844": {
+    "popup": {
+      "top": 10,
+      "bottom": 231,
+      "scrollTop": 1371
+    },
+    "arrows": [
+      {
+        "slot": "up",
+        "top": 10,
+        "bottom": 32,
+        "shown": true
+      }
+    ],
+    "rows": [
+      {
+        "name": "pr-142",
+        "visible": 41,
+        "hit": 19,
+        "centerHit": false,
+        "full": 44
+      },
+      {
+        "name": "pr-143",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "production",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "sandbox-release",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "staging",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      }
+    ]
+  },
+  "promote-target 390x844": {
+    "popup": {
+      "top": 438,
+      "bottom": 694,
+      "scrollTop": 0
+    },
+    "arrows": [
+      {
+        "slot": "down",
+        "top": 672,
+        "bottom": 694,
+        "shown": true
+      }
+    ],
+    "rows": [
+      {
+        "name": "beta",
+        "visible": 44,
+        "hit": 43,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "canary",
+        "visible": 44,
+        "hit": 43,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "dev",
+        "visible": 44,
+        "hit": 43,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "feature-checkout-redesign-with-saved-pay",
+        "visible": 44,
+        "hit": 43,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-110",
+        "visible": 44,
+        "hit": 43,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-111",
+        "visible": 32,
+        "hit": 9,
+        "centerHit": false,
+        "full": 44
+      }
+    ]
+  },
+  "promote-target-last 390x844": {
+    "popup": {
+      "top": 10,
+      "bottom": 266,
+      "scrollTop": 1244
+    },
+    "arrows": [
+      {
+        "slot": "up",
+        "top": 10,
+        "bottom": 32,
+        "shown": true
+      },
+      {
+        "slot": "down",
+        "top": 244,
+        "bottom": 266,
+        "shown": true
+      }
+    ],
+    "rows": [
+      {
+        "name": "pr-140",
+        "visible": 36,
+        "hit": 14,
+        "centerHit": false,
+        "full": 44
+      },
+      {
+        "name": "pr-141",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-142",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-143",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "sandbox-release",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "staging",
+        "visible": 44,
+        "hit": 22,
+        "centerHit": false,
+        "full": 44
+      }
+    ]
+  },
+  "nb-channel 390x667": {
+    "popup": {
+      "top": 10,
+      "bottom": 319,
+      "scrollTop": 1283
+    },
+    "arrows": [
+      {
+        "slot": "up",
+        "top": 10,
+        "bottom": 32,
+        "shown": true
+      }
+    ],
+    "rows": [
+      {
+        "name": "pr-140",
+        "visible": 41,
+        "hit": 19,
+        "centerHit": false,
+        "full": 44
+      },
+      {
+        "name": "pr-141",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-142",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-143",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "production",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "sandbox-release",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "staging",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      }
+    ]
+  },
+  "nb-channel-last 390x667": {
+    "popup": {
+      "top": 10,
+      "bottom": 231,
+      "scrollTop": 1371
+    },
+    "arrows": [
+      {
+        "slot": "up",
+        "top": 10,
+        "bottom": 32,
+        "shown": true
+      }
+    ],
+    "rows": [
+      {
+        "name": "pr-142",
+        "visible": 41,
+        "hit": 19,
+        "centerHit": false,
+        "full": 44
+      },
+      {
+        "name": "pr-143",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "production",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "sandbox-release",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "staging",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      }
+    ]
+  },
+  "promote-target 390x667": {
+    "popup": {
+      "top": 349,
+      "bottom": 605,
+      "scrollTop": 0
+    },
+    "arrows": [
+      {
+        "slot": "down",
+        "top": 583,
+        "bottom": 605,
+        "shown": true
+      }
+    ],
+    "rows": [
+      {
+        "name": "beta",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "canary",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "dev",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "feature-checkout-redesign-with-saved-pay",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-110",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-111",
+        "visible": 32,
+        "hit": 10,
+        "centerHit": false,
+        "full": 44
+      }
+    ]
+  },
+  "promote-target-last 390x667": {
+    "popup": {
+      "top": 10,
+      "bottom": 266,
+      "scrollTop": 1244
+    },
+    "arrows": [
+      {
+        "slot": "up",
+        "top": 10,
+        "bottom": 32,
+        "shown": true
+      },
+      {
+        "slot": "down",
+        "top": 244,
+        "bottom": 266,
+        "shown": true
+      }
+    ],
+    "rows": [
+      {
+        "name": "pr-140",
+        "visible": 36,
+        "hit": 14,
+        "centerHit": false,
+        "full": 44
+      },
+      {
+        "name": "pr-141",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-142",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-143",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "sandbox-release",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "staging",
+        "visible": 44,
+        "hit": 22,
+        "centerHit": false,
+        "full": 44
+      }
+    ]
+  }
+}

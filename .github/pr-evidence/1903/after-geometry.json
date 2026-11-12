@@ -1,0 +1,670 @@
+{
+  "nb-channel 390x844": {
+    "popup": {
+      "top": 231,
+      "bottom": 839,
+      "scrollTop": 0
+    },
+    "arrows": [],
+    "rows": [
+      {
+        "name": "pr-130",
+        "visible": 36,
+        "hit": 36,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-131",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-132",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-133",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-134",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-135",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-136",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-137",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-138",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-140",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-141",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-142",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-143",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "production",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      }
+    ]
+  },
+  "nb-channel-last 390x844": {
+    "popup": {
+      "top": 231,
+      "bottom": 839,
+      "scrollTop": 0
+    },
+    "arrows": [],
+    "rows": [
+      {
+        "name": "pr-132",
+        "visible": 36,
+        "hit": 36,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-133",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-134",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-135",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-136",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-137",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-138",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-140",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-141",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-142",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-143",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "production",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "sandbox-release",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "staging",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      }
+    ]
+  },
+  "promote-target 390x844": {
+    "popup": {
+      "top": 6,
+      "bottom": 446,
+      "scrollTop": 0
+    },
+    "arrows": [],
+    "rows": [
+      {
+        "name": "beta",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "canary",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "dev",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "feature-checkout-redesign-with-saved-pay",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-110",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-111",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-112",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-113",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-114",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-115",
+        "visible": 40,
+        "hit": 40,
+        "centerHit": true,
+        "full": 44
+      }
+    ]
+  },
+  "promote-target-last 390x844": {
+    "popup": {
+      "top": 6,
+      "bottom": 446,
+      "scrollTop": 0
+    },
+    "arrows": [],
+    "rows": [
+      {
+        "name": "pr-135",
+        "visible": 40,
+        "hit": 40,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-136",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-137",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-138",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-140",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-141",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-142",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-143",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "sandbox-release",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "staging",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      }
+    ]
+  },
+  "nb-channel 390x667": {
+    "popup": {
+      "top": 231,
+      "bottom": 662,
+      "scrollTop": 0
+    },
+    "arrows": [],
+    "rows": [
+      {
+        "name": "pr-134",
+        "visible": 35,
+        "hit": 35,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-135",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-136",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-137",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-138",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-140",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-141",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-142",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-143",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "production",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      }
+    ]
+  },
+  "nb-channel-last 390x667": {
+    "popup": {
+      "top": 231,
+      "bottom": 662,
+      "scrollTop": 0
+    },
+    "arrows": [],
+    "rows": [
+      {
+        "name": "pr-136",
+        "visible": 35,
+        "hit": 35,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-137",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-138",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-140",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-141",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-142",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-143",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "production",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "sandbox-release",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "staging",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      }
+    ]
+  },
+  "promote-target 390x667": {
+    "popup": {
+      "top": 6,
+      "bottom": 357,
+      "scrollTop": 0
+    },
+    "arrows": [],
+    "rows": [
+      {
+        "name": "beta",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "canary",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "dev",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "feature-checkout-redesign-with-saved-pay",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-110",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-111",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-112",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-113",
+        "visible": 39,
+        "hit": 39,
+        "centerHit": true,
+        "full": 44
+      }
+    ]
+  },
+  "promote-target-last 390x667": {
+    "popup": {
+      "top": 6,
+      "bottom": 357,
+      "scrollTop": 0
+    },
+    "arrows": [],
+    "rows": [
+      {
+        "name": "pr-137",
+        "visible": 39,
+        "hit": 39,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-138",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-140",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-141",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-142",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "pr-143",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "sandbox-release",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      },
+      {
+        "name": "staging",
+        "visible": 44,
+        "hit": 44,
+        "centerHit": true,
+        "full": 44
+      }
+    ]
+  }
+}
