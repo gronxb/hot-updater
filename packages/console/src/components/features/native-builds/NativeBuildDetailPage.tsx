@@ -142,8 +142,7 @@ export function NativeBuildDetailPage({
                 </EmptyMedia>
                 <EmptyTitle>Native build not found</EmptyTitle>
                 <EmptyDescription>
-                  No native build has this ID. It may have been deleted with{" "}
-                  <code className="font-mono">native-build delete</code>, or be
+                  No native build has this ID. It may have been deleted, or be
                   from another console.
                 </EmptyDescription>
               </EmptyHeader>

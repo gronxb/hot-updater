@@ -235,7 +235,7 @@ describe("IosDevicesPage", () => {
     expect(within(other).queryAllByRole("button")).toEqual([]);
   });
 
-  it("says in one line that a removed device stays in builds until Apple disables it, with the command for approvers", () => {
+  it("says in one line that a removed device stays in builds until Apple disables it, with no command for the action", () => {
     show(
       viewAs({}, [
         device({
@@ -259,11 +259,9 @@ describe("IosDevicesPage", () => {
       ),
     ).toBeTruthy();
     expect(within(dialog).queryByText(/membership year/)).toBeNull();
-    expect(
-      within(dialog).getByText(
-        "npx hot-updater native-build devices remove --udid 00008030-001c2d3e4f5a6b7c",
-      ),
-    ).toBeTruthy();
+    // The Console removes it: no command stands beside the button.
+    expect(within(dialog).queryByText(/npx hot-updater/)).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: /Copy/ })).toBeNull();
     fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
     expect(remove.mutate).toHaveBeenCalledWith(
       { udid: "00008030-001c2d3e4f5a6b7c" },
@@ -515,20 +513,66 @@ describe("IosDevicesPage", () => {
       expect(within(card()).queryByRole("link")).toBeNull();
     });
 
-    it("lets an approver approve this iPhone from the card", async () => {
+    it("points an approver to this iPhone's row, which alone carries Approve, tagged This iPhone", async () => {
       onIphone();
       window.localStorage.setItem("hot-updater-ios-udid", PHONE);
       registryHas(mine());
-      show(viewAs({}, [mine()]));
+      show(viewAs({}, [mine(), device()]));
 
-      fireEvent.click(
-        await within(card()).findByRole("button", { name: "Approve" }),
+      expect(
+        await within(card()).findByText(
+          "Approve it below, and it joins the next ad hoc build.",
+        ),
+      ).toBeTruthy();
+      expect(within(card()).queryByRole("button")).toBeNull();
+      // The table: one Approve per request, this iPhone's tagged.
+      expect(screen.getAllByRole("button", { name: "Approve" })).toHaveLength(
+        2,
       );
+      const mineRow = screen.getByRole("row", { name: /Sungyu Kang's iPhone/ });
+      expect(within(mineRow).getByText("This iPhone")).toBeTruthy();
+      const other = screen.getByRole("row", { name: /^Kim's iPhone/ });
+      expect(within(other).queryByText("This iPhone")).toBeNull();
+      fireEvent.click(within(mineRow).getByRole("button", { name: "Approve" }));
       expect(
         within(screen.getByRole("dialog")).getByText(
           /Approve Sungyu Kang's iPhone\?/,
         ),
       ).toBeTruthy();
+    });
+
+    it("tags this iPhone's card in the phone's list too, with its actions there", async () => {
+      onIphone();
+      mobile.value = true;
+      try {
+        window.localStorage.setItem("hot-updater-ios-udid", PHONE);
+        registryHas(mine());
+        show(viewAs({}, [mine()]));
+
+        await within(card()).findByText(
+          "Approve it below, and it joins the next ad hoc build.",
+        );
+        const item = within(
+          screen.getByRole("list", { name: "iOS devices" }),
+        ).getByRole("listitem");
+        expect(within(item).getByText("This iPhone")).toBeTruthy();
+        expect(
+          within(item).getByRole("button", { name: "Approve" }),
+        ).toBeTruthy();
+        expect(screen.getAllByRole("button", { name: "Approve" })).toHaveLength(
+          1,
+        );
+      } finally {
+        mobile.value = false;
+      }
+    });
+
+    it("tags no row on a computer, whatever it kept", () => {
+      window.localStorage.setItem("hot-updater-ios-udid", PHONE);
+      registryHas(mine());
+      show(viewAs({}, [mine()]));
+
+      expect(screen.queryByText("This iPhone")).toBeNull();
     });
 
     it.each([
