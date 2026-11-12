@@ -1,5 +1,19 @@
 # hot-updater
 
+## 1.2.0-rc.36
+
+### Patch Changes
+
+- Updated dependencies [37ddafa]
+  - @hot-updater/console@1.2.0-rc.36
+  - @hot-updater/android-helper@1.2.0-rc.36
+  - @hot-updater/apple-helper@1.2.0-rc.36
+  - @hot-updater/bsdiff@1.2.0-rc.36
+  - @hot-updater/cli-tools@1.2.0-rc.36
+  - @hot-updater/protocol@1.2.0-rc.36
+  - @hot-updater/server@1.2.0-rc.36
+  - @hot-updater/plugin-core@1.2.0-rc.36
+
 ## 1.2.0-rc.35
 
 ### Patch Changes
