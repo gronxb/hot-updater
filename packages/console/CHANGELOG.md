@@ -1,5 +1,16 @@
 # @hot-updater/console
 
+## 1.2.0-rc.37
+
+### Patch Changes
+
+- 305e598: The Console's channel filters now read "All channels" on Bundles and Native builds alike. A build page's "Native builds" link goes back to the list of the build's own channel, where its row is, instead of the production list; while the build loads, can't be read, or isn't found, it goes to every channel's list. On a phone, every dropdown option is a 44 px row. A dropdown is as wide as its longest option, within the screen, so a long channel name shows whole instead of being cut off at the popup's edge.
+- @hot-updater/bsdiff@1.2.0-rc.37
+  - @hot-updater/cli-tools@1.2.0-rc.37
+  - @hot-updater/protocol@1.2.0-rc.37
+  - @hot-updater/server@1.2.0-rc.37
+  - @hot-updater/plugin-core@1.2.0-rc.37
+
 ## 1.2.0-rc.36
 
 ### Patch Changes
