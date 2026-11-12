@@ -533,7 +533,10 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
         "Deploy needs deployments, each a bundle and its release policy.",
       );
     }
-    return json({ data: await core.deploy(deployments) }, 201);
+    return json(
+      { data: await refusingInvalid(() => core.deploy(deployments)) },
+      201,
+    );
   }),
 
   promoteRelease: onCore(async (core, request, params) => {

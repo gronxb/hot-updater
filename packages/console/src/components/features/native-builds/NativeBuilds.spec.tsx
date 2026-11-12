@@ -1355,7 +1355,7 @@ describe("InstallCard", () => {
       "ios",
       "App.ipa",
       {},
-      [/Scan with an iPhone/g, /registered device/g, /Apple Configurator/g],
+      [/Scan with an iPhone/g, /Apple Configurator/g],
     ],
     [
       "ipa",
@@ -1455,8 +1455,8 @@ describe("InstallCard", () => {
     ).toBeTruthy();
   });
 
-  it("keeps an IPA's TestFlight command beside its QR code", () => {
-    render(
+  it("says how an IPA installs over USB, with no TestFlight command", () => {
+    const { container } = render(
       <InstallCard
         build={build({
           platform: "ios",
@@ -1466,8 +1466,12 @@ describe("InstallCard", () => {
       />,
     );
 
-    expect(screen.getByText(/For testers/)).toBeTruthy();
-    expect(screen.getByText("npx hot-updater testflight")).toBeTruthy();
+    expect(container.textContent).toContain(
+      "Over USB, Xcode or Apple Configurator installs it.",
+    );
+    expect(container.textContent).not.toMatch(
+      /For testers|hot-updater testflight/,
+    );
     expect(screen.getByRole("link", { name: /Download App.ipa/ })).toBeTruthy();
   });
   it("gives a sandbox IPA no TestFlight advice, with or without a QR code", () => {

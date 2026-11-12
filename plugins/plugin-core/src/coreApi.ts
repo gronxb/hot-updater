@@ -283,7 +283,9 @@ export interface HotUpdaterCoreApi {
   /**
    * Writes each new bundle with its patches, and each release, with the next
    * catalog of each scope, in one transaction. A stored bundle's deployment
-   * publishes a new release for it and writes no bundle.
+   * publishes a new release for it and writes no bundle. Like `updateBundle`,
+   * it refuses a patch from a sandbox build's built-in bundle: one read of
+   * each new bundle's patch base.
    */
   deploy(
     deployments: readonly Deployment[],

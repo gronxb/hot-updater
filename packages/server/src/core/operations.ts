@@ -263,9 +263,15 @@ export const createCoreOperations = (
     // A stored bundle's platform comes from its row: one point read each.
     const platforms = new Map<string, ReleaseRow["platform"]>();
     for (const deployment of deployments) {
-      if (!("bundleId" in deployment) || platforms.has(deployment.bundleId)) {
+      // A new bundle's patches are new, so each base is checked as
+      // `updateBundle` checks one: none, and no read, without patches.
+      if (!("bundleId" in deployment)) {
+        for (const { baseBundleId } of deployment.bundle.patches ?? []) {
+          await refuseSandboxPatchBase(db, baseBundleId);
+        }
         continue;
       }
+      if (platforms.has(deployment.bundleId)) continue;
       const row = await db.findOne("bundles", { id: deployment.bundleId });
       if (row === null) {
         throw new DatabaseBundleNotFoundError(deployment.bundleId);

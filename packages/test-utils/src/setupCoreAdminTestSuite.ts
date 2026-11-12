@@ -697,6 +697,36 @@ export const setupCoreAdminTestSuite = (options: {
       expect(await patched.text()).toContain(
         "A sandbox build's built-in bundle is no patch base.",
       );
+      // Nor does a deploy write a new bundle with one.
+      const deployed = await admin(
+        "/releases",
+        jsonRequest("POST", {
+          deployments: [
+            {
+              bundle: {
+                ...toDeployBundle(bundleRow("76")),
+                patches: [
+                  {
+                    baseBundleId: sandboxBuild.min_bundle_id,
+                    baseFileHash: "base-hash",
+                    byteSize: 42,
+                    patchFileHash: "patch-hash",
+                    patchStorageUri: "storage://patches/sandbox-deploy.patch",
+                  },
+                ],
+              },
+              release: policy("sandbox-patch"),
+            },
+          ],
+        }),
+      );
+      expect(deployed.status).toBe(400);
+      expect(await deployed.text()).toContain(
+        "A sandbox build's built-in bundle is no patch base.",
+      );
+      const notDeployed = await admin(`/bundles/${bundleRow("76").id}`);
+      expect(notDeployed.status).toBe(404);
+      await notDeployed.text();
 
       const marked = await admin(
         `/native-builds/${sandboxBuild.id}/store-build`,

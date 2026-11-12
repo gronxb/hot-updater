@@ -223,7 +223,20 @@ describe("createBundleDiff", () => {
     }
   });
 
-  it("deletes the uploaded patch when core refuses it", async () => {
+  /** A refusal as core's in-process API or a standalone server's 400 throws it. */
+  const refusalOf = (name: string, status?: number) =>
+    Object.assign(
+      new Error("A sandbox build's built-in bundle is no patch base."),
+      { name },
+      status === undefined ? {} : { status },
+    );
+
+  const diffWithFailingWrite = async (
+    write: (
+      core: Core,
+      update: Parameters<Core["updateBundle"]>,
+    ) => Promise<void>,
+  ) => {
     const baseAsset = createAsset([1, 2, 3]);
     const targetAsset = createAsset([1, 9, 3]);
     const baseBundle = createBundle(
@@ -237,41 +250,75 @@ describe("createBundleDiff", () => {
       hermesAssets(targetAsset),
     );
     const core = await createCore([baseBundle, targetBundle]);
-    const refusal = new Error(
-      "A sandbox build's built-in bundle is no patch base.",
+    const updateBundle = core.updateBundle.bind(core);
+    vi.spyOn(core, "updateBundle").mockImplementation((...update) =>
+      write({ ...core, updateBundle }, update),
     );
-    vi.spyOn(core, "updateBundle").mockRejectedValue(refusal);
     const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
-      async ({ key }) => ({
-        storageUri: `s3://test-bucket/${key}`,
-      }),
+      async ({ key }) => ({ storageUri: `s3://test-bucket/${key}` }),
     );
     const storageAdapter = createStorageAdapter(upload);
     const remove = vi.spyOn(storageAdapter, "delete");
-
     stubStorageFetch([
       { bundle: baseBundle, asset: baseAsset },
       { bundle: targetBundle, asset: targetAsset },
     ]);
-
     try {
-      await expect(
-        createBundleDiff(
-          { baseBundleId: baseBundle.id, bundleId: targetBundle.id },
-          { core, storageAdapter },
-        ),
-      ).rejects.toBe(refusal);
+      const error = await createBundleDiff(
+        { baseBundleId: baseBundle.id, bundleId: targetBundle.id },
+        { core, storageAdapter },
+      ).then(
+        () => null,
+        (thrown: unknown) => thrown,
+      );
       const uploaded = (await upload.mock.results[0]!.value) as {
         storageUri: string;
       };
-      expect(remove).toHaveBeenCalledWith({ storageUri: uploaded.storageUri });
-      await expect(storedBundle(core, targetBundle.id)).resolves.toMatchObject({
-        patches: [],
-      });
+      return {
+        error,
+        remove,
+        uploaded,
+        stored: await storedBundle(core, targetBundle.id),
+      };
     } finally {
       vi.unstubAllGlobals();
     }
+  };
+
+  it.each([
+    ["core's in-process refusal", refusalOf("NativeBuildInputError")],
+    ["a standalone server's 400", refusalOf("StandaloneDatabaseError", 400)],
+  ])("deletes the uploaded patch on %s", async (_, refusal) => {
+    const { error, remove, uploaded, stored } = await diffWithFailingWrite(
+      async () => {
+        throw refusal;
+      },
+    );
+
+    expect(error).toBe(refusal);
+    expect(remove).toHaveBeenCalledWith({ storageUri: uploaded.storageUri });
+    expect(stored).toMatchObject({ patches: [] });
   });
+
+  it.each([
+    ["a lost response", new Error("fetch failed")],
+    ["a server error", refusalOf("StandaloneDatabaseError", 500)],
+  ])(
+    "keeps the uploaded patch the write may have committed, on %s",
+    async (_, failure) => {
+      // The write commits, then the answer is lost or fails.
+      const { error, remove, uploaded, stored } = await diffWithFailingWrite(
+        async (core, update) => {
+          await core.updateBundle(...update);
+          throw failure;
+        },
+      );
+
+      expect(error).toBe(failure);
+      expect(remove).not.toHaveBeenCalled();
+      expect(stored?.patches?.[0]?.patchStorageUri).toBe(uploaded.storageUri);
+    },
+  );
 
   it("rejects ambiguous Hermes bundle assets in manifests", async () => {
     const baseAssets = {

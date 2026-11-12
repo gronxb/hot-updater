@@ -306,21 +306,10 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
           install it from the TestFlight app once App Store Connect has
           processed it, and a preview's pull request comment shows that state.
         </p>
-      ) : build.is_sandbox ? (
+      ) : (
         <p className="text-xs text-muted-foreground">
           Over USB, Xcode or Apple Configurator installs it.
         </p>
-      ) : (
-        <div className="flex min-w-0 flex-col gap-2">
-          <p className="text-xs text-muted-foreground">
-            Over USB, Xcode or Apple Configurator installs it. For testers
-            without a registered device:
-          </p>
-          <CopyableText
-            label="the TestFlight command"
-            value="npx hot-updater testflight"
-          />
-        </div>
       );
   }
 }
@@ -377,7 +366,7 @@ export function InstallCard({ build }: { readonly build: NativeBuildRow }) {
 
 /**
  * On the iPhone, what installs the IPA from a computer, closed under the one
- * action this phone takes: over USB, TestFlight, the download, and its link.
+ * action this phone takes: over USB, the download, and its link.
  */
 function OtherWaysToInstall({ children }: { readonly children: ReactNode }) {
   const [open, setOpen] = useState(false);

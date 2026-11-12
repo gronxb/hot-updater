@@ -565,6 +565,31 @@ describe("the native build registry", () => {
     await expect(
       core.listPatchesFromBase(minBundleId(1), { limit: 10 }),
     ).resolves.toEqual([]);
+    // Nor does a deploy write a new bundle with one.
+    const deployed = createBundleFixture("2");
+    await expect(
+      core.deploy([
+        {
+          bundle: { ...deployed, patches: [patchFrom(1)] },
+          release: {
+            channel: "sandbox-release",
+            enabled: true,
+            fingerprintHash: "fingerprint-a",
+            message: null,
+            shouldForceUpdate: false,
+            targetAppVersion: null,
+          },
+        },
+      ]),
+    ).rejects.toThrow(
+      new NativeBuildInputError(
+        "A sandbox build's built-in bundle is no patch base.",
+      ),
+    );
+    await expect(core.getBundle(deployed.id)).resolves.toBeNull();
+    await expect(
+      core.listPatchesFromBase(minBundleId(1), { limit: 10 }),
+    ).resolves.toEqual([]);
 
     // A patch stored before the refusal stays through later updates.
     await core.updateBundle(bundle.id, { patches: [patchFrom(2)] });

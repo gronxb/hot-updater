@@ -697,7 +697,7 @@ describe("InstallCard on an iPhone", () => {
       screen.queryByRole("link", { name: /Download App\.ipa/ }),
     ).toBeNull();
     expect(
-      screen.getByText(/npx hot-updater testflight/).closest("[hidden]"),
+      screen.getByText(/Over USB, Xcode/).closest("[hidden]"),
     ).not.toBeNull();
 
     const other = screen.getByRole("button", { name: "Other ways to install" });
