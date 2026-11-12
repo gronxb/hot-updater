@@ -35,7 +35,8 @@ vi.mock("@/lib/ios-devices-api", () => ({
   useRemoveIosDeviceMutation: () => remove,
 }));
 vi.mock("@/components/ui/sidebar", () => ({ SidebarTrigger: () => null }));
-vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
+const { mobile } = vi.hoisted(() => ({ mobile: { value: false } }));
+vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => mobile.value }));
 vi.mock("@tanstack/react-router", () => ({
   Link: ({
     to,
@@ -275,13 +276,44 @@ describe("IosDevicesPage", () => {
     const badge = within(refused).getByText("Apple refused");
     expect(badge.getAttribute("data-variant")).toBe("warning");
     expect(within(refused).queryByText("Approved")).toBeNull();
-    expect(
-      within(refused).getByText("The maximum number of devices was reached."),
-    ).toBeTruthy();
+    // At most two lines in a narrow column, so a long reason never widens the
+    // table past its frame; the full text stays in the row and on hover.
+    const reason = within(refused).getByText(
+      "The maximum number of devices was reached.",
+    );
+    expect(reason.className).toContain("line-clamp-2");
+    expect(reason.className).toContain("max-w-48");
+    expect(reason.getAttribute("title")).toBe(
+      "The maximum number of devices was reached.",
+    );
     const approved = screen.getByRole("row", { name: /Lee's iPad/ });
     expect(
       within(approved).getByText("Approved").getAttribute("data-variant"),
     ).toBe("secondary");
+  });
+
+  it("shows a phone the whole reason on the card, unclamped", () => {
+    mobile.value = true;
+    try {
+      show(
+        viewAs({}, [
+          device({
+            status: "approved",
+            approved_at_ms: 1,
+            apple_error:
+              "An invalid value was provided for UDID (QA staged on a fake row).",
+          }),
+        ]),
+      );
+      const reason = within(
+        screen.getByRole("list", { name: "iOS devices" }),
+      ).getByText(
+        "An invalid value was provided for UDID (QA staged on a fake row).",
+      );
+      expect(reason.className).not.toContain("line-clamp");
+    } finally {
+      mobile.value = false;
+    }
   });
 
   it("names a device the CLI added as added from a terminal, and shows a device with no build as -", () => {
