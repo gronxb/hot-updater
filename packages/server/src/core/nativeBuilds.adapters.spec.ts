@@ -410,6 +410,20 @@ describe("a native build row written before native_app_version", () => {
       statement.replace(/"native_app_version" [^,]+, /, ""),
     );
 
+  it("gives MySQL the column type its release notes' ALTER adds", () => {
+    const target = toolingTargetOf([]);
+    const table = generateEngineSql(
+      "mysql",
+      target.schema,
+      target.settings,
+    ).find((statement) =>
+      statement.includes("CREATE TABLE IF NOT EXISTS `native_builds`"),
+    );
+    expect(table).toContain(
+      "`native_app_version` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin,",
+    );
+  });
+
   it.each([
     [
       "SQLite",

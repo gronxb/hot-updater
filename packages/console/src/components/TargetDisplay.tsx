@@ -60,8 +60,12 @@ export function TargetDisplay({
     const hash = <IconHash icon={Fingerprint} value={fingerprintHash} />;
     if (!nativeAppVersion) return hash;
     return (
-      <span className="flex flex-col items-start gap-1" data-target-display="">
-        {/* The build's own version, which OTAs don't target: named so. */}
+      <span
+        className="flex flex-col items-start gap-3 sm:gap-1"
+        data-target-display=""
+      >
+        {/* The build's own version, which OTAs don't target: named so. On
+            a phone, the gap clears the fingerprint's 44 px hit area. */}
         <span title="The app version this build reports">
           <span className="sr-only">App version </span>
           <AppVersion value={nativeAppVersion} />
