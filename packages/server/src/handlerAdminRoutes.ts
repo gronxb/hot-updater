@@ -331,6 +331,8 @@ const isNativeBuildRegistration = (
   (value.sandboxUrlScheme === undefined ||
     isTextOrNull(value.sandboxUrlScheme)) &&
   (value.exportMethod === undefined || isTextOrNull(value.exportMethod)) &&
+  (value.nativeAppVersion === undefined ||
+    isTextOrNull(value.nativeAppVersion)) &&
   isRecord(value.artifact) &&
   typeof value.artifact.kind === "string" &&
   NATIVE_BUILD_ARTIFACT_KINDS.has(value.artifact.kind) &&

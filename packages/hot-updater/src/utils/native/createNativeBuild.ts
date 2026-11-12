@@ -39,6 +39,12 @@ export type NativeBuildResult = NativeBuildTarget & {
    */
   buildNumber?: string | null;
   /**
+   * The app version the artifact reports, its `CFBundleShortVersionString`
+   * or `versionName`, whatever the update strategy: null when it can't be
+   * read, and absent from a build cached before it was recorded.
+   */
+  nativeAppVersion?: string | null;
+  /**
    * The `method` of the export options an `.ipa` was exported with, as they
    * say it: absent for an import, which has none, and for any other
    * artifact.
@@ -153,6 +159,9 @@ export const createNativeBuild = async ({
       ...(builtApp?.buildNumber === undefined
         ? {}
         : { buildNumber: builtApp.buildNumber }),
+      // Read from the artifact; a build that read none reports null, not
+      // the project's version, which the artifact may not carry.
+      nativeAppVersion: builtApp?.appVersion || null,
       ...(exportMethod === undefined ? {} : { exportMethod }),
     };
   } finally {

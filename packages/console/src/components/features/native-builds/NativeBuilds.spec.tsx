@@ -105,6 +105,7 @@ const build = (overrides: Partial<NativeBuildRow> = {}): NativeBuildRow => ({
   is_sandbox: false,
   sandbox_url_scheme: null,
   export_method: null,
+  native_app_version: null,
   ...overrides,
 });
 
@@ -382,6 +383,86 @@ describe("NativeBuildsTable", () => {
     expect(
       screen.queryByRole("button", { name: /Copy full value/ }),
     ).toBeNull();
+  });
+
+  it("shows the app version every artifact reports in Target: over a fingerprint build's fingerprint, and once on an app-version build", () => {
+    const fingerprint = "e7b2a84d0123456789abcdef0123456789ab9efb";
+    render(
+      <NativeBuildsTable
+        builds={builds([
+          build({
+            id: id(11),
+            fingerprint_hash: fingerprint,
+            native_app_version: "1.6.0",
+          }),
+          build({
+            id: id(12),
+            fingerprint_hash: null,
+            app_version: "1.4.2",
+            native_app_version: "1.4.2",
+          }),
+          // Registered before the version was recorded, or by an older
+          // server, which leaves the field out.
+          build({ id: id(13), fingerprint_hash: fingerprint }),
+          {
+            ...build({ id: id(14), fingerprint_hash: fingerprint }),
+            native_app_version: undefined,
+          },
+        ])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    const [, versioned, byVersion, older, olderServer] =
+      screen.getAllByRole("row");
+    expect(cellText(versioned!, "Target")).toBe(
+      "App version 1.6.0e7b2a84d…9efb",
+    );
+    expect(
+      within(versioned!).getByTitle("The app version this build reports")
+        .textContent,
+    ).toBe("App version 1.6.0");
+    // The version reads first, over the fingerprint it is copied by.
+    const target = within(versioned!).getByText("1.6.0");
+    expect(
+      target.compareDocumentPosition(
+        within(versioned!).getByRole("button", {
+          name: `Copy full value: ${fingerprint}`,
+        }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(cellText(byVersion!, "Target")).toBe("1.4.2");
+    // Without one, the fingerprint alone, as before.
+    expect(cellText(older!, "Target")).toBe("e7b2a84d…9efb");
+    expect(cellText(olderServer!, "Target")).toBe("e7b2a84d…9efb");
+  });
+
+  it("shows a fingerprint build's app version on its card, over its fingerprint and beside its build key", () => {
+    const width = window.innerWidth;
+    window.innerWidth = 390;
+    try {
+      render(
+        <NativeBuildsTable
+          builds={builds([
+            build({
+              build_key: `nbk1:a1b2c3d4${"0".repeat(52)}9f0e`,
+              native_app_version: "1.6.0",
+            }),
+          ])}
+          channel={undefined}
+          onChannel={vi.fn()}
+          paged={false}
+        />,
+      );
+      const hashes = screen.getByRole("article").children[3]!;
+      expect(hashes.textContent).toBe(
+        "Target App version 1.6.01a2b3c4d…9c0dBuild key a1b2c3d4…9f0e",
+      );
+    } finally {
+      window.innerWidth = width;
+    }
   });
 
   it("shows each build as a compact card at 390 px: what and its download, then where, then when, then target and build key, then store", () => {
@@ -1514,6 +1595,28 @@ describe("BuiltInBundleCard", () => {
     );
     expect(rowValue("Target")).toBe("1.4.2");
     expect(rowValue("Build key")).toBe("-");
+  });
+
+  it("shows a fingerprint build's own app version over its fingerprint, as the table does, and names a newer build by it", () => {
+    const newer = build({
+      id: id(9),
+      min_bundle_id: id(10),
+      build_number: "122",
+      native_app_version: "1.6.1",
+    });
+    render(
+      <BuiltInBundleCard
+        detail={detail({
+          build: build({ native_app_version: "1.6.0" }),
+          newestInScope: newer,
+        })}
+      />,
+    );
+    expect(rowValue("Target")).toBe("App version 1.6.01a2b3c4d…9c0d");
+    // Named as the CLI names it: its version and build number.
+    expect(
+      screen.getByRole("link", { name: /Android 1\.6\.1 \(122\)/ }),
+    ).toBeTruthy();
   });
 
   it("shows the built-in bundle, its patch count, and that new deploys patch from it", () => {

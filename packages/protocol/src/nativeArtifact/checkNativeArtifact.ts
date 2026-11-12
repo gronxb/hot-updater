@@ -28,7 +28,14 @@ export interface ImportableNativeBuild {
   /** The channel the app reports: its own, or `production` without one. */
   readonly channel: string;
   readonly fingerprintHash: string | null;
+  /** The version OTAs target: null under the fingerprint strategy. */
   readonly appVersion: string | null;
+  /**
+   * The app version the artifact reports, its `CFBundleShortVersionString`
+   * or `versionName`, whatever the update strategy: null when it has none
+   * or it can't be read.
+   */
+  readonly nativeAppVersion: string | null;
   /** The built-in bundle's entry in the archive. */
   readonly builtInBundlePath: string;
   /** Whether the artifact holds the sandbox layer: a sandbox build. */
@@ -245,6 +252,10 @@ export const checkNativeArtifact = (
       channel,
       fingerprintHash,
       appVersion,
+      nativeAppVersion:
+        typeof info.appVersion === "string" && info.appVersion.trim()
+          ? info.appVersion
+          : null,
       builtInBundlePath: info.builtInBundle!.path,
       sandbox: info.sandbox.code,
       sandboxUrlScheme: info.sandbox.code ? info.entry.sandboxUrlScheme : null,

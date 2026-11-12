@@ -187,6 +187,12 @@ const channels = defineTable(
  * `export_method` is how an `.ipa` was exported, read from its profile when
  * it registers and never changed; null on any other artifact, on an `.ipa`
  * whose profile couldn't be read, and on one registered before the column.
+ * `native_app_version` is the app version the artifact itself reports, its
+ * `CFBundleShortVersionString` or `versionName`, read from the artifact when
+ * it registers and never changed, whatever the update strategy; `app_version`
+ * stays the version OTAs target, null on a fingerprint build. It is null
+ * when the artifact's can't be read, and on a build registered before the
+ * column.
  * Boolean columns follow one rule: `is_*` for a fact about the row or
  * `should_*` for an instruction to the client, never null; a unique index over
  * the rows where one is true keys a derived slot, not the boolean.
@@ -227,6 +233,7 @@ const nativeBuilds = defineTable(
       required: false,
     },
     export_method: { type: "string", maxLength: 16, required: false },
+    native_app_version: { type: "string", required: false },
   },
   {
     key: ["id"],

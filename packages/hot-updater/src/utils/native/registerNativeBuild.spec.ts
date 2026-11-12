@@ -274,6 +274,41 @@ describe("registerNativeBuild", () => {
     expect(readIpaExportMethod).toHaveBeenLastCalledWith(ipaPath, null);
   });
 
+  it("records the app version the artifact reports on a fingerprint build, and none when it reports none", async () => {
+    const artifactPath = path.join(dir, "app-release.apk");
+    await fs.promises.writeFile(artifactPath, "apk bytes");
+
+    const versioned = await registerNativeBuild(
+      android({ artifactPath, nativeAppVersion: "1.6.0" }),
+      { buildKey: null, sandbox: false },
+    );
+    // OTAs still target the fingerprint: the version is the artifact's.
+    expect(versioned).toMatchObject({
+      fingerprint_hash: "fingerprint-a",
+      app_version: null,
+      native_app_version: "1.6.0",
+    });
+    expect(
+      (await harness.core.getNativeBuild(versioned.id))?.native_app_version,
+    ).toBe("1.6.0");
+
+    // A blank one is none, and a build cached before it was read has none.
+    for (const [n, nativeAppVersion] of [
+      [78, " "],
+      [79, undefined],
+    ] as const) {
+      const row = await registerNativeBuild(
+        android({
+          artifactPath,
+          minBundleId: `019b0000-0000-7000-8000-0200000000${n}`,
+          ...(nativeAppVersion === undefined ? {} : { nativeAppVersion }),
+        }),
+        { buildKey: null, sandbox: false },
+      );
+      expect(row.native_app_version).toBeNull();
+    }
+  });
+
   it("refuses a debug build before it loads the config", async () => {
     await expect(
       registerNativeBuild(android({ minBundleId: NIL_UUID }), {

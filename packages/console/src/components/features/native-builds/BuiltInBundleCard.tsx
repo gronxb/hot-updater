@@ -174,6 +174,7 @@ export function BuiltInBundleCard({
               <TargetDisplay
                 appVersion={build.app_version}
                 fingerprintHash={build.fingerprint_hash}
+                nativeAppVersion={build.native_app_version}
               />
             </span>
           </Row>

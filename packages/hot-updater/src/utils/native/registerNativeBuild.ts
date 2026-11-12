@@ -340,6 +340,11 @@ export const registerNativeBuild = async (
           : gitCommitHash,
       buildKey,
       buildNumber: build.buildNumber ?? null,
+      // The artifact's own version, whatever the strategy: a blank one is
+      // none.
+      nativeAppVersion: build.nativeAppVersion?.trim()
+        ? build.nativeAppVersion
+        : null,
       isSandbox: sandbox,
       sandboxUrlScheme: sandbox ? sandboxUrlScheme : null,
       exportMethod:

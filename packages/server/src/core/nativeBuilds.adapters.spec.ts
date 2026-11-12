@@ -316,3 +316,190 @@ describe.each(adapters)(
     });
   },
 );
+
+describe.each(adapters)(
+  "the artifact's own app version on %s",
+  (_name, adapter) => {
+    it("records it on a build of either strategy, and null without one", async () => {
+      const core = createInProcessCoreApi(await adapter());
+      const fingerprint = await core.registerNativeBuild(
+        registration(1, { nativeAppVersion: "1.6.0" }),
+      );
+      await core.registerNativeBuild(
+        registration(2, {
+          fingerprintHash: null,
+          appVersion: "1.4.2",
+          nativeAppVersion: "1.4.2",
+        }),
+      );
+      await core.registerNativeBuild(registration(3));
+
+      // A fingerprint build keeps no OTA app version, and has its own.
+      expect(fingerprint).toMatchObject({
+        app_version: null,
+        native_app_version: "1.6.0",
+      });
+      expect(await core.getNativeBuild(buildId(1))).toMatchObject({
+        app_version: null,
+        native_app_version: "1.6.0",
+      });
+      expect(await core.findNativeBuild(scope)).toMatchObject({
+        id: buildId(3),
+        native_app_version: null,
+      });
+      expect(
+        (await core.listNativeBuilds({ order: "asc", limit: 10 })).map(
+          ({ app_version, native_app_version }) => [
+            app_version,
+            native_app_version,
+          ],
+        ),
+      ).toEqual([
+        [null, "1.6.0"],
+        ["1.4.2", "1.4.2"],
+        [null, null],
+      ]);
+      await expect(
+        core.registerNativeBuild(registration(4, { nativeAppVersion: " " })),
+      ).rejects.toThrow("nativeAppVersion must be the artifact's app version");
+    });
+  },
+);
+
+describe("a native build row written before native_app_version", () => {
+  it("reads back with none from a store whose rows lack the field", async () => {
+    const store = createMemoryKeyValueStore();
+    const core = createInProcessCoreApi(
+      createKvAdapter({
+        store: {
+          ...store,
+          write: ((ops) =>
+            store.write(
+              ops.map((op) => {
+                const strip = (value: Readonly<Record<string, unknown>>) => {
+                  const { native_app_version: _dropped, ...rest } = value;
+                  return rest;
+                };
+                return op.type === "put"
+                  ? { ...op, value: strip(op.value) }
+                  : op.type === "add" && op.init !== undefined
+                    ? { ...op, init: strip(op.init) }
+                    : op;
+              }) as typeof ops,
+            )) as typeof store.write,
+        },
+      }),
+    );
+    await core.registerNativeBuild(
+      registration(1, { nativeAppVersion: "1.6.0" }),
+    );
+
+    expect(await core.getNativeBuild(buildId(1))).toHaveProperty(
+      "native_app_version",
+      null,
+    );
+    expect(await core.findNativeBuild(scope)).toHaveProperty(
+      "native_app_version",
+      null,
+    );
+  });
+
+  /** Core's tables as a 1.2.0 prerelease created them, without the column. */
+  const rcEraSql = (dialect: "postgresql" | "sqlite") =>
+    sql(dialect).map((statement) =>
+      statement.replace(/"native_app_version" [^,]+, /, ""),
+    );
+
+  it("gives MySQL the column type its release notes' ALTER adds", () => {
+    const target = toolingTargetOf([]);
+    const table = generateEngineSql(
+      "mysql",
+      target.schema,
+      target.settings,
+    ).find((statement) =>
+      statement.includes("CREATE TABLE IF NOT EXISTS `native_builds`"),
+    );
+    expect(table).toContain(
+      "`native_app_version` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin,",
+    );
+  });
+
+  /**
+   * The release notes' upgrade, as written there: SQLite and D1 list the
+   * table's columns and add it only when it is missing; PostgreSQL adds it
+   * with `IF NOT EXISTS`.
+   */
+  const SQLITE_CHECK = `PRAGMA table_info("native_builds");`;
+  const SQLITE_ALTER = `ALTER TABLE "native_builds" ADD COLUMN "native_app_version" TEXT;`;
+  const POSTGRES_ALTER = `ALTER TABLE "native_builds" ADD COLUMN IF NOT EXISTS "native_app_version" text COLLATE "C";`;
+
+  const sqliteUpgrade = (db: DatabaseSync) => {
+    const has = (db.prepare(SQLITE_CHECK).all() as { name: string }[]).some(
+      ({ name }) => name === "native_app_version",
+    );
+    if (!has) db.exec(SQLITE_ALTER);
+    return !has;
+  };
+
+  const openSqlite = (schema: readonly string[]) => {
+    const db = new DatabaseSync(":memory:");
+    for (const statement of schema) db.exec(statement);
+    cleanups.push(() => db.close());
+    return db;
+  };
+  const openPostgres = async (schema: readonly string[]) => {
+    const pglite = new PGlite();
+    for (const statement of schema) await pglite.exec(statement);
+    cleanups.push(() => pglite.close());
+    return pglite;
+  };
+
+  /** Registers a build without a version and one with, and reads both back. */
+  const expectColumnWorks = async (adapter: DatabaseAdapter) => {
+    const core = createInProcessCoreApi(adapter);
+    await core.registerNativeBuild(registration(1));
+    await core.registerNativeBuild(
+      registration(2, { nativeAppVersion: "1.6.0" }),
+    );
+    expect(
+      (await core.listNativeBuilds({ order: "asc", limit: 10 })).map(
+        ({ native_app_version }) => native_app_version,
+      ),
+    ).toEqual([null, "1.6.0"]);
+  };
+
+  it("takes the release notes' upgrade on a prerelease SQLite database, and skips it on one that has the column", async () => {
+    const prerelease = openSqlite(rcEraSql("sqlite"));
+    expect(sqliteUpgrade(prerelease)).toBe(true);
+    // Run again, as on a database already upgraded: the check skips it.
+    expect(sqliteUpgrade(prerelease)).toBe(false);
+    await expectColumnWorks(
+      createSqlAdapter({ executor: sqliteExecutor(prerelease) }),
+    );
+
+    // Created from this release's schema: the column is there already, and
+    // the bare ALTER would fail, which the check avoids.
+    const current = openSqlite(sql("sqlite"));
+    expect(() => current.exec(SQLITE_ALTER)).toThrow(/duplicate column/);
+    expect(sqliteUpgrade(current)).toBe(false);
+    await expectColumnWorks(
+      createSqlAdapter({ executor: sqliteExecutor(current) }),
+    );
+  });
+
+  it("takes the release notes' upgrade on a prerelease PostgreSQL database, and is a no-op on one that has the column", async () => {
+    const prerelease = await openPostgres(rcEraSql("postgresql"));
+    await prerelease.exec(POSTGRES_ALTER);
+    // Run again, as on a database already upgraded.
+    await prerelease.exec(POSTGRES_ALTER);
+    await expectColumnWorks(
+      createSqlAdapter({ executor: pgliteExecutor(prerelease) }),
+    );
+
+    const current = await openPostgres(sql("postgresql"));
+    await current.exec(POSTGRES_ALTER);
+    await expectColumnWorks(
+      createSqlAdapter({ executor: pgliteExecutor(current) }),
+    );
+  });
+});

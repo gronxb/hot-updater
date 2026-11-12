@@ -160,6 +160,15 @@ export interface NativeBuildRow {
    * before it was recorded.
    */
   readonly export_method: NativeBuildExportMethod | null;
+  /**
+   * The app version the artifact itself reports, its
+   * `CFBundleShortVersionString` or `versionName`, whatever the update
+   * strategy: a fingerprint build has one too, where `app_version`, the
+   * version OTAs target, is null. Read from the artifact when it registered
+   * and never changed. Null when it couldn't be read, and on a build
+   * registered before it was recorded; a server older than it leaves it out.
+   */
+  readonly native_app_version?: string | null;
 }
 
 /** Where an iOS device is in the registry: requested, approved, or registered with Apple. */

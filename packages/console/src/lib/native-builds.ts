@@ -72,19 +72,24 @@ export const platformLabel = (platform: "ios" | "android") =>
 
 /**
  * A build as the CLI names it, such as `iOS 1.7.0 (66)`: the store's label
- * when a store took it, else its app version and build number. Null when it
- * reports neither, for the caller to name it another way.
+ * when a store took it, else its app version, the one its artifact reports
+ * on a fingerprint build, and build number. Null when it reports neither,
+ * for the caller to name it another way.
  */
 export const nativeBuildLabel = (
   build: Pick<
     NativeBuildRow,
-    "platform" | "submitted_version" | "app_version" | "build_number"
+    | "platform"
+    | "submitted_version"
+    | "app_version"
+    | "native_app_version"
+    | "build_number"
   >,
 ): string | null => {
   const label =
     build.submitted_version ??
     [
-      build.app_version,
+      build.app_version ?? build.native_app_version ?? null,
       build.build_number === null ? null : `(${build.build_number})`,
     ]
       .filter((part) => part !== null)

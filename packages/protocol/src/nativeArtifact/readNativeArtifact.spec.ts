@@ -350,6 +350,8 @@ describe("checkNativeArtifact", () => {
         channel: "beta",
         fingerprintHash: FINGERPRINT,
         appVersion: null,
+        // The artifact's own version, which a fingerprint build has too.
+        nativeAppVersion: "1.4.0",
         builtInBundlePath: "base/assets/index.android.bundle",
         sandbox: false,
         sandboxUrlScheme: null,
@@ -363,10 +365,29 @@ describe("checkNativeArtifact", () => {
       build: {
         fingerprintHash: null,
         appVersion: "1.4.0",
+        nativeAppVersion: "1.4.0",
         channel: "production",
       },
     });
   });
+
+  it.each([
+    [null],
+    [{ unreadable: "versionName is a resource reference" }],
+    [" "],
+  ] as const)(
+    "registers a fingerprint build whose app version is %j with none of its own",
+    (appVersion) => {
+      expect(
+        checkNativeArtifact(info({ appVersion }), {
+          updateStrategy: "fingerprint",
+        }),
+      ).toMatchObject({
+        ok: true,
+        build: { fingerprintHash: FINGERPRINT, nativeAppVersion: null },
+      });
+    },
+  );
 
   it.each([
     [{ builtInBundle: null }, "fingerprint", "NO_BUILT_IN_BUNDLE"],
