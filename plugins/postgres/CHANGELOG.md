@@ -1,5 +1,13 @@
 # @hot-updater/postgres
 
+## 1.2.0-rc.32
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.32
+  - @hot-updater/server@1.2.0-rc.32
+  - @hot-updater/plugin-core@1.2.0-rc.32
+
 ## 1.2.0-rc.31
 
 ### Patch Changes
