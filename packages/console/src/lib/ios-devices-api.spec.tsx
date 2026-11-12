@@ -7,9 +7,8 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-const { createLink, requestAccess } = vi.hoisted(() => ({
+const { createLink } = vi.hoisted(() => ({
   createLink: vi.fn(),
-  requestAccess: vi.fn(),
 }));
 vi.mock("./ios-devices-rpc", () => ({
   approveIosDevice: vi.fn(),
@@ -18,12 +17,11 @@ vi.mock("./ios-devices-rpc", () => ({
   getNativeBuildIpaDevices: vi.fn(),
   removeIosDevice: vi.fn(),
   renameIosDevice: vi.fn(),
-  requestIosDeviceAccess: requestAccess,
 }));
 
 import {
   useIosDeviceProfileLinkQuery,
-  useRequestIosDeviceAccessMutation,
+  useRequestThisIphoneMutation,
 } from "./ios-devices-api";
 
 const clientWrapper = () => {
@@ -93,11 +91,17 @@ describe("useIosDeviceProfileLinkQuery", () => {
   );
 });
 
-describe("useRequestIosDeviceAccessMutation", () => {
+describe("useRequestThisIphoneMutation", () => {
   it("refreshes the build page's registry read before a caller's onSuccess runs, which IosInstall relies on", async () => {
     const events: string[] = [];
     let reads = 0;
-    requestAccess.mockResolvedValue({ device: { status: "pending" } });
+    const fetch = vi.fn(
+      async (_url: string, _init?: RequestInit) =>
+        new Response(JSON.stringify({ device: { status: "pending" } }), {
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetch);
     const client = new QueryClient();
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -112,7 +116,7 @@ describe("useRequestIosDeviceAccessMutation", () => {
             return reads;
           },
         }),
-        request: useRequestIosDeviceAccessMutation(),
+        request: useRequestThisIphoneMutation("/console"),
       }),
       { wrapper },
     );
@@ -127,5 +131,14 @@ describe("useRequestIosDeviceAccessMutation", () => {
     await waitFor(() => expect(events).toHaveLength(2));
 
     expect(events).toEqual(["registry read again", "caller's onSuccess"]);
+    // Its own route, which alone the cookie is sent to, with the receipt.
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(url).toBe("/console/_hot-updater/devices/request");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      name: "Kim's iPhone",
+      receipt: "r",
+    });
+    vi.unstubAllGlobals();
   });
 });

@@ -89,8 +89,11 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import {
   iosDeviceKeys,
   useApproveIosDeviceMutation,
+  keptIsThisIphone,
   useIosDeviceProfileLinkQuery,
   useIosDeviceQuery,
+  useKeptIosDeviceQuery,
+  useRequestThisIphoneMutation,
   useIosDevicesQuery,
   useRemoveIosDeviceMutation,
   useRenameIosDeviceMutation,
@@ -674,6 +677,20 @@ function RegisterCard({
       void refetch();
     }
   }, [udid, answers, refetch]);
+  // This Safari's proof of the iPhone, an HttpOnly cookie: the register
+  // answer's fresh receipt is traded for it, and a phone with no row requests
+  // itself again with it, without the profile, for the same person only.
+  const path = phone === null ? "" : consolePath();
+  const kept = useKeptIosDeviceQuery(
+    path,
+    phone ?? { udid: null, receipt: null },
+    onPhone &&
+      udid !== null &&
+      view?.registration === "ready" &&
+      (phone.receipt !== null || mine.data === null),
+  );
+  const again = useRequestThisIphoneMutation(path);
+  const proved = onPhone && keptIsThisIphone(kept.data?.udid, phone.udid);
 
   const body = (() => {
     // The server renders this without a browser: where it is and what it is
@@ -724,6 +741,59 @@ function RegisterCard({
         <p className="text-xs text-muted-foreground" role="status">
           iPhones need this Console on HTTPS.
         </p>
+      );
+    }
+    if (mine.data === null && kept.isFetching && !proved) {
+      return <Skeleton aria-label="Loading" className="h-36 w-full" />;
+    }
+    if (proved) {
+      const trimmed = typed.trim();
+      return (
+        <form
+          className="flex min-w-0 flex-col gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (trimmed === "") return;
+            again.mutate({ name: trimmed, receipt: phone.receipt });
+          }}
+        >
+          <Field data-invalid={again.isError || undefined}>
+            <FieldLabel htmlFor="ios-device-register-name">
+              This iPhone's name
+            </FieldLabel>
+            <Input
+              autoComplete="off"
+              className="h-11"
+              id="ios-device-register-name"
+              maxLength={100}
+              onChange={(event) => setName(event.target.value)}
+              value={typed}
+            />
+            <FieldDescription>
+              This Safari checked it before, so no profile is needed.
+            </FieldDescription>
+            <FieldError>
+              {again.isError
+                ? "The request didn't go through. Try again."
+                : null}
+            </FieldError>
+          </Field>
+          <Button
+            className="h-11 w-full"
+            disabled={trimmed === "" || again.isPending}
+            type="submit"
+          >
+            {again.isPending ? (
+              <Loader2
+                className="animate-spin motion-reduce:animate-none"
+                data-icon="inline-start"
+              />
+            ) : (
+              <Smartphone data-icon="inline-start" />
+            )}
+            Request this iPhone
+          </Button>
+        </form>
       );
     }
     if (link.data?.status === "local-console") {

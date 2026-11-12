@@ -129,18 +129,6 @@ export const createIosDeviceProfileLink = createServerFn({ method: "POST" })
     return devices.issueDeviceProfileLink(request, viewer, data);
   });
 
-/** Requests the iPhone this person's receipt names, for the next ad hoc build. */
-export const requestIosDeviceAccess = createServerFn({ method: "POST" })
-  .middleware([consoleAccess])
-  .validator((input: unknown) => ({
-    receipt: text(input, "receipt"),
-    name: text(input, "name", 100),
-  }))
-  .handler(async ({ data }) => {
-    const { request, core, viewer, devices } = await registry();
-    return devices.requestIosDeviceAccess(request, core, viewer, data);
-  });
-
 /** Approves a requested device, with its name: approvers only. */
 export const approveIosDevice = createServerFn({ method: "POST" })
   .middleware([consoleAccess])

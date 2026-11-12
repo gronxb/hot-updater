@@ -8,7 +8,6 @@ import type { ConsolePrincipal } from "../../index";
 import {
   createDeviceProfileToken,
   DEVICE_PROFILE_TOKEN_TTL_MS,
-  verifyDeviceReceipt,
 } from "./deviceProfileToken";
 import {
   CONSOLE_SECRET_ENV,
@@ -163,35 +162,6 @@ export const issueDeviceProfileLink = async (
     token,
     expiresAt: new Date(now + DEVICE_PROFILE_TOKEN_TTL_MS).toISOString(),
   };
-};
-
-/**
- * Requests the iPhone a receipt names, for the person whose profile made it:
- * the UDID comes from the receipt alone. Another person's receipt, an expired
- * one, or none, is refused.
- */
-export const requestIosDeviceAccess = async (
-  request: Request,
-  core: Pick<HotUpdaterCoreApi, "requestIosDevice">,
-  viewer: IosDeviceViewer,
-  input: { readonly receipt: string; readonly name: string },
-) => {
-  const secret = readConsoleSecret(request);
-  const receipt =
-    secret === undefined
-      ? "invalid"
-      : await verifyDeviceReceipt(secret, input.receipt);
-  if (receipt === "expired") {
-    throw forbidden("Check this iPhone again: its check has expired.");
-  }
-  if (receipt === "invalid" || receipt.e !== viewer.email) {
-    throw forbidden("Check this iPhone again from this account.");
-  }
-  return core.requestIosDevice({
-    udid: receipt.u,
-    name: deviceName(input.name),
-    requestedBy: viewer.email,
-  });
 };
 
 /**

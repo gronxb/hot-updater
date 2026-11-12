@@ -12,24 +12,39 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { IosDevicesView } from "@/lib/ios-devices-rpc";
 
-const { devicesQuery, deviceQuery, profileLinkQuery, approve, rename, remove } =
-  vi.hoisted(() => {
-    const mutation = () => ({
-      mutate: vi.fn(),
-      isPending: false,
-      isError: false,
-    });
-    return {
-      devicesQuery: vi.fn(),
-      deviceQuery: vi.fn(),
-      profileLinkQuery: vi.fn(),
-      approve: mutation(),
-      rename: mutation(),
-      remove: mutation(),
-    };
+const {
+  devicesQuery,
+  deviceQuery,
+  keptQuery,
+  again,
+  profileLinkQuery,
+  approve,
+  rename,
+  remove,
+} = vi.hoisted(() => {
+  const mutation = () => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
   });
+  return {
+    devicesQuery: vi.fn(),
+    deviceQuery: vi.fn(),
+    keptQuery: vi.fn(),
+    again: mutation(),
+    profileLinkQuery: vi.fn(),
+    approve: mutation(),
+    rename: mutation(),
+    remove: mutation(),
+  };
+});
 
-vi.mock("@/lib/ios-devices-api", () => ({
+vi.mock("@/lib/ios-devices-api", async (importOriginal) => ({
+  keptIsThisIphone: (
+    await importOriginal<typeof import("@/lib/ios-devices-api")>()
+  ).keptIsThisIphone,
+  useKeptIosDeviceQuery: keptQuery,
+  useRequestThisIphoneMutation: () => again,
   iosDeviceKeys: { all: ["ios-devices"] },
   useIosDevicesQuery: devicesQuery,
   useIosDeviceQuery: deviceQuery,
@@ -116,6 +131,11 @@ const show = (view: IosDevicesView, search = {}) => {
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
+  keptQuery.mockReturnValue({
+    data: { udid: null },
+    isPending: false,
+    isFetching: false,
+  });
   deviceQuery.mockReturnValue({
     data: undefined,
     isPending: true,
@@ -642,6 +662,96 @@ describe("IosDevicesPage", () => {
       ).toBeTruthy();
       expect(within(card()).queryByText("Requested")).toBeNull();
     });
+
+    /** Renders on HTTPS, where Safari keeps the Secure cookie. */
+    const onHttps =
+      (run: () => void | Promise<void>, hash = "") =>
+      async () => {
+        const location = window.location;
+        Object.defineProperty(window, "location", {
+          value: new URL(
+            `https://console.example.com/native-builds/devices${hash}`,
+          ),
+          configurable: true,
+        });
+        try {
+          await run();
+        } finally {
+          Object.defineProperty(window, "location", {
+            value: location,
+            configurable: true,
+          });
+        }
+      };
+
+    it(
+      "requests this iPhone again after its row was removed, from the cookie, with no profile",
+      onHttps(async () => {
+        onIphone();
+        window.localStorage.setItem("hot-updater-ios-udid", PHONE);
+        registryHas(null);
+        keptQuery.mockReturnValue({
+          data: { udid: PHONE.toLowerCase() },
+          isPending: false,
+          isFetching: false,
+        });
+        show(viewAs({ canApprove: false, email: "kim@team.dev" }, []));
+
+        const request = await within(card()).findByRole("button", {
+          name: "Request this iPhone",
+        });
+        expect(
+          within(card()).queryByRole("link", { name: "Install profile" }),
+        ).toBeNull();
+        fireEvent.change(within(card()).getByLabelText("This iPhone's name"), {
+          target: { value: "Kim's iPhone" },
+        });
+        fireEvent.click(request);
+        expect(again.mutate).toHaveBeenCalledWith({
+          name: "Kim's iPhone",
+          receipt: null,
+        });
+      }),
+    );
+
+    it(
+      "offers the profile when the cookie proves another iPhone, or another person's",
+      onHttps(async () => {
+        onIphone();
+        window.localStorage.setItem("hot-updater-ios-udid", PHONE);
+        registryHas(null);
+        // The server answers null for another person's cookie.
+        keptQuery.mockReturnValue({
+          data: { udid: "00008110-001a2b3c4d5e6f70" },
+          isPending: false,
+          isFetching: false,
+        });
+        show(viewAs({}, []));
+
+        expect(
+          await within(card()).findByRole("link", { name: "Install profile" }),
+        ).toBeTruthy();
+        expect(
+          within(card()).queryByRole("button", { name: "Request this iPhone" }),
+        ).toBeNull();
+      }),
+    );
+
+    it(
+      "trades the register answer's receipt for the cookie on the way back",
+      onHttps(async () => {
+        onIphone();
+        registryHas(mine());
+        show(viewAs({}, [mine()]));
+
+        await within(card()).findByText("Requested");
+        expect(keptQuery).toHaveBeenCalledWith(
+          "",
+          expect.objectContaining({ udid: PHONE, receipt: "receipt.sig" }),
+          true,
+        );
+      }, `#udid=${PHONE}&r=receipt.sig&requested=1`),
+    );
 
     it("leaves a computer's QR code as it was, whatever it kept", () => {
       window.localStorage.setItem("hot-updater-ios-udid", PHONE);

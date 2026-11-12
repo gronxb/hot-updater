@@ -4,6 +4,7 @@ import { type ReactElement, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
 import { useFeatureUi } from "@/components/features/FeatureSlots";
+import { isIosBrowser } from "@/components/features/native-builds/IosInstall";
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
 import { useTheme } from "@/components/ThemeProvider";
 import {
@@ -19,6 +20,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { forgetKeptIosDevice } from "@/lib/ios-devices-api";
 
 type NavigationItem = {
   readonly label: string;
@@ -87,6 +89,8 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
   const signOut = async () => {
     setSigningOut(true);
     try {
+      // Only an iPhone or iPad holds this Safari's proof of itself.
+      if (isIosBrowser(navigator)) await forgetKeptIosDevice();
       const response = await fetch("/api/auth/sign-out", {
         body: "{}",
         headers: { "content-type": "application/json" },

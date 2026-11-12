@@ -11,12 +11,10 @@ vi.mock("virtual:hot-updater-console/request-guard", () => ({
   },
 }));
 
-import { createDeviceReceipt } from "./deviceProfileToken";
 import {
   issueDeviceProfileLink,
   iosDeviceViewer,
   removeIosDevice,
-  requestIosDeviceAccess,
   requireDeviceApprover,
 } from "./iosDevices";
 
@@ -79,58 +77,6 @@ describe("who approves iOS devices", () => {
     expect(
       (await iosDeviceViewer({ email: "anyone@team.dev" }, [])).canApprove,
     ).toBe(true);
-  });
-});
-
-describe("Request access", () => {
-  const viewer = {
-    email: "kim@team.dev",
-    canApprove: false,
-    approversConfigured: true,
-  };
-
-  it("requests the UDID in this person's receipt", async () => {
-    const core = coreOf();
-    const receipt = await createDeviceReceipt(SECRET, {
-      u: PHONE,
-      e: "kim@team.dev",
-    });
-    const { device, created } = await requestIosDeviceAccess(
-      request,
-      core,
-      viewer,
-      { receipt, name: "Kim's iPhone" },
-    );
-    expect(created).toBe(true);
-    expect(device).toMatchObject({
-      udid: PHONE,
-      requested_by: "kim@team.dev",
-      status: "pending",
-    });
-  });
-
-  it("refuses another person's receipt, an expired one, and a forged one", async () => {
-    const core = coreOf();
-    const others = await createDeviceReceipt(SECRET, {
-      u: PHONE,
-      e: "mallory@team.dev",
-    });
-    const expired = await createDeviceReceipt(
-      SECRET,
-      { u: PHONE, e: "kim@team.dev" },
-      Date.now() - 2 * 60 * 60 * 1000,
-    );
-    for (const receipt of [others, expired, `forged.${"a".repeat(43)}`]) {
-      expect(
-        await status(() =>
-          requestIosDeviceAccess(request, core, viewer, {
-            receipt,
-            name: "Kim's iPhone",
-          }),
-        ),
-      ).toBe(403);
-    }
-    expect(await core.listIosDevices({ limit: 10 })).toEqual([]);
   });
 });
 

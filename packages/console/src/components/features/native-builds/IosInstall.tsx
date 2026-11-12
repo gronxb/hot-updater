@@ -23,7 +23,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useNativeBuildInstallEligibilityQuery } from "@/lib/api";
 import {
   useIosDeviceProfileLinkQuery,
-  useRequestIosDeviceAccessMutation,
+  keptIsThisIphone,
+  useKeptIosDeviceQuery,
+  useRequestThisIphoneMutation,
 } from "@/lib/ios-devices-api";
 import {
   consolePathOf,
@@ -74,7 +76,10 @@ const fragmentOf = () => {
 export interface IosDevice {
   readonly ios: boolean;
   readonly udid: string | null;
-  /** The receipt of `udid` that Request access takes, when a check made one. */
+  /**
+   * The profile's fresh receipt of `udid`, from the fragment, in memory only:
+   * the page trades it for the HttpOnly cookie that proves this iPhone later.
+   */
   readonly receipt: string | null;
   /** Whether this page opened from a registration's answer. */
   readonly requested: boolean;
@@ -128,12 +133,6 @@ export const useIosDevice = (): IosDevice | null => {
       if (fragment.udid !== null && answered) {
         answers += 1;
         keep(IOS_UDID_STORAGE_KEY, fragment.udid);
-        if (fragment.receipt !== null) {
-          keep(
-            IOS_DEVICE_RECEIPT_STORAGE_KEY,
-            JSON.stringify({ udid: fragment.udid, receipt: fragment.receipt }),
-          );
-        }
       }
       if (fragment.udid !== null && window.location.hash !== "") {
         window.history.replaceState(
@@ -144,22 +143,18 @@ export const useIosDevice = (): IosDevice | null => {
       }
     };
     absorb(passed);
+    // A receipt is no longer kept here: the page trades the fragment's for an
+    // HttpOnly cookie that script can't read. One an earlier version kept goes.
+    try {
+      window.localStorage.removeItem(IOS_DEVICE_RECEIPT_STORAGE_KEY);
+    } catch {
+      // A browser that keeps nothing kept none.
+    }
     const read = () => {
       // A browser that keeps nothing still has the fragment's, in memory.
       const udid = valid(readKept(IOS_UDID_STORAGE_KEY)) ?? latest.udid;
-      let receipt: string | null = null;
-      try {
-        const kept = JSON.parse(
-          readKept(IOS_DEVICE_RECEIPT_STORAGE_KEY) ?? "null",
-        ) as { udid?: unknown; receipt?: unknown } | null;
-        receipt =
-          kept?.udid === udid && typeof kept?.receipt === "string"
-            ? kept.receipt
-            : null;
-      } catch {
-        receipt = null;
-      }
-      if (receipt === null && latest.udid === udid) receipt = latest.receipt;
+      // The fragment's receipt, in memory only, until the cookie holds it.
+      const receipt = latest.udid === udid ? latest.receipt : null;
       const requested = latest.requested;
       const taken = answers;
       setDevice((current) =>
@@ -182,11 +177,7 @@ export const useIosDevice = (): IosDevice | null => {
     // The profile's answer may land in another tab, which keeps the ID there:
     // this tab reads it when that tab writes it, or when Safari shows it again.
     const onStorage = (event: StorageEvent) => {
-      if (
-        event.key === null ||
-        event.key === IOS_UDID_STORAGE_KEY ||
-        event.key === IOS_DEVICE_RECEIPT_STORAGE_KEY
-      ) {
+      if (event.key === null || event.key === IOS_UDID_STORAGE_KEY) {
         read();
       }
     };
@@ -442,7 +433,18 @@ function NotInThisBuild({
   /** When the page last read `registry`. */
   readonly registryReadAt: number;
 }) {
-  const request = useRequestIosDeviceAccessMutation();
+  const consolePath = consolePathOf(window.location, build.id);
+  const request = useRequestThisIphoneMutation(consolePath);
+  // This Safari's proof of the iPhone: the profile's fresh receipt, traded
+  // for the cookie, or the cookie an earlier check left.
+  // Read only where it decides something: a phone the registry doesn't know.
+  const kept = useKeptIosDeviceQuery(
+    consolePath,
+    device,
+    device.ios && device.udid !== null && registry === null,
+  );
+  const proved =
+    device.receipt !== null || keptIsThisIphone(kept.data?.udid, device.udid);
   const [name, setName] = useState("");
   // The request's answer stands in only while the page still shows the
   // registry read before the request started: any read after that wins, an
@@ -491,7 +493,12 @@ function NotInThisBuild({
       </div>
     );
   }
-  if (device.receipt === null) {
+  if (!proved && kept.isPending && device.udid !== null) {
+    return (
+      <Skeleton aria-label="Reading this iPhone" className="h-11 w-full" />
+    );
+  }
+  if (!proved) {
     return (
       <div className="flex min-w-0 flex-col gap-3">
         {heading}
@@ -511,7 +518,7 @@ function NotInThisBuild({
         if (trimmed === "") return;
         const readBefore = registryReadAt;
         request.mutate(
-          { receipt: device.receipt!, name: trimmed },
+          { receipt: device.receipt, name: trimmed },
           {
             onSuccess: ({ device: saved }) =>
               setRequested({ device: saved, readBefore }),

@@ -205,6 +205,9 @@ export const receiveDeviceResponse = async (
   const { grant, secret } = checked;
   const base = publicConsoleBase(request, IOS_DEVICE_RESPONSE_PATH);
   let location: string;
+  // Either answer hands the page a receipt, which it trades for the cookie
+  // that lets this Safari request the iPhone again without the profile.
+  const receipt = await createDeviceReceipt(secret, { u: udid, e: grant.e });
   if (grant.m === "register") {
     const core = await loadCore();
     await core.requestIosDevice({
@@ -212,9 +215,8 @@ export const receiveDeviceResponse = async (
       name: grant.n ?? "iPhone",
       requestedBy: grant.e,
     });
-    location = `${base}${IOS_DEVICES_PATH}#udid=${encodeURIComponent(udid)}&requested=1`;
+    location = `${base}${IOS_DEVICES_PATH}#udid=${encodeURIComponent(udid)}&r=${encodeURIComponent(receipt)}&requested=1`;
   } else {
-    const receipt = await createDeviceReceipt(secret, { u: udid, e: grant.e });
     const page =
       grant.b === undefined ? IOS_DEVICES_PATH : nativeBuildDetailPath(grant.b);
     location = `${base}${page}#udid=${encodeURIComponent(udid)}&r=${encodeURIComponent(receipt)}`;
