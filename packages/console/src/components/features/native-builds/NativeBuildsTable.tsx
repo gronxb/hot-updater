@@ -251,7 +251,7 @@ function ChannelFilterButton({
   return (
     <button
       aria-label={`Show the builds that embed ${channel}`}
-      className="relative flex max-w-full min-w-0 rounded-md text-left after:absolute after:inset-x-0 after:-inset-y-[11px] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:after:hidden"
+      className="relative flex max-w-full min-w-0 rounded-md text-left after:absolute after:-inset-x-1 after:-inset-y-[11px] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:after:hidden"
       onClick={() => onChannel(channel)}
       title={channel}
       type="button"

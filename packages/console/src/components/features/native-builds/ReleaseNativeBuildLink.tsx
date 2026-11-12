@@ -88,7 +88,7 @@ export function ReleaseNativeBuildLink({
         <span className="text-xs text-muted-foreground">
           None tracked for this scope ·{" "}
           <Link
-            className="relative underline-offset-4 after:absolute after:-inset-x-2 after:-inset-y-3.5 hover:text-foreground hover:underline md:after:hidden"
+            className="relative underline-offset-4 after:absolute after:-inset-x-2 after:-inset-y-4 hover:text-foreground hover:underline md:after:hidden"
             search={{ channel }}
             to="/native-builds"
           >

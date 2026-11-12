@@ -224,7 +224,9 @@ function RevokeApiKeyDialog({ record }: { record: ApiKeyView }) {
         if (!revoke.isPending) setOpen(nextOpen);
       }}
     >
-      <AlertDialogTrigger render={<Button size="sm" variant="ghost" />}>
+      <AlertDialogTrigger
+        render={<Button className="max-md:h-11" size="sm" variant="ghost" />}
+      >
         <ShieldOff data-icon="inline-start" />
         Revoke
       </AlertDialogTrigger>
