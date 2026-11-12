@@ -564,6 +564,7 @@ export function ReleaseEditorSheet({
                         />
                         <Button
                           aria-label="Add cohort"
+                          className="max-md:size-11"
                           disabled={!newCohort.trim()}
                           onClick={addCohort}
                           size="icon"
@@ -608,7 +609,7 @@ export function ReleaseEditorSheet({
                   </FieldGroup>
                   {error ? <FieldError>{error}</FieldError> : null}
                   <Button
-                    className="w-full"
+                    className="w-full max-md:h-11"
                     disabled={!dirty || busy}
                     onClick={save}
                     size="lg"
@@ -624,7 +625,7 @@ export function ReleaseEditorSheet({
                 <section className="flex flex-col gap-4">
                   <h3 className="text-sm font-medium">Actions</h3>
                   <Button
-                    className="w-full"
+                    className="w-full max-md:h-11"
                     disabled={!release.bundle_id || busy}
                     onClick={() => setShowPromote(true)}
                     size="sm"
@@ -634,7 +635,7 @@ export function ReleaseEditorSheet({
                   </Button>
                   {release.bundle_id ? (
                     <Button
-                      className="w-full"
+                      className="w-full max-md:h-11"
                       disabled={busy}
                       onClick={() => {
                         window.open(
@@ -652,7 +653,7 @@ export function ReleaseEditorSheet({
                     </Button>
                   ) : null}
                   <Button
-                    className="w-full"
+                    className="w-full max-md:h-11"
                     disabled={release.enabled || busy}
                     onClick={() => setConfirmDelete(true)}
                     size="sm"

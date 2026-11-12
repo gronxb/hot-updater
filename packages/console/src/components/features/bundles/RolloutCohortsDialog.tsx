@@ -147,7 +147,14 @@ export function RolloutCohortsDialog({
   return (
     <Dialog>
       <DialogTrigger
-        render={<Button size="sm" type="button" variant="outline" />}
+        render={
+          <Button
+            className="max-md:h-11"
+            size="sm"
+            type="button"
+            variant="outline"
+          />
+        }
       >
         <List data-icon="inline-start" />
         Preview cohorts
