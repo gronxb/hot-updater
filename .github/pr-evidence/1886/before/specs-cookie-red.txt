@@ -1,0 +1,39 @@
+     × saves a registering iPhone as requested by the capability's email, and returns to the iOS devices page with a receipt 5ms
+     × asks an iPhone the IPA doesn't list for its name, and requests it with its receipt, never a command 7ms
+     × shows the request it just made until the page reads the registry again, which then wins, a removal too 2ms
+     × lets the refresh the request triggers win even when it lands before the request's own answer, as onSettled runs before mutate's onSuccess 1ms
+     × without a receipt, checks the iPhone again before Request access: a link's UDID is never trusted 1ms
+     × says where a requested iPhone stands, with nothing to request 0ms
+     × says where an approved iPhone stands, with nothing to request 0ms
+       × shows the refusal as the card's error, Apple's reason alone, and sends an approver to iOS devices 0ms
+       × tells anyone else whom to ask, with no link to a page they can't act on 0ms
+       × offers the newer build that has it over the refusal 0ms
+     × opens the newer build that has a registered iPhone 0ms
+     × sends a production page to no build the server didn't match, such as the sandbox build that last listed the iPhone 0ms
+     × keeps no install link to renew for not-included 1ms
+     × keeps the profile's UDID, trades its receipt for the cookie, and keeps no receipt where script reads it 6ms
+     × requests again after a reload with no profile, from the cookie an earlier check left 3ms
+     × asks for the profile again when the cookie proves another iPhone, or none 4ms
+       × requests this iPhone again after its row was removed, from the cookie, with no profile 1013ms
+       × trades the register answer's receipt for the cookie on the way back 14ms
+ FAIL  src/lib/server/iosDeviceCookie.spec.ts [ src/lib/server/iosDeviceCookie.spec.ts ]
+⎯⎯⎯⎯⎯⎯ Failed Tests 18 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/lib/server/iosDeviceProfile.spec.ts > receiveDeviceResponse > saves a registering iPhone as requested by the capability's email, and returns to the iOS devices page with a receipt
+ FAIL  src/components/features/native-builds/IosDevicesPage.spec.tsx > IosDevicesPage > this iPhone, back from its profile > requests this iPhone again after its row was removed, from the cookie, with no profile
+ FAIL  src/components/features/native-builds/IosDevicesPage.spec.tsx > IosDevicesPage > this iPhone, back from its profile > trades the register answer's receipt for the cookie on the way back
+ FAIL  src/components/features/native-builds/IosInstall.spec.tsx > IosInstall > asks an iPhone the IPA doesn't list for its name, and requests it with its receipt, never a command
+ FAIL  src/components/features/native-builds/IosInstall.spec.tsx > IosInstall > shows the request it just made until the page reads the registry again, which then wins, a removal too
+ FAIL  src/components/features/native-builds/IosInstall.spec.tsx > IosInstall > lets the refresh the request triggers win even when it lands before the request's own answer, as onSettled runs before mutate's onSuccess
+ FAIL  src/components/features/native-builds/IosInstall.spec.tsx > IosInstall > without a receipt, checks the iPhone again before Request access: a link's UDID is never trusted
+ FAIL  src/components/features/native-builds/IosInstall.spec.tsx > IosInstall > says where a requested iPhone stands, with nothing to request
+ FAIL  src/components/features/native-builds/IosInstall.spec.tsx > IosInstall > says where an approved iPhone stands, with nothing to request
+ FAIL  src/components/features/native-builds/IosInstall.spec.tsx > IosInstall > an iPhone Apple refused > shows the refusal as the card's error, Apple's reason alone, and sends an approver to iOS devices
+ FAIL  src/components/features/native-builds/IosInstall.spec.tsx > IosInstall > an iPhone Apple refused > tells anyone else whom to ask, with no link to a page they can't act on
+ FAIL  src/components/features/native-builds/IosInstall.spec.tsx > IosInstall > an iPhone Apple refused > offers the newer build that has it over the refusal
+ FAIL  src/components/features/native-builds/IosInstall.spec.tsx > IosInstall > opens the newer build that has a registered iPhone
+ FAIL  src/components/features/native-builds/IosInstall.spec.tsx > IosInstall > sends a production page to no build the server didn't match, such as the sandbox build that last listed the iPhone
+ FAIL  src/components/features/native-builds/IosInstall.spec.tsx > an Install link near its expiry > keeps no install link to renew for not-included
+ FAIL  src/components/features/native-builds/IosInstall.spec.tsx > InstallCard on an iPhone > keeps the profile's UDID, trades its receipt for the cookie, and keeps no receipt where script reads it
+ FAIL  src/components/features/native-builds/IosInstall.spec.tsx > InstallCard on an iPhone > requests again after a reload with no profile, from the cookie an earlier check left
+ FAIL  src/components/features/native-builds/IosInstall.spec.tsx > InstallCard on an iPhone > asks for the profile again when the cookie proves another iPhone, or none
+      Tests  18 failed | 69 passed (87)
