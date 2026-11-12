@@ -11,13 +11,13 @@ import { InsightsScope } from "@/components/features/insights/InsightsScope";
 import { UpdateFailures } from "@/components/features/insights/UpdateFailures";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { requireConsoleFeature } from "@/lib/console-features-api";
+import { DEFAULT_CHANNEL } from "@/lib/constants";
 import {
   useInsightsRetention,
   useUpdateFailuresQuery,
 } from "@/lib/insights-api";
 import {
   comparedBundleIds,
-  DEFAULT_INSIGHTS_CHANNEL,
   validateInsightsSearch,
 } from "@/lib/insights-search";
 import type { AppUsageScope, UsageWindow } from "@/lib/insights-usage";
@@ -39,7 +39,7 @@ function InsightsPage() {
   const retention = useInsightsRetention();
   const usageWindow = search.window ?? "24h";
   const bundleWindow = search.bundleWindow ?? "24h";
-  const channel = search.channel ?? DEFAULT_INSIGHTS_CHANNEL;
+  const channel = search.channel ?? DEFAULT_CHANNEL;
   const platform = search.platform ?? "all";
   const scope: AppUsageScope = {
     platform,
@@ -89,9 +89,7 @@ function InsightsPage() {
               ...next,
               // Defaults stay out of the URL.
               channel:
-                next.channel === DEFAULT_INSIGHTS_CHANNEL
-                  ? undefined
-                  : next.channel,
+                next.channel === DEFAULT_CHANNEL ? undefined : next.channel,
               platform: next.platform === "all" ? undefined : next.platform,
               // A release and bundles chosen in another channel or platform
               // do not carry over; a new focus picks its own bundles.

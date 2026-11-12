@@ -7,6 +7,7 @@ import {
   CircleOff,
   Filter,
   Package,
+  RefreshCw,
   RotateCcw,
   Tags,
   X,
@@ -51,7 +52,12 @@ import { RelativeTime } from "@/components/RelativeTime";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { RowReason } from "@/components/RowReason";
 import { TargetDisplay } from "@/components/TargetDisplay";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -74,6 +80,7 @@ import {
   useReleaseFoldQuery,
   useReleasesQuery,
 } from "@/lib/api";
+import { ALL_CHANNELS } from "@/lib/constants";
 import type { Fold } from "@/lib/server/foldedPage";
 import type { ReleaseListRow } from "@/lib/server/releaseReachability";
 import { cn } from "@/lib/utils";
@@ -81,10 +88,21 @@ import { cn } from "@/lib/utils";
 import {
   hasReleaseFilters,
   releaseFilterOf,
+  resolveReleaseSearch,
   type ReleaseSearch,
+  showsDefaultReleases,
   updateReleaseFilters,
   validateReleaseSearch,
 } from "./-releases-search";
+
+/** The list while its channel is unknown: loading, whatever the cache holds. */
+const PENDING_RELEASES = {
+  data: undefined,
+  error: null,
+  isError: false,
+  isPending: true,
+  isPlaceholderData: false,
+} as const;
 
 /** A fold of unreachable bundles: "1 unreachable bundle", "2 …". */
 const UNREACHABLE_BUNDLES = {
@@ -107,18 +125,23 @@ export const Route = createFileRoute("/")({
 
 function BundleFilterToolbar({
   channels,
+  clearable,
   onChange,
   onClear,
   onManageChannels,
+  pending,
   search,
 }: {
   channels: readonly ChannelRow[];
+  /** Whether the list shows other than what it opens on. */
+  clearable: boolean;
   onChange: (filters: Partial<ReleaseSearch>) => void;
   onClear: () => void;
   onManageChannels: () => void;
+  /** Whether the channel the list opens on is still unknown. */
+  pending: boolean;
   search: ReleaseSearch;
 }) {
-  const hasFilters = hasReleaseFilters(search);
   // Releases list by channel and platform together: the index serves that pair.
   const channelSelected = search.channelId !== undefined;
   const channelFilterItems = [
@@ -138,13 +161,16 @@ function BundleFilterToolbar({
         <span className="text-xs font-medium">Filters</span>
       </div>
       <Select
+        disabled={pending}
         items={channelFilterItems}
         onValueChange={(value) =>
-          onChange({
-            channelId: value === null || value === "all" ? undefined : value,
-          })
+          onChange(
+            value === null || value === "all"
+              ? { channelId: undefined, channels: ALL_CHANNELS }
+              : { channelId: value },
+          )
         }
-        value={search.channelId ?? "all"}
+        value={pending ? null : (search.channelId ?? "all")}
       >
         <SelectTrigger
           aria-label="Channel"
@@ -256,7 +282,7 @@ function BundleFilterToolbar({
           </button>
         </Badge>
       ) : null}
-      {hasFilters ? (
+      {clearable ? (
         <Button
           className="h-11 px-2 text-xs text-muted-foreground hover:text-foreground max-sm:order-3 sm:ml-auto sm:h-8"
           onClick={onClear}
@@ -530,30 +556,46 @@ function UnreachableBundlesFold({
 }
 
 function BundlesPage() {
-  const search = Route.useSearch();
+  const urlSearch = Route.useSearch();
   const navigate = Route.useNavigate();
   const isMobile = useIsMobile();
   const [channelsOpen, setChannelsOpen] = useState(false);
   const [expandedReleaseId, setExpandedReleaseId] = useState<string>();
   const folds = useOpenFolds();
-  const filter = releaseFilterOf(search);
-  const releasesQuery = useReleasesQuery({
-    afterReleaseId: search.afterReleaseId,
-    beforeReleaseId: search.beforeReleaseId,
-    filter,
-    // The selected release never folds, so a link to it shows its row.
-    releaseId: search.releaseId,
-  });
   const channelsQuery = useChannelsQuery();
   const channels = channelsQuery.data ?? [];
-  const entries = releasesQuery.data?.entries ?? [];
+  // The list the page shows: a URL without a channel opens on the default
+  // one, known once the channel list arrives. A loaded list outlives a failed
+  // refresh; without one, the default list waits, and nothing reads every
+  // channel in its place.
+  const channelRows = channelsQuery.data;
+  const resolved = resolveReleaseSearch(urlSearch, channelRows);
+  const channelsFailed = resolved === undefined && channelsQuery.isError;
+  const search = resolved ?? urlSearch;
+  const filter = releaseFilterOf(search);
+  const releasesQuery = useReleasesQuery(
+    {
+      afterReleaseId: search.afterReleaseId,
+      beforeReleaseId: search.beforeReleaseId,
+      filter,
+      // The selected release never folds, so a link to it shows its row.
+      releaseId: search.releaseId,
+    },
+    // Nothing reads every channel's list on the way to the default one.
+    { enabled: resolved !== undefined },
+  );
+  const clearable = !showsDefaultReleases(urlSearch, channelRows);
+  // Until the channel is known, the list shows nothing the cache holds: a
+  // cached page of every channel, or a fold that would read more of it.
+  const list = resolved === undefined ? PENDING_RELEASES : releasesQuery;
+  const entries = list.data?.entries ?? [];
   // The page's reachable releases (and the selected one), outside its folds.
   const releases = entries.flatMap((entry) =>
     entry.kind === "row" ? [entry.row] : [],
   );
   const pageContext = useRowContext(releases, channels);
-  const nextCursor = releasesQuery.data?.next;
-  const previousCursor = releasesQuery.data?.previous;
+  const nextCursor = list.data?.next;
+  const previousCursor = list.data?.previous;
   // Features add columns, such as release activity where the console reads it.
   const featureColumns = useReleaseColumns();
   const columnCount = 10 + featureColumns.length;
@@ -848,6 +890,15 @@ function BundlesPage() {
       render={render}
     />
   );
+  // The list it opens on, when that channel has no bundle for the platform.
+  const openingTitle = (
+    <>
+      No {search.platform === "android" ? "Android" : "iOS"} bundles in{" "}
+      <span translate="no">
+        {channelNames.get(search.channelId ?? "") ?? search.channelId}
+      </span>
+    </>
+  );
   // A page of unreachable bundles alone: one fold under the empty state.
   const foldedOnly = releases.length === 0 && entries.length > 0;
   const empty = (
@@ -858,9 +909,11 @@ function BundlesPage() {
           ? "No device gets the bundles here"
           : onLaterPage
             ? "No more bundles"
-            : hasReleaseFilters(search)
-              ? "No bundles match these filters"
-              : "No bundles yet"
+            : !hasReleaseFilters(search)
+              ? "No bundles yet"
+              : clearable
+                ? "No bundles match these filters"
+                : openingTitle
       }
     >
       {onLaterPage ? (
@@ -874,13 +927,23 @@ function BundlesPage() {
         >
           Show the newest bundles
         </Link>
-      ) : hasReleaseFilters(search) ? (
+      ) : clearable ? (
         <Button
           className="mt-1 min-h-11 sm:min-h-8"
           onClick={() => go({})}
           variant="outline"
         >
           Clear filters
+        </Button>
+      ) : hasReleaseFilters(search) ? (
+        <Button
+          className="mt-1 min-h-11 sm:min-h-8"
+          onClick={() =>
+            changeFilters({ channelId: undefined, channels: ALL_CHANNELS })
+          }
+          variant="outline"
+        >
+          Show all channels
         </Button>
       ) : (
         <>
@@ -901,24 +964,45 @@ function BundlesPage() {
     <div className="flex h-svh min-h-0 min-w-0 flex-col">
       <BundleFilterToolbar
         channels={channels}
+        clearable={clearable}
         onChange={changeFilters}
         onClear={() => go({})}
         onManageChannels={() => setChannelsOpen(true)}
+        pending={resolved === undefined}
         search={search}
       />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 bg-muted/5 p-3 sm:p-6">
-        {releasesQuery.isError ? (
+        {channelsFailed ? (
+          <Alert variant="destructive">
+            <AlertTriangle />
+            <AlertTitle>Channels couldn't be loaded</AlertTitle>
+            <AlertDescription>
+              Bundles show once the channels load.
+            </AlertDescription>
+            <AlertAction>
+              <Button
+                className="min-h-11 sm:min-h-7"
+                onClick={() => void channelsQuery.refetch()}
+                size="xs"
+                variant="outline"
+              >
+                <RefreshCw data-icon="inline-start" />
+                Retry
+              </Button>
+            </AlertAction>
+          </Alert>
+        ) : list.isError ? (
           <Alert variant="destructive">
             <AlertTriangle />
             <AlertTitle>Bundles could not be loaded</AlertTitle>
-            <AlertDescription>{releasesQuery.error.message}</AlertDescription>
+            <AlertDescription>{list.error?.message}</AlertDescription>
           </Alert>
         ) : (
           <DataTableFrame>
             {isMobile ? (
               <div className="h-full overflow-y-auto">
-                {releasesQuery.isPending ? (
+                {list.isPending ? (
                   <DataCardSkeletons />
                 ) : (
                   <>
@@ -954,7 +1038,7 @@ function BundlesPage() {
                   </>
                 }
               >
-                {releasesQuery.isPending ? (
+                {list.isPending ? (
                   <DataTableBody>
                     <DataTableSkeletonRows columns={columnCount} />
                   </DataTableBody>
@@ -985,13 +1069,13 @@ function BundlesPage() {
           </DataTableFrame>
         )}
 
-        {!releasesQuery.isError && !releasesQuery.isPending ? (
+        {!channelsFailed && !list.isError && !list.isPending ? (
           <DataTablePagination
             count={releases.length}
             folded={{ ...foldedTotal(entries), label: "unreachable" }}
             label="Bundle pagination"
             noun={["bundle", "bundles"]}
-            pending={releasesQuery.isPlaceholderData}
+            pending={list.isPlaceholderData}
             newest={onLaterPage ? { search: newestSearch, to: "/" } : undefined}
             next={nextSearch ? { search: nextSearch, to: "/" } : undefined}
             previous={

@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useChannelsQuery } from "@/lib/api";
-import { DEFAULT_INSIGHTS_CHANNEL } from "@/lib/insights-search";
+import { DEFAULT_CHANNEL } from "@/lib/constants";
 import type { AdoptionRelease, HealthPlatform } from "@/lib/release-adoption";
 
 import { platformLabel } from "./InsightsScope";
@@ -36,7 +36,7 @@ export type InsightsFilters = {
 };
 
 const DEFAULT_FILTERS = {
-  channel: DEFAULT_INSIGHTS_CHANNEL,
+  channel: DEFAULT_CHANNEL,
   platform: "all",
   appVersion: undefined,
   releaseId: undefined,

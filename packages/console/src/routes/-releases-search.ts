@@ -1,4 +1,6 @@
-import type { ReleaseFilter } from "@hot-updater/plugin-core";
+import type { ChannelRow, ReleaseFilter } from "@hot-updater/plugin-core";
+
+import { ALL_CHANNELS, DEFAULT_CHANNEL } from "@/lib/constants";
 
 export interface ReleaseSearch {
   /** Releases newer than this id: the previous page. */
@@ -7,6 +9,8 @@ export interface ReleaseSearch {
   beforeReleaseId?: string;
   bundleId?: string;
   channelId?: string;
+  /** Every channel, where the list would open on the default one. */
+  channels?: typeof ALL_CHANNELS;
   enabled?: boolean;
   platform?: "ios" | "android";
   releaseId?: string;
@@ -47,12 +51,17 @@ export function validateReleaseSearch(
       : search.platform === "android"
         ? "android"
         : "ios";
+  const channels =
+    !bundleId && !scopeKey && !channelId && search.channels === ALL_CHANNELS
+      ? ALL_CHANNELS
+      : undefined;
 
   return {
     afterReleaseId,
     beforeReleaseId,
     bundleId,
     channelId,
+    channels,
     enabled: scopeKey || channelId ? enabled : undefined,
     platform,
     releaseId: optionalString(search.releaseId),
@@ -83,6 +92,33 @@ export function hasReleaseFilters(search: ReleaseSearch): boolean {
 }
 
 /**
+ * The search the list shows. A URL that names no channel, bundle, or scope
+ * opens on the default channel's iOS releases, or on every channel when the
+ * project has no such channel; undefined until the channel list, which the
+ * page reads anyway, arrives. A link to one release that names no channel
+ * shows every channel, so its row shows wherever it is.
+ */
+export function resolveReleaseSearch(
+  search: ReleaseSearch,
+  channels: readonly Pick<ChannelRow, "id" | "name">[] | undefined,
+): ReleaseSearch | undefined {
+  if (
+    search.bundleId ||
+    search.scopeKey ||
+    search.channelId ||
+    search.channels === ALL_CHANNELS
+  ) {
+    return search;
+  }
+  if (search.releaseId) return { ...search, channels: ALL_CHANNELS };
+  if (channels === undefined) return undefined;
+  const defaultChannel = channels.find(({ name }) => name === DEFAULT_CHANNEL);
+  return defaultChannel
+    ? validateReleaseSearch({ ...search, channelId: defaultChannel.id })
+    : search;
+}
+
+/**
  * A new filter starts from the first page. A bundle or scope filter replaces
  * the others, and choosing a channel or platform clears them.
  */
@@ -91,7 +127,12 @@ export function updateReleaseFilters(
   filters: Partial<
     Pick<
       ReleaseSearch,
-      "bundleId" | "channelId" | "enabled" | "platform" | "scopeKey"
+      | "bundleId"
+      | "channelId"
+      | "channels"
+      | "enabled"
+      | "platform"
+      | "scopeKey"
     >
   >,
 ): ReleaseSearch {
@@ -107,6 +148,7 @@ export function updateReleaseFilters(
   if ("channelId" in filters || "platform" in filters) {
     return validateReleaseSearch({
       channelId: next.channelId,
+      channels: next.channels,
       enabled: next.enabled,
       platform: next.platform,
     });
@@ -114,8 +156,27 @@ export function updateReleaseFilters(
   return validateReleaseSearch({
     bundleId: next.bundleId,
     channelId: next.channelId,
+    channels: next.channels,
     enabled: next.enabled,
     platform: next.platform,
     scopeKey: next.scopeKey,
   });
+}
+
+/**
+ * Whether the list shows what it opens on, so Clear has nothing to clear;
+ * true until the channel list arrives.
+ */
+export function showsDefaultReleases(
+  search: ReleaseSearch,
+  channels: readonly Pick<ChannelRow, "id" | "name">[] | undefined,
+): boolean {
+  const view = resolveReleaseSearch(search, channels);
+  const opening = resolveReleaseSearch({}, channels);
+  return (
+    view === undefined ||
+    opening === undefined ||
+    JSON.stringify(releaseFilterOf(view)) ===
+      JSON.stringify(releaseFilterOf(opening))
+  );
 }

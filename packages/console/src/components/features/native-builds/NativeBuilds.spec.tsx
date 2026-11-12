@@ -153,7 +153,7 @@ describe("NativeBuildsTable", () => {
       ...page,
     },
     isError: false,
-    isLoading: false,
+    isPending: false,
     isPlaceholderData: false,
     refetch: vi.fn(),
   });

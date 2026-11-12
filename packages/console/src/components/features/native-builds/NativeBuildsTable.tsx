@@ -54,6 +54,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { TableCell, TableHead } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useNativeBuildFoldQuery } from "@/lib/api";
+import { ALL_CHANNELS } from "@/lib/constants";
 import {
   formatByteSize,
   nativeBuildArtifacts,
@@ -64,6 +65,7 @@ import {
 } from "@/lib/native-builds";
 import type { Fold } from "@/lib/server/foldedPage";
 import type { NativeBuildFoldedPage } from "@/lib/server/nativeBuilds";
+import type { NativeBuildsSearch } from "@/routes/-native-builds-search";
 
 import { CopyableText } from "./CopyableText";
 import { IMPORT_COMMAND, IMPORT_GUIDE_URL } from "./ImportBuild";
@@ -77,8 +79,8 @@ export const NATIVE_BUILD_GUIDE_URL =
 const COLUMNS = 10;
 
 /** The page of the list that shows `channel`'s builds, or every build. */
-const channelSearch = (channel: string | undefined) =>
-  channel === undefined ? {} : { channel };
+const channelSearch = (channel: string | undefined): NativeBuildsSearch =>
+  channel === undefined ? { channels: ALL_CHANNELS } : { channel };
 
 /** A fold of older builds: "1 older build", "12 older builds". */
 const OLDER_BUILDS = { one: "older build", other: "older builds" } as const;
@@ -594,7 +596,7 @@ export function NativeBuildsTable({
   readonly builds: {
     readonly data: NativeBuildFoldedPage | undefined;
     readonly isError: boolean;
-    readonly isLoading: boolean;
+    readonly isPending: boolean;
     readonly isPlaceholderData: boolean;
     readonly refetch: () => unknown;
   };
@@ -662,7 +664,7 @@ export function NativeBuildsTable({
             className="h-full overflow-y-auto aria-busy:opacity-60"
             role="list"
           >
-            {builds.isLoading ? (
+            {builds.isPending ? (
               <DataCardSkeletons label="Loading native builds" />
             ) : (
               <>
@@ -707,7 +709,7 @@ export function NativeBuildsTable({
             }
             rowGroups
           >
-            {builds.isLoading ? (
+            {builds.isPending ? (
               <DataTableBody>
                 <DataTableSkeletonRows
                   columns={COLUMNS}
@@ -743,7 +745,7 @@ export function NativeBuildsTable({
           </DataTable>
         )}
       </DataTableFrame>
-      {builds.isLoading || entries === undefined ? null : (
+      {builds.isPending || entries === undefined ? null : (
         <DataTablePagination
           count={count}
           folded={{ ...foldedTotal(entries), label: "older" }}

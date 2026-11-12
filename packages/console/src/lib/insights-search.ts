@@ -17,9 +17,6 @@ const readHealthChart = (value: unknown): HealthChart | undefined =>
 const readUsageWindow = (value: unknown): UsageWindow | undefined =>
   value === "12m" ? value : readWindow(value);
 
-/** The channel Insights reads when none is chosen: the SDK's and the CLI's default. */
-export const DEFAULT_INSIGHTS_CHANNEL = "production";
-
 export type InsightsSearch = {
   /** Every report's platform; both when omitted. */
   platform?: AppUsageScope["platform"];

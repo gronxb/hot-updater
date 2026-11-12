@@ -1,5 +1,11 @@
-import { HardDrive, RefreshCw } from "lucide-react";
+import { AlertTriangle, HardDrive, RefreshCw } from "lucide-react";
 
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -10,11 +16,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { useChannelsQuery, useNativeBuildsQuery } from "@/lib/api";
+import { ALL_CHANNELS } from "@/lib/constants";
 import {
-  type NativeBuildPage,
-  useChannelsQuery,
-  useNativeBuildsQuery,
-} from "@/lib/api";
+  type NativeBuildsSearch,
+  resolveNativeBuildsSearch,
+} from "@/routes/-native-builds-search";
 
 import { ImportBuildDialog } from "./ImportBuild";
 import { NativeBuildsNav } from "./NativeBuildsNav";
@@ -24,34 +31,57 @@ import { NativeBuildsTable } from "./NativeBuildsTable";
  * The filter's values: a channel's is its name behind a prefix, so no channel
  * name, `all` included, can be taken for "All channels".
  */
-const ALL_CHANNELS = "all";
 const CHANNEL_VALUE_PREFIX = "channel:";
+
+/**
+ * The list while its channel is unknown: loading, whatever the cache holds,
+ * and nothing to refresh. A disabled query still reads when refetched.
+ */
+const PENDING_BUILDS = {
+  data: undefined,
+  isError: false,
+  isPending: true,
+  isPlaceholderData: false,
+  refetch: () => undefined,
+} as const;
 const channelValue = (name: string) => `${CHANNEL_VALUE_PREFIX}${name}`;
 
 /**
  * The native builds Hot Updater tracks: one page at a time, newest first,
- * optionally only those that embed one channel. The page and the channel
- * are in the URL, so a pull request links to its channel's builds.
+ * those that embed one channel, the default one unless the URL names another
+ * or every channel. The page and the channel are in the URL, so a pull
+ * request links to its channel's builds.
  */
 export function NativeBuildsPage({
   search,
   onSearchChange,
 }: {
-  readonly search: NativeBuildPage;
-  readonly onSearchChange: (search: NativeBuildPage) => void;
+  readonly search: NativeBuildsSearch;
+  readonly onSearchChange: (search: NativeBuildsSearch) => void;
 }) {
-  const { channel, before, after } = search;
-  const builds = useNativeBuildsQuery(search);
   // The filter's choices; the rows decode their channel from its ID.
   const channels = useChannelsQuery();
   const channelNames = channels.data?.map(({ name }) => name) ?? [];
+  // The page the list shows: a URL without a channel opens on the default
+  // one, known once the channel list arrives. A loaded list outlives a failed
+  // refresh; without one, the default page waits, and nothing reads every
+  // channel in its place.
+  const page = resolveNativeBuildsSearch(search, channels.data && channelNames);
+  const pending = page === undefined;
+  const channelsFailed = pending && channels.isError;
+  const { channel, before, after } = page ?? search;
+  // Nothing reads every channel's builds on the way to the default channel's.
+  const query = useNativeBuildsQuery(page ?? {}, { enabled: !pending });
+  const builds = pending ? PENDING_BUILDS : query;
   // A filtered channel may be gone, or not loaded yet: it stays a choice.
   const choices =
     channel === undefined || channelNames.includes(channel)
       ? channelNames
       : [channel, ...channelNames];
   const filterBy = (next: string | undefined) =>
-    onSearchChange(next === undefined ? {} : { channel: next });
+    onSearchChange(
+      next === undefined ? { channels: ALL_CHANNELS } : { channel: next },
+    );
 
   return (
     <div className="flex h-svh min-h-0 min-w-0 flex-col">
@@ -73,6 +103,7 @@ export function NativeBuildsPage({
         <NativeBuildsNav current="builds" />
         <div className="flex items-center gap-2">
           <Select
+            disabled={pending}
             items={[
               { label: "All channels", value: ALL_CHANNELS },
               ...choices.map((name) => ({
@@ -91,7 +122,13 @@ export function NativeBuildsPage({
                   : undefined,
               )
             }
-            value={channel === undefined ? ALL_CHANNELS : channelValue(channel)}
+            value={
+              pending
+                ? null
+                : channel === undefined
+                  ? ALL_CHANNELS
+                  : channelValue(channel)
+            }
           >
             <SelectTrigger
               aria-label="Channel"
@@ -120,7 +157,7 @@ export function NativeBuildsPage({
           <Button
             aria-label="Refresh native builds"
             className="size-11 sm:size-7"
-            disabled={builds.isLoading}
+            disabled={builds.isPending}
             onClick={() => void builds.refetch()}
             size="icon-sm"
             variant="ghost"
@@ -128,12 +165,33 @@ export function NativeBuildsPage({
             <RefreshCw aria-hidden="true" />
           </Button>
         </div>
-        <NativeBuildsTable
-          builds={builds}
-          channel={channel}
-          onChannel={filterBy}
-          paged={before !== undefined || after !== undefined}
-        />
+        {channelsFailed ? (
+          <Alert variant="destructive">
+            <AlertTriangle />
+            <AlertTitle>Channels couldn't be loaded</AlertTitle>
+            <AlertDescription>
+              Native builds show once the channels load.
+            </AlertDescription>
+            <AlertAction>
+              <Button
+                className="min-h-11 sm:min-h-7"
+                onClick={() => void channels.refetch()}
+                size="xs"
+                variant="outline"
+              >
+                <RefreshCw data-icon="inline-start" />
+                Retry
+              </Button>
+            </AlertAction>
+          </Alert>
+        ) : (
+          <NativeBuildsTable
+            builds={builds}
+            channel={channel}
+            onChannel={filterBy}
+            paged={before !== undefined || after !== undefined}
+          />
+        )}
       </div>
     </div>
   );
