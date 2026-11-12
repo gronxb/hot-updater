@@ -44,6 +44,7 @@ vi.mock("@/lib/ios-devices-api", async (importOriginal) => ({
     await importOriginal<typeof import("@/lib/ios-devices-api")>()
   ).keptIsThisIphone,
   useKeptIosDeviceQuery: keptQuery,
+  keepIosDeviceReceipt: vi.fn(async () => null),
   useRequestThisIphoneMutation: () => again,
   iosDeviceKeys: { all: ["ios-devices"] },
   useIosDevicesQuery: devicesQuery,

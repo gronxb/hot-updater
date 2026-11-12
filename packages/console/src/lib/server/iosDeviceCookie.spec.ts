@@ -261,6 +261,30 @@ describe("requesting this iPhone again", () => {
     ]);
   });
 
+  it("falls back to the cookie when the page's fragment receipt has expired, as on a page left open past its hour", async () => {
+    const core = coreOf();
+    const kept = await createKeptDeviceReceipt(SECRET, {
+      u: PHONE,
+      e: KIM.email,
+    });
+    const stale = await createDeviceReceipt(
+      SECRET,
+      { u: PHONE, e: KIM.email },
+      Date.now() - 2 * 60 * 60 * 1000,
+    );
+    const response = await handleIosDeviceRequest(
+      call("request", {
+        cookie: kept,
+        body: { name: "Kim's iPhone", receipt: stale },
+      }),
+      depsOf(core),
+    );
+    expect(response.status).toBe(200);
+    expect(await core.listIosDevices({ limit: 10 })).toEqual([
+      expect.objectContaining({ udid: PHONE }),
+    ]);
+  });
+
   it("refuses with no cookie, a forged or expired one, another person's, or from another site", async () => {
     const core = coreOf();
     const kim = await createKeptDeviceReceipt(SECRET, {

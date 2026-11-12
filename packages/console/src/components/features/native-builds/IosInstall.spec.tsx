@@ -26,9 +26,11 @@ const {
   installEligibilityQuery,
   profileLinkQuery,
   keptQuery,
+  keepReceipt,
   requestAccess,
 } = vi.hoisted(() => ({
   keptQuery: vi.fn(),
+  keepReceipt: vi.fn(async () => null),
   downloadLinkQuery: vi.fn(),
   downloadUrlQuery: vi.fn(),
   installEligibilityQuery: vi.fn(),
@@ -51,6 +53,7 @@ vi.mock("@/lib/ios-devices-api", async (importOriginal) => ({
   ).keptIsThisIphone,
   useIosDeviceProfileLinkQuery: profileLinkQuery,
   useKeptIosDeviceQuery: keptQuery,
+  keepIosDeviceReceipt: keepReceipt,
   useRequestThisIphoneMutation: () => requestAccess,
 }));
 // The newer build's link renders as an anchor without a router.
@@ -878,12 +881,28 @@ describe("InstallCard on an iPhone", () => {
       null,
     );
     // The fragment's receipt goes to the trade, which sets the cookie.
+    expect(keepReceipt).toHaveBeenCalledWith("", RECEIPT);
     expect(keptQuery).toHaveBeenLastCalledWith(
       "",
       expect.objectContaining({ udid: PHONE, receipt: RECEIPT }),
       true,
     );
     expect(window.location.hash).toBe("");
+  });
+
+  it("keeps the proof as the cookie whatever the page shows next, such as an iPhone already in the build", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      `/console/native-builds/${BUILD}#udid=${PHONE}&r=${RECEIPT}`,
+    );
+    onIphone();
+    answer(installable("included"));
+    render(<InstallCard build={row} />);
+
+    expect(await screen.findByRole("link", { name: "Install" })).toBeTruthy();
+    // Under the Console's own path.
+    expect(keepReceipt).toHaveBeenCalledWith("/console", RECEIPT);
   });
 
   it("requests again after a reload with no profile, from the cookie an earlier check left", async () => {

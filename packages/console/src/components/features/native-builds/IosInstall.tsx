@@ -23,12 +23,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useNativeBuildInstallEligibilityQuery } from "@/lib/api";
 import {
   useIosDeviceProfileLinkQuery,
+  keepIosDeviceReceipt,
   keptIsThisIphone,
   useKeptIosDeviceQuery,
   useRequestThisIphoneMutation,
 } from "@/lib/ios-devices-api";
 import {
   consolePathOf,
+  consolePathOfNativeBuildsPage,
   IOS_DEVICE_RECEIPT_STORAGE_KEY,
   IOS_UDID_PATTERN,
   IOS_UDID_STORAGE_KEY,
@@ -133,6 +135,13 @@ export const useIosDevice = (): IosDevice | null => {
       if (fragment.udid !== null && answered) {
         answers += 1;
         keep(IOS_UDID_STORAGE_KEY, fragment.udid);
+        // Kept as this Safari's cookie on any page, whatever it shows next.
+        if (fragment.receipt !== null) {
+          void keepIosDeviceReceipt(
+            consolePathOfNativeBuildsPage(window.location),
+            fragment.receipt,
+          );
+        }
       }
       if (fragment.udid !== null && window.location.hash !== "") {
         window.history.replaceState(

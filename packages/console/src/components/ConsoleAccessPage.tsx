@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 
-import { isIosBrowser } from "@/components/features/native-builds/IosInstall";
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
 import { Button } from "@/components/ui/button";
-import { forgetKeptIosDevice } from "@/lib/ios-devices-api";
 
 import type { ConsoleAccess, ConsoleAuthProvider } from "../index";
 
@@ -94,8 +92,6 @@ export function ConsoleAccessPage({
     setSigningOut(true);
     setError(null);
     try {
-      // Only an iPhone or iPad holds this Safari's proof of itself.
-      if (isIosBrowser(navigator)) await forgetKeptIosDevice();
       const response = await fetch("/api/auth/sign-out", {
         body: "{}",
         headers: { "content-type": "application/json" },

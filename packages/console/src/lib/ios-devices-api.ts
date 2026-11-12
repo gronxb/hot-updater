@@ -148,10 +148,31 @@ const sendDeviceRoute = async <T>(
   return body;
 };
 
+/** Trades in flight or done, one per receipt. */
+const trades = new Map<string, Promise<unknown>>();
+
+/**
+ * Trades the profile answer's fresh receipt for this Safari's HttpOnly cookie,
+ * once per receipt, wherever the answer lands: whatever the build page or the
+ * registry says, the proof is kept. A failed trade leaves the receipt in
+ * memory for this page.
+ */
+export const keepIosDeviceReceipt = (consolePath: string, receipt: string) => {
+  let trade = trades.get(receipt);
+  if (trade === undefined) {
+    trade = sendDeviceRoute(deviceRoute(consolePath, "receipt"), {
+      method: "POST",
+      json: { receipt },
+    }).catch(() => null);
+    trades.set(receipt, trade);
+  }
+  return trade;
+};
+
 /**
  * The UDID this Safari has proved for the signed-in person, from its HttpOnly
- * cookie, or null. With the profile's fresh receipt, this trades it for that
- * cookie first. Read on an iPhone only.
+ * cookie, or null, read after the page's fresh receipt, if any, is traded for
+ * it. Read on an iPhone only.
  */
 export function useKeptIosDeviceQuery(
   consolePath: string,
@@ -161,11 +182,12 @@ export function useKeptIosDeviceQuery(
   const { receipt } = device;
   return useQuery({
     queryKey: iosDeviceKeys.kept(device.udid ?? "", receipt),
-    queryFn: () =>
-      sendDeviceRoute<{ udid: string | null }>(
+    queryFn: async () => {
+      if (receipt !== null) await keepIosDeviceReceipt(consolePath, receipt);
+      return sendDeviceRoute<{ udid: string | null }>(
         deviceRoute(consolePath, "receipt"),
-        receipt === null ? {} : { method: "POST", json: { receipt } },
-      ),
+      );
+    },
     enabled,
     retry: false,
     staleTime: Number.POSITIVE_INFINITY,
@@ -177,8 +199,8 @@ export function useKeptIosDeviceQuery(
  * person on this Safari starts from the profile. Only an iPhone or iPad holds
  * one; a failure leaves the cookie, which the next email ignores anyway.
  */
-export const forgetKeptIosDevice = async () => {
-  await sendDeviceRoute(deviceRoute("", "receipt"), {
+export const forgetKeptIosDevice = async (consolePath: string) => {
+  await sendDeviceRoute(deviceRoute(consolePath, "receipt"), {
     method: "DELETE",
   }).catch(() => undefined);
 };

@@ -225,9 +225,9 @@ export const handleIosDeviceRequest = async (
           typeof receipt === "string" || receipt.e !== viewer.email
             ? null
             : receipt.u;
-      } else {
-        udid = (await keptReceipt(request, secret, viewer, now))?.u ?? null;
       }
+      // A page left open past its fragment's hour still has the cookie.
+      udid ??= (await keptReceipt(request, secret, viewer, now))?.u ?? null;
     }
     if (udid === null) {
       return refusal(403, "Check this iPhone again from this account.");

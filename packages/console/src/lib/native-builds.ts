@@ -131,6 +131,30 @@ export const consolePathOf = (
     : "";
 };
 
+/**
+ * The Console's own path, from where the browser is and where the router says
+ * it is: the prefix a host serves the Console under, or empty at its root.
+ */
+export const consolePathFromRouter = (
+  location: { readonly pathname: string },
+  routerPathname: string,
+) => {
+  const path = location.pathname.replace(/\/$/u, "");
+  const route = routerPathname.replace(/\/$/u, "");
+  return path.endsWith(route) ? path.slice(0, path.length - route.length) : "";
+};
+
+/**
+ * The Console's own path, from one of its Native builds pages, where the
+ * profile's answer lands: empty at the root of its host.
+ */
+export const consolePathOfNativeBuildsPage = (location: {
+  readonly pathname: string;
+}) => {
+  const at = location.pathname.lastIndexOf("/native-builds");
+  return at < 0 ? "" : location.pathname.slice(0, at);
+};
+
 /** The console page of one native build. */
 export const nativeBuildDetailPath = (id: string) =>
   `/native-builds/${encodeURIComponent(id)}`;

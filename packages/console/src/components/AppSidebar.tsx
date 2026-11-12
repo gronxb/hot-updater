@@ -21,6 +21,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { forgetKeptIosDevice } from "@/lib/ios-devices-api";
+import { consolePathFromRouter } from "@/lib/native-builds";
 
 type NavigationItem = {
   readonly label: string;
@@ -90,7 +91,11 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
     setSigningOut(true);
     try {
       // Only an iPhone or iPad holds this Safari's proof of itself.
-      if (isIosBrowser(navigator)) await forgetKeptIosDevice();
+      if (isIosBrowser(navigator)) {
+        await forgetKeptIosDevice(
+          consolePathFromRouter(window.location, routerState.location.pathname),
+        );
+      }
       const response = await fetch("/api/auth/sign-out", {
         body: "{}",
         headers: { "content-type": "application/json" },
