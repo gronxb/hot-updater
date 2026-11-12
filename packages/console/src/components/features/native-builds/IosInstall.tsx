@@ -78,6 +78,11 @@ export interface IosDevice {
   readonly receipt: string | null;
   /** Whether this page opened from a registration's answer. */
   readonly requested: boolean;
+  /**
+   * How many of the profile's answers this page has taken, at its opening or
+   * when Safari came back to it: one more for each, the same UDID's too.
+   */
+  readonly answers: number;
 }
 
 const readKept = (key: string) => {
@@ -99,7 +104,8 @@ const keep = (key: string, value: string) => {
 /**
  * Whether this page is open on an iPhone, its UDID, and a receipt of it: the
  * ones this phone kept, else the ones the profile's answer passed in the
- * fragment, which are kept then. Read after the page mounts: the server
+ * fragment, which are kept then, whether the answer opened this page or came
+ * back to it already open. Read after the page mounts: the server
  * renders it without a browser. Null until then.
  */
 export const useIosDevice = (): IosDevice | null => {
@@ -110,28 +116,37 @@ export const useIosDevice = (): IosDevice | null => {
   useEffect(() => {
     const valid = (udid: string | null | undefined) =>
       udid != null && IOS_UDID_PATTERN.test(udid) ? udid : null;
-    // Only the profile's own answer, which carries a receipt or says it
-    // registered, replaces the ID this phone kept: a plain link's ID never does.
-    const answered = passed.receipt !== null || passed.requested;
-    if (passed.udid !== null && answered) {
-      keep(IOS_UDID_STORAGE_KEY, passed.udid);
-      if (passed.receipt !== null) {
-        keep(
-          IOS_DEVICE_RECEIPT_STORAGE_KEY,
-          JSON.stringify({ udid: passed.udid, receipt: passed.receipt }),
+    // The fragment this page last took: the one it opened with, or one Safari
+    // brought back to this same tab, which changes only the fragment.
+    let latest = passed;
+    let answers = 0;
+    const absorb = (fragment: ReturnType<typeof fragmentOf>) => {
+      // Only the profile's own answer, which carries a receipt or says it
+      // registered, replaces the ID this phone kept: a plain link's ID never
+      // does.
+      const answered = fragment.receipt !== null || fragment.requested;
+      if (fragment.udid !== null && answered) {
+        answers += 1;
+        keep(IOS_UDID_STORAGE_KEY, fragment.udid);
+        if (fragment.receipt !== null) {
+          keep(
+            IOS_DEVICE_RECEIPT_STORAGE_KEY,
+            JSON.stringify({ udid: fragment.udid, receipt: fragment.receipt }),
+          );
+        }
+      }
+      if (fragment.udid !== null && window.location.hash !== "") {
+        window.history.replaceState(
+          window.history.state,
+          "",
+          `${window.location.pathname}${window.location.search}`,
         );
       }
-    }
-    if (passed.udid !== null && window.location.hash !== "") {
-      window.history.replaceState(
-        window.history.state,
-        "",
-        `${window.location.pathname}${window.location.search}`,
-      );
-    }
+    };
+    absorb(passed);
     const read = () => {
       // A browser that keeps nothing still has the fragment's, in memory.
-      const udid = valid(readKept(IOS_UDID_STORAGE_KEY)) ?? passed.udid;
+      const udid = valid(readKept(IOS_UDID_STORAGE_KEY)) ?? latest.udid;
       let receipt: string | null = null;
       try {
         const kept = JSON.parse(
@@ -144,15 +159,22 @@ export const useIosDevice = (): IosDevice | null => {
       } catch {
         receipt = null;
       }
-      if (receipt === null && passed.udid === udid) receipt = passed.receipt;
+      if (receipt === null && latest.udid === udid) receipt = latest.receipt;
+      const requested = latest.requested;
+      const taken = answers;
       setDevice((current) =>
-        current !== null && current.udid === udid && current.receipt === receipt
+        current !== null &&
+        current.udid === udid &&
+        current.receipt === receipt &&
+        current.requested === requested &&
+        current.answers === taken
           ? current
           : {
               ios: isIosBrowser(navigator),
               udid,
               receipt,
-              requested: passed.requested,
+              requested,
+              answers: taken,
             },
       );
     };
@@ -168,13 +190,26 @@ export const useIosDevice = (): IosDevice | null => {
         read();
       }
     };
+    // Or it lands in this tab, already open on the same page: Safari changes
+    // only the fragment, so nothing mounts again. Whichever event Safari sends
+    // on the way back, the fragment is read again before what was kept.
+    const onReturn = () => {
+      const fragment = fragmentOf();
+      if (fragment.udid !== null) {
+        latest = fragment;
+        absorb(fragment);
+      }
+      read();
+    };
     window.addEventListener("storage", onStorage);
-    window.addEventListener("pageshow", read);
-    document.addEventListener("visibilitychange", read);
+    window.addEventListener("hashchange", onReturn);
+    window.addEventListener("pageshow", onReturn);
+    document.addEventListener("visibilitychange", onReturn);
     return () => {
       window.removeEventListener("storage", onStorage);
-      window.removeEventListener("pageshow", read);
-      document.removeEventListener("visibilitychange", read);
+      window.removeEventListener("hashchange", onReturn);
+      window.removeEventListener("pageshow", onReturn);
+      document.removeEventListener("visibilitychange", onReturn);
     };
   }, [passed]);
   return device;
@@ -339,14 +374,18 @@ const shortDate = (ms: number) => dayjs(ms).format("MMM D");
 
 /**
  * Apple's refusal of this iPhone, in its own words, and the one next step: the
- * iOS devices page for an approver, else whom to ask.
+ * iOS devices page for an approver, unless this is that page, else whom to
+ * ask.
  */
-function AppleRefusal({
+export function AppleRefusal({
   device,
   canApprove,
+  onDevicesPage = false,
 }: {
   readonly device: IosDeviceRow;
   readonly canApprove: boolean;
+  /** On the iOS devices page, where an approver already has the row. */
+  readonly onDevicesPage?: boolean;
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -356,15 +395,17 @@ function AppleRefusal({
         <AlertDescription>{device.apple_error}</AlertDescription>
       </Alert>
       {canApprove ? (
-        <Link
-          className={buttonVariants({
-            className: ACTION_CLASS,
-            variant: "outline",
-          })}
-          to="/native-builds/devices"
-        >
-          iOS devices
-        </Link>
+        onDevicesPage ? null : (
+          <Link
+            className={buttonVariants({
+              className: ACTION_CLASS,
+              variant: "outline",
+            })}
+            to="/native-builds/devices"
+          >
+            iOS devices
+          </Link>
+        )
       ) : (
         <p className="text-xs text-muted-foreground">
           {device.status === "approved"

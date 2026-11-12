@@ -3,6 +3,7 @@ import {
   type IosDeviceRow,
   type IosDeviceStatus,
 } from "@hot-updater/plugin-core";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import dayjs from "dayjs";
 import {
@@ -16,7 +17,7 @@ import {
   Smartphone,
   Trash2,
 } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import {
   DataCard,
@@ -86,8 +87,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
+  iosDeviceKeys,
   useApproveIosDeviceMutation,
   useIosDeviceProfileLinkQuery,
+  useIosDeviceQuery,
   useIosDevicesQuery,
   useRemoveIosDeviceMutation,
   useRenameIosDeviceMutation,
@@ -103,7 +106,7 @@ import {
 import type { IosDevicesSearch } from "@/routes/-native-builds-search";
 
 import { CopyableText } from "./CopyableText";
-import { useIosDevice } from "./IosInstall";
+import { AppleRefusal, useIosDevice } from "./IosInstall";
 import { NativeBuildsNav } from "./NativeBuildsNav";
 
 const STATUS_LABELS: Record<IosDeviceStatus, string> = {
@@ -550,6 +553,60 @@ function RemoveDialog({
   );
 }
 
+/**
+ * Where this iPhone stands, once its profile has answered: its row's name,
+ * status, and next step, in place of the form that registered it. An approver
+ * approves it here; Apple's refusal reads as on a build's page.
+ */
+function ThisIphone({
+  device,
+  viewer,
+  onOpen,
+}: {
+  readonly device: IosDeviceRow;
+  /** Unknown until the list loads: no action until then. */
+  readonly viewer: Viewer | undefined;
+  readonly onOpen: (target: DialogTarget) => void;
+}) {
+  const canApprove = viewer?.canApprove === true;
+  if (device.apple_error !== null) {
+    return (
+      <AppleRefusal canApprove={canApprove} device={device} onDevicesPage />
+    );
+  }
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <p className="truncate text-sm font-medium">{device.name}</p>
+          <p className="font-mono text-xs text-muted-foreground" translate="no">
+            {maskIosUdid(device.udid)}
+          </p>
+        </div>
+        <DeviceStatus device={device} withError={false} />
+      </div>
+      <p className="text-xs text-muted-foreground" role="status">
+        {device.status === "pending"
+          ? canApprove
+            ? "Approve it, and it joins the next ad hoc build."
+            : "A maintainer approves it next."
+          : device.status === "approved"
+            ? "It joins the next ad hoc build."
+            : "New ad hoc builds install on it."}
+      </p>
+      {canApprove && device.status === "pending" ? (
+        <Button
+          className="h-11 w-full sm:h-8 sm:w-fit"
+          onClick={() => onOpen({ kind: "approve", device })}
+        >
+          <Check data-icon="inline-start" />
+          Approve
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 /** Why iPhones can't register through this Console. */
 function RegistrationNotice({
   status,
@@ -575,10 +632,10 @@ function RegistrationNotice({
  */
 function RegisterCard({
   view,
-  devices,
+  onOpen,
 }: {
   readonly view: IosDevicesView | undefined;
-  readonly devices: readonly IosDeviceRow[] | undefined;
+  readonly onOpen: (target: DialogTarget) => void;
 }) {
   const phone = useIosDevice();
   const [name, setName] = useState<string | null>(null);
@@ -595,10 +652,23 @@ function RegisterCard({
     onPhone && view?.registration === "ready",
   );
   const https = phone === null || window.location.protocol === "https:";
-  const back =
-    phone?.requested && phone.udid !== null
-      ? devices?.find((device) => device.udid === phone.udid?.toLowerCase())
-      : undefined;
+  // Once its profile has answered, this iPhone's own row, whatever the list
+  // shows: after a reload, or in the tab Safari came back to.
+  const udid = onPhone ? phone.udid : null;
+  const mine = useIosDeviceQuery(udid);
+  // A new answer with the same UDID, such as a removed iPhone registering
+  // again, reads its row again: the key didn't change, so nothing else would.
+  // A new UDID changes the key, which reads it; a computer reads nothing.
+  const answers = phone?.answers ?? 0;
+  const { refetch } = mine;
+  const seen = useRef({ udid, answers });
+  useEffect(() => {
+    const before = seen.current;
+    seen.current = { udid, answers };
+    if (udid !== null && udid === before.udid && answers > before.answers) {
+      void refetch();
+    }
+  }, [udid, answers, refetch]);
 
   const body = (() => {
     // The server renders this without a browser: where it is and what it is
@@ -606,15 +676,12 @@ function RegisterCard({
     if (phone === null) {
       return <Skeleton aria-label="Loading" className="h-36 w-full" />;
     }
-    if (back !== undefined) {
+    if (onPhone && phone.udid !== null && mine.isPending) {
+      return <Skeleton aria-label="Loading" className="h-36 w-full" />;
+    }
+    if (onPhone && mine.data) {
       return (
-        <p className="text-sm" role="status">
-          <span className="font-medium">{back.name}</span> ·{" "}
-          {STATUS_LABELS[back.status]}.{" "}
-          {back.status === "pending"
-            ? "A maintainer approves it next, and it joins the next ad hoc build."
-            : "It joins the next ad hoc build."}
-        </p>
+        <ThisIphone device={mine.data} onOpen={onOpen} viewer={view?.viewer} />
       );
     }
     if (
@@ -736,6 +803,12 @@ export function IosDevicesPage({
   const query = useIosDevicesQuery(search.status);
   const view = query.data;
   const rows = view?.devices;
+  const queryClient = useQueryClient();
+  // Refresh and Retry read every registry query the page shows: the list,
+  // and this iPhone's own row on a phone. A disabled read, such as the row
+  // on a computer, stays unread.
+  const refresh = () =>
+    void queryClient.invalidateQueries({ queryKey: iosDeviceKeys.all });
   const [dialog, setDialog] = useState<DialogTarget>(null);
   const close = () => setDialog(null);
 
@@ -781,7 +854,7 @@ export function IosDevicesPage({
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto bg-muted/5 p-3 sm:p-6">
         <NativeBuildsNav current="devices" />
-        <RegisterCard devices={rows} view={view} />
+        <RegisterCard onOpen={setDialog} view={view} />
         {view !== undefined && !view.viewer.approversConfigured ? (
           <div className="flex min-w-0 flex-col gap-1.5 text-xs text-muted-foreground">
             <p>Nobody approves in this Console. Approve from a terminal:</p>
@@ -831,7 +904,7 @@ export function IosDevicesPage({
             aria-label="Refresh iOS devices"
             className="ml-auto size-11 sm:size-7"
             disabled={query.isFetching}
-            onClick={() => void query.refetch()}
+            onClick={refresh}
             size="icon-sm"
             variant="ghost"
           >
@@ -846,18 +919,15 @@ export function IosDevicesPage({
               Check your connection and try again.
             </AlertDescription>
             <AlertAction>
-              <Button
-                onClick={() => void query.refetch()}
-                size="xs"
-                variant="outline"
-              >
+              <Button onClick={refresh} size="xs" variant="outline">
                 <RefreshCw data-icon="inline-start" />
                 Retry
               </Button>
             </AlertAction>
           </Alert>
         ) : (
-          <DataTableFrame>
+          // The page scrolls as a whole, the Register card above the list.
+          <DataTableFrame className="flex-none">
             {isMobile ? (
               <div
                 aria-busy={query.isPlaceholderData}

@@ -91,6 +91,23 @@ export const getIosDevices = createServerFn({ method: "GET" })
   });
 
 /**
+ * The registry's row of one UDID, or null: what an iPhone back from its
+ * profile reads of itself. One keyed read, whatever the list's filter. A
+ * POST, as the install check is, so the UDID stays out of the URL.
+ */
+export const getIosDevice = createServerFn({ method: "POST" })
+  .middleware([consoleAccess])
+  .validator((input: unknown) => ({ udid: text(input, "udid", 64) }))
+  .handler(async ({ data }): Promise<IosDeviceRow | null> => {
+    const [{ core }, { normalizeIosUdid }] = await Promise.all([
+      registry(),
+      import("@hot-updater/protocol/native-artifact"),
+    ]);
+    const udid = normalizeIosUdid(data.udid);
+    return udid === null ? null : core.findIosDevice(udid);
+  });
+
+/**
  * A new link to the profile that reads this iPhone's UDID: `register` saves
  * it as requested under `name`, `identify` tells build `buildId`'s page which
  * iPhone it is. A POST, since it signs the link.
