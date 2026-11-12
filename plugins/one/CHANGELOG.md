@@ -1,5 +1,13 @@
 # @hot-updater/one
 
+## 1.2.0-rc.33
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.33
+  - @hot-updater/bare@1.2.0-rc.33
+  - @hot-updater/plugin-core@1.2.0-rc.33
+
 ## 1.2.0-rc.32
 
 ### Patch Changes
