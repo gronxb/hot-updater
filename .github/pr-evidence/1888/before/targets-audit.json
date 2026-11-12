@@ -1,0 +1,410 @@
+{
+  "m01-bundles": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 0,
+      "small": [],
+      "zoom": [],
+      "dialogs": [],
+      "truncated": []
+    },
+    "reach": {
+      "last": "Insights",
+      "bottom": 5098,
+      "clip": 735,
+      "reachable": false
+    }
+  },
+  "m02-bundle-sheet": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 1,
+      "small": [
+        "This channel's builds 135x43"
+      ],
+      "zoom": [
+        "INPUT 12px"
+      ],
+      "dialogs": [
+        {
+          "h": 844,
+          "top": 0,
+          "bottom": 844,
+          "scrolls": true,
+          "fits": true
+        }
+      ],
+      "truncated": []
+    }
+  },
+  "m03-channels-dialog": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 0,
+      "small": [],
+      "zoom": [],
+      "dialogs": [
+        {
+          "h": 479,
+          "top": 183,
+          "bottom": 661,
+          "scrolls": true,
+          "fits": true
+        }
+      ],
+      "truncated": []
+    }
+  },
+  "m04-native-builds": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 1,
+      "small": [
+        "Show the builds that embed dev 43x44"
+      ],
+      "zoom": [],
+      "dialogs": [],
+      "truncated": []
+    },
+    "reach": {
+      "last": "Target",
+      "bottom": 4213,
+      "clip": 743,
+      "reachable": false
+    }
+  },
+  "m05-import-dialog": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 0,
+      "small": [],
+      "zoom": [],
+      "dialogs": [
+        {
+          "h": 225,
+          "top": 310,
+          "bottom": 535,
+          "scrolls": false,
+          "fits": true
+        }
+      ],
+      "truncated": []
+    }
+  },
+  "m06-build-detail": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 0,
+      "small": [],
+      "zoom": [],
+      "dialogs": [],
+      "truncated": []
+    },
+    "reach": {
+      "last": "patch",
+      "bottom": 727,
+      "clip": 832,
+      "reachable": true
+    }
+  },
+  "m07-devices": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 0,
+      "small": [],
+      "zoom": [],
+      "dialogs": [],
+      "truncated": []
+    },
+    "reach": {
+      "last": "lead@hot-updater.dev",
+      "bottom": 759,
+      "clip": 832,
+      "reachable": true
+    }
+  },
+  "m08-approve-dialog": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 0,
+      "small": [],
+      "zoom": [],
+      "dialogs": [
+        {
+          "h": 383,
+          "top": 231,
+          "bottom": 613,
+          "scrolls": false,
+          "fits": true
+        }
+      ],
+      "truncated": []
+    }
+  },
+  "m09-insights": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 11,
+      "small": [
+        "24 hours 49x37",
+        "7 days 49x37",
+        "30 days 49x37",
+        "12 months 49x37",
+        "24 hours 48x37",
+        "7 days 48x37",
+        "30 days 48x37",
+        "Adoption 78x37",
+        "Crashes 73x37",
+        "Add a bundle 278x42",
+        "BUTTON 24x24"
+      ],
+      "zoom": [],
+      "dialogs": [],
+      "truncated": []
+    },
+    "reach": {
+      "last": "Estimated",
+      "bottom": 2962,
+      "clip": 820,
+      "reachable": false
+    }
+  },
+  "m10-distribution": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 4,
+      "small": [
+        "24 hours 49x37",
+        "7 days 49x37",
+        "30 days 49x37",
+        "12 months 49x37"
+      ],
+      "zoom": [],
+      "dialogs": [],
+      "truncated": []
+    },
+    "reach": {
+      "last": "Previous",
+      "bottom": 795,
+      "clip": 844,
+      "reachable": true
+    }
+  },
+  "m11-installations": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 4,
+      "small": [
+        "Last 24 hours 49x37",
+        "Last 7 days 49x37",
+        "Last 30 days 49x37",
+        "Last 90 days 49x37"
+      ],
+      "zoom": [],
+      "dialogs": [],
+      "truncated": []
+    },
+    "reach": {
+      "last": "App",
+      "bottom": 7120,
+      "clip": 844,
+      "reachable": false
+    }
+  },
+  "m12-remote-config": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 0,
+      "small": [],
+      "zoom": [],
+      "dialogs": [],
+      "truncated": []
+    },
+    "reach": {
+      "last": "Default",
+      "bottom": 763,
+      "clip": 832,
+      "reachable": true
+    }
+  },
+  "m13-parameter-dialog": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 0,
+      "small": [],
+      "zoom": [
+        "INPUT 12px",
+        "INPUT 12px"
+      ],
+      "dialogs": [
+        {
+          "h": 812,
+          "top": 16,
+          "bottom": 828,
+          "scrolls": true,
+          "fits": true
+        }
+      ],
+      "truncated": []
+    }
+  },
+  "m14-condition-dialog": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 0,
+      "small": [],
+      "zoom": [
+        "INPUT 12px"
+      ],
+      "dialogs": [
+        {
+          "h": 550,
+          "top": 147,
+          "bottom": 697,
+          "scrolls": false,
+          "fits": true
+        }
+      ],
+      "truncated": []
+    }
+  },
+  "m15-api-keys": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 1,
+      "small": [
+        "Revoke 74x24"
+      ],
+      "zoom": [],
+      "dialogs": [],
+      "truncated": []
+    },
+    "reach": {
+      "last": "csHVn2…",
+      "bottom": 276,
+      "clip": 288,
+      "reachable": true
+    }
+  },
+  "m16-api-key-dialog": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 0,
+      "small": [],
+      "zoom": [],
+      "dialogs": [
+        {
+          "h": 246,
+          "top": 299,
+          "bottom": 545,
+          "scrolls": false,
+          "fits": true
+        }
+      ],
+      "truncated": []
+    }
+  },
+  "m16b-api-key-list": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 2,
+      "small": [
+        "Revoke 74x24"
+      ],
+      "zoom": [],
+      "dialogs": [],
+      "truncated": []
+    }
+  },
+  "m19-error-sheet": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 2,
+      "small": [
+        "Copy report 103x28",
+        "Installation history 141x28"
+      ],
+      "zoom": [],
+      "dialogs": [
+        {
+          "h": 844,
+          "top": 0,
+          "bottom": 844,
+          "scrolls": true,
+          "fits": true
+        }
+      ],
+      "truncated": []
+    }
+  },
+  "m20-event-sheet": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 4,
+      "small": [
+        "Last 24 hours 49x37",
+        "Last 7 days 49x37",
+        "Last 30 days 49x37",
+        "Last 90 days 49x37"
+      ],
+      "zoom": [],
+      "dialogs": [],
+      "truncated": []
+    }
+  },
+  "m17-sidebar": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 0,
+      "small": [],
+      "zoom": [],
+      "dialogs": [
+        {
+          "h": 844,
+          "top": 0,
+          "bottom": 844,
+          "scrolls": false,
+          "fits": true
+        }
+      ],
+      "truncated": []
+    }
+  },
+  "m18-sign-in": {
+    "audit": {
+      "overflowX": 0,
+      "wide": [],
+      "smallCount": 0,
+      "small": [],
+      "zoom": [],
+      "dialogs": [],
+      "truncated": []
+    },
+    "reach": {
+      "last": "No OAuth provider is configure",
+      "bottom": 478,
+      "clip": 844,
+      "reachable": true
+    }
+  }
+}

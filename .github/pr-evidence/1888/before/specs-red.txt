@@ -1,0 +1,7 @@
+     × knows this iPhone from the cookie after Safari wiped its storage, and checks the IPA with that ID 1029ms
+       × takes this iPhone's identity from the cookie when Safari wiped its storage, and offers Request this iPhone, not the profile 1055ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  2 failed | 80 skipped (82)
+       × asks the cookie once for its ID, then reads its row once 1046ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  1 failed | 1 passed | 9 skipped (11)
