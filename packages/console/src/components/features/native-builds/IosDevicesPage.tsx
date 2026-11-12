@@ -88,6 +88,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import {
   useApproveIosDeviceMutation,
   useIosDeviceProfileLinkQuery,
+  useIosDeviceQuery,
   useIosDevicesQuery,
   useRemoveIosDeviceMutation,
   useRenameIosDeviceMutation,
@@ -103,7 +104,7 @@ import {
 import type { IosDevicesSearch } from "@/routes/-native-builds-search";
 
 import { CopyableText } from "./CopyableText";
-import { useIosDevice } from "./IosInstall";
+import { AppleRefusal, useIosDevice } from "./IosInstall";
 import { NativeBuildsNav } from "./NativeBuildsNav";
 
 const STATUS_LABELS: Record<IosDeviceStatus, string> = {
@@ -550,6 +551,60 @@ function RemoveDialog({
   );
 }
 
+/**
+ * Where this iPhone stands, once its profile has answered: its row's name,
+ * status, and next step, in place of the form that registered it. An approver
+ * approves it here; Apple's refusal reads as on a build's page.
+ */
+function ThisIphone({
+  device,
+  viewer,
+  onOpen,
+}: {
+  readonly device: IosDeviceRow;
+  /** Unknown until the list loads: no action until then. */
+  readonly viewer: Viewer | undefined;
+  readonly onOpen: (target: DialogTarget) => void;
+}) {
+  const canApprove = viewer?.canApprove === true;
+  if (device.apple_error !== null) {
+    return (
+      <AppleRefusal canApprove={canApprove} device={device} onDevicesPage />
+    );
+  }
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <p className="truncate text-sm font-medium">{device.name}</p>
+          <p className="font-mono text-xs text-muted-foreground" translate="no">
+            {maskIosUdid(device.udid)}
+          </p>
+        </div>
+        <DeviceStatus device={device} withError={false} />
+      </div>
+      <p className="text-xs text-muted-foreground" role="status">
+        {device.status === "pending"
+          ? canApprove
+            ? "Approve it, and it joins the next ad hoc build."
+            : "A maintainer approves it next."
+          : device.status === "approved"
+            ? "It joins the next ad hoc build."
+            : "New ad hoc builds install on it."}
+      </p>
+      {canApprove && device.status === "pending" ? (
+        <Button
+          className="h-11 w-full sm:h-8 sm:w-fit"
+          onClick={() => onOpen({ kind: "approve", device })}
+        >
+          <Check data-icon="inline-start" />
+          Approve
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 /** Why iPhones can't register through this Console. */
 function RegistrationNotice({
   status,
@@ -575,10 +630,10 @@ function RegistrationNotice({
  */
 function RegisterCard({
   view,
-  devices,
+  onOpen,
 }: {
   readonly view: IosDevicesView | undefined;
-  readonly devices: readonly IosDeviceRow[] | undefined;
+  readonly onOpen: (target: DialogTarget) => void;
 }) {
   const phone = useIosDevice();
   const [name, setName] = useState<string | null>(null);
@@ -595,10 +650,17 @@ function RegisterCard({
     onPhone && view?.registration === "ready",
   );
   const https = phone === null || window.location.protocol === "https:";
-  const back =
-    phone?.requested && phone.udid !== null
-      ? devices?.find((device) => device.udid === phone.udid?.toLowerCase())
-      : undefined;
+  // Once its profile has answered, this iPhone's own row, whatever the list
+  // shows: after a reload, or in the tab Safari came back to.
+  const mine = useIosDeviceQuery(onPhone ? phone.udid : null);
+  // An answer that comes back to this tab with the same UDID, such as a
+  // removed iPhone registering again, reads its row again.
+  const { refetch } = mine;
+  useEffect(() => {
+    const onAnswer = () => void refetch();
+    window.addEventListener("hashchange", onAnswer);
+    return () => window.removeEventListener("hashchange", onAnswer);
+  }, [refetch]);
 
   const body = (() => {
     // The server renders this without a browser: where it is and what it is
@@ -606,15 +668,12 @@ function RegisterCard({
     if (phone === null) {
       return <Skeleton aria-label="Loading" className="h-36 w-full" />;
     }
-    if (back !== undefined) {
+    if (onPhone && phone.udid !== null && mine.isPending) {
+      return <Skeleton aria-label="Loading" className="h-36 w-full" />;
+    }
+    if (onPhone && mine.data) {
       return (
-        <p className="text-sm" role="status">
-          <span className="font-medium">{back.name}</span> ·{" "}
-          {STATUS_LABELS[back.status]}.{" "}
-          {back.status === "pending"
-            ? "A maintainer approves it next, and it joins the next ad hoc build."
-            : "It joins the next ad hoc build."}
-        </p>
+        <ThisIphone device={mine.data} onOpen={onOpen} viewer={view?.viewer} />
       );
     }
     if (
@@ -781,7 +840,7 @@ export function IosDevicesPage({
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto bg-muted/5 p-3 sm:p-6">
         <NativeBuildsNav current="devices" />
-        <RegisterCard devices={rows} view={view} />
+        <RegisterCard onOpen={setDialog} view={view} />
         {view !== undefined && !view.viewer.approversConfigured ? (
           <div className="flex min-w-0 flex-col gap-1.5 text-xs text-muted-foreground">
             <p>Nobody approves in this Console. Approve from a terminal:</p>
@@ -857,7 +916,8 @@ export function IosDevicesPage({
             </AlertAction>
           </Alert>
         ) : (
-          <DataTableFrame>
+          // The page scrolls as a whole, the Register card above the list.
+          <DataTableFrame className="flex-none">
             {isMobile ? (
               <div
                 aria-busy={query.isPlaceholderData}

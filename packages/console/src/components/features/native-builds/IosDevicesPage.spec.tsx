@@ -1,5 +1,6 @@
 import type { IosDeviceRow } from "@hot-updater/plugin-core";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -10,8 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { IosDevicesView } from "@/lib/ios-devices-rpc";
 
-const { devicesQuery, profileLinkQuery, approve, rename, remove } = vi.hoisted(
-  () => {
+const { devicesQuery, deviceQuery, profileLinkQuery, approve, rename, remove } =
+  vi.hoisted(() => {
     const mutation = () => ({
       mutate: vi.fn(),
       isPending: false,
@@ -19,16 +20,17 @@ const { devicesQuery, profileLinkQuery, approve, rename, remove } = vi.hoisted(
     });
     return {
       devicesQuery: vi.fn(),
+      deviceQuery: vi.fn(),
       profileLinkQuery: vi.fn(),
       approve: mutation(),
       rename: mutation(),
       remove: mutation(),
     };
-  },
-);
+  });
 
 vi.mock("@/lib/ios-devices-api", () => ({
   useIosDevicesQuery: devicesQuery,
+  useIosDeviceQuery: deviceQuery,
   useIosDeviceProfileLinkQuery: profileLinkQuery,
   useApproveIosDeviceMutation: () => approve,
   useRenameIosDeviceMutation: () => rename,
@@ -107,6 +109,12 @@ const show = (view: IosDevicesView, search = {}) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
+  deviceQuery.mockReturnValue({
+    data: undefined,
+    isPending: true,
+    refetch: vi.fn(),
+  });
   profileLinkQuery.mockReturnValue({
     data: { status: "issued", token: "cap.sig", expiresAt: "2030-01-01" },
   });
@@ -149,6 +157,7 @@ describe("IosDevicesPage", () => {
 
   it("gives an iPhone its name and the profile, signed for the person", () => {
     vi.spyOn(navigator, "userAgent", "get").mockReturnValue(IPHONE_UA);
+    const location = window.location;
     Object.defineProperty(window, "location", {
       value: new URL("https://console.example.com/native-builds/devices"),
       configurable: true,
@@ -164,8 +173,9 @@ describe("IosDevicesPage", () => {
           .getAttribute("href"),
       ).toBe("/_hot-updater/devices/device.mobileconfig?t=cap.sig");
     } finally {
+      // The real Location, so later specs see history's changes.
       Object.defineProperty(window, "location", {
-        value: new URL("http://localhost:3000/native-builds/devices"),
+        value: location,
         configurable: true,
       });
     }
@@ -371,5 +381,243 @@ describe("IosDevicesPage", () => {
     expect(screen.getByText("No approved iPhones")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Show all" }));
     expect(onSearchChange).toHaveBeenCalledWith({});
+  });
+
+  describe("this iPhone, back from its profile", () => {
+    const PHONE = "00008160-000239A910A3400A";
+    const mine = (overrides: Partial<IosDeviceRow> = {}) =>
+      device({
+        udid: PHONE.toLowerCase(),
+        name: "Sungyu Kang's iPhone",
+        requested_by: "lead@team.dev",
+        ...overrides,
+      });
+    /** The registry's row of this iPhone, as the single read answers. */
+    const refetchMine = vi.fn();
+    const registryHas = (row: IosDeviceRow | null) =>
+      deviceQuery.mockImplementation((udid: string | null) =>
+        udid?.toLowerCase() === PHONE.toLowerCase()
+          ? { data: row, isPending: false, refetch: refetchMine }
+          : { data: undefined, isPending: udid !== null, refetch: refetchMine },
+      );
+    const onIphone = () =>
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(IPHONE_UA);
+    const card = () =>
+      screen
+        .getByRole("heading", { name: "Register an iPhone" })
+        .closest("[data-slot=card]") as HTMLElement;
+
+    it("shows the request in place of the form after a reload, from the ID this phone kept", async () => {
+      onIphone();
+      window.localStorage.setItem("hot-updater-ios-udid", PHONE);
+      registryHas(mine());
+      show(viewAs({ canApprove: false, email: "kim@team.dev" }, [mine()]));
+
+      expect(
+        await within(card()).findByText("Sungyu Kang's iPhone"),
+      ).toBeTruthy();
+      expect(within(card()).getByText("Requested")).toBeTruthy();
+      expect(
+        within(card()).getByText("A maintainer approves it next."),
+      ).toBeTruthy();
+      expect(
+        within(card()).queryByRole("link", { name: "Install profile" }),
+      ).toBeNull();
+      expect(within(card()).queryByLabelText("This iPhone's name")).toBeNull();
+    });
+
+    it("takes the answer when Safari returns to this same tab, which changes only the fragment", async () => {
+      onIphone();
+      registryHas(mine());
+      show(viewAs({}, [mine()]));
+      // The registration flow, which over this test's HTTP asks for HTTPS.
+      expect(
+        await within(card()).findByText("iPhones need this Console on HTTPS."),
+      ).toBeTruthy();
+
+      act(() => {
+        window.history.replaceState(
+          null,
+          "",
+          `/native-builds/devices#udid=${PHONE}&requested=1`,
+        );
+        window.dispatchEvent(new HashChangeEvent("hashchange"));
+      });
+
+      expect(await within(card()).findByText("Requested")).toBeTruthy();
+      expect(
+        within(card()).queryByText("iPhones need this Console on HTTPS."),
+      ).toBeNull();
+      expect(window.localStorage.getItem("hot-updater-ios-udid")).toBe(PHONE);
+      expect(window.location.hash).toBe("");
+    });
+
+    it("shows the row when the profile's answer opens a new tab, for an iPhone the registry already had", async () => {
+      // Approved on an earlier visit; this phone kept nothing, so it ran the
+      // profile again, and the answer opens the page with its fragment.
+      onIphone();
+      window.history.replaceState(
+        null,
+        "",
+        `/native-builds/devices#udid=${PHONE}&requested=1`,
+      );
+      const approved = mine({ status: "approved", approved_at_ms: 1 });
+      registryHas(approved);
+      show(viewAs({ canApprove: false, email: "kim@team.dev" }, [approved]));
+
+      expect(await within(card()).findByText("Approved")).toBeTruthy();
+      expect(
+        within(card()).getByText("It joins the next ad hoc build."),
+      ).toBeTruthy();
+      expect(window.localStorage.getItem("hot-updater-ios-udid")).toBe(PHONE);
+      expect(window.location.hash).toBe("");
+    });
+
+    it("reads its row again when an answer with the same ID returns to this tab, as a removed iPhone registering again does", async () => {
+      onIphone();
+      window.localStorage.setItem("hot-updater-ios-udid", PHONE);
+      registryHas(null);
+      show(viewAs({}, []));
+      await within(card()).findByText("iPhones need this Console on HTTPS.");
+      refetchMine.mockClear();
+
+      act(() => {
+        window.history.replaceState(
+          null,
+          "",
+          `/native-builds/devices#udid=${PHONE}&requested=1`,
+        );
+        window.dispatchEvent(new HashChangeEvent("hashchange"));
+      });
+
+      expect(refetchMine).toHaveBeenCalled();
+    });
+
+    it("gives an approver Apple's refusal with no step of its own: the row is in the list below", async () => {
+      onIphone();
+      window.localStorage.setItem("hot-updater-ios-udid", PHONE);
+      const refused = mine({
+        status: "approved",
+        approved_at_ms: 1,
+        apple_error: "The maximum number of devices was reached.",
+      });
+      registryHas(refused);
+      show(viewAs({}, [refused]));
+
+      expect(await within(card()).findByRole("alert")).toBeTruthy();
+      expect(within(card()).queryByText(/Ask a maintainer/)).toBeNull();
+      expect(within(card()).queryByRole("link")).toBeNull();
+    });
+
+    it("lets an approver approve this iPhone from the card", async () => {
+      onIphone();
+      window.localStorage.setItem("hot-updater-ios-udid", PHONE);
+      registryHas(mine());
+      show(viewAs({}, [mine()]));
+
+      fireEvent.click(
+        await within(card()).findByRole("button", { name: "Approve" }),
+      );
+      expect(
+        within(screen.getByRole("dialog")).getByText(
+          /Approve Sungyu Kang's iPhone\?/,
+        ),
+      ).toBeTruthy();
+    });
+
+    it.each([
+      [
+        "approved",
+        mine({ status: "approved", approved_at_ms: 1 }),
+        "Approved",
+        "It joins the next ad hoc build.",
+      ],
+      [
+        "registered",
+        mine({ status: "registered", approved_at_ms: 1, registered_at_ms: 2 }),
+        "Registered",
+        "New ad hoc builds install on it.",
+      ],
+    ])(
+      "says where an %s iPhone stands, with no form",
+      async (_, row, badge, words) => {
+        onIphone();
+        window.localStorage.setItem("hot-updater-ios-udid", PHONE);
+        registryHas(row);
+        show(viewAs({ canApprove: false, email: "kim@team.dev" }, [row]));
+
+        expect(await within(card()).findByText(badge)).toBeTruthy();
+        expect(within(card()).getByText(words)).toBeTruthy();
+        expect(
+          within(card()).queryByRole("button", { name: "Approve" }),
+        ).toBeNull();
+        expect(
+          within(card()).queryByLabelText("This iPhone's name"),
+        ).toBeNull();
+      },
+    );
+
+    it("shows Apple's refusal as #1878 does, with whom to ask", async () => {
+      onIphone();
+      window.localStorage.setItem("hot-updater-ios-udid", PHONE);
+      const refused = mine({
+        status: "approved",
+        approved_at_ms: 1,
+        apple_error: "The maximum number of devices was reached.",
+      });
+      registryHas(refused);
+      show(viewAs({ canApprove: false, email: "kim@team.dev" }, [refused]));
+
+      const alert = await within(card()).findByRole("alert");
+      expect(
+        within(alert).getByText("Apple didn't register this iPhone"),
+      ).toBeTruthy();
+      expect(
+        within(alert).getByText("The maximum number of devices was reached."),
+      ).toBeTruthy();
+      expect(
+        within(card()).getByText("Ask a maintainer to free a device slot."),
+      ).toBeTruthy();
+    });
+
+    it("offers the form again once its row was removed", async () => {
+      onIphone();
+      window.localStorage.setItem("hot-updater-ios-udid", PHONE);
+      registryHas(null);
+      show(viewAs({}, []));
+
+      // The registration flow, which over this test's HTTP asks for HTTPS.
+      expect(
+        await within(card()).findByText("iPhones need this Console on HTTPS."),
+      ).toBeTruthy();
+      expect(within(card()).queryByText("Requested")).toBeNull();
+    });
+
+    it("leaves a computer's QR code as it was, whatever it kept", () => {
+      window.localStorage.setItem("hot-updater-ios-udid", PHONE);
+      registryHas(mine());
+      show(viewAs({}, [mine()]));
+
+      expect(
+        within(card()).getByRole("img", {
+          name: "Open this page on an iPhone",
+        }),
+      ).toBeTruthy();
+      expect(within(card()).queryByText("Requested")).toBeNull();
+    });
+  });
+
+  it("lets the page scroll past a tall list on a phone: the list's frame never shrinks to the leftover height", () => {
+    mobile.value = true;
+    try {
+      show(viewAs({}, [device()]));
+      const frame = screen
+        .getByRole("list", { name: "iOS devices" })
+        .closest(".rounded-lg") as HTMLElement;
+      expect(frame.className).toContain("flex-none");
+      expect(frame.className).not.toContain("flex-1");
+    } finally {
+      mobile.value = false;
+    }
   });
 });

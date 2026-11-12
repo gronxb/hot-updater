@@ -9,6 +9,7 @@ import {
 import {
   approveIosDevice,
   createIosDeviceProfileLink,
+  getIosDevice,
   getIosDevices,
   getNativeBuildIpaDevices,
   removeIosDevice,
@@ -19,6 +20,7 @@ import {
 export const iosDeviceKeys = {
   all: ["ios-devices"] as const,
   list: (status?: IosDeviceStatus) => ["ios-devices", status ?? "all"] as const,
+  device: (udid: string) => ["ios-devices", "device", udid] as const,
   ipa: (buildId: string) => ["native-build-ipa-devices", buildId] as const,
 };
 
@@ -38,6 +40,19 @@ export function useIosDevicesQuery(status?: IosDeviceStatus) {
     queryFn: () =>
       getIosDevices({ data: status === undefined ? {} : { status } }),
     placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * This iPhone's registry row, by the UDID its profile reported, or null once
+ * it's gone; nothing is read without a UDID. Under `iosDeviceKeys.all`, so
+ * an approval or a removal reads it again.
+ */
+export function useIosDeviceQuery(udid: string | null) {
+  return useQuery({
+    queryKey: iosDeviceKeys.device(udid ?? ""),
+    queryFn: () => getIosDevice({ data: { udid: udid! } }),
+    enabled: udid !== null,
   });
 }
 

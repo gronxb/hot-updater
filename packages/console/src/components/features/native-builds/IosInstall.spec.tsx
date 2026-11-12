@@ -755,6 +755,30 @@ describe("InstallCard on an iPhone", () => {
     expect(window.location.hash).toBe("");
   });
 
+  it("takes the check's answer when Safari returns to this tab already open, which changes only the fragment", async () => {
+    onIphone();
+    answer(installable("unknown"));
+    render(<InstallCard build={row} />);
+    expect(
+      await screen.findByRole("link", { name: "Check this iPhone" }),
+    ).toBeTruthy();
+
+    act(() => {
+      window.history.replaceState(
+        null,
+        "",
+        `/native-builds/${BUILD}#udid=${PHONE}&r=${RECEIPT}`,
+      );
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+
+    await vi.waitFor(() =>
+      expect(installEligibilityQuery).toHaveBeenLastCalledWith(BUILD, PHONE),
+    );
+    expect(window.localStorage.getItem(IOS_UDID_STORAGE_KEY)).toBe(PHONE);
+    expect(window.location.hash).toBe("");
+  });
+
   it("keeps the fragment's ID when React runs the effect twice, as its development check does", async () => {
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("SecurityError");
