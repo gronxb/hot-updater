@@ -303,4 +303,52 @@ describe("this iPhone's row, read with the real query", () => {
       window.sessionStorage.clear();
     }
   });
+
+  describe("an iPhone whose storage Safari wiped", () => {
+    const routes = () => {
+      const calls: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          calls.push(`${init?.method ?? "GET"} ${url}`);
+          return new Response(JSON.stringify({ udid: PHONE.toLowerCase() }));
+        }),
+      );
+      return calls;
+    };
+
+    it("asks the cookie once for its ID, then reads its row once", async () => {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(IPHONE_UA);
+      const calls = routes();
+      try {
+        show();
+        await waitFor(() => expect(lookups()).toEqual([PHONE.toLowerCase()]));
+        await screen.findByText("Requested");
+        act(() => {
+          window.location.hash = "test";
+          window.dispatchEvent(new HashChangeEvent("hashchange"));
+        });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(calls).toEqual(["GET /_hot-updater/devices/receipt"]);
+        expect(lookups()).toEqual([PHONE.toLowerCase()]);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("asks nothing on a computer", async () => {
+      const calls = routes();
+      try {
+        show();
+        await screen.findByRole("img", {
+          name: "Open this page on an iPhone",
+        });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(calls).toEqual([]);
+        expect(rpc.getIosDevice).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
 });

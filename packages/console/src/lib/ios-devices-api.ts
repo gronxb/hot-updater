@@ -21,8 +21,10 @@ export const iosDeviceKeys = {
   all: ["ios-devices"] as const,
   list: (status?: IosDeviceStatus) => ["ios-devices", status ?? "all"] as const,
   device: (udid: string) => ["ios-devices", "device", udid] as const,
-  kept: (udid: string, receipt: string | null) =>
-    ["ios-devices", "kept", udid, receipt ?? ""] as const,
+  // What the cookie names doesn't depend on the ID this page kept: one read
+  // serves the page whether it knew its iPhone or learns it from the answer.
+  kept: (receipt: string | null) =>
+    ["ios-devices", "kept", receipt ?? ""] as const,
   ipa: (buildId: string) => ["native-build-ipa-devices", buildId] as const,
 };
 
@@ -188,12 +190,11 @@ export const keepIosDeviceReceipt = (consolePath: string, receipt: string) => {
  */
 export function useKeptIosDeviceQuery(
   consolePath: string,
-  device: { readonly udid: string | null; readonly receipt: string | null },
+  receipt: string | null,
   enabled: boolean,
 ) {
-  const { receipt } = device;
   return useQuery({
-    queryKey: iosDeviceKeys.kept(device.udid ?? "", receipt),
+    queryKey: iosDeviceKeys.kept(receipt),
     queryFn: async () => {
       let failed: unknown = null;
       if (receipt !== null) {

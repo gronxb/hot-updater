@@ -178,6 +178,7 @@ const itmsLinks = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.sessionStorage.clear();
   keptQuery.mockReturnValue({ data: { udid: null }, isPending: false });
   requestAccess.isError = false;
   requestAccess.mutate.mockReset();
@@ -882,11 +883,7 @@ describe("InstallCard on an iPhone", () => {
     );
     // The fragment's receipt goes to the trade, which sets the cookie.
     expect(keepReceipt).toHaveBeenCalledWith("", RECEIPT);
-    expect(keptQuery).toHaveBeenLastCalledWith(
-      "",
-      expect.objectContaining({ udid: PHONE, receipt: RECEIPT }),
-      true,
-    );
+    expect(keptQuery).toHaveBeenLastCalledWith("", RECEIPT, true);
     expect(window.location.hash).toBe("");
   });
 
@@ -919,11 +916,7 @@ describe("InstallCard on an iPhone", () => {
     answer(installable("not-included"));
     render(<InstallCard build={row} />);
 
-    expect(keptQuery).toHaveBeenLastCalledWith(
-      "",
-      expect.objectContaining({ udid: PHONE, receipt: held }),
-      true,
-    );
+    expect(keptQuery).toHaveBeenLastCalledWith("", held, true);
     fireEvent.change(await screen.findByLabelText("This iPhone's name"), {
       target: { value: "Kim's iPhone" },
     });
@@ -933,6 +926,29 @@ describe("InstallCard on an iPhone", () => {
       expect.anything(),
     );
     window.sessionStorage.clear();
+  });
+
+  it("knows this iPhone from the cookie after Safari wiped its storage, and checks the IPA with that ID", async () => {
+    keptQuery.mockReturnValue({
+      data: { udid: PHONE.toLowerCase() },
+      isPending: false,
+    });
+    onIphone();
+    answer(installable("not-included"));
+    render(<InstallCard build={row} />);
+
+    await vi.waitFor(() =>
+      expect(installEligibilityQuery).toHaveBeenLastCalledWith(
+        BUILD,
+        PHONE.toLowerCase(),
+      ),
+    );
+    expect(
+      await screen.findByRole("button", { name: "Request access" }),
+    ).toBeTruthy();
+    expect(window.localStorage.getItem(IOS_UDID_STORAGE_KEY)).toBe(
+      PHONE.toLowerCase(),
+    );
   });
 
   it("requests again after a reload with no profile, from the cookie an earlier check left", async () => {

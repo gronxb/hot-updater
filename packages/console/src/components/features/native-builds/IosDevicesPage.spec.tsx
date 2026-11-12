@@ -716,6 +716,34 @@ describe("IosDevicesPage", () => {
     );
 
     it(
+      "takes this iPhone's identity from the cookie when Safari wiped its storage, and offers Request this iPhone, not the profile",
+      onHttps(async () => {
+        onIphone();
+        // ITP cleared script storage; the 30-day HttpOnly cookie remains.
+        registryHas(null);
+        keptQuery.mockReturnValue({
+          data: { udid: PHONE.toLowerCase() },
+          isPending: false,
+          isFetching: false,
+        });
+        show(viewAs({ canApprove: false, email: "kim@team.dev" }, []));
+
+        expect(
+          await within(card()).findByRole("button", {
+            name: "Request this iPhone",
+          }),
+        ).toBeTruthy();
+        expect(
+          within(card()).queryByRole("link", { name: "Install profile" }),
+        ).toBeNull();
+        // Kept again, so the build page knows this iPhone too.
+        expect(
+          window.localStorage.getItem("hot-updater-ios-udid")?.toLowerCase(),
+        ).toBe(PHONE.toLowerCase());
+      }),
+    );
+
+    it(
       "offers the profile when the cookie proves another iPhone, or another person's",
       onHttps(async () => {
         onIphone();
@@ -746,11 +774,7 @@ describe("IosDevicesPage", () => {
         show(viewAs({}, [mine()]));
 
         await within(card()).findByText("Requested");
-        expect(keptQuery).toHaveBeenCalledWith(
-          "",
-          expect.objectContaining({ udid: PHONE, receipt: "receipt.sig" }),
-          true,
-        );
+        expect(keptQuery).toHaveBeenCalledWith("", "receipt.sig", true);
       }, `#udid=${PHONE}&r=receipt.sig&requested=1`),
     );
 

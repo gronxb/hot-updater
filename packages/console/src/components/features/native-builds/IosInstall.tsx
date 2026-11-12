@@ -117,6 +117,32 @@ const keep = (key: string, value: string) => {
  * back to it already open. Read after the page mounts: the server
  * renders it without a browser. Null until then.
  */
+/** Tells this page's `useIosDevice` that the ID it keeps was just written. */
+const ADOPTED_EVENT = "hot-updater-ios-device-adopted";
+
+/**
+ * Adopts the UDID this Safari's cookie names, when the page kept none: Safari
+ * wipes script storage after a week away while the 30-day HttpOnly cookie
+ * stays, and the cookie is the proof. Kept again, so every page knows it.
+ */
+export const useAdoptKeptIosDevice = (
+  device: IosDevice | null,
+  kept: string | null | undefined,
+) => {
+  const adopt =
+    device?.ios === true &&
+    device.udid === null &&
+    kept != null &&
+    IOS_UDID_PATTERN.test(kept)
+      ? kept
+      : null;
+  useEffect(() => {
+    if (adopt === null) return;
+    keep(IOS_UDID_STORAGE_KEY, adopt);
+    window.dispatchEvent(new Event(ADOPTED_EVENT));
+  }, [adopt]);
+};
+
 export const useIosDevice = (): IosDevice | null => {
   const [device, setDevice] = useState<IosDevice | null>(null);
   // Read at the first render, so an effect that runs again (React's
@@ -209,11 +235,13 @@ export const useIosDevice = (): IosDevice | null => {
       read();
     };
     window.addEventListener("storage", onStorage);
+    window.addEventListener(ADOPTED_EVENT, read);
     window.addEventListener("hashchange", onReturn);
     window.addEventListener("pageshow", onReturn);
     document.addEventListener("visibilitychange", onReturn);
     return () => {
       window.removeEventListener("storage", onStorage);
+      window.removeEventListener(ADOPTED_EVENT, read);
       window.removeEventListener("hashchange", onReturn);
       window.removeEventListener("pageshow", onReturn);
       document.removeEventListener("visibilitychange", onReturn);
@@ -456,7 +484,7 @@ function NotInThisBuild({
   // Read only where it decides something: a phone the registry doesn't know.
   const kept = useKeptIosDeviceQuery(
     consolePath,
-    device,
+    device.receipt,
     device.ios && device.udid !== null && registry === null,
   );
   const proved =
@@ -596,6 +624,13 @@ export function IosInstall({
   readonly build: NativeBuildRow;
   readonly device: IosDevice;
 }) {
+  // A phone that kept no ID asks the cookie once which iPhone it is.
+  const kept = useKeptIosDeviceQuery(
+    consolePathOf(window.location, build.id),
+    device.receipt,
+    device.ios && device.udid === null,
+  );
+  useAdoptKeptIosDevice(device, kept.data?.udid);
   const { udid } = device;
   const eligibility = useNativeBuildInstallEligibilityQuery(build.id, udid);
   const { refetch } = eligibility;

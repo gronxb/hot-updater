@@ -109,7 +109,12 @@ import {
 import type { IosDevicesSearch } from "@/routes/-native-builds-search";
 
 import { CopyableText } from "./CopyableText";
-import { AppleRefusal, type IosDevice, useIosDevice } from "./IosInstall";
+import {
+  AppleRefusal,
+  type IosDevice,
+  useAdoptKeptIosDevice,
+  useIosDevice,
+} from "./IosInstall";
 import { NativeBuildsNav } from "./NativeBuildsNav";
 
 const STATUS_LABELS: Record<IosDeviceStatus, string> = {
@@ -681,14 +686,16 @@ function RegisterCard({
   // answer's fresh receipt is traded for it, and a phone with no row requests
   // itself again with it, without the profile, for the same person only.
   const path = phone === null ? "" : consolePath();
+  // Also the identity of a phone whose storage Safari wiped: the cookie
+  // names it, once, and the page adopts it.
   const kept = useKeptIosDeviceQuery(
     path,
-    phone ?? { udid: null, receipt: null },
+    phone?.receipt ?? null,
     onPhone &&
-      udid !== null &&
       view?.registration === "ready" &&
-      (phone.receipt !== null || mine.data === null),
+      (udid === null || phone.receipt !== null || mine.data === null),
   );
+  useAdoptKeptIosDevice(phone, kept.data?.udid);
   const again = useRequestThisIphoneMutation(path);
   const proved = onPhone && keptIsThisIphone(kept.data?.udid, phone.udid);
 
