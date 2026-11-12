@@ -20,9 +20,25 @@ import { cn } from "@/lib/utils";
  */
 
 /** The bordered frame; the table or card list inside it scrolls. */
-export function DataTableFrame({ children }: { readonly children: ReactNode }) {
+/**
+ * A list's frame. By default it fills what the page leaves and scrolls inside;
+ * on a page that scrolls as a whole, such as one with a card above the list,
+ * `flex-none` keeps it at its content's height, so nothing is cut off.
+ */
+export function DataTableFrame({
+  children,
+  className,
+}: {
+  readonly children: ReactNode;
+  readonly className?: string;
+}) {
   return (
-    <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-auto">
+    <div
+      className={cn(
+        "min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-auto",
+        className,
+      )}
+    >
       {children}
     </div>
   );
