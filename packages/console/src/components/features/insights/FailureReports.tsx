@@ -260,6 +260,7 @@ export function FailureReportsList({
           variant="ghost"
           size="icon-lg"
           aria-label="Refresh error reports"
+          className="max-md:size-11"
           disabled={isFetching}
           onClick={onRefresh}
         >

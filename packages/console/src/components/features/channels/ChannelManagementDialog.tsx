@@ -127,6 +127,7 @@ export function ChannelManagementDialog({
                   disabled={createChannel.isPending}
                 />
                 <Button
+                  className="max-md:h-11"
                   type="submit"
                   disabled={!normalizedName || createChannel.isPending}
                 >
@@ -161,7 +162,10 @@ export function ChannelManagementDialog({
                     key={channel.id}
                     className="flex min-h-12 items-center gap-3 px-3 py-2"
                   >
-                    <p className="min-w-0 flex-1 truncate text-xs font-medium">
+                    <p
+                      className="min-w-0 flex-1 truncate text-xs font-medium"
+                      title={channel.name}
+                    >
                       {channel.name}
                     </p>
                     <Button
@@ -172,7 +176,7 @@ export function ChannelManagementDialog({
                       title={`Delete ${channel.name}`}
                       disabled={deleteChannel.isPending}
                       onClick={() => setChannelToDelete(channel)}
-                      className="text-muted-foreground hover:text-destructive"
+                      className="text-muted-foreground hover:text-destructive max-md:size-11"
                     >
                       <Trash2 data-icon="inline-start" />
                     </Button>

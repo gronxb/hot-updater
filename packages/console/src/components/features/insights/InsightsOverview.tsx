@@ -371,6 +371,7 @@ export function InsightsOverview({
                 aria-label="Refresh release health"
                 variant="ghost"
                 size="icon-lg"
+                className="max-md:size-11"
                 disabled={health.isFetching}
                 onClick={health.refresh}
               >
@@ -616,6 +617,7 @@ export function InsightsOverview({
                         <TableCell>
                           <Button
                             aria-label={`Remove ${release.releaseId}`}
+                            className="max-md:size-11"
                             variant="ghost"
                             size="icon-xs"
                             onClick={() => remove(release.releaseId)}
@@ -650,7 +652,11 @@ export function InsightsOverview({
         </CardContent>
         <CardFooter className="flex items-center justify-end border-t px-6 py-5">
           <Link
-            className={buttonVariants({ variant: "outline", size: "sm" })}
+            className={buttonVariants({
+              className: "max-md:h-11",
+              variant: "outline",
+              size: "sm",
+            })}
             to="/installations"
           >
             <ListIcon aria-hidden="true" />

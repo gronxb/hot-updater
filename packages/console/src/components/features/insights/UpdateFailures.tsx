@@ -352,6 +352,7 @@ export function UpdateFailures({
               aria-label="Refresh update failures"
               variant="ghost"
               size="icon-lg"
+              className="max-md:size-11"
               disabled={query.isFetching}
               onClick={onRefresh}
             >
