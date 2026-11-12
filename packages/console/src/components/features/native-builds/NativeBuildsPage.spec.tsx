@@ -11,11 +11,18 @@ const DEFAULT_CHANNELS = [
 const mocks = vi.hoisted(() => ({
   /** The channel list the page already reads; undefined while it loads. */
   channels: undefined as { id: string; name: string }[] | undefined,
+  /** Whether the channel list's last read failed. */
+  channelsError: false,
+  refetchChannels: vi.fn(),
   nativeBuildsQuery: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
-  useChannelsQuery: () => ({ data: mocks.channels, refetch: vi.fn() }),
+  useChannelsQuery: () => ({
+    data: mocks.channels,
+    isError: mocks.channelsError,
+    refetch: mocks.refetchChannels,
+  }),
   useConfigQuery: () => ({ data: { console: {} } }),
   useNativeBuildsQuery: mocks.nativeBuildsQuery,
 }));
@@ -29,6 +36,7 @@ vi.mock("@tanstack/react-router", () => ({
 
 beforeEach(() => {
   mocks.channels = DEFAULT_CHANNELS;
+  mocks.channelsError = false;
   // A query that may not run yet is pending, as TanStack Query's is.
   mocks.nativeBuildsQuery.mockImplementation((_, options) => ({
     data: options?.enabled === false ? undefined : { entries: [] },
@@ -146,6 +154,38 @@ describe("NativeBuildsPage", () => {
       expect(
         screen.getByRole("combobox", { name: "Channel" }).textContent,
       ).toContain("All channels");
+    });
+
+    it("reads no builds when the channel list fails, and offers to read it again", () => {
+      mocks.channels = undefined;
+      mocks.channelsError = true;
+      render(<NativeBuildsPage onSearchChange={vi.fn()} search={{}} />);
+
+      expect(reads()).toEqual([]);
+      expect(screen.getByText("Channels couldn't be loaded")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      expect(mocks.refetchChannels).toHaveBeenCalled();
+    });
+
+    it("keeps production when a refresh of a loaded channel list fails", () => {
+      mocks.channelsError = true;
+      render(<NativeBuildsPage onSearchChange={vi.fn()} search={{}} />);
+
+      expect(reads()).toEqual([{ channel: "production" }]);
+      expect(screen.queryByText("Channels couldn't be loaded")).toBeNull();
+    });
+
+    it("reads a linked channel while the channel list fails", () => {
+      mocks.channels = undefined;
+      mocks.channelsError = true;
+      render(
+        <NativeBuildsPage
+          onSearchChange={vi.fn()}
+          search={{ channel: "pr-130" }}
+        />,
+      );
+
+      expect(reads()).toEqual([{ channel: "pr-130" }]);
     });
 
     it("lists every channel when the project has no production channel", () => {

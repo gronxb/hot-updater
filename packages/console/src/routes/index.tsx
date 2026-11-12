@@ -7,6 +7,7 @@ import {
   CircleOff,
   Filter,
   Package,
+  RefreshCw,
   RotateCcw,
   Tags,
   X,
@@ -51,7 +52,12 @@ import { RelativeTime } from "@/components/RelativeTime";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { RowReason } from "@/components/RowReason";
 import { TargetDisplay } from "@/components/TargetDisplay";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -550,10 +556,12 @@ function BundlesPage() {
   const channelsQuery = useChannelsQuery();
   const channels = channelsQuery.data ?? [];
   // The list the page shows: a URL without a channel opens on the default
-  // one, known once the channel list arrives; with no channel list, every
-  // channel's.
-  const channelRows = channelsQuery.isError ? [] : channelsQuery.data;
+  // one, known once the channel list arrives. A loaded list outlives a failed
+  // refresh; without one, the default list waits, and nothing reads every
+  // channel in its place.
+  const channelRows = channelsQuery.data;
   const resolved = resolveReleaseSearch(urlSearch, channelRows);
+  const channelsFailed = resolved === undefined && channelsQuery.isError;
   const search = resolved ?? urlSearch;
   const filter = releaseFilterOf(search);
   const releasesQuery = useReleasesQuery(
@@ -953,7 +961,26 @@ function BundlesPage() {
       />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 bg-muted/5 p-3 sm:p-6">
-        {releasesQuery.isError ? (
+        {channelsFailed ? (
+          <Alert variant="destructive">
+            <AlertTriangle />
+            <AlertTitle>Channels couldn't be loaded</AlertTitle>
+            <AlertDescription>
+              Bundles show once the channels load.
+            </AlertDescription>
+            <AlertAction>
+              <Button
+                className="min-h-11 sm:min-h-7"
+                onClick={() => void channelsQuery.refetch()}
+                size="xs"
+                variant="outline"
+              >
+                <RefreshCw data-icon="inline-start" />
+                Retry
+              </Button>
+            </AlertAction>
+          </Alert>
+        ) : releasesQuery.isError ? (
           <Alert variant="destructive">
             <AlertTriangle />
             <AlertTitle>Bundles could not be loaded</AlertTitle>
@@ -1030,7 +1057,9 @@ function BundlesPage() {
           </DataTableFrame>
         )}
 
-        {!releasesQuery.isError && !releasesQuery.isPending ? (
+        {!channelsFailed &&
+        !releasesQuery.isError &&
+        !releasesQuery.isPending ? (
           <DataTablePagination
             count={releases.length}
             folded={{ ...foldedTotal(entries), label: "unreachable" }}

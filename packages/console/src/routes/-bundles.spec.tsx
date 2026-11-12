@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   search: vi.fn(),
   insightsAnalytics: true,
+  /** Whether the channel list's last read failed. */
+  channelsError: false,
+  refetchChannels: vi.fn(),
   /** The channel list the page already reads; undefined while it loads. */
   channels: [
     {
@@ -127,7 +130,11 @@ vi.mock("@/lib/api", () => ({
     isError: false,
     isPending: false,
   }),
-  useChannelsQuery: () => ({ data: mocks.channels }),
+  useChannelsQuery: () => ({
+    data: mocks.channels,
+    isError: mocks.channelsError,
+    refetch: mocks.refetchChannels,
+  }),
   useReleaseFoldQuery: mocks.foldQuery,
   useReleasesQuery: mocks.releasesQuery,
 }));
@@ -831,6 +838,7 @@ describe("BundlesPage", () => {
 
     beforeEach(() => {
       mocks.channels = [STAGING, PRODUCTION];
+      mocks.channelsError = false;
     });
 
     it("opens on production when the URL names no channel, and reads no other list", () => {
@@ -876,6 +884,38 @@ describe("BundlesPage", () => {
         search: {},
         to: "/",
       });
+    });
+
+    it("reads no list when the channel list fails, and offers to read it again", () => {
+      mocks.channels = undefined;
+      mocks.channelsError = true;
+      render(<BundlesPage />);
+
+      expect(reads().every(({ enabled }) => !enabled)).toBe(true);
+      expect(screen.getByText("Channels couldn't be loaded")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      expect(mocks.refetchChannels).toHaveBeenCalled();
+    });
+
+    it("keeps production when a refresh of a loaded channel list fails", () => {
+      mocks.channelsError = true;
+      render(<BundlesPage />);
+
+      expect(reads().filter(({ enabled }) => enabled)).toEqual([
+        { enabled: true, filter: productionIos },
+      ]);
+      expect(screen.queryByText("Channels couldn't be loaded")).toBeNull();
+    });
+
+    it("reads an explicit list while the channel list fails", () => {
+      mocks.channels = undefined;
+      mocks.channelsError = true;
+      mocks.search.mockReturnValue({ channels: "all" });
+      render(<BundlesPage />);
+
+      expect(reads().filter(({ enabled }) => enabled)).toEqual([
+        { enabled: true, filter: { kind: "all" } },
+      ]);
     });
 
     it("lists every channel when the project has no production channel", () => {

@@ -1,5 +1,11 @@
-import { HardDrive, RefreshCw } from "lucide-react";
+import { AlertTriangle, HardDrive, RefreshCw } from "lucide-react";
 
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -45,13 +51,12 @@ export function NativeBuildsPage({
   const channels = useChannelsQuery();
   const channelNames = channels.data?.map(({ name }) => name) ?? [];
   // The page the list shows: a URL without a channel opens on the default
-  // one, known once the channel list arrives; with no channel list, every
-  // channel's.
-  const page = resolveNativeBuildsSearch(
-    search,
-    channels.isError ? [] : channels.data && channelNames,
-  );
+  // one, known once the channel list arrives. A loaded list outlives a failed
+  // refresh; without one, the default page waits, and nothing reads every
+  // channel in its place.
+  const page = resolveNativeBuildsSearch(search, channels.data && channelNames);
   const pending = page === undefined;
+  const channelsFailed = pending && channels.isError;
   const { channel, before, after } = page ?? search;
   // Nothing reads every channel's builds on the way to the default channel's.
   const builds = useNativeBuildsQuery(page ?? {}, { enabled: !pending });
@@ -147,12 +152,33 @@ export function NativeBuildsPage({
             <RefreshCw aria-hidden="true" />
           </Button>
         </div>
-        <NativeBuildsTable
-          builds={builds}
-          channel={channel}
-          onChannel={filterBy}
-          paged={before !== undefined || after !== undefined}
-        />
+        {channelsFailed ? (
+          <Alert variant="destructive">
+            <AlertTriangle />
+            <AlertTitle>Channels couldn't be loaded</AlertTitle>
+            <AlertDescription>
+              Native builds show once the channels load.
+            </AlertDescription>
+            <AlertAction>
+              <Button
+                className="min-h-11 sm:min-h-7"
+                onClick={() => void channels.refetch()}
+                size="xs"
+                variant="outline"
+              >
+                <RefreshCw data-icon="inline-start" />
+                Retry
+              </Button>
+            </AlertAction>
+          </Alert>
+        ) : (
+          <NativeBuildsTable
+            builds={builds}
+            channel={channel}
+            onChannel={filterBy}
+            paged={before !== undefined || after !== undefined}
+          />
+        )}
       </div>
     </div>
   );
