@@ -5,6 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useEffect } from "react";
 
 import {
   approveIosDevice,
@@ -151,6 +152,9 @@ const sendDeviceRoute = async <T>(
   return body;
 };
 
+/** Told when a trade sets the cookie, so a cached "no proof" is read again. */
+const KEPT_EVENT = "hot-updater-ios-device-kept";
+
 /** Trades in flight or done, one per receipt: a failed one is forgotten. */
 const trades = new Map<string, Promise<unknown>>();
 
@@ -171,6 +175,7 @@ export const keepIosDeviceReceipt = (consolePath: string, receipt: string) => {
     }).then(
       (answer) => {
         releasePendingReceipt(receipt);
+        window.dispatchEvent(new Event(KEPT_EVENT));
         return answer;
       },
       (error: unknown) => {
@@ -193,6 +198,18 @@ export function useKeptIosDeviceQuery(
   receipt: string | null,
   enabled: boolean,
 ) {
+  // A trade on this page sets the cookie the receiptless read may have found
+  // empty: that read, cached for good otherwise, is read again.
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const onKept = () =>
+      void queryClient.invalidateQueries({
+        queryKey: iosDeviceKeys.kept(null),
+        exact: true,
+      });
+    window.addEventListener(KEPT_EVENT, onKept);
+    return () => window.removeEventListener(KEPT_EVENT, onKept);
+  }, [queryClient]);
   return useQuery({
     queryKey: iosDeviceKeys.kept(receipt),
     queryFn: async () => {

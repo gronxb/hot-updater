@@ -11,6 +11,7 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { keepIosDeviceReceipt } from "@/lib/ios-devices-api";
 import type { IosDevicesView } from "@/lib/ios-devices-rpc";
 
 import { IosDevicesPage } from "./IosDevicesPage";
@@ -331,6 +332,47 @@ describe("this iPhone's row, read with the real query", () => {
         await new Promise((resolve) => setTimeout(resolve, 50));
         expect(calls).toEqual(["GET /_hot-updater/devices/receipt"]);
         expect(lookups()).toEqual([PHONE.toLowerCase()]);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("reads the cookie again once a receipt is traded in this tab, so a cached 'none' doesn't stick", async () => {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(IPHONE_UA);
+      let traded = false;
+      const calls: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          calls.push(`${init?.method ?? "GET"} ${url}`);
+          if (init?.method === "POST") traded = true;
+          return new Response(
+            JSON.stringify({ udid: traded ? PHONE.toLowerCase() : null }),
+          );
+        }),
+      );
+      try {
+        show();
+        await waitFor(() =>
+          expect(calls).toEqual(["GET /_hot-updater/devices/receipt"]),
+        );
+        await screen.findByText("iPhones need this Console on HTTPS.");
+
+        // The profile's answer traded in this tab, as a build page does.
+        await act(async () => {
+          await keepIosDeviceReceipt("", "fresh.receipt");
+        });
+
+        await waitFor(() =>
+          expect(window.localStorage.getItem("hot-updater-ios-udid")).toBe(
+            PHONE.toLowerCase(),
+          ),
+        );
+        expect(calls).toEqual([
+          "GET /_hot-updater/devices/receipt",
+          "POST /_hot-updater/devices/receipt",
+          "GET /_hot-updater/devices/receipt",
+        ]);
       } finally {
         vi.unstubAllGlobals();
       }
