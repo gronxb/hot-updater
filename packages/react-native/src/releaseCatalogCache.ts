@@ -50,6 +50,7 @@ type FetchReleaseCatalogInput = {
   readonly expectedScope: ExpectedReleaseCatalogScope;
   readonly requestHeaders?: Record<string, string>;
   readonly requestTimeout?: number;
+  readonly fetch?: typeof fetch;
   readonly url: string;
   readonly onResponse?: UpdateRequest["onResponse"];
 };

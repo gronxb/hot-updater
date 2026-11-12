@@ -514,19 +514,24 @@ export const HotUpdater = {
       plugins,
       requestHeaders,
       requestTimeout,
+      fetch: fetchImpl,
       onError,
       onNotifyAppReady,
     } = options;
     if (!baseURL) throw createMissingNetworkConfigError();
 
-    const host = createAppPluginHost();
+    const host = createAppPluginHost(fetchImpl);
     const launch = createLaunchReporter(host);
     const instance = {
       ...nativeMethods,
       ...createConfiguredMethods({
-        client: createHttpClient(baseURL, (response) => {
-          launch.emit("onHttpResponse", () => response);
-        }),
+        client: createHttpClient(
+          baseURL,
+          (response) => {
+            launch.emit("onHttpResponse", () => response);
+          },
+          fetchImpl,
+        ),
         requestHeaders,
         requestTimeout,
         onError,

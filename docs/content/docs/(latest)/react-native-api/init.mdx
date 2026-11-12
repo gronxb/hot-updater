@@ -136,6 +136,7 @@ export const hotUpdater = HotUpdater.init({
 | `plugins`          | `HotUpdaterClientPlugin[]`                    | No       | [Client plugins](/docs/react-native-api/client-plugins), such as `insights()` and `remoteConfig()` |
 | `requestHeaders`   | `Record<string, string>`                      | No       | Shared headers used by update checks and plugin requests                                           |
 | `requestTimeout`   | `number`                                      | No       | Request timeout in milliseconds (default: 5000)                                                    |
+| `fetch`            | `typeof fetch`                                | No       | Fetch for update checks and plugin requests, such as `react-native-nitro-fetch` (default: global `fetch`); must honor `AbortSignal` |
 | `onNotifyAppReady` | `(result: NotifyAppReadyResult) => void`      | No       | Callback invoked after native launch verification finishes                                         |
 | `onError`          | `(error) => void`                             | No       | Default error handler for native launch reporting, `wrap`, update checks, and plugin errors        |
 

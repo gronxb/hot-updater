@@ -19,6 +19,13 @@ export interface HotUpdaterInitOptions<
   baseURL: HotUpdaterBaseURL;
   requestHeaders?: Record<string, string>;
   requestTimeout?: number;
+  /**
+   * The fetch this instance's JavaScript requests use: release catalogs,
+   * artifact lookups, and client plugins such as `insights()`. Defaults to the
+   * global `fetch`. Native downloads and the native recovery check don't use
+   * it. It must honor `AbortSignal`, which `requestTimeout` relies on.
+   */
+  fetch?: typeof fetch;
   onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
   onError?: (error: HotUpdaterError | Error | unknown) => void;
 }
