@@ -80,7 +80,7 @@ import {
   useReleaseFoldQuery,
   useReleasesQuery,
 } from "@/lib/api";
-import { ALL_CHANNELS } from "@/lib/constants";
+import { ALL_CHANNELS, ALL_CHANNELS_LABEL } from "@/lib/constants";
 import type { Fold } from "@/lib/server/foldedPage";
 import type { ReleaseListRow } from "@/lib/server/releaseReachability";
 import { cn } from "@/lib/utils";
@@ -145,7 +145,7 @@ function BundleFilterToolbar({
   // Releases list by channel and platform together: the index serves that pair.
   const channelSelected = search.channelId !== undefined;
   const channelFilterItems = [
-    { label: "All Channels", value: "all" },
+    { label: ALL_CHANNELS_LABEL, value: "all" },
     ...channels.map((channel) => ({
       label: channel.name,
       value: channel.id,
@@ -180,7 +180,7 @@ function BundleFilterToolbar({
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
-            <SelectItem value="all">All Channels</SelectItem>
+            <SelectItem value="all">{ALL_CHANNELS_LABEL}</SelectItem>
             {channels.map((channel) => (
               <SelectItem key={channel.id} value={channel.id}>
                 {channel.name}

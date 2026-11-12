@@ -90,6 +90,49 @@ describe("NativeBuildDetailPage", () => {
     expect(title.textContent).toMatch(/^iOS IPA\s*Sandbox\s*·\s*pr-130/);
   });
 
+  it("goes back to the list of the build's own channel, where its row is", () => {
+    show(build({ is_sandbox: true }), "sandbox-release");
+    expect(
+      screen
+        .getByText("Native builds")
+        .closest("[data-search]")!
+        .getAttribute("data-search"),
+    ).toBe(JSON.stringify({ channel: "sandbox-release" }));
+  });
+
+  it.each([
+    ["loads", { data: undefined, isError: false, isPending: true }],
+    [
+      "can't be read",
+      {
+        data: undefined,
+        error: new Error("Offline"),
+        isError: true,
+        isPending: false,
+        refetch: vi.fn(),
+      },
+    ],
+    ["isn't found", { data: null, isError: false, isPending: false }],
+  ])(
+    "goes back to every channel's list while the build %s, so a build of any channel is there",
+    (_, state) => {
+      detailQuery.mockReturnValue(state);
+      render(
+        <NativeBuildDetailPage
+          buildId="019a0000-0000-7000-8000-000000000009"
+          onSearchChange={vi.fn()}
+          search={{}}
+        />,
+      );
+      expect(
+        screen
+          .getByText("Native builds")
+          .closest("[data-search]")!
+          .getAttribute("data-search"),
+      ).toBe(JSON.stringify({ channels: "all" }));
+    },
+  );
+
   it("tags no build its record doesn't call a sandbox build, whatever its channel", () => {
     const title = show(build({}), "sandbox-release");
     expect(title.textContent).not.toMatch(/Sandbox/);
