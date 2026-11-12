@@ -158,8 +158,27 @@ const appleRefused = (device: IosDeviceRow) =>
 const requesterOf = (device: IosDeviceRow) =>
   device.requested_by ?? "Added from a terminal";
 
-function AppleError({ device }: { readonly device: IosDeviceRow }) {
-  return device.apple_error === null ? null : (
+/**
+ * Apple's reason. In a table cell it wraps at most two lines in a narrow
+ * column, the full text on hover and to a screen reader, so a long reason
+ * never widens the table past its frame; a card shows all of it.
+ */
+function AppleError({
+  device,
+  inTable = false,
+}: {
+  readonly device: IosDeviceRow;
+  readonly inTable?: boolean;
+}) {
+  if (device.apple_error === null) return null;
+  return inTable ? (
+    <span
+      className="line-clamp-2 max-w-48 text-xs whitespace-normal text-muted-foreground"
+      title={device.apple_error}
+    >
+      {device.apple_error}
+    </span>
+  ) : (
     <span className="max-w-64 text-xs whitespace-normal text-muted-foreground">
       {device.apple_error}
     </span>
@@ -183,7 +202,7 @@ function DeviceStatus({
           {STATUS_LABELS[device.status]}
         </Badge>
       )}
-      {withError ? <AppleError device={device} /> : null}
+      {withError ? <AppleError device={device} inTable /> : null}
     </div>
   );
 }
