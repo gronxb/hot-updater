@@ -15,6 +15,7 @@ import {
   removeIosDevice,
   renameIosDevice,
 } from "./ios-devices-rpc";
+import { releasePendingReceipt } from "./native-builds";
 
 export const iosDeviceKeys = {
   all: ["ios-devices"] as const,
@@ -148,14 +149,16 @@ const sendDeviceRoute = async <T>(
   return body;
 };
 
-/** Trades in flight or done, one per receipt. */
+/** Trades in flight or done, one per receipt: a failed one is forgotten. */
 const trades = new Map<string, Promise<unknown>>();
 
 /**
  * Trades the profile answer's fresh receipt for this Safari's HttpOnly cookie,
- * once per receipt, wherever the answer lands: whatever the build page or the
- * registry says, the proof is kept. A failed trade leaves the receipt in
- * memory for this page.
+ * wherever the answer lands: whatever the build page or the registry says, the
+ * proof is kept. One request per receipt while it is in flight or once it has
+ * succeeded; a failed one rejects and is forgotten, so the next refresh,
+ * refocus, or reload trades it again while it is still valid. Once traded,
+ * the receipt leaves this tab's session storage.
  */
 export const keepIosDeviceReceipt = (consolePath: string, receipt: string) => {
   let trade = trades.get(receipt);
@@ -163,7 +166,16 @@ export const keepIosDeviceReceipt = (consolePath: string, receipt: string) => {
     trade = sendDeviceRoute(deviceRoute(consolePath, "receipt"), {
       method: "POST",
       json: { receipt },
-    }).catch(() => null);
+    }).then(
+      (answer) => {
+        releasePendingReceipt(receipt);
+        return answer;
+      },
+      (error: unknown) => {
+        trades.delete(receipt);
+        throw error;
+      },
+    );
     trades.set(receipt, trade);
   }
   return trade;
@@ -183,10 +195,19 @@ export function useKeptIosDeviceQuery(
   return useQuery({
     queryKey: iosDeviceKeys.kept(device.udid ?? "", receipt),
     queryFn: async () => {
-      if (receipt !== null) await keepIosDeviceReceipt(consolePath, receipt);
-      return sendDeviceRoute<{ udid: string | null }>(
+      let failed: unknown = null;
+      if (receipt !== null) {
+        await keepIosDeviceReceipt(consolePath, receipt).catch((error) => {
+          failed = error;
+        });
+      }
+      const kept = await sendDeviceRoute<{ udid: string | null }>(
         deviceRoute(consolePath, "receipt"),
       );
+      // A trade that failed with no earlier proof leaves the read failed, so
+      // the next refresh or refocus trades the receipt again; no timer does.
+      if (failed !== null && kept.udid === null) throw failed;
+      return kept;
     },
     enabled,
     retry: false,

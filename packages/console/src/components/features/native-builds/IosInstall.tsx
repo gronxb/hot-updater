@@ -31,6 +31,8 @@ import {
 import {
   consolePathOf,
   consolePathOfNativeBuildsPage,
+  holdPendingReceipt,
+  readPendingReceipt,
   IOS_DEVICE_RECEIPT_STORAGE_KEY,
   IOS_UDID_PATTERN,
   IOS_UDID_STORAGE_KEY,
@@ -135,12 +137,14 @@ export const useIosDevice = (): IosDevice | null => {
       if (fragment.udid !== null && answered) {
         answers += 1;
         keep(IOS_UDID_STORAGE_KEY, fragment.udid);
-        // Kept as this Safari's cookie on any page, whatever it shows next.
+        // Kept as this Safari's cookie on any page, whatever it shows next;
+        // held in this tab's session until then, so a reload can trade it.
         if (fragment.receipt !== null) {
-          void keepIosDeviceReceipt(
+          holdPendingReceipt(fragment.udid, fragment.receipt);
+          keepIosDeviceReceipt(
             consolePathOfNativeBuildsPage(window.location),
             fragment.receipt,
-          );
+          ).catch(() => undefined);
         }
       }
       if (fragment.udid !== null && window.location.hash !== "") {
@@ -162,8 +166,11 @@ export const useIosDevice = (): IosDevice | null => {
     const read = () => {
       // A browser that keeps nothing still has the fragment's, in memory.
       const udid = valid(readKept(IOS_UDID_STORAGE_KEY)) ?? latest.udid;
-      // The fragment's receipt, in memory only, until the cookie holds it.
-      const receipt = latest.udid === udid ? latest.receipt : null;
+      // The fragment's receipt until the cookie holds it: in memory, or held
+      // in this tab's session through a reload during an outage.
+      const receipt =
+        (latest.udid === udid ? latest.receipt : null) ??
+        readPendingReceipt(udid);
       const requested = latest.requested;
       const taken = answers;
       setDevice((current) =>

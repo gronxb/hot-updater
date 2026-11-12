@@ -254,4 +254,53 @@ describe("this iPhone's row, read with the real query", () => {
       expect(rpc.getIosDevice).not.toHaveBeenCalled();
     });
   });
+
+  it("trades a held receipt again only on Refresh after a failure, never on its own", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(IPHONE_UA);
+    const held = `${btoa(
+      JSON.stringify({ u: PHONE, x: Date.now() + 60 * 60 * 1000 }),
+    ).replaceAll("=", "")}.sig`;
+    window.localStorage.setItem("hot-updater-ios-udid", PHONE);
+    window.sessionStorage.setItem(
+      "hot-updater-ios-device-pending-receipt",
+      JSON.stringify({ udid: PHONE, receipt: held }),
+    );
+    rpc.getIosDevice.mockResolvedValue(null);
+    const trades: string[] = [];
+    let up = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (init?.method === "POST") {
+          trades.push(url);
+          if (!up) throw new TypeError("Network failed");
+          return new Response(JSON.stringify({ udid: PHONE }));
+        }
+        return new Response(JSON.stringify({ udid: up ? PHONE : null }));
+      }),
+    );
+    try {
+      show();
+      await waitFor(() => expect(trades.length).toBeGreaterThan(0));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      // One failed trade, shared by the page and the read: no loop.
+      expect(trades).toHaveLength(1);
+
+      up = true;
+      fireEvent.click(
+        screen.getByRole("button", { name: "Refresh iOS devices" }),
+      );
+      await waitFor(() => expect(trades).toHaveLength(2));
+      await waitFor(() =>
+        expect(
+          window.sessionStorage.getItem(
+            "hot-updater-ios-device-pending-receipt",
+          ),
+        ).toBeNull(),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      window.sessionStorage.clear();
+    }
+  });
 });

@@ -905,6 +905,36 @@ describe("InstallCard on an iPhone", () => {
     expect(keepReceipt).toHaveBeenCalledWith("/console", RECEIPT);
   });
 
+  it("trades the receipt again after a reload during an outage, from this tab's session, and requests with it", async () => {
+    const held = `${btoa(
+      JSON.stringify({ u: PHONE, x: Date.now() + 60 * 60 * 1000 }),
+    ).replaceAll("=", "")}.sig`;
+    window.localStorage.setItem(IOS_UDID_STORAGE_KEY, PHONE);
+    window.sessionStorage.setItem(
+      "hot-updater-ios-device-pending-receipt",
+      JSON.stringify({ udid: PHONE, receipt: held }),
+    );
+    // The trade failed before the reload: the cookie holds nothing yet.
+    onIphone();
+    answer(installable("not-included"));
+    render(<InstallCard build={row} />);
+
+    expect(keptQuery).toHaveBeenLastCalledWith(
+      "",
+      expect.objectContaining({ udid: PHONE, receipt: held }),
+      true,
+    );
+    fireEvent.change(await screen.findByLabelText("This iPhone's name"), {
+      target: { value: "Kim's iPhone" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Request access" }));
+    expect(requestAccess.mutate).toHaveBeenCalledWith(
+      { receipt: held, name: "Kim's iPhone" },
+      expect.anything(),
+    );
+    window.sessionStorage.clear();
+  });
+
   it("requests again after a reload with no profile, from the cookie an earlier check left", async () => {
     window.localStorage.setItem(IOS_UDID_STORAGE_KEY, PHONE);
     keptQuery.mockReturnValue({
