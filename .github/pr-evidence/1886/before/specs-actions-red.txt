@@ -1,6 +1,0 @@
-     × says a build it can't find may be deleted, naming no command 6ms
-     × says in one line that a removed device stays in builds until Apple disables it, with no command for the action 59ms
-       × points an approver to this iPhone's row, which alone carries Approve, tagged This iPhone 1009ms
-       × tags this iPhone's card in the phone's list too, with its actions there 1011ms
-⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
-      Tests  4 failed | 27 passed (31)
