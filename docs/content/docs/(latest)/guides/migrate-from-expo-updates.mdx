@@ -1,6 +1,6 @@
 ---
 title: "Move from expo-updates"
-description: "Replace expo-updates and EAS Update with Hot Updater: what each API and command maps to, code signing, and the cutover through a new native build."
+description: "Replace expo-updates with Hot Updater: what each API and config key maps to, the commands for each task, code signing, and the cutover through a new native build."
 icon: ArrowRightLeft
 ---
 
@@ -16,10 +16,11 @@ Hot Updater needs Expo SDK 55 or later, so a project on an earlier SDK upgrades
 first.
 
 <Callout type="warn">
-  Users on an EAS build get no Hot Updater OTA until they update from the store.
-  That build has no Hot Updater native code and asks only the EAS server for
-  updates. Until they update, reach them through EAS Update, as [Run both until
-  the old builds are gone](#run-both-until-the-old-builds-are-gone) describes.
+  Users on a build with `expo-updates` get no Hot Updater OTA until they update
+  from the store. That build has no Hot Updater native code and asks only its
+  current update server for updates. Until they update, keep publishing to them
+  as [Run both until the old builds are gone](#run-both-until-the-old-builds-are-gone)
+  describes.
 </Callout>
 
 ## Map the app's API
@@ -54,36 +55,43 @@ each need:
 | `useUpdates()`'s `isUpdatePending`                                 | No equivalent  | The closest is [`hotUpdater.isUpdateDownloaded()`](/docs/react-native-api/isUpdateDownloaded), also on `useHotUpdaterStore`: `true` once a download finishes in this session. It resets on restart and stays `false` for an update that downloads nothing, so use the result of `update.updateBundle()` for those.                                                 |
 | `useUpdates()`'s `isUpdateAvailable`, `isChecking`, `isDownloading` | No equivalent  | Keep the result of `checkForUpdate` and whether it is running in your own state. The store holds download `progress`, `isUpdateDownloaded`, and diff details.                                                                                                                                                                                                      |
 
+## Map `runtimeVersion`
+
+Set `updateStrategy` in `hot-updater.config.ts` from the `runtimeVersion` in
+your app config:
+
+| `runtimeVersion`                              | Hot Updater                                                                                                                                             | What to know                                                                                                                                                                                                                                                                  |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `runtimeVersion: { policy: "appVersion" }`    | [`updateStrategy: "appVersion"`](/docs/guides/update-strategies/app-version)                                                                            | Set it in the config, since `init` writes `fingerprint`. `hot-updater deploy -t <range>` sets the versions an update targets, as a semver range. Without `-t`, it targets the project's version.                                                                              |
+| `runtimeVersion: { policy: "fingerprint" }`   | [`updateStrategy: "fingerprint"`](/docs/guides/update-strategies/fingerprint), with `hot-updater fingerprint create` and a committed `fingerprint.json` | Hashes the native interface your JavaScript calls, including the native files of a local Expo module in `modules/`. Expo config plugins and native edits outside a local module leave the hash unchanged, so bump `fingerprint.nativeVersion` when JavaScript depends on one. |
+| `runtimeVersion: { policy: "nativeVersion" }` | No equivalent                                                                                                                                           | Neither strategy reads the build number, so builds of one version share updates. Use `fingerprint` to separate builds by native changes.                                                                                                                                      |
+| `runtimeVersion: "<string>"`                  | No equivalent                                                                                                                                           | With `fingerprint`, change `fingerprint.nativeVersion` where you changed the string. With `appVersion`, target versions with `-t`.                                                                                                                                            |
+
 ## Map the commands
 
-| expo-updates or EAS                                 | Hot Updater                                                                                                                                                                                  | What to know                                                                                                                                                                                                                                                                                                                                     |
-| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `eas update --channel <channel> --message <text>`   | [`hot-updater deploy -p <platform> -c <channel> -m <text>`](/docs/guides/deploy)                                                                                                             | Each platform's bundle has its own ID. Without `-p`, both platforms commit in one transaction.                                                                                                                                                                                                                                                   |
-| A build profile's `channel` in `eas.json`           | `channel` of the [`@hot-updater/expo` config plugin](/docs/build-adapters/expo), or [`hot-updater channel set <channel>`](/docs/guides/channel-management) with checked-in native projects    | The build embeds it, so changing it takes a new native build.                                                                                                                                                                                                                                                                                    |
-| Branches and `eas channel:edit --branch`            | No branch layer. [`hot-updater bundle promote <id> -t <channel>`](/docs/guides/deploy#deployment-result)                                                                                     | A bundle deploys straight to a channel. `promote` copies one to another channel under a new ID, and `-a move` also disables the source.                                                                                                                                                                                                          |
-| A branch or channel per pull request                | [`gronxb/hot-updater/actions/preview`](/docs/guides/pull-request-previews)                                                                                                                   | Gives each pull request a `pr-<number>` channel and a native build that embeds it, then deletes them when it closes.                                                                                                                                                                                                                             |
-| `runtimeVersion: { policy: "appVersion" }`          | [`updateStrategy: "appVersion"`](/docs/guides/update-strategies/app-version)                                                                                                                 | Set it in the config, since `init` writes `fingerprint`. `hot-updater deploy -t <range>` sets the versions an update targets, as a semver range. Without `-t`, it targets the project's version.                                                                                                                                                 |
-| `runtimeVersion: { policy: "fingerprint" }`         | [`updateStrategy: "fingerprint"`](/docs/guides/update-strategies/fingerprint), with `hot-updater fingerprint create` and a committed `fingerprint.json`                                      | Hashes the native interface your JavaScript calls, including the native files of a local Expo module in `modules/`. Expo config plugins and native edits outside a local module leave the hash unchanged, so bump `fingerprint.nativeVersion` when JavaScript depends on one.                                                                                                                                             |
-| `runtimeVersion: { policy: "nativeVersion" }`       | No equivalent                                                                                                                                                                                | Neither strategy reads the build number, so builds of one version share updates. Use `fingerprint` to separate builds by native changes.                                                                                                                                                                                                         |
-| `runtimeVersion: "<string>"`                        | No equivalent                                                                                                                                                                                | With `fingerprint`, change `fingerprint.nativeVersion` where you changed the string. With `appVersion`, target versions with `-t`.                                                                                                                                                                                                               |
-| `eas update --rollout-percentage=<n>`               | [`hot-updater deploy -p <platform> -r <n>`](/docs/guides/rollout-cohorts)                                                                                                                    | `-r 0` creates the bundle without exposing it to the percentage rollout.                                                                                                                                                                                                                                                                         |
-| `eas update:edit`                                   | [`hot-updater bundle update <id> --rollout-cohort-count <n> -y`](/docs/guides/rollout-cohorts#deploy-a-bundle-with-rollout)                                                                  | Counts 1000 cohorts, so 25% is `250`. Raising one bundle expands its set of devices, with no reshuffle.                                                                                                                                                                                                                                          |
-| `eas channel:rollout`                               | No equivalent                                                                                                                                                                                | Rollouts are per bundle. Use `-r` and `bundle update`.                                                                                                                                                                                                                                                                                           |
-| `eas update:revert-update-rollout`                  | `hot-updater bundle disable <id> -y`                                                                                                                                                         | Devices on the bundle move away at their next check.                                                                                                                                                                                                                                                                                             |
-| `eas update:rollback`, `eas update:republish`       | [`hot-updater bundle disable <id> -y`](/docs/guides/console#rollback), or **Roll back** in the Console's [Release health](/docs/guides/insights#release-health)                              | Disable the newer bundles. Devices select the previous compatible enabled bundle at their next check, and apply it through your update flow. `bundle enable <id>` restores a disabled one.                                                                                                                                                       |
-| `eas update:roll-back-to-embedded`                  | No single command. `hot-updater bundle disable <id> -y` on each enabled bundle of the target                                                                                                 | With no compatible bundle left, devices return to the bundle built into the app.                                                                                                                                                                                                                                                                 |
-| `eas build`                                         | [`hot-updater native-build ios --scheme <scheme>`](/docs/guides/native-build), and `native-build android`. Or keep `eas build` and run [`hot-updater native-build import <file>`](/docs/guides/native-build#import-a-build-made-elsewhere) | `native-build` builds the schemes under `nativeBuild` in `hot-updater.config.ts`. An EAS build works too once `@hot-updater/expo` is in the app config, and importing its artifact tracks it as a patch base.                                                                                                                                    |
-| `eas submit`, `eas build --auto-submit`             | [`hot-updater native-build ios --submit testflight`](/docs/native-builds/testflight) and [`native-build android --submit play-internal`](/docs/native-builds/google-play), or the shortcuts `hot-updater testflight` and `hot-updater google-play upload` | These submit the build they make to TestFlight or a Google Play track (`play-internal`, `play-closed`, `play-open`, `play-production`). No command uploads a file built elsewhere.                                                                                                                                                                                                         |
-| `eas credentials`                                   | [`hot-updater apple login`](/docs/native-builds/testflight#sign-in-once), `hot-updater secrets put play-service-account <file>`, `hot-updater secrets put android-keystore <file>`            | Download the upload keystore from `eas credentials` and store it, so Google Play keeps accepting your builds.                                                                                                                                                                                                                                    |
-| A CI flow that sends an OTA or a store build        | [`gronxb/hot-updater/actions/release`](/docs/guides/release-from-ci)                                                                                                                         | On each push, deploys a bundle when a store build has the project's fingerprint or, with `appVersion`, its version. When none does, it builds and submits one.                                                                                                                                                                                                                       |
-| `eas env:pull`                                      | [`hot-updater secrets pull`](/docs/concepts/secrets#pull-secrets-to-a-local-file)                                                                                                            | Pulls deploy credentials only, to `.env.hotupdater`, from a team `secrets` adapter. With `localSecrets()` there is nothing to pull. It skips build credentials, which builds read from the store. It doesn't cover the app's runtime variables, such as `EXPO_PUBLIC_*`: keep those in your own env files.                                       |
+| Task                                          | Hot Updater                                                                                                                                                                                                                                               | What to know                                                                                                                                                                                                                                                                                               |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Publish an update to a channel                | [`hot-updater deploy -p <platform> -c <channel> -m <text>`](/docs/guides/deploy)                                                                                                                                                                          | Each platform's bundle has its own ID. Without `-p`, both platforms commit in one transaction.                                                                                                                                                                                                             |
+| Set the channel a build embeds                | `channel` of the [`@hot-updater/expo` config plugin](/docs/build-adapters/expo), or [`hot-updater channel set <channel>`](/docs/guides/channel-management) with checked-in native projects                                                                | The build embeds it, so changing it takes a new native build.                                                                                                                                                                                                                                              |
+| Move an update to another channel             | [`hot-updater bundle promote <id> -t <channel>`](/docs/guides/deploy#deployment-result)                                                                                                                                                                   | A bundle deploys straight to a channel. `promote` copies one to another channel under a new ID, and `-a move` also disables the source.                                                                                                                                                                    |
+| A channel per pull request                    | [`gronxb/hot-updater/actions/preview`](/docs/guides/pull-request-previews)                                                                                                                                                                                | Gives each pull request a `pr-<number>` channel and a native build that embeds it, then deletes them when it closes.                                                                                                                                                                                       |
+| Roll out an update to a percentage of devices | [`hot-updater deploy -p <platform> -r <n>`](/docs/guides/rollout-cohorts)                                                                                                                                                                                 | `-r 0` creates the bundle without exposing it to the percentage rollout.                                                                                                                                                                                                                                   |
+| Change an update's rollout                    | [`hot-updater bundle update <id> --rollout-cohort-count <n> -y`](/docs/guides/rollout-cohorts#deploy-a-bundle-with-rollout)                                                                                                                               | Counts 1000 cohorts, so 25% is `250`. Raising one bundle expands its set of devices, with no reshuffle. Rollouts are per bundle, not per channel.                                                                                                                                                          |
+| Stop a rollout                                | `hot-updater bundle disable <id> -y`                                                                                                                                                                                                                      | Devices on the bundle move away at their next check.                                                                                                                                                                                                                                                       |
+| Roll back to an earlier update                | [`hot-updater bundle disable <id> -y`](/docs/guides/console#rollback), or **Roll back** in the Console's [Release health](/docs/guides/insights#release-health)                                                                                           | Disable the newer bundles. Devices select the previous compatible enabled bundle at their next check, and apply it through your update flow. `bundle enable <id>` restores a disabled one.                                                                                                                 |
+| Roll back to the bundle built into the app    | No single command. `hot-updater bundle disable <id> -y` on each enabled bundle of the target                                                                                                                                                              | With no compatible bundle left, devices return to the bundle built into the app.                                                                                                                                                                                                                           |
+| Build the native app                          | [`hot-updater native-build ios --scheme <scheme>`](/docs/guides/native-build), and `native-build android`. For a build made elsewhere, run [`hot-updater native-build import <file>`](/docs/guides/native-build#import-a-build-made-elsewhere)            | `native-build` builds the schemes under `nativeBuild` in `hot-updater.config.ts`. A build made elsewhere works too once `@hot-updater/expo` is in the app config, and importing its artifact tracks it as a patch base.                                                                                    |
+| Submit a build to the stores                  | [`hot-updater native-build ios --submit testflight`](/docs/native-builds/testflight) and [`native-build android --submit play-internal`](/docs/native-builds/google-play), or the shortcuts `hot-updater testflight` and `hot-updater google-play upload` | These submit the build they make to TestFlight or a Google Play track (`play-internal`, `play-closed`, `play-open`, `play-production`). No command uploads a file built elsewhere.                                                                                                                         |
+| Store signing credentials and store accounts  | [`hot-updater apple login`](/docs/native-builds/testflight#sign-in-once), `hot-updater secrets put play-service-account <file>`, `hot-updater secrets put android-keystore <file>`                                                                        | Store your current Android upload keystore before the first build, so Google Play keeps accepting your builds.                                                                                                                                                                                             |
+| Send an OTA or a store build from CI          | [`gronxb/hot-updater/actions/release`](/docs/guides/release-from-ci)                                                                                                                                                                                      | On each push, deploys a bundle when a store build has the project's fingerprint or, with `appVersion`, its version. When none does, it builds and submits one.                                                                                                                                             |
+| Pull credentials to a local file              | [`hot-updater secrets pull`](/docs/concepts/secrets#pull-secrets-to-a-local-file)                                                                                                                                                                         | Pulls deploy credentials only, to `.env.hotupdater`, from a team `secrets` adapter. With `localSecrets()` there is nothing to pull. It skips build credentials, which builds read from the store. It doesn't cover the app's runtime variables, such as `EXPO_PUBLIC_*`: keep those in your own env files. |
 
 ## Plan code signing
 
-An EAS Update code signing certificate can't be imported. `expo-updates` checks
-updates against the certificate in `updates.codeSigningCertificate`, and Hot
-Updater checks bundles against a public key embedded in the native build. An
-OTA can't add that key to an installed build, so signing starts with a new
+An `expo-updates` code signing certificate can't be imported. `expo-updates`
+checks updates against the certificate in `updates.codeSigningCertificate`, and
+Hot Updater checks bundles against a public key embedded in the native build.
+An OTA can't add that key to an installed build, so signing starts with a new
 native build.
 
 If you sign updates, set this up before the first native build:
@@ -102,12 +110,12 @@ If you sign updates, set this up before the first native build:
 
 3. Set `publicKeyPath` in the config plugin, as [the config
    plugin step](#4-add-the-config-plugin) shows. Commit the public key, and keep
-   the private key out of `eas.json` and EAS environment variables.
+   the private key out of native build inputs and build environment variables.
 4. Release the native build, then deploy signed bundles to it.
 
 A build without the matching public key rejects signed bundles, so adding
 signing after the first release takes another store release.
-[Bundle Signing](/docs/guides/bundle-signing#expo-and-eas-build) covers the
+[Bundle Signing](/docs/guides/bundle-signing#expo) covers the
 details.
 
 ## Cut over
@@ -115,9 +123,9 @@ details.
 ### 1. Keep a branch for the old builds
 
 Create a branch from the commit your store build came from, such as
-`eas-maintenance`, and leave `expo-updates` installed there. Keep your EAS Update
-signing key and certificate with it. Make the remaining changes on your main
-branch.
+`expo-updates-maintenance`, and leave `expo-updates` installed there. Keep your
+`expo-updates` signing key and certificate with it. Make the remaining changes
+on your main branch.
 
 ### 2. Remove expo-updates
 
@@ -130,6 +138,8 @@ Then remove what it read:
 - In `app.json` or `app.config`, the `updates` and `runtimeVersion` keys,
   including those under `ios` and `android`, and `expo-updates` in `plugins`.
 - In `eas.json`, each build profile's `channel`.
+- In your main branch's CI, the `eas update` step. It keeps running only on the
+  branch of step 1.
 - In your code, every import of `expo-updates`.
 - With checked-in native projects, the `EXUpdates*` keys in `Expo.plist`, and
   the `expo.modules.updates.*` `meta-data` in `AndroidManifest.xml`.
@@ -155,7 +165,7 @@ npx hot-updater init
 [Set up manually](/docs/get-started/basic-usage) follows each step, and
 [Set up with an agent](/docs/guides/ai-agents) lets a coding agent do them. `init`
 writes `updateStrategy: "fingerprint"`; set it to the
-[strategy](#map-the-commands) your `runtimeVersion` policy maps to.
+[strategy](#map-runtimeversion) your `runtimeVersion` maps to.
 
 ### 4. Add the config plugin
 
@@ -247,9 +257,9 @@ To check at launch, as `expo-updates` does by default, wrap the root with
 [`hotUpdater.wrap`](/docs/react-native-api/wrap) instead.
 
 Native builds and OTA bundles both read these variables. `hot-updater deploy`
-bundles where it runs, so set them there too, and not only in your EAS
-environment. `.env.hotupdater` holds the CLI's credentials and doesn't reach the
-app; see
+bundles where it runs, so set them there too, and not only in your native
+build's environment. `.env.hotupdater` holds the CLI's credentials and doesn't
+reach the app; see
 [Supply values to native and OTA builds](/docs/get-started/app-setup#supply-values-to-native-and-ota-builds).
 
 ### 6. Test on a separate channel
@@ -263,8 +273,8 @@ Set `channel` back to your release channel before the store build.
 
 With the `fingerprint` strategy, run `npx hot-updater fingerprint create` and
 commit `fingerprint.json` first. Raise the version or build number, then build
-and submit with the [commands above](#map-the-commands), or with `eas build` and
-`eas submit`.
+and submit with the [commands above](#map-the-commands), or with the tools you
+use today.
 
 Deploy bundles after this build. A bundle deployed before it is older than the
 JavaScript built into the app, so the build doesn't select it. A user who
@@ -276,20 +286,21 @@ your Hot Updater server.
 A store release leaves users on the old build for a while. During that time you
 publish to two groups of installed apps, from two branches:
 
-| Installed build | Its updates come from | Publish with         | From this branch     |
-| --------------- | --------------------- | -------------------- | -------------------- |
-| Old EAS build   | EAS Update            | `eas update`         | The branch of step 1 |
-| New build       | Hot Updater           | `hot-updater deploy` | Your main branch     |
+| Installed build | Its updates come from | Publish with                   | From this branch     |
+| --------------- | --------------------- | ------------------------------ | -------------------- |
+| Old build       | `expo-updates`        | Your current `eas update` step | The branch of step 1 |
+| New build       | Hot Updater           | `hot-updater deploy`           | Your main branch     |
 
-- Publish to EAS Update only from the branch of step 1. Your main branch imports
-  `@hot-updater/react-native`, whose native code the old build doesn't have.
+- Publish to the old build only from the branch of step 1. Your main branch
+  imports `@hot-updater/react-native`, whose native code the old build doesn't
+  have.
 - Make a fix on both branches, and publish it from each.
 - To move users along, publish an update from the branch of step 1 that asks them
   to update from the store.
-- Track each group where it reports: EAS for the old build, and
-  [Insights](/docs/guides/insights) for the new one. Insights counts only devices
-  that report to your server.
+- Track each group where it reports: your current update service for the old
+  build, and [Insights](/docs/guides/insights) for the new one. Insights counts
+  only devices that report to your server.
 
-When few enough users remain on the old build, stop publishing to EAS Update.
-Those builds stay on the last update they downloaded. Then delete the branch of
-step 1 and the EAS Update signing key.
+When few enough users remain on the old build, stop publishing to it. Those
+builds stay on the last update they downloaded. Then delete the branch of step 1
+and the `expo-updates` signing key.
