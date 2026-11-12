@@ -155,6 +155,12 @@ const sendDeviceRoute = async <T>(
 /** Told when a trade sets the cookie, so a cached "no proof" is read again. */
 const KEPT_EVENT = "hot-updater-ios-device-kept";
 
+/**
+ * The same news for this Safari's other tabs, which share the cookie: a
+ * timestamp only, written where their `storage` event hears it.
+ */
+const KEPT_PING_KEY = "hot-updater-ios-device-kept";
+
 /** Trades in flight or done, one per receipt: a failed one is forgotten. */
 const trades = new Map<string, Promise<unknown>>();
 
@@ -176,6 +182,11 @@ export const keepIosDeviceReceipt = (consolePath: string, receipt: string) => {
       (answer) => {
         releasePendingReceipt(receipt);
         window.dispatchEvent(new Event(KEPT_EVENT));
+        try {
+          window.localStorage.setItem(KEPT_PING_KEY, String(Date.now()));
+        } catch {
+          // A browser that keeps nothing has no other tab to tell.
+        }
         return answer;
       },
       (error: unknown) => {
@@ -198,8 +209,9 @@ export function useKeptIosDeviceQuery(
   receipt: string | null,
   enabled: boolean,
 ) {
-  // A trade on this page sets the cookie the receiptless read may have found
-  // empty: that read, cached for good otherwise, is read again.
+  // A trade on this page, or in another tab, sets the cookie the receiptless
+  // read may have found empty: that read, cached for good otherwise, is read
+  // again.
   const queryClient = useQueryClient();
   useEffect(() => {
     const onKept = () =>
@@ -207,8 +219,15 @@ export function useKeptIosDeviceQuery(
         queryKey: iosDeviceKeys.kept(null),
         exact: true,
       });
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === KEPT_PING_KEY) onKept();
+    };
     window.addEventListener(KEPT_EVENT, onKept);
-    return () => window.removeEventListener(KEPT_EVENT, onKept);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(KEPT_EVENT, onKept);
+      window.removeEventListener("storage", onStorage);
+    };
   }, [queryClient]);
   return useQuery({
     queryKey: iosDeviceKeys.kept(receipt),

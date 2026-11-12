@@ -378,6 +378,52 @@ describe("this iPhone's row, read with the real query", () => {
       }
     });
 
+    it("reads the cookie again when another tab traded the receipt", async () => {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(IPHONE_UA);
+      let traded = false;
+      const calls: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          calls.push(`${init?.method ?? "GET"} ${url}`);
+          return new Response(
+            JSON.stringify({ udid: traded ? PHONE.toLowerCase() : null }),
+          );
+        }),
+      );
+      try {
+        show();
+        await waitFor(() =>
+          expect(calls).toEqual(["GET /_hot-updater/devices/receipt"]),
+        );
+        await screen.findByText("iPhones need this Console on HTTPS.");
+
+        // Another tab took the profile's answer and set the cookie: this tab
+        // hears it only through storage.
+        traded = true;
+        act(() => {
+          window.dispatchEvent(
+            new StorageEvent("storage", {
+              key: "hot-updater-ios-device-kept",
+              newValue: String(Date.now()),
+            }),
+          );
+        });
+
+        await waitFor(() =>
+          expect(window.localStorage.getItem("hot-updater-ios-udid")).toBe(
+            PHONE.toLowerCase(),
+          ),
+        );
+        expect(calls).toEqual([
+          "GET /_hot-updater/devices/receipt",
+          "GET /_hot-updater/devices/receipt",
+        ]);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
     it("asks nothing on a computer", async () => {
       const calls = routes();
       try {
