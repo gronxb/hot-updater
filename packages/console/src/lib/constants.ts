@@ -11,3 +11,6 @@ export const DEFAULT_CHANNEL = "production";
  * own because any name, `all` included, can be a channel's.
  */
 export const ALL_CHANNELS = "all";
+
+/** The channel filter's choice that lists every channel, on every page. */
+export const ALL_CHANNELS_LABEL = "All channels";

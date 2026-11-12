@@ -918,6 +918,13 @@ describe("BundlesPage", () => {
       ]);
     });
 
+    it("names every channel as Native builds does", () => {
+      render(<BundlesPage />);
+
+      expect(screen.getAllByText("All channels").length).toBeGreaterThan(0);
+      expect(screen.queryByText("All Channels")).toBeNull();
+    });
+
     it("lists every channel when the project has no production channel", () => {
       mocks.channels = [STAGING];
       render(<BundlesPage />);

@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useChannelsQuery, useNativeBuildsQuery } from "@/lib/api";
-import { ALL_CHANNELS } from "@/lib/constants";
+import { ALL_CHANNELS, ALL_CHANNELS_LABEL } from "@/lib/constants";
 import {
   type NativeBuildsSearch,
   resolveNativeBuildsSearch,
@@ -105,7 +105,7 @@ export function NativeBuildsPage({
           <Select
             disabled={pending}
             items={[
-              { label: "All channels", value: ALL_CHANNELS },
+              { label: ALL_CHANNELS_LABEL, value: ALL_CHANNELS },
               ...choices.map((name) => ({
                 label: name,
                 value: channelValue(name),
@@ -138,7 +138,9 @@ export function NativeBuildsPage({
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectItem value={ALL_CHANNELS}>All channels</SelectItem>
+                <SelectItem value={ALL_CHANNELS}>
+                  {ALL_CHANNELS_LABEL}
+                </SelectItem>
                 {choices.map((name) => (
                   <SelectItem
                     key={name}

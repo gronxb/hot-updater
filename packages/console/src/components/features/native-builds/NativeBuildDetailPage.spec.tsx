@@ -90,6 +90,16 @@ describe("NativeBuildDetailPage", () => {
     expect(title.textContent).toMatch(/^iOS IPA\s*Sandbox\s*·\s*pr-130/);
   });
 
+  it("goes back to the list of the build's own channel, where its row is", () => {
+    show(build({ is_sandbox: true }), "sandbox-release");
+    expect(
+      screen
+        .getByText("Native builds")
+        .closest("[data-search]")!
+        .getAttribute("data-search"),
+    ).toBe(JSON.stringify({ channel: "sandbox-release" }));
+  });
+
   it("tags no build its record doesn't call a sandbox build, whatever its channel", () => {
     const title = show(build({}), "sandbox-release");
     expect(title.textContent).not.toMatch(/Sandbox/);

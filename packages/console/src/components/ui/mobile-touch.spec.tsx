@@ -3,6 +3,14 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "./dialog";
 import { Input } from "./input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./select";
 import { Switch } from "./switch";
 import { Tabs, TabsList, TabsTrigger } from "./tabs";
 import { Textarea } from "./textarea";
@@ -73,5 +81,36 @@ describe("phone sizes on the shared controls", () => {
     const tab = screen.getByRole("tab", { name: "24 hours" });
     expect(tab.className).toContain("max-md:before:-inset-y-1");
     expect(tab.className).toContain("max-md:before:absolute");
+  });
+
+  it("gives a select's options 44 px rows on a phone, compact from md, and a popup as wide as its longest name", () => {
+    const long = "qa-rc29-second-ota-20261003";
+    render(
+      <Select defaultOpen defaultValue="production">
+        <SelectTrigger aria-label="Channel">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            <SelectItem value="production">production</SelectItem>
+            <SelectItem value={long}>{long}</SelectItem>
+          </SelectGroup>
+        </SelectContent>
+      </Select>,
+    );
+    const option = screen.getByRole("option", { name: long });
+    expect(option.className).toContain("max-md:min-h-11");
+    expect(option.className).toContain("min-h-7");
+    // The check mark sits in the row's right padding, never over a name.
+    expect(option.className).toContain("pr-8");
+    const popup = option.closest("[data-slot=select-content]")!;
+    // As wide as the longest name, never narrower than the trigger, and within
+    // the screen; a name longer than that wraps whole instead of clipping.
+    expect(popup.className).toContain("w-max");
+    expect(popup.className).toContain("min-w-(--anchor-width)");
+    expect(popup.className).toContain("max-w-(--available-width)");
+    expect(screen.getByText(long).className).toContain(
+      "[overflow-wrap:anywhere]",
+    );
   });
 });
