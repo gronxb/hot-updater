@@ -331,6 +331,7 @@ export const findCachedNativeBuild = async ({
               ),
               artifactKind: nativeBuild.artifact_kind,
               buildNumber: nativeBuild.build_number,
+              nativeAppVersion: nativeBuild.native_app_version ?? null,
             };
       return {
         hit: { source: "storage", nativeBuild, result },

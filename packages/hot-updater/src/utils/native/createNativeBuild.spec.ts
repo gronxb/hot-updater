@@ -74,6 +74,9 @@ describe("createNativeBuild", () => {
       appVersion: "1.2.0",
       artifactPath: path.join(outputPath, "export/App.ipa"),
       artifactKind: "ipa",
+      // The build read no app from its artifact, so it reports none, not
+      // the project's.
+      nativeAppVersion: null,
     });
     await expect(fs.readFile(result.artifactPath, "utf-8")).resolves.toBe(
       "artifact",
@@ -129,6 +132,7 @@ describe("createNativeBuild", () => {
       channel: "beta",
       // The artifact's build number, which a store takes once.
       buildNumber: "66",
+      nativeAppVersion: "2.0.0",
     });
     expect(readChannel).not.toHaveBeenCalled();
   });
@@ -155,7 +159,30 @@ describe("createNativeBuild", () => {
       fingerprintHash: "fingerprint",
       appVersion: null,
       channel: "production",
+      // The fingerprint selects its updates, and it still has a version.
+      nativeAppVersion: "1.0.0",
     });
+  });
+
+  it("reports no app version of its own when the artifact's can't be read", async () => {
+    const built = await writeArtifact("app-release.aab");
+
+    const result = await createNativeBuild({
+      platform: "android",
+      scheme: "release",
+      minBundleId: "0190a1b2-c3d4-7000-8000-02a1b2c3d4e5",
+      target: { fingerprintHash: "fingerprint", appVersion: null },
+      debug: false,
+      readChannel: async () => "beta",
+      outputPath: path.join(root, "output"),
+      buildAdapter: buildAdapter([]),
+      builder: async () => ({
+        ...built,
+        builtApp: { appVersion: null, channel: null },
+      }),
+    });
+
+    expect(result.nativeAppVersion).toBeNull();
   });
 
   it("reports the project's channel when the artifact's cannot be read exactly", async () => {

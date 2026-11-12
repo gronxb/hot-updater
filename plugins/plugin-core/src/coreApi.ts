@@ -134,6 +134,12 @@ export type NativeBuildRegistration = NativeBuildScope & {
    * out for any other artifact, or an `.ipa` whose profile wasn't read.
    */
   readonly exportMethod?: NativeBuildExportMethod | null;
+  /**
+   * The app version the artifact reports, its `CFBundleShortVersionString`
+   * or `versionName`, whatever the update strategy; null or left out when it
+   * wasn't read.
+   */
+  readonly nativeAppVersion?: string | null;
   readonly artifact: {
     readonly kind: NativeBuildArtifactKind;
     readonly storageUri: string;

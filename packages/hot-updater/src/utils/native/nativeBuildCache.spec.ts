@@ -124,6 +124,7 @@ describe("the native build cache", () => {
       minBundleId: MIN_BUNDLE_ID,
       gitCommitHash: null,
       buildKey,
+      nativeAppVersion: "1.0.0",
       artifact: { kind: "apk", storageUri, byteSize: contents.length },
       embeddedBundle: {
         manifestStorageUri: `mem://b/bundles/${MIN_BUNDLE_ID}/manifest.json`,
@@ -290,6 +291,8 @@ describe("the native build cache", () => {
         artifactKind: "apk",
         // The tracked build's own, which a store takes once.
         buildNumber: row.build_number,
+        // Read from its artifact when it registered.
+        nativeAppVersion: "1.0.0",
       },
     });
     expect(await fs.promises.readFile(hit!.result.artifactPath, "utf8")).toBe(

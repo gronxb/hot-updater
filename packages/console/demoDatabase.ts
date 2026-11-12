@@ -713,6 +713,12 @@ type DemoNativeBuild = {
   readonly sandbox?: true;
   /** How an `.ipa` was exported, as its profile says. */
   readonly exportMethod?: "app-store" | "ad-hoc";
+  /**
+   * The app version the artifact reports, whatever the strategy: an app
+   * version build's target by default, and none for a build registered
+   * before it was recorded.
+   */
+  readonly nativeAppVersion?: string | null;
   /** The demo bundles that patch from this build's built-in bundle. */
   readonly patchTargets?: readonly DemoDeployment[];
 };
@@ -732,6 +738,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
       platform: "android",
       channel: `pr-${110 + index}`,
       target: { fingerprint: `fp-android-pr-${110 + index}` },
+      nativeAppVersion: null,
       minBundleId: `019f6200-${(index + 1).toString(16).padStart(4, "0")}-7000-8000-000000000000`,
       kind: "apk",
       gitCommitHash: `a${String(index).padStart(2, "0")}c4e19`,
@@ -744,6 +751,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "ios",
     channel: "production",
     target: { fingerprint: "fp-ios-production-1-0-0" },
+    nativeAppVersion: null,
     minBundleId: "019f6300-00c6-7000-8000-000000000000",
     kind: "ipa",
     exportMethod: "app-store",
@@ -763,6 +771,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "android",
     channel: "staging",
     target: { fingerprint: "fp-android-camera-v2" },
+    nativeAppVersion: "1.3.0",
     minBundleId: "019f6300-00c8-7000-8000-000000000000",
     kind: "apk",
     gitCommitHash: "0b7d3e95",
@@ -772,6 +781,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "ios",
     channel: "sandbox-release",
     target: { fingerprint: "fp-ios-sandbox" },
+    nativeAppVersion: "1.6.0",
     minBundleId: "019f6300-00c9-7000-8000-000000000000",
     kind: "ipa",
     exportMethod: "app-store",
@@ -783,6 +793,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "android",
     channel: "staging",
     target: { fingerprint: "fp-android-camera-v2" },
+    nativeAppVersion: "1.2.4",
     minBundleId: "01971f4e-0000-7000-8000-02a1b2c3d4e5",
     kind: "apk",
     gitCommitHash: "1d3e5f7a",
@@ -823,6 +834,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "android",
     channel: "staging",
     target: { fingerprint: "fp-android-camera-v2" },
+    nativeAppVersion: "1.3.0",
     minBundleId: "01971f4f-0000-7000-8000-029e7b3c1d5a",
     kind: "apk",
     gitCommitHash: "20be7311",
@@ -833,6 +845,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "android",
     channel: "pr-130",
     target: { fingerprint: "fp-android-pr-130" },
+    nativeAppVersion: "1.6.0",
     minBundleId: "019f6300-00a5-7000-8000-000000000000",
     kind: "apk",
     gitCommitHash: "e4f1a2b3",
@@ -842,6 +855,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "ios",
     channel: "pr-130",
     target: { fingerprint: "fp-ios-pr-130" },
+    nativeAppVersion: "1.6.0",
     minBundleId: "019f6300-00a7-7000-8000-000000000000",
     kind: "app",
     gitCommitHash: "e4f1a2b3",
@@ -875,6 +889,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "ios",
     channel: "production",
     target: { fingerprint: "fp-ios-production-1-0-0" },
+    nativeAppVersion: "1.4.2",
     minBundleId: "01971f60-0000-7000-8000-000000000000",
     kind: "ipa",
     exportMethod: "app-store",
@@ -887,6 +902,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "android",
     channel: "sandbox-release",
     target: { fingerprint: "fp-android-sandbox" },
+    nativeAppVersion: "1.6.0",
     minBundleId: "019f6300-00b0-7000-8000-000000000000",
     kind: "apk",
     gitCommitHash: "5a6b7c8d",
@@ -897,6 +913,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "ios",
     channel: "sandbox-release",
     target: { fingerprint: "fp-ios-sandbox" },
+    nativeAppVersion: "1.6.0",
     minBundleId: "019f6300-00b1-7000-8000-000000000000",
     kind: "ipa",
     exportMethod: "app-store",
@@ -909,6 +926,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "android",
     channel: "feature-checkout-redesign-with-saved-payment-methods",
     target: { fingerprint: "fp-android-checkout" },
+    nativeAppVersion: "1.5.0-beta.3",
     minBundleId: "019f6300-00b2-7000-8000-000000000000",
     kind: "apk",
     gitCommitHash: "9e8d7c6b",
@@ -932,6 +950,8 @@ const demoNativeBuilds: DemoNativeBuild[] = [
       platform: "android",
       channel: `pr-${131 + index}`,
       target: { fingerprint: `fp-android-pr-${131 + index}` },
+      // One registered by an older CLI, which recorded no version.
+      nativeAppVersion: index === 5 ? null : "1.6.0",
       minBundleId: `019f6300-00${(0xc0 + index).toString(16)}-7000-8000-000000000001`,
       kind: "apk",
       gitCommitHash: `b${String(index).padStart(2, "0")}d5f20`,
@@ -962,6 +982,12 @@ for (const build of demoNativeBuilds) {
     buildNumber: String(100 + build.n),
     isSandbox: build.sandbox === true,
     exportMethod: build.exportMethod ?? null,
+    nativeAppVersion:
+      build.nativeAppVersion !== undefined
+        ? build.nativeAppVersion
+        : "appVersion" in build.target
+          ? build.target.appVersion
+          : null,
     artifact: {
       kind: build.kind,
       storageUri: `storage://my-app/native-builds/${build.platform}/${id}/${file}`,

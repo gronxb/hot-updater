@@ -74,6 +74,7 @@ const pick = (row: Readonly<Record<string, unknown>>): NativeBuildRow => ({
   is_sandbox: row.is_sandbox === true,
   sandbox_url_scheme: (row.sandbox_url_scheme ?? null) as string | null,
   export_method: (row.export_method ?? null) as NativeBuildRow["export_method"],
+  native_app_version: (row.native_app_version ?? null) as string | null,
 });
 
 /** The export methods an `.ipa` registers with. */
@@ -162,6 +163,7 @@ const problemOf = ({
   isSandbox,
   sandboxUrlScheme,
   exportMethod,
+  nativeAppVersion,
   artifact,
 }: NativeBuildRegistration): string | null => {
   if (!isUUIDv7(id)) return "id must be a UUIDv7";
@@ -213,6 +215,14 @@ const problemOf = ({
       buildNumber.length > BUILD_NUMBER_MAX_LENGTH)
   ) {
     return `buildNumber must be the artifact's build number, up to ${BUILD_NUMBER_MAX_LENGTH} characters, or null`;
+  }
+  if (
+    nativeAppVersion !== undefined &&
+    nativeAppVersion !== null &&
+    (typeof nativeAppVersion !== "string" ||
+      nativeAppVersion.trim().length === 0)
+  ) {
+    return "nativeAppVersion must be the artifact's app version, or null";
   }
   const kinds: readonly string[] = ARTIFACT_KINDS[platform];
   if (!kinds.includes(artifact.kind)) {
@@ -277,6 +287,7 @@ export const createNativeBuildApi = (
       is_sandbox: registration.isSandbox === true,
       sandbox_url_scheme: registration.sandboxUrlScheme ?? null,
       export_method: registration.exportMethod ?? null,
+      native_app_version: registration.nativeAppVersion ?? null,
     };
     // A channel deleted between ensuring it and the write refuses the write
     // through `byChannel`'s root, so it runs again and ensures it anew.

@@ -368,6 +368,7 @@ function BuildRow({
         <TargetDisplay
           appVersion={build.app_version}
           fingerprintHash={build.fingerprint_hash}
+          nativeAppVersion={build.native_app_version}
         />
       </TableCell>
       <TableCell>
@@ -455,12 +456,15 @@ function BuildCard({
         <span aria-hidden="true">·</span>
         <RelativeTime ms={createdAt(build)} />
       </p>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-6 text-xs">
+      {/* Bottom-aligned: a build key sits beside a fingerprint under its
+          build's version. */}
+      <div className="flex flex-wrap items-end gap-x-4 gap-y-6 text-xs">
         <span className="flex items-center">
           <span className="sr-only">Target </span>
           <TargetDisplay
             appVersion={build.app_version}
             fingerprintHash={build.fingerprint_hash}
+            nativeAppVersion={build.native_app_version}
           />
         </span>
         {build.build_key ? (

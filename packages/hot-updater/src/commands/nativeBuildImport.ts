@@ -392,6 +392,9 @@ export const handleNativeBuildImport = async (
           // Read from the artifact, as a build's own is: its
           // CFBundleVersion or versionCode.
           buildNumber: build.buildNumber,
+          // Its CFBundleShortVersionString or versionName, whatever the
+          // update strategy.
+          nativeAppVersion: build.nativeAppVersion,
         },
         {
           buildKey: null,

@@ -264,7 +264,10 @@ in a table like the Bundles page's, one kind of value per column:
 - **Channel** and **Platform**.
 - **Build**: the build number the artifact reports.
 - **Target**: what its OTAs target, as the Bundles page's Target column shows
-  it: the fingerprint, or the app version under the `appVersion` strategy.
+  it: the fingerprint, or the app version under the `appVersion` strategy. A
+  fingerprint build also shows the app version its artifact reports, its
+  `CFBundleShortVersionString` or `versionName`, over its fingerprint. A build
+  registered before the version was recorded shows its fingerprint alone.
 - **Build key**: the [native build key](#reuse-a-build) of the build's
   inputs, shown past its `nbk1:` prefix and copied whole. An imported build
   has none.

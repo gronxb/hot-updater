@@ -191,6 +191,7 @@ export const handleNativeBuildFind = async (
         ui.kv("Platform", ui.platform(scope.platform)),
         ui.kv("Channel", ui.channel(scope.channel)),
         target,
+        artifactVersionRow(nativeBuild),
         ui.kv("Kind", kindOf(nativeBuild)),
         ui.kv("Min bundle ID", ui.id(nativeBuild.min_bundle_id)),
         ui.kv("Created", formatUtc(nativeBuild.created_at_ms)),
@@ -208,6 +209,17 @@ export const handleNativeBuildFind = async (
     process.exit(1);
   }
 };
+
+/**
+ * A fingerprint build's own app version, which the artifact reports: an app
+ * version build's is its target, already shown.
+ */
+const artifactVersionRow = (
+  build: Pick<NativeBuildRow, "fingerprint_hash" | "native_app_version">,
+) =>
+  build.fingerprint_hash !== null &&
+  Boolean(build.native_app_version) &&
+  ui.kv("App version", ui.version(build.native_app_version!));
 
 /** The build's artifact kind, `apk · sandbox` for a sandbox build. */
 const kindOf = (build: Pick<NativeBuildRow, "artifact_kind" | "is_sandbox">) =>
@@ -599,6 +611,7 @@ export const handleNativeBuildDelete = async (
             build.fingerprint_hash === null
               ? ui.kv("App version", ui.version(build.app_version))
               : ui.kv("Fingerprint", ui.id(build.fingerprint_hash)),
+            artifactVersionRow(build),
             ui.kv("Kind", kindOf(build)),
             ui.kv("Size", formatBytes(build.byte_size)),
             ui.kv("Artifact", ui.path(ui.fitPath(build.artifact_storage_uri))),

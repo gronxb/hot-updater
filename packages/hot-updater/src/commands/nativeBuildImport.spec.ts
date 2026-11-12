@@ -171,6 +171,8 @@ describe("native-build import", () => {
       platform: "android",
       fingerprint_hash: FINGERPRINT,
       app_version: null,
+      // Its versionName, which a fingerprint build records too.
+      native_app_version: "1.4.0",
       min_bundle_id: MIN_BUNDLE_ID,
       artifact_kind: "aab",
       byte_size: fs.statSync(file).size,
@@ -231,6 +233,7 @@ describe("native-build import", () => {
       platform: "ios",
       fingerprint_hash: null,
       app_version: "1.4.0",
+      native_app_version: "1.4.0",
       min_bundle_id: MIN_BUNDLE_ID,
       artifact_kind: "ipa",
     });

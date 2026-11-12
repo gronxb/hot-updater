@@ -62,7 +62,8 @@ export const formatNativeBuildSummary = ({
   const heading = [
     platformName,
     result.scheme,
-    result.appVersion,
+    // The artifact's own version, which a fingerprint build has too.
+    result.appVersion ?? result.nativeAppVersion,
     result.buildNumber ? `(${result.buildNumber})` : null,
     `${reused ? "reused" : "built"} in ${formatDuration(elapsedMs)}`,
   ]

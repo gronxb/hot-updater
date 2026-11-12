@@ -50,7 +50,10 @@ const register = (
     NativeBuildRegistration,
     "platform" | "channel" | "fingerprintHash" | "appVersion" | "isSandbox"
   > &
-    Pick<Partial<NativeBuildRegistration>, "sandboxUrlScheme">,
+    Pick<
+      Partial<NativeBuildRegistration>,
+      "sandboxUrlScheme" | "nativeAppVersion"
+    >,
 ) =>
   databaseHarness.core.registerNativeBuild({
     ...scope,
@@ -326,6 +329,29 @@ describe("handleNativeBuildFind", () => {
         String(log.success.mock.calls.at(-1)?.[0]),
       );
       expect(printed).toMatch(/Kind\s+apk · sandbox/);
+    });
+
+    it("names a fingerprint build's own app version in its text", async () => {
+      await register("1", {
+        ...sandboxScope("android"),
+        fingerprintHash: "fingerprint-a",
+        nativeAppVersion: "1.6.0",
+      });
+      const { handleNativeBuildFind } = await import("./nativeBuild");
+
+      await handleNativeBuildFind({ platform: "android", scheme: "sandbox" });
+
+      const printed = stripVTControlCharacters(
+        String(log.success.mock.calls.at(-1)?.[0]),
+      );
+      expect(printed).toMatch(
+        /Fingerprint\s+fingerprint-a\n\s*App version\s+1\.6\.0/,
+      );
+      // A script reads it from the build itself.
+      expect((await find("android", "sandbox")).nativeBuild).toMatchObject({
+        app_version: null,
+        native_app_version: "1.6.0",
+      });
     });
 
     it("adds nothing for a scheme that isn't a sandbox's", async () => {

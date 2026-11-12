@@ -316,3 +316,144 @@ describe.each(adapters)(
     });
   },
 );
+
+describe.each(adapters)(
+  "the artifact's own app version on %s",
+  (_name, adapter) => {
+    it("records it on a build of either strategy, and null without one", async () => {
+      const core = createInProcessCoreApi(await adapter());
+      const fingerprint = await core.registerNativeBuild(
+        registration(1, { nativeAppVersion: "1.6.0" }),
+      );
+      await core.registerNativeBuild(
+        registration(2, {
+          fingerprintHash: null,
+          appVersion: "1.4.2",
+          nativeAppVersion: "1.4.2",
+        }),
+      );
+      await core.registerNativeBuild(registration(3));
+
+      // A fingerprint build keeps no OTA app version, and has its own.
+      expect(fingerprint).toMatchObject({
+        app_version: null,
+        native_app_version: "1.6.0",
+      });
+      expect(await core.getNativeBuild(buildId(1))).toMatchObject({
+        app_version: null,
+        native_app_version: "1.6.0",
+      });
+      expect(await core.findNativeBuild(scope)).toMatchObject({
+        id: buildId(3),
+        native_app_version: null,
+      });
+      expect(
+        (await core.listNativeBuilds({ order: "asc", limit: 10 })).map(
+          ({ app_version, native_app_version }) => [
+            app_version,
+            native_app_version,
+          ],
+        ),
+      ).toEqual([
+        [null, "1.6.0"],
+        ["1.4.2", "1.4.2"],
+        [null, null],
+      ]);
+      await expect(
+        core.registerNativeBuild(registration(4, { nativeAppVersion: " " })),
+      ).rejects.toThrow("nativeAppVersion must be the artifact's app version");
+    });
+  },
+);
+
+describe("a native build row written before native_app_version", () => {
+  it("reads back with none from a store whose rows lack the field", async () => {
+    const store = createMemoryKeyValueStore();
+    const core = createInProcessCoreApi(
+      createKvAdapter({
+        store: {
+          ...store,
+          write: ((ops) =>
+            store.write(
+              ops.map((op) => {
+                const strip = (value: Readonly<Record<string, unknown>>) => {
+                  const { native_app_version: _dropped, ...rest } = value;
+                  return rest;
+                };
+                return op.type === "put"
+                  ? { ...op, value: strip(op.value) }
+                  : op.type === "add" && op.init !== undefined
+                    ? { ...op, init: strip(op.init) }
+                    : op;
+              }) as typeof ops,
+            )) as typeof store.write,
+        },
+      }),
+    );
+    await core.registerNativeBuild(
+      registration(1, { nativeAppVersion: "1.6.0" }),
+    );
+
+    expect(await core.getNativeBuild(buildId(1))).toHaveProperty(
+      "native_app_version",
+      null,
+    );
+    expect(await core.findNativeBuild(scope)).toHaveProperty(
+      "native_app_version",
+      null,
+    );
+  });
+
+  /** Core's tables as a 1.2.0 prerelease created them, without the column. */
+  const rcEraSql = (dialect: "postgresql" | "sqlite") =>
+    sql(dialect).map((statement) =>
+      statement.replace(/"native_app_version" [^,]+, /, ""),
+    );
+
+  it.each([
+    [
+      "SQLite",
+      async (alter: string) => {
+        const db = new DatabaseSync(":memory:");
+        for (const statement of rcEraSql("sqlite")) db.exec(statement);
+        cleanups.push(() => db.close());
+        expect(
+          db.prepare(`PRAGMA table_info("native_builds")`).all(),
+        ).not.toContainEqual(
+          expect.objectContaining({ name: "native_app_version" }),
+        );
+        db.exec(alter);
+        return createSqlAdapter({ executor: sqliteExecutor(db) });
+      },
+      `ALTER TABLE "native_builds" ADD COLUMN "native_app_version" TEXT;`,
+    ],
+    [
+      "PostgreSQL",
+      async (alter: string) => {
+        const pglite = new PGlite();
+        for (const statement of rcEraSql("postgresql")) {
+          await pglite.exec(statement);
+        }
+        cleanups.push(() => pglite.close());
+        await pglite.exec(alter);
+        return createSqlAdapter({ executor: pgliteExecutor(pglite) });
+      },
+      `ALTER TABLE "native_builds" ADD COLUMN "native_app_version" text COLLATE "C";`,
+    ],
+  ] as const)(
+    "takes the release notes' ALTER on a prerelease %s database",
+    async (_name, open, alter) => {
+      const adapter = await open(alter);
+      const core = createInProcessCoreApi(adapter);
+      await core.registerNativeBuild(registration(1));
+      await core.registerNativeBuild(
+        registration(2, { nativeAppVersion: "1.6.0" }),
+      );
+      expect(
+        (await core.listNativeBuilds({ order: "asc", limit: 10 })).map(
+          ({ native_app_version }) => native_app_version,
+        ),
+      ).toEqual([null, "1.6.0"]);
+    },
+  );
+});

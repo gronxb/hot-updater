@@ -104,6 +104,24 @@ describe("formatNativeBuildSummary", () => {
     expect(lines[2]).toBe("Fingerprint    3f2a9c1e5b7d");
   });
 
+  it("names a fingerprint build by the app version its artifact reports", () => {
+    const [heading] = summary({
+      platformName: "Android",
+      result: {
+        ...ipa,
+        platform: "android",
+        fingerprintHash: "3f2a9c1e5b7d",
+        appVersion: null,
+        nativeAppVersion: "1.6.0",
+        artifactKind: "aab",
+        artifactPath: "/project/app-release.aab",
+        buildNumber: "66",
+      },
+    }).split("\n");
+
+    expect(heading).toBe("Android release 1.6.0 (66) built in 8m30s");
+  });
+
   it("shortens a long path so no line wraps on 80 columns", () => {
     const text = summary({
       result: {

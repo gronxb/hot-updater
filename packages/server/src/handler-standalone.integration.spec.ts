@@ -288,6 +288,8 @@ describe("Standalone core API over admin API protocol 2", () => {
         minBundleId,
         gitCommitHash: null,
         buildKey,
+        // A fingerprint build's own version, which the admin API carries.
+        nativeAppVersion: buildKey === null ? "1.6.0" : null,
         artifact: {
           kind: "apk",
           storageUri: "test://storage/native-builds/android/app.apk",
@@ -303,6 +305,11 @@ describe("Standalone core API over admin API protocol 2", () => {
     const key = `nbk1:${"c".repeat(64)}`;
     const older = await register(olderId, key);
     const newer = await register(newerId);
+    expect(older.native_app_version).toBeNull();
+    expect(newer).toMatchObject({
+      app_version: null,
+      native_app_version: "1.6.0",
+    });
 
     await expect(
       remote.findNativeBuild({
