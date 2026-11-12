@@ -77,7 +77,7 @@ Then embed the public key and release the app:
 
 1. Run `npx hot-updater keys export-public` for React Native CLI projects.
    For Expo, export it to a file and set `publicKeyPath` in the
-   `@hot-updater/expo` app plugin ([Expo](#expo)).
+   `@hot-updater/expo` app plugin ([Expo and EAS Build](#expo-and-eas-build)).
    For One, export it to a file and set `publicKeyPath` in `hotUpdaterPatches`
    ([One](#one)).
 2. Release the native app, then begin signed OTA deployments.
@@ -93,7 +93,7 @@ signing: {
 },
 ```
 
-Keep the file out of Git, native build inputs, artifacts, caches, and logs.
+Keep the file out of Git, EAS build inputs, artifacts, caches, and logs.
 
 ### Unsigned and Refused Configs
 
@@ -126,7 +126,7 @@ configuration. It cannot inspect already installed binaries. A successful
 deploy check does not replace releasing the native app with the matching public
 key before targeting it with signed updates.
 
-## Expo
+## Expo and EAS Build
 
 Expo owns the native trust anchor through its app config plugin. If the public
 key file is not already present, export it from the signing key configured in
@@ -177,9 +177,9 @@ this trust anchor with the signing key's public key. Missing,
 invalid, or mismatched keys fail closed, including in CNG projects without
 checked-in `ios` or `android` directories.
 
-Keep the private key out of the native build: don't add it to build secrets or
-`eas.json`, and don't let `.easignore` send `keys/private-key.pem` with the
-build input. Ensure the public key file is included in the build input.
+Do not upload a private key with EAS Secrets, add it to `eas.json`, or use
+`.easignore` to send `keys/private-key.pem` to the build worker. Ensure the
+public key file is included in the build input.
 
 Build and release the native app before deploying its first signed OTA bundle.
 
@@ -299,10 +299,9 @@ keys/*
 !keys/public-key.pem
 ```
 
-If the project has an `.easignore`, it replaces `.gitignore` for the files a
-build uploads. Copy your existing `.gitignore` rules into it, then append these
-rules to include only the public key ([ignore-file
-reference](https://docs.expo.dev/build-reference/easignore/)):
+For EAS uploads, copy your existing `.gitignore` rules into `.easignore`, then
+append these rules to include only the public key ([EAS ignore-file
+documentation](https://docs.expo.dev/build-reference/easignore/)):
 
 ```txt title=".easignore"
 # Keep your existing ignore rules above

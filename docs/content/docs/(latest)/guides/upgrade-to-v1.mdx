@@ -255,7 +255,7 @@ export const hotUpdater = HotUpdater.init({
 ```
 
 Have the agent verify that both values reach native builds **and OTA bundle
-builds**, including CI environments. Writing `HOT_UPDATER_API_KEY` to
+builds**, including CI/EAS environments. Writing `HOT_UPDATER_API_KEY` to
 `.env.hotupdater` alone does not configure the app runtime. Check the project's
 environment-loading path and fail the build when required values are missing.
 An app that skips initialization when its URL is absent can appear healthy
@@ -408,7 +408,7 @@ include `keys/public-key.pem` in source control and native build inputs while
 keeping private keys ignored. If `keys/` is ignored, replace that rule with
 `keys/*` and `!keys/public-key.pem` so the public file can be included. If
 `.easignore` exists, check it includes the public file too. Remove private-key
-build variables and broad `!/keys` exceptions that existed only for v0 prebuild;
+EAS variables and broad `!/keys` exceptions that existed only for v0 prebuild;
 keep the private key available to the environment that actually deploys OTA.
 
 The Expo plugin reads `publicKeyPath` explicitly. Enabling signing in
