@@ -1,5 +1,13 @@
 # @hot-updater/datadog-plugin
 
+## 1.2.0-rc.31
+
+### Patch Changes
+
+- Updated dependencies [d4341b4]
+  - @hot-updater/plugin-core@1.2.0-rc.31
+  - @hot-updater/protocol@1.2.0-rc.31
+
 ## 1.2.0-rc.30
 
 ### Patch Changes
