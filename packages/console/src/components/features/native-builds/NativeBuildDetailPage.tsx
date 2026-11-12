@@ -78,8 +78,11 @@ export function NativeBuildDetailPage({
             variant: "ghost",
           })}
           // The build's own channel lists it, wherever the page was opened
-          // from: a list, a link, or a QR code.
-          search={detail ? { channel: detail.channel } : {}}
+          // from: a list, a link, or a QR code. Until the build is known,
+          // every channel's list holds it, whatever its channel.
+          search={
+            detail ? { channel: detail.channel } : { channels: ALL_CHANNELS }
+          }
           to="/native-builds"
         >
           <ChevronLeft data-icon="inline-start" />
