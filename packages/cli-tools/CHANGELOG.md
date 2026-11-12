@@ -1,5 +1,13 @@
 # @hot-updater/cli-tools
 
+## 1.2.0-rc.34
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.34
+  - @hot-updater/server@1.2.0-rc.34
+  - @hot-updater/plugin-core@1.2.0-rc.34
+
 ## 1.2.0-rc.33
 
 ### Patch Changes

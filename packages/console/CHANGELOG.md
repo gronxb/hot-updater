@@ -1,5 +1,16 @@
 # @hot-updater/console
 
+## 1.2.0-rc.34
+
+### Patch Changes
+
+- 69a9364: On a phone, a switch's tap area is now a full 44 × 44 px. It measured 40 × 40, because the enlarged area sits inside the switch's 2 px border.
+- @hot-updater/bsdiff@1.2.0-rc.34
+  - @hot-updater/cli-tools@1.2.0-rc.34
+  - @hot-updater/protocol@1.2.0-rc.34
+  - @hot-updater/server@1.2.0-rc.34
+  - @hot-updater/plugin-core@1.2.0-rc.34
+
 ## 1.2.0-rc.33
 
 ### Patch Changes
