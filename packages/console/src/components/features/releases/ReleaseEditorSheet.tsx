@@ -725,7 +725,7 @@ export function ReleaseEditorSheet({
                       </dd>
                       {onShowScope ? (
                         <Button
-                          className="mt-1 h-auto px-0 text-xs"
+                          className="mt-1 h-auto px-0 text-xs max-md:min-h-11"
                           onClick={() => onShowScope(release.scope_key)}
                           size="sm"
                           variant="link"

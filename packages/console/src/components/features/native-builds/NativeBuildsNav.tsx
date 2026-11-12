@@ -20,7 +20,7 @@ export function NativeBuildsNav({
       aria-label="Native builds views"
       className={cn(
         tabsListVariants(),
-        "h-11 sm:h-8 [&>a]:min-h-10 sm:[&>a]:min-h-0",
+        "h-auto min-h-11 sm:h-8 sm:min-h-0 [&>a]:min-h-11 sm:[&>a]:min-h-0",
       )}
     >
       <Link
