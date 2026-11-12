@@ -1,5 +1,16 @@
 # @hot-updater/console
 
+## 1.2.0-rc.30
+
+### Patch Changes
+
+- 7a57108: On the iOS devices page, Apple's refusal reason now wraps to at most two lines in a narrow column, with the full text on hover. A long reason no longer widens the table past its frame at 1280 px or pushes every row's actions out of view.
+- @hot-updater/bsdiff@1.2.0-rc.30
+  - @hot-updater/cli-tools@1.2.0-rc.30
+  - @hot-updater/protocol@1.2.0-rc.30
+  - @hot-updater/server@1.2.0-rc.30
+  - @hot-updater/plugin-core@1.2.0-rc.30
+
 ## 1.2.0-rc.29
 
 ### Patch Changes

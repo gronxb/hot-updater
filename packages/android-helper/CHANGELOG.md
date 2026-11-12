@@ -1,5 +1,13 @@
 # @hot-updater/android-helper
 
+## 1.2.0-rc.30
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.30
+  - @hot-updater/protocol@1.2.0-rc.30
+  - @hot-updater/plugin-core@1.2.0-rc.30
+
 ## 1.2.0-rc.29
 
 ### Patch Changes
