@@ -1,4 +1,4 @@
-import type { ByteSource } from "./byteSource";
+import type { ByteSource } from "@hot-updater/protocol/native-artifact";
 
 const KiB = 1024;
 const MiB = 1024 * KiB;
@@ -21,8 +21,9 @@ export class RangeSourceError extends Error {
 }
 
 /**
- * The bytes of `url` by HTTP Range requests, without ever downloading the
- * file: a server that answers a Range request with the whole file (200) is
+ * The bytes of `url` by HTTP Range requests, for reading an `.ipa`'s profiles
+ * from storage without ever downloading the file. The Console keeps its own
+ * copy, as each package implements this transport over its own runtime: a server that answers a Range request with the whole file (200) is
  * cut off at once, as is one that sends more than it was asked for. Reading
  * stops at `MAX_BYTES` and `MAX_REQUESTS`.
  */

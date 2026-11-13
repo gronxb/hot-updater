@@ -10,10 +10,6 @@ import type {
   NativeBuildRow,
   StorageAdapter,
 } from "@hot-updater/plugin-core";
-import {
-  httpRangeSource,
-  RangeSourceError,
-} from "@hot-updater/protocol/native-artifact";
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -32,6 +28,8 @@ import {
 } from "./nativeBuildDownloadLink";
 import {
   checkNativeBuildInstall,
+  httpRangeSource,
+  RangeSourceError,
   readNativeBuildInstallInfo,
   readNativeBuildIpaDevices,
   serveNativeBuildManifest,

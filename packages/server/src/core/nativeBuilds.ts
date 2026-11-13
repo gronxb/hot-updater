@@ -343,7 +343,9 @@ const problemOf = ({
       return "a sandbox build needs the sandboxUrlScheme its artifact registers";
     }
     if (sandboxAppId === undefined || sandboxAppId === null) {
-      return "a sandbox build needs the sandboxAppId its artifact reports";
+      // An older CLI sends none: it registers on a channel this server no
+      // longer reserves, and only an upgrade fixes it.
+      return "a sandbox build needs the sandboxAppId its artifact reports, which an older hot-updater CLI doesn't send. Upgrade the hot-updater CLI to the version that matches this server, and build again";
     }
   }
   if (

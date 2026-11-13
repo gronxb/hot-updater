@@ -291,11 +291,11 @@ bundles of the same native code. The comment says whether its bundle runs on the
 sandbox build, and nothing redeploys the others, so push them again.
 
 An ad hoc `.ipa` includes the iPhones registered when it was built. Before
-reusing one, the action checks it against the device registry: an iPhone
-approved or registered with Apple since the build, or a profile that expired,
-gets a new build, which registers the approved iPhones with Apple first. An
-iPhone the build already had the chance to add, and Apple hasn't enabled yet,
-gets a note in the job's log instead. See
+reusing one, the action checks the iPhones it lacks against Apple's device list,
+with the scheme's `signing.ascApiKey`: one a build now adds, enabled at Apple or
+approved and not at Apple yet, gets a new build, which registers it first. So
+does a profile that expired. An iPhone Apple has disabled or refused, or one the
+scheme can't add, gets a note in the job's log instead. See
 [Install on an iPhone](/docs/native-builds/iphone-install).
 
 ## Install through TestFlight or Google Play

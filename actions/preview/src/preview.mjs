@@ -565,7 +565,9 @@ const deployOnNativeBuild = async (
   const devices = found.iosDevices;
   if (devices && devices.waiting.length > 0) {
     deps.log.notice(
-      `The ${platform} build doesn't have ${devices.waiting.join(", ")} yet: Apple hasn't enabled them, or the scheme can't add them. A build after that adds them.`,
+      `The ${platform} build doesn't have ${devices.waiting
+        .map(({ name, reason }) => `${name} (${reason})`)
+        .join(", ")}. The next preview builds again once a build can add them.`,
     );
   }
   const rebuild = found.nativeBuild !== null && devices?.reusable === false;

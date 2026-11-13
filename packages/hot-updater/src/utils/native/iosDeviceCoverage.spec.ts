@@ -16,7 +16,10 @@ import {
   downloadNativeBuild,
   resolveNativeBuildDownloadUrl,
 } from "./downloadNativeBuild";
-import { iosDeviceCoverage, readIosDeviceCoverage } from "./iosDeviceCoverage";
+import {
+  type AppleDeviceState,
+  readIosDeviceCoverage,
+} from "./iosDeviceCoverage";
 
 vi.mock("@hot-updater/protocol/native-artifact", async (importOriginal) => ({
   ...(await importOriginal<
@@ -29,20 +32,26 @@ vi.mock("./downloadNativeBuild", () => ({
   resolveNativeBuildDownloadUrl: vi.fn(),
 }));
 
+const ISSUER = "issuer-a";
 const BUILT_AT = 1_000_000;
 const NOW = 2_000_000;
 
+/**
+ * A registry row as the registry holds it, approved and registered well
+ * before the build: no scenario here moves a timestamp, as nothing on the
+ * reuse path does.
+ */
 const device = (
   udid: string,
   name: string,
   {
     status = "registered",
-    approvedAt = BUILT_AT - 10,
-    registeredAt = status === "registered" ? BUILT_AT - 5 : null,
+    issuer = status === "registered" ? ISSUER : null,
+    appleError = null,
   }: {
     status?: IosDeviceRow["status"];
-    approvedAt?: number | null;
-    registeredAt?: number | null;
+    issuer?: string | null;
+    appleError?: string | null;
   } = {},
 ): IosDeviceRow =>
   ({
@@ -50,8 +59,10 @@ const device = (
     udid,
     name,
     status,
-    approved_at_ms: approvedAt,
-    registered_at_ms: registeredAt,
+    approved_at_ms: BUILT_AT - 10_000,
+    registered_at_ms: status === "registered" ? BUILT_AT - 5_000 : null,
+    apple_issuer_id: issuer,
+    apple_error: appleError,
   }) as IosDeviceRow;
 
 const ipa = (
@@ -68,205 +79,203 @@ const ipa = (
     ...overrides,
   }) as IpaInstallInfo;
 
-const coverage = (
-  info: IpaInstallInfo | null,
-  devices: readonly IosDeviceRow[],
-  createdAt = BUILT_AT,
+/** Apple's account, by UDID and status. */
+const atApple = (devices: Record<string, string>): AppleDeviceState => ({
+  kind: "read",
+  issuerId: ISSUER,
+  devices: new Map(
+    Object.entries(devices).map(([udid, status]) => [udid, { status }]),
+  ),
+});
+
+const build = {
+  id: "build-1",
+  artifact_kind: "ipa",
+  export_method: "ad-hoc",
+  artifact_storage_uri: "storage://native-builds/ios/build-1/App.ipa",
+  byte_size: 4,
+  min_bundle_id: "019a0000-0000-7000-8000-000000000001",
+  created_at_ms: BUILT_AT,
+} as NativeBuildRow;
+
+const registry = (rows: readonly IosDeviceRow[]) => ({
+  listIosDevices: vi.fn(async ({ status }: { status?: string }) =>
+    rows.filter((row) => row.status === status),
+  ),
+});
+
+/** One preview's check of the found `.ipa`, as `find --json` runs it. */
+const check = (
+  rows: readonly IosDeviceRow[],
+  apple: AppleDeviceState | (() => Promise<AppleDeviceState>),
+  overrides: Partial<NativeBuildRow> = {},
 ) =>
-  iosDeviceCoverage({
-    // A MIN_BUNDLE_ID that names no time: the registration's decides.
-    build: { min_bundle_id: "not-a-uuid", created_at_ms: createdAt },
-    info,
-    devices,
-    now: NOW,
-  });
+  readIosDeviceCoverage(
+    { core: registry(rows), storage: {} as StorageAdapter },
+    { ...build, ...overrides },
+    typeof apple === "function" ? apple : async () => apple,
+    NOW,
+  );
 
-describe("iosDeviceCoverage", () => {
-  it("reuses an .ipa that lists every approved device", () => {
-    expect(
-      coverage(ipa(["a", "b"]), [
-        device("a", "Ana's iPhone"),
-        device("b", "Bo's iPad"),
-      ]),
-    ).toEqual({ reusable: true, reason: null, missing: [], waiting: [] });
-  });
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(resolveNativeBuildDownloadUrl).mockResolvedValue(null);
+  vi.mocked(downloadNativeBuild).mockImplementation(
+    async (_storage, _build, file) => {
+      await fs.promises.writeFile(file, "ipa!");
+      return { byteSize: 4 };
+    },
+  );
+  vi.mocked(readIpaInstallInfo).mockResolvedValue(ipa(["a"]));
+});
 
-  it("builds again for a device approved after the build, which a build registers with Apple first", () => {
-    const later = device("b", "Bo's iPad", {
-      status: "approved",
-      approvedAt: BUILT_AT + 1,
+describe("a found ad hoc .ipa and Apple's current state", () => {
+  it("reuses an .ipa that lists every device, without asking Apple", async () => {
+    const apple = vi.fn(async () => atApple({}));
+    await expect(check([device("a", "Ana's iPhone")], apple)).resolves.toEqual({
+      reusable: true,
+      reason: null,
+      missing: [],
+      waiting: [],
     });
-    expect(coverage(ipa(["a"]), [device("a", "Ana's iPhone"), later])).toEqual({
+    expect(apple).not.toHaveBeenCalled();
+  });
+
+  it("builds again once Apple enables a device it had disabled, with nothing in the registry changed", async () => {
+    const rows = [device("a", "Ana's iPhone"), device("b", "Bo's iPad")];
+
+    // While Apple has it disabled, no build could add it.
+    const disabled = await check(
+      rows,
+      atApple({ a: "ENABLED", b: "DISABLED" }),
+    );
+    expect(disabled).toMatchObject({ reusable: true, missing: [] });
+    // Enabled at Apple: the next preview builds, though the build is older.
+    await expect(
+      check(rows, atApple({ a: "ENABLED", b: "ENABLED" })),
+    ).resolves.toMatchObject({
       reusable: false,
       reason: "missing",
       missing: ["Bo's iPad"],
-      waiting: [],
     });
+    expect(disabled?.waiting).toEqual([
+      { name: "Bo's iPad", reason: "disabled at Apple" },
+    ]);
   });
 
-  it("builds again for a device Apple enabled after the build", () => {
-    const enabled = device("b", "Bo's iPad", { registeredAt: BUILT_AT + 1 });
-    expect(coverage(ipa(["a"]), [enabled])).toMatchObject({
-      reusable: false,
-      missing: ["Bo's iPad"],
+  it("builds again once signing is repaired after the build, for a device approved before it", async () => {
+    const rows = [
+      device("a", "Ana's iPhone"),
+      device("b", "Bo's iPad", { status: "approved" }),
+    ];
+
+    const pinned = await check(rows, {
+      kind: "unavailable",
+      reason: "the scheme pins a provisioning profile",
     });
+    expect(pinned).toMatchObject({ reusable: true, missing: [] });
+    // Automatic signing with an API key now: a build registers it first.
+    await expect(check(rows, atApple({ a: "ENABLED" }))).resolves.toMatchObject(
+      { reusable: false, reason: "missing", missing: ["Bo's iPad"] },
+    );
+    expect(pinned?.waiting).toEqual([
+      { name: "Bo's iPad", reason: "the scheme pins a provisioning profile" },
+    ]);
+  });
+
+  it("builds again for an approved device Apple has enabled already", async () => {
+    await expect(
+      check(
+        [device("b", "Bo's iPad", { status: "approved" })],
+        atApple({ b: "ENABLED" }),
+      ),
+    ).resolves.toMatchObject({ reusable: false, missing: ["Bo's iPad"] });
   });
 
   it.each([
-    ["Apple hasn't enabled it", { status: "approved" as const }],
-    ["the scheme couldn't add it", { status: "registered" as const }],
-  ])(
-    "doesn't build again for a device its build already had the chance to add: %s",
-    (_, options) => {
-      expect(coverage(ipa([]), [device("b", "Bo's iPad", options)])).toEqual({
+    [
+      "refused before",
+      device("b", "Bo's iPad", {
+        status: "approved",
+        appleError: "The device limit is reached.",
+      }),
+      {},
+      "Apple refused it: The device limit is reached.",
+    ],
+    [
+      "gone from the account",
+      device("b", "Bo's iPad"),
+      {},
+      "gone from the Apple account",
+    ],
+    [
+      "another account's",
+      device("b", "Bo's iPad", { issuer: "issuer-b" }),
+      { b: "ENABLED" },
+      "in another Apple account",
+    ],
+  ] as const)(
+    "doesn't build again for a device %s",
+    async (_, row, apple, reason) => {
+      await expect(check([row], atApple(apple))).resolves.toEqual({
         reusable: true,
         reason: null,
         missing: [],
-        waiting: ["Bo's iPad"],
+        waiting: [{ name: "Bo's iPad", reason }],
       });
     },
   );
 
-  it("doesn't build again on the next run when the new build still lacks the device", () => {
-    const pending = device("b", "Bo's iPad", {
-      status: "approved",
-      approvedAt: BUILT_AT + 1,
-    });
-    // The first run builds; the build Apple didn't enable the device for is
-    // newer than the approval, so the next run reuses it.
-    expect(coverage(ipa([]), [pending])?.reusable).toBe(false);
-    expect(coverage(ipa([]), [pending], BUILT_AT + 2)).toEqual({
+  it("waits, saying so, when Apple can't be read", async () => {
+    await expect(
+      check([device("b", "Bo's iPad", { status: "approved" })], async () => {
+        throw new Error("No secret asc-api-key.");
+      }),
+    ).resolves.toEqual({
       reusable: true,
       reason: null,
       missing: [],
-      waiting: ["Bo's iPad"],
+      waiting: [
+        {
+          name: "Bo's iPad",
+          reason: "Apple's devices couldn't be read: No secret asc-api-key.",
+        },
+      ],
     });
   });
 
-  it("builds again for an expired profile, and for one that can't be read", () => {
-    expect(
-      coverage(ipa(["a"], { expiresAtMs: NOW }), [device("a", "Ana's iPhone")]),
-    ).toMatchObject({ reusable: false, reason: "expired" });
-    expect(coverage(null, [])).toMatchObject({
+  it("builds again for an expired profile, and for one that can't be read", async () => {
+    vi.mocked(readIpaInstallInfo).mockResolvedValueOnce(
+      ipa(["a"], { expiresAtMs: NOW }),
+    );
+    await expect(
+      check([device("a", "Ana's iPhone")], atApple({})),
+    ).resolves.toMatchObject({ reusable: false, reason: "expired" });
+    vi.mocked(readIpaInstallInfo).mockRejectedValueOnce(
+      new NativeArtifactError("UNREADABLE", "corrupt"),
+    );
+    await expect(check([], atApple({}))).resolves.toMatchObject({
       reusable: false,
       reason: "unreadable",
     });
   });
 
-  it("counts from the MIN_BUNDLE_ID's time, when the build started compiling", () => {
-    // Issued before the build registered, after its device step.
-    const minBundleId = `${(BUILT_AT - 100)
-      .toString(16)
-      .padStart(12, "0")
-      .replace(/^(.{8})/, "$1-")}-7000-8000-000000000000`;
-    const midBuild = device("b", "Bo's iPad", {
-      status: "approved",
-      approvedAt: BUILT_AT - 50,
-    });
-    expect(
-      iosDeviceCoverage({
-        build: { min_bundle_id: minBundleId, created_at_ms: BUILT_AT },
-        info: ipa([]),
-        devices: [midBuild],
-        now: NOW,
-      }),
-    ).toMatchObject({ reusable: false, missing: ["Bo's iPad"] });
-  });
-
-  it("says nothing of an .ipa that lists no devices", () => {
-    expect(coverage(ipa([], { distribution: "store" }), [])).toBeNull();
-    expect(coverage(ipa([], { distribution: "enterprise" }), [])).toBeNull();
-  });
-});
-
-describe("readIosDeviceCoverage", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  const build = {
-    id: "build-1",
-    artifact_kind: "ipa",
-    export_method: "ad-hoc",
-    artifact_storage_uri: "storage://native-builds/ios/build-1/App.ipa",
-    byte_size: 4,
-    min_bundle_id: "not-a-uuid",
-    created_at_ms: BUILT_AT,
-  } as NativeBuildRow;
-  const core = (rows: Record<string, IosDeviceRow[]>) => ({
-    listIosDevices: vi.fn(
-      async ({ status }: { status?: string }) => rows[status ?? ""] ?? [],
-    ),
-  });
-
-  beforeEach(() => {
-    vi.mocked(resolveNativeBuildDownloadUrl).mockResolvedValue(null);
-    vi.mocked(downloadNativeBuild).mockImplementation(
-      async (_storage, _build, file) => {
-        await fs.promises.writeFile(file, "ipa!");
-        return { byteSize: 4 };
-      },
-    );
-    vi.mocked(readIpaInstallInfo).mockResolvedValue(ipa(["a"]));
-  });
-
-  it("reads a stored ad hoc .ipa through a download when the storage gives no URL, and the registry's devices", async () => {
-    const registry = core({
-      registered: [device("a", "Ana's iPhone")],
-      approved: [
-        device("b", "Bo's iPad", {
-          status: "approved",
-          approvedAt: BUILT_AT + 1,
-        }),
-      ],
-    });
-
-    await expect(
-      readIosDeviceCoverage(
-        { core: registry, storage: {} as StorageAdapter },
-        build,
-        NOW,
-      ),
-    ).resolves.toEqual({
-      reusable: false,
-      reason: "missing",
-      missing: ["Bo's iPad"],
-      waiting: [],
-    });
+  it("reads the stored .ipa through a download when the storage gives no URL", async () => {
+    await check([device("a", "Ana's iPhone")], atApple({}));
     expect(downloadNativeBuild).toHaveBeenCalledOnce();
-    expect(registry.listIosDevices).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "approved" }),
-    );
   });
 
-  it("says unreadable for a profile it can't read", async () => {
-    vi.mocked(readIpaInstallInfo).mockRejectedValue(
-      new NativeArtifactError("UNREADABLE", "corrupt"),
-    );
-    await expect(
-      readIosDeviceCoverage(
-        { core: core({}), storage: {} as StorageAdapter },
-        build,
-        NOW,
-      ),
-    ).resolves.toMatchObject({ reusable: false, reason: "unreadable" });
-  });
-
-  it("reads nothing for another artifact or an App Store .ipa", async () => {
-    const registry = core({});
-    for (const other of [
-      { ...build, artifact_kind: "apk" },
-      { ...build, export_method: "app-store" },
-    ] as NativeBuildRow[]) {
-      await expect(
-        readIosDeviceCoverage(
-          { core: registry, storage: {} as StorageAdapter },
-          other,
-          NOW,
-        ),
-      ).resolves.toBeNull();
+  it("reads nothing for another artifact, an App Store .ipa, or one that lists no devices", async () => {
+    for (const overrides of [
+      { artifact_kind: "apk" },
+      { export_method: "app-store" },
+    ] as Partial<NativeBuildRow>[]) {
+      await expect(check([], atApple({}), overrides)).resolves.toBeNull();
     }
     expect(downloadNativeBuild).not.toHaveBeenCalled();
-    expect(registry.listIosDevices).not.toHaveBeenCalled();
+    vi.mocked(readIpaInstallInfo).mockResolvedValueOnce(
+      ipa([], { distribution: "enterprise" }),
+    );
+    await expect(check([], atApple({}))).resolves.toBeNull();
   });
 });

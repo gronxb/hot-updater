@@ -709,7 +709,7 @@ describe("an ad hoc .ipa that lacks an approved device", () => {
         reusable: true,
         reason: null,
         missing: [],
-        waiting: ["Bo's iPad"],
+        waiting: [{ name: "Bo's iPad", reason: "disabled at Apple" }],
       },
     });
 

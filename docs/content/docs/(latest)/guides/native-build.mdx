@@ -634,9 +634,10 @@ and `downloadUrl`. A [sandbox](/docs/native-builds/sandbox) scheme's build is
 found on any channel; `sandbox.channel` names the one it embeds. For a found ad
 hoc `.ipa`, `--json` adds `iosDevices`: whether it installs on the
 [device registry](/docs/native-builds/iphone-install)'s iPhones (`reusable`),
-the iPhones a new build would add (`missing`), and those it lacks that a new
-build wouldn't add yet (`waiting`), or why it can't be reused (`reason`:
-`missing`, `expired`, or `unreadable`).
+the iPhones a build now adds, as Apple's device list says (`missing`), those it
+lacks that a build wouldn't add either, each with its `name` and `reason`
+(`waiting`), and why it can't be reused (`reason`: `missing`, `expired`, or
+`unreadable`).
 
 `--store-status` also asks the store what a build this project submitted is doing
 there, with `--scheme`, whose app and key it reads. `--json` adds `store`, with

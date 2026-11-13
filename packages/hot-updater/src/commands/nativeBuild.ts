@@ -42,6 +42,7 @@ import {
   readIosDeviceCoverage,
 } from "../utils/native/iosDeviceCoverage";
 import { resolveNativeBuildScope } from "../utils/native/nativeBuildScope";
+import { readSchemeAppleDevices } from "../utils/native/schemeAppleDevices";
 import { findMissingStorePatch } from "../utils/native/storeBuildPatch";
 import {
   applyStoreTestFlightGroup,
@@ -134,17 +135,28 @@ export const handleNativeBuildFind = async (
         );
       }
       if (options.json && nativeBuild !== null) {
-        iosDevices = await readIosDeviceCoverage(server, nativeBuild).catch(
-          (error) => {
-            // Without the registry or the artifact, the run decides as before.
-            console.error(
-              fitText(
-                `Couldn't check the build's devices: ${error instanceof Error ? error.message : String(error)}`,
-              ),
-            );
-            return null;
-          },
-        );
+        const { scheme } = options;
+        iosDevices = await readIosDeviceCoverage(
+          server,
+          nativeBuild,
+          // A credential this run can't resolve reads as Apple's state
+          // unknown: the build waits, rather than building on a guess.
+          async () =>
+            scheme === undefined || options.platform !== "ios"
+              ? {
+                  kind: "unavailable",
+                  reason: "no nativeBuild.ios scheme names its Apple account",
+                }
+              : readSchemeAppleDevices(config, scheme),
+        ).catch((error) => {
+          // Without the registry or the artifact, the run decides as before.
+          console.error(
+            fitText(
+              `Couldn't check the build's devices: ${error instanceof Error ? error.message : String(error)}`,
+            ),
+          );
+          return null;
+        });
       }
     } finally {
       await safeDispose(server);

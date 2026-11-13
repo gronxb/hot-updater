@@ -143,7 +143,7 @@ describe("the native build registry", () => {
     [
       "a sandbox build without its app ID",
       { isSandbox: true, sandboxUrlScheme: "acme-preview" },
-      "a sandbox build needs the sandboxAppId its artifact reports",
+      "a sandbox build needs the sandboxAppId its artifact reports, which an older hot-updater CLI doesn't send. Upgrade the hot-updater CLI to the version that matches this server, and build again",
     ],
     [
       "a sandbox app ID that isn't one",
@@ -1434,6 +1434,21 @@ describe("sandbox builds on any channel", () => {
         sandbox: { ...sandboxScope.sandbox, ...sandbox } as never,
       }),
     ).rejects.toThrow(NativeBuildInputError);
+  });
+
+  it("tells an older CLI's sandbox registration to upgrade the CLI", async () => {
+    const core = setup();
+    // What a 1.2 prerelease CLI sent: its reserved channel, no app ID.
+    const older = registration(1, {
+      channel: "sandbox-release",
+      isSandbox: true,
+      sandboxUrlScheme: "acme-preview",
+      exportMethod: "ad-hoc",
+    });
+    await expect(core.registerNativeBuild(older)).rejects.toThrow(
+      "Upgrade the hot-updater CLI to the version that matches this server, and build again.",
+    );
+    expect(await core.getNativeBuild(buildId(1))).toBeNull();
   });
 
   it("refuses a sandbox registration on a channel no release can target", async () => {

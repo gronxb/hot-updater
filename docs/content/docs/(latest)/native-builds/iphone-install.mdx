@@ -131,7 +131,16 @@ build signed by another account registers nothing.
 A build that reuses an existing native build registers nothing: devices join an
 `.ipa` only when a new ad hoc build runs. A [CI job](/docs/guides/ci-native-build)
 runs the same step. A [pull request preview](/docs/guides/pull-request-previews#when-the-native-code-changes)
-builds again when an iPhone was approved since the `.ipa` it would reuse.
+builds again when its `.ipa` lacks an iPhone that a build now adds, as Apple's
+device list says.
+
+A build reads the approved iPhones once, before it compiles: one approved while
+it runs joins the next build. To include an iPhone now, build without the cache,
+then push the pull request again:
+
+```package-install
+npx hot-updater native-build ios --scheme <scheme> --no-cache
+```
 
 </Step>
 <Step>

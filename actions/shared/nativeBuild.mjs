@@ -35,9 +35,11 @@ import { parseJsonOutput } from "./cli.mjs";
  *   the device registry's devices.
  * @property {boolean} reusable Whether a run can reuse it.
  * @property {"missing" | "expired" | "unreadable" | null} reason Why it can't.
- * @property {string[]} missing The devices a new build would add.
- * @property {string[]} waiting The devices it lacks that a new build wouldn't
- *   add yet: Apple hasn't enabled them, or the scheme can't add them.
+ * @property {string[]} missing The devices a new build would add, as Apple's
+ *   current state says.
+ * @property {{ name: string, reason: string }[]} waiting The devices it lacks
+ *   that a new build wouldn't add either, with why: disabled or refused at
+ *   Apple, another account's, or Apple's state that couldn't be read.
  *
  * @typedef {BuildTarget & { platform: Platform, channel: string, nativeBuild: NativeBuildRow | null, downloadUrl?: string | null, store?: StoreStatus | null, iosDevices?: IosDevices, sandbox?: { appId: string, urlScheme: string, channel: string | null } }} NativeBuildFindResult
  *   What `native-build find --json` prints. `channel` is the one a new build

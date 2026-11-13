@@ -2,6 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
+import type { AscDevice } from "@hot-updater/apple-helper";
 import type {
   HotUpdaterCoreApi,
   IosDeviceRow,
@@ -10,7 +11,6 @@ import type {
 } from "@hot-updater/plugin-core";
 import {
   blobSource,
-  httpRangeSource,
   type IpaInstallInfo,
   NativeArtifactError,
   readIpaInstallInfo,
@@ -20,7 +20,17 @@ import {
   downloadNativeBuild,
   resolveNativeBuildDownloadUrl,
 } from "./downloadNativeBuild";
-import { missingIpaDevices } from "./registerApprovedDevices";
+import { httpRangeSource } from "./httpRangeSource";
+import {
+  missingIpaDevices,
+  nextBuildDeviceOutcome,
+} from "./registerApprovedDevices";
+
+/** A device a found `.ipa` lacks that a build now wouldn't add, and why. */
+export interface WaitingIosDevice {
+  readonly name: string;
+  readonly reason: string;
+}
 
 /**
  * Whether a registered ad hoc `.ipa` still installs on the device registry's
@@ -30,19 +40,36 @@ export interface IosDeviceCoverage {
   /** Whether a run can reuse the build rather than build again. */
   readonly reusable: boolean;
   /**
-   * Why it can't: approved devices a new build would add (`missing`), an
-   * expired profile, or a profile that can't be read. Null when it can.
+   * Why it can't: devices a build now would add (`missing`), an expired
+   * profile, or a profile that can't be read. Null when it can.
    */
   readonly reason: "missing" | "expired" | "unreadable" | null;
-  /** The devices, by name, a new build would add. */
+  /**
+   * The devices, by name, a build now adds: enabled at Apple in the scheme's
+   * account, or approved and not at Apple yet, which a build registers first.
+   */
   readonly missing: readonly string[];
   /**
-   * The devices, by name, the `.ipa` lacks that its build already had the
-   * chance to add: Apple hasn't enabled them, or the scheme can't add them.
-   * Building again wouldn't add them, so they never ask for a build.
+   * The devices the `.ipa` lacks that a build now wouldn't add either, with
+   * why: disabled or refused at Apple, another Apple account's, or Apple's
+   * state that couldn't be read. They never ask for a build.
    */
-  readonly waiting: readonly string[];
+  readonly waiting: readonly WaitingIosDevice[];
 }
+
+/**
+ * Apple's devices in the scheme's account, as the next build reads them, or
+ * why they can't be read here: no `signing.ascApiKey`, a pinned profile, or
+ * no credentials. A build couldn't add a device then either.
+ */
+export type AppleDeviceState =
+  | {
+      readonly kind: "read";
+      /** The App Store Connect issuer of the scheme's key. */
+      readonly issuerId: string;
+      readonly devices: ReadonlyMap<string, Pick<AscDevice, "status">>;
+    }
+  | { readonly kind: "unavailable"; readonly reason: string };
 
 /** A registry page: past the account's yearly limit, so one page holds every row. */
 const PAGE = 200;
@@ -66,44 +93,27 @@ const listAll = async (
 };
 
 /**
- * When a build started compiling: the time of its MIN_BUNDLE_ID, a UUIDv7
- * issued just after the build's device step, or its registration's time for
- * an ID that names none.
+ * What a build's `.ipa` says of the registry's devices, recomputed from the
+ * artifact and Apple each time, never stored: null for an `.ipa` that lists
+ * no devices, which the registry has no part in. A device the `.ipa` lacks
+ * asks for a build when the next build would add it, as Apple's current state
+ * says, and any other waits. So a device Apple enables later, or one repaired
+ * signing can now add, asks for a build, and one Apple can't take never does,
+ * whatever the build's age. Apple is read only when the `.ipa` lacks a device.
  */
-const builtAtMs = ({
-  min_bundle_id,
-  created_at_ms,
-}: Pick<NativeBuildRow, "min_bundle_id" | "created_at_ms">): number => {
-  const ms = Number.parseInt(
-    min_bundle_id.replaceAll("-", "").slice(0, 12),
-    16,
-  );
-  return Number.isSafeInteger(ms) && ms > 0 && ms <= created_at_ms
-    ? ms
-    : created_at_ms;
-};
-
-/**
- * What a build's `.ipa` says of its devices, recomputed from the artifact
- * each time, never stored: null for an `.ipa` that lists no devices, which
- * the registry has no part in. A device the `.ipa` lacks asks for a build
- * only when it was approved or registered after the build started: the build
- * before had the chance to add it, so building again for it would build
- * again forever.
- */
-export const iosDeviceCoverage = ({
-  build,
+export const iosDeviceCoverage = async ({
   info,
   devices,
+  apple,
   now,
 }: {
-  readonly build: Pick<NativeBuildRow, "min_bundle_id" | "created_at_ms">;
   /** The `.ipa`'s install info, or null when its profile can't be read. */
   readonly info: IpaInstallInfo | null;
   /** The registry's approved and registered devices. */
   readonly devices: readonly IosDeviceRow[];
+  readonly apple: () => Promise<AppleDeviceState>;
   readonly now: number;
-}): IosDeviceCoverage | null => {
+}): Promise<IosDeviceCoverage | null> => {
   if (info === null) {
     return { reusable: false, reason: "unreadable", missing: [], waiting: [] };
   }
@@ -118,15 +128,28 @@ export const iosDeviceCoverage = ({
     missingIpaDevices(devices, info.devices).map(({ id }) => id),
   );
   const lacking = devices.filter(({ id }) => lackingIds.has(id));
-  const since = (device: IosDeviceRow) =>
-    Math.max(device.approved_at_ms ?? 0, device.registered_at_ms ?? 0);
-  const cutoff = builtAtMs(build);
-  const missing = lacking
-    .filter((device) => since(device) > cutoff)
-    .map(({ name }) => name);
-  const waiting = lacking
-    .filter((device) => since(device) <= cutoff)
-    .map(({ name }) => name);
+  if (lacking.length === 0) {
+    return { reusable: true, reason: null, missing: [], waiting: [] };
+  }
+  const state = await apple().catch(
+    (error): AppleDeviceState => ({
+      kind: "unavailable",
+      reason: `Apple's devices couldn't be read: ${error instanceof Error ? error.message : String(error)}`,
+    }),
+  );
+  const missing: string[] = [];
+  const waiting: WaitingIosDevice[] = [];
+  for (const row of lacking) {
+    const outcome =
+      state.kind === "unavailable"
+        ? { kind: "pending" as const, reason: state.reason }
+        : nextBuildDeviceOutcome(row, state.devices, state.issuerId);
+    if (outcome.kind === "pending") {
+      waiting.push({ name: row.name, reason: outcome.reason });
+    } else {
+      missing.push(row.name);
+    }
+  }
   return {
     reusable: missing.length === 0,
     reason: missing.length === 0 ? null : "missing",
@@ -145,14 +168,6 @@ const readStoredIpaInstallInfo = async (
   storage: StorageAdapter,
   build: NativeBuildRow,
 ): Promise<IpaInstallInfo | null> => {
-  const readOrNull = async (read: () => Promise<IpaInstallInfo>) => {
-    try {
-      return await read();
-    } catch (error) {
-      if (error instanceof NativeArtifactError) return null;
-      throw error;
-    }
-  };
   const url = await resolveNativeBuildDownloadUrl(storage, build);
   if (url !== null) {
     try {
@@ -170,9 +185,12 @@ const readStoredIpaInstallInfo = async (
   try {
     const file = path.join(directory, "App.ipa");
     await downloadNativeBuild(storage, build, file);
-    return await readOrNull(async () =>
-      readIpaInstallInfo(blobSource(await fs.openAsBlob(file))),
-    );
+    try {
+      return await readIpaInstallInfo(blobSource(await fs.openAsBlob(file)));
+    } catch (error) {
+      if (error instanceof NativeArtifactError) return null;
+      throw error;
+    }
   } finally {
     await fs.promises.rm(directory, { recursive: true, force: true });
   }
@@ -181,7 +199,7 @@ const readStoredIpaInstallInfo = async (
 /**
  * Whether a found `.ipa` installs on the registry's devices, for a run that
  * would reuse it: null for any other artifact, and for one that lists no
- * devices.
+ * devices. `apple` reads Apple's devices only when the `.ipa` lacks one.
  */
 export const readIosDeviceCoverage = async (
   {
@@ -192,6 +210,7 @@ export const readIosDeviceCoverage = async (
     readonly storage: StorageAdapter;
   },
   build: NativeBuildRow,
+  apple: () => Promise<AppleDeviceState>,
   now = Date.now(),
 ): Promise<IosDeviceCoverage | null> => {
   if (
@@ -207,5 +226,5 @@ export const readIosDeviceCoverage = async (
     ...(await listAll(core, "registered")),
     ...(await listAll(core, "approved")),
   ];
-  return iosDeviceCoverage({ build, info, devices, now });
+  return iosDeviceCoverage({ info, devices, apple, now });
 };

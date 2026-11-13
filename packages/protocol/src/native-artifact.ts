@@ -20,10 +20,6 @@ export {
   type NativeArtifactProblem,
 } from "./nativeArtifact/checkNativeArtifact";
 export {
-  httpRangeSource,
-  RangeSourceError,
-} from "./nativeArtifact/httpRangeSource";
-export {
   normalizeIosUdid,
   readIpaInstallInfo,
   readProfileServiceUdid,
