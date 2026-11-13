@@ -1,5 +1,5 @@
-import { CheckIcon, RefreshCw } from "lucide-react";
-import { type ComponentProps, useState } from "react";
+import { RefreshCw } from "lucide-react";
+import { type ComponentProps, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -48,6 +48,13 @@ const EVERY_CHANNEL: ChannelChoice = {
 };
 
 /**
+ * How old the cached channel list may be when the list opens. An older one
+ * is read again, so a pull request's new channel shows up without a reload;
+ * a younger one is shown as it is.
+ */
+export const CHANNELS_FRESH_MS = 30_000;
+
+/**
  * The channel filter Insights, Bundles, and Native builds share: a button
  * that reads "Channel <name>" and opens a searchable list of the project's
  * channels. Typing narrows the list, and Enter picks the first match.
@@ -76,6 +83,9 @@ export function ChannelPicker({
 }) {
   const channels = useChannelsQuery();
   const [query, setQuery] = useState("");
+  const list = useRef<HTMLDivElement>(null);
+  // Whether the list has just opened and still has to start at its top.
+  const opening = useRef(false);
   const names = channels.data?.map(({ name }) => name) ?? [];
   // A filtered channel may be gone, or not loaded yet: it stays a choice.
   const shown =
@@ -99,21 +109,44 @@ export function ChannelPicker({
       disabled={pending}
       filter={null}
       inputValue={query}
+      isItemEqualToValue={(item: ChannelChoice, current: ChannelChoice) =>
+        item.name === current.name
+      }
       itemToStringLabel={(choice: ChannelChoice) => choice.label}
       items={matches}
       onInputValueChange={setQuery}
-      onOpenChange={(open) => {
-        // A pull request's channel appears while the page is open.
-        if (open) void channels.refetch();
-        else setQuery("");
+      onItemHighlighted={(_, details) => {
+        if (!opening.current || details.reason !== "none") return;
+        opening.current = false;
+        // Opening highlights the current channel, and Base UI scrolls it
+        // into view in the next frame. The list starts at its first item
+        // instead: the reset runs after that scroll, before the frame paints.
+        queueMicrotask(() =>
+          requestAnimationFrame(() => {
+            if (list.current) list.current.scrollTop = 0;
+          }),
+        );
+      }}
+      onOpenChange={(next) => {
+        opening.current = next;
+        if (!next) {
+          setQuery("");
+          return;
+        }
+        // A pull request's channel appears while the page is open, once
+        // the cached list is old enough to read again.
+        if (
+          channels.data !== undefined &&
+          !channels.isFetching &&
+          Date.now() - channels.dataUpdatedAt > CHANNELS_FRESH_MS
+        )
+          void channels.refetch();
       }}
       onValueChange={(choice: ChannelChoice | null) => {
         if (choice !== null && choice.name !== value)
           onValueChange(choice.name);
       }}
-      // The trigger names the channel, and the list opens at its first
-      // item: a selected value would scroll the list to it.
-      value={null}
+      value={pending ? null : selected}
     >
       <ComboboxTrigger
         aria-label={label === undefined ? "Channel" : `Channel: ${label}`}
@@ -176,15 +209,9 @@ export function ChannelPicker({
             </>
           )}
         </ComboboxEmpty>
-        <ComboboxList>
+        <ComboboxList ref={list}>
           {(choice: ChannelChoice) => (
             <ComboboxItem key={choice.name ?? ""} value={choice}>
-              {choice.name === value ? (
-                <CheckIcon
-                  aria-hidden="true"
-                  className="pointer-events-none absolute right-2"
-                />
-              ) : null}
               <span
                 className="min-w-0 [overflow-wrap:anywhere]"
                 translate={choice.name === undefined ? undefined : "no"}
