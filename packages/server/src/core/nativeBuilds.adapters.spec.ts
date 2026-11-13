@@ -92,6 +92,22 @@ const scope = {
   appVersion: null,
 } as const;
 
+/** What a sandbox build's registration says of its artifact. */
+const sandboxFields = {
+  isSandbox: true,
+  sandboxUrlScheme: "acme-preview",
+  sandboxAppId: "com.example.app",
+  exportMethod: "ad-hoc",
+} as const;
+
+/** The sandbox scope `sandboxFields`' builds are found by. */
+const sandboxLookup = {
+  appId: "com.example.app",
+  urlScheme: "acme-preview",
+  artifactKind: "ipa",
+  distribution: "direct",
+} as const;
+
 describe.each(adapters)("the store build mark on %s", (_name, adapter) => {
   const setup = async () => createInProcessCoreApi(await adapter());
   const marksIn = async (core: Awaited<ReturnType<typeof setup>>) =>
@@ -99,17 +115,10 @@ describe.each(adapters)("the store build mark on %s", (_name, adapter) => {
       .filter(({ is_store_build }) => is_store_build)
       .map(({ id }) => id);
 
-  it("reads back a sandbox build's URL scheme, and null for none", async () => {
+  it("reads back a sandbox build's URL scheme, on a pull request's channel, by its sandbox scope", async () => {
     const core = await setup();
     const custom = await core.registerNativeBuild(
-      registration(1, {
-        channel: "sandbox-release",
-        isSandbox: true,
-        sandboxUrlScheme: "acme-preview",
-      }),
-    );
-    await core.registerNativeBuild(
-      registration(2, { channel: "sandbox-release", isSandbox: true }),
+      registration(1, { channel: "pr-120", ...sandboxFields }),
     );
 
     expect(custom.sandbox_url_scheme).toBe("acme-preview");
@@ -117,15 +126,22 @@ describe.each(adapters)("the store build mark on %s", (_name, adapter) => {
       "acme-preview",
     );
     expect(
-      (await core.getNativeBuild(buildId(2)))?.sandbox_url_scheme,
-    ).toBeNull();
+      await core.findNativeBuild({
+        ...scope,
+        channel: "pr-140",
+        sandbox: sandboxLookup,
+      }),
+    ).toEqual(custom);
+    expect(await core.findNativeBuild({ ...scope, channel: "pr-120" })).toBe(
+      null,
+    );
   });
 
   it("registers every build with both booleans false, any number to a scope", async () => {
     const core = await setup();
     for (const n of [1, 2, 3]) await core.registerNativeBuild(registration(n));
     const sandbox = await core.registerNativeBuild(
-      registration(4, { channel: "sandbox-release", isSandbox: true }),
+      registration(4, { channel: "pr-134", ...sandboxFields }),
     );
 
     expect(
@@ -217,11 +233,7 @@ describe("a native build row written before sandbox_url_scheme", () => {
     const store = rcEraStore();
     const core = createInProcessCoreApi(createKvAdapter({ store }));
     await core.registerNativeBuild(
-      registration(1, {
-        channel: "sandbox-release",
-        isSandbox: true,
-        sandboxUrlScheme: "acme-preview",
-      }),
+      registration(1, { channel: "pr-134", ...sandboxFields }),
     );
     // The row and its index copies hold no field at all, not a null.
     expect(store.dropped()).toBeGreaterThan(0);
@@ -230,7 +242,7 @@ describe("a native build row written before sandbox_url_scheme", () => {
     expect(byId).toMatchObject({ is_sandbox: true, sandbox_url_scheme: null });
     expect(byId).toHaveProperty("sandbox_url_scheme", null);
     expect(
-      await core.findNativeBuild({ ...scope, channel: "sandbox-release" }),
+      await core.findNativeBuild({ ...scope, sandbox: sandboxLookup }),
     ).toHaveProperty("sandbox_url_scheme", null);
     expect(
       (await core.listNativeBuilds({ limit: 10 })).map(

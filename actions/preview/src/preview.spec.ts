@@ -799,7 +799,7 @@ describe("runAction cleanup", () => {
     await runAction(d, env({ INPUT_COMMENT: "true" }), closed);
 
     expect(fake.calls).toEqual([
-      "channel delete pr-12 --native-builds --yes --json",
+      "channel delete pr-12 --native-builds --keep-sandbox-builds --yes --json",
     ]);
     expect(outputs["comment-body"]).toContain(
       "its channel `pr-12`, its 2 bundles, and its 1 native build are deleted.",
@@ -855,6 +855,33 @@ describe("runAction cleanup", () => {
     );
   });
 
+  it("keeps the sandbox builds and their channel, merged or not, and succeeds", async () => {
+    const fake = fakeCli({
+      channelDelete: {
+        code: 0,
+        json: {
+          channel: "pr-12",
+          deleted: false,
+          reason: "sandbox_builds",
+          deletedBundleIds: ["b1", "b2"],
+          deletedNativeBuildIds: ["build-1"],
+          keptNativeBuildIds: ["sandbox-1"],
+        },
+      },
+    });
+    const { deps: d, outputs } = deps(fake.cli);
+
+    await expect(runAction(d, env(), closed)).resolves.toMatchObject({
+      outcome: "kept-sandbox",
+    });
+    expect(fake.calls).toEqual([
+      "channel delete pr-12 --native-builds --keep-sandbox-builds --yes --json",
+    ]);
+    expect(outputs["comment-body"]).toContain(
+      "This pull request is closed: its 2 bundles and its 1 native build are deleted. Its sandbox build stays for pull requests with the same native code, and so does its channel `pr-12`.",
+    );
+  });
+
   it("fails when the delete fails for another reason", async () => {
     const fake = fakeCli({
       channelDelete: { code: 1, json: { channel: "pr-12", deleted: true } },
@@ -871,7 +898,7 @@ describe("runAction cleanup", () => {
     await runAction(d, env({ INPUT_MODE: "cleanup" }), event);
 
     expect(fake.calls).toEqual([
-      "channel delete pr-12 --native-builds --yes --json",
+      "channel delete pr-12 --native-builds --keep-sandbox-builds --yes --json",
     ]);
   });
 });
@@ -884,7 +911,6 @@ describe("parseInputs", () => {
       schemes: { android: "releaseApk", ios: "simulator" },
       channel: "pr-12",
       submits: {},
-      fallbackSchemes: {},
       testFlightGroup: null,
       credit: true,
       comment: false,

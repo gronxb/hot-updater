@@ -319,6 +319,160 @@ describe("handleChannelDelete", () => {
     expect(process.exitCode).toBe(1);
   });
 
+  describe("with --keep-sandbox-builds", () => {
+    const registerSandboxBuild = (n: number, channel: string) =>
+      databaseHarness.core.registerNativeBuild({
+        id: `01900000-0000-7000-8000-0000000003${String(n).padStart(2, "0")}`,
+        platform: "android",
+        channel,
+        fingerprintHash: "fingerprint-a",
+        appVersion: null,
+        minBundleId: `01900000-0000-7000-8000-0000000004${String(n).padStart(2, "0")}`,
+        gitCommitHash: null,
+        buildKey: null,
+        isSandbox: true,
+        sandboxUrlScheme: "acme-preview",
+        sandboxAppId: "com.example.app.sandbox",
+        artifact: {
+          kind: "apk",
+          storageUri: `storage://native-builds/android/3${n}/app.apk`,
+          byteSize: 10,
+        },
+        embeddedBundle: {
+          manifestStorageUri: `storage://artifacts/3${n}/manifest.json`,
+          manifestFileHash: `manifest-hash-3${n}`,
+          assetBaseStorageUri: "storage://assets",
+        },
+      });
+    const storageWith = (
+      deleteObject: (input: { storageUri: string }) => Promise<unknown>,
+    ) => {
+      const server = testServer({
+        database: databaseHarness.database,
+        storage: createStorageAdapter({
+          name: "test",
+          protocol: "storage",
+          delete: deleteObject as never,
+        }),
+      });
+      loadServer.mockResolvedValue(server);
+      return server;
+    };
+
+    it("deletes the bundles and the normal builds, keeps the sandbox builds and the channel, and succeeds", async () => {
+      await deploy("1", "pr-12", "android");
+      const normal = await registerBuild(1, "pr-12", "fingerprint-a");
+      const sandbox = await registerSandboxBuild(1, "pr-12");
+      const deleteObject = vi.fn(async () => ({ deleted: true as const }));
+      storageWith(deleteObject);
+      const { handleChannelDelete } = await import("./channel");
+
+      await handleChannelDelete("pr-12", {
+        json: true,
+        yes: true,
+        nativeBuilds: true,
+        keepSandboxBuilds: true,
+      });
+
+      expect(output()).toMatchObject({
+        channel: "pr-12",
+        deleted: false,
+        reason: "sandbox_builds",
+        deletedBundleIds: [expect.any(String)],
+        deletedNativeBuildIds: [normal.id],
+        keptNativeBuildIds: [sandbox.id],
+      });
+      expect(deleteObject).toHaveBeenCalledTimes(1);
+      expect(await databaseHarness.releases()).toEqual([]);
+      await expect(
+        databaseHarness.core.getNativeBuild(sandbox.id),
+      ).resolves.toEqual(sandbox);
+      await expect(
+        databaseHarness.core.findChannelByName("pr-12"),
+      ).resolves.not.toBeNull();
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    it("deletes the channel when it has no sandbox build", async () => {
+      await registerBuild(1, "pr-12", "fingerprint-a");
+      storageWith(async () => ({ deleted: true }));
+      const { handleChannelDelete } = await import("./channel");
+
+      await handleChannelDelete("pr-12", {
+        json: true,
+        yes: true,
+        nativeBuilds: true,
+        keepSandboxBuilds: true,
+      });
+
+      expect(output()).toMatchObject({ deleted: true });
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    it("fails when a bundle reaches the channel during the cleanup", async () => {
+      await registerSandboxBuild(1, "pr-12");
+      const server = storageWith(async () => ({ deleted: true }));
+      const deleteChannel = server.core.deleteChannel.bind(server.core);
+      vi.spyOn(server.core, "deleteChannel").mockImplementation(async (id) => {
+        await deploy("2", "pr-12", "android");
+        return deleteChannel(id);
+      });
+      const { handleChannelDelete } = await import("./channel");
+
+      await handleChannelDelete("pr-12", {
+        json: true,
+        yes: true,
+        nativeBuilds: true,
+        keepSandboxBuilds: true,
+      });
+
+      expect(output()).toMatchObject({ deleted: false, reason: "not_empty" });
+      expect(process.exitCode).toBe(1);
+    });
+
+    it("fails when a normal build registers past a page of kept sandbox builds", async () => {
+      for (let n = 0; n < 101; n += 1) await registerSandboxBuild(n, "pr-12");
+      const server = storageWith(async () => ({ deleted: true }));
+      const deleteChannel = server.core.deleteChannel.bind(server.core);
+      vi.spyOn(server.core, "deleteChannel").mockImplementation(async (id) => {
+        await registerBuild(9, "pr-12", "fingerprint-late");
+        return deleteChannel(id);
+      });
+      const { handleChannelDelete } = await import("./channel");
+
+      await handleChannelDelete("pr-12", {
+        json: true,
+        yes: true,
+        nativeBuilds: true,
+        keepSandboxBuilds: true,
+      });
+
+      expect(output()).toMatchObject({ deleted: false, reason: "not_empty" });
+      expect(process.exitCode).toBe(1);
+    });
+
+    it("still fails when a normal build's artifact can't be deleted", async () => {
+      await registerBuild(1, "pr-12", "fingerprint-a");
+      await registerSandboxBuild(1, "pr-12");
+      storageWith(async () => {
+        throw new Error("access denied");
+      });
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      const { handleChannelDelete } = await import("./channel");
+
+      await handleChannelDelete("pr-12", {
+        json: true,
+        yes: true,
+        nativeBuilds: true,
+        keepSandboxBuilds: true,
+      });
+
+      expect(output()).toMatchObject({ reason: "sandbox_builds" });
+      expect(String(errors.mock.calls[0]?.[0])).toContain("access denied");
+      expect(process.exitCode).toBe(1);
+    });
+  });
+
   it("asks before deleting in a terminal", async () => {
     await deploy("1", "pr-12");
     const isTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");

@@ -47,7 +47,7 @@ const store = (state: string, reusable = true) => ({
  * says, and what `native-build` prints, recording each command it ran.
  */
 const fakeCli = ({
-  channel = "sandbox-sandbox",
+  channel = "pr-12",
   sandboxScheme = true,
   found = null as ReturnType<typeof row> | null,
   foundStore = null as ReturnType<typeof store> | null,
@@ -57,7 +57,7 @@ const fakeCli = ({
     existing: null,
     store: store("processing"),
   } as Record<string, unknown>,
-  builtChannel = "sandbox-sandbox",
+  builtChannel = "pr-12",
   groupStore = { ...store("ready"), group: "added" } as Record<string, unknown>,
   groupFails = false,
 } = {}) => {
@@ -81,7 +81,7 @@ const fakeCli = ({
                 sandbox: {
                   appId: "com.example.app",
                   urlScheme: "hu-sandbox-com-example-app",
-                  otherBuilds: false,
+                  channel: found === null ? null : "pr-10",
                 },
               }
             : {}),
@@ -156,14 +156,15 @@ const run = async (
 };
 
 describe("a preview with ios-submit", () => {
-  it("asks for the sandbox scheme's own channel: no --channel, ever", async () => {
+  it("looks up the store build with no channel, and the download on the pull request's", async () => {
     const fake = fakeCli();
     await run(fake);
     const finds = fake.calls.filter(
       ([command, sub]) => command === "native-build" && sub === "find",
     );
-    expect(finds.length).toBeGreaterThan(0);
-    for (const find of finds) expect(find).not.toContain("-c");
+    expect(finds.length).toBe(2);
+    expect(finds[0]).not.toContain("-c");
+    expect(finds[1]).toEqual(expect.arrayContaining(["-c", "pr-12"]));
   });
 
   it("uploads with no matching build, and deploys to the pull request's channel", async () => {
@@ -290,7 +291,7 @@ describe("a preview with ios-submit", () => {
   it("fails when the build embeds another channel", async () => {
     const fake = fakeCli({ builtChannel: "production" });
     await expect(run(fake)).rejects.toThrow(
-      "embeds the production channel, not sandbox-sandbox",
+      "embeds the production channel, not pr-12",
     );
     expect(fake.calls.some(([command]) => command === "deploy")).toBe(false);
   });
@@ -312,7 +313,7 @@ describe("a preview with ios-submit", () => {
     const harness = deps(fake.cli);
     await runAction(harness.deps, env(), { ...event, action: "closed" });
     expect(fake.words()).toEqual([
-      "channel delete pr-12 --native-builds --yes --json",
+      "channel delete pr-12 --native-builds --keep-sandbox-builds --yes --json",
     ]);
   });
 });

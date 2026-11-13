@@ -92,7 +92,7 @@ afterEach(() => {
 });
 
 describe("assertSandboxBuildAllowed", () => {
-  it("lets a normal scheme build on any channel but a reserved one", async () => {
+  it("lets a normal scheme build on any channel, one named sandbox-* too", async () => {
     await expect(
       assertSandboxBuildAllowed({
         platform: "android",
@@ -108,9 +108,7 @@ describe("assertSandboxBuildAllowed", () => {
         scheme: "release",
         androidScheme: android,
       }),
-    ).rejects.toThrow(
-      "Channel sandbox-beta is reserved for sandbox builds, and the scheme release isn't one.\nSet sandbox: true on it, or run:\nnpx hot-updater channel set production",
-    );
+    ).resolves.toBeUndefined();
   });
 
   it("lets a normal scheme through when no native project exists yet", async () => {
@@ -147,16 +145,6 @@ describe("assertSandboxBuildAllowed", () => {
       );
     },
   );
-
-  it("refuses a scheme whose name can't make a channel", async () => {
-    await expect(
-      assertSandboxBuildAllowed({
-        platform: "android",
-        scheme: "my scheme",
-        androidScheme: { ...android, sandbox: true },
-      }),
-    ).rejects.toThrow("can't name a channel");
-  });
 
   it.each(["play-closed", "play-open", "play-production"] as const)(
     "refuses sandbox submission to %s",
@@ -292,7 +280,7 @@ describe("assertBuiltArtifact", () => {
     platform: "android",
     scheme: "release",
     sandbox: true,
-    channel: "sandbox-release",
+    channel: "pr-134",
     fingerprintHash: FINGERPRINT,
   } as const;
   const normalBuild = {
@@ -357,16 +345,15 @@ describe("assertBuiltArtifact", () => {
     ).rejects.toThrow("has the sandbox layer's code, but no sandbox");
   });
 
-  it("refuses a sandbox build on another scheme's channel", async () => {
+  it("accepts a sandbox build on a pull request's channel, whatever its scheme's name", async () => {
     await expect(
       assertBuiltArtifact({
         ...sandboxBuild,
         scheme: "beta",
+        channel: "pr-134",
         artifactPath: await apk("sandbox.axml", "sandbox.dex"),
       }),
-    ).rejects.toThrow(
-      "The sandbox scheme beta built channel sandbox-release, not sandbox-beta.",
-    );
+    ).resolves.toMatchObject({ sandbox: { code: true, declared: true } });
   });
 
   it("refuses a normal build that holds the layer, saying what brought it in", async () => {
@@ -389,16 +376,14 @@ describe("assertBuiltArtifact", () => {
     );
   });
 
-  it("refuses a normal build on a reserved channel", async () => {
+  it("accepts a normal build on a channel named sandbox-*", async () => {
     await expect(
       assertBuiltArtifact({
         ...normalBuild,
         channel: "sandbox-beta",
         artifactPath: await apk("release.axml", "classes.dex"),
       }),
-    ).rejects.toThrow(
-      "Channel sandbox-beta is reserved for sandbox builds, and the .apk isn't one.",
-    );
+    ).resolves.toMatchObject({ sandbox: { code: false, declared: false } });
   });
 
   it("refuses a sandbox build whose embedded fingerprint isn't a normal build's", async () => {

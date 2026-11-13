@@ -95,7 +95,7 @@ describe.runIf(process.platform === "darwin")("patching with plutil", () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it("adds the URL scheme after the app's own, its channel and key, and keeps the bundle ID", async () => {
+  it("adds the URL scheme after the app's own and its key, and keeps the bundle ID and the project's channel", async () => {
     await patchSandboxArchive({
       archivePath: archive,
       appPath: app,
@@ -105,7 +105,7 @@ describe.runIf(process.platform === "darwin")("patching with plutil", () => {
     const info = read(path.join(app, "Info.plist"));
     expect(info).toMatchObject({
       CFBundleIdentifier: "com.example.App",
-      HOT_UPDATER_CHANNEL: "sandbox-release",
+      HOT_UPDATER_CHANNEL: "production",
       HOT_UPDATER_SANDBOX: true,
       CFBundleURLTypes: [{ CFBundleURLSchemes: ["myapp"] }, SANDBOX_URL_TYPE],
       // Nothing to fit in App Store Connect without a train.
@@ -609,11 +609,13 @@ describe.runIf(process.platform === "darwin")("patching with plutil", () => {
 
     await patchSandboxSimulatorApp(simulatorApp, scheme);
 
-    expect(read(path.join(simulatorApp, "Info.plist"))).toMatchObject({
-      HOT_UPDATER_CHANNEL: "sandbox-release",
+    const simulatorInfo = read(path.join(simulatorApp, "Info.plist"));
+    expect(simulatorInfo).toMatchObject({
       HOT_UPDATER_SANDBOX: true,
       CFBundleURLTypes: [SANDBOX_URL_TYPE],
     });
+    // No channel of its own: the app reports the one it was built with.
+    expect(simulatorInfo).not.toHaveProperty("HOT_UPDATER_CHANNEL");
     execFileSync("codesign", ["--verify", "--deep", "--strict", simulatorApp]);
   });
 });

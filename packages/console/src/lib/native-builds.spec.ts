@@ -5,6 +5,7 @@ import {
   nativeBuildFileName,
   nativeBuildInstallCommand,
   nativeBuildSignedDownloadUrl,
+  releaseNativeBuildScope,
 } from "./native-builds";
 
 const build = (artifact_storage_uri: string, id = "019a") =>
@@ -56,5 +57,23 @@ describe("nativeBuildFileName", () => {
     expect(
       nativeBuildInstallCommand(build("r2://b/App.app.zip", "$(id)")),
     ).toBe("npx hot-updater native-build install '$(id)'");
+  });
+});
+
+describe("releaseNativeBuildScope", () => {
+  it("is the scope of a release on a channel named sandbox-*, which is a channel like any", () => {
+    expect(
+      releaseNativeBuildScope({
+        platform: "ios",
+        channel: "sandbox-x",
+        fingerprintHash: "fp",
+        targetAppVersion: null,
+      }),
+    ).toEqual({
+      platform: "ios",
+      channel: "sandbox-x",
+      fingerprintHash: "fp",
+      appVersion: null,
+    });
   });
 });

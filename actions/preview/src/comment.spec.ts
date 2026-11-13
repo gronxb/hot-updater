@@ -454,6 +454,23 @@ This pull request is closed: its channel \`pr-12\`, its 3 bundles, and its 2 nat
 This pull request is closed: its 1 bundle and its 1 native build are deleted, and its channel \`pr-12\` is kept, because a bundle or a build was added to it during the cleanup. Run the cleanup again.`);
   });
 
+  it("says what stays for other pull requests when sandbox builds are kept", () => {
+    expect(
+      renderClosedComment({
+        channel: "pr-12",
+        outcome: "kept-sandbox",
+        deletedBundles: 1,
+        deletedNativeBuilds: 0,
+        keptSandboxBuilds: 2,
+        credit: false,
+      }),
+    ).toBe(`<!-- hot-updater-preview -->
+
+### Preview on \`pr-12\`
+
+This pull request is closed: its 1 bundle and its 0 native builds are deleted. Its 2 sandbox builds stay for pull requests with the same native code, and so does its channel \`pr-12\`.`);
+  });
+
   it("says when the channel was already gone", () => {
     expect(
       renderClosedComment({

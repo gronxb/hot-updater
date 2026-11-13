@@ -47,7 +47,9 @@ type Build = {
   fingerprintHash: string;
   kind: string;
   minBundleId?: string;
-  /** The URL scheme the build registered; left out, a build from before the record. */
+  /** Whether it is a sandbox build, which `find` finds on any channel. */
+  sandbox?: boolean;
+  /** The URL scheme a sandbox build registered. */
   sandboxUrlScheme?: string;
 };
 
@@ -62,11 +64,11 @@ const row = (build: Build) => ({
 });
 
 /**
- * The project's CLI as the real one answers: `find` refuses another channel on
- * a sandbox scheme, a sandbox scheme's channel is its own, and any other scheme
- * embeds what `channel set` wrote. Only a sandbox scheme's result has `sandbox`,
- * whose URL scheme is the matched build's, or the one `urlScheme` (the
- * config's) builds; a build registers its URL scheme.
+ * The project's CLI as the real one answers: every scheme embeds what
+ * `channel set` wrote, and `find` looks for a sandbox scheme's build on any
+ * channel, by the URL scheme `urlScheme` (the config's) or the derived one.
+ * Only a sandbox scheme's result has `sandbox`, which names the channel the
+ * found build embeds.
  */
 const fakeCli = ({
   fingerprintHash = FINGERPRINT,
@@ -75,6 +77,7 @@ const fakeCli = ({
   builtChannel = undefined as string | undefined,
   reportedChannel = undefined as string | undefined,
   storeRow = undefined as Record<string, unknown> | undefined,
+  iosDevices = undefined as Record<string, unknown> | undefined,
 } = {}) => {
   const calls: string[] = [];
   let channel = "production";
@@ -93,16 +96,21 @@ const fakeCli = ({
       const platform = flag("-p")!;
       const appId = SANDBOX_SCHEMES[scheme];
       const asked = flag("-c");
-      if (appId && asked !== undefined && asked !== `sandbox-${scheme}`) {
-        return { code: 1, stdout: "" };
-      }
-      const scope = appId ? `sandbox-${scheme}` : (asked ?? channel);
-      const onChannel = builds.filter(
-        (build) => build.platform === platform && build.channel === scope,
-      );
+      const scope = asked ?? channel;
+      const linkScheme = urlScheme ?? (appId && sandboxUrlSchemeOf(appId));
+      // A sandbox scheme's lookup names no channel: its builds are found on
+      // any, by the URL scheme they register.
       const found =
-        onChannel.findLast(
-          (build) => build.fingerprintHash === fingerprintHash,
+        builds.findLast((build) =>
+          appId
+            ? build.platform === platform &&
+              build.sandbox === true &&
+              build.sandboxUrlScheme === linkScheme &&
+              build.fingerprintHash === fingerprintHash
+            : build.platform === platform &&
+              build.sandbox !== true &&
+              build.channel === scope &&
+              build.fingerprintHash === fingerprintHash,
         ) ?? null;
       return {
         code: 0,
@@ -113,6 +121,7 @@ const fakeCli = ({
           appVersion: null,
           nativeBuild: storeRow ?? (found && row(found)),
           downloadUrl: found && `https://storage.example.com/${found.id}`,
+          ...(found && iosDevices ? { iosDevices } : {}),
           ...(args.includes("--store-status")
             ? {
                 store: storeRow
@@ -131,15 +140,8 @@ const fakeCli = ({
             ? {
                 sandbox: {
                   appId,
-                  urlScheme:
-                    found === null
-                      ? (urlScheme ?? sandboxUrlSchemeOf(appId))
-                      : (found.sandboxUrlScheme ?? sandboxUrlSchemeOf(appId)),
-                  otherBuilds:
-                    found === null &&
-                    onChannel.some(
-                      (build) => build.fingerprintHash !== fingerprintHash,
-                    ),
+                  urlScheme: linkScheme,
+                  channel: found?.channel ?? null,
                 },
               }
             : {}),
@@ -151,13 +153,12 @@ const fakeCli = ({
       const built = {
         id: `019a0000-0000-7000-8000-00000000c00${++counter}`,
         platform: sub!,
-        channel:
-          builtChannel ??
-          (SANDBOX_SCHEMES[scheme] ? `sandbox-${scheme}` : channel),
+        channel: builtChannel ?? channel,
         fingerprintHash,
         kind: "apk",
         ...(SANDBOX_SCHEMES[scheme]
           ? {
+              sandbox: true,
               sandboxUrlScheme:
                 urlScheme ?? sandboxUrlSchemeOf(SANDBOX_SCHEMES[scheme]!),
             }
@@ -238,12 +239,15 @@ const run = async (
   };
 };
 
+/** A sandbox build another pull request made, which this one can reuse. */
 const sandboxBuild = (fingerprintHash = FINGERPRINT): Build => ({
   id: BUILD_ID,
   platform: "android",
-  channel: "sandbox-sandbox",
+  channel: "pr-10",
   fingerprintHash,
   kind: "apk",
+  sandbox: true,
+  sandboxUrlScheme: sandboxUrlSchemeOf(APP_ID),
 });
 
 const QR = qrImage(LINK);
@@ -306,6 +310,7 @@ describe("no sandbox scheme", () => {
   const normalBuild: Build = {
     ...sandboxBuild(),
     channel: "pr-12",
+    sandbox: false,
   };
 
   it("leaves the comment and the outputs as they were", async () => {
@@ -390,22 +395,13 @@ describe("no sandbox scheme", () => {
       "native-build android --scheme releaseApk --json",
     ]);
   });
-
-  it("refuses a fallback scheme, which only a sandbox scheme can use", async () => {
-    const fake = fakeCli();
-
-    await expect(
-      run(fake, { ...normal, INPUT_ANDROID_FALLBACK_SCHEME: "other" }),
-    ).rejects.toThrow("android-fallback-scheme goes with a sandbox scheme");
-    expect(fake.calls.some((call) => call.startsWith("deploy"))).toBe(false);
-  });
 });
 
 describe("a sandbox build that has the fingerprint", () => {
-  it("reuses it, on the sandbox's channel, and deploys to the pull request's", async () => {
+  it("reuses another pull request's build, and deploys to this one's channel", async () => {
     const fake = fakeCli({ builds: [sandboxBuild()] });
 
-    await run(fake);
+    const { body } = await run(fake);
 
     expect(fake.calls).toEqual([
       "channel set pr-12",
@@ -413,14 +409,25 @@ describe("a sandbox build that has the fingerprint", () => {
       "fingerprint create",
       "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
-      "native-build find -p android -s sandbox --json",
+      "native-build find -p android -c pr-12 -s sandbox --json",
     ]);
+    expect(body).toContain(
+      "Sandbox build from `pr-10`, with the same native code. Already installed? Skip to step 2.",
+    );
+  });
+
+  it("says nothing of where a build on this pull request's channel came from", async () => {
+    const { body } = await run(
+      fakeCli({ builds: [{ ...sandboxBuild(), channel: "pr-12" }] }),
+    );
+
+    expect(body).not.toContain("Sandbox build from");
   });
 
   it("tells the sandbox scheme by what find says of it, not by the channel", async () => {
     const fake = fakeCli({
       builds: [sandboxBuild()],
-      reportedChannel: "sandbox-renamed",
+      reportedChannel: "renamed",
     });
 
     const { outputs } = await run(fake);
@@ -557,8 +564,19 @@ describe("a sandbox .ipa with no store input", () => {
     expect(written).toEqual([qrPath(IOS_LINK)]);
   });
 
+  it("gives the Console page, where an iPhone installs it, as its install URL", async () => {
+    const { outputs } = await run(fakeCli({ builds: [ipa] }), inputs);
+
+    expect(outputs["ios-install-url"]).toBe(
+      `${CONSOLE}/native-builds/${BUILD_ID}`,
+    );
+    expect(outputs["ios-download-url"]).toBe(
+      `https://storage.example.com/${BUILD_ID}`,
+    );
+  });
+
   it("links a normal .ipa's install page, with no QR code", async () => {
-    const normal = { ...ipa, channel: "pr-12" };
+    const normal = { ...ipa, channel: "pr-12", sandbox: false };
 
     const { body } = await run(fakeCli({ builds: [normal] }), {
       ...inputs,
@@ -593,22 +611,19 @@ describe("no sandbox build at all", () => {
     );
   });
 
-  it("builds a sandbox build even with a fallback scheme", async () => {
+  it("builds on the pull request's channel", async () => {
     const fake = fakeCli();
 
-    await run(fake, { INPUT_ANDROID_FALLBACK_SCHEME: "releaseApk" });
+    await run(fake);
 
-    expect(fake.calls).toContain(
-      "native-build android --scheme sandbox --json",
-    );
-    expect(fake.calls.join("\n")).not.toContain("--scheme releaseApk");
+    expect(fake.builds).toMatchObject([{ channel: "pr-12", sandbox: true }]);
   });
 
   it("fails when the build embeds another channel", async () => {
     const fake = fakeCli({ builtChannel: "production" });
 
     await expect(run(fake)).rejects.toThrow(
-      "embeds the production channel, not sandbox-sandbox",
+      "embeds the production channel, not pr-12",
     );
     expect(fake.calls.some((call) => call.startsWith("deploy"))).toBe(false);
   });
@@ -629,85 +644,23 @@ describe("the URL scheme a sandbox scheme sets", () => {
     });
   });
 
-  it("opens a reused build with the scheme it registered, whatever the config says now", async () => {
-    const { outputs } = await run(
-      fakeCli({
-        urlScheme: "acme-next",
-        builds: [{ ...sandboxBuild(), sandboxUrlScheme: "acme-preview" }],
-      }),
-    );
+  it("reuses only a build of the configured scheme", async () => {
+    const fake = fakeCli({
+      urlScheme: "acme-preview",
+      builds: [{ ...sandboxBuild(), sandboxUrlScheme: "acme-next" }],
+    });
 
+    const { outputs } = await run(fake);
+
+    expect(fake.calls).toContain(
+      "native-build android --scheme sandbox --json",
+    );
     expect(outputs["android-sandbox-link"]).toBe(custom);
-  });
-
-  it("opens a build registered before the scheme was recorded with the derived one", async () => {
-    const { outputs } = await run(
-      fakeCli({ urlScheme: "acme-preview", builds: [sandboxBuild()] }),
-    );
-
-    expect(outputs["android-sandbox-link"]).toBe(LINK);
   });
 });
 
-describe("a pull request whose fingerprint differs from the sandbox build", () => {
-  const fallback = { INPUT_ANDROID_FALLBACK_SCHEME: "releaseApk" };
-
-  it("falls back to a native build on its channel, with no sandbox QR code", async () => {
-    const fake = fakeCli({ builds: [sandboxBuild(OLD_FINGERPRINT)] });
-
-    const { body, outputs, written } = await run(fake, fallback);
-
-    expect(fake.calls).toEqual([
-      "channel set pr-12",
-      "native-build find -p android -s sandbox --json",
-      "native-build find -p android -c pr-12 -s releaseApk --json",
-      "native-build android --scheme releaseApk --json",
-      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
-      "bundle list -c pr-12 -p android --limit 1 --json",
-      "native-build find -p android -c pr-12 -s releaseApk --json",
-    ]);
-    expect(body).not.toContain("hu-sandbox-");
-    expect(outputs).not.toHaveProperty("android-sandbox-link");
-    // The existing flow, with its download QR code and its channel.
-    const built = JSON.parse(outputs["previews"]!)[0].nativeBuild.id;
-    expect(written).toEqual([]);
-    expect(body).toContain(
-      `**Install this pull request's build.** It opens the latest bundle on \`pr-12\` on its first launch.\n\n- **Android**: [Download APK](${CONSOLE}/api/native-builds/${built}/download)`,
-    );
-    expect(body).not.toContain("Scan");
-    const [preview] = JSON.parse(outputs["previews"]!);
-    expect(preview.fallbackScheme).toBe("releaseApk");
-    expect(preview).not.toHaveProperty("sandbox");
-    expect(outputs["android-download-url"]).toContain("storage.example.com");
-  });
-
-  it("reuses the fallback's build on a later push", async () => {
-    const fake = fakeCli({
-      builds: [
-        sandboxBuild(OLD_FINGERPRINT),
-        { ...sandboxBuild(), id: "fallback-build", channel: "pr-12" },
-      ],
-    });
-
-    const { body } = await run(fake, fallback);
-
-    expect(fake.calls.join("\n")).not.toContain("--scheme releaseApk");
-    expect(body).toContain("fallback-build");
-    expect(body).not.toContain("hu-sandbox-");
-  });
-
-  it("doesn't fall back while a sandbox build has this fingerprint", async () => {
-    const fake = fakeCli({
-      builds: [sandboxBuild(OLD_FINGERPRINT), sandboxBuild()],
-    });
-
-    const { body } = await run(fake, fallback);
-
-    expect(fake.calls.join("\n")).not.toContain("releaseApk");
-    expect(body).toContain(`\`${LINK}\``);
-  });
-
-  it("builds a new sandbox build when no scheme can embed the channel", async () => {
+describe("a pull request whose fingerprint differs from the sandbox builds", () => {
+  it("builds a new sandbox build on its channel, and says to push the others", async () => {
     const fake = fakeCli({ builds: [sandboxBuild(OLD_FINGERPRINT)] });
 
     const { body, outputs } = await run(fake);
@@ -715,9 +668,61 @@ describe("a pull request whose fingerprint differs from the sandbox build", () =
     expect(fake.calls).toContain(
       "native-build android --scheme sandbox --json",
     );
+    expect(fake.builds.at(-1)).toMatchObject({
+      channel: "pr-12",
+      fingerprintHash: FINGERPRINT,
+    });
     expect(outputs["android-sandbox-link"]).toBe(LINK);
     expect(body).toContain("**2. Scan to open the latest bundle on `pr-12`**");
     expect(body).toContain("This run made a new sandbox build");
+  });
+});
+
+describe("an ad hoc .ipa that lacks an approved device", () => {
+  const ipa = { ...sandboxBuild(), platform: "ios", kind: "ipa" };
+  const inputs = { INPUT_PLATFORMS: "ios", INPUT_IOS_SCHEME: "sandbox" };
+
+  it("builds again without the cache, and says to push the other pull requests", async () => {
+    const fake = fakeCli({
+      builds: [ipa],
+      iosDevices: {
+        reusable: false,
+        reason: "missing",
+        missing: ["Ana's iPhone"],
+        waiting: [],
+      },
+    });
+
+    const { body } = await run(fake, inputs);
+
+    expect(fake.calls).toContain(
+      "native-build ios --scheme sandbox --no-cache --json",
+    );
+    expect(body).toContain("built for this commit");
+    expect(body).toContain(
+      "This run made a new sandbox build: push the other open pull requests again.",
+    );
+  });
+
+  it("reuses it, and names the devices Apple hasn't taken yet", async () => {
+    const fake = fakeCli({
+      builds: [ipa],
+      iosDevices: {
+        reusable: true,
+        reason: null,
+        missing: [],
+        waiting: ["Bo's iPad"],
+      },
+    });
+
+    const { notice } = await run(fake, inputs);
+
+    expect(fake.calls.some((call) => call.startsWith("native-build ios"))).toBe(
+      false,
+    );
+    expect(notice).toHaveBeenCalledWith(
+      expect.stringContaining("Bo's iPad"),
+    );
   });
 });
 
@@ -742,7 +747,7 @@ describe("a store build", () => {
       "fingerprint create",
       "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
-      "native-build find -p android -s sandbox --json",
+      "native-build find -p android -c pr-12 -s sandbox --json",
     ]);
     expect(body).toContain(
       "- **Android**: [Google Play internal testing](https://play.google.com/apps/testing/app) · `1.0 (2)` · ready to install · [Details](",
@@ -751,15 +756,6 @@ describe("a store build", () => {
     expect(body).not.toContain("api/native-builds");
     expect(body).toContain(`<img src="${QR}"`);
     expect(outputs["android-sandbox-link"]).toBe(LINK);
-  });
-
-  it("refuses a fallback scheme beside a store input", () => {
-    expect(() =>
-      parseInputs(
-        env({ ...storeInputs, INPUT_ANDROID_FALLBACK_SCHEME: "releaseApk" }),
-        event,
-      ),
-    ).toThrow("android-fallback-scheme doesn't go with android-submit");
   });
 });
 
@@ -828,6 +824,7 @@ describe("a sandbox scheme beside a normal one", () => {
           channel: "pr-12",
           kind: "app",
           id: "ios-build",
+          sandbox: false,
         },
       ],
     });
@@ -932,6 +929,7 @@ describe("a deploy the registry can't confirm", () => {
     channel: "pr-12",
     kind: "app",
     id: "ios-build",
+    sandbox: false,
   };
   const both = {
     INPUT_PLATFORMS: "android,ios",
