@@ -136,7 +136,7 @@ export function ChannelPicker({
           </span>
         )}
       </ComboboxTrigger>
-      <ComboboxContent className="w-72">
+      <ComboboxContent className="w-72 min-w-(--anchor-width)">
         <ComboboxInput
           aria-label="Search channels"
           maxLength={1024}
