@@ -65,6 +65,7 @@ describe("InsightsControls", () => {
   beforeEach(() => {
     mocks.channels.mockReturnValue({
       data: [{ name: "production" }, { name: "beta" }],
+      refetch: vi.fn(),
     });
   });
 
@@ -219,14 +220,25 @@ describe("InsightsControls", () => {
     expect(onFiltersChange).toHaveBeenLastCalledWith({ releaseId: pasted });
   });
 
+  it("offers the project's channels and no All channels", async () => {
+    renderControls();
+    fireEvent.click(screen.getByRole("combobox", { name: /^Channel/ }));
+    expect(
+      (await screen.findAllByRole("option")).map(
+        (option) => option.textContent,
+      ),
+    ).toEqual(["production", "beta"]);
+  });
+
   it("lets the user retry an unavailable channel list", async () => {
     const refetch = vi.fn();
     mocks.channels.mockReturnValue({ isError: true, refetch });
     renderControls();
     fireEvent.click(screen.getByRole("combobox", { name: /^Channel/ }));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Retry channels" }),
-    );
+    const retry = await screen.findByRole("button", { name: "Retry channels" });
+    // Opening the list reads it again once; Retry reads it once more.
+    refetch.mockClear();
+    fireEvent.click(retry);
     expect(refetch).toHaveBeenCalledOnce();
   });
 });

@@ -1,5 +1,6 @@
 import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -918,11 +919,70 @@ describe("BundlesPage", () => {
       ]);
     });
 
-    it("names every channel as Native builds does", () => {
+    it("names every channel as Native builds does", async () => {
       render(<BundlesPage />);
 
-      expect(screen.getAllByText("All channels").length).toBeGreaterThan(0);
+      fireEvent.click(screen.getByRole("combobox", { name: /^Channel/ }));
+      expect(
+        await screen.findByRole("option", { name: "All channels" }),
+      ).toBeTruthy();
       expect(screen.queryByText("All Channels")).toBeNull();
+    });
+
+    it("searches the channels and lists the one picked", async () => {
+      render(<BundlesPage />);
+
+      const trigger = screen.getByRole("combobox", { name: /^Channel/ });
+      expect(trigger.getAttribute("aria-label")).toBe("Channel: production");
+      fireEvent.click(trigger);
+      const search = await screen.findByRole("combobox", {
+        name: "Search channels",
+      });
+      act(() => search.focus());
+      fireEvent.input(search, {
+        inputType: "insertText",
+        target: { value: "stag" },
+      });
+      const staging = await screen.findByRole("option", { name: "staging" });
+      expect(
+        screen.getAllByRole("option").map((option) => option.textContent),
+      ).toEqual(["staging"]);
+      await act(async () => {
+        fireEvent.pointerDown(staging);
+        fireEvent.click(staging);
+      });
+      expect(mocks.navigate).toHaveBeenLastCalledWith({
+        resetScroll: true,
+        search: expect.objectContaining({ channelId: STAGING.id }),
+        to: "/",
+      });
+    });
+
+    it("lists every channel from the picker, in the URL", async () => {
+      render(<BundlesPage />);
+
+      fireEvent.click(screen.getByRole("combobox", { name: /^Channel/ }));
+      const all = await screen.findByRole("option", { name: "All channels" });
+      await act(async () => {
+        fireEvent.pointerDown(all);
+        fireEvent.click(all);
+      });
+      expect(mocks.navigate).toHaveBeenLastCalledWith({
+        resetScroll: true,
+        search: expect.objectContaining({ channels: "all" }),
+        to: "/",
+      });
+    });
+
+    it("shows All channels on the picker when the URL lists every channel", () => {
+      mocks.search.mockReturnValue({ channels: "all" });
+      render(<BundlesPage />);
+
+      expect(
+        screen
+          .getByRole("combobox", { name: /^Channel/ })
+          .getAttribute("aria-label"),
+      ).toBe("Channel: All channels");
     });
 
     it("lists every channel when the project has no production channel", () => {

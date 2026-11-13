@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -58,7 +64,7 @@ const reads = () =>
     .map(([page]) => page);
 
 const choose = async (option: string) => {
-  fireEvent.click(screen.getByRole("combobox", { name: "Channel" }));
+  fireEvent.click(screen.getByRole("combobox", { name: /^Channel/ }));
   const item = await screen.findByRole("option", { name: option });
   fireEvent.pointerDown(item);
   fireEvent.click(item);
@@ -92,6 +98,26 @@ describe("NativeBuildsPage", () => {
     expect(document.querySelector('input[type="file"]')).toBeNull();
   });
 
+  it("opens the builds of a channel typed into the search", async () => {
+    const onSearchChange = vi.fn();
+    render(<NativeBuildsPage onSearchChange={onSearchChange} search={{}} />);
+
+    fireEvent.click(screen.getByRole("combobox", { name: /^Channel/ }));
+    const search = await screen.findByRole("combobox", {
+      name: "Search channels",
+    });
+    act(() => search.focus());
+    fireEvent.input(search, {
+      inputType: "insertText",
+      target: { value: "pr-13" },
+    });
+    expect(
+      (await screen.findAllByRole("option")).map((item) => item.textContent),
+    ).toEqual(["pr-130"]);
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(onSearchChange).toHaveBeenLastCalledWith({ channel: "pr-130" });
+  });
+
   it("filters by a channel named all, apart from all channels", async () => {
     const onSearchChange = vi.fn();
     render(<NativeBuildsPage onSearchChange={onSearchChange} search={{}} />);
@@ -109,7 +135,7 @@ describe("NativeBuildsPage", () => {
       />,
     );
 
-    const trigger = screen.getByRole("combobox", { name: "Channel" });
+    const trigger = screen.getByRole("combobox", { name: /^Channel/ });
     expect(trigger.textContent).toContain("all");
     expect(trigger.textContent).not.toContain("All channels");
     await choose("All channels");
@@ -129,7 +155,7 @@ describe("NativeBuildsPage", () => {
 
       expect(reads()).toEqual([{ channel: "production" }]);
       expect(
-        screen.getByRole("combobox", { name: "Channel" }).textContent,
+        screen.getByRole("combobox", { name: /^Channel/ }).textContent,
       ).toContain("production");
     });
 
@@ -152,7 +178,7 @@ describe("NativeBuildsPage", () => {
 
       expect(reads()).toEqual([{ before: "b" }]);
       expect(
-        screen.getByRole("combobox", { name: "Channel" }).textContent,
+        screen.getByRole("combobox", { name: /^Channel/ }).textContent,
       ).toContain("All channels");
     });
 

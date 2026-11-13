@@ -1,17 +1,10 @@
 import { RotateCcw, X } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { ChannelPicker, FilterChip } from "@/components/ChannelPicker";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { Button } from "@/components/ui/button";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-  ComboboxTrigger,
-} from "@/components/ui/combobox";
+import { ComboboxTrigger } from "@/components/ui/combobox";
 import {
   Select,
   SelectContent,
@@ -20,7 +13,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useChannelsQuery } from "@/lib/api";
 import { DEFAULT_CHANNEL } from "@/lib/constants";
 import type { AdoptionRelease, HealthPlatform } from "@/lib/release-adoption";
 
@@ -43,8 +35,6 @@ const DEFAULT_FILTERS = {
 } as const satisfies InsightsFilters;
 
 // One look for every filter; a filter narrower than its default is filled.
-const CHIP =
-  "h-11 shrink-0 gap-1.5 px-3 text-sm data-[active=true]:border-primary/60 data-[active=true]:bg-primary/10 sm:h-8 sm:text-xs";
 const SELECT_CHIP =
   "shrink-0 gap-1.5 px-3 text-sm data-[active=true]:border-primary/60 data-[active=true]:bg-primary/10 data-[size=default]:h-11 sm:text-xs sm:data-[size=default]:h-8";
 
@@ -101,8 +91,6 @@ export function InsightsControls({
       ...(filters.appVersion ? [filters.appVersion] : []),
     ]),
   ];
-  const channelsQuery = useChannelsQuery();
-  const channels = channelsQuery.data?.map((item) => item.name) ?? [];
   const narrowed = {
     channel: filters.channel !== DEFAULT_FILTERS.channel,
     platform: filters.platform !== DEFAULT_FILTERS.platform,
@@ -116,60 +104,13 @@ export function InsightsControls({
       className="flex shrink-0 items-center gap-2 overflow-x-auto border-b bg-background px-3 py-2 sm:flex-wrap sm:overflow-visible sm:px-4"
       role="group"
     >
-      <Combobox
-        items={channels}
+      <ChannelPicker
+        active={narrowed.channel}
         value={filters.channel}
-        onValueChange={(value) => {
-          if (value !== null && value !== filters.channel)
-            onFiltersChange({ channel: value });
+        onValueChange={(channel) => {
+          if (channel !== undefined) onFiltersChange({ channel });
         }}
-      >
-        <ComboboxTrigger
-          aria-label={`Channel: ${filters.channel}`}
-          data-active={narrowed.channel}
-          render={<Button className={CHIP} variant="outline" />}
-        >
-          <span className="text-muted-foreground">Channel</span>
-          <span className="max-w-48 truncate">{filters.channel}</span>
-        </ComboboxTrigger>
-        <ComboboxContent className="w-64">
-          <ComboboxInput
-            aria-label="Search channels"
-            placeholder="Search channels…"
-            showTrigger={false}
-            maxLength={1024}
-          />
-          <ComboboxEmpty>
-            {channelsQuery.isPending ? (
-              "Loading channels…"
-            ) : channelsQuery.isError ? (
-              <div className="flex flex-col items-center gap-2 p-2">
-                Couldn't load channels.
-                <Button
-                  onClick={() => void channelsQuery.refetch()}
-                  size="sm"
-                  variant="outline"
-                >
-                  Retry channels
-                </Button>
-              </div>
-            ) : (
-              "No channels found."
-            )}
-          </ComboboxEmpty>
-          <ComboboxList>
-            {(item: string) => (
-              <ComboboxItem
-                className="min-h-11 pr-8 sm:min-h-8"
-                key={item}
-                value={item}
-              >
-                <span className="truncate">{item}</span>
-              </ComboboxItem>
-            )}
-          </ComboboxList>
-        </ComboboxContent>
-      </Combobox>
+      />
       <Clearable
         name="platform"
         active={narrowed.platform}
@@ -273,7 +214,7 @@ export function InsightsControls({
             <ComboboxTrigger
               aria-label={`Release: ${filters.releaseId ?? "All"}`}
               data-active={narrowed.releaseId}
-              render={<Button className={CHIP} variant="outline" />}
+              render={<FilterChip />}
             >
               <span className="text-muted-foreground">Release</span>
               {filters.releaseId ? (
