@@ -322,7 +322,12 @@ describe("handleNativeBuildMark", () => {
   });
 
   it("refuses a sandbox build with one next step, its command on its own line", async () => {
-    await register(6, { channel: "sandbox-release", isSandbox: true });
+    await register(6, {
+      channel: "pr-134",
+      isSandbox: true,
+      sandboxUrlScheme: "acme-preview",
+      sandboxAppId: "com.example.app",
+    });
 
     await expect(mark(buildId(6))).rejects.toThrow("process.exit");
 
@@ -374,7 +379,12 @@ describe("handleNativeBuildMark", () => {
   });
 
   it("prints JSON for a sandbox build it refuses", async () => {
-    await register(6, { channel: "sandbox-release", isSandbox: true });
+    await register(6, {
+      channel: "pr-134",
+      isSandbox: true,
+      sandboxUrlScheme: "acme-preview",
+      sandboxAppId: "com.example.app",
+    });
 
     await expect(mark(buildId(6), { json: true })).rejects.toThrow(
       "process.exit",

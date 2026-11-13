@@ -322,12 +322,12 @@ describe("handleChannelDelete", () => {
   describe("with --keep-sandbox-builds", () => {
     const registerSandboxBuild = (n: number, channel: string) =>
       databaseHarness.core.registerNativeBuild({
-        id: `01900000-0000-7000-8000-0000000003${String(n).padStart(2, "0")}`,
+        id: `01900000-0000-7000-8000-000000003${String(n).padStart(3, "0")}`,
         platform: "android",
         channel,
         fingerprintHash: "fingerprint-a",
         appVersion: null,
-        minBundleId: `01900000-0000-7000-8000-0000000004${String(n).padStart(2, "0")}`,
+        minBundleId: `01900000-0000-7000-8000-000000004${String(n).padStart(3, "0")}`,
         gitCommitHash: null,
         buildKey: null,
         isSandbox: true,

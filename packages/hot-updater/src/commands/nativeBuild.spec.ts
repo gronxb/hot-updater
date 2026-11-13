@@ -809,7 +809,7 @@ describe("handleNativeBuildFind", () => {
       });
     });
 
-    it("looks on its reserved channel, whatever the native project's is, with the existing read", async () => {
+    it("looks on the native project's channel for a new build, and finds a sandbox build on any", async () => {
       const scope = {
         platform: "android",
         fingerprintHash: "fingerprint-a",
@@ -817,46 +817,29 @@ describe("handleNativeBuildFind", () => {
       } as const;
       await register("1", {
         ...scope,
-        channel: "sandbox-beta",
+        channel: "pr-120",
         isSandbox: true,
+        sandboxUrlScheme: "hu-sandbox-com-example",
+        sandboxAppId: "com.example.sandbox",
       });
       await register("2", { ...scope, channel: "preview" });
 
-      await find({
-        platform: "android",
-        scheme: "beta",
-        json: true,
-      });
+      await find({ platform: "android", scheme: "beta", json: true });
 
       const printed = output();
-      expect(printed.channel).toBe("sandbox-beta");
+      expect(printed.channel).toBe("preview");
       expect(printed.nativeBuild.id).toContain("1");
-      expect(getChannel).not.toHaveBeenCalled();
+      expect(printed.sandbox.channel).toBe("pr-120");
     });
 
-    it("refuses another channel for a sandbox scheme, and a reserved one for a normal scheme", async () => {
-      await expect(
-        find({
-          platform: "android",
-          scheme: "beta",
-          channel: "preview",
-          json: true,
-        }),
-      ).rejects.toThrow("process.exit");
-      expect(log.error).toHaveBeenCalledWith(
-        "The sandbox scheme beta builds channel sandbox-beta, not preview.\nRemove --channel.",
-      );
-      await expect(
-        find({
-          platform: "android",
-          scheme: "releaseApk",
-          channel: "sandbox-beta",
-          json: true,
-        }),
-      ).rejects.toThrow("process.exit");
-      expect(log.error).toHaveBeenCalledWith(
-        "Channel sandbox-beta is reserved for sandbox builds, and the scheme releaseApk isn't one.\nPass another --channel.",
-      );
+    it("takes any channel, one named sandbox-* too", async () => {
+      await find({
+        platform: "android",
+        scheme: "releaseApk",
+        channel: "sandbox-beta",
+        json: true,
+      });
+      expect(output().channel).toBe("sandbox-beta");
     });
   });
 

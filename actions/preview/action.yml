@@ -2,11 +2,12 @@ name: hot-updater preview
 description: >-
   Deploys a pull request's bundle to its own channel, builds a native build
   that embeds that channel, which Hot Updater tracks, only when the registry
-  has none for the project's fingerprint there, and comments how to install
-  the build and, on a sandbox build, the QR code that opens the pull request,
-  which it writes to the hot-updater-preview branch. When the pull request
-  closes, it deletes the channel with its bundles and native builds, and the
-  pull request's QR codes.
+  has none for the project's fingerprint (a sandbox scheme's from any pull
+  request), and comments how to install the build and, on a sandbox build,
+  the QR code that opens the pull request, which it writes to the
+  hot-updater-preview branch. When the pull request closes, it deletes its
+  bundles, its normal native builds, its QR codes, and its channel, which
+  stays only for the sandbox builds other pull requests reuse.
 author: gronxb
 
 inputs:
@@ -24,16 +25,6 @@ inputs:
     description: The nativeBuild.android scheme of the preview build, such as a release APK.
   ios-scheme:
     description: The nativeBuild.ios scheme of the preview build, a simulator scheme by default.
-  android-fallback-scheme:
-    description: >-
-      With a sandbox android-scheme, the normal nativeBuild.android scheme built
-      on the pull request's channel when its native code differs from every
-      sandbox build. Default: none, which builds a new sandbox build.
-  ios-fallback-scheme:
-    description: >-
-      With a sandbox ios-scheme, the normal nativeBuild.ios scheme built on the
-      pull request's channel when its native code differs from every sandbox
-      build. Default: none, which builds a new sandbox build.
   android-submit:
     description: >-
       play-internal releases the Android preview to Google Play's internal
@@ -87,8 +78,9 @@ outputs:
       artifactKind), built, bundleId, installUrl, downloadUrl (null when
       android-download-url or ios-download-url is empty), with android-submit
       or ios-submit, store (destination, url, version, state, expiresAtMs,
-      reusable), on a sandbox build, sandbox (appId, urlScheme, link,
-      minBundleId), and after a fallback, fallbackScheme.
+      reusable), and on a sandbox build, sandbox (appId, urlScheme, link,
+      minBundleId, fromChannel: the other pull request's channel a reused
+      build embeds, or null).
     value: ${{ steps.run.outputs.previews }}
   android-install-url:
     description: >-
@@ -98,9 +90,11 @@ outputs:
     value: ${{ steps.run.outputs.android-install-url }}
   ios-install-url:
     description: >-
-      What a person opens to install the iOS preview: the Console's download
-      link for a device build, the native-build install command for a
-      simulator build, or with ios-submit, the app's TestFlight page.
+      What a person opens to install the iOS preview: the Console's build
+      page for a device build, where "Install on iPhone" checks the device,
+      the native-build install command for a simulator build, or with
+      ios-submit, the app's TestFlight page. ios-download-url has the .ipa
+      itself.
     value: ${{ steps.run.outputs.ios-install-url }}
   android-download-url:
     description: >-
@@ -164,8 +158,6 @@ runs:
         INPUT_PLATFORMS: ${{ inputs.platforms }}
         INPUT_ANDROID_SCHEME: ${{ inputs.android-scheme }}
         INPUT_IOS_SCHEME: ${{ inputs.ios-scheme }}
-        INPUT_ANDROID_FALLBACK_SCHEME: ${{ inputs.android-fallback-scheme }}
-        INPUT_IOS_FALLBACK_SCHEME: ${{ inputs.ios-fallback-scheme }}
         INPUT_ANDROID_SUBMIT: ${{ inputs.android-submit }}
         INPUT_IOS_SUBMIT: ${{ inputs.ios-submit }}
         INPUT_IOS_TESTFLIGHT_GROUP: ${{ inputs.ios-testflight-group }}

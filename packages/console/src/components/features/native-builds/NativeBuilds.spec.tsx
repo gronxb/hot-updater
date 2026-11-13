@@ -188,7 +188,7 @@ describe("NativeBuildsTable", () => {
           build({ is_sandbox: true, submitted_to: "play-internal" }),
           build({
             id: id(3),
-            channel_id: `channel:${encodeChannelKey("sandbox-release")}`,
+            channel_id: `channel:${encodeChannelKey("pr-128")}`,
           }),
         ])}
         channel={undefined}
@@ -214,7 +214,7 @@ describe("NativeBuildsTable", () => {
             build({ is_sandbox: true }),
             build({
               id: id(3),
-              channel_id: `channel:${encodeChannelKey("sandbox-release")}`,
+              channel_id: `channel:${encodeChannelKey("pr-128")}`,
             }),
           ])}
           channel={undefined}
@@ -1901,9 +1901,9 @@ describe("BuiltInBundleCard", () => {
       <BuiltInBundleCard
         detail={detail({
           build: build({
-            channel_id: `channel:${encodeChannelKey("sandbox-release")}`,
+            channel_id: `channel:${encodeChannelKey("pr-128")}`,
           }),
-          channel: "sandbox-release",
+          channel: "pr-128",
         })}
       />,
     );

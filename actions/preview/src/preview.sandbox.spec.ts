@@ -8,7 +8,7 @@ import {
   sandboxUrlSchemeOf,
 } from "../../../packages/protocol/src/nativeArtifact/sandbox";
 import { COMMENT_MARKER, previewLink } from "./comment.mjs";
-import { parseInputs, runAction } from "./preview.mjs";
+import { runAction } from "./preview.mjs";
 import { fakeGitHub } from "./testing/fakeGitHub";
 
 const CONSOLE = "https://console.example.com";
@@ -460,6 +460,7 @@ describe("a sandbox build that has the fingerprint", () => {
       urlScheme: "hu-sandbox-com-example-app-tv",
       link: LINK,
       minBundleId: MIN_BUNDLE_ID,
+      fromChannel: "pr-10",
     });
     expect(parsePreviewLink(outputs["android-sandbox-link"]!)).toEqual({
       urlScheme: "hu-sandbox-com-example-app-tv",
@@ -600,9 +601,6 @@ describe("no sandbox build at all", () => {
     expect(fake.calls).toContain(
       "native-build android --scheme sandbox --json",
     );
-    expect(fake.calls.join("\n")).not.toContain(
-      "native-build find -p android -c",
-    );
     expect(body).toContain("built for this commit");
     expect(body).toContain(`<img src="${QR}"`);
     expect(outputs["android-sandbox-link"]).toBe(LINK);
@@ -720,9 +718,7 @@ describe("an ad hoc .ipa that lacks an approved device", () => {
     expect(fake.calls.some((call) => call.startsWith("native-build ios"))).toBe(
       false,
     );
-    expect(notice).toHaveBeenCalledWith(
-      expect.stringContaining("Bo's iPad"),
-    );
+    expect(notice).toHaveBeenCalledWith(expect.stringContaining("Bo's iPad"));
   });
 });
 

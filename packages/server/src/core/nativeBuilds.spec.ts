@@ -123,9 +123,7 @@ const setRow = (
 describe("the native build registry", () => {
   it("records a sandbox build, and no other", async () => {
     const core = setup();
-    const sandboxBuild = await core.registerNativeBuild(
-      sandboxRegistration(1),
-    );
+    const sandboxBuild = await core.registerNativeBuild(sandboxRegistration(1));
     const plain = await core.registerNativeBuild(registration(2));
 
     expect(sandboxBuild.is_sandbox).toBe(true);
@@ -569,9 +567,7 @@ describe("the native build registry", () => {
         },
       },
     ]);
-    await core.registerNativeBuild(
-      sandboxRegistration(1),
-    );
+    await core.registerNativeBuild(sandboxRegistration(1));
     await core.registerNativeBuild(registration(2));
     await core.registerNativeBuild(registration(3));
     const patchFrom = (n: number) => ({
@@ -1068,9 +1064,7 @@ describe("the store build mark", () => {
 
   it("refuses a sandbox build, and answers null for an unknown one", async () => {
     const core = setup();
-    await core.registerNativeBuild(
-      sandboxRegistration(1),
-    );
+    await core.registerNativeBuild(sandboxRegistration(1));
 
     await expect(
       core.markNativeBuild(buildId(1), { storeBuild: true }),
@@ -1088,9 +1082,7 @@ describe("the store build mark", () => {
   it("refuses a build by its sandbox record, not by its channel", async () => {
     const { core, db } = setupWithDb();
     await core.registerNativeBuild(registration(1, { channel: "pr-130" }));
-    await core.registerNativeBuild(
-      sandboxRegistration(2),
-    );
+    await core.registerNativeBuild(sandboxRegistration(2));
     // Rows no registration writes: a normal build recorded as a sandbox build,
     // and the reverse.
     await setRow(db, buildId(1), { is_sandbox: true });
@@ -1142,9 +1134,7 @@ describe("the store build mark", () => {
 
   it("keeps a sandbox build's record through its submission", async () => {
     const core = setup();
-    await core.registerNativeBuild(
-      sandboxRegistration(1),
-    );
+    await core.registerNativeBuild(sandboxRegistration(1));
     await expect(
       core.recordNativeBuildSubmission(buildId(1), {
         destination: "testflight",
@@ -1420,7 +1410,11 @@ describe("sandbox builds on any channel", () => {
     expect(
       await core.findNativeBuild({
         ...scope,
-        sandbox: { ...scope.sandbox, artifactKind: "apk", distribution: "direct" },
+        sandbox: {
+          ...scope.sandbox,
+          artifactKind: "apk",
+          distribution: "direct",
+        },
       }),
     ).toEqual(apk);
   });

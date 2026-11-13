@@ -288,8 +288,16 @@ export const findCachedNativeBuild = async ({
   const local = cached?.key === key ? cached : null;
   const server = await loadServer(await loadConfig(null));
   try {
+    // A sandbox build's lookup keeps its sandbox scope, whichever channel.
     const found = await server.core.findNativeBuild(
-      local ? cachedNativeBuildScope(local) : predictedScope,
+      local
+        ? {
+            ...cachedNativeBuildScope(local),
+            ...(predictedScope.sandbox
+              ? { sandbox: predictedScope.sandbox }
+              : {}),
+          }
+        : predictedScope,
       { buildKey: key },
     );
     // An older server ignores the key and answers the scope's newest build.

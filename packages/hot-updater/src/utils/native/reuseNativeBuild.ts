@@ -10,7 +10,6 @@ import {
   startStep,
 } from "@hot-updater/cli-tools";
 import type { NativeBuildScope, Platform } from "@hot-updater/plugin-core";
-import { sandboxChannelOf } from "@hot-updater/protocol/native-artifact";
 
 import { version } from "../../packageJson";
 import { ui } from "../cli-ui";
@@ -33,6 +32,7 @@ import {
   nativeBuildCacheSlot,
   saveCachedNativeBuild,
 } from "./nativeBuildCache";
+import { resolveSandboxScope } from "./nativeBuildScope";
 import { resolvesAscApiKey, signsWithKeystore } from "./signingCredentials";
 
 /**
@@ -194,12 +194,8 @@ export const reuseNativeBuild = async ({
   const cwd = getCwd();
   const resolvedCacheDir =
     cacheDir === null ? null : path.resolve(cwd, cacheDir);
-  // The channel the build falls back to, as createNativeBuild reads it. A
-  // sandbox build's comes from its scheme.
-  const channel =
-    (platform === "ios" ? iosScheme : androidScheme)?.sandbox === true
-      ? sandboxChannelOf(scheme)
-      : (await getChannel(platform)).value;
+  // The channel the build falls back to, as createNativeBuild reads it.
+  const channel = (await getChannel(platform)).value;
   const step = startStep("Checking the build cache");
   // A key that can't be computed only costs the reuse: the command builds.
   const key: NativeBuildKey = await computeNativeBuildKey({
@@ -278,8 +274,13 @@ export const reuseNativeBuild = async ({
     return { key, slot, hit: null, report: report(null), logHeader, remember };
   }
 
-  const predictedScope: NativeBuildScope =
-    target.fingerprintHash === null
+  // A sandbox build is found by its sandbox scope, on any channel.
+  const sandbox = await resolveSandboxScope(
+    platform,
+    platform === "ios" ? iosScheme : androidScheme,
+  );
+  const predictedScope: NativeBuildScope = {
+    ...(target.fingerprintHash === null
       ? {
           platform,
           channel,
@@ -291,7 +292,9 @@ export const reuseNativeBuild = async ({
           channel,
           fingerprintHash: target.fingerprintHash,
           appVersion: null,
-        };
+        }),
+    ...(sandbox === null ? {} : { sandbox }),
+  };
   let lookup: Awaited<ReturnType<typeof findCachedNativeBuild>>;
   try {
     lookup = await findCachedNativeBuild({

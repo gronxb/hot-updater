@@ -564,9 +564,15 @@ export const setupCoreAdminTestSuite = (options: {
       ).toBeNull();
     });
 
-    it("records a sandbox build, and refuses one that disagrees with its channel", async () => {
-      const sandboxChannel = `sandbox-${namespace}`;
+    it("records a sandbox build on any channel, finds it through its sandbox scope, and refuses one its artifact doesn't describe", async () => {
+      const sandboxChannel = `pr-${namespace}`;
       const channel = `plain-${namespace}`;
+      const sandboxFields = {
+        isSandbox: true,
+        sandboxUrlScheme: "acme-preview",
+        sandboxAppId: "com.example.app",
+        exportMethod: "ad-hoc",
+      };
       const post = (suffix: string, body: Record<string, unknown>) => {
         const builtIn = bundleRow(suffix);
         return admin(
@@ -599,10 +605,17 @@ export const setupCoreAdminTestSuite = (options: {
         return response.status;
       };
 
+      // A sandbox build needs the URL scheme and app ID its scope is of.
       expect(await refusal("74", { channel, isSandbox: true })).toBe(400);
-      expect(await refusal("74", { channel: sandboxChannel })).toBe(400);
       expect(
-        await refusal("74", { channel: sandboxChannel, isSandbox: false }),
+        await refusal("74", {
+          channel,
+          ...sandboxFields,
+          sandboxAppId: undefined,
+        }),
+      ).toBe(400);
+      expect(
+        await refusal("74", { channel, sandboxAppId: "com.example.app" }),
       ).toBe(400);
       expect(
         await refusal("74", { channel: sandboxChannel, isSandbox: null }),
@@ -616,14 +629,14 @@ export const setupCoreAdminTestSuite = (options: {
       expect(
         await refusal("74", {
           channel: sandboxChannel,
-          isSandbox: true,
+          ...sandboxFields,
           sandboxUrlScheme: "Acme",
         }),
       ).toBe(400);
       expect(
         await refusal("74", {
           channel: sandboxChannel,
-          isSandbox: true,
+          ...sandboxFields,
           sandboxUrlScheme: 42,
         }),
       ).toBe(400);
@@ -633,14 +646,17 @@ export const setupCoreAdminTestSuite = (options: {
 
       const tagged = await post("72", {
         channel: sandboxChannel,
-        isSandbox: true,
-        sandboxUrlScheme: "acme-preview",
+        ...sandboxFields,
         nativeAppVersion: "1.6.0",
       });
       expect(tagged.status).toBe(201);
       const sandboxBuild = ((await tagged.json()) as { data: NativeBuildRow })
         .data;
-      const plain = await post("73", { channel, isSandbox: false });
+      // A normal build of the same fingerprint, on the sandbox build's channel.
+      const plain = await post("73", {
+        channel: sandboxChannel,
+        isSandbox: false,
+      });
       expect(plain.status).toBe(201);
       const plainBuild = ((await plain.json()) as { data: NativeBuildRow })
         .data;
@@ -658,24 +674,46 @@ export const setupCoreAdminTestSuite = (options: {
         export_method: null,
         native_app_version: null,
       });
+      const sandboxLookup =
+        "sandboxAppId=com.example.app&sandboxUrlScheme=acme-preview&artifactKind=ipa&distribution=direct";
       expect(
         (await adminJson(`/native-builds/${sandboxBuild.id}`)).data,
       ).toEqual(sandboxBuild);
       expect((await adminJson(`/native-builds/${plainBuild.id}`)).data).toEqual(
         plainBuild,
       );
+      // Found through its sandbox scope, whichever channel the lookup names,
+      // and never through the channel's normal scope.
+      expect(
+        (
+          await adminJson(
+            `/native-builds/latest?platform=ios&channel=other-${namespace}&fingerprintHash=sandbox-fingerprint&${sandboxLookup}`,
+          )
+        ).data,
+      ).toEqual(sandboxBuild);
       expect(
         (
           await adminJson(
             `/native-builds/latest?platform=ios&channel=${encodeURIComponent(sandboxChannel)}&fingerprintHash=sandbox-fingerprint`,
           )
         ).data,
-      ).toEqual(sandboxBuild);
+      ).toEqual(plainBuild);
+      // A lookup that names part of a sandbox scope is a bad request.
+      const partial = await admin(
+        `/native-builds/latest?platform=ios&channel=${encodeURIComponent(sandboxChannel)}&fingerprintHash=sandbox-fingerprint&sandboxAppId=com.example.app`,
+      );
+      expect(partial.status).toBe(400);
+      await partial.text();
+      const invalid = await admin(
+        `/native-builds/latest?platform=ios&channel=${encodeURIComponent(sandboxChannel)}&fingerprintHash=sandbox-fingerprint&${sandboxLookup.replace("artifactKind=ipa", "artifactKind=apk")}`,
+      );
+      expect(invalid.status).toBe(400);
+      await invalid.text();
       // A sandbox build's built-in bundle is no patch base.
       expect(
         (
           await adminJson(
-            `/native-builds/latest?platform=ios&channel=${encodeURIComponent(sandboxChannel)}&fingerprintHash=sandbox-fingerprint&builtInOlderThan=ffffffff-ffff-7fff-bfff-ffffffffffff`,
+            `/native-builds/latest?platform=ios&channel=${encodeURIComponent(sandboxChannel)}&fingerprintHash=sandbox-fingerprint&${sandboxLookup}&builtInOlderThan=ffffffff-ffff-7fff-bfff-ffffffffffff`,
           )
         ).data,
       ).toBeNull();

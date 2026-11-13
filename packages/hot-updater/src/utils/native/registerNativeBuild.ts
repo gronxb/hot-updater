@@ -201,6 +201,7 @@ export const registerNativeBuild = async (
     buildKey,
     sandbox,
     sandboxUrlScheme = null,
+    sandboxAppId = null,
     gitCommitHash,
     writeBuiltInBundle,
   }: {
@@ -215,6 +216,11 @@ export const registerNativeBuild = async (
      * it from the artifact: the registry records it for its preview links.
      */
     readonly sandboxUrlScheme?: string | null;
+    /**
+     * The app ID a sandbox build's artifact reports, as the caller read it:
+     * the registry finds the build by it, on any channel.
+     */
+    readonly sandboxAppId?: string | null;
     /**
      * The commit the build was made from: this checkout's latest by
      * default, and null for a build imported from elsewhere.
@@ -347,6 +353,7 @@ export const registerNativeBuild = async (
         : null,
       isSandbox: sandbox,
       sandboxUrlScheme: sandbox ? sandboxUrlScheme : null,
+      sandboxAppId: sandbox ? sandboxAppId : null,
       exportMethod:
         build.artifactKind === "ipa"
           ? await readIpaExportMethod(

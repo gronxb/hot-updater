@@ -45,7 +45,7 @@ import { PLAY_TRACKS } from "../../shared/playTracks.mjs";
  * @property {string | null} fingerprintHash
  * @property {string | null} appVersion
  * @property {Decision | "none"} decision `none` when the lookup failed, which
- *   says nothing about the registry, or the channel is a sandbox channel: nothing
+ *   says nothing about the registry, or the scheme is a sandbox scheme: nothing
  *   runs.
  * @property {string} reason
  * @property {"deployed" | "built" | "decided" | "failed"} outcome
@@ -56,17 +56,14 @@ import { PLAY_TRACKS } from "../../shared/playTracks.mjs";
  */
 
 /**
- * Whether a channel is the reserved `sandbox-<scheme>` channel of a scheme's
- * sandbox builds. A sandbox build lives only there, so a release that never
- * runs on one never counts a sandbox build as a store build.
+ * Why a release refuses a sandbox scheme, which `find` tells by its
+ * `sandbox`: a sandbox build never goes to a store, whatever its channel.
  *
- * @param {string} channel
+ * @param {Platform} platform
+ * @param {string} scheme
  */
-export const isSandboxChannel = (channel) => channel.startsWith("sandbox-");
-
-/** @param {string} channel */
-const sandboxChannelMessage = (channel) =>
-  `${channel} is a sandbox channel, which never goes to a store. Release on another channel.`;
+const sandboxSchemeMessage = (platform, scheme) =>
+  `The ${platform}-scheme ${scheme} is a sandbox scheme, which never goes to a store. Use a scheme without sandbox: true.`;
 
 /**
  * The action's inputs, from the environment its composite step passes.
@@ -92,9 +89,6 @@ export const parseInputs = (env) => {
     }
   }
   const channel = input("CHANNEL") || null;
-  if (channel !== null && isSandboxChannel(channel)) {
-    throw new Error(sandboxChannelMessage(channel));
-  }
   return {
     platforms: parsed,
     schemes,
@@ -291,11 +285,11 @@ const releasePlatform = async (deps, inputs, env, platform) => {
     result.channel = found.channel;
     result.fingerprintHash = found.fingerprintHash;
     result.appVersion = found.appVersion;
-    // The channel the native project embeds, which only the lookup knows.
-    if (isSandboxChannel(found.channel)) {
-      result.reason = `${found.channel} is a sandbox channel`;
+    // Only the lookup says whether the scheme is a sandbox's.
+    if (found.sandbox !== undefined) {
+      result.reason = `${scheme} is a sandbox scheme`;
       deps.log.info(formatDecision(result));
-      throw new Error(sandboxChannelMessage(found.channel));
+      throw new Error(sandboxSchemeMessage(platform, scheme));
     }
     Object.assign(result, decide(found, inputs));
     deps.log.info(formatDecision(result));

@@ -229,8 +229,8 @@ const optional = (name: string, value: string | undefined) =>
   value === undefined ? "" : ` android:${name}="${xml(value)}"`;
 
 /**
- * The manifest a sandbox build overlays on the app's. `tools:replace` wins over
- * a channel the app's manifest sets, as an Expo project's does. The launcher's
+ * The manifest a sandbox build overlays on the app's, which keeps the app's
+ * channel: a sandbox build embeds the project's, as any build does. The launcher's
  * filter, label, icon and static shortcuts move to the sandbox's activity, which
  * also takes the links of `urlScheme`, which its `<meta-data>` names for the
  * build to read; the rest of the app's activity stays, so its own links still
@@ -239,17 +239,14 @@ const optional = (name: string, value: string | undefined) =>
  * still refuse: the screen then says so.
  */
 export const sandboxManifestOverlay = ({
-  channel,
   urlScheme,
   launcher,
 }: {
-  channel: string;
   urlScheme: string;
   launcher: SandboxLauncher;
 }) => `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
   <application android:usesCleartextTraffic="true" tools:replace="android:usesCleartextTraffic">
-    <meta-data android:name="com.hotupdater.CHANNEL" android:value="${xml(channel)}" tools:replace="android:value" />
     <meta-data android:name="${SANDBOX_META_DATA}" android:value="true" />
     <activity android:name="${SANDBOX_ACTIVITY}" android:exported="true" android:launchMode="singleTop" android:theme="@style/HotUpdaterSandboxTheme" android:configChanges="density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode" android:enableOnBackInvokedCallback="true"${optional("label", launcher.label)}${optional("icon", launcher.icon)}${optional("roundIcon", launcher.roundIcon)}>
 ${filterXml(launcher.filter)}

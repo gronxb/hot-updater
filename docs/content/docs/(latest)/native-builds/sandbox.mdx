@@ -57,7 +57,7 @@ refuses one that holds the wrong thing.
 |                 | iOS                                 | Android                                |
 | --------------- | ----------------------------------- | -------------------------------------- |
 | App ID          | Same bundle ID by default           | `.sandbox` added to the application ID |
-| Default channel | `sandbox-<scheme>`                  | `sandbox-<scheme>`                     |
+| Default channel | The project's channel               | The project's channel                  |
 | URL scheme      | `hu-sandbox-<app ID>` by default    | `hu-sandbox-<package name>` by default |
 | First screen    | Before the app's JavaScript         | Before the app's JavaScript            |
 | Install         | TestFlight internal, or a simulator | Direct `.apk`, or internal testing     |
@@ -77,19 +77,26 @@ both:
 On iOS, with the same bundle ID, the sandbox build replaces the store app on a
 device. [A separate app](#a-separate-app-on-ios) installs beside it.
 
-The channel `sandbox-<scheme>` is reserved. A normal build can't register on a
-`sandbox-*` channel, and a sandbox build can't register on any other. The
-registry records the build as a sandbox build (`is_sandbox` on its row, which
-`native-build import` reads from the artifact), so the Console tags it
-**Sandbox** and `native-build find` prints it beside its kind.
-`native-build find --scheme <scheme>` looks on that channel by itself, and with
-`--json` adds `sandbox`: the `appId` its links derive from, and `otherBuilds`,
-whether the platform has builds there with other native code when none matched.
+A sandbox build embeds the project's channel, the one `channel set` writes, like
+any build, and registers on it. The registry records it as a sandbox build
+(`is_sandbox` on its row, which `native-build import` reads from the artifact),
+so the Console tags it **Sandbox** and `native-build find` prints it beside its
+kind.
 
-A build on a `sandbox-*` channel is in another scope than your store build, so
-testing builds on a sandbox scheme don't touch the base a store install's first
-OTA [patches from](/docs/guides/native-build#mark-the-store-build). A sandbox
-build can't be marked as the store build either.
+`native-build find --scheme <scheme>` finds a sandbox scheme's build on any
+channel, by what installs it: the app ID the artifact reports, its URL scheme,
+its kind of artifact, and whether it installs directly (an `.apk`, a simulator
+`.app`, an ad hoc `.ipa`) or through a store (an `.aab`, an App Store `.ipa`).
+So a build one pull request made serves every pull request with the same native
+code. With `--json` it adds `sandbox`: the `appId` its links derive from, its
+`urlScheme`, and `channel`, the channel the found build embeds. Use the
+`fingerprint` update strategy for this: under `appVersion`, every build of an
+app version matches, whatever its native code.
+
+Sandbox builds are kept apart from your other builds, so testing builds on a
+sandbox scheme don't touch the base a store install's first OTA
+[patches from](/docs/guides/native-build#mark-the-store-build), even on the same
+channel. A sandbox build can't be marked as the store build either.
 
 ## What runs first
 
@@ -116,7 +123,14 @@ big row to start your app.
 | Downloaded      | The last 10 bundles a QR code, a link, or a channel downloaded. See [Downloaded bundles](#downloaded-bundles)           |
 | Info            | The build's version, fingerprint and built-in bundle, what's selected and pending, and **Reset to built-in bundle**     |
 
-Opening the screen sends your update server nothing. A channel you type starts right
+Opening the screen sends your update server nothing. Starting the bundle the
+next launch runs, such as the built-in bundle, is your app's launch: its own
+update check asks for the build's default channel, the one it was built on.
+Scan a pull request's QR code to open that pull request's bundle instead.
+**Reset to built-in bundle**, the built-in bundle and other pull requests'
+links keep working after the build's own channel is deleted.
+
+A channel you type starts right
 away and replaces the current bundle. A preview link always asks first, even one you
 paste, and gets the same fingerprint check as a scanned one.
 

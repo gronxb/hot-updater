@@ -280,14 +280,12 @@ describe("assertBuiltArtifact", () => {
     platform: "android",
     scheme: "release",
     sandbox: true,
-    channel: "pr-134",
     fingerprintHash: FINGERPRINT,
   } as const;
   const normalBuild = {
     platform: "android",
     scheme: "release",
     sandbox: false,
-    channel: "beta",
     fingerprintHash: FINGERPRINT,
   } as const;
 
@@ -350,7 +348,6 @@ describe("assertBuiltArtifact", () => {
       assertBuiltArtifact({
         ...sandboxBuild,
         scheme: "beta",
-        channel: "pr-134",
         artifactPath: await apk("sandbox.axml", "sandbox.dex"),
       }),
     ).resolves.toMatchObject({ sandbox: { code: true, declared: true } });
@@ -380,7 +377,6 @@ describe("assertBuiltArtifact", () => {
     await expect(
       assertBuiltArtifact({
         ...normalBuild,
-        channel: "sandbox-beta",
         artifactPath: await apk("release.axml", "classes.dex"),
       }),
     ).resolves.toMatchObject({ sandbox: { code: false, declared: false } });

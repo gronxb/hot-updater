@@ -630,7 +630,13 @@ prebuild, and it says so first.
 
 `-c, --channel` names the channel the build embeds, instead of the native
 project's default channel, and `--json` prints the scope, the build or `null`,
-and `downloadUrl`.
+and `downloadUrl`. A [sandbox](/docs/native-builds/sandbox) scheme's build is
+found on any channel; `sandbox.channel` names the one it embeds. For a found ad
+hoc `.ipa`, `--json` adds `iosDevices`: whether it installs on the
+[device registry](/docs/native-builds/iphone-install)'s iPhones (`reusable`),
+the iPhones a new build would add (`missing`), and those it lacks that a new
+build wouldn't add yet (`waiting`), or why it can't be reused (`reason`:
+`missing`, `expired`, or `unreadable`).
 
 `--store-status` also asks the store what a build this project submitted is doing
 there, with `--scheme`, whose app and key it reads. `--json` adds `store`, with

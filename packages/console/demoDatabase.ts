@@ -709,7 +709,7 @@ type DemoNativeBuild = {
   readonly minBundleId: string;
   readonly kind: "apk" | "aab" | "ipa" | "app";
   readonly gitCommitHash: string | null;
-  /** A sandbox scheme's build, on its reserved `sandbox-*` channel. */
+  /** A sandbox scheme's build, on the pull request's channel that made it. */
   readonly sandbox?: true;
   /** How an `.ipa` was exported, as its profile says. */
   readonly exportMethod?: "app-store" | "ad-hoc";
@@ -779,7 +779,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
   {
     n: 19,
     platform: "ios",
-    channel: "sandbox-release",
+    channel: "pr-128",
     target: { fingerprint: "fp-ios-sandbox" },
     nativeAppVersion: "1.0.0",
     minBundleId: "019f6300-00c9-7000-8000-000000000000",
@@ -900,7 +900,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
   {
     n: 30,
     platform: "android",
-    channel: "sandbox-release",
+    channel: "pr-128",
     target: { fingerprint: "fp-android-sandbox" },
     nativeAppVersion: "1.0.0",
     minBundleId: "019f6300-00b0-7000-8000-000000000000",
@@ -911,7 +911,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
   {
     n: 31,
     platform: "ios",
-    channel: "sandbox-release",
+    channel: "pr-128",
     target: { fingerprint: "fp-ios-sandbox" },
     nativeAppVersion: "1.0.0",
     minBundleId: "019f6300-00b1-7000-8000-000000000000",
@@ -981,6 +981,15 @@ for (const build of demoNativeBuilds) {
         : `nbk1:${toSeedHash("build-key", `${build.n}`)}`,
     buildNumber: String(100 + build.n),
     isSandbox: build.sandbox === true,
+    ...(build.sandbox === true
+      ? {
+          sandboxUrlScheme: "myapp-preview",
+          sandboxAppId:
+            build.platform === "android"
+              ? "com.example.myapp.sandbox"
+              : "com.example.myapp",
+        }
+      : {}),
     exportMethod: build.exportMethod ?? null,
     nativeAppVersion:
       build.nativeAppVersion !== undefined

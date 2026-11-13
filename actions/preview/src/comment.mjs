@@ -26,8 +26,6 @@ const CREDIT = "Preview by [hot-updater](https://hot-updater.dev)";
  * @property {import("../../shared/nativeBuild.mjs").StoreStatus | null} [store]
  *   The store a sandbox build went to, which installs it instead of a download.
  * @property {SandboxPreview} [sandbox] Present when a sandbox build runs the bundle.
- * @property {string} [fallbackScheme] The normal scheme this run used, because
- *   the pull request's native code differs from its sandbox builds'.
  *
  * @typedef {object} SandboxPreview
  * @property {string} appId The scheme's app ID, before Android's `.sandbox` suffix.
@@ -36,6 +34,8 @@ const CREDIT = "Preview by [hot-updater](https://hot-updater.dev)";
  * @property {string | null} link The link a QR code holds; a build matched by
  *   app version has none, since a link names a fingerprint.
  * @property {string | null} minBundleId The oldest bundle ID the build runs.
+ * @property {string | null} [fromChannel] The other pull request's channel a
+ *   reused build embeds, or null for one this pull request's channel embeds.
  */
 
 /**
@@ -97,14 +97,18 @@ const nativeBuildInstallCommand = (id) =>
 
 /**
  * What a person opens to install a native build: the install command for a
- * simulator build, which no link installs, else the comment's Download link.
+ * simulator build, which no link installs, the build's Console page for an
+ * `.ipa`, where "Install on iPhone" checks the device, else the comment's
+ * Download link.
  * @param {string} consoleUrl
  * @param {{ id: string, artifactKind: ArtifactKind }} nativeBuild
  */
 export const nativeBuildInstallUrl = (consoleUrl, { id, artifactKind }) =>
   artifactKind === "app"
     ? nativeBuildInstallCommand(id)
-    : nativeBuildDownloadLink(consoleUrl, id);
+    : artifactKind === "ipa"
+      ? nativeBuildPageLink(consoleUrl, id)
+      : nativeBuildDownloadLink(consoleUrl, id);
 
 /**
  * The link a sandbox build opens a channel from, of the URL scheme the build
@@ -348,6 +352,10 @@ export const renderPreviewComment = ({
   const scannable = linked.some(
     ({ sandbox }) => qrImages[/** @type {string} */ (sandbox?.link)],
   );
+  // The other pull requests' channels whose sandbox builds this one reuses.
+  const reusedFrom = [
+    ...new Set(sandboxes.flatMap(({ sandbox }) => sandbox?.fromChannel ?? [])),
+  ];
   return [
     COMMENT_MARKER,
     `### Preview on ${code(channel)}`,
@@ -360,6 +368,10 @@ export const renderPreviewComment = ({
       : [
           `**${linked.length === 0 ? "" : "1. "}Install the sandbox app** once. Pull requests with the same native code share it.`,
           sandboxes.map(line).join("\n"),
+          ...reusedFrom.map(
+            (from) =>
+              `Sandbox build from ${code(from)}, with the same native code.${linked.length === 0 ? "" : " Already installed? Skip to step 2."}`,
+          ),
           ...(sandboxes.some(({ built }) => built)
             ? [
                 "This run made a new sandbox build: push the other open pull requests again.",
@@ -414,11 +426,13 @@ export const renderPreviewComment = ({
  *
  * @param {object} input
  * @param {string} input.channel
- * @param {"deleted" | "kept" | "missing"} input.outcome `kept` when a bundle
- *   or a build was added to the channel during the cleanup, `missing` when
- *   it was already gone.
+ * @param {"deleted" | "kept" | "kept-sandbox" | "missing"} input.outcome
+ *   `kept` when a bundle or a build was added to the channel during the
+ *   cleanup, `kept-sandbox` when only its sandbox builds stay, which other
+ *   pull requests reuse, and `missing` when it was already gone.
  * @param {number} input.deletedBundles
  * @param {number} input.deletedNativeBuilds
+ * @param {number} [input.keptSandboxBuilds]
  * @param {boolean} input.credit
  */
 export const renderClosedComment = ({
@@ -426,6 +440,7 @@ export const renderClosedComment = ({
   outcome,
   deletedBundles,
   deletedNativeBuilds,
+  keptSandboxBuilds = 0,
   credit,
 }) => {
   const bundles = `${deletedBundles} bundle${deletedBundles === 1 ? "" : "s"}`;
@@ -436,6 +451,7 @@ export const renderClosedComment = ({
     {
       deleted: `This pull request is closed: its channel ${code(channel)}, its ${bundles}, and its ${builds} are deleted.`,
       kept: `This pull request is closed: its ${bundles} and its ${builds} are deleted, and its channel ${code(channel)} is kept, because a bundle or a build was added to it during the cleanup. Run the cleanup again.`,
+      "kept-sandbox": `This pull request is closed: its ${bundles} and its ${builds} are deleted. ${keptSandboxBuilds === 1 ? "Its sandbox build stays" : `Its ${keptSandboxBuilds} sandbox builds stay`} for pull requests with the same native code, and so does its channel ${code(channel)}.`,
       missing: `This pull request is closed, and its channel ${code(channel)} is already deleted.`,
     }[outcome],
     ...footer([], credit),

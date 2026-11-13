@@ -836,9 +836,7 @@ describe("the sandbox layer", () => {
       "The .aab is a sandbox build, but its launcher is com.example.app.MainActivity.\nBuild it again with hot-updater native-build.",
     );
     expect(
-      sandboxArtifactProblem(
-        info({ ...whole, entry: sandboxEntry }),
-      ),
+      sandboxArtifactProblem(info({ ...whole, entry: sandboxEntry })),
     ).toBeNull();
   });
 
@@ -859,10 +857,9 @@ describe("the sandbox layer", () => {
     // The channel no longer marks a sandbox build: the artifact does.
     for (const channel of ["pr-134", "production"]) {
       expect(
-        checkNativeArtifact(
-          info({ ...whole, entry: sandboxEntry, channel }),
-          { updateStrategy: "fingerprint" },
-        ),
+        checkNativeArtifact(info({ ...whole, entry: sandboxEntry, channel }), {
+          updateStrategy: "fingerprint",
+        }),
       ).toMatchObject({ ok: true, build: { channel, sandbox: true } });
     }
     expect(

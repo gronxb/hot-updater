@@ -79,10 +79,19 @@ const nativeBuildScopeParams = ({
   channel,
   fingerprintHash,
   appVersion,
+  sandbox,
 }: NativeBuildScope): Record<string, string> => ({
   platform,
   channel,
   ...(fingerprintHash === null ? { appVersion } : { fingerprintHash }),
+  ...(sandbox === undefined || sandbox === null
+    ? {}
+    : {
+        sandboxAppId: sandbox.appId,
+        sandboxUrlScheme: sandbox.urlScheme,
+        artifactKind: sandbox.artifactKind,
+        distribution: sandbox.distribution,
+      }),
 });
 
 const keysetParams = ({ order, after, through, limit }: KeysetInput) => ({
@@ -318,6 +327,25 @@ export const createStandaloneCoreApi = (
       });
       if (buildKey !== undefined && row?.build_key !== buildKey) return null;
       if (options?.storeBuild && row?.is_store_build !== true) return null;
+      // A server without sandbox lookups answers the channel's scope, whose
+      // builds are never this sandbox scope's.
+      const sandbox = scope.sandbox;
+      if (
+        row !== null &&
+        row !== undefined &&
+        (row.is_sandbox === true) !==
+          (sandbox !== undefined && sandbox !== null)
+      ) {
+        return null;
+      }
+      if (
+        sandbox &&
+        row &&
+        (row.artifact_kind !== sandbox.artifactKind ||
+          row.sandbox_url_scheme !== sandbox.urlScheme)
+      ) {
+        return null;
+      }
       return row;
     },
     // A server without the native build routes holds no native builds: its

@@ -60,7 +60,6 @@ import type {
   SecretsAdapter,
 } from "@hot-updater/plugin-core";
 import { NIL_UUID } from "@hot-updater/protocol";
-import { sandboxChannelOf } from "@hot-updater/protocol/native-artifact";
 import { ExecaError } from "execa";
 
 import {
@@ -132,6 +131,7 @@ import {
   testFlightUploadNotice,
   uploadedTestFlightStatus,
 } from "../utils/native/storeStatus";
+import { resolveSandboxApplicationId } from "../utils/version/getAndroidVersion";
 
 /**
  * `native-build ios` and `native-build android`: every build but a Debug
@@ -561,7 +561,6 @@ const buildNativeInternal = async ({
                     platform,
                     scheme,
                     sandbox,
-                    channel: result.channel,
                     fingerprintHash: target.fingerprintHash,
                   }),
                 stays(result.artifactPath),
@@ -586,6 +585,18 @@ const buildNativeInternal = async ({
             );
           }
         }
+        // Pull requests find a sandbox build by the application ID the
+        // Gradle files make; one the artifact disagrees with is never found.
+        if (sandbox && platform === "android" && artifact?.appId) {
+          const predicted = await resolveSandboxApplicationId(
+            androidSchemeConfig!,
+          );
+          if (predicted !== artifact.appId) {
+            p.log.warn(
+              `The sandbox build's application ID is ${artifact.appId}, but its Gradle files read as ${predicted}, so later builds can't find this one to reuse.\nSet applicationId on the scheme to the ID without the .sandbox suffix.`,
+            );
+          }
+        }
         if (!reused) await cache?.remember(result, null);
         if (dryRun) trackingSkipped = "dry-run";
         // A build reused from storage is tracked already; one reused from
@@ -598,8 +609,10 @@ const buildNativeInternal = async ({
               : await trackBuild(result, upload, {
                   buildKey: cache?.key.key ?? null,
                   sandbox,
-                  // The artifact's, read above: what its links can open.
+                  // The artifact's, read above: what its links can open, and
+                  // the app ID it reports.
                   sandboxUrlScheme: artifact?.entry.sandboxUrlScheme ?? null,
+                  sandboxAppId: artifact?.appId ?? null,
                 });
         if (registered && reused?.source !== "storage" && cache) {
           await rememberTrackedBuild(cache, registered.id);
@@ -1027,10 +1040,7 @@ const buildNow = async ({
         ? androidSchemeConfig!.variant
         : iosSchemeConfig!.configuration,
     ),
-    readChannel: async () =>
-      (platform === "android" ? androidSchemeConfig : iosSchemeConfig)?.sandbox
-        ? sandboxChannelOf(scheme)
-        : (await getChannel(platform)).value,
+    readChannel: async () => (await getChannel(platform)).value,
     buildAdapter,
     outputPath,
     builder: async () => {
@@ -1386,6 +1396,7 @@ const trackBuild = async (
     readonly buildKey: string | null;
     readonly sandbox: boolean;
     readonly sandboxUrlScheme: string | null;
+    readonly sandboxAppId: string | null;
   },
 ) => {
   try {

@@ -387,7 +387,7 @@ adb install -r app-release.apk
 });
 
 describe("nativeBuildInstallUrl", () => {
-  it.each(["apk", "aab", "ipa"] as const)(
+  it.each(["apk", "aab"] as const)(
     "is the Console's download link, under its own path, for an %s",
     (artifactKind) => {
       expect(
@@ -400,6 +400,15 @@ describe("nativeBuildInstallUrl", () => {
       );
     },
   );
+
+  it("is the Console's build page, under its own path, for an ipa, where an iPhone installs it", () => {
+    expect(
+      nativeBuildInstallUrl("https://example.com/console/", {
+        id: "build 1",
+        artifactKind: "ipa",
+      }),
+    ).toBe("https://example.com/console/native-builds/build%201");
+  });
 
   it("is the install command for a simulator build, as the Console shows it", () => {
     expect(

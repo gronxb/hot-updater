@@ -587,7 +587,7 @@ describe("runAction", () => {
       });
       const { error, result, lines } = await run(fake);
 
-      expect(error?.message).toBe(
+      expect(error?.message).toContain(
         "The android-scheme release is a sandbox scheme, which never goes to a store. Use a scheme without sandbox: true.",
       );
       expect(fake.calls).toEqual([

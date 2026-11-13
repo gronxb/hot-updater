@@ -242,8 +242,18 @@ deletes one:
 npx hot-updater channel delete <channel> --native-builds --yes
 ```
 
+With `--keep-sandbox-builds` too, the
+[sandbox builds](/docs/native-builds/sandbox) that embed the channel stay, and
+so does the channel, which then has no bundles. The command succeeds when
+nothing else is left on it:
+
+```package-install
+npx hot-updater channel delete <channel> --native-builds --keep-sandbox-builds --yes
+```
+
 [Pull Request Previews](/docs/guides/pull-request-previews) cleans up a
-closed pull request this way.
+closed pull request this way, so other pull requests keep reusing its sandbox
+build.
 
 ## Check the Current Channel
 

@@ -7,7 +7,7 @@ import {
   type NativeArtifactKind,
   type UnreadableValue,
 } from "./readNativeArtifact";
-import { isSandboxChannel, SANDBOX_ACTIVITY } from "./sandbox";
+import { SANDBOX_ACTIVITY } from "./sandbox";
 
 /** Why an artifact can't be imported, as `native-build import` says it. */
 export interface NativeArtifactProblem {
@@ -59,13 +59,17 @@ export type NativeArtifactCheck = (
 const DEFAULT_CHANNEL = "production";
 
 /**
- * Why an artifact can't register on `channel`: the sandbox layer must be whole
- * or absent, and only a sandbox build registers on a `sandbox-*` channel.
+ * Why an artifact can't register as what it is: the sandbox layer must be
+ * whole or absent, and a sandbox build must have the URL scheme its links
+ * open and the launcher its screen takes. A sandbox build registers on any
+ * channel, as any build does.
  */
-export const sandboxArtifactProblem = (
-  { kind, platform, sandbox, entry }: NativeArtifactInfo,
-  channel: string,
-): NativeArtifactProblem | null => {
+export const sandboxArtifactProblem = ({
+  kind,
+  platform,
+  sandbox,
+  entry,
+}: NativeArtifactInfo): NativeArtifactProblem | null => {
   const declaration =
     platform === "ios" ? "Info.plist key" : "manifest meta-data";
   if (sandbox.code !== sandbox.declared) {
@@ -90,18 +94,6 @@ export const sandboxArtifactProblem = (
     return {
       code: "SANDBOX_MISMATCH",
       message: `The .${kind} is a sandbox build, but its launcher is ${entry.launchers.join(", ") || "missing"}.\nBuild it again with hot-updater native-build.`,
-    };
-  }
-  if (sandbox.code && !isSandboxChannel(channel)) {
-    return {
-      code: "SANDBOX_MISMATCH",
-      message: `The .${kind} is a sandbox build, which can't register on channel ${channel}.\nUse a sandbox-<scheme> channel.`,
-    };
-  }
-  if (!sandbox.code && isSandboxChannel(channel)) {
-    return {
-      code: "SANDBOX_MISMATCH",
-      message: `Channel ${channel} is reserved for sandbox builds, and the .${kind} isn't one.\nUse another channel, or build it with sandbox: true.`,
     };
   }
   return null;
@@ -222,7 +214,7 @@ export const checkNativeArtifact = (
     }
   }
 
-  const sandboxProblem = sandboxArtifactProblem(info, channel);
+  const sandboxProblem = sandboxArtifactProblem(info);
   if (sandboxProblem !== null) problems.push(sandboxProblem);
 
   if (

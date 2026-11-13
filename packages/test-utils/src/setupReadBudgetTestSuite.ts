@@ -272,6 +272,13 @@ const nativeBuildScope = {
   fingerprintHash: "native-fingerprint",
   appVersion: null,
 } as const;
+/** A sandbox scope of `nativeBuildScope`'s fingerprint, which no build has. */
+const nativeBuildSandboxScope = {
+  appId: "com.example.app",
+  urlScheme: "acme-preview",
+  artifactKind: "ipa",
+  distribution: "direct",
+} as const;
 /** The native build key the older of the two native builds is registered with. */
 const nativeBuildKey = `nbk1:${"0".repeat(64)}`;
 const bundleEvents = {
@@ -691,15 +698,26 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "native build older than a bundle in a sandbox scope: no read",
-    // A sandbox build's built-in bundle is no patch base, and only sandbox
-    // builds register on a sandbox-* channel.
+    // A sandbox build's built-in bundle is no patch base.
     read: ({ core }) =>
       core.findNativeBuild(
-        { ...nativeBuildScope, channel: "sandbox-release" },
+        { ...nativeBuildScope, sandbox: nativeBuildSandboxScope },
         { builtInOlderThan: "ffffffff-ffff-7fff-bfff-ffffffffffff" },
       ),
     adapter: reads(0, 0, 0, 0),
     engine: { calls: 0, rows: 0 },
+    check: (build) => expect(build).toBeNull(),
+  }),
+  budget({
+    api: "sandbox build on any channel: byScope descending, limit 1",
+    read: ({ core }) =>
+      core.findNativeBuild({
+        ...nativeBuildScope,
+        channel: "pr-140",
+        sandbox: nativeBuildSandboxScope,
+      }),
+    adapter: reads(0, 0, 1, 0),
+    engine: { calls: 1, rows: 0 },
     check: (build) => expect(build).toBeNull(),
   }),
   budget({

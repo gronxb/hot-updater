@@ -91,13 +91,13 @@ describe("NativeBuildDetailPage", () => {
   });
 
   it("goes back to the list of the build's own channel, where its row is", () => {
-    show(build({ is_sandbox: true }), "sandbox-release");
+    show(build({ is_sandbox: true }), "pr-128");
     expect(
       screen
         .getByText("Native builds")
         .closest("[data-search]")!
         .getAttribute("data-search"),
-    ).toBe(JSON.stringify({ channel: "sandbox-release" }));
+    ).toBe(JSON.stringify({ channel: "pr-128" }));
   });
 
   it.each([
@@ -134,9 +134,9 @@ describe("NativeBuildDetailPage", () => {
   );
 
   it("tags no build its record doesn't call a sandbox build, whatever its channel", () => {
-    const title = show(build({}), "sandbox-release");
+    const title = show(build({}), "pr-128");
     expect(title.textContent).not.toMatch(/Sandbox/);
-    expect(title.textContent).toContain("sandbox-release");
+    expect(title.textContent).toContain("pr-128");
   });
 
   it("says a build it can't find may be deleted, naming no command", () => {

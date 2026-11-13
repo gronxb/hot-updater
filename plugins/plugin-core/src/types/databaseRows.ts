@@ -144,8 +144,9 @@ export interface NativeBuildRow {
   readonly is_store_build: boolean;
   /**
    * Whether the build is a sandbox build, one built from a scheme with
-   * `sandbox: true` or imported with the sandbox layer. Set when the build
-   * registers and never changed. A sandbox build is never the store build.
+   * `sandbox: true` or imported with the sandbox layer: set from its artifact
+   * when the build registers, on any channel, and never changed. A sandbox
+   * build is never the store build.
    */
   readonly is_sandbox: boolean;
   /**

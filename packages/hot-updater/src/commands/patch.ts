@@ -5,10 +5,8 @@ import {
 } from "@hot-updater/cli-tools";
 import {
   assertStorageOperations,
-  type HotUpdaterCoreApi,
   type Platform,
 } from "@hot-updater/plugin-core";
-import { isSandboxChannel } from "@hot-updater/protocol/native-artifact";
 
 import { getPlatform } from "@/prompts/getPlatform";
 import { createBundleDiff } from "@/utils/createBundleDiff";
@@ -25,38 +23,6 @@ export interface PatchOptions {
   interactive: boolean;
   platform?: Platform;
 }
-
-const NATIVE_BUILD_PAGE = 100;
-
-/**
- * Whether `bundleId` is a sandbox build's built-in bundle, which no patch
- * starts from. Only sandbox builds register on a `sandbox-*` channel, so it
- * pages those channels' builds alone, through routes every server with native
- * builds has: this CLI refuses one whatever the server checks.
- */
-const isSandboxBuiltInBundle = async (
-  core: HotUpdaterCoreApi,
-  bundleId: string,
-): Promise<boolean> => {
-  const channels = (await core.listChannels()).filter(({ name }) =>
-    isSandboxChannel(name),
-  );
-  for (const channel of channels) {
-    for (let after: string | undefined; ; ) {
-      const builds = await core.listNativeBuilds({
-        channelId: channel.id,
-        limit: NATIVE_BUILD_PAGE,
-        ...(after === undefined ? {} : { after }),
-      });
-      if (builds.some(({ min_bundle_id }) => min_bundle_id === bundleId)) {
-        return true;
-      }
-      after = builds.at(-1)?.id;
-      if (builds.length < NATIVE_BUILD_PAGE || after === undefined) break;
-    }
-  }
-  return false;
-};
 
 export const createPatch = async (options: PatchOptions) => {
   printBanner();
@@ -92,10 +58,6 @@ export const createPatch = async (options: PatchOptions) => {
       ]),
       "Patch",
     );
-
-    if (await isSandboxBuiltInBundle(server.core, options.baseBundleId)) {
-      throw new Error("A sandbox build's built-in bundle is no patch base.");
-    }
 
     await createBundleDiff(
       {

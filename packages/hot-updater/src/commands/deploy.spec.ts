@@ -1913,9 +1913,13 @@ describe("deploy rollout wiring", () => {
       buildNumber,
       channel = "production",
       isSandbox,
+      sandboxUrlScheme,
+      sandboxAppId,
     }: {
       readonly id?: string;
       readonly buildNumber?: string;
+      readonly sandboxUrlScheme?: string;
+      readonly sandboxAppId?: string;
       readonly channel?: string;
       readonly isSandbox?: true;
     } = {},
@@ -1924,7 +1928,9 @@ describe("deploy rollout wiring", () => {
       id,
       platform: "ios",
       channel,
-      ...(isSandbox === undefined ? {} : { isSandbox }),
+      ...(isSandbox === undefined
+        ? {}
+        : { isSandbox, sandboxUrlScheme, sandboxAppId }),
       ...scope,
       minBundleId,
       gitCommitHash: null,
@@ -2296,11 +2302,13 @@ describe("deploy rollout wiring", () => {
       await configure();
       await registerNativeBuild(fixtureBundleId(100), FINGERPRINT, {
         id: buildIdOf(1),
-        channel: "sandbox-release",
+        channel: "pr-134",
         isSandbox: true,
+        sandboxUrlScheme: "acme-preview",
+        sandboxAppId: "com.example.app",
       });
 
-      await deployByFingerprint("sandbox-release");
+      await deployByFingerprint("pr-134");
 
       expect(baseBundleIds()).toEqual([]);
       expect(printed().join("\n")).not.toContain("Built-in base");
@@ -2311,7 +2319,13 @@ describe("deploy rollout wiring", () => {
       const sandboxBuild = await registerNativeBuild(
         fixtureBundleId(100),
         FINGERPRINT,
-        { id: buildIdOf(1), channel: "sandbox-release", isSandbox: true },
+        {
+          id: buildIdOf(1),
+          channel: "pr-134",
+          isSandbox: true,
+          sandboxUrlScheme: "acme-preview",
+          sandboxAppId: "com.example.app",
+        },
       );
       // Such a server answers its newest build to both base reads.
       const findNativeBuild = vi
@@ -2319,7 +2333,7 @@ describe("deploy rollout wiring", () => {
         .mockImplementation(async () => sandboxBuild);
 
       try {
-        await deployByFingerprint("sandbox-release");
+        await deployByFingerprint("pr-134");
       } finally {
         findNativeBuild.mockRestore();
       }

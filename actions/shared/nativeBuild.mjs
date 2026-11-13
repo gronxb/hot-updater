@@ -31,14 +31,24 @@ import { parseJsonOutput } from "./cli.mjs";
  * @property {string | null} fingerprintHash
  * @property {string | null} appVersion
  *
- * @typedef {BuildTarget & { platform: Platform, channel: string, nativeBuild: NativeBuildRow | null, downloadUrl?: string | null, store?: StoreStatus | null, sandbox?: { appId: string, urlScheme: string, otherBuilds: boolean } }} NativeBuildFindResult
- *   What `native-build find --json` prints. `downloadUrl` is the storage's URL
- *   of the artifact, which anyone who has it can fetch until it expires,
- *   `store`, with `storeStatus`, what the store says of a submitted build, and
- *   `sandbox`, only for a sandbox scheme, its app ID, the URL scheme its links
- *   open, the matched build's or the one the next build registers, and, when
- *   no build matched, whether builds with other native code exist. The
- *   build's own record is `nativeBuild.is_sandbox`.
+ * @typedef {object} IosDevices Whether a found ad hoc `.ipa` still installs on
+ *   the device registry's devices.
+ * @property {boolean} reusable Whether a run can reuse it.
+ * @property {"missing" | "expired" | "unreadable" | null} reason Why it can't.
+ * @property {string[]} missing The devices a new build would add.
+ * @property {string[]} waiting The devices it lacks that a new build wouldn't
+ *   add yet: Apple hasn't enabled them, or the scheme can't add them.
+ *
+ * @typedef {BuildTarget & { platform: Platform, channel: string, nativeBuild: NativeBuildRow | null, downloadUrl?: string | null, store?: StoreStatus | null, iosDevices?: IosDevices, sandbox?: { appId: string, urlScheme: string, channel: string | null } }} NativeBuildFindResult
+ *   What `native-build find --json` prints. `channel` is the one a new build
+ *   embeds. `downloadUrl` is the storage's URL of the artifact, which anyone
+ *   who has it can fetch until it expires, `store`, with `storeStatus`, what
+ *   the store says of a submitted build, `iosDevices`, for a found ad hoc
+ *   `.ipa`, whether it installs on the registry's devices, and `sandbox`, only
+ *   for a sandbox scheme, its app ID, the URL scheme its links open, the
+ *   matched build's or the one the next build registers, and the channel the
+ *   matched build embeds, which may be another pull request's. The build's own
+ *   record is `nativeBuild.is_sandbox`.
  *
  * @typedef {object} ShellDeps
  * @property {import("./cli.mjs").Cli} cli

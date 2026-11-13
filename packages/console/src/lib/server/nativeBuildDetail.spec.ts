@@ -291,10 +291,12 @@ describe("getNativeBuildDetail", () => {
 
   it("names no patch base for a sandbox build, and reads none", async () => {
     const memory = memoryCore();
-    const sandbox = fingerprintScope("fp-a", "sandbox-release");
+    const sandbox = fingerprintScope("fp-a", "pr-128");
     await memory.registerNativeBuild({
       ...sandbox,
       isSandbox: true,
+      sandboxUrlScheme: "acme-preview",
+      sandboxAppId: "com.example.app.sandbox",
       id: buildId(1),
       minBundleId: id(10),
       gitCommitHash: null,
