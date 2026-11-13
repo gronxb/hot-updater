@@ -86,10 +86,10 @@ sandbox build has it, the action deploys the bundle and builds nothing.
   A QR code's link names a fingerprint, so under the `appVersion` strategy the
   comment has none.
 - The registry tells native builds apart by platform, channel, and
-  fingerprint or app version, not by scheme. A project that previews several
-  apps, such as flavors with their own application IDs, gives each app its
-  own `channel`, such as `pr-${{ github.event.number }}-tv`, and runs the
-  action once per app.
+  fingerprint or app version, not by application ID. A project that previews
+  several apps, such as flavors with their own application IDs, runs the
+  action once per app, with the app's own `channel`, such as
+  `pr-${{ github.event.number }}-tv`, and its own sandbox scheme name.
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig, secret } from "hot-updater";
@@ -383,8 +383,7 @@ instead; see [Expo](#expo). Then, for each platform:
    match: the channel it would embed, the same fingerprint, from the config's
    fingerprint inputs, or with the `appVersion` strategy, the version of the app
    the scheme builds, and the kind of artifact the scheme builds, so a Simulator
-   scheme never reuses an `.ipa`, nor an APK scheme an `.aab`. It writes nothing
-   to the native projects; see
+   scheme never reuses an `.ipa`, nor an APK scheme an `.aab`. See
    [Find a build](/docs/guides/native-build#find-a-build). A sandbox scheme
    answers with its own channel. For another scheme, when the project
    embeds another channel than the pull request's, as a config plugin can, it
@@ -606,7 +605,7 @@ Production builds, which don't set it, keep `production`.
 | `android-submit`       |                                | `play-internal` releases a sandbox scheme's `.aab` to Google Play's internal testing track                      |
 | `ios-submit`           |                                | `testflight` uploads a sandbox scheme's `.ipa` to TestFlight for internal testing                               |
 | `ios-testflight-group` |                                | With `ios-submit`, the internal TestFlight group to add the build to. A group that takes every build needs none |
-| `channel`              | `pr-<number>`                  | The pull request's channel, which its native builds embed and its bundles deploy to                             |
+| `channel`              | `pr-<number>`                  | The pull request's channel, which its bundles deploy to and its non-sandbox native builds embed                 |
 | `credit`               | `true`                         | Whether the comment ends with "Preview by hot-updater"                                                          |
 | `comment`              | `true`                         | Whether to write the comment, and its sandbox QR codes to the `hot-updater-preview` branch                      |
 | `mode`                 | `auto`                         | `preview`, `cleanup`, or `auto`: `cleanup` when the pull request closed, else `preview`                         |
