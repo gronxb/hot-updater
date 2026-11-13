@@ -527,7 +527,7 @@ describe("NativeBuildsTable", () => {
         />,
       );
       const card = screen.getByRole("article");
-      // What and its download, where, when, and the target: no store line.
+      // What it is, where, when, and the target: no store line.
       expect(card.children).toHaveLength(4);
       expect(card.textContent).not.toContain("Build key");
     } finally {
@@ -1491,39 +1491,38 @@ describe("a submitted build's page", () => {
     downloadLinkQuery.mockReturnValue({ data: ISSUED_LINK });
   });
 
-  it("keeps a sandbox build's TestFlight state", () => {
-    render(
-      <InstallCard
-        build={build({
-          platform: "ios",
-          artifact_kind: "ipa",
-          artifact_storage_uri: "r2://bucket/native-builds/ios/019a/App.ipa",
-          is_sandbox: true,
-          submitted_to: "testflight",
-          submitted_at_ms: Date.now(),
-          submitted_version: "1.7.0 (66)",
-        })}
-      />,
-    );
-
-    expect(screen.getByText(/On TestFlight as/).textContent).toContain(
-      "1.7.0 (66)",
-    );
-    expect(
-      screen.getByRole("link", { name: /Open App Store Connect/ }),
-    ).toBeTruthy();
-  });
-
-  it("says where the store has it instead of how to upload it", () => {
-    const ipa = build({
+  /** A build the store named took, with its file. */
+  const submitted = (overrides: Partial<NativeBuildRow>) =>
+    build({
       platform: "ios",
       artifact_kind: "ipa",
       artifact_storage_uri: "r2://bucket/native-builds/ios/019a/App.ipa",
       submitted_to: "testflight",
       submitted_at_ms: Date.now(),
       submitted_version: "1.7.0 (66)",
+      ...overrides,
     });
-    render(
+
+  /** The Install card's first line: the store's badge, with when. */
+  const lead = (container: HTMLElement) =>
+    container.querySelector("[data-slot=card-content]")!.firstElementChild!;
+
+  it("keeps a sandbox build's TestFlight state", () => {
+    const { container } = render(
+      <InstallCard build={submitted({ is_sandbox: true })} />,
+    );
+
+    expect(lead(container).textContent).toMatch(
+      /^TestFlight1\.7\.0 \(66\).+ ago$/,
+    );
+    expect(
+      screen.getByText(/Internal testers install it from the TestFlight app/),
+    ).toBeTruthy();
+  });
+
+  it("leads with the store's badge, and opens no store page", () => {
+    const ipa = submitted({});
+    const { container } = render(
       <>
         <InstallCard build={ipa} />
         <BuiltInBundleCard
@@ -1532,72 +1531,68 @@ describe("a submitted build's page", () => {
       </>,
     );
 
-    expect(screen.getByText(/On TestFlight as/).textContent).toContain(
-      "1.7.0 (66)",
-    );
+    // The Install card owns the store state, once on the page.
+    expect(lead(container).textContent).toContain("TestFlight1.7.0 (66)");
+    expect(screen.getAllByText("TestFlight")).toHaveLength(1);
+    expect(screen.queryByText("Store", { selector: "dt" })).toBeNull();
     expect(screen.queryByText("npx hot-updater testflight")).toBeNull();
-    expect(screen.getByText("Store")).toBeTruthy();
+    expect(container.textContent).not.toMatch(/pull request comment/);
     // The store installs it: no QR code of the file, and no signed link read.
     expect(screen.queryByRole("img")).toBeNull();
     expect(downloadLinkQuery).not.toHaveBeenCalled();
-    expect(
-      screen.getByRole("link", { name: /Open App Store Connect/ }),
-    ).toHaveProperty("href", "https://appstoreconnect.apple.com/apps");
-  });
-
-  it("shows no store line for a build no store took", () => {
-    render(<BuiltInBundleCard detail={detail()} />);
-
-    expect(screen.queryByText("Store")).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Open / })).toBeNull();
   });
 
   it.each(["play-closed", "play-open", "play-production"] as const)(
-    "shows the Play Console link for %s",
+    "names Play's %s track in its badge, and says who gets it",
     (submitted_to) => {
-      render(
-        <InstallCard build={build({ artifact_kind: "aab", submitted_to })} />,
+      const { container } = render(
+        <InstallCard
+          build={submitted({
+            platform: "android",
+            artifact_kind: "aab",
+            artifact_storage_uri:
+              "r2://bucket/native-builds/android/019a/app.aab",
+            submitted_to,
+          })}
+        />,
       );
-      if (submitted_to === "play-production") {
-        expect(screen.queryByText(/Testers get it once/)).toBeNull();
-      }
-      expect(
-        screen
-          .getByRole("link", { name: /Open Play Console/ })
-          .getAttribute("href"),
-      ).toBe("https://play.google.com/console");
+
+      expect(lead(container).textContent).toContain(
+        `Play ${submitted_to.slice(5)}1.7.0 (66)`,
+      );
+      expect(container.textContent).not.toMatch(/Submitted to/);
       expect(
         screen.getByText(
-          new RegExp(`Submitted to Play ${submitted_to.slice(5)} as`),
+          submitted_to === "play-production"
+            ? /^Users get it once its release is rolled out/
+            : /^Testers get it once its release is rolled out/,
         ),
       ).toBeTruthy();
+      expect(
+        screen.queryByRole("link", { name: /Open Play Console/ }),
+      ).toBeNull();
     },
   );
 
-  it("names Google Play for a submitted AAB", () => {
-    render(
+  it("says a Play internal AAB's release may be a draft", () => {
+    const { container } = render(
       <InstallCard
-        build={build({
+        build={submitted({
+          platform: "android",
           artifact_kind: "aab",
           artifact_storage_uri:
             "r2://bucket/native-builds/android/019a/app.aab",
           submitted_to: "play-internal",
-          submitted_at_ms: Date.now(),
-          submitted_version: "1.7.0 (66)",
         })}
       />,
     );
 
-    expect(
-      screen.getByText(/Submitted to Google Play internal testing as/)
-        .textContent,
-    ).toContain("1.7.0 (66)");
+    expect(lead(container).textContent).toContain("Play internal1.7.0 (66)");
     // A draft release isn't installable yet, so nothing says it is.
-    expect(screen.getByText(/Submitted to Google Play/).textContent).toContain(
-      "once its release is rolled out",
+    expect(container.textContent).toContain(
+      "the release is a draft you roll out in Play Console",
     );
-    expect(
-      screen.getByRole("link", { name: /Open Play Console/ }),
-    ).toHaveProperty("href", "https://play.google.com/console");
   });
 });
 
@@ -1606,31 +1601,23 @@ describe("an install card's download", () => {
     downloadLinkQuery.mockReturnValue({ data: ISSUED_LINK });
   });
 
-  /** The card's download, and whether it is the muted link, not a button. */
+  /** The card's download and its button variant, read off its classes. */
   const download = (file: string) => {
     const link = screen.getByRole("link", { name: `Download ${file}` });
-    return {
-      link,
-      secondary: link.getAttribute("data-slot") === "secondary-download",
-    };
+    const variant = link.className.includes("border-border")
+      ? "outline"
+      : link.className.includes("hover:bg-muted")
+        ? "ghost"
+        : null;
+    return { link, variant };
   };
 
-  it("keeps an APK's download a button, since an APK installs from its file", () => {
-    const row = build();
-    render(<InstallCard build={row} />);
-
-    const { link, secondary } = download("app-release.apk");
-    expect(secondary).toBe(false);
-    expect(link.className).toContain("border-border");
-    expect(link).toHaveProperty("href", signedUrl(row.id));
-  });
-
   it.each([
-    ["ipa", "ios", "App.ipa"],
+    ["apk", "android", "app-release.apk"],
     ["aab", "android", "app-release.aab"],
     ["app", "ios", "HotUpdaterExample.app.zip"],
   ] as const)(
-    "makes an %s's download a muted link, keeping its signed link",
+    "keeps an %s's download an outline button, since people use the file itself",
     (kind, platform, file) => {
       const row = build({
         platform,
@@ -1639,19 +1626,37 @@ describe("an install card's download", () => {
       });
       render(<InstallCard build={row} />);
 
-      const { link, secondary } = download(file);
-      expect(secondary).toBe(true);
-      expect(link.hasAttribute("download")).toBe(true);
+      const { link, variant } = download(file);
+      expect(variant).toBe("outline");
       expect(link).toHaveProperty("href", signedUrl(row.id));
     },
   );
 
+  it("makes an IPA's download a ghost button in the same place, keeping its signed link", () => {
+    const row = build({
+      platform: "ios",
+      artifact_kind: "ipa",
+      artifact_storage_uri: "r2://bucket/native-builds/ios/019a/App.ipa",
+    });
+    render(<InstallCard build={row} />);
+
+    const { link, variant } = download("App.ipa");
+    expect(variant).toBe("ghost");
+    expect(link.hasAttribute("download")).toBe(true);
+    expect(link).toHaveProperty("href", signedUrl(row.id));
+    // The install steps, then the download, then the link to copy, as on
+    // every other artifact's card.
+    const [steps, , signed] = [...link.parentElement!.children];
+    expect(steps!.textContent).toContain("Over USB");
+    expect(signed!.textContent).toContain("Anyone with this link");
+  });
+
   it.each([
-    ["testflight", "ios", "ipa", "App.ipa", "Open App Store Connect"],
-    ["play-internal", "android", "aab", "app-release.aab", "Open Play Console"],
+    ["testflight", "ghost", "ios", "ipa", "App.ipa"],
+    ["play-internal", "outline", "android", "aab", "app-release.aab"],
   ] as const)(
-    "leaves the store the one button on a %s build, the download a link under it",
-    (submitted_to, platform, kind, file, store) => {
+    "gives a %s build's card its download (%s), under its badge and steps",
+    (submitted_to, expected, platform, kind, file) => {
       const row = build({
         platform,
         artifact_kind: kind,
@@ -1660,20 +1665,20 @@ describe("an install card's download", () => {
         submitted_at_ms: Date.now(),
         submitted_version: "1.7.0 (66)",
       });
-      render(<InstallCard build={row} />);
+      const { container } = render(<InstallCard build={row} />);
 
-      const open = screen.getByRole("link", { name: store });
-      const { link, secondary } = download(file);
-      expect(secondary).toBe(true);
+      const { link, variant } = download(file);
+      expect(variant).toBe(expected);
       expect(link.hasAttribute("download")).toBe(true);
       expect(link.getAttribute("href")).toBe(
         `/api/native-builds/${row.id}/download`,
       );
-      // Under the store's button, not beside it in a row.
-      expect(
-        open.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
-      expect(open.parentElement!.className).not.toContain("sm:flex-row");
+      // Badge, steps, download: the content's only children, so no empty
+      // row or stray gap where the store's button was.
+      const content = container.querySelector("[data-slot=card-content]")!;
+      expect(content.children).toHaveLength(3);
+      expect(content.lastElementChild).toBe(link);
+      expect(screen.getAllByRole("link")).toEqual([link]);
     },
   );
 });
