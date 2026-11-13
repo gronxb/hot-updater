@@ -1,6 +1,10 @@
 import path from "path";
 
-import { listAscDevices } from "@hot-updater/apple-helper";
+import {
+  type EnrichedNativeBuildIosScheme,
+  exportsForRegisteredDevices,
+  listAscDevices,
+} from "@hot-updater/apple-helper";
 import {
   getCwd,
   type loadConfig,
@@ -33,13 +37,23 @@ export const readSchemeAppleDevices = async (
     };
   }
   const cwd = getCwd();
+  const exportOptionsPlist =
+    iosScheme.exportOptionsPlist === undefined
+      ? undefined
+      : path.resolve(cwd, iosScheme.exportOptionsPlist);
+  // The build's own gate: it runs the device registry's step only for an
+  // export that lists registered devices, so no other build adds one.
   if (
-    await manualSigning(
-      iosScheme.exportOptionsPlist === undefined
-        ? undefined
-        : path.resolve(cwd, iosScheme.exportOptionsPlist),
-    )
+    !(await exportsForRegisteredDevices({
+      exportOptionsPlist,
+    } as EnrichedNativeBuildIosScheme))
   ) {
+    return {
+      kind: "unavailable",
+      reason: "the scheme doesn't export with release-testing",
+    };
+  }
+  if (await manualSigning(exportOptionsPlist)) {
     return {
       kind: "unavailable",
       reason: "the scheme pins a provisioning profile",
