@@ -123,7 +123,10 @@ export function ChannelPicker({
       >
         <span className="text-muted-foreground">Channel</span>
         {label === undefined ? (
-          <Skeleton className="h-3 w-16" />
+          // A failed list leaves nothing to wait for: the page says so.
+          channels.isError ? null : (
+            <Skeleton className="h-3 w-16" />
+          )
         ) : (
           <span
             className="min-w-0 flex-1 truncate text-left sm:max-w-48"

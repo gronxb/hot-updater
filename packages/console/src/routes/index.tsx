@@ -156,7 +156,7 @@ function BundleFilterToolbar({
       </div>
       <ChannelPicker
         allChannels
-        className="w-[calc(50%-0.25rem)] text-xs sm:w-auto"
+        className="max-sm:order-1 max-sm:min-w-0 max-sm:basis-full"
         onValueChange={(name) =>
           onChange(
             name === undefined
@@ -186,7 +186,7 @@ function BundleFilterToolbar({
       >
         <SelectTrigger
           aria-label="Platform"
-          className="w-[calc(50%-0.25rem)] min-w-[132px] text-xs data-[size=default]:h-11 max-sm:order-2 sm:w-[140px] sm:data-[size=default]:h-8"
+          className="w-[calc(50%-0.25rem)] min-w-[132px] text-sm data-[size=default]:h-11 max-sm:order-2 sm:w-[140px] sm:text-xs sm:data-[size=default]:h-8"
           title={channelSelected ? undefined : "Choose a channel first"}
         >
           <SelectValue />
@@ -221,7 +221,7 @@ function BundleFilterToolbar({
       >
         <SelectTrigger
           aria-label="Status"
-          className="w-[calc(50%-0.25rem)] min-w-[132px] text-xs data-[size=default]:h-11 max-sm:order-2 sm:w-[140px] sm:data-[size=default]:h-8"
+          className="w-[calc(50%-0.25rem)] min-w-[132px] text-sm data-[size=default]:h-11 max-sm:order-2 sm:w-[140px] sm:text-xs sm:data-[size=default]:h-8"
         >
           <SelectValue />
         </SelectTrigger>
@@ -235,7 +235,7 @@ function BundleFilterToolbar({
       </Select>
       <Button
         aria-label="Manage channels"
-        className="size-11 max-sm:order-1 sm:size-7"
+        className="size-11 max-sm:ml-auto sm:size-7"
         onClick={onManageChannels}
         size="icon-sm"
         title="Manage channels"

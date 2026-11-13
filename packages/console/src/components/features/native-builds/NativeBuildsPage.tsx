@@ -82,10 +82,10 @@ export function NativeBuildsPage({
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 bg-muted/5 p-3 sm:p-6">
         <NativeBuildsNav current="builds" />
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ChannelPicker
             allChannels
-            className="max-sm:min-w-0 max-sm:flex-1"
+            className="max-sm:min-w-0 max-sm:basis-full"
             onValueChange={filterBy}
             pending={pending}
             value={channel}

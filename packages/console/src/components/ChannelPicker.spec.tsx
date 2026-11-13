@@ -75,6 +75,13 @@ describe("ChannelPicker", () => {
     open();
     await screen.findByRole("combobox", { name: "Search channels" });
     expect(mocks.refetch).toHaveBeenCalledOnce();
+    // The list starts at its first item and checks the current channel.
+    expect(options()[0]).toBe("production");
+    expect(
+      screen
+        .getAllByRole("option")
+        .map((option) => option.querySelector("svg") !== null),
+    ).toEqual([true, false, false, false]);
   });
 
   it("narrows the list as a channel is typed, and Enter picks the first match", async () => {
@@ -164,6 +171,18 @@ describe("ChannelPicker", () => {
     const trigger = screen.getByRole("combobox", { name: "Channel" });
     expect(trigger.hasAttribute("disabled")).toBe(true);
     expect(trigger.textContent).not.toContain("All channels");
+    expect(trigger.querySelector("[data-slot=skeleton]")).not.toBeNull();
+    cleanup();
+
+    // A failed list leaves the page's alert to say so, with no pulse here.
+    mocks.channels = undefined;
+    mocks.isError = true;
+    renderPicker({ pending: true, value: undefined, allChannels: true });
+    expect(
+      screen
+        .getByRole("combobox", { name: "Channel" })
+        .querySelector("[data-slot=skeleton]"),
+    ).toBeNull();
   });
 
   it("keeps 44 px rows and a 16 px search on a phone", async () => {
