@@ -1,0 +1,510 @@
+{
+  "01-table-1280-l": {
+    "overflowX": 0,
+    "content": null,
+    "downloads": []
+  },
+  "02-table-390-l": {
+    "overflowX": 0,
+    "content": null,
+    "downloads": []
+  },
+  "03-apk-1280-l": {
+    "overflowX": 0,
+    "content": {
+      "padding": "24px",
+      "gap": "24px",
+      "children": [
+        "DIV:258",
+        "DIV:258"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download app-release.apk",
+        "slot": null,
+        "w": 191,
+        "h": 38,
+        "contrast": 19.76
+      }
+    ]
+  },
+  "04-apk-390-l": {
+    "overflowX": 0,
+    "content": {
+      "padding": "16px",
+      "gap": "24px",
+      "children": [
+        "DIV:232",
+        "DIV:376"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download app-release.apk",
+        "slot": null,
+        "w": 332,
+        "h": 44,
+        "contrast": 19.76
+      }
+    ]
+  },
+  "03-aab-1280-l": {
+    "overflowX": 0,
+    "content": {
+      "padding": "24px",
+      "gap": "24px",
+      "children": [
+        "DIV:248",
+        "DIV:248"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download app-release.aab",
+        "slot": null,
+        "w": 191,
+        "h": 38,
+        "contrast": 19.76
+      }
+    ]
+  },
+  "04-aab-390-l": {
+    "overflowX": 0,
+    "content": {
+      "padding": "16px",
+      "gap": "24px",
+      "children": [
+        "DIV:248",
+        "DIV:248"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download app-release.aab",
+        "slot": null,
+        "w": 332,
+        "h": 44,
+        "contrast": 19.76
+      }
+    ]
+  },
+  "03-app-1280-l": {
+    "overflowX": 0,
+    "content": {
+      "padding": "24px",
+      "gap": "24px",
+      "children": [
+        "DIV:232",
+        "DIV:232"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download HotUpdaterExample.app.zip",
+        "slot": null,
+        "w": 259,
+        "h": 38,
+        "contrast": 19.76
+      }
+    ]
+  },
+  "04-app-390-l": {
+    "overflowX": 0,
+    "content": {
+      "padding": "16px",
+      "gap": "24px",
+      "children": [
+        "DIV:232",
+        "DIV:264"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download HotUpdaterExample.app.zip",
+        "slot": null,
+        "w": 332,
+        "h": 44,
+        "contrast": 19.76
+      }
+    ]
+  },
+  "03-adhoc-ipa-1280-l": {
+    "overflowX": 0,
+    "content": {
+      "padding": "24px",
+      "gap": "24px",
+      "children": [
+        "DIV:248",
+        "DIV:248"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download HotUpdaterExample.ipa",
+        "slot": null,
+        "w": 234,
+        "h": 38,
+        "contrast": 19.76
+      }
+    ]
+  },
+  "04-adhoc-ipa-390-l": {
+    "overflowX": 0,
+    "content": {
+      "padding": "16px",
+      "gap": "16px",
+      "children": [
+        "DIV:156",
+        "DIV:255"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download HotUpdaterExample.ipa",
+        "slot": null,
+        "w": 332,
+        "h": 44,
+        "contrast": 19.76
+      }
+    ]
+  },
+  "03-testflight-ipa-1280-l": {
+    "overflowX": 0,
+    "content": {
+      "padding": "24px",
+      "gap": "16px",
+      "children": [
+        "SPAN:22",
+        "P:16",
+        "A:38"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download HotUpdaterExample.ipa",
+        "slot": null,
+        "w": 234,
+        "h": 38,
+        "contrast": 19.76
+      }
+    ]
+  },
+  "04-testflight-ipa-390-l": {
+    "overflowX": 0,
+    "content": {
+      "padding": "16px",
+      "gap": "16px",
+      "children": [
+        "SPAN:22",
+        "P:32",
+        "A:44"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download HotUpdaterExample.ipa",
+        "slot": null,
+        "w": 332,
+        "h": 44,
+        "contrast": 19.76
+      }
+    ]
+  },
+  "03-play-aab-1280-l": {
+    "overflowX": 0,
+    "content": {
+      "padding": "24px",
+      "gap": "16px",
+      "children": [
+        "SPAN:22",
+        "P:16",
+        "A:38"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download app-release.aab",
+        "slot": null,
+        "w": 191,
+        "h": 38,
+        "contrast": 19.76
+      }
+    ]
+  },
+  "04-play-aab-390-l": {
+    "overflowX": 0,
+    "content": {
+      "padding": "16px",
+      "gap": "16px",
+      "children": [
+        "SPAN:22",
+        "P:48",
+        "A:44"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download app-release.aab",
+        "slot": null,
+        "w": 332,
+        "h": 44,
+        "contrast": 19.76
+      }
+    ]
+  },
+  "01-table-1280-d": {
+    "overflowX": 0,
+    "content": null,
+    "downloads": []
+  },
+  "02-table-390-d": {
+    "overflowX": 0,
+    "content": null,
+    "downloads": []
+  },
+  "03-apk-1280-d": {
+    "overflowX": 0,
+    "content": {
+      "padding": "24px",
+      "gap": "24px",
+      "children": [
+        "DIV:258",
+        "DIV:258"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download app-release.apk",
+        "slot": null,
+        "w": 191,
+        "h": 38,
+        "contrast": 14.97
+      }
+    ]
+  },
+  "04-apk-390-d": {
+    "overflowX": 0,
+    "content": {
+      "padding": "16px",
+      "gap": "24px",
+      "children": [
+        "DIV:232",
+        "DIV:376"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download app-release.apk",
+        "slot": null,
+        "w": 332,
+        "h": 44,
+        "contrast": 14.97
+      }
+    ]
+  },
+  "03-aab-1280-d": {
+    "overflowX": 0,
+    "content": {
+      "padding": "24px",
+      "gap": "24px",
+      "children": [
+        "DIV:248",
+        "DIV:248"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download app-release.aab",
+        "slot": null,
+        "w": 191,
+        "h": 38,
+        "contrast": 14.97
+      }
+    ]
+  },
+  "04-aab-390-d": {
+    "overflowX": 0,
+    "content": {
+      "padding": "16px",
+      "gap": "24px",
+      "children": [
+        "DIV:248",
+        "DIV:248"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download app-release.aab",
+        "slot": null,
+        "w": 332,
+        "h": 44,
+        "contrast": 14.97
+      }
+    ]
+  },
+  "03-app-1280-d": {
+    "overflowX": 0,
+    "content": {
+      "padding": "24px",
+      "gap": "24px",
+      "children": [
+        "DIV:232",
+        "DIV:232"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download HotUpdaterExample.app.zip",
+        "slot": null,
+        "w": 259,
+        "h": 38,
+        "contrast": 14.97
+      }
+    ]
+  },
+  "04-app-390-d": {
+    "overflowX": 0,
+    "content": {
+      "padding": "16px",
+      "gap": "24px",
+      "children": [
+        "DIV:232",
+        "DIV:264"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download HotUpdaterExample.app.zip",
+        "slot": null,
+        "w": 332,
+        "h": 44,
+        "contrast": 14.97
+      }
+    ]
+  },
+  "03-adhoc-ipa-1280-d": {
+    "overflowX": 0,
+    "content": {
+      "padding": "24px",
+      "gap": "24px",
+      "children": [
+        "DIV:248",
+        "DIV:248"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download HotUpdaterExample.ipa",
+        "slot": null,
+        "w": 234,
+        "h": 38,
+        "contrast": 16.74
+      }
+    ]
+  },
+  "04-adhoc-ipa-390-d": {
+    "overflowX": 0,
+    "content": {
+      "padding": "16px",
+      "gap": "16px",
+      "children": [
+        "DIV:156",
+        "DIV:255"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download HotUpdaterExample.ipa",
+        "slot": null,
+        "w": 332,
+        "h": 44,
+        "contrast": 16.74
+      }
+    ]
+  },
+  "03-testflight-ipa-1280-d": {
+    "overflowX": 0,
+    "content": {
+      "padding": "24px",
+      "gap": "16px",
+      "children": [
+        "SPAN:22",
+        "P:16",
+        "A:38"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download HotUpdaterExample.ipa",
+        "slot": null,
+        "w": 234,
+        "h": 38,
+        "contrast": 16.74
+      }
+    ]
+  },
+  "04-testflight-ipa-390-d": {
+    "overflowX": 0,
+    "content": {
+      "padding": "16px",
+      "gap": "16px",
+      "children": [
+        "SPAN:22",
+        "P:32",
+        "A:44"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download HotUpdaterExample.ipa",
+        "slot": null,
+        "w": 332,
+        "h": 44,
+        "contrast": 16.74
+      }
+    ]
+  },
+  "03-play-aab-1280-d": {
+    "overflowX": 0,
+    "content": {
+      "padding": "24px",
+      "gap": "16px",
+      "children": [
+        "SPAN:22",
+        "P:16",
+        "A:38"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download app-release.aab",
+        "slot": null,
+        "w": 191,
+        "h": 38,
+        "contrast": 14.97
+      }
+    ]
+  },
+  "04-play-aab-390-d": {
+    "overflowX": 0,
+    "content": {
+      "padding": "16px",
+      "gap": "16px",
+      "children": [
+        "SPAN:22",
+        "P:48",
+        "A:44"
+      ]
+    },
+    "downloads": [
+      {
+        "text": "Download app-release.aab",
+        "slot": null,
+        "w": 332,
+        "h": 44,
+        "contrast": 14.97
+      }
+    ]
+  }
+}
