@@ -1,5 +1,19 @@
 # hot-updater
 
+## 1.2.0-rc.39
+
+### Patch Changes
+
+- Updated dependencies [49c27c7]
+  - @hot-updater/console@1.2.0-rc.39
+  - @hot-updater/android-helper@1.2.0-rc.39
+  - @hot-updater/apple-helper@1.2.0-rc.39
+  - @hot-updater/bsdiff@1.2.0-rc.39
+  - @hot-updater/cli-tools@1.2.0-rc.39
+  - @hot-updater/protocol@1.2.0-rc.39
+  - @hot-updater/server@1.2.0-rc.39
+  - @hot-updater/plugin-core@1.2.0-rc.39
+
 ## 1.2.0-rc.38
 
 ### Patch Changes
