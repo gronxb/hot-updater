@@ -1,0 +1,146 @@
+{
+  "apk-1440-l": {
+    "overflowX": 0,
+    "links": [
+      {
+        "text": "Download app-release.apk",
+        "w": 189,
+        "h": 38,
+        "border": "oklch(0.923 0.003 48.717)",
+        "bg": "rgba(0, 0, 0, 0)"
+      }
+    ]
+  },
+  "testflight-ipa-1440-l": {
+    "overflowX": 0,
+    "links": [
+      {
+        "text": "Download HotUpdaterExample.ipa",
+        "w": 232,
+        "h": 38,
+        "border": "rgba(0, 0, 0, 0)",
+        "bg": "rgba(0, 0, 0, 0)"
+      }
+    ]
+  },
+  "list-pager-1440-l": {
+    "overflowX": 0,
+    "links": [
+      {
+        "text": "Next",
+        "w": 63,
+        "h": 32,
+        "border": "oklch(0.923 0.003 48.717)",
+        "bg": "rgba(0, 0, 0, 0)"
+      }
+    ]
+  },
+  "apk-390-l": {
+    "overflowX": 0,
+    "links": [
+      {
+        "text": "Download app-release.apk",
+        "w": 332,
+        "h": 44,
+        "border": "oklch(0.923 0.003 48.717)",
+        "bg": "rgba(0, 0, 0, 0)"
+      }
+    ]
+  },
+  "testflight-ipa-390-l": {
+    "overflowX": 0,
+    "links": [
+      {
+        "text": "Download HotUpdaterExample.ipa",
+        "w": 332,
+        "h": 44,
+        "border": "rgba(0, 0, 0, 0)",
+        "bg": "rgba(0, 0, 0, 0)"
+      }
+    ]
+  },
+  "list-pager-390-l": {
+    "overflowX": 0,
+    "links": [
+      {
+        "text": "Next",
+        "w": 169,
+        "h": 44,
+        "border": "oklch(0.923 0.003 48.717)",
+        "bg": "rgba(0, 0, 0, 0)"
+      }
+    ]
+  },
+  "apk-1440-d": {
+    "overflowX": 0,
+    "links": [
+      {
+        "text": "Download app-release.apk",
+        "w": 189,
+        "h": 38,
+        "border": "oklch(1 0 0 / 0.1)",
+        "bg": "oklab(1 0 0 / 0.045)"
+      }
+    ]
+  },
+  "testflight-ipa-1440-d": {
+    "overflowX": 0,
+    "links": [
+      {
+        "text": "Download HotUpdaterExample.ipa",
+        "w": 232,
+        "h": 38,
+        "border": "rgba(0, 0, 0, 0)",
+        "bg": "rgba(0, 0, 0, 0)"
+      }
+    ]
+  },
+  "list-pager-1440-d": {
+    "overflowX": 0,
+    "links": [
+      {
+        "text": "Next",
+        "w": 63,
+        "h": 32,
+        "border": "oklch(1 0 0 / 0.1)",
+        "bg": "oklab(1 0 0 / 0.045)"
+      }
+    ]
+  },
+  "apk-390-d": {
+    "overflowX": 0,
+    "links": [
+      {
+        "text": "Download app-release.apk",
+        "w": 332,
+        "h": 44,
+        "border": "oklch(1 0 0 / 0.1)",
+        "bg": "oklab(1 0 0 / 0.045)"
+      }
+    ]
+  },
+  "testflight-ipa-390-d": {
+    "overflowX": 0,
+    "links": [
+      {
+        "text": "Download HotUpdaterExample.ipa",
+        "w": 332,
+        "h": 44,
+        "border": "rgba(0, 0, 0, 0)",
+        "bg": "rgba(0, 0, 0, 0)"
+      }
+    ]
+  },
+  "list-pager-390-d": {
+    "overflowX": 0,
+    "links": [
+      {
+        "text": "Next",
+        "w": 169,
+        "h": 44,
+        "border": "oklch(1 0 0 / 0.1)",
+        "bg": "oklab(1 0 0 / 0.045)"
+      }
+    ]
+  }
+}
