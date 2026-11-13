@@ -24,7 +24,10 @@ inputs:
   android-scheme:
     description: The nativeBuild.android scheme of the preview build, such as a release APK.
   ios-scheme:
-    description: The nativeBuild.ios scheme of the preview build, a simulator scheme by default.
+    description: >-
+      The nativeBuild.ios scheme of the preview build. Several, comma-separated,
+      such as an ad hoc and a Simulator scheme of the same native code, build
+      in one run and share one bundle.
   android-submit:
     description: >-
       play-internal releases the Android preview to Google Play's internal
@@ -80,7 +83,8 @@ outputs:
       or ios-submit, store (destination, url, version, state, expiresAtMs,
       reusable), and on a sandbox build, sandbox (appId, urlScheme, link,
       minBundleId, fromChannel: the other pull request's channel a reused
-      build embeds, or null).
+      build embeds, or null). With several schemes on a platform, each has its
+      scheme, and the platform's other outputs are its first scheme's.
     value: ${{ steps.run.outputs.previews }}
   android-install-url:
     description: >-
@@ -92,7 +96,8 @@ outputs:
     description: >-
       What a person opens to install the iOS preview: the Console's build
       page for a device build, where "Install on iPhone" checks the device,
-      the native-build install command for a simulator build, or with
+      the native-build install command for a simulator build, which opens the
+      pull request's bundle in a sandbox build, or with
       ios-submit, the app's TestFlight page. ios-download-url has the .ipa
       itself.
     value: ${{ steps.run.outputs.ios-install-url }}

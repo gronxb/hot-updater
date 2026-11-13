@@ -187,6 +187,131 @@ describe.each(families)("native build folds on %s", (_name, adapter) => {
   });
 });
 
+describe.each(families)(
+  "native build pages beside a sandbox sibling pair on %s",
+  (_name, adapter) => {
+    /** Core, with every method it is called by, in order. */
+    const setup = async () => {
+      const core = createHotUpdater({
+        database: { name: "test", adapter: await adapter() },
+        storage: mockStorage({}),
+        clientAccess: "public",
+      }).core;
+      const calls: string[] = [];
+      const counted = new Proxy(core, {
+        get(target, key, receiver) {
+          const value = Reflect.get(target, key, receiver);
+          return typeof value === "function"
+            ? (...args: unknown[]) => {
+                calls.push(String(key));
+                return value.apply(target, args);
+              }
+            : value;
+        },
+      });
+      return { core, counted, calls };
+    };
+    const sandbox = (
+      channel: string,
+      appId: string,
+    ): Partial<NativeBuildRegistration> => ({
+      channel,
+      isSandbox: true,
+      sandboxAppId: appId,
+      sandboxUrlScheme: "acme-preview",
+      exportMethod: "ad-hoc",
+    });
+
+    /**
+     * Oldest first: an older sandbox .ipa of pr-3, a sandbox Simulator .app
+     * of `appId` on pr-2, the newer sandbox .ipa of pr-3, then 19 newer
+     * channels' builds. Page 1 ends on the .ipa, page 2 starts on the .app,
+     * and the older .ipa folds under the newer one on page 1.
+     */
+    const registry = async (appId: string) => {
+      const { core, counted, calls } = await setup();
+      await register(core, 1, sandbox("pr-3", "com.example.app"));
+      await register(core, 2, {
+        ...sandbox("pr-2", appId),
+        exportMethod: null,
+        artifact: {
+          kind: "app",
+          storageUri: `s3://bucket/native-builds/ios/${buildId(2)}/App.app.zip`,
+          byteSize: 1_000,
+        },
+      });
+      await register(core, 3, sandbox("pr-3", "com.example.app"));
+      for (let n = 4; n <= 22; n += 1) {
+        await register(core, n, { channel: `c-${n}` });
+      }
+      return { core, counted, calls };
+    };
+    const pages = async (core: HotUpdaterCoreApi) => {
+      const first = await listNativeBuildFolds(core, {});
+      const second = await listNativeBuildFolds(core, { before: first.next });
+      const fold = await readNativeBuildFold(core, {
+        from: buildId(2),
+        to: buildId(1),
+      });
+      return { first, second, fold };
+    };
+
+    it("lists the same pages, page boundary, and fold through its last row as builds of no pair", async () => {
+      const paired = await registry("com.example.app");
+      const unpaired = await registry("com.example.other");
+      // The pair is one: each is the other's install target, unless an
+      // RC-era store dropped the .ipa's export method, which a target needs.
+      const ipa = (await paired.core.getNativeBuild(buildId(3)))!;
+      const app = (await paired.core.getNativeBuild(buildId(2)))!;
+      const pair = ipa.export_method === null ? [null, null] : [2, 3];
+      expect(
+        [
+          await paired.core.findNativeBuildSibling(ipa),
+          await paired.core.findNativeBuildSibling(app),
+        ].map((sibling) =>
+          sibling === null ? null : Number(sibling.id.slice(-12)),
+        ),
+      ).toEqual(pair);
+      expect(
+        await unpaired.core.findNativeBuildSibling(
+          (await unpaired.core.getNativeBuild(buildId(3)))!,
+        ),
+      ).toBeNull();
+
+      const withPair = await pages(paired.counted);
+      const withoutPair = await pages(unpaired.counted);
+
+      // Page 1 ends on the .ipa, and page 2 starts on its .app.
+      expect(shape(withPair.first.entries)).toEqual(
+        Array.from({ length: 20 }, (_, i) => 22 - i),
+      );
+      expect(shape(withPair.second.entries)).toEqual([2, "[1]"]);
+      expect(withPair.fold.rows.map(({ id }) => id)).toEqual([buildId(1)]);
+      expect(withPair.fold.newer[buildId(1)]?.id).toBe(buildId(3));
+      // Each build once, in the registry's order, as with no pair.
+      const ids = (page: typeof withPair) =>
+        [...page.first.entries, ...page.second.entries].map((entry) =>
+          entry.kind === "row" ? entry.row.id : `fold:${entry.to}`,
+        );
+      expect(ids(withPair)).toEqual(ids(withoutPair));
+      expect(withPair.first.next).toBe(withoutPair.first.next);
+      expect(withPair.second.previous).toEqual(withoutPair.second.previous);
+      expect(withPair.second.next).toBe(withoutPair.second.next);
+      const foldIds = ({ fold }: typeof withPair) => ({
+        rows: fold.rows.map(({ id }) => id),
+        newer: Object.fromEntries(
+          Object.entries(fold.newer).map(([id, row]) => [id, row.id]),
+        ),
+        next: fold.next,
+      });
+      expect(foldIds(withPair)).toEqual(foldIds(withoutPair));
+      // The list reads the same, and never a sibling.
+      expect(paired.calls).toEqual(unpaired.calls);
+      expect(paired.calls).not.toContain("findNativeBuildSibling");
+    });
+  },
+);
+
 describe("native build folds past the read budget", () => {
   const core = () =>
     createHotUpdater({

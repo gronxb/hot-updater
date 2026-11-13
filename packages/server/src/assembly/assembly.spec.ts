@@ -171,6 +171,11 @@ describe("createHotUpdater with plugins", () => {
       },
       { method: "POST", path: "/native-builds", access: "admin" },
       { method: "GET", path: "/native-builds/latest", access: "admin" },
+      {
+        method: "GET",
+        path: "/native-builds/:id/sibling",
+        access: "admin",
+      },
       { method: "GET", path: "/native-builds/:id", access: "admin" },
       { method: "GET", path: "/native-builds", access: "admin" },
       {

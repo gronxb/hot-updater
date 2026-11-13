@@ -1,4 +1,5 @@
 import type { NativeBuildRow } from "@hot-updater/plugin-core";
+import { Link } from "@tanstack/react-router";
 import dayjs from "dayjs";
 import { AlertTriangle, ChevronRight, Download } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
@@ -8,6 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { tabsListVariants } from "@/components/ui/tabs";
 import {
   useNativeBuildDownloadLinkQuery,
   useNativeBuildDownloadUrlQuery,
@@ -19,9 +21,11 @@ import {
   nativeBuildSignedDownloadUrl,
 } from "@/lib/native-builds";
 import type { NativeBuildDownloadLinkResult } from "@/lib/server/nativeBuildDownloadLink";
+import { cn } from "@/lib/utils";
 
 import { CopyableText } from "./CopyableText";
 import { IosInstall, useIosDevice } from "./IosInstall";
+import { NAV_TAB_CLASS } from "./NativeBuildsNav";
 import {
   isSubmitted,
   StoreSubmissionBadge,
@@ -340,12 +344,60 @@ function SignedLink({
  * testers through its store. Where the Console can't sign, the QR code holds the
  * storage's URL and the download asks for the session.
  */
-export function InstallCard({ build }: { readonly build: NativeBuildRow }) {
+export function InstallCard({
+  build,
+  sibling = null,
+}: {
+  readonly build: NativeBuildRow;
+  /** The other install target of the same native code, which the card links to. */
+  readonly sibling?: NativeBuildRow | null;
+}) {
   return isSubmitted(build) &&
     (build.artifact_kind === "ipa" || build.artifact_kind === "aab") ? (
     <StoreInstallCard build={build} />
   ) : (
-    <FileInstallCard build={build} />
+    <FileInstallCard build={build} sibling={sibling} />
+  );
+}
+
+/** What each install target is called where a person picks one. */
+const TARGET_LABELS: Partial<Record<NativeBuildRow["artifact_kind"], string>> =
+  { ipa: "iPhone", app: "Simulator" };
+
+/**
+ * The two install targets of one native code, iPhone then Simulator, as links
+ * to each build's own page: everything else on the page is of that build.
+ */
+function InstallTargetSwitch({
+  build,
+  sibling,
+}: {
+  readonly build: NativeBuildRow;
+  readonly sibling: NativeBuildRow;
+}) {
+  const targets = [build, sibling].sort((a) =>
+    a.artifact_kind === "ipa" ? -1 : 1,
+  );
+  return (
+    <nav
+      aria-label="Install target"
+      className={cn(
+        tabsListVariants(),
+        "h-auto min-h-11 shrink-0 sm:h-8 sm:min-h-0 [&>a]:min-h-11 sm:[&>a]:min-h-0",
+      )}
+    >
+      {targets.map((target) => (
+        <Link
+          aria-current={target.id === build.id ? "page" : undefined}
+          className={NAV_TAB_CLASS}
+          key={target.id}
+          params={{ buildId: target.id }}
+          to="/native-builds/$buildId"
+        >
+          {TARGET_LABELS[target.artifact_kind]}
+        </Link>
+      ))}
+    </nav>
   );
 }
 
@@ -378,7 +430,13 @@ function OtherWaysToInstall({ children }: { readonly children: ReactNode }) {
   );
 }
 
-function FileInstallCard({ build }: { readonly build: NativeBuildRow }) {
+function FileInstallCard({
+  build,
+  sibling,
+}: {
+  readonly build: NativeBuildRow;
+  readonly sibling: NativeBuildRow | null;
+}) {
   const link = useNativeBuildDownloadLinkQuery(build.id);
   const signedUrl =
     link.data?.status === "issued"
@@ -399,10 +457,13 @@ function FileInstallCard({ build }: { readonly build: NativeBuildRow }) {
   );
   return (
     <Card className="overflow-hidden shadow-sm">
-      <CardHeader className="border-b px-4 py-3">
+      <CardHeader className="flex flex-row items-center justify-between gap-3 border-b px-4 py-3">
         <CardTitle className="text-sm">
           <h2>Install</h2>
         </CardTitle>
+        {sibling === null ? null : (
+          <InstallTargetSwitch build={build} sibling={sibling} />
+        )}
       </CardHeader>
       {onPhone ? (
         <CardContent className="flex min-w-0 flex-col gap-4 p-4 sm:p-6">

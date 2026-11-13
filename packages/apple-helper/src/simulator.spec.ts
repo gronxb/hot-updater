@@ -156,6 +156,27 @@ describe("installOnSimulator", () => {
     ]);
   });
 
+  it("opens the app through a URL instead, on that simulator", async () => {
+    run.mockResolvedValue({ stdout: "" });
+
+    await installOnSimulator({
+      udid: "A",
+      appPath: "/tmp/App.app",
+      appId: "com.example.app",
+      url: "acme-preview://hot-updater/preview?channel=pr-12",
+    });
+
+    expect(run.mock.calls.map(([, args]) => args)).toEqual([
+      ["simctl", "install", "A", "/tmp/App.app"],
+      [
+        "simctl",
+        "openurl",
+        "A",
+        "acme-preview://hot-updater/preview?channel=pr-12",
+      ],
+    ]);
+  });
+
   it("doesn't open an app that didn't install, and says why", async () => {
     run.mockRejectedValue(
       Object.assign(new Error("failed"), { stderr: "Invalid device: A\n" }),

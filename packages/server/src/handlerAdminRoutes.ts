@@ -620,18 +620,24 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
   // server without these routes.
   // With `buildKey`, the newest build of the scope with that native build key;
   // with `storeBuild=true`, its marked build; with `builtInOlderThan`, its newest
-  // build older than that bundle.
+  // build older than that bundle; with `kind`, its newest build of that
+  // artifact kind (`artifactKind` names a sandbox scope's).
   findNativeBuild: onCore(async (core, request) => {
     const url = new URL(request.url);
     const scope = nativeBuildScopeOf(url);
     const buildKey = url.searchParams.get("buildKey");
     const builtInOlderThan = url.searchParams.get("builtInOlderThan");
+    // Core refuses a kind the platform doesn't build.
+    const kind = url.searchParams.get("kind");
     const options = {
       ...(buildKey === null ? {} : { buildKey }),
       ...(url.searchParams.get("storeBuild") === "true"
         ? { storeBuild: true as const }
         : {}),
       ...(builtInOlderThan === null ? {} : { builtInOlderThan }),
+      ...(kind === null
+        ? {}
+        : { artifactKind: kind as NativeBuildSandboxScope["artifactKind"] }),
     };
     return json({
       data: await refusingInvalid(() =>
@@ -639,6 +645,15 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
           ? core.findNativeBuild(scope)
           : core.findNativeBuild(scope, options),
       ),
+    });
+  }),
+
+  // The other install target of a sandbox build's native code; an unknown ID,
+  // or a build with none, answers 200 with null data.
+  findNativeBuildSibling: onCore(async (core, _request, params) => {
+    const build = await core.getNativeBuild(requireRouteParam(params, "id"));
+    return json({
+      data: build === null ? null : await core.findNativeBuildSibling(build),
     });
   }),
 
@@ -950,6 +965,11 @@ export const ADMIN_ROUTES: readonly {
   },
   { method: "POST", path: "/native-builds", handler: "registerNativeBuild" },
   { method: "GET", path: "/native-builds/latest", handler: "findNativeBuild" },
+  {
+    method: "GET",
+    path: "/native-builds/:id/sibling",
+    handler: "findNativeBuildSibling",
+  },
   { method: "GET", path: "/native-builds/:id", handler: "getNativeBuild" },
   { method: "GET", path: "/native-builds", handler: "listNativeBuilds" },
   {

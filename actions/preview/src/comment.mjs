@@ -88,12 +88,15 @@ export const nativeBuildPageLink = (consoleUrl, id) =>
 
 /**
  * The command that downloads a simulator build, installs it on the booted
- * Simulator, and opens it, in the project with its `hot-updater.config.ts`.
- * The Console's `nativeBuildInstallCommand` shows the same one.
+ * Simulator, and opens it, in the project with its `hot-updater.config.ts`:
+ * with `open`, a sandbox build on that channel's latest bundle, as its QR
+ * code opens it on a phone. The Console's `nativeBuildInstallCommand` shows
+ * the same one without it.
  * @param {string} id
+ * @param {string} [open]
  */
-const nativeBuildInstallCommand = (id) =>
-  `npx hot-updater native-build install ${shellQuote(id)}`;
+const nativeBuildInstallCommand = (id, open) =>
+  `npx hot-updater native-build install ${shellQuote(id)}${open === undefined ? "" : ` --open ${shellQuote(open)}`}`;
 
 /**
  * What a person opens to install a native build: the install command for a
@@ -102,13 +105,23 @@ const nativeBuildInstallCommand = (id) =>
  * Download link.
  * @param {string} consoleUrl
  * @param {{ id: string, artifactKind: ArtifactKind }} nativeBuild
+ * @param {string} [open] The channel a sandbox simulator build opens.
  */
-export const nativeBuildInstallUrl = (consoleUrl, { id, artifactKind }) =>
+export const nativeBuildInstallUrl = (consoleUrl, { id, artifactKind }, open) =>
   artifactKind === "app"
-    ? nativeBuildInstallCommand(id)
+    ? nativeBuildInstallCommand(id, open)
     : artifactKind === "ipa"
       ? nativeBuildPageLink(consoleUrl, id)
       : nativeBuildDownloadLink(consoleUrl, id);
+
+/**
+ * The channel a preview's install command opens: a sandbox Simulator build's,
+ * whose link no Simulator scans; none for any other.
+ * @param {Pick<PlatformPreview, "nativeBuild" | "sandbox">} preview
+ * @param {string} channel
+ */
+export const simulatorOpens = ({ nativeBuild, sandbox }, channel) =>
+  nativeBuild.artifactKind === "app" && sandbox?.link ? channel : undefined;
 
 /**
  * The link a sandbox build opens a channel from, of the URL scheme the build
@@ -134,7 +147,17 @@ export const previewLink = ({
  * @param {PlatformPreview[]} previews
  */
 export const qrCodeValues = (previews) =>
-  previews.flatMap(({ sandbox }) => (sandbox?.link ? [sandbox.link] : []));
+  previews.flatMap((preview) =>
+    isScannable(preview) ? [/** @type {string} */ (preview.sandbox?.link)] : [],
+  );
+
+/**
+ * Whether a phone scans the preview's link: a sandbox build's, but not a
+ * Simulator's, whose install command opens it.
+ * @param {PlatformPreview} preview
+ */
+const isScannable = ({ sandbox, nativeBuild }) =>
+  Boolean(sandbox?.link) && nativeBuild.artifactKind !== "app";
 
 /** Each store's name in the comment, and what its testers do. */
 const STORE_NAMES = {
@@ -159,12 +182,14 @@ const STORE_STATES = {
  * under the comment.
  *
  * @param {string} consoleUrl
+ * @param {string} channel The pull request's channel.
  * @param {PlatformPreview} preview
  */
-const installLinks = (
-  consoleUrl,
-  { nativeBuild: { id, artifactKind }, store },
-) => {
+const installLinks = (consoleUrl, channel, preview) => {
+  const {
+    nativeBuild: { id, artifactKind },
+    store,
+  } = preview;
   const download = nativeBuildDownloadLink(consoleUrl, id);
   const details = `[Details](${nativeBuildPageLink(consoleUrl, id)})`;
   if (store) {
@@ -185,7 +210,10 @@ const installLinks = (
     apk: `[Download APK](${download}) · ${details} · allow "Install unknown apps" when Android asks`,
     aab: `[Download AAB](${download}) · ${details}`,
     ipa: `[Install on iPhone](${nativeBuildPageLink(consoleUrl, id)}) · [Download IPA](${download}) · registered devices only`,
-    app: `${details} · install with the command below`,
+    app:
+      simulatorOpens(preview, channel) === undefined
+        ? `${details} · install with the command below`
+        : `${details} · the command below installs it and opens ${code(channel)}`,
   }[artifactKind];
 };
 
@@ -224,9 +252,13 @@ const footer = (notes, credit) => {
  * build installs that way: an APK once it is downloaded, and a simulator build
  * with the command that downloads it too.
  * @param {PlatformPreview[]} allPreviews
+ * @param {string} channel The pull request's channel.
  */
-const installCommands = (allPreviews) => {
+const installCommands = (allPreviews, channel) => {
   const previews = allPreviews.filter(({ store }) => !store);
+  const opens = previews.some(
+    (preview) => simulatorOpens(preview, channel) !== undefined,
+  );
   /**
    * @param {string} lead
    * @param {string[]} lines
@@ -243,9 +275,18 @@ const installCommands = (allPreviews) => {
       ),
     ),
     ...section(
-      "In your project, this downloads the build, installs it on the booted Simulator, and opens it:",
-      previews.flatMap(({ nativeBuild: { artifactKind, id } }) =>
-        artifactKind === "app" ? [nativeBuildInstallCommand(id)] : [],
+      opens
+        ? `In your project, this downloads the build, installs it on the booted Simulator, and opens the latest bundle on ${code(channel)}:`
+        : "In your project, this downloads the build, installs it on the booted Simulator, and opens it:",
+      previews.flatMap((preview) =>
+        preview.nativeBuild.artifactKind === "app"
+          ? [
+              nativeBuildInstallCommand(
+                preview.nativeBuild.id,
+                simulatorOpens(preview, channel),
+              ),
+            ]
+          : [],
       ),
     ),
   ];
@@ -313,10 +354,10 @@ const buildsTable = (previews) => {
  *   which each bundle's deploy message names too.
  * @param {string | null} [input.repositoryUrl] The repository's web URL, which
  *   the commit links under; without it, the commit is not a link.
- * @param {{ platform: Platform, deployed: boolean }[]} [input.failed] The
- *   platforms that failed on this run, which the comment shows nothing else
- *   of, and names no commit for: `deployed` when the bundle reached the
- *   channel before the failure.
+ * @param {{ platform: Platform, scheme?: string, deployed: boolean }[]} [input.failed]
+ *   The platforms that failed on this run, which the comment shows nothing
+ *   else of, and names no commit for: `deployed` when the bundle reached the
+ *   channel before the failure, and `scheme` when the platform has several.
  * @param {string | null} [input.runUrl] The run's page, which a failed
  *   platform links to.
  * @param {boolean} input.credit Whether to end with "Preview by hot-updater".
@@ -341,10 +382,14 @@ export const renderPreviewComment = ({
   }</sub>`;
   /** @param {PlatformPreview} preview */
   const line = (preview) =>
-    `- **${installLabel(preview)}**: ${installLinks(consoleUrl, preview)}`;
+    `- **${installLabel(preview)}**: ${installLinks(consoleUrl, channel, preview)}`;
   const sandboxes = previews.filter(({ sandbox }) => sandbox);
   const own = previews.filter(({ sandbox }) => !sandbox);
-  const linked = sandboxes.filter(({ sandbox }) => sandbox?.link);
+  // A Simulator build's link opens through its command, not a QR code.
+  const linked = sandboxes.filter(isScannable);
+  const simulator = sandboxes.some(
+    ({ nativeBuild }) => nativeBuild.artifactKind === "app",
+  );
   const older = sandboxes.filter(
     ({ sandbox, bundleId }) =>
       sandbox?.minBundleId && bundleId < sandbox.minBundleId,
@@ -360,8 +405,8 @@ export const renderPreviewComment = ({
     COMMENT_MARKER,
     `### Preview on ${code(channel)}`,
     ...failed.map(
-      ({ platform, deployed }) =>
-        `**${platform === "ios" ? "iOS" : "Android"}** failed on this run${deployed ? ", after deploying its bundle" : ""}${runUrl === null ? "." : `: [see the logs](${runUrl}).`}`,
+      ({ platform, scheme, deployed }) =>
+        `**${platform === "ios" ? "iOS" : "Android"}**${scheme === undefined ? "" : ` (${code(scheme)})`} failed on this run${deployed ? ", after deploying its bundle" : ""}${runUrl === null ? "." : `: [see the logs](${runUrl}).`}`,
     ),
     ...(sandboxes.length === 0
       ? []
@@ -370,7 +415,7 @@ export const renderPreviewComment = ({
           sandboxes.map(line).join("\n"),
           ...reusedFrom.map(
             (from) =>
-              `Sandbox build from ${code(from)}, with the same native code.${linked.length === 0 ? "" : " Already installed? Skip to step 2."}`,
+              `Sandbox build from ${code(from)}, with the same native code.${linked.length === 0 ? "" : simulator ? " Already installed on a phone? Skip to step 2." : " Already installed? Skip to step 2."}`,
           ),
           ...(sandboxes.some(({ built }) => built)
             ? [
@@ -415,7 +460,7 @@ export const renderPreviewComment = ({
     // Without step 2, the commit still goes once, beside a platform it reached.
     ...(linked.length === 0 && previews.length > 0 ? [latestCommit] : []),
     ...(previews.length === 0 ? [] : [buildsTable(previews)]),
-    ...installCommands(previews),
+    ...installCommands(previews, channel),
     ...footer([], credit),
   ].join("\n\n");
 };

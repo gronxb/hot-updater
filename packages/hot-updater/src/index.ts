@@ -369,6 +369,10 @@ nativeBuildCommand
     "--device <serial>",
     "the Android device or emulator, as adb devices lists it (default: ANDROID_SERIAL, or the only one connected)",
   )
+  .option(
+    "--open <channel>",
+    "open the channel's latest bundle in a sandbox Simulator build, as its QR code does on a phone",
+  )
   .option("--json", "output the device and the app as JSON")
   .action(handleNativeBuildInstall);
 

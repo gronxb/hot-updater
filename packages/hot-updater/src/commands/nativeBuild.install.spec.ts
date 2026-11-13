@@ -96,6 +96,7 @@ const register = (
   kind: NativeBuildRegistration["artifact"]["kind"],
   byteSize: number,
   fileName: string,
+  overrides: Partial<NativeBuildRegistration> = {},
 ) =>
   databaseHarness.core.registerNativeBuild({
     id: BUILD_ID,
@@ -104,6 +105,7 @@ const register = (
     channel: "pr-1",
     fingerprintHash: null,
     appVersion: "1.2.0",
+    ...overrides,
     gitCommitHash: null,
     buildKey: null,
     artifact: {
@@ -340,6 +342,112 @@ describe("native-build download and install", () => {
         platform: "ios",
         device: "SIM-A",
         appId: "com.example.app",
+      });
+    });
+
+    describe("--open", () => {
+      /** A sandbox Simulator build of a fingerprint, as the preview makes it. */
+      const registerSandbox = async (
+        overrides: Partial<NativeBuildRegistration> = {},
+      ) => {
+        const bytes = await simulatorApp();
+        await register("app", bytes.byteLength, "App.app.zip", {
+          fingerprintHash: "fingerprint-a",
+          appVersion: null,
+          isSandbox: true,
+          sandboxAppId: "com.example.app",
+          sandboxUrlScheme: "acme-preview",
+          ...overrides,
+        } as Partial<NativeBuildRegistration>);
+        return useStorage(bytes);
+      };
+
+      it("opens the channel's preview link on the selected simulator, instead of launching the app", async () => {
+        await registerSandbox();
+        listSimulators.mockResolvedValue([
+          { udid: "SIM-A", name: "iPhone A", state: "Booted" },
+          { udid: "SIM-B", name: "iPhone B", state: "Booted" },
+        ]);
+        const { handleNativeBuildInstall } = await import("./nativeBuild");
+
+        await handleNativeBuildInstall(BUILD_ID, {
+          json: true,
+          simulator: "SIM-B",
+          open: "pr-12",
+        });
+
+        expect(installOnSimulator).toHaveBeenCalledWith({
+          udid: "SIM-B",
+          appPath: "/extracted/App.app",
+          appId: "com.example.app",
+          url: "acme-preview://hot-updater/preview?channel=pr-12&fingerprint=fingerprint-a&platform=ios",
+        });
+        expect(output()).toMatchObject({ device: "SIM-B", channel: "pr-12" });
+      });
+
+      it("keeps the refusal of several booted simulators and none selected", async () => {
+        const get = await registerSandbox();
+        listSimulators.mockResolvedValue([
+          { udid: "SIM-A", name: "iPhone A", state: "Booted" },
+          { udid: "SIM-B", name: "iPhone B", state: "Booted" },
+        ]);
+        const { handleNativeBuildInstall } = await import("./nativeBuild");
+
+        await expect(
+          handleNativeBuildInstall(BUILD_ID, { open: "pr-12" }),
+        ).rejects.toThrow("process.exit");
+
+        expect(errorMessage()).toContain("Pick one with --simulator <udid>.");
+        expect(get).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        [
+          "a normal build, which opens the channel it embeds",
+          {
+            isSandbox: false,
+            sandboxAppId: undefined,
+            sandboxUrlScheme: undefined,
+          },
+          "This build opens the channel it embeds.\nLeave out --open.",
+        ],
+        [
+          "a build of an app version, which no preview link names",
+          { fingerprintHash: null, appVersion: "1.2.0" },
+          "A preview link names a fingerprint, and this build has an app version.\nLeave out --open, and open the channel in the app.",
+        ],
+      ] as const)(
+        "refuses %s, before any download",
+        async (_, overrides, message) => {
+          const get = await registerSandbox(
+            overrides as Partial<NativeBuildRegistration>,
+          );
+          const { handleNativeBuildInstall } = await import("./nativeBuild");
+
+          await expect(
+            handleNativeBuildInstall(BUILD_ID, { open: "pr-12" }),
+          ).rejects.toThrow("process.exit");
+
+          expect(errorMessage()).toBe(message);
+          expect(get).not.toHaveBeenCalled();
+          expect(installOnSimulator).not.toHaveBeenCalled();
+        },
+      );
+
+      it("refuses an APK: --open is for a Simulator build", async () => {
+        const bytes = await apk("sandbox.axml");
+        await register("apk", bytes.byteLength, "app-sandbox.apk");
+        const get = useStorage(bytes);
+        const { handleNativeBuildInstall } = await import("./nativeBuild");
+
+        await expect(
+          handleNativeBuildInstall(BUILD_ID, { open: "pr-12" }),
+        ).rejects.toThrow("process.exit");
+
+        expect(errorMessage()).toBe(
+          "--open opens a channel in a Simulator build.",
+        );
+        expect(get).not.toHaveBeenCalled();
       });
     });
 

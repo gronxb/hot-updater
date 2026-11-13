@@ -132,13 +132,19 @@ export interface NativeBuildDetail {
   readonly servedNow: readonly ReleaseCatalogDescriptor[];
   /** The newest page of patches from the built-in bundle. */
   readonly patches: NativeBuildPatchPage;
+  /**
+   * The newest build of the other install target of a sandbox iOS build's
+   * native code, its Simulator `.app` or its ad hoc `.ipa`, or null.
+   */
+  readonly sibling: NativeBuildRow | null;
 }
 
 /**
  * Everything a native build's page shows, in six reads at most: the build,
  * then its built-in bundle, its scope's newest build and its mark, which a
  * marked build's own row answers and a sandbox build skips, its scope's
- * catalog, and one page of patches from it. Null for an unknown ID.
+ * catalog, and one page of patches from it. A sandbox iOS build reads one
+ * more, its other install target. Null for an unknown ID.
  */
 export async function getNativeBuildDetail(
   core: Pick<
@@ -148,6 +154,7 @@ export async function getNativeBuildDetail(
     | "findNativeBuild"
     | "getReleaseCatalogRow"
     | "listPatchesFromBase"
+    | "findNativeBuildSibling"
   >,
   id: string,
 ): Promise<NativeBuildDetail | null> {
@@ -157,7 +164,7 @@ export async function getNativeBuildDetail(
   const scope = nativeBuildScope(build);
   // A sandbox build's built-in bundle is no patch base, so its page names
   // none and reads none.
-  const [builtIn, newestInScope, storeBuildInScope, catalog, patches] =
+  const [builtIn, newestInScope, storeBuildInScope, catalog, patches, sibling] =
     await Promise.all([
       core.getBundle(build.min_bundle_id),
       build.is_sandbox ? null : core.findNativeBuild(scope),
@@ -170,6 +177,10 @@ export async function getNativeBuildDetail(
       listNativeBuildPatches(core, build.min_bundle_id, {
         limit: NATIVE_BUILD_PATCH_PAGE_SIZE,
       }),
+      // Only a sandbox iOS build has another install target.
+      build.is_sandbox && build.platform === "ios"
+        ? core.findNativeBuildSibling(build)
+        : null,
     ]);
   const servedNow =
     catalog === null || catalog.is_tombstone
@@ -192,6 +203,7 @@ export async function getNativeBuildDetail(
     storeBuildInScope,
     servedNow,
     patches,
+    sibling,
   };
 }
 

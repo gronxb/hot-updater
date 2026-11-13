@@ -511,6 +511,187 @@ describe("runAction preview", () => {
     );
   });
 
+  describe("one scheme per platform, as before several", () => {
+    it("writes the same commands, outputs, and comment for ordinary schemes", async () => {
+      const fake = fakeCli();
+      const { deps: d, outputs } = deps(fake.cli);
+
+      await runAction(d, env({ INPUT_PLATFORMS: "android, ios" }), event);
+
+      expect(fake.calls).toMatchInlineSnapshot(`
+        [
+          "channel set pr-12",
+          "native-build find -p android -s releaseApk --json",
+          "native-build android --scheme releaseApk --channel pr-12 --json",
+          "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
+          "bundle list -c pr-12 -p android --limit 1 --json",
+          "native-build find -p ios -s simulator --json",
+          "native-build ios --scheme simulator --channel pr-12 --json",
+          "deploy -p ios -c pr-12 -m 0123456 · #12 Fix the header",
+          "bundle list -c pr-12 -p ios --limit 1 --json",
+          "native-build find -p android -c pr-12 -s releaseApk --json",
+          "native-build find -p ios -c pr-12 -s simulator --json",
+        ]
+      `);
+      expect(outputs).toMatchInlineSnapshot(`
+        {
+          "android-download-url": "https://storage.example.com/build-1?sig=1",
+          "android-install-url": "https://console.example.com/api/native-builds/build-1/download",
+          "comment-body": "<!-- hot-updater-preview -->
+
+        ### Preview on \`pr-12\`
+
+        **Install this pull request's build.** It opens the latest bundle on \`pr-12\` on its first launch.
+
+        - **Android**: [Download APK](https://console.example.com/api/native-builds/build-1/download) · [Details](https://console.example.com/native-builds/build-1) · allow "Install unknown apps" when Android asks
+        - **iOS Simulator**: [Details](https://console.example.com/native-builds/build-3) · install with the command below
+
+        <sub>Latest commit: [\`0123456\`](https://github.com/octo/app/commit/0123456789abcdef)</sub>
+
+        <details>
+        <summary>Builds</summary>
+
+        | Platform | Native build | Fingerprint | Bundle |
+        | --- | --- | --- | --- |
+        | Android | \`build-1\` · built for this commit | \`fp-a\` | \`bundle-2\` |
+        | iOS Simulator | \`build-3\` · built for this commit | \`fp-a\` | \`bundle-4\` |
+
+        </details>
+
+        <details>
+        <summary>Install on an emulator or simulator</summary>
+
+        Download the build, then:
+
+        \`\`\`sh
+        adb install -r app-release.apk
+        \`\`\`
+
+        In your project, this downloads the build, installs it on the booted Simulator, and opens it:
+
+        \`\`\`sh
+        npx hot-updater native-build install build-3
+        \`\`\`
+
+        </details>
+
+        <sub>Preview by [hot-updater](https://hot-updater.dev)</sub>",
+          "ios-download-url": "https://storage.example.com/build-3?sig=1",
+          "ios-install-url": "npx hot-updater native-build install build-3",
+          "previews": "[{"platform":"android","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-1","artifactKind":"apk","fileName":"app-release.apk"},"built":true,"bundleId":"bundle-2","installUrl":"https://console.example.com/api/native-builds/build-1/download","downloadUrl":"https://storage.example.com/build-1?sig=1"},{"platform":"ios","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-3","artifactKind":"app","fileName":"App.app.zip"},"built":true,"bundleId":"bundle-4","installUrl":"npx hot-updater native-build install build-3","downloadUrl":"https://storage.example.com/build-3?sig=1"}]",
+        }
+      `);
+    });
+
+    it("passes a scheme whose name has a space as one", async () => {
+      const fake = fakeCli();
+      const { deps: d, outputs } = deps(fake.cli);
+
+      await runAction(
+        d,
+        env({ INPUT_PLATFORMS: "ios", INPUT_IOS_SCHEME: "Ad Hoc" }),
+        event,
+      );
+
+      expect(fake.cli.mock.calls.map(([args]) => args)).toMatchInlineSnapshot(`
+        [
+          [
+            "channel",
+            "set",
+            "pr-12",
+          ],
+          [
+            "native-build",
+            "find",
+            "-p",
+            "ios",
+            "-s",
+            "Ad Hoc",
+            "--json",
+          ],
+          [
+            "native-build",
+            "ios",
+            "--scheme",
+            "Ad Hoc",
+            "--channel",
+            "pr-12",
+            "--json",
+          ],
+          [
+            "deploy",
+            "-p",
+            "ios",
+            "-c",
+            "pr-12",
+            "-m",
+            "0123456 · #12 Fix the header",
+          ],
+          [
+            "bundle",
+            "list",
+            "-c",
+            "pr-12",
+            "-p",
+            "ios",
+            "--limit",
+            "1",
+            "--json",
+          ],
+          [
+            "native-build",
+            "find",
+            "-p",
+            "ios",
+            "-c",
+            "pr-12",
+            "-s",
+            "Ad Hoc",
+            "--json",
+          ],
+        ]
+      `);
+      expect(outputs).toMatchInlineSnapshot(`
+        {
+          "comment-body": "<!-- hot-updater-preview -->
+
+        ### Preview on \`pr-12\`
+
+        **Install this pull request's build.** It opens the latest bundle on \`pr-12\` on its first launch.
+
+        - **iOS Simulator**: [Details](https://console.example.com/native-builds/build-1) · install with the command below
+
+        <sub>Latest commit: [\`0123456\`](https://github.com/octo/app/commit/0123456789abcdef)</sub>
+
+        <details>
+        <summary>Builds</summary>
+
+        | Platform | Native build | Fingerprint | Bundle |
+        | --- | --- | --- | --- |
+        | iOS Simulator | \`build-1\` · built for this commit | \`fp-a\` | \`bundle-2\` |
+
+        </details>
+
+        <details>
+        <summary>Install on an emulator or simulator</summary>
+
+        In your project, this downloads the build, installs it on the booted Simulator, and opens it:
+
+        \`\`\`sh
+        npx hot-updater native-build install build-1
+        \`\`\`
+
+        </details>
+
+        <sub>Preview by [hot-updater](https://hot-updater.dev)</sub>",
+          "ios-download-url": "https://storage.example.com/build-1?sig=1",
+          "ios-install-url": "npx hot-updater native-build install build-1",
+          "previews": "[{"platform":"ios","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-1","artifactKind":"app","fileName":"App.app.zip"},"built":true,"bundleId":"bundle-2","installUrl":"npx hot-updater native-build install build-1","downloadUrl":"https://storage.example.com/build-1?sig=1"}]",
+        }
+      `);
+    });
+  });
+
   it("previews each platform in order, in one comment", async () => {
     const fake = fakeCli();
     const { deps: d, outputs } = deps(fake.cli);
@@ -913,7 +1094,7 @@ describe("parseInputs", () => {
     expect(parseInputs(env(), event)).toEqual({
       consoleUrl: "https://console.example.com",
       platforms: ["android"],
-      schemes: { android: "releaseApk", ios: "simulator" },
+      schemes: { android: ["releaseApk"], ios: ["simulator"] },
       channel: "pr-12",
       submits: {},
       testFlightGroup: null,
@@ -932,6 +1113,38 @@ describe("parseInputs", () => {
     [{ INPUT_ANDROID_SCHEME: "" }, "android-scheme is required"],
   ])("refuses %j", (overrides, message) => {
     expect(() => parseInputs(env(overrides), event)).toThrow(message);
+  });
+
+  it("splits schemes on commas only, so a name keeps its spaces", () => {
+    expect(
+      parseInputs(
+        env({
+          INPUT_IOS_SCHEME: " Ad Hoc ,  simulator,",
+          INPUT_PLATFORMS: "ios",
+        }),
+        event,
+      ).schemes.ios,
+    ).toEqual(["Ad Hoc", "simulator"]);
+  });
+
+  it("refuses several schemes with a store, before touching the channel", async () => {
+    const fake = fakeCli();
+    const { deps: d } = deps(fake.cli);
+
+    await expect(
+      runAction(
+        d,
+        env({
+          INPUT_PLATFORMS: "ios",
+          INPUT_IOS_SCHEME: "sandbox, sandboxSimulator",
+          INPUT_IOS_SUBMIT: "testflight",
+        }),
+        event,
+      ),
+    ).rejects.toThrow(
+      "ios-submit takes one ios-scheme.\nList one scheme, or remove ios-submit.",
+    );
+    expect(fake.calls).toEqual([]);
   });
 
   it("turns the credit line off", () => {

@@ -728,6 +728,11 @@ the app you already have.
   way, the error gives the `adb uninstall` command; it doesn't uninstall anything
   by itself, because that erases the app's data.
 
+A sandbox Simulator build opens a channel's latest bundle with
+`--open <channel>`, as its QR code does on a phone, which is how a
+[pull request preview](/docs/guides/pull-request-previews#add-the-ios-simulator)
+reaches the Simulator.
+
 An `.ipa` or an `.aab` doesn't install this way: the command says what installs
 it. `--json` prints the `device` and the `appId`.
 

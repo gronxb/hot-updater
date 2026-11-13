@@ -394,6 +394,93 @@ const problemOf = ({
   return null;
 };
 
+/** The other install target of an iOS sandbox build's native code. */
+const SIBLING_KINDS: Partial<
+  Record<NativeBuildRow["artifact_kind"], NativeBuildRow["artifact_kind"]>
+> = { app: "ipa", ipa: "app" };
+
+/**
+ * Whether a build is one a person installs from its file: a Simulator `.app`,
+ * or an `.ipa` exported for direct install, that no store took and that isn't
+ * the store build. One rule for a sibling and the build it is found from, so
+ * a build that shows its sibling is shown by it.
+ */
+const isInstallTarget = (
+  build: Pick<
+    NativeBuildRow,
+    "artifact_kind" | "is_store_build" | "submitted_to" | "export_method"
+  >,
+): boolean =>
+  !build.is_store_build &&
+  build.submitted_to === null &&
+  (build.artifact_kind === "app" ||
+    (build.artifact_kind === "ipa" &&
+      build.export_method !== null &&
+      build.export_method !== "app-store"));
+
+/**
+ * The scope key of the other install target of a sandbox build, from its own
+ * key's app ID and URL scheme, which hold no colon, and its row's fingerprint
+ * or app version, through `sandboxScopeKey`; null for a key it didn't make.
+ */
+const siblingSandboxScopeKey = (
+  build: Pick<
+    NativeBuildRow,
+    | "scope_key"
+    | "platform"
+    | "fingerprint_hash"
+    | "app_version"
+    | "artifact_kind"
+    | "export_method"
+  >,
+  artifactKind: NativeBuildRow["artifact_kind"],
+): string | null => {
+  const [version, sandbox, platform, appId, urlScheme] =
+    build.scope_key.split(":");
+  if (
+    version !== "v1" ||
+    sandbox !== "sandbox" ||
+    platform !== build.platform ||
+    appId === undefined ||
+    urlScheme === undefined
+  ) {
+    return null;
+  }
+  const target =
+    build.fingerprint_hash === null
+      ? {
+          platform: build.platform,
+          fingerprintHash: null,
+          appVersion: build.app_version ?? "",
+        }
+      : {
+          platform: build.platform,
+          fingerprintHash: build.fingerprint_hash,
+          appVersion: null,
+        };
+  try {
+    const own = sandboxScopeKey(target, {
+      appId,
+      urlScheme,
+      artifactKind: build.artifact_kind,
+      distribution: registeredDistribution(
+        build.artifact_kind,
+        build.export_method,
+      ),
+    });
+    return own === build.scope_key
+      ? sandboxScopeKey(target, {
+          appId,
+          urlScheme,
+          artifactKind,
+          distribution: "direct",
+        })
+      : null;
+  } catch {
+    return null;
+  }
+};
+
 /** The native build registry: core's `native_builds` and the built-in bundle rows. */
 export const createNativeBuildApi = (
   db: CoreDatabase,
@@ -403,6 +490,7 @@ export const createNativeBuildApi = (
   | "registerNativeBuild"
   | "getNativeBuild"
   | "findNativeBuild"
+  | "findNativeBuildSibling"
   | "listNativeBuilds"
   | "deleteNativeBuild"
   | "recordNativeBuildSubmission"
@@ -492,6 +580,17 @@ export const createNativeBuildApi = (
         "Invalid native build key: it must be nbk1: and a SHA-256.",
       );
     }
+    const artifactKind = options?.artifactKind;
+    if (
+      artifactKind !== undefined &&
+      !(ARTIFACT_KINDS[scope.platform] as readonly string[]).includes(
+        artifactKind,
+      )
+    ) {
+      throw new NativeBuildInputError(
+        `Invalid native build kind: an ${scope.platform} build is ${ARTIFACT_KINDS[scope.platform].join(" or ")}.`,
+      );
+    }
     if (options?.storeBuild) {
       const marked = await db.findOne("native_builds", {
         store_build_scope_key: scopeKey,
@@ -506,17 +605,23 @@ export const createNativeBuildApi = (
         limit,
         ...(before === undefined ? {} : { range: { lt: before } }),
       };
-      return buildKey === undefined
+      return buildKey !== undefined
         ? db.findMany("native_builds", {
-            index: "byScope",
-            where: { scope_key: scopeKey },
-            ...page,
-          })
-        : db.findMany("native_builds", {
             index: "byBuildKey",
             where: { scope_key: scopeKey, build_key: buildKey },
             ...page,
-          });
+          })
+        : artifactKind !== undefined
+          ? db.findMany("native_builds", {
+              index: "byScopeKind",
+              where: { scope_key: scopeKey, artifact_kind: artifactKind },
+              ...page,
+            })
+          : db.findMany("native_builds", {
+              index: "byScope",
+              where: { scope_key: scopeKey },
+              ...page,
+            });
     };
     const bundleId = options?.builtInOlderThan;
     // A deploy's patch base: never a sandbox build's built-in bundle, so a
@@ -529,10 +634,27 @@ export const createNativeBuildApi = (
       return null;
     }
     const { rows } = await read(1);
-    const newest = rows[0];
+    const indexed = rows[0] === undefined ? undefined : pick(rows[0]);
+    // A row written before `byScopeKind` is in `byScope` alone, on a store
+    // that indexes rows as they are written: the scope's newest row stands
+    // for it when it is of the kind.
+    const newest =
+      indexed ??
+      (artifactKind !== undefined && buildKey === undefined
+        ? await db
+            .findMany("native_builds", {
+              index: "byScope",
+              where: { scope_key: scopeKey },
+              order: "desc",
+              limit: 1,
+            })
+            .then(({ rows: [row] }) =>
+              row?.artifact_kind === artifactKind ? pick(row) : undefined,
+            )
+        : undefined);
     if (newest === undefined) return null;
     if (bundleId === undefined || newest.min_bundle_id < bundleId) {
-      return pick(newest);
+      return newest;
     }
     // A build made after the bundle can't take it. No index orders a scope by
     // its built-in bundles, so the older builds are read a page at a time
@@ -549,6 +671,29 @@ export const createNativeBuildApi = (
       if (older.length < OLDER_BUILDS_PAGE || last === undefined) return null;
       before = last.id;
     }
+  },
+
+  async findNativeBuildSibling(build) {
+    const artifactKind = SIBLING_KINDS[build.artifact_kind];
+    if (
+      build.platform !== "ios" ||
+      !build.is_sandbox ||
+      artifactKind === undefined ||
+      !isInstallTarget(build)
+    ) {
+      return null;
+    }
+    const scopeKey = siblingSandboxScopeKey(build, artifactKind);
+    if (scopeKey === null) return null;
+    // The newest, so one rebuilt for a newly registered iPhone wins.
+    const { rows } = await db.findMany("native_builds", {
+      index: "byScope",
+      where: { scope_key: scopeKey },
+      order: "desc",
+      limit: 1,
+    });
+    const sibling = rows[0] === undefined ? null : pick(rows[0]);
+    return sibling !== null && isInstallTarget(sibling) ? sibling : null;
   },
 
   async recordNativeBuildSubmission(id, { destination, version }) {

@@ -8,7 +8,11 @@ import type { NativeBuildDetail } from "@/lib/server/nativeBuilds";
 
 import { NativeBuildDetailPage } from "./NativeBuildDetailPage";
 
-const { detailQuery } = vi.hoisted(() => ({ detailQuery: vi.fn() }));
+const { detailQuery, installCards } = vi.hoisted(() => ({
+  detailQuery: vi.fn(),
+  /** Each Install card mounted, by its build and sibling. */
+  installCards: [] as { build: string; sibling: string | null }[],
+}));
 
 vi.mock("@/lib/api", () => ({
   useNativeBuildDetailQuery: detailQuery,
@@ -23,7 +27,24 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 // The header is under test; the cards have their own specs.
 vi.mock("./BuiltInBundleCard", () => ({ BuiltInBundleCard: () => null }));
-vi.mock("./InstallCard", () => ({ InstallCard: () => null }));
+vi.mock("./InstallCard", async () => {
+  const { useState } = await import("react");
+  return {
+    InstallCard: ({
+      build,
+      sibling,
+    }: {
+      build: NativeBuildRow;
+      sibling: NativeBuildRow | null;
+    }) => {
+      // Runs once a mount, as the card's own state starts.
+      useState(() =>
+        installCards.push({ build: build.id, sibling: sibling?.id ?? null }),
+      );
+      return null;
+    },
+  };
+});
 vi.mock("./IpaDevicesCard", () => ({
   IpaDevicesCard: () => <p>Devices in this build</p>,
 }));
@@ -33,6 +54,7 @@ vi.mock("./ServedNowCard", () => ({ ServedNowCard: () => null }));
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  installCards.length = 0;
 });
 
 const build = (overrides: Partial<NativeBuildRow>): NativeBuildRow => ({
@@ -60,18 +82,26 @@ const build = (overrides: Partial<NativeBuildRow>): NativeBuildRow => ({
   ...overrides,
 });
 
+const detailOf = (
+  row: NativeBuildRow,
+  channel: string,
+  sibling: NativeBuildRow | null = null,
+) =>
+  ({
+    build: row,
+    channel,
+    catalogScopeKey: "scope",
+    builtInBundle: { childCount: 0 },
+    newestInScope: row,
+    storeBuildInScope: null,
+    servedNow: [],
+    patches: { data: [] },
+    sibling,
+  }) satisfies NativeBuildDetail;
+
 const show = (row: NativeBuildRow, channel: string) => {
   detailQuery.mockReturnValue({
-    data: {
-      build: row,
-      channel,
-      catalogScopeKey: "scope",
-      builtInBundle: { childCount: 0 },
-      newestInScope: row,
-      storeBuildInScope: null,
-      servedNow: [],
-      patches: { data: [] },
-    } satisfies NativeBuildDetail,
+    data: detailOf(row, channel),
     isError: false,
   });
   render(
@@ -85,6 +115,43 @@ const show = (row: NativeBuildRow, channel: string) => {
 };
 
 describe("NativeBuildDetailPage", () => {
+  it("hands the Install card the sibling, and starts it afresh on the sibling's page", () => {
+    const ipa = build({ is_sandbox: true, export_method: "ad-hoc" });
+    const app = build({
+      id: "019a0000-0000-7000-8000-000000000009",
+      artifact_kind: "app",
+      is_sandbox: true,
+    });
+    detailQuery.mockReturnValue({
+      data: detailOf(ipa, "pr-130", app),
+      isError: false,
+    });
+    const page = render(
+      <NativeBuildDetailPage
+        buildId={ipa.id}
+        onSearchChange={vi.fn()}
+        search={{}}
+      />,
+    );
+    detailQuery.mockReturnValue({
+      data: detailOf(app, "pr-131", ipa),
+      isError: false,
+    });
+    page.rerender(
+      <NativeBuildDetailPage
+        buildId={app.id}
+        onSearchChange={vi.fn()}
+        search={{}}
+      />,
+    );
+
+    // The route keeps the page mounted; the card's state is the build's own.
+    expect(installCards).toEqual([
+      { build: ipa.id, sibling: app.id },
+      { build: app.id, sibling: ipa.id },
+    ]);
+  });
+
   it("tags a sandbox build in its title, beside its kind and before its channel", () => {
     const title = show(build({ is_sandbox: true }), "pr-130");
     expect(title.textContent).toMatch(/^iOS IPA\s*Sandbox\s*·\s*pr-130/);

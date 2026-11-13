@@ -271,6 +271,57 @@ describe("getNativeBuildDetail", () => {
     expect(calls).toEqual(["getNativeBuild"]);
   });
 
+  it("reads a sandbox iOS build's other install target once, and no other build's", async () => {
+    const memory = memoryCore();
+    const sandbox = (
+      n: number,
+      kind: "ipa" | "app",
+      channel: string,
+    ): NativeBuildRegistration =>
+      ({
+        platform: "ios",
+        channel,
+        fingerprintHash: "fp-a",
+        appVersion: null,
+        isSandbox: true,
+        sandboxUrlScheme: "acme-preview",
+        sandboxAppId: "com.example.app",
+        exportMethod: kind === "ipa" ? "ad-hoc" : null,
+        id: buildId(n),
+        minBundleId: id(n),
+        gitCommitHash: null,
+        buildKey: null,
+        artifact: {
+          kind,
+          storageUri: `s3://bucket/native-builds/ios/${buildId(n)}/App.${kind === "ipa" ? "ipa" : "app.zip"}`,
+          byteSize: 1_000,
+        },
+        embeddedBundle: {
+          manifestStorageUri: `s3://bucket/${id(n)}/manifest.json`,
+          manifestFileHash: `manifest-${id(n)}`,
+          assetBaseStorageUri: "s3://bucket/assets",
+        },
+      }) as NativeBuildRegistration;
+    await memory.registerNativeBuild(sandbox(1, "ipa", "pr-1"));
+    await memory.registerNativeBuild(sandbox(2, "app", "pr-2"));
+    await register(memory, 3, id(13));
+    const { core, calls } = counted(memory);
+
+    expect((await getNativeBuildDetail(core, buildId(1)))?.sibling?.id).toBe(
+      buildId(2),
+    );
+    expect((await getNativeBuildDetail(core, buildId(2)))?.sibling?.id).toBe(
+      buildId(1),
+    );
+    expect(
+      calls.filter((name) => name === "findNativeBuildSibling"),
+    ).toHaveLength(2);
+
+    calls.length = 0;
+    expect((await getNativeBuildDetail(core, buildId(3)))?.sibling).toBeNull();
+    expect(calls).not.toContain("findNativeBuildSibling");
+  });
+
   it("reads the scope's mark only for a build that doesn't hold it", async () => {
     const memory = memoryCore();
     await register(memory, 1, id(10));

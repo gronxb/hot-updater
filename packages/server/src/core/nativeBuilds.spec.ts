@@ -1459,6 +1459,212 @@ describe("sandbox builds on any channel", () => {
   });
 });
 
+describe("a scope's builds of one kind", () => {
+  const scope = {
+    platform: "ios",
+    channel: "production",
+    fingerprintHash: "fingerprint-a",
+    appVersion: null,
+  } as const;
+  const app = (n: number, overrides: Partial<NativeBuildRegistration> = {}) =>
+    registration(n, {
+      artifact: {
+        kind: "app",
+        storageUri: `storage://native-builds/ios/${buildId(n)}/App.app.zip`,
+        byteSize: 1_000 + n,
+      },
+      ...overrides,
+    });
+
+  /**
+   * A store that indexes rows as it writes them, holding rows `legacy` names
+   * in every index but `byScopeKind`, as it does rows written before it.
+   */
+  const setupWithLegacy = (legacy: ReadonlySet<string>) => {
+    const adapter = createMemoryAdapter();
+    let clock = 1_000;
+    return createInProcessCoreApi(
+      {
+        ...adapter,
+        query: async (table, request) => {
+          const rows = await adapter.query(table, request);
+          return request.index.endsWith("byScopeKind")
+            ? rows.filter(({ id }) => !legacy.has(id as string))
+            : rows;
+        },
+      },
+      { now: () => (clock += 1) },
+    );
+  };
+
+  it("finds an .ipa past a newer .app of its scope, which the newest read still answers", async () => {
+    const core = setup();
+    const ipa = await core.registerNativeBuild(registration(1));
+    const simulator = await core.registerNativeBuild(app(2));
+
+    expect(await core.findNativeBuild(scope, { artifactKind: "ipa" })).toEqual(
+      ipa,
+    );
+    expect(await core.findNativeBuild(scope, { artifactKind: "app" })).toEqual(
+      simulator,
+    );
+    expect(await core.findNativeBuild(scope)).toEqual(simulator);
+  });
+
+  it("finds a row written before the kind index through the scope's newest, of that kind only", async () => {
+    const core = setupWithLegacy(new Set([buildId(1), buildId(2)]));
+    const ipa = await core.registerNativeBuild(registration(1));
+    // A cached Simulator build, which a cache hit reuses and never rewrites.
+    const simulator = await core.registerNativeBuild(app(2));
+
+    expect(await core.findNativeBuild(scope, { artifactKind: "app" })).toEqual(
+      simulator,
+    );
+    // The older .ipa is found again once a build of the kind registers.
+    expect(
+      await core.findNativeBuild(scope, { artifactKind: "ipa" }),
+    ).toBeNull();
+    const rebuilt = await core.registerNativeBuild(registration(3));
+    expect(await core.findNativeBuild(scope, { artifactKind: "ipa" })).toEqual(
+      rebuilt,
+    );
+    expect(ipa.artifact_kind).toBe("ipa");
+  });
+
+  it("refuses a kind the platform doesn't build", async () => {
+    const core = setup();
+    await expect(
+      core.findNativeBuild(scope, { artifactKind: "apk" }),
+    ).rejects.toThrow(NativeBuildInputError);
+  });
+});
+
+describe("the other install target of a sandbox build", () => {
+  const simulator = (
+    n: number,
+    overrides: Partial<NativeBuildRegistration> = {},
+  ) =>
+    sandboxRegistration(n, {
+      channel: "pr-140",
+      exportMethod: null,
+      artifact: {
+        kind: "app",
+        storageUri: `storage://native-builds/ios/${buildId(n)}/App.app.zip`,
+        byteSize: 1_000 + n,
+      },
+      ...overrides,
+    });
+
+  it("pairs an ad hoc .ipa and a Simulator .app of the same app and fingerprint, on any channel", async () => {
+    const core = setup();
+    const ipa = await core.registerNativeBuild(sandboxRegistration(1));
+    const app = await core.registerNativeBuild(simulator(2));
+
+    expect(await core.findNativeBuildSibling(ipa)).toEqual(app);
+    expect(await core.findNativeBuildSibling(app)).toEqual(ipa);
+  });
+
+  it("pairs builds of the app-version strategy by their exact app version", async () => {
+    const core = setup();
+    const target = { fingerprintHash: null, appVersion: "1.4.0" } as const;
+    const ipa = await core.registerNativeBuild(sandboxRegistration(1, target));
+    const app = await core.registerNativeBuild(simulator(2, target));
+    await core.registerNativeBuild(
+      simulator(3, { fingerprintHash: null, appVersion: "1.5.0" }),
+    );
+
+    expect(await core.findNativeBuildSibling(ipa)).toEqual(app);
+  });
+
+  it("answers the newest, so an .ipa rebuilt for a new iPhone wins", async () => {
+    const core = setup();
+    await core.registerNativeBuild(sandboxRegistration(1));
+    const app = await core.registerNativeBuild(simulator(2));
+    const rebuilt = await core.registerNativeBuild(sandboxRegistration(3));
+
+    expect(await core.findNativeBuildSibling(app)).toEqual(rebuilt);
+  });
+
+  it("pairs nothing of another fingerprint or app", async () => {
+    const core = setup();
+    const ipa = await core.registerNativeBuild(sandboxRegistration(1));
+    await core.registerNativeBuild(
+      simulator(2, { fingerprintHash: "fingerprint-b" }),
+    );
+    await core.registerNativeBuild(
+      simulator(3, {
+        sandboxAppId: "com.example.other",
+        sandboxUrlScheme: "other-preview",
+      }),
+    );
+
+    expect(await core.findNativeBuildSibling(ipa)).toBeNull();
+  });
+
+  it("pairs no normal build, which records no app", async () => {
+    const core = setup();
+    const ipa = await core.registerNativeBuild(registration(1));
+    const app = await core.registerNativeBuild(
+      registration(2, {
+        artifact: {
+          kind: "app",
+          storageUri: "storage://native-builds/ios/2/App.app.zip",
+          byteSize: 2,
+        },
+      }),
+    );
+
+    expect(await core.findNativeBuildSibling(ipa)).toBeNull();
+    expect(await core.findNativeBuildSibling(app)).toBeNull();
+  });
+
+  it("pairs neither way with a store-marked ad hoc .ipa", async () => {
+    const { core, db } = setupWithDb();
+    await core.registerNativeBuild(sandboxRegistration(1));
+    const app = await core.registerNativeBuild(simulator(2));
+    await setRow(db, buildId(1), { is_store_build: true });
+    const marked = (await core.getNativeBuild(buildId(1)))!;
+
+    expect(marked.is_store_build).toBe(true);
+    expect(await core.findNativeBuildSibling(app)).toBeNull();
+    expect(await core.findNativeBuildSibling(marked)).toBeNull();
+  });
+
+  it("pairs neither way with an .ipa a store took, or one exported for the App Store", async () => {
+    const core = setup();
+    await core.registerNativeBuild(sandboxRegistration(1));
+    const app = await core.registerNativeBuild(simulator(2));
+    const submitted = await core.recordNativeBuildSubmission(buildId(1), {
+      destination: "testflight",
+      version: "1.0 (1)",
+    });
+    const store = await core.registerNativeBuild(
+      sandboxRegistration(3, { exportMethod: "app-store" }),
+    );
+
+    expect(await core.findNativeBuildSibling(app)).toBeNull();
+    expect(await core.findNativeBuildSibling(submitted!)).toBeNull();
+    expect(await core.findNativeBuildSibling(store)).toBeNull();
+  });
+
+  it("pairs no Android build", async () => {
+    const core = setup();
+    const apk = await core.registerNativeBuild(
+      sandboxRegistration(1, {
+        platform: "android",
+        exportMethod: null,
+        artifact: {
+          kind: "apk",
+          storageUri: "storage://native-builds/android/1/app.apk",
+          byteSize: 1,
+        },
+      }),
+    );
+
+    expect(await core.findNativeBuildSibling(apk)).toBeNull();
+  });
+});
+
 describe("a built-in bundle row and released SDKs", () => {
   // A device on a release build reports its MIN_BUNDLE_ID as its current
   // bundle, which the server already looks up. Registering the build makes
