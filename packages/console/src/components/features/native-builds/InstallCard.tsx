@@ -375,9 +375,8 @@ function InstallTargetSwitch({
   readonly build: NativeBuildRow;
   readonly sibling: NativeBuildRow;
 }) {
-  const targets = [build, sibling].sort((a) =>
-    a.artifact_kind === "ipa" ? -1 : 1,
-  );
+  const targets =
+    build.artifact_kind === "ipa" ? [build, sibling] : [sibling, build];
   return (
     <nav
       aria-label="Install target"

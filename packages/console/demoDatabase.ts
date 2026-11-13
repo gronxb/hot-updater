@@ -721,6 +721,8 @@ type DemoNativeBuild = {
   readonly nativeAppVersion?: string | null;
   /** The demo bundles that patch from this build's built-in bundle. */
   readonly patchTargets?: readonly DemoDeployment[];
+  /** The artifact's file name, when it isn't its kind's usual one. */
+  readonly fileName?: string;
 };
 const nativeBuildId = (n: number) =>
   `019f6300-0000-7000-8000-${String(n).padStart(12, "0")}`;
@@ -942,6 +944,32 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     exportMethod: "ad-hoc",
     gitCommitHash: "c3d9e0f1",
   },
+  // A sandbox scheme's two direct installs of one native code: an ad hoc IPA
+  // for registered iPhones, and a Simulator app another pull request made.
+  {
+    n: 42,
+    platform: "ios",
+    channel: "pr-139",
+    target: { fingerprint: "fp-ios-sandbox-direct" },
+    nativeAppVersion: "1.6.0",
+    minBundleId: "019f6300-00d0-7000-8000-000000000000",
+    kind: "ipa",
+    exportMethod: "ad-hoc",
+    gitCommitHash: "e4f5a6b7",
+    sandbox: true,
+  },
+  {
+    n: 43,
+    platform: "ios",
+    channel: "pr-140",
+    target: { fingerprint: "fp-ios-sandbox-direct" },
+    nativeAppVersion: "1.6.0",
+    minBundleId: "019f6300-00d1-7000-8000-000000000000",
+    kind: "app",
+    gitCommitHash: "f5a6b7c8",
+    sandbox: true,
+    fileName: "HotUpdaterExampleSandbox-Release-iphonesimulator.app.zip",
+  },
   // Newer pull request builds, so the first page ends in a fold.
   ...Array.from(
     { length: 8 },
@@ -960,7 +988,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
 ];
 for (const build of demoNativeBuilds) {
   const id = nativeBuildId(build.n);
-  const file = artifactFile[build.kind];
+  const file = build.fileName ?? artifactFile[build.kind];
   await core.registerNativeBuild({
     id,
     platform: build.platform,

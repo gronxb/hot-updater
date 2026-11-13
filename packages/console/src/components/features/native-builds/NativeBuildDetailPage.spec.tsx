@@ -145,6 +145,18 @@ describe("NativeBuildDetailPage", () => {
       />,
     );
 
+    // While the sibling's page loads, no card is shown, so no segment of
+    // the build left behind stays marked as the current one.
+    detailQuery.mockReturnValue({ data: undefined, isError: false });
+    page.rerender(
+      <NativeBuildDetailPage
+        buildId="019a0000-0000-7000-8000-000000000008"
+        onSearchChange={vi.fn()}
+        search={{}}
+      />,
+    );
+    expect(screen.getByText("Loading the native build")).toBeTruthy();
+    expect(installCards).toHaveLength(2);
     // The route keeps the page mounted; the card's state is the build's own.
     expect(installCards).toEqual([
       { build: ipa.id, sibling: app.id },
