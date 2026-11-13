@@ -572,15 +572,15 @@ A scheme that sets the app version at build time, such as in an `xcconfig`,
 builds a version the project doesn't declare, so its preview builds again on
 every run.
 
-### Expo
+## Expo
 
 An Expo project that generates its native projects at build time, with no
 `ios` or `android` directory in git, embeds the channel the
 `@hot-updater/expo` config plugin sets: the native build's prebuild writes
-the native projects, so `channel set` changes nothing. Without the pull
-request's channel there, the build embeds `production`, and the action fails,
-since it checks the channel the build embeds. Read the channel from an
-environment variable in your own `app.config.ts`:
+the native projects, so `channel set` changes nothing. Every build a preview
+makes, a sandbox build too, embeds the pull request's channel. Without it
+there, the build embeds `production`, and the action fails before it deploys.
+Read the channel from an environment variable in your own `app.config.ts`:
 
 ```ts title="app.config.ts"
 export default {

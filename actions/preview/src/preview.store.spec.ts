@@ -296,6 +296,14 @@ describe("a preview with ios-submit", () => {
     expect(fake.calls.some(([command]) => command === "deploy")).toBe(false);
   });
 
+  it("fails a new store build that embeds the config plugin's production, not the pull request's channel", async () => {
+    const fake = fakeCli({ channel: "production", builtChannel: "production" });
+    await expect(run(fake)).rejects.toThrow(
+      "native-build ios built a native build that embeds the production channel, not pr-12. An Expo project sets the channel in the @hot-updater/expo config plugin, such as from a PREVIEW_CHANNEL variable the job sets to pr-12.",
+    );
+    expect(fake.calls.some(([command]) => command === "deploy")).toBe(false);
+  });
+
   it("keeps the store build on the closed pull request's cleanup", async () => {
     const fake = fakeCli();
     fake.cli.mockImplementation(async (args: string[]) => {

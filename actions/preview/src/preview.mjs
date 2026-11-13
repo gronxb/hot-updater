@@ -365,11 +365,7 @@ const findOrSubmitStoreBuild = async (
     },
     { buildLogOutput: `${platform}-build-log` },
   );
-  if (built.build.channel !== found.channel) {
-    throw new Error(
-      `native-build ${platform} built a native build that embeds the ${built.build.channel} channel, not ${found.channel}.`,
-    );
-  }
+  assertEmbedsChannel(platform, built.build.channel, inputs.channel);
   if (built.nativeBuild === null) {
     throw new Error(`native-build ${platform} tracked no native build.`);
   }
@@ -501,7 +497,6 @@ const previewPlatform = async (deps, inputs, event, platform, onDeployed) => {
     const { preview } = await deployOnNativeBuild(deps, inputs, event, {
       platform,
       scheme,
-      channel: inputs.channel,
       onDeployed,
       // A config plugin can decide the channel, whatever `channel set` wrote.
       found:
@@ -515,10 +510,11 @@ const previewPlatform = async (deps, inputs, event, platform, onDeployed) => {
     });
     return preview;
   }
+  // A new sandbox build is one more build of the pull request's channel; a
+  // found one may embed another pull request's.
   const { preview, build } = await deployOnNativeBuild(deps, inputs, event, {
     platform,
     scheme,
-    channel: found.channel,
     found,
     onDeployed,
   });
@@ -536,8 +532,26 @@ const previewPlatform = async (deps, inputs, event, platform, onDeployed) => {
 };
 
 /**
+ * Refuses a native build this run made that embeds another channel than the
+ * pull request's, as one an Expo config plugin pins does, before anything is
+ * deployed: every build a preview makes, a sandbox build too, is one more
+ * build of the pull request's channel.
+ *
+ * @param {Platform} platform
+ * @param {string} embedded
+ * @param {string} channel The pull request's channel.
+ */
+const assertEmbedsChannel = (platform, embedded, channel) => {
+  if (embedded !== channel) {
+    throw new Error(
+      `native-build ${platform} built a native build that embeds the ${embedded} channel, not ${channel}. An Expo project sets the channel in the @hot-updater/expo config plugin, such as from a PREVIEW_CHANNEL variable the job sets to ${channel}.`,
+    );
+  }
+};
+
+/**
  * Deploys the pull request's bundle after finding, or building and tracking,
- * a native build of the scheme that embeds `channel`: a sandbox scheme's
+ * a native build of the scheme that embeds the pull request's channel: a sandbox scheme's
  * found build may embed another pull request's. A found ad hoc `.ipa` that
  * lacks a device approved since it was built, or whose profile expired or
  * can't be read, is built again past the cache, which would hand back the
@@ -546,14 +560,14 @@ const previewPlatform = async (deps, inputs, event, platform, onDeployed) => {
  * @param {Deps} deps
  * @param {Inputs} inputs
  * @param {PullRequestEvent} event
- * @param {{ platform: Platform, scheme: string, channel: string, found: import("../../shared/nativeBuild.mjs").NativeBuildFindResult, onDeployed: () => void }} options
+ * @param {{ platform: Platform, scheme: string, found: import("../../shared/nativeBuild.mjs").NativeBuildFindResult, onDeployed: () => void }} options
  * @returns {Promise<{ preview: PlatformPreview & { installUrl: string }, build: NativeBuildRow }>}
  */
 const deployOnNativeBuild = async (
   deps,
   inputs,
   event,
-  { platform, scheme, channel, found, onDeployed },
+  { platform, scheme, found, onDeployed },
 ) => {
   /** @type {import("../../shared/nativeBuild.mjs").BuildTarget} */
   let target = {
@@ -582,7 +596,7 @@ const deployOnNativeBuild = async (
                 ? "has an expired profile"
                 : "has a profile that can't be read"
           }.`
-        : `Building ${platform}: no native build on ${channel} has ${describeTarget(found)}.`,
+        : `Building ${platform}: no native build on ${inputs.channel} has ${describeTarget(found)}.`,
     );
     const since = Date.now();
     // Every native build is tracked, so the preview can install it.
@@ -599,13 +613,7 @@ const deployOnNativeBuild = async (
         throw error;
       })
     );
-    if (registered.build.channel !== channel) {
-      throw new Error(
-        channel === inputs.channel
-          ? `native-build ${platform} built a native build that embeds the ${registered.build.channel} channel, not ${channel}. An Expo project sets the channel in the @hot-updater/expo config plugin, such as from a PREVIEW_CHANNEL variable the job sets to ${channel}.`
-          : `native-build ${platform} built a native build that embeds the ${registered.build.channel} channel, not ${channel}.`,
-      );
-    }
+    assertEmbedsChannel(platform, registered.build.channel, inputs.channel);
     if (registered.nativeBuild === null) {
       throw new Error(
         registered.registration?.skipped === "debug"

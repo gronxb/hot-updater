@@ -627,6 +627,67 @@ describe("no sandbox build at all", () => {
   });
 });
 
+describe("an Expo project whose config plugin keeps its own channel", () => {
+  /** `channel set` changes nothing: the config plugin embeds production. */
+  const expo = (builds: Build[] = []) => {
+    const fake = fakeCli({ builds });
+    const cli = fake.cli.getMockImplementation()!;
+    fake.cli.mockImplementation(async (args: string[]) =>
+      args[0] === "channel" && args[1] === "set"
+        ? { code: 0, stdout: "" }
+        : cli(args),
+    );
+    return fake;
+  };
+
+  it("fails a new sandbox build that embeds production, with the config plugin's fix, and deploys nothing", async () => {
+    const fake = expo();
+
+    await expect(run(fake)).rejects.toThrow(
+      "native-build android built a native build that embeds the production channel, not pr-12. An Expo project sets the channel in the @hot-updater/expo config plugin, such as from a PREVIEW_CHANNEL variable the job sets to pr-12.",
+    );
+    expect(fake.builds).toMatchObject([{ channel: "production" }]);
+    expect(fake.calls.some((call) => call.startsWith("deploy"))).toBe(false);
+  });
+
+  it("names the pull request's channel when it builds", async () => {
+    const fake = expo();
+    const info = vi.fn();
+
+    await runAction(
+      {
+        cli: fake.cli,
+        buildLogs: vi.fn(() => []),
+        github: null,
+        setOutput: vi.fn(),
+        log: {
+          info,
+          notice: vi.fn(),
+          error: vi.fn(),
+          group: <T>(_: string, body: () => Promise<T>) => body(),
+        },
+      } as never,
+      env({ INPUT_COMMENT: "false" }),
+      event,
+    ).catch(() => {});
+
+    expect(info).toHaveBeenCalledWith(
+      `Building android: no native build on pr-12 has fingerprint ${FINGERPRINT}.`,
+    );
+  });
+
+  it("still reuses a sandbox build another pull request made", async () => {
+    const fake = expo([{ ...sandboxBuild(), channel: "pr-120" }]);
+
+    const { body } = await run(fake);
+
+    expect(fake.calls).toContain(
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
+    );
+    expect(body).toContain("Sandbox build from `pr-120`");
+  });
+});
+
 describe("the URL scheme a sandbox scheme sets", () => {
   const custom = `acme-preview://hot-updater/preview?channel=pr-12&fingerprint=${FINGERPRINT}&platform=android`;
 
