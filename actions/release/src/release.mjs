@@ -173,24 +173,6 @@ export const formatDecision = (result) =>
   );
 
 /**
- * Sets the release's channel in the native project, and refuses to build when
- * the build would still embed another, as an Expo project's config plugin may.
- * A submitted build can't be taken back, so this runs before the build.
- *
- * @param {Deps} deps
- * @param {{ platform: Platform, scheme: string, channel: string }} options
- */
-const embedChannel = async (deps, { platform, scheme, channel }) => {
-  await deps.cli(["channel", "set", channel]);
-  const project = await findNativeBuild(deps, { platform, scheme });
-  if (project.channel !== channel) {
-    throw new Error(
-      `The ${platform} build would embed the ${project.channel} channel, not ${channel}. An Expo project sets it in the @hot-updater/expo config plugin.`,
-    );
-  }
-};
-
-/**
  * Builds, tracks, and submits one platform's native build.
  *
  * @param {Deps} deps
@@ -203,12 +185,18 @@ const buildPlatform = async (deps, inputs, env, result, channel) => {
   const { platform, scheme } = result;
   const store = STORES[platform];
   assertBuildRunner(platform, env);
-  if (inputs.channel !== null) {
-    await embedChannel(deps, { platform, scheme, channel: inputs.channel });
-  }
+  // The channel input is the one the build embeds, whatever the project or an
+  // Expo config plugin sets: --channel stamps it into the artifact.
   const built = await runNativeBuild(
     deps,
-    { platform, scheme, submit: inputs.submit ? store.id : null },
+    {
+      platform,
+      scheme,
+      submit: inputs.submit ? store.id : null,
+      ...(inputs.channel === null
+        ? {}
+        : { extraArgs: ["--channel", inputs.channel] }),
+    },
     { buildLogOutput: `${platform}-build-log` },
   );
   if (built.nativeBuild === null) {

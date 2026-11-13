@@ -65,7 +65,7 @@ interface Expected {
 const FIND = "native-build find";
 const BUILD = "native-build android";
 const DEPLOY = ["fingerprint create", "deploy", "bundle list"];
-const SET_THEN_BUILD = [FIND, "channel set", FIND, BUILD];
+const FIND_THEN_BUILD = [FIND, BUILD];
 const noBundles = { android: 0, ios: 0 };
 const REFUSED_COMMIT = ["commit"];
 const REFUSED_BOTH = ["commit", "version-code"];
@@ -121,7 +121,7 @@ const STAGES: Readonly<Record<string, Expected>> = {
     releases: noBundles,
     uploads: 0,
     refused: REFUSED_COMMIT,
-    commands: SET_THEN_BUILD,
+    commands: FIND_THEN_BUILD,
   },
   // The build is tracked but the store has nothing: not a reason to deploy.
   "rerun-dry-run": {
@@ -140,7 +140,7 @@ const STAGES: Readonly<Record<string, Expected>> = {
     releases: noBundles,
     uploads: 1,
     refused: REFUSED_COMMIT,
-    commands: SET_THEN_BUILD,
+    commands: FIND_THEN_BUILD,
   },
   // Only JavaScript changed, and the store has the build.
   "js-dry-run": {
@@ -182,13 +182,13 @@ const STAGES: Readonly<Record<string, Expected>> = {
     releases: { android: 1, ios: 0 },
     uploads: 1,
     refused: REFUSED_BOTH,
-    commands: SET_THEN_BUILD,
+    commands: FIND_THEN_BUILD,
     nativeBuildFrom: 2,
   },
   "native-submitted": {
     platforms: { android: { decision: "build", outcome: "built" } },
     releases: { android: 1, ios: 0 },
-    commands: SET_THEN_BUILD,
+    commands: FIND_THEN_BUILD,
     ...AFTER_NATIVE,
   },
   // The registry is down: no decision, so nothing runs.
