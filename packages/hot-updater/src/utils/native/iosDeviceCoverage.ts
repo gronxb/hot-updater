@@ -5,6 +5,7 @@ import path from "path";
 import type { AscDevice } from "@hot-updater/apple-helper";
 import type {
   HotUpdaterCoreApi,
+  IosDeviceAccount,
   IosDeviceRow,
   NativeBuildRow,
   StorageAdapter,
@@ -100,11 +101,14 @@ const listAll = async (
  * says, and any other waits. So a device Apple enables later, or one repaired
  * signing can now add, asks for a build, and one Apple can't take never does,
  * whatever the build's age. Apple is read only when the `.ipa` lacks a device.
+ * A registry another Apple account holds, which a build of this scheme adds
+ * nothing to, never asks for a build.
  */
 export const iosDeviceCoverage = async ({
   info,
   devices,
   apple,
+  account,
   now,
 }: {
   /** The `.ipa`'s install info, or null when its profile can't be read. */
@@ -112,6 +116,8 @@ export const iosDeviceCoverage = async ({
   /** The registry's approved and registered devices. */
   readonly devices: readonly IosDeviceRow[];
   readonly apple: () => Promise<AppleDeviceState>;
+  /** The registry's Apple account, read without claiming it. */
+  readonly account: () => Promise<IosDeviceAccount | null>;
   readonly now: number;
 }): Promise<IosDeviceCoverage | null> => {
   if (info === null) {
@@ -131,12 +137,29 @@ export const iosDeviceCoverage = async ({
   if (lacking.length === 0) {
     return { reusable: true, reason: null, missing: [], waiting: [] };
   }
-  const state = await apple().catch(
-    (error): AppleDeviceState => ({
+  const unavailable =
+    (what: string) =>
+    (error: unknown): AppleDeviceState => ({
       kind: "unavailable",
-      reason: `Apple's devices couldn't be read: ${error instanceof Error ? error.message : String(error)}`,
-    }),
-  );
+      reason: `${what} couldn't be read: ${error instanceof Error ? error.message : String(error)}`,
+    });
+  let state = await apple().catch(unavailable("Apple's devices"));
+  // The build claims the registry first, and a build of another account
+  // than the one that holds it registers and lists nothing: the fence goes
+  // before any device's own outcome.
+  if (state.kind === "read") {
+    const signer = state.issuerId;
+    state = await account().then(
+      (holder): AppleDeviceState =>
+        holder === null || holder.issuerId === signer
+          ? state
+          : {
+              kind: "unavailable",
+              reason: "the registry is another Apple account's",
+            },
+      unavailable("The registry's Apple account"),
+    );
+  }
   const missing: string[] = [];
   const waiting: WaitingIosDevice[] = [];
   for (const row of lacking) {
@@ -206,7 +229,10 @@ export const readIosDeviceCoverage = async (
     core,
     storage,
   }: {
-    readonly core: Pick<HotUpdaterCoreApi, "listIosDevices">;
+    readonly core: Pick<
+      HotUpdaterCoreApi,
+      "listIosDevices" | "findIosDeviceAccount"
+    >;
     readonly storage: StorageAdapter;
   },
   build: NativeBuildRow,
@@ -226,5 +252,11 @@ export const readIosDeviceCoverage = async (
     ...(await listAll(core, "registered")),
     ...(await listAll(core, "approved")),
   ];
-  return iosDeviceCoverage({ info, devices, apple, now });
+  return iosDeviceCoverage({
+    info,
+    devices,
+    apple,
+    account: () => core.findIosDeviceAccount(),
+    now,
+  });
 };

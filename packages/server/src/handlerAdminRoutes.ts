@@ -839,6 +839,12 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     });
   }),
 
+  // No account yet answers 200 with null data, so a 404 means a server
+  // without the route.
+  findIosDeviceAccount: onCore(async (core) =>
+    json({ data: await core.findIosDeviceAccount() }),
+  ),
+
   markIosDevicesInBuild: onCore(async (core, request) => {
     const input = await body(request);
     const { buildId, ids } = input;
@@ -972,6 +978,11 @@ export const ADMIN_ROUTES: readonly {
     method: "POST",
     path: "/ios-devices/in-build",
     handler: "markIosDevicesInBuild",
+  },
+  {
+    method: "GET",
+    path: "/ios-devices/account",
+    handler: "findIosDeviceAccount",
   },
   {
     method: "POST",

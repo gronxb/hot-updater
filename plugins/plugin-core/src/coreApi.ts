@@ -221,6 +221,12 @@ export interface IosDeviceOutcomeInput {
   readonly reason?: string;
 }
 
+/** The Apple account a device registry belongs to. */
+export interface IosDeviceAccount {
+  /** The App Store Connect issuer of the account. */
+  readonly issuerId: string;
+}
+
 /** The device registry's Apple account, after a build tried to claim it. */
 export interface IosDeviceAccountClaim {
   /** The App Store Connect issuer the registry belongs to. */
@@ -455,6 +461,13 @@ export interface HotUpdaterCoreApi {
    * account registers nothing.
    */
   claimIosDeviceAccount(issuerId: string): Promise<IosDeviceAccountClaim>;
+  /**
+   * The Apple account the device registry belongs to, read without claiming
+   * it: the claimed account, or with no claim yet, the one
+   * `claimIosDeviceAccount` would give it, the earliest its rows name. Null
+   * while nothing names one, when the first claim takes it.
+   */
+  findIosDeviceAccount(): Promise<IosDeviceAccount | null>;
   /**
    * Records that a native build's .ipa lists these devices, one write per
    * row: a row removed meanwhile is skipped.

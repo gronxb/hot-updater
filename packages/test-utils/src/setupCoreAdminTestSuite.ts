@@ -883,6 +883,10 @@ export const setupCoreAdminTestSuite = (options: {
         const owner = claims.find(({ data }) => data.claimed)?.data.issuerId;
         expect(claims.filter(({ data }) => data.claimed)).toHaveLength(1);
         expect(claims.map(({ data }) => data.issuerId)).toEqual([owner, owner]);
+        // Read without a claim, as the claims answered it.
+        expect(await adminJson("/ios-devices/account")).toEqual({
+          data: { issuerId: owner },
+        });
         const buildId = bundleRow("90").id;
         const marked = await admin(
           "/ios-devices/in-build",
@@ -906,6 +910,10 @@ export const setupCoreAdminTestSuite = (options: {
       expect(
         await device(`/ios-devices/${id}`, jsonRequest("DELETE")),
       ).toBeNull();
+      // The account stays the registry's with its rows gone.
+      expect(
+        ((await adminJson("/ios-devices/account")) as { data: unknown }).data,
+      ).toMatchObject({ issuerId: expect.any(String) });
     });
 
     it("lists the patches that start from a bundle", async () => {

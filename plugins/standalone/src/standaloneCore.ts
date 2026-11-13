@@ -9,6 +9,7 @@ import type {
   ChannelDeleteResult,
   ChannelRow,
   HotUpdaterCoreApi,
+  IosDeviceAccount,
   IosDeviceAccountClaim,
   IosDeviceRequestResult,
   IosDeviceRow,
@@ -479,6 +480,10 @@ export const createStandaloneCoreApi = (
         requiredRoute: "iOS device registry",
       });
     },
+    findIosDeviceAccount: () =>
+      call<IosDeviceAccount>("GET", "/ios-devices/account", {
+        requiredRoute: "iOS device registry",
+      }),
     claimIosDeviceAccount: async (issuerId) =>
       (await call<IosDeviceAccountClaim>("POST", "/ios-devices/account", {
         body: { issuerId },

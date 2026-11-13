@@ -98,20 +98,34 @@ const build = {
   created_at_ms: BUILT_AT,
 } as NativeBuildRow;
 
-const registry = (rows: readonly IosDeviceRow[]) => ({
+/**
+ * The registry: its rows, and the Apple account it belongs to, the scheme's
+ * by default.
+ */
+const registry = (
+  rows: readonly IosDeviceRow[],
+  account: string | null = ISSUER,
+) => ({
   listIosDevices: vi.fn(async ({ status }: { status?: string }) =>
     rows.filter((row) => row.status === status),
   ),
+  findIosDeviceAccount: vi.fn(async () =>
+    account === null ? null : { issuerId: account },
+  ),
+  claimIosDeviceAccount: vi.fn(),
 });
 
 /** One preview's check of the found `.ipa`, as `find --json` runs it. */
 const check = (
-  rows: readonly IosDeviceRow[],
+  rows: readonly IosDeviceRow[] | ReturnType<typeof registry>,
   apple: AppleDeviceState | (() => Promise<AppleDeviceState>),
   overrides: Partial<NativeBuildRow> = {},
 ) =>
   readIosDeviceCoverage(
-    { core: registry(rows), storage: {} as StorageAdapter },
+    {
+      core: Array.isArray(rows) ? registry(rows) : (rows as never),
+      storage: {} as StorageAdapter,
+    },
     { ...build, ...overrides },
     typeof apple === "function" ? apple : async () => apple,
     NOW,
@@ -225,6 +239,68 @@ describe("a found ad hoc .ipa and Apple's current state", () => {
       });
     },
   );
+
+  describe("a registry another Apple account holds", () => {
+    // Account A claimed the registry; the scheme signs with ISSUER, account B.
+    const OTHER = "issuer-other";
+
+    it("waits for a newly approved device on every check, and asks for no build, whatever Apple says", async () => {
+      const held = registry(
+        [
+          device("a", "Ana's iPhone"),
+          device("b", "Bo's iPad", { status: "approved" }),
+        ],
+        OTHER,
+      );
+      for (const apple of [
+        atApple({ a: "ENABLED" }),
+        atApple({ a: "ENABLED", b: "ENABLED" }),
+      ]) {
+        for (let run = 0; run < 2; run += 1) {
+          await expect(check(held, apple)).resolves.toMatchObject({
+            reusable: true,
+            reason: null,
+            missing: [],
+          });
+        }
+      }
+      const result = await check(held, atApple({ a: "ENABLED" }));
+      expect(result?.waiting).toEqual([
+        {
+          name: "Bo's iPad",
+          reason: "the registry is another Apple account's",
+        },
+      ]);
+      // Reading it claims nothing.
+      expect(held.claimIosDeviceAccount).not.toHaveBeenCalled();
+    });
+
+    it("keeps holding it with none of its device rows left", async () => {
+      const held = registry(
+        [device("b", "Bo's iPad", { status: "approved" })],
+        OTHER,
+      );
+      await expect(check(held, atApple({}))).resolves.toMatchObject({
+        reusable: true,
+        missing: [],
+        waiting: [
+          {
+            name: "Bo's iPad",
+            reason: "the registry is another Apple account's",
+          },
+        ],
+      });
+    });
+
+    it("lets a registry no account holds yet go to the scheme's", async () => {
+      await expect(
+        check(
+          registry([device("b", "Bo's iPad", { status: "approved" })], null),
+          atApple({}),
+        ),
+      ).resolves.toMatchObject({ reusable: false, missing: ["Bo's iPad"] });
+    });
+  });
 
   it("waits, saying so, when Apple can't be read", async () => {
     await expect(
