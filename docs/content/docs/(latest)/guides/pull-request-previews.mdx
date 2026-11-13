@@ -18,8 +18,10 @@ request. The preview action does the rest:
 
 ### A pull request changes native code
 
-Its [fingerprint](/docs/guides/update-strategies/fingerprint#what-the-fingerprint-covers)
-matches no sandbox build yet.
+A change the
+[fingerprint](/docs/guides/update-strategies/fingerprint#what-the-fingerprint-covers)
+covers, such as a new native package, gives it a fingerprint no sandbox build
+has yet.
 
 </Step>
 <Step>
@@ -72,10 +74,14 @@ sandbox build has it, the action deploys the bundle and builds nothing.
   repository's secrets, or keep them in a
   [team store](/docs/concepts/secrets#this-machine-or-the-team), which the job
   only signs in to.
-- Add a sandbox scheme for each previewed platform. On Android, `aab: false`
-  builds an `.apk`, signed with a `secret()` keystore. On iOS, an `.ipa`
-  exported for registered devices, with the `release-testing` method, as
-  [Install on an iPhone](/docs/native-builds/iphone-install) describes.
+- Add a sandbox [native build scheme](/docs/guides/native-build#configure-schemes)
+  for each previewed platform. On Android, `aab: false` builds an `.apk`,
+  signed with a `secret()` keystore. On iOS, an `.ipa` exported for registered
+  devices, with the `release-testing` method, as
+  [Install on an iPhone](/docs/native-builds/iphone-install) describes. It
+  signs with an App Store Connect API key with the Admin role, as
+  [Build and upload from CI](/docs/guides/ci-native-build#get-the-keys-once)
+  describes.
 - Use the [fingerprint strategy](/docs/guides/update-strategies/fingerprint).
   A QR code's link names a fingerprint, so under the `appVersion` strategy the
   comment has none.
@@ -293,7 +299,9 @@ sandbox build. See [Install on an iPhone](/docs/native-builds/iphone-install).
 
 An iPhone that isn't registered installs through TestFlight, and a team that
 can't sideload an APK installs through Google Play. Point the action at a
-[sandbox](/docs/native-builds/sandbox) scheme and name the store:
+[sandbox](/docs/native-builds/sandbox) scheme and name the store. This scheme
+builds an `.aab` on Android, the default, and exports for App Store Connect on
+iOS, with no `exportOptionsPlist`:
 
 ```ts title="hot-updater.config.ts"
 export default defineConfig({
@@ -433,8 +441,6 @@ never another author's. It says what a tester does, in order:
 
 **2. Scan to open the latest bundle on `pr-12`** with the sandbox app.
 Latest commit: abc1234
-
-Android: QR code and link · iOS: QR code and link
 ```
 
 1. **Install the sandbox app.** Each platform has one line of links: an APK's
