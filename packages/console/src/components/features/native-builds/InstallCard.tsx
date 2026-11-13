@@ -165,6 +165,32 @@ function StorageQrCode({ build }: { readonly build: NativeBuildRow }) {
   );
 }
 
+/**
+ * The file's download where something else installs the build: a muted link
+ * under the card's actions, so it never competes with them.
+ */
+function SecondaryDownload({
+  build,
+  href,
+}: {
+  readonly build: NativeBuildRow;
+  readonly href: string;
+}) {
+  return (
+    <a
+      className="-mx-1 flex min-h-11 items-center gap-1.5 self-start rounded-md px-1 text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none md:min-h-8"
+      data-slot="secondary-download"
+      download
+      href={href}
+    >
+      <Download aria-hidden="true" className="size-3.5 shrink-0" />
+      <span className="[overflow-wrap:anywhere]">
+        Download {nativeBuildFileName(build)}
+      </span>
+    </a>
+  );
+}
+
 /** The store's label of a submitted build. */
 function SubmittedVersion({ build }: { readonly build: NativeBuildRow }) {
   return (
@@ -195,7 +221,7 @@ function StoreInstallCard({ build }: { readonly build: Submitted }) {
       </CardHeader>
       <CardContent className="flex min-w-0 flex-col gap-4 p-4 sm:p-6">
         <InstallSteps build={build} />
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+        <div className="flex flex-col gap-2">
           <a
             className={buttonVariants({
               className:
@@ -208,20 +234,10 @@ function StoreInstallCard({ build }: { readonly build: Submitted }) {
             <ExternalLink data-icon="inline-start" />
             Open {store.name}
           </a>
-          <a
-            className={buttonVariants({
-              className:
-                "h-auto min-h-11 w-full min-w-0 py-2 whitespace-normal sm:min-h-8 sm:w-fit",
-              variant: "outline",
-            })}
-            download
+          <SecondaryDownload
+            build={build}
             href={nativeBuildDownloadPath(build.id)}
-          >
-            <Download data-icon="inline-start" />
-            <span className="text-left [overflow-wrap:anywhere]">
-              Download {nativeBuildFileName(build)}
-            </span>
-          </a>
+          />
         </div>
       </CardContent>
     </Card>
@@ -403,23 +419,29 @@ function FileInstallCard({ build }: { readonly build: NativeBuildRow }) {
   const device = useIosDevice();
   const ipa = build.artifact_kind === "ipa";
   const onPhone = ipa && device?.ios === true;
+  const downloadHref = signedUrl ?? nativeBuildDownloadPath(build.id);
   const otherWays = (
     <div className="flex min-w-0 flex-col gap-4">
       <InstallSteps build={build} />
-      <a
-        className={buttonVariants({
-          className:
-            "h-auto min-h-11 w-full min-w-0 py-2 whitespace-normal sm:min-h-8 sm:w-fit",
-          variant: "outline",
-        })}
-        download
-        href={signedUrl ?? nativeBuildDownloadPath(build.id)}
-      >
-        <Download data-icon="inline-start" />
-        <span className="text-left [overflow-wrap:anywhere]">
-          Download {fileName}
-        </span>
-      </a>
+      {/* An APK installs from its file; every other artifact installs another way. */}
+      {build.artifact_kind === "apk" ? (
+        <a
+          className={buttonVariants({
+            className:
+              "h-auto min-h-11 w-full min-w-0 py-2 whitespace-normal sm:min-h-8 sm:w-fit",
+            variant: "outline",
+          })}
+          download
+          href={downloadHref}
+        >
+          <Download data-icon="inline-start" />
+          <span className="text-left [overflow-wrap:anywhere]">
+            Download {fileName}
+          </span>
+        </a>
+      ) : (
+        <SecondaryDownload build={build} href={downloadHref} />
+      )}
       <SignedLink link={link.data} url={signedUrl} />
     </div>
   );

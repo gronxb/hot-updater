@@ -704,9 +704,12 @@ describe("InstallCard on an iPhone", () => {
     expect(other.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(other);
     expect(other.getAttribute("aria-expanded")).toBe("true");
+    // The iPhone installs it above, so the file is the muted link.
     expect(
-      screen.getByRole("link", { name: /Download App\.ipa/ }),
-    ).toBeTruthy();
+      screen
+        .getByRole("link", { name: /Download App\.ipa/ })
+        .getAttribute("data-slot"),
+    ).toBe("secondary-download");
   });
 
   it("keeps the computer's ways open on a computer, beside the QR code", () => {

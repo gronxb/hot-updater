@@ -204,7 +204,7 @@ describe("NativeBuildsTable", () => {
     expect(cellText(untagged!, "Artifact")).toBe("APK");
   });
 
-  it("tags a sandbox build's card beside its kind, on the line with its download", () => {
+  it("tags a sandbox build's card beside its kind, on its first line", () => {
     const width = window.innerWidth;
     window.innerWidth = 390;
     try {
@@ -225,7 +225,7 @@ describe("NativeBuildsTable", () => {
 
       const [tagged, untagged] = screen.getAllByRole("article");
       const [header, channel] = [...tagged!.children];
-      expect(header!.textContent).toBe("APKSandboxDownload");
+      expect(header!.textContent).toBe("APKSandbox");
       expect(channel!.textContent).toBe("pr-130");
       expect(within(untagged!).queryByText("Sandbox")).toBeNull();
     } finally {
@@ -283,7 +283,6 @@ describe("NativeBuildsTable", () => {
       "Store",
       "Size",
       "Created",
-      "Actions",
     ]);
     expect(screen.queryByText(id(2))).toBeNull();
     expect(screen.queryByTitle("abcdef1234567")).toBeNull();
@@ -318,12 +317,8 @@ describe("NativeBuildsTable", () => {
     );
     expect(onChannel).toHaveBeenCalledWith("pr-130");
     expect(navigate).not.toHaveBeenCalled();
-    expect(
-      screen.getByRole("link", { name: "Download app-release.apk" }),
-    ).toHaveProperty(
-      "href",
-      expect.stringContaining(`/api/native-builds/${row.id}/download`),
-    );
+    // The build's page installs it, so a row has no download of its own.
+    expect(screen.queryByRole("link", { name: /Download/ })).toBeNull();
 
     fireEvent.click(screen.getByText("50.0 MB"));
     expect(navigate).toHaveBeenCalledWith({
@@ -465,7 +460,7 @@ describe("NativeBuildsTable", () => {
     }
   });
 
-  it("shows each build as a compact card at 390 px: what and its download, then where, then when, then target and build key, then store", () => {
+  it("shows each build as a compact card at 390 px: what it is, then where, then when, then target and build key, then store", () => {
     const width = window.innerWidth;
     window.innerWidth = 390;
     try {
@@ -501,11 +496,7 @@ describe("NativeBuildsTable", () => {
           name: "Show the builds that embed pr-130",
         }),
       ).toBeTruthy();
-      expect(
-        within(primary as HTMLElement).getByRole("link", {
-          name: "Download app-release.apk",
-        }),
-      ).toBeTruthy();
+      expect(within(card).queryByRole("link", { name: /Download/ })).toBeNull();
       expect(meta!.textContent).toMatch(/^AndroidBuild 66·50\.0 MB·.+ ago$/);
       expect(hashes!.textContent).toBe(
         "Target 1a2b3c4d…9c0dBuild key a1b2c3d4…9f0e",
@@ -1608,6 +1599,83 @@ describe("a submitted build's page", () => {
       screen.getByRole("link", { name: /Open Play Console/ }),
     ).toHaveProperty("href", "https://play.google.com/console");
   });
+});
+
+describe("an install card's download", () => {
+  beforeEach(() => {
+    downloadLinkQuery.mockReturnValue({ data: ISSUED_LINK });
+  });
+
+  /** The card's download, and whether it is the muted link, not a button. */
+  const download = (file: string) => {
+    const link = screen.getByRole("link", { name: `Download ${file}` });
+    return {
+      link,
+      secondary: link.getAttribute("data-slot") === "secondary-download",
+    };
+  };
+
+  it("keeps an APK's download a button, since an APK installs from its file", () => {
+    const row = build();
+    render(<InstallCard build={row} />);
+
+    const { link, secondary } = download("app-release.apk");
+    expect(secondary).toBe(false);
+    expect(link.className).toContain("border-border");
+    expect(link).toHaveProperty("href", signedUrl(row.id));
+  });
+
+  it.each([
+    ["ipa", "ios", "App.ipa"],
+    ["aab", "android", "app-release.aab"],
+    ["app", "ios", "HotUpdaterExample.app.zip"],
+  ] as const)(
+    "makes an %s's download a muted link, keeping its signed link",
+    (kind, platform, file) => {
+      const row = build({
+        platform,
+        artifact_kind: kind,
+        artifact_storage_uri: `r2://bucket/native-builds/${platform}/019a/${file}`,
+      });
+      render(<InstallCard build={row} />);
+
+      const { link, secondary } = download(file);
+      expect(secondary).toBe(true);
+      expect(link.hasAttribute("download")).toBe(true);
+      expect(link).toHaveProperty("href", signedUrl(row.id));
+    },
+  );
+
+  it.each([
+    ["testflight", "ios", "ipa", "App.ipa", "Open App Store Connect"],
+    ["play-internal", "android", "aab", "app-release.aab", "Open Play Console"],
+  ] as const)(
+    "leaves the store the one button on a %s build, the download a link under it",
+    (submitted_to, platform, kind, file, store) => {
+      const row = build({
+        platform,
+        artifact_kind: kind,
+        artifact_storage_uri: `r2://bucket/native-builds/${platform}/019a/${file}`,
+        submitted_to,
+        submitted_at_ms: Date.now(),
+        submitted_version: "1.7.0 (66)",
+      });
+      render(<InstallCard build={row} />);
+
+      const open = screen.getByRole("link", { name: store });
+      const { link, secondary } = download(file);
+      expect(secondary).toBe(true);
+      expect(link.hasAttribute("download")).toBe(true);
+      expect(link.getAttribute("href")).toBe(
+        `/api/native-builds/${row.id}/download`,
+      );
+      // Under the store's button, not beside it in a row.
+      expect(
+        open.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(open.parentElement!.className).not.toContain("sm:flex-row");
+    },
+  );
 });
 
 describe("BuiltInBundleCard", () => {
