@@ -504,6 +504,20 @@ describe("buildIos", () => {
     expect(credentials.resolve).not.toHaveBeenCalled();
   });
 
+  it("refuses a channel for an archive it can't export, before it archives, so no signed app is modified", async () => {
+    await expect(
+      buildIos({
+        schemeConfig: scheme(),
+        minBundleId: MIN_BUNDLE_ID,
+        channel: "pr-7",
+      }),
+    ).rejects.toThrow(
+      "The scheme release archives without exporting, so its app can't embed a --channel and stay signed.\nSet exportOptionsPlist or signing.ascApiKey on the scheme.",
+    );
+    expect(archiveXcodeProject).not.toHaveBeenCalled();
+    expect(exportXcodeArchive).not.toHaveBeenCalled();
+  });
+
   it("issues a MIN_BUNDLE_ID with zero random bits without one, as the podspec script phase does", async () => {
     await buildIos({ schemeConfig: scheme({ simulator: true }) });
 

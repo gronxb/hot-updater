@@ -89,7 +89,9 @@ const fakeCli = ({
         stdout: JSON.stringify({
           build: {
             platform: sub,
-            channel: buildChannel ?? projectChannel,
+            // What --channel asks for, as the CLI stamps it, else what
+            // the project embeds.
+            channel: buildChannel ?? flag("--channel") ?? projectChannel,
             fingerprintHash: "fp-abcdef012345",
             appVersion: null,
           },
@@ -470,22 +472,25 @@ describe("runAction", () => {
     ]);
   });
 
-  it("sets the channel before a build, and refuses before it builds one that embeds another", async () => {
-    const set = fakeCli();
-    await run(set, { INPUT_CHANNEL: "beta" });
-    expect(set.calls).toEqual([
+  it("builds on the channel input with --channel, whatever the project or an Expo config plugin embeds", async () => {
+    // channel set changes nothing in an Expo project: the config plugin's
+    // production stays what the project embeds.
+    const expo = fakeCli({ channel: "production" });
+    const { error, result } = await run(expo, { INPUT_CHANNEL: "beta" });
+    expect(error).toBeUndefined();
+    expect(expo.calls).toEqual([
       "native-build find -p android -c beta -s release --json",
-      "channel set beta",
-      "native-build find -p android -s release --json",
-      "native-build android --scheme release --submit play-internal --json",
+      "native-build android --scheme release --submit play-internal --channel beta --json",
     ]);
+    expect(result.platforms[0]).toMatchObject({ outcome: "built" });
+  });
 
-    const expo = fakeCli({ buildChannel: "production" });
-    const { error } = await run(expo, { INPUT_CHANNEL: "beta" });
+  it("fails a build of the channel input that still embeds another", async () => {
+    const fake = fakeCli({ buildChannel: "production" });
+    const { error } = await run(fake, { INPUT_CHANNEL: "beta" });
     expect(error?.message).toContain(
-      "The android build would embed the production channel, not beta.",
+      "embeds the production channel, not beta.",
     );
-    expect(ran(expo.calls, "native-build android")).toEqual([]);
   });
 
   it("sets no channel on a deploy", async () => {

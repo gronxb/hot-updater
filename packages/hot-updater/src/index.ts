@@ -11,6 +11,7 @@ import { normalizeRange } from "verkit";
 
 import {
   interactiveCommandOption,
+  nativeBuildChannelCommandOption,
   nativeBuildDryRunCommandOption,
   nativeBuildNoCacheCommandOption,
   nativeBuildUdidCommandOption,
@@ -505,6 +506,7 @@ nativeBuildCommand
   .addOption(nativeBuildUdidCommandOption)
   .addOption(nativeBuildDryRunCommandOption)
   .addOption(nativeBuildNoCacheCommandOption)
+  .addOption(nativeBuildChannelCommandOption)
   .addOption(nativeBuildJsonCommandOption)
   .action(async (options: NativeBuildCreateOptions) => {
     await handleNativeBuildCreate("ios", options);
@@ -521,6 +523,7 @@ nativeBuildCommand
   .addOption(playRolloutCommandOption)
   .addOption(nativeBuildDryRunCommandOption)
   .addOption(nativeBuildNoCacheCommandOption)
+  .addOption(nativeBuildChannelCommandOption)
   .addOption(nativeBuildJsonCommandOption)
   .action(async (options: NativeBuildCreateOptions) => {
     await handleNativeBuildCreate("android", options);

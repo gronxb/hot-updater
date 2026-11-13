@@ -177,6 +177,7 @@ export const reuseNativeBuild = async ({
   credentials,
   noCache,
   buildAdapter,
+  channel: channelOption,
 }: {
   platform: Platform;
   scheme: string;
@@ -188,14 +189,17 @@ export const reuseNativeBuild = async ({
   androidScheme?: EnrichedNativeBuildAndroidScheme;
   credentials: Pick<CredentialResolver, "resolve">;
   noCache: boolean;
+  /** `--channel`: the channel the build embeds instead of the project's. */
+  channel?: string;
   /** The config's build adapter's name, whose autolinking the key reads. */
   buildAdapter?: string;
 }): Promise<NativeBuildCache> => {
   const cwd = getCwd();
   const resolvedCacheDir =
     cacheDir === null ? null : path.resolve(cwd, cacheDir);
-  // The channel the build falls back to, as createNativeBuild reads it.
-  const channel = (await getChannel(platform)).value;
+  // The channel the build embeds, as createNativeBuild reads it: part of the
+  // key, so builds of two channels never share an artifact.
+  const channel = channelOption ?? (await getChannel(platform)).value;
   const step = startStep("Checking the build cache");
   // A key that can't be computed only costs the reuse: the command builds.
   const key: NativeBuildKey = await computeNativeBuildKey({
@@ -208,6 +212,7 @@ export const reuseNativeBuild = async ({
     >,
     artifactKind: artifactKindOf(platform, iosScheme, androidScheme),
     channel,
+    channelOverride: channelOption ?? null,
     ...target,
     outputPath,
     cacheDir: resolvedCacheDir,

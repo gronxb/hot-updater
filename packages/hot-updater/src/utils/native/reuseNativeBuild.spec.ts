@@ -62,8 +62,9 @@ const result: NativeBuildResult = {
   artifactKind: "apk",
 };
 
-const reuse = (noCache = false) =>
+const reuse = (noCache = false, channel?: string) =>
   reuseNativeBuild({
+    ...(channel === undefined ? {} : { channel }),
     platform: "android",
     scheme: "release",
     cacheDir: "node_modules/.hot-updater",
@@ -242,6 +243,30 @@ describe("reuseNativeBuild", () => {
       "/project/node_modules/.hot-updater/native-build/android/release",
       KEY,
       "build-1",
+    );
+  });
+
+  it("keys a build --channel stamps by the override, apart from one embedding the same channel unstamped", async () => {
+    const miss = {
+      hit: null,
+      cached: null,
+      missingArtifact: null,
+      takenMinBundleId: false,
+    };
+    vi.mocked(findCachedNativeBuild)
+      .mockResolvedValueOnce(miss)
+      .mockResolvedValueOnce(miss);
+    await reuse(false, "production");
+    expect(computeNativeBuildKey).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        channel: "production",
+        channelOverride: "production",
+      }),
+    );
+
+    await reuse();
+    expect(computeNativeBuildKey).toHaveBeenLastCalledWith(
+      expect.objectContaining({ channelOverride: null }),
     );
   });
 

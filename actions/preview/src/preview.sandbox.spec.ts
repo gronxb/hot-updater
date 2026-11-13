@@ -153,7 +153,12 @@ const fakeCli = ({
       const built = {
         id: `019a0000-0000-7000-8000-00000000c00${++counter}`,
         platform: sub!,
-        channel: builtChannel ?? channel,
+        // What --channel asks for, as the CLI stamps it, else the project's.
+        channel:
+          builtChannel ??
+          (args.includes("--channel")
+            ? args[args.indexOf("--channel") + 1]!
+            : channel),
         fingerprintHash,
         kind: "apk",
         ...(SANDBOX_SCHEMES[scheme]
@@ -375,25 +380,25 @@ describe("no sandbox scheme", () => {
     ]);
   });
 
-  it("asks for the pull request's channel when the project embeds another", async () => {
+  it("builds on the pull request's channel when the project embeds another", async () => {
     const fake = fakeCli({ builds: [] });
 
-    await expect(
-      run(
-        {
-          ...fake,
-          cli: vi.fn(async (args: string[]) =>
-            // A config plugin keeps the channel, as an Expo project's can.
-            args[0] === "channel" ? { code: 0, stdout: "" } : fake.cli(args),
-          ) as never,
-        },
-        normal,
-      ),
-    ).rejects.toThrow("embeds the production channel, not pr-12");
+    await run(
+      {
+        ...fake,
+        cli: vi.fn(async (args: string[]) =>
+          // A config plugin keeps the channel, as an Expo project's can.
+          args[0] === "channel" ? { code: 0, stdout: "" } : fake.cli(args),
+        ) as never,
+      },
+      normal,
+    );
+
     expect(fake.calls.slice(1, 3)).toEqual([
       "native-build find -p android -c pr-12 -s releaseApk --json",
-      "native-build android --scheme releaseApk --json",
+      "native-build android --scheme releaseApk --channel pr-12 --json",
     ]);
+    expect(fake.builds).toMatchObject([{ channel: "pr-12" }]);
   });
 });
 
@@ -599,7 +604,7 @@ describe("no sandbox build at all", () => {
     const { body, outputs } = await run(fake);
 
     expect(fake.calls).toContain(
-      "native-build android --scheme sandbox --json",
+      "native-build android --scheme sandbox --channel pr-12 --json",
     );
     expect(body).toContain("built for this commit");
     expect(body).toContain(`<img src="${QR}"`);
@@ -627,6 +632,87 @@ describe("no sandbox build at all", () => {
   });
 });
 
+describe("an Expo project whose config plugin keeps its own channel", () => {
+  /** `channel set` changes nothing: the config plugin embeds production. */
+  const expo = (builds: Build[] = [], builtChannel?: string) => {
+    const fake = fakeCli({
+      builds,
+      ...(builtChannel === undefined ? {} : { builtChannel }),
+    });
+    const cli = fake.cli.getMockImplementation()!;
+    fake.cli.mockImplementation(async (args: string[]) =>
+      args[0] === "channel" && args[1] === "set"
+        ? { code: 0, stdout: "" }
+        : cli(args),
+    );
+    return fake;
+  };
+
+  it("builds its new sandbox build on the pull request's channel, with nothing set in the app's config", async () => {
+    const fake = expo();
+
+    const { outputs } = await run(fake);
+
+    expect(fake.calls).toContain(
+      "native-build android --scheme sandbox --channel pr-12 --json",
+    );
+    expect(fake.builds).toMatchObject([{ channel: "pr-12", sandbox: true }]);
+    expect(fake.calls).toContain(
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
+    );
+    expect(outputs["android-sandbox-link"]).toBe(LINK);
+  });
+
+  it("names the pull request's channel when it builds", async () => {
+    const fake = expo();
+    const info = vi.fn();
+
+    await runAction(
+      {
+        cli: fake.cli,
+        buildLogs: vi.fn(() => []),
+        github: null,
+        setOutput: vi.fn(),
+        log: {
+          info,
+          notice: vi.fn(),
+          error: vi.fn(),
+          group: <T>(_: string, body: () => Promise<T>) => body(),
+        },
+      } as never,
+      env({ INPUT_COMMENT: "false" }),
+      event,
+    );
+
+    expect(info).toHaveBeenCalledWith(
+      `Building android: no native build on pr-12 has fingerprint ${FINGERPRINT}.`,
+    );
+  });
+
+  it("fails a new build that still embeds production, as from a CLI that ignores --channel, and deploys nothing", async () => {
+    const fake = expo([], "production");
+
+    await expect(run(fake)).rejects.toThrow(
+      "native-build android built a native build that embeds the production channel, not pr-12.",
+    );
+    expect(fake.calls.some((call) => call.startsWith("deploy"))).toBe(false);
+  });
+
+  it("still reuses a sandbox build another pull request made", async () => {
+    const fake = expo([{ ...sandboxBuild(), channel: "pr-120" }]);
+
+    const { body } = await run(fake);
+
+    expect(
+      fake.calls.some((call) => call.startsWith("native-build android")),
+    ).toBe(false);
+    expect(fake.calls).toContain(
+      "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
+    );
+    expect(body).toContain("Sandbox build from `pr-120`");
+  });
+});
+
 describe("the URL scheme a sandbox scheme sets", () => {
   const custom = `acme-preview://hot-updater/preview?channel=pr-12&fingerprint=${FINGERPRINT}&platform=android`;
 
@@ -651,7 +737,7 @@ describe("the URL scheme a sandbox scheme sets", () => {
     const { outputs } = await run(fake);
 
     expect(fake.calls).toContain(
-      "native-build android --scheme sandbox --json",
+      "native-build android --scheme sandbox --channel pr-12 --json",
     );
     expect(outputs["android-sandbox-link"]).toBe(custom);
   });
@@ -664,7 +750,7 @@ describe("a pull request whose fingerprint differs from the sandbox builds", () 
     const { body, outputs } = await run(fake);
 
     expect(fake.calls).toContain(
-      "native-build android --scheme sandbox --json",
+      "native-build android --scheme sandbox --channel pr-12 --json",
     );
     expect(fake.builds.at(-1)).toMatchObject({
       channel: "pr-12",
@@ -694,7 +780,7 @@ describe("an ad hoc .ipa that lacks an approved device", () => {
     const { body } = await run(fake, inputs);
 
     expect(fake.calls).toContain(
-      "native-build ios --scheme sandbox --no-cache --json",
+      "native-build ios --scheme sandbox --channel pr-12 --no-cache --json",
     );
     expect(body).toContain("built for this commit");
     expect(body).toContain(

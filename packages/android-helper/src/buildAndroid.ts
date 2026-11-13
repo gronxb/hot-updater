@@ -7,6 +7,7 @@ import {
 } from "@hot-updater/cli-tools";
 
 import { runGradle, runGradleTasks } from "./builder/runGradle";
+import { withChannelGradleArgs } from "./utils/channelGradle";
 import type { EnrichedNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
 import { resolveGradleSigningEnv } from "./utils/gradleSigning";
 import { readBuiltApp } from "./utils/readBuiltApp";
@@ -19,6 +20,7 @@ export const buildAndroid = async ({
   credentials,
   logHeader,
   minVersionCode,
+  channel,
 }: {
   schemeConfig: EnrichedNativeBuildAndroidScheme;
   /** The MIN_BUNDLE_ID the build compiles in. */
@@ -29,6 +31,11 @@ export const buildAndroid = async ({
   logHeader?: string[];
   /** The lowest version code a sandbox build may have. */
   minVersionCode?: number;
+  /**
+   * The channel the build embeds, whatever the project's files or an Expo
+   * config plugin set; without it, theirs.
+   */
+  channel?: string;
 }): Promise<{
   buildDirectory: string;
   buildArtifactPath: string;
@@ -65,19 +72,25 @@ export const buildAndroid = async ({
       });
     },
     (sandboxArgs) =>
-      runGradle({
-        args: {
-          extraParams: [`-PMIN_BUNDLE_ID=${minBundleId}`, ...sandboxArgs],
-        },
-        env,
-        appModuleName: schemeConfig.appModuleName,
-        tasks: schemeConfig.aab
-          ? [`bundle${schemeConfig.variant}`]
-          : [`assemble${schemeConfig.variant}`],
-        logPrefix: `android-${schemeConfig.hotUpdaterSchemeName}-build`,
-        androidProjectPath,
-        logHeader,
-      }),
+      withChannelGradleArgs(channel, schemeConfig, (channelArgs) =>
+        runGradle({
+          args: {
+            extraParams: [
+              `-PMIN_BUNDLE_ID=${minBundleId}`,
+              ...sandboxArgs,
+              ...channelArgs,
+            ],
+          },
+          env,
+          appModuleName: schemeConfig.appModuleName,
+          tasks: schemeConfig.aab
+            ? [`bundle${schemeConfig.variant}`]
+            : [`assemble${schemeConfig.variant}`],
+          logPrefix: `android-${schemeConfig.hotUpdaterSchemeName}-build`,
+          androidProjectPath,
+          logHeader,
+        }),
+      ),
     minVersionCode === undefined ? {} : { minVersionCode },
   );
   return {

@@ -14,6 +14,7 @@ import { buildXcodeProject } from "./builder/buildXcodeProject";
 import { exportXcodeArchive } from "./builder/exportXcodeArchive";
 import type { SandboxArchivePlan } from "./sandboxTestFlight";
 import { assertXcodebuildExist } from "./utils/assertXcodebuildExist";
+import { stampAppChannel } from "./utils/channelInfoPlist";
 import { withSigningKeychain } from "./utils/ciSigningKeychain";
 import { createRandomTmpDir, removeTmpDir } from "./utils/createRandomTmpDir";
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
@@ -49,8 +50,14 @@ export const buildIos = async ({
   sandbox,
   logHeader = [],
   expectedDevices,
+  channel,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
+  /**
+   * The channel the build embeds, whatever the project's Info.plist or an
+   * Expo config plugin set; without it, theirs.
+   */
+  channel?: string;
   /** The MIN_BUNDLE_ID the build compiles in. */
   minBundleId?: string;
   /** Resolves the scheme's `signing` key, when a device build signs with one. */
@@ -107,6 +114,7 @@ export const buildIos = async ({
       buildDirectory,
       logHeader,
       expectedDevices,
+      channel,
     });
     return { ...built, dispose: () => removeTmpDir(buildDirectory) };
   } catch (error) {
@@ -123,8 +131,10 @@ const buildInto = async ({
   buildDirectory,
   logHeader,
   expectedDevices,
+  channel,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
+  channel?: string;
   minBundleId: string;
   credentials?: Pick<CredentialResolver, "resolve">;
   sandbox?: SandboxArchivePlan;
@@ -157,6 +167,9 @@ const buildInto = async ({
     if (schemeConfig.sandbox) {
       await patchSandboxSimulatorApp(appPath, schemeConfig);
     }
+    if (channel !== undefined) {
+      await stampAppChannel(appPath, channel, { signAdHoc: true });
+    }
 
     return {
       buildDirectory: buildDirectory,
@@ -174,6 +187,7 @@ const buildInto = async ({
         buildDirectory,
         logHeader,
         expectedDevices,
+        channel,
       });
     }
     // In CI, an App Store Connect or ad hoc export signs in a keychain of its
@@ -202,6 +216,7 @@ const buildInto = async ({
           logHeader,
           authenticationArgs: signing.authenticationArgs,
           expectedDevices,
+          channel,
         }),
     });
   }
@@ -219,9 +234,12 @@ const archiveAndExport = async ({
   logHeader,
   authenticationArgs,
   expectedDevices,
+  channel,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
   minBundleId: string;
+  /** The channel the build embeds: see `buildIos`. */
+  channel?: string;
   sandbox?: SandboxArchivePlan;
   buildDirectory: string;
   logHeader: string[];
@@ -230,6 +248,17 @@ const archiveAndExport = async ({
   /** UDIDs the `.ipa` must list: see `buildIos`. */
   expectedDevices?: readonly string[];
 }) => {
+  // An archive it doesn't export keeps the signature Xcode gave its app,
+  // which a stamped Info.plist would break: only an export signs it again.
+  if (
+    channel !== undefined &&
+    !schemeConfig.exportOptionsPlist &&
+    !authenticationArgs
+  ) {
+    throw new Error(
+      `The scheme ${schemeConfig.hotUpdaterSchemeName} archives without exporting, so its app can't embed a --channel and stay signed.\nSet exportOptionsPlist or signing.ascApiKey on the scheme.`,
+    );
+  }
   const iosProjectRoot = path.join(getCwd(), "ios");
   const archiveDir = path.join(buildDirectory, "archive");
   const exportDir = path.join(buildDirectory, "export");
@@ -267,6 +296,12 @@ const archiveAndExport = async ({
       schemeConfig,
       plan: sandbox,
     });
+  }
+  if (channel !== undefined) {
+    if (!appFromArchive) {
+      throw new Error(`The archive ${archivePath} has no app to stamp.`);
+    }
+    await stampAppChannel(appFromArchive, channel);
   }
 
   const archivedAppPath = appFromArchive
