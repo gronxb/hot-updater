@@ -1,5 +1,16 @@
 # @hot-updater/console
 
+## 1.2.0-rc.40
+
+### Patch Changes
+
+- 5d7d5cf: Outline links draw their border again. Links styled as buttons, such as a native build's Download, the empty Native builds table's "Show all native builds", and the pagers' Previous and Next, took the button classes without merging them, so the base's transparent border won over the outline's and an outline link looked like a ghost one. The button classes are now merged wherever they're used, so a link looks like a button of the same variant, and a link's own classes, such as its height or width, override the button's.
+- @hot-updater/bsdiff@1.2.0-rc.40
+  - @hot-updater/cli-tools@1.2.0-rc.40
+  - @hot-updater/protocol@1.2.0-rc.40
+  - @hot-updater/server@1.2.0-rc.40
+  - @hot-updater/plugin-core@1.2.0-rc.40
+
 ## 1.2.0-rc.39
 
 ### Patch Changes
