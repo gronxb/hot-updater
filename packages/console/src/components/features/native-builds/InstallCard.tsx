@@ -1,11 +1,6 @@
 import type { NativeBuildRow } from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
-import {
-  AlertTriangle,
-  ChevronRight,
-  Download,
-  ExternalLink,
-} from "lucide-react";
+import { AlertTriangle, ChevronRight, Download } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 
 import { QrCode } from "@/components/QrCode";
@@ -27,8 +22,11 @@ import type { NativeBuildDownloadLinkResult } from "@/lib/server/nativeBuildDown
 
 import { CopyableText } from "./CopyableText";
 import { IosInstall, useIosDevice } from "./IosInstall";
-import { PLAY_TRACKS } from "./playTracks";
-import { isSubmitted, type Submitted } from "./StoreSubmission";
+import {
+  isSubmitted,
+  StoreSubmissionBadge,
+  type Submitted,
+} from "./StoreSubmission";
 
 const IPA_LIMIT =
   "The .ipa installs only on devices its signing profile allows (development or ad hoc)";
@@ -165,27 +163,42 @@ function StorageQrCode({ build }: { readonly build: NativeBuildRow }) {
   );
 }
 
-/** The store's label of a submitted build. */
-function SubmittedVersion({ build }: { readonly build: NativeBuildRow }) {
+/**
+ * The file's download, as an outline button where people use the file itself.
+ * An IPA's is a ghost button in the same place: a computer's browser installs
+ * nothing from it, so it never competes with the card's install path.
+ */
+function DownloadButton({
+  build,
+  href,
+}: {
+  readonly build: NativeBuildRow;
+  readonly href: string;
+}) {
   return (
-    <span className="font-mono text-foreground" translate="no">
-      {build.submitted_version ?? "this build"}
-    </span>
+    <a
+      className={buttonVariants({
+        className:
+          "h-auto min-h-11 w-full min-w-0 py-2 whitespace-normal sm:min-h-8 sm:w-fit",
+        variant: build.artifact_kind === "ipa" ? "ghost" : "outline",
+      })}
+      download
+      href={href}
+    >
+      <Download data-icon="inline-start" />
+      <span className="text-left [overflow-wrap:anywhere]">
+        Download {nativeBuildFileName(build)}
+      </span>
+    </a>
   );
 }
 
 /**
- * A build a store took installs from the store, so the card leads with it, and
- * the file stays for keeping, with no QR code or signed link to ask for.
+ * A build a store took installs from the store, so the card leads with the
+ * store's badge, says how testers get it, and keeps the file's download, with
+ * no QR code or signed link to ask for.
  */
 function StoreInstallCard({ build }: { readonly build: Submitted }) {
-  const store =
-    build.submitted_to === "testflight"
-      ? {
-          name: "App Store Connect",
-          url: "https://appstoreconnect.apple.com/apps",
-        }
-      : { name: "Play Console", url: "https://play.google.com/console" };
   return (
     <Card className="overflow-hidden shadow-sm">
       <CardHeader className="border-b px-4 py-3">
@@ -194,35 +207,12 @@ function StoreInstallCard({ build }: { readonly build: Submitted }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="flex min-w-0 flex-col gap-4 p-4 sm:p-6">
+        <StoreSubmissionBadge build={build} withTime />
         <InstallSteps build={build} />
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          <a
-            className={buttonVariants({
-              className:
-                "h-auto min-h-11 w-full min-w-0 py-2 whitespace-normal sm:min-h-8 sm:w-fit",
-            })}
-            href={store.url}
-            rel="noreferrer"
-            target="_blank"
-          >
-            <ExternalLink data-icon="inline-start" />
-            Open {store.name}
-          </a>
-          <a
-            className={buttonVariants({
-              className:
-                "h-auto min-h-11 w-full min-w-0 py-2 whitespace-normal sm:min-h-8 sm:w-fit",
-              variant: "outline",
-            })}
-            download
-            href={nativeBuildDownloadPath(build.id)}
-          >
-            <Download data-icon="inline-start" />
-            <span className="text-left [overflow-wrap:anywhere]">
-              Download {nativeBuildFileName(build)}
-            </span>
-          </a>
-        </div>
+        <DownloadButton
+          build={build}
+          href={nativeBuildDownloadPath(build.id)}
+        />
       </CardContent>
     </Card>
   );
@@ -277,13 +267,8 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
       );
     case "aab":
       return isSubmitted(build) ? (
+        // The store's badge above says where it went and as what.
         <p className="text-xs text-muted-foreground">
-          Submitted to{" "}
-          {build.submitted_to === "play-internal"
-            ? PLAY_TRACKS["play-internal"].name
-            : PLAY_TRACKS[build.submitted_to as keyof typeof PLAY_TRACKS]
-                .label}{" "}
-          as <SubmittedVersion build={build} />.{" "}
           {build.submitted_to === "play-production" ? "Users" : "Testers"} get
           it once its release is rolled out; on an app Play Console hasn't
           published, the release is a draft you roll out in Play Console.
@@ -302,9 +287,8 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
     case "ipa":
       return isSubmitted(build) ? (
         <p className="text-xs text-muted-foreground">
-          On TestFlight as <SubmittedVersion build={build} />. Internal testers
-          install it from the TestFlight app once App Store Connect has
-          processed it, and a preview's pull request comment shows that state.
+          Internal testers install it from the TestFlight app once App Store
+          Connect has processed it.
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">
@@ -347,7 +331,8 @@ function SignedLink({
 }
 
 /**
- * Installs one native build: an IPA or AAB a store took, from the store; an IPA
+ * Installs one native build: an IPA or AAB a store took, from the store, which
+ * its badge names, with the file's download; an IPA
  * on the iPhone that opens this page, whose QR code on any other screen holds
  * this page; every other artifact by a QR code of its signed link, which a phone
  * without a session scans, and by download here or the link itself; an APK or a
@@ -394,7 +379,6 @@ function OtherWaysToInstall({ children }: { readonly children: ReactNode }) {
 }
 
 function FileInstallCard({ build }: { readonly build: NativeBuildRow }) {
-  const fileName = nativeBuildFileName(build);
   const link = useNativeBuildDownloadLinkQuery(build.id);
   const signedUrl =
     link.data?.status === "issued"
@@ -406,20 +390,10 @@ function FileInstallCard({ build }: { readonly build: NativeBuildRow }) {
   const otherWays = (
     <div className="flex min-w-0 flex-col gap-4">
       <InstallSteps build={build} />
-      <a
-        className={buttonVariants({
-          className:
-            "h-auto min-h-11 w-full min-w-0 py-2 whitespace-normal sm:min-h-8 sm:w-fit",
-          variant: "outline",
-        })}
-        download
+      <DownloadButton
+        build={build}
         href={signedUrl ?? nativeBuildDownloadPath(build.id)}
-      >
-        <Download data-icon="inline-start" />
-        <span className="text-left [overflow-wrap:anywhere]">
-          Download {fileName}
-        </span>
-      </a>
+      />
       <SignedLink link={link.data} url={signedUrl} />
     </div>
   );

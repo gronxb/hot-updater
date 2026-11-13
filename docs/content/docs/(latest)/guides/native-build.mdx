@@ -278,14 +278,17 @@ in a table like the Bundles page's, one kind of value per column:
 The build's page holds the rest, such as its built-in bundle and commit.
 
 On a narrow screen, each build is a compact card with the same values: its
-artifact, channel, and Download; its build number, size, and age; its target
-and build key; and its store.
+artifact and channel; its build number, size, and age; its target and build
+key; and its store.
 
 Pick a channel to list only the builds that embed it, such as
 `/native-builds?channel=pr-130` for a pull request's builds. A row opens the
 build's page, `/native-builds/<build id>`:
 
-- **Install**: a QR code and a download button of the build's
+- **Install**: for a build `testflight` or `google-play upload` submitted,
+  the store track and the store's version and build number, with when it was
+  submitted, as the list's **Store** column shows it; testers install it from
+  the store. Otherwise, a QR code and a download button of the build's
   [signed download link](#signed-download-links), which a phone opens without
   signing in to the Console. An `.apk` [installs from it](#install-an-apk-on-a-phone).
   An `.apk` on an emulator or over USB, and a simulator `.app`, show the
@@ -299,9 +302,6 @@ build's page, `/native-builds/<build id>`:
   comes back to the build.
 - **Build**: the build number, the `CFBundleVersion` or `versionCode` the
   artifact reports, as the list's **Build** column shows it.
-- **Store**: for a build `testflight` or `google-play upload` submitted, the
-  store track and the store's version and build number, with when it was
-  submitted. The list's **Store** column shows it too.
 - **Built-in bundle**: the build's min bundle ID, the base its OTAs patch
   from, how many bundles patch from it, and whether new deploys patch from it,
   as the scope's store build or its newest. A build they don't patch from links

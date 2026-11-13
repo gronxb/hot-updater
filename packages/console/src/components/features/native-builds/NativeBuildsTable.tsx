@@ -6,7 +6,6 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
   ArrowUpRight,
-  Download,
   HardDrive,
   RefreshCw,
 } from "lucide-react";
@@ -59,8 +58,6 @@ import {
   formatByteSize,
   nativeBuildArtifacts,
   nativeBuildChannel,
-  nativeBuildDownloadPath,
-  nativeBuildFileName,
   platformLabel,
 } from "@/lib/native-builds";
 import type { Fold } from "@/lib/server/foldedPage";
@@ -76,7 +73,7 @@ import { isSubmitted, StoreSubmissionBadge } from "./StoreSubmission";
 export const NATIVE_BUILD_GUIDE_URL =
   "https://hot-updater.dev/docs/guides/native-build#how-a-build-is-tracked";
 
-const COLUMNS = 10;
+const COLUMNS = 9;
 
 /** The page of the list that shows `channel`'s builds, or every build. */
 const channelSearch = (channel: string | undefined): NativeBuildsSearch =>
@@ -295,24 +292,6 @@ function StoreBadges({
   );
 }
 
-function DownloadButton({ build }: { readonly build: NativeBuildRow }) {
-  return (
-    <a
-      aria-label={`Download ${nativeBuildFileName(build)}`}
-      className={buttonVariants({
-        className: "min-h-11 sm:min-h-8",
-        size: "sm",
-        variant: "outline",
-      })}
-      download
-      href={nativeBuildDownloadPath(build.id)}
-    >
-      <Download data-icon="inline-start" />
-      Download
-    </a>
-  );
-}
-
 function BuildNumber({ build }: { readonly build: NativeBuildRow }) {
   return build.build_number ? (
     <span className="font-mono tabular-nums" translate="no">
@@ -385,9 +364,6 @@ function BuildRow({
       <TableCell className="text-xs text-muted-foreground">
         <RelativeTime ms={createdAt(build)} />
       </TableCell>
-      <TableCell className="text-right">
-        <DownloadButton build={build} />
-      </TableCell>
     </DataTableRow>
   );
 }
@@ -426,17 +402,14 @@ function BuildCard({
           }),
       )}
     >
-      {/* What the build is and its download on one line, its channel under it. */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-x-2.5">
-          <PlatformIcon
-            className="size-4 shrink-0 text-muted-foreground"
-            platform={build.platform}
-          />
-          <BuildIdentity build={build} />
-          {older ? <OlderBuildLabel newer={newer} /> : null}
-        </div>
-        <DownloadButton build={build} />
+      {/* What the build is on one line, its channel under it. */}
+      <div className="flex min-w-0 items-center gap-x-2.5">
+        <PlatformIcon
+          className="size-4 shrink-0 text-muted-foreground"
+          platform={build.platform}
+        />
+        <BuildIdentity build={build} />
+        {older ? <OlderBuildLabel newer={newer} /> : null}
       </div>
       <div className="flex min-w-0">
         <ChannelFilterButton channel={channel} onChannel={onChannel} />
@@ -689,7 +662,7 @@ export function NativeBuildsTable({
           <DataTable
             aria-busy={builds.isPlaceholderData}
             aria-label="Native builds"
-            // Ten columns fit 1440 px with 6 px between a cell and its border.
+            // Nine columns fit 1440 px with 6 px between a cell and its border.
             className="aria-busy:opacity-60 [&_td]:px-1.5 [&_th]:px-1.5"
             header={
               <>
@@ -702,9 +675,6 @@ export function NativeBuildsTable({
                 <TableHead>Store</TableHead>
                 <TableHead>Size</TableHead>
                 <TableHead>Created</TableHead>
-                <TableHead className="text-right">
-                  <span className="sr-only">Actions</span>
-                </TableHead>
               </>
             }
             rowGroups
