@@ -1,5 +1,14 @@
 # @hot-updater/neon
 
+## 1.2.0-rc.41
+
+### Patch Changes
+
+- Updated dependencies [97f063d]
+  - @hot-updater/plugin-core@1.2.0-rc.41
+  - @hot-updater/postgres@1.2.0-rc.41
+  - @hot-updater/storage-s3@1.2.0-rc.41
+
 ## 1.2.0-rc.40
 
 ### Patch Changes

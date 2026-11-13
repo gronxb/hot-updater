@@ -1,5 +1,14 @@
 # @hot-updater/one
 
+## 1.2.0-rc.41
+
+### Patch Changes
+
+- Updated dependencies [97f063d]
+  - @hot-updater/plugin-core@1.2.0-rc.41
+  - @hot-updater/cli-tools@1.2.0-rc.41
+  - @hot-updater/bare@1.2.0-rc.41
+
 ## 1.2.0-rc.40
 
 ### Patch Changes
