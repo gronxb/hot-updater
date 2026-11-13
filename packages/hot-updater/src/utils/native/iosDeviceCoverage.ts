@@ -20,6 +20,7 @@ import {
   downloadNativeBuild,
   resolveNativeBuildDownloadUrl,
 } from "./downloadNativeBuild";
+import { missingIpaDevices } from "./registerApprovedDevices";
 
 /**
  * Whether a registered ad hoc `.ipa` still installs on the device registry's
@@ -65,12 +66,30 @@ const listAll = async (
 };
 
 /**
+ * When a build started compiling: the time of its MIN_BUNDLE_ID, a UUIDv7
+ * issued just after the build's device step, or its registration's time for
+ * an ID that names none.
+ */
+const builtAtMs = ({
+  min_bundle_id,
+  created_at_ms,
+}: Pick<NativeBuildRow, "min_bundle_id" | "created_at_ms">): number => {
+  const ms = Number.parseInt(
+    min_bundle_id.replaceAll("-", "").slice(0, 12),
+    16,
+  );
+  return Number.isSafeInteger(ms) && ms > 0 && ms <= created_at_ms
+    ? ms
+    : created_at_ms;
+};
+
+/**
  * What a build's `.ipa` says of its devices, recomputed from the artifact
  * each time, never stored: null for an `.ipa` that lists no devices, which
  * the registry has no part in. A device the `.ipa` lacks asks for a build
- * only when it was approved or registered after the build: the build before
- * had the chance to add it, so building again for it would build again
- * forever.
+ * only when it was approved or registered after the build started: the build
+ * before had the chance to add it, so building again for it would build
+ * again forever.
  */
 export const iosDeviceCoverage = ({
   build,
@@ -78,7 +97,7 @@ export const iosDeviceCoverage = ({
   devices,
   now,
 }: {
-  readonly build: Pick<NativeBuildRow, "created_at_ms">;
+  readonly build: Pick<NativeBuildRow, "min_bundle_id" | "created_at_ms">;
   /** The `.ipa`'s install info, or null when its profile can't be read. */
   readonly info: IpaInstallInfo | null;
   /** The registry's approved and registered devices. */
@@ -94,15 +113,19 @@ export const iosDeviceCoverage = ({
   if (info.expiresAtMs !== null && info.expiresAtMs <= now) {
     return { reusable: false, reason: "expired", missing: [], waiting: [] };
   }
-  const listed = new Set(info.devices);
-  const lacking = devices.filter(({ udid }) => !listed.has(udid));
+  // The build's own check of its .ipa, over the registry's rows.
+  const lackingIds = new Set(
+    missingIpaDevices(devices, info.devices).map(({ id }) => id),
+  );
+  const lacking = devices.filter(({ id }) => lackingIds.has(id));
   const since = (device: IosDeviceRow) =>
     Math.max(device.approved_at_ms ?? 0, device.registered_at_ms ?? 0);
+  const cutoff = builtAtMs(build);
   const missing = lacking
-    .filter((device) => since(device) > build.created_at_ms)
+    .filter((device) => since(device) > cutoff)
     .map(({ name }) => name);
   const waiting = lacking
-    .filter((device) => since(device) <= build.created_at_ms)
+    .filter((device) => since(device) <= cutoff)
     .map(({ name }) => name);
   return {
     reusable: missing.length === 0,

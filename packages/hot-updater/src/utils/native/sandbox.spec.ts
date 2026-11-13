@@ -92,7 +92,7 @@ afterEach(() => {
 });
 
 describe("assertSandboxBuildAllowed", () => {
-  it("lets a normal scheme build on any channel, one named sandbox-* too", async () => {
+  it("lets a normal scheme build, whatever channel the native project embeds", async () => {
     await expect(
       assertSandboxBuildAllowed({
         platform: "android",
@@ -343,7 +343,7 @@ describe("assertBuiltArtifact", () => {
     ).rejects.toThrow("has the sandbox layer's code, but no sandbox");
   });
 
-  it("accepts a sandbox build on a pull request's channel, whatever its scheme's name", async () => {
+  it("accepts a sandbox build of a scheme of any name", async () => {
     await expect(
       assertBuiltArtifact({
         ...sandboxBuild,
@@ -371,15 +371,6 @@ describe("assertBuiltArtifact", () => {
     ).rejects.toThrow(
       "Remove HOT_UPDATER_SANDBOX_LAYER from the project's build settings.",
     );
-  });
-
-  it("accepts a normal build on a channel named sandbox-*", async () => {
-    await expect(
-      assertBuiltArtifact({
-        ...normalBuild,
-        artifactPath: await apk("release.axml", "classes.dex"),
-      }),
-    ).resolves.toMatchObject({ sandbox: { code: false, declared: false } });
   });
 
   it("refuses a sandbox build whose embedded fingerprint isn't a normal build's", async () => {

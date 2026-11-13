@@ -139,21 +139,33 @@ export const handleChannelDelete = (
 
       const keepSandbox =
         options.nativeBuilds === true && options.keepSandboxBuilds === true;
-      const listReleases = async (limit = PAGE) => {
+      /** Every release on the channel, each platform a page at a time. */
+      const listReleases = async () => {
         const releases: ReleaseRow[] = [];
         for (const platform of ["ios", "android"] as const) {
           for (let after: string | undefined; ; ) {
             const page = await core.listReleases({
               filter: { kind: "channelPlatform", channelId: row.id, platform },
-              limit,
+              limit: PAGE,
               ...(after === undefined ? {} : { after }),
             });
             releases.push(...page);
-            if (page.length < limit || releases.length >= limit) break;
+            if (page.length < PAGE) break;
             after = page.at(-1)!.id;
           }
         }
         return releases;
+      };
+      /** Whether any release is on the channel: one row of each platform. */
+      const hasReleases = async () => {
+        for (const platform of ["ios", "android"] as const) {
+          const page = await core.listReleases({
+            filter: { kind: "channelPlatform", channelId: row.id, platform },
+            limit: 1,
+          });
+          if (page.length > 0) return true;
+        }
+        return false;
       };
       /** Every build that embeds the channel, a page at a time. */
       const listBuilds = async () => {
@@ -236,7 +248,7 @@ export const handleChannelDelete = (
         if (
           left.length > 0 &&
           left.every(({ is_sandbox }) => is_sandbox) &&
-          (await listReleases(1)).length === 0
+          !(await hasReleases())
         ) {
           result = {
             deleted: false,

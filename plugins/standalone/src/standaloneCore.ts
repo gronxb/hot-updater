@@ -328,20 +328,13 @@ export const createStandaloneCoreApi = (
       if (buildKey !== undefined && row?.build_key !== buildKey) return null;
       if (options?.storeBuild && row?.is_store_build !== true) return null;
       // A server without sandbox lookups answers the channel's scope, whose
-      // builds are never this sandbox scope's.
+      // newest build may be a normal build or another sandbox scope's.
       const sandbox = scope.sandbox;
       if (
-        row !== null &&
-        row !== undefined &&
-        (row.is_sandbox === true) !==
-          (sandbox !== undefined && sandbox !== null)
-      ) {
-        return null;
-      }
-      if (
         sandbox &&
-        row &&
-        (row.artifact_kind !== sandbox.artifactKind ||
+        row !== null &&
+        (row.is_sandbox !== true ||
+          row.artifact_kind !== sandbox.artifactKind ||
           row.sandbox_url_scheme !== sandbox.urlScheme)
       ) {
         return null;

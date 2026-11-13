@@ -220,6 +220,49 @@ describe("createStandaloneCoreApi", () => {
       expect(marks).toEqual([["build/1", { storeBuild: true }]]);
     });
 
+    it("names a sandbox scope in four query parameters, and finds no build of another on a server without them", async () => {
+      const queries: URLSearchParams[] = [];
+      let answer: Record<string, unknown> = {
+        id: "build-1",
+        is_sandbox: true,
+        artifact_kind: "ipa",
+        sandbox_url_scheme: "acme-preview",
+      };
+      server.use(
+        version(2),
+        http.get(`${BASE_URL}/native-builds/latest`, ({ request }) => {
+          queries.push(new URL(request.url).searchParams);
+          return HttpResponse.json({ data: answer });
+        }),
+      );
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+      const sandboxScope = {
+        ...scope,
+        sandbox: {
+          appId: "com.example.app",
+          urlScheme: "acme-preview",
+          artifactKind: "ipa",
+          distribution: "direct",
+        },
+      } as const;
+
+      await expect(core.findNativeBuild(sandboxScope)).resolves.toMatchObject({
+        id: "build-1",
+      });
+      expect(Object.fromEntries(queries[0]!)).toMatchObject({
+        sandboxAppId: "com.example.app",
+        sandboxUrlScheme: "acme-preview",
+        artifactKind: "ipa",
+        distribution: "direct",
+      });
+      // An older server ignores them and answers the channel's newest build.
+      answer = { id: "build-2", is_sandbox: false, artifact_kind: "ipa" };
+      await expect(core.findNativeBuild(sandboxScope)).resolves.toBeNull();
+      // A normal lookup names none of them.
+      await core.findNativeBuild(scope);
+      expect(queries[2]!.has("sandboxAppId")).toBe(false);
+    });
+
     it("finds no mark on a server that answers its newest build instead", async () => {
       server.use(
         version(2),

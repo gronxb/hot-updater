@@ -384,6 +384,16 @@ describe("native-build import", () => {
       );
     });
 
+    it("says a sandbox build imported again is already imported", async () => {
+      const file = await writeArtifact(dir, "sandbox.aab", sandboxAab());
+      await handleNativeBuildImport(file, { json: true, channel: "pr-134" });
+      const first = printedJson(stdout).nativeBuild;
+      expect(await refused(file, { channel: "pr-140" })).toEqual([
+        "ALREADY_IMPORTED",
+      ]);
+      expect(first.is_sandbox).toBe(true);
+    });
+
     it("registers a normal build on a channel named sandbox-*", async () => {
       const file = await writeArtifact(dir, "app.aab", aab());
       expect(await refused(file, { channel: "sandbox-beta" })).toEqual([]);

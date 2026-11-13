@@ -393,6 +393,39 @@ describe("handleChannelDelete", () => {
       expect(process.exitCode).toBeUndefined();
     });
 
+    it("deletes every bundle past a page, and keeps only the sandbox build", async () => {
+      for (let n = 0; n < 101; n += 1) {
+        await commitDeployment({
+          core: databaseHarness.core,
+          bundle: {
+            ...bundle("1", "android"),
+            id: `01900000-0000-7000-8000-000000005${String(n).padStart(3, "0")}`,
+            manifestFileHash: `manifest-hash-5${n}`,
+            manifestStorageUri: `storage://artifacts/5${n}/manifest.json`,
+          },
+          release: policy("pr-12"),
+        });
+      }
+      const sandbox = await registerSandboxBuild(1, "pr-12");
+      storageWith(async () => ({ deleted: true }));
+      const { handleChannelDelete } = await import("./channel");
+
+      await handleChannelDelete("pr-12", {
+        json: true,
+        yes: true,
+        nativeBuilds: true,
+        keepSandboxBuilds: true,
+      });
+
+      expect(output()).toMatchObject({
+        reason: "sandbox_builds",
+        keptNativeBuildIds: [sandbox.id],
+      });
+      expect(output().deletedBundleIds).toHaveLength(101);
+      expect(await databaseHarness.releases()).toEqual([]);
+      expect(process.exitCode).toBeUndefined();
+    });
+
     it("deletes the channel when it has no sandbox build", async () => {
       await registerBuild(1, "pr-12", "fingerprint-a");
       storageWith(async () => ({ deleted: true }));
