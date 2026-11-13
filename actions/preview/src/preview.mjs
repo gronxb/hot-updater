@@ -352,8 +352,10 @@ const findOrSubmitStoreBuild = async (
       scheme,
       submit,
       noCache: noLongerOffered,
-      extraArgs:
-        platform === "ios"
+      extraArgs: [
+        "--channel",
+        inputs.channel,
+        ...(platform === "ios"
           ? [
               ...(inputs.testFlightGroup === null
                 ? []
@@ -361,7 +363,8 @@ const findOrSubmitStoreBuild = async (
               "--what-to-test",
               `Native build for #${event.number}. Pull requests with the same native code reuse it.`,
             ]
-          : [],
+          : []),
+      ],
     },
     { buildLogOutput: `${platform}-build-log` },
   );
@@ -498,7 +501,7 @@ const previewPlatform = async (deps, inputs, event, platform, onDeployed) => {
       platform,
       scheme,
       onDeployed,
-      // A config plugin can decide the channel, whatever `channel set` wrote.
+      // The build embeds the pull request's channel, whatever the project's.
       found:
         found.channel === inputs.channel
           ? found
@@ -533,9 +536,9 @@ const previewPlatform = async (deps, inputs, event, platform, onDeployed) => {
 
 /**
  * Refuses a native build this run made that embeds another channel than the
- * pull request's, as one an Expo config plugin pins does, before anything is
- * deployed: every build a preview makes, a sandbox build too, is one more
- * build of the pull request's channel.
+ * pull request's, before anything is deployed: every build a preview makes,
+ * a sandbox build too, is told the pull request's channel with `--channel`,
+ * and is one more build of it.
  *
  * @param {Platform} platform
  * @param {string} embedded
@@ -544,7 +547,7 @@ const previewPlatform = async (deps, inputs, event, platform, onDeployed) => {
 const assertEmbedsChannel = (platform, embedded, channel) => {
   if (embedded !== channel) {
     throw new Error(
-      `native-build ${platform} built a native build that embeds the ${embedded} channel, not ${channel}. An Expo project sets the channel in the @hot-updater/expo config plugin, such as from a PREVIEW_CHANNEL variable the job sets to ${channel}.`,
+      `native-build ${platform} built a native build that embeds the ${embedded} channel, not ${channel}.`,
     );
   }
 };
@@ -606,6 +609,9 @@ const deployOnNativeBuild = async (
         platform,
         "--scheme",
         scheme,
+        // The channel the build embeds, whatever an Expo config plugin sets.
+        "--channel",
+        inputs.channel,
         ...(rebuild ? ["--no-cache"] : []),
         "--json",
       ]).catch((error) => {

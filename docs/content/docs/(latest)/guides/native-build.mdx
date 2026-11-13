@@ -21,12 +21,23 @@ OTA updates, and prints them with the artifact:
 | Min bundle ID | The ID of the bundle built into the app, which only newer bundles replace (the nil UUID in Debug)                                                         |
 | Fingerprint   | The native fingerprint, with the [fingerprint strategy](/docs/guides/update-strategies/fingerprint)                                                       |
 | App version   | The native app version, with the [app version strategy](/docs/guides/update-strategies/app-version)                                                       |
-| Channel       | The [default channel](/docs/guides/channel-management): what `channel set` wrote, or in an Expo project the `@hot-updater/expo` config plugin's `channel` |
+| Channel       | The [default channel](/docs/guides/channel-management): `--channel`, else what `channel set` wrote, or in an Expo project the `@hot-updater/expo` config plugin's `channel` |
 
 The build reads the app version and channel from the artifact it built, so
 the values a flavor, build type, `versionNameSuffix`, `xcconfig` or
 `extraParams` sets are the ones it reports. On Android it reads them with the
 SDK's `aapt2`.
+
+`-c, --channel <channel>` sets the channel a build embeds, with any build
+adapter, and writes no project file: on Android it replaces the
+`com.hotupdater.CHANNEL` entry of the merged manifest, and on iOS the
+`HOT_UPDATER_CHANNEL` of the built app's `Info.plist`. A build that doesn't
+embed it, or whose channel can't be read, fails before anything is tracked or
+submitted.
+
+```package-install
+npx hot-updater native-build android --scheme release --channel staging
+```
 
 To run the app on a device, emulator or simulator, install the artifact, as
 [Build](#build) shows, or use your framework's run command.
@@ -872,6 +883,7 @@ and uploads with. [TestFlight](/docs/native-builds/testflight) and
 | `--testflight-group <name>` | `ios`, a sandbox scheme's `--submit testflight`: the internal TestFlight group to add the build to |
 | `--what-to-test <text>`     | `ios`, a sandbox scheme's `--submit testflight`: the build's What to Test in TestFlight            |
 | `--udid <udid>`             | `ios`: say whether the `.ipa` includes this iPhone; repeat it for each                             |
+| `-c, --channel <channel>`   | The channel the build embeds, whatever the project or an Expo config plugin sets                   |
 | `--dry-run`                 | Build, but record and submit nothing ([Rehearse a build](#rehearse-a-build))                       |
 | `--no-cache`                | Build even when a tracked or cached build has the same key ([Reuse a build](#reuse-a-build))       |
 | `--json`                    | Print the build, its record or why it has none, and its submission as JSON, the last line          |

@@ -59,7 +59,7 @@ import type {
   Platform,
   SecretsAdapter,
 } from "@hot-updater/plugin-core";
-import { NIL_UUID } from "@hot-updater/protocol";
+import { assertCanonicalChannelName, NIL_UUID } from "@hot-updater/protocol";
 import { ExecaError } from "execa";
 
 import {
@@ -152,6 +152,12 @@ export interface NativeBuildCreateOptions {
   /** iPhones to look for in the built `.ipa`, which says whether each is in. */
   readonly udid?: readonly string[];
   /**
+   * The channel the build embeds, whatever the native project's files or an
+   * Expo config plugin set: stamped into the artifact at build time, and
+   * checked in it before anything is recorded. Without it, theirs.
+   */
+  readonly channel?: string;
+  /**
    * Builds, but records and submits nothing, as `npm publish --dry-run`
    * does: the checks run read-only, the store key is resolved but never
    * issued, and the artifact stays on this machine.
@@ -195,6 +201,7 @@ const buildNativeInternal = async ({
     testflightGroup,
     whatToTest,
     udid: udids = [],
+    channel,
     ...schemeOptions
   },
   platform,
@@ -214,6 +221,15 @@ const buildNativeInternal = async ({
   const preparing = createStep(`Preparing ${platformName}`);
 
   try {
+    if (channel !== undefined) {
+      try {
+        assertCanonicalChannelName(channel);
+      } catch (error) {
+        throw new Error(
+          `--channel ${channel} is no channel a release can target: ${error instanceof Error ? error.message : String(error)}.`,
+        );
+      }
+    }
     // Signing and upload credentials are resolved only by a build that uses
     // them, and their temporary files are deleted once it finishes.
     // The prepared config's adapter, which the credentials resolve from
@@ -319,6 +335,7 @@ const buildNativeInternal = async ({
               platform,
               scheme,
               json,
+              channel,
               debug: /debug$/i.test(
                 (platform === "android"
                   ? androidScheme?.variant
@@ -493,6 +510,7 @@ const buildNativeInternal = async ({
                 iosScheme: iosSchemeConfig,
                 androidScheme: androidSchemeConfig,
                 credentials,
+                channel,
                 noCache: !useCache,
                 buildAdapter: buildAdapter.name,
               });
@@ -529,6 +547,7 @@ const buildNativeInternal = async ({
               platform,
               platformName,
               scheme,
+              channel,
               target,
               buildAdapter,
               outputPath,
@@ -565,6 +584,25 @@ const buildNativeInternal = async ({
                   }),
                 stays(result.artifactPath),
               );
+        // The channel --channel asked for, read from the artifact itself:
+        // one it doesn't embed, or can't be read, fails before anything
+        // records it.
+        if (channel !== undefined && trackingSkipped !== "debug") {
+          const embedded =
+            artifact === null || typeof artifact.channel !== "string"
+              ? null
+              : artifact.channel;
+          if (embedded !== channel) {
+            throw new NativeBuildFailure(
+              [
+                embedded === null
+                  ? `Couldn't read the channel the build embeds, so it can't be checked against --channel ${channel}.`
+                  : `The build embeds the ${embedded} channel, not ${channel}.`,
+                stays(result.artifactPath),
+              ].join("\n"),
+            );
+          }
+        }
         // An approved device Apple has enabled that the .ipa still lacks
         // fails the build before anything records it: the .ipa stays.
         if (deviceRegistry && deviceRegistry.expected.length > 0) {
@@ -978,6 +1016,7 @@ const buildNow = async ({
   platform,
   platformName,
   scheme,
+  channel,
   target,
   buildAdapter,
   outputPath,
@@ -994,6 +1033,8 @@ const buildNow = async ({
   platform: Platform;
   platformName: string;
   scheme: string;
+  /** `--channel`: the channel the build embeds instead of the project's. */
+  channel?: string;
   target: NativeBuildTarget;
   buildAdapter: BuildAdapter;
   outputPath: string;
@@ -1040,7 +1081,7 @@ const buildNow = async ({
         ? androidSchemeConfig!.variant
         : iosSchemeConfig!.configuration,
     ),
-    readChannel: async () => (await getChannel(platform)).value,
+    readChannel: async () => channel ?? (await getChannel(platform)).value,
     buildAdapter,
     outputPath,
     builder: async () => {
@@ -1057,6 +1098,7 @@ const buildNow = async ({
               credentials,
               logHeader: header,
               ...(minVersionCode === undefined ? {} : { minVersionCode }),
+              ...(channel === undefined ? {} : { channel }),
             })
           : await buildIos({
               schemeConfig: iosSchemeConfig!,
@@ -1065,6 +1107,7 @@ const buildNow = async ({
               sandbox: sandboxArchive,
               logHeader: header,
               ...(expectedDevices?.length ? { expectedDevices } : {}),
+              ...(channel === undefined ? {} : { channel }),
             });
       onLog(built.logFilePath);
       return built;
@@ -1220,11 +1263,14 @@ const prepareTracking = async ({
   scheme,
   json,
   debug,
+  channel,
 }: {
   platform: Platform;
   scheme: string;
   json: boolean;
   debug: boolean;
+  /** `--channel`, which the build embeds instead of the project's. */
+  channel?: string;
 }): Promise<NativeBuildTrackingSkip | null> => {
   if (debug) {
     p.log.info(`Not tracking ${scheme}: a Debug build has no built-in bundle.`);
@@ -1235,7 +1281,7 @@ const prepareTracking = async ({
   // read yet: the registry is then checked without a scope.
   const scope = await resolveNativeBuildScope(
     await loadConfig({ platform, channel: "" }),
-    { platform, scheme, json },
+    { platform, scheme, json, ...(channel === undefined ? {} : { channel }) },
   ).catch(() => null);
   try {
     await preflightNativeBuildRegistration(scope);

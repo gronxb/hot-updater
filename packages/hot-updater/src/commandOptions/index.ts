@@ -67,3 +67,8 @@ export const nativeBuildNoCacheCommandOption = new Option(
   "--no-cache",
   "Build even when a build with the same inputs can be reused, such as after a change no key covers, like a provisioning profile",
 );
+
+export const nativeBuildChannelCommandOption = new Option(
+  "-c, --channel <channel>",
+  "the channel the build embeds, whatever the native project or an Expo config plugin sets (default: theirs)",
+);

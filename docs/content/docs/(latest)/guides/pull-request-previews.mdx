@@ -377,10 +377,10 @@ hand. Until then a release stays a draft, and the comment says so.
 
 ## What each run does
 
-Before anything else, the action runs `hot-updater channel set <channel>`,
-so a build it makes on the pull request's channel embeds it. An Expo project
-with no `ios` or `android` directory in git sets it in its config plugin
-instead; see [Expo](#expo). Then, for each platform:
+Before anything else, the action runs `hot-updater channel set <channel>`.
+Every native build it makes is built with `--channel <channel>`, so it embeds
+the pull request's channel, whatever the project or an Expo config plugin
+sets. Then, for each platform:
 
 1. `hot-updater native-build find -p <platform> -s <scheme> --json`
    prints the newest tracked build that a build of the project would
@@ -394,10 +394,10 @@ instead; see [Expo](#expo). Then, for each platform:
    the pull request's, as a config plugin can, it asks again with
    `-c <channel>`. A found ad hoc `.ipa` also says, in `iosDevices`, whether it
    installs on the device registry's iPhones.
-2. With no build, `hot-updater native-build <platform> --scheme <scheme> --json`
+2. With no build, `hot-updater native-build <platform> --scheme <scheme> --channel <channel> --json`
    builds and tracks one, and prints what its artifact embeds: the
    channel, and the fingerprint or app version. The action fails when the
-   build embeds another channel than the one `find` named. An ad hoc `.ipa`
+   build embeds another channel than the pull request's. An ad hoc `.ipa`
    that lacks a newly approved iPhone is built again the same way, with
    `--no-cache`. With a build, the action skips the native build and runs
    `hot-updater fingerprint create`, since a committed `fingerprint.json` can
@@ -571,41 +571,6 @@ comment.
 A scheme that sets the app version at build time, such as in an `xcconfig`,
 builds a version the project doesn't declare, so its preview builds again on
 every run.
-
-## Expo
-
-An Expo project that generates its native projects at build time, with no
-`ios` or `android` directory in git, embeds the channel the
-`@hot-updater/expo` config plugin sets: the native build's prebuild writes
-the native projects, so `channel set` changes nothing. Every build a preview
-makes, a sandbox build too, embeds the pull request's channel. Without it
-there, the build embeds `production`, and the action fails before it deploys.
-Read the channel from an environment variable in your own `app.config.ts`:
-
-```ts title="app.config.ts"
-export default {
-  expo: {
-    plugins: [
-      [
-        "@hot-updater/expo",
-        { channel: process.env.PREVIEW_CHANNEL ?? "production" },
-      ],
-    ],
-  },
-};
-```
-
-Then set the variable in the preview job, to the action's `channel`:
-
-```yaml
-jobs:
-  preview:
-    runs-on: ubuntu-latest
-    env:
-      PREVIEW_CHANNEL: pr-${{ github.event.number }}
-```
-
-Production builds, which don't set it, keep `production`.
 
 ## Inputs
 

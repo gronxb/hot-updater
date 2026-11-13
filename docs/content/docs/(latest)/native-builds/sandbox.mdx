@@ -77,10 +77,8 @@ both:
 On iOS, with the same bundle ID, the sandbox build replaces the store app on a
 device. [A separate app](#a-separate-app-on-ios) installs beside it.
 
-A sandbox build embeds the project's channel, the one `channel set` writes, like
-any build, and registers on it. An Expo project that generates its native
-projects sets the channel in the `@hot-updater/expo` config plugin instead, as
-[a pull request preview](/docs/guides/pull-request-previews#expo) does. The registry records it as a sandbox build
+A sandbox build embeds the project's channel, like any build, or the one
+`native-build --channel` names, and registers on it. The registry records it as a sandbox build
 (`is_sandbox` on its row, which `native-build import` reads from the artifact),
 so the Console tags it **Sandbox** and `native-build find` prints it beside its
 kind.

@@ -156,7 +156,12 @@ const fakeCli = ({
       const build = {
         id: `build-${++counter}`,
         platform,
-        channel: builtChannel ?? channel,
+        // What --channel asks for, as the CLI stamps it, else the project's.
+        channel:
+          builtChannel ??
+          (args.includes("--channel")
+            ? args[args.indexOf("--channel") + 1]!
+            : channel),
         ...(builtTarget ?? target),
         kind: platform === "android" ? "apk" : "app",
       };
@@ -268,7 +273,7 @@ describe("runAction preview", () => {
     expect(fake.calls).toEqual([
       "channel set pr-12",
       "native-build find -p android -s releaseApk --json",
-      "native-build android --scheme releaseApk --json",
+      "native-build android --scheme releaseApk --channel pr-12 --json",
       "deploy -p android -c pr-12 -m 0123456 · #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
       // The download URL, once every platform is done.
@@ -360,7 +365,7 @@ describe("runAction preview", () => {
     await runAction(d, env(), event);
 
     expect(fake.calls).toContain(
-      "native-build android --scheme releaseApk --json",
+      "native-build android --scheme releaseApk --channel pr-12 --json",
     );
   });
 
@@ -515,8 +520,8 @@ describe("runAction preview", () => {
     expect(
       fake.calls.filter((call) => /^native-build (ios|android) /.test(call)),
     ).toEqual([
-      "native-build android --scheme releaseApk --json",
-      "native-build ios --scheme simulator --json",
+      "native-build android --scheme releaseApk --channel pr-12 --json",
+      "native-build ios --scheme simulator --channel pr-12 --json",
     ]);
     expect(outputs["comment-body"]).toContain("| Android |");
     expect(outputs["comment-body"]).toContain("| iOS Simulator |");

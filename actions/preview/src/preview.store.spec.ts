@@ -57,7 +57,7 @@ const fakeCli = ({
     existing: null,
     store: store("processing"),
   } as Record<string, unknown>,
-  builtChannel = "pr-12",
+  builtChannel = undefined as string | undefined,
   groupStore = { ...store("ready"), group: "added" } as Record<string, unknown>,
   groupFails = false,
 } = {}) => {
@@ -98,7 +98,11 @@ const fakeCli = ({
         code: 0,
         stdout: JSON.stringify({
           build: {
-            channel: builtChannel,
+            channel:
+              builtChannel ??
+              (args.includes("--channel")
+                ? args[args.indexOf("--channel") + 1]!
+                : channel),
             fingerprintHash: "fp-a",
             appVersion: null,
           },
@@ -181,6 +185,8 @@ describe("a preview with ios-submit", () => {
       "sandbox",
       "--submit",
       "testflight",
+      "--channel",
+      "pr-12",
       "--testflight-group",
       "QA",
       "--what-to-test",
@@ -296,10 +302,18 @@ describe("a preview with ios-submit", () => {
     expect(fake.calls.some(([command]) => command === "deploy")).toBe(false);
   });
 
-  it("fails a new store build that embeds the config plugin's production, not the pull request's channel", async () => {
+  it("uploads an Expo project's store build on the pull request's channel, whatever its config plugin embeds", async () => {
+    const fake = fakeCli({ channel: "production" });
+    await run(fake);
+    const build = fake.calls.find(([, sub]) => sub === "ios")!;
+    expect(build).toEqual(expect.arrayContaining(["--channel", "pr-12"]));
+    expect(fake.calls.some(([command]) => command === "deploy")).toBe(true);
+  });
+
+  it("fails a new store build that still embeds another channel, and deploys nothing", async () => {
     const fake = fakeCli({ channel: "production", builtChannel: "production" });
     await expect(run(fake)).rejects.toThrow(
-      "native-build ios built a native build that embeds the production channel, not pr-12. An Expo project sets the channel in the @hot-updater/expo config plugin, such as from a PREVIEW_CHANNEL variable the job sets to pr-12.",
+      "native-build ios built a native build that embeds the production channel, not pr-12.",
     );
     expect(fake.calls.some(([command]) => command === "deploy")).toBe(false);
   });

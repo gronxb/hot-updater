@@ -182,3 +182,36 @@ describe("buildAndroid", () => {
     },
   );
 });
+
+describe("buildAndroid with a channel", () => {
+  it("names the channel's init script on the build, which is gone after it, and builds without one otherwise", async () => {
+    let script: string | undefined;
+    vi.mocked(runGradle).mockImplementationOnce(async ({ args }) => {
+      const params = args.extraParams ?? [];
+      script = params[params.indexOf("--init-script") + 1];
+      const text = (await import("fs")).readFileSync(script!, "utf-8");
+      expect(text).toContain("def channel = 'pr-7'");
+      expect(text).toContain("def variantName = 'release'");
+      return {
+        buildDirectory: "/app/android/app/build/outputs/apk/release",
+        buildArtifactPath:
+          "/app/android/app/build/outputs/apk/release/app-release.apk",
+        logFilePath: null,
+      };
+    });
+
+    await buildAndroid({
+      schemeConfig: scheme(),
+      minBundleId: MIN_BUNDLE_ID,
+      channel: "pr-7",
+    });
+
+    expect(script).toBeDefined();
+    expect((await import("fs")).existsSync(script!)).toBe(false);
+
+    await buildAndroid({ schemeConfig: scheme(), minBundleId: MIN_BUNDLE_ID });
+    expect(
+      vi.mocked(runGradle).mock.calls.at(-1)?.[0].args.extraParams,
+    ).toEqual([`-PMIN_BUNDLE_ID=${MIN_BUNDLE_ID}`]);
+  });
+});
