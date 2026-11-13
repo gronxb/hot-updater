@@ -304,9 +304,12 @@ export interface HotUpdaterCoreApi {
    * builds of that key. With `scope.sandbox`, sandbox builds on any channel;
    * without it, never one. A sandbox build's built-in bundle is no patch
    * base, so with `builtInOlderThan` a sandbox scope answers null without a
-   * read. With `artifactKind` and no `buildKey`, only builds of that kind, so
-   * a scope's newer `.app` never hides its `.ipa`: one read, and a second of
-   * the scope's newest for a row registered before that index.
+   * read. With `artifactKind`, only a build of that kind, with any other
+   * option. Alone, it reads the scope's builds of that kind, so a newer
+   * `.app` doesn't hide the scope's `.ipa`: one read, and when that finds
+   * none, a second of the scope's newest, kept only when it is of the kind.
+   * A key-value store holds no index copy of this for a row written before
+   * it, so such a row is found only while it is its scope's newest.
    */
   findNativeBuild(
     scope: NativeBuildScope,

@@ -84,7 +84,8 @@ outputs:
       reusable), and on a sandbox build, sandbox (appId, urlScheme, link,
       minBundleId, fromChannel: the other pull request's channel a reused
       build embeds, or null). With several schemes on a platform, each has its
-      scheme, and the platform's other outputs are its first scheme's.
+      scheme, and the platform's other outputs are its first successful
+      scheme's.
     value: ${{ steps.run.outputs.previews }}
   android-install-url:
     description: >-

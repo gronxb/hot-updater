@@ -230,6 +230,117 @@ const registered = (
 });
 
 describe("several iOS schemes of one native code", () => {
+  it("writes these outputs and this comment for an iPhone and a Simulator sandbox build", async () => {
+    const fake = fakeCli({
+      builds: [registered(1, "ipa", { sandbox: true, channel: "pr-7" })],
+    });
+
+    const { error, outputs, body } = await run(
+      fake,
+      "sandbox, sandboxSimulator",
+    );
+
+    expect(error).toBeNull();
+    expect(outputs).toMatchInlineSnapshot(`
+      {
+        "comment-body": "<!-- hot-updater-preview -->
+
+      ### Preview on \`pr-12\`
+
+      **1. Install the sandbox app** once. Pull requests with the same native code share it.
+
+      - **iOS**: [Install on iPhone](https://console.example.com/native-builds/019a0000-0000-7000-8000-000000000001) · [Download IPA](https://console.example.com/api/native-builds/019a0000-0000-7000-8000-000000000001/download) · registered devices only
+      - **iOS Simulator**: [Details](https://console.example.com/native-builds/019a0000-0000-7000-8000-000000000101) · the command below installs it and opens \`pr-12\`
+
+      Sandbox build from \`pr-7\`, with the same native code. Already installed on a phone? Skip to step 2.
+
+      This run made a new sandbox build: push the other open pull requests again.
+
+      **2. Scan to open the latest bundle on \`pr-12\`** with the sandbox app.
+      <sub>Latest commit: [\`0123456\`](https://github.com/octo/app/commit/0123456789abcdef)</sub>
+
+      **iOS**
+
+      <img src="https://github.com/octo/app/raw/hot-updater-preview/pr-12/712fd3eeb772e309.png" alt="QR code of the sandbox link of pr-12" width="180" height="180">
+
+      \`acme-preview://hot-updater/preview?channel=pr-12&fingerprint=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&platform=ios\`
+
+      <details>
+      <summary>Builds</summary>
+
+      | Platform | Native build | Fingerprint | Bundle |
+      | --- | --- | --- | --- |
+      | iOS | \`019a0000-0000-7000-8000-000000000001\` · reused | \`aaaaaaaaaaaa\` | \`019a0000-0000-7000-8000-000000000103\` |
+      | iOS Simulator | \`019a0000-0000-7000-8000-000000000101\` · built for this commit | \`aaaaaaaaaaaa\` | \`019a0000-0000-7000-8000-000000000103\` |
+
+      </details>
+
+      <details>
+      <summary>Install on an emulator or simulator</summary>
+
+      In your project, this downloads the build, installs it on the booted Simulator, and opens the latest bundle on \`pr-12\`:
+
+      \`\`\`sh
+      npx hot-updater native-build install 019a0000-0000-7000-8000-000000000101 --open pr-12
+      \`\`\`
+
+      </details>
+
+      <sub>Preview by [hot-updater](https://hot-updater.dev)</sub>",
+        "ios-download-url": "https://storage.example.com/019a0000-0000-7000-8000-000000000001",
+        "ios-install-url": "https://console.example.com/native-builds/019a0000-0000-7000-8000-000000000001",
+        "ios-sandbox-link": "acme-preview://hot-updater/preview?channel=pr-12&fingerprint=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&platform=ios",
+        "previews": "[{"scheme":"sandbox","platform":"ios","target":{"fingerprintHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","appVersion":null},"nativeBuild":{"id":"019a0000-0000-7000-8000-000000000001","artifactKind":"ipa","fileName":"App.ipa"},"built":false,"bundleId":"019a0000-0000-7000-8000-000000000103","installUrl":"https://console.example.com/native-builds/019a0000-0000-7000-8000-000000000001","sandbox":{"appId":"com.example.app","urlScheme":"acme-preview","fromChannel":"pr-7","link":"acme-preview://hot-updater/preview?channel=pr-12&fingerprint=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&platform=ios","minBundleId":"019a0000-0000-7000-8000-000000000002"},"downloadUrl":"https://storage.example.com/019a0000-0000-7000-8000-000000000001"},{"scheme":"sandboxSimulator","platform":"ios","target":{"fingerprintHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","appVersion":null},"nativeBuild":{"id":"019a0000-0000-7000-8000-000000000101","artifactKind":"app","fileName":"App.app.zip"},"built":true,"bundleId":"019a0000-0000-7000-8000-000000000103","installUrl":"npx hot-updater native-build install 019a0000-0000-7000-8000-000000000101 --open pr-12","sandbox":{"appId":"com.example.app","urlScheme":"acme-preview","fromChannel":null,"link":"acme-preview://hot-updater/preview?channel=pr-12&fingerprint=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&platform=ios","minBundleId":"019a0000-0000-7000-8000-000000000102"},"downloadUrl":"https://storage.example.com/019a0000-0000-7000-8000-000000000101"}]",
+      }
+    `);
+    expect(body).toMatchInlineSnapshot(`
+      "<!-- hot-updater-preview -->
+
+      ### Preview on \`pr-12\`
+
+      **1. Install the sandbox app** once. Pull requests with the same native code share it.
+
+      - **iOS**: [Install on iPhone](https://console.example.com/native-builds/019a0000-0000-7000-8000-000000000001) · [Download IPA](https://console.example.com/api/native-builds/019a0000-0000-7000-8000-000000000001/download) · registered devices only
+      - **iOS Simulator**: [Details](https://console.example.com/native-builds/019a0000-0000-7000-8000-000000000101) · the command below installs it and opens \`pr-12\`
+
+      Sandbox build from \`pr-7\`, with the same native code. Already installed on a phone? Skip to step 2.
+
+      This run made a new sandbox build: push the other open pull requests again.
+
+      **2. Scan to open the latest bundle on \`pr-12\`** with the sandbox app.
+      <sub>Latest commit: [\`0123456\`](https://github.com/octo/app/commit/0123456789abcdef)</sub>
+
+      **iOS**
+
+      <img src="https://github.com/octo/app/raw/hot-updater-preview/pr-12/712fd3eeb772e309.png" alt="QR code of the sandbox link of pr-12" width="180" height="180">
+
+      \`acme-preview://hot-updater/preview?channel=pr-12&fingerprint=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&platform=ios\`
+
+      <details>
+      <summary>Builds</summary>
+
+      | Platform | Native build | Fingerprint | Bundle |
+      | --- | --- | --- | --- |
+      | iOS | \`019a0000-0000-7000-8000-000000000001\` · reused | \`aaaaaaaaaaaa\` | \`019a0000-0000-7000-8000-000000000103\` |
+      | iOS Simulator | \`019a0000-0000-7000-8000-000000000101\` · built for this commit | \`aaaaaaaaaaaa\` | \`019a0000-0000-7000-8000-000000000103\` |
+
+      </details>
+
+      <details>
+      <summary>Install on an emulator or simulator</summary>
+
+      In your project, this downloads the build, installs it on the booted Simulator, and opens the latest bundle on \`pr-12\`:
+
+      \`\`\`sh
+      npx hot-updater native-build install 019a0000-0000-7000-8000-000000000101 --open pr-12
+      \`\`\`
+
+      </details>
+
+      <sub>Preview by [hot-updater](https://hot-updater.dev)</sub>"
+    `);
+  });
+
   it("finds or builds every scheme, then deploys the platform's one bundle after the last build", async () => {
     const fake = fakeCli({ builds: [registered(1, "ipa")] });
 

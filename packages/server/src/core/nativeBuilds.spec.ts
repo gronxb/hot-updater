@@ -1,5 +1,6 @@
 import {
   createEngine,
+  createKvAdapter,
   createMemoryAdapter,
   type DatabaseAdapter,
   DatabaseConstraintError,
@@ -11,6 +12,7 @@ import { encodeChannelKey, NIL_UUID } from "@hot-updater/protocol";
 import {
   createBundleFixture,
   createBundleRowFixture,
+  createMemoryKeyValueStore,
   createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
@@ -1477,22 +1479,30 @@ describe("a scope's builds of one kind", () => {
     });
 
   /**
-   * A store that indexes rows as it writes them, holding rows `legacy` names
-   * in every index but `byScopeKind`, as it does rows written before it.
+   * Core over a key-value store, which keeps index copies as it writes rows:
+   * the rows `legacy` names get no `byScopeKind` copy, as rows written before
+   * the index have none.
    */
   const setupWithLegacy = (legacy: ReadonlySet<string>) => {
-    const adapter = createMemoryAdapter();
+    const store = createMemoryKeyValueStore();
     let clock = 1_000;
     return createInProcessCoreApi(
-      {
-        ...adapter,
-        query: async (table, request) => {
-          const rows = await adapter.query(table, request);
-          return request.index.endsWith("byScopeKind")
-            ? rows.filter(({ id }) => !legacy.has(id as string))
-            : rows;
+      createKvAdapter({
+        store: {
+          ...store,
+          write: ((ops) =>
+            store.write(
+              ops.filter(
+                (op) =>
+                  !(
+                    op.type === "put" &&
+                    op.key.pk.split("#")[1]?.endsWith("byScopeKind") &&
+                    legacy.has(op.value.id as string)
+                  ),
+              ) as typeof ops,
+            )) as typeof store.write,
         },
-      },
+      }),
       { now: () => (clock += 1) },
     );
   };
@@ -1511,9 +1521,20 @@ describe("a scope's builds of one kind", () => {
     expect(await core.findNativeBuild(scope)).toEqual(simulator);
   });
 
-  it("finds a row written before the kind index through the scope's newest, of that kind only", async () => {
+  it("finds an older .app past newer builds of another kind, on a store that reads rows by their fields", async () => {
+    const core = setup();
+    await core.registerNativeBuild(registration(1));
+    const simulator = await core.registerNativeBuild(app(2));
+    await core.registerNativeBuild(registration(3));
+
+    expect(await core.findNativeBuild(scope, { artifactKind: "app" })).toEqual(
+      simulator,
+    );
+  });
+
+  it("finds a key-value row written before the kind index only while it is its scope's newest, and never another kind", async () => {
     const core = setupWithLegacy(new Set([buildId(1), buildId(2)]));
-    const ipa = await core.registerNativeBuild(registration(1));
+    await core.registerNativeBuild(registration(1));
     // A cached Simulator build, which a cache hit reuses and never rewrites.
     const simulator = await core.registerNativeBuild(app(2));
 
@@ -1528,7 +1549,41 @@ describe("a scope's builds of one kind", () => {
     expect(await core.findNativeBuild(scope, { artifactKind: "ipa" })).toEqual(
       rebuilt,
     );
-    expect(ipa.artifact_kind).toBe("ipa");
+    // A stated limit: behind the newer .ipa, the legacy .app is no longer
+    // found, so it is downloaded again until the native code changes. It
+    // is never answered with the .ipa.
+    expect(
+      await core.findNativeBuild(scope, { artifactKind: "app" }),
+    ).toBeNull();
+  });
+
+  it("keeps to the kind with a build key or the store mark", async () => {
+    const core = setup();
+    await core.registerNativeBuild(
+      registration(1, { buildKey: `nbk1:${"1".repeat(64)}` }),
+    );
+    await core.markNativeBuild(buildId(1), { storeBuild: true });
+
+    expect(
+      await core.findNativeBuild(scope, {
+        buildKey: `nbk1:${"1".repeat(64)}`,
+        artifactKind: "app",
+      }),
+    ).toBeNull();
+    expect(
+      await core.findNativeBuild(scope, {
+        storeBuild: true,
+        artifactKind: "app",
+      }),
+    ).toBeNull();
+    expect(
+      (
+        await core.findNativeBuild(scope, {
+          storeBuild: true,
+          artifactKind: "ipa",
+        })
+      )?.id,
+    ).toBe(buildId(1));
   });
 
   it("refuses a kind the platform doesn't build", async () => {

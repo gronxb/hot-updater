@@ -591,11 +591,15 @@ export const createNativeBuildApi = (
         `Invalid native build kind: an ${scope.platform} build is ${ARTIFACT_KINDS[scope.platform].join(" or ")}.`,
       );
     }
+    // `artifactKind` holds whatever it's combined with: a build key or a
+    // mark names a build of one kind, and another kind is no build.
+    const ofKind = (row: { readonly artifact_kind: unknown }) =>
+      artifactKind === undefined || row.artifact_kind === artifactKind;
     if (options?.storeBuild) {
       const marked = await db.findOne("native_builds", {
         store_build_scope_key: scopeKey,
       });
-      return marked === null ? null : pick(marked);
+      return marked === null || !ofKind(marked) ? null : pick(marked);
     }
     // The scope's builds newest first, or with a build key its builds of that
     // key: the newest alone, or a page of those older than `before`.
@@ -652,7 +656,7 @@ export const createNativeBuildApi = (
               row?.artifact_kind === artifactKind ? pick(row) : undefined,
             )
         : undefined);
-    if (newest === undefined) return null;
+    if (newest === undefined || !ofKind(newest)) return null;
     if (bundleId === undefined || newest.min_bundle_id < bundleId) {
       return newest;
     }
@@ -666,7 +670,7 @@ export const createNativeBuildApi = (
       const usable = older.find(
         ({ min_bundle_id }) => min_bundle_id < bundleId,
       );
-      if (usable !== undefined) return pick(usable);
+      if (usable !== undefined) return ofKind(usable) ? pick(usable) : null;
       const last = older.at(-1);
       if (older.length < OLDER_BUILDS_PAGE || last === undefined) return null;
       before = last.id;

@@ -958,7 +958,7 @@ export const runPreview = async (deps, inputs, event) => {
     });
   }
   deps.setOutput("previews", JSON.stringify(outputs));
-  // A platform's outputs are its first listed scheme's.
+  // A platform's outputs are its first successful listed scheme's.
   /** @type {Set<Platform>} */
   const named = new Set();
   for (const { platform, installUrl, downloadUrl, store, sandbox } of outputs) {

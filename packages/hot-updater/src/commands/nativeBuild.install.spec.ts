@@ -411,11 +411,6 @@ describe("native-build download and install", () => {
           },
           "This build opens the channel it embeds.\nLeave out --open.",
         ],
-        [
-          "a build of an app version, which no preview link names",
-          { fingerprintHash: null, appVersion: "1.2.0" },
-          "A preview link names a fingerprint, and this build has an app version.\nLeave out --open, and open the channel in the app.",
-        ],
       ] as const)(
         "refuses %s, before any download",
         async (_, overrides, message) => {
@@ -433,6 +428,31 @@ describe("native-build download and install", () => {
           expect(installOnSimulator).not.toHaveBeenCalled();
         },
       );
+
+      it("installs and launches a build of an app version on the selected simulator, which no link can open on the channel", async () => {
+        await registerSandbox({ fingerprintHash: null, appVersion: "1.2.0" });
+        listSimulators.mockResolvedValue([
+          { udid: "SIM-A", name: "iPhone A", state: "Booted" },
+          { udid: "SIM-B", name: "iPhone B", state: "Booted" },
+        ]);
+        const { handleNativeBuildInstall } = await import("./nativeBuild");
+
+        await handleNativeBuildInstall(BUILD_ID, {
+          simulator: "SIM-B",
+          open: "pr-12",
+        });
+
+        // No url: the simulator launches the app.
+        expect(installOnSimulator).toHaveBeenCalledWith({
+          udid: "SIM-B",
+          appPath: "/extracted/App.app",
+          appId: "com.example.app",
+        });
+        expect(log.info.mock.calls[0]?.[0]).toBe(
+          "pr-12 isn't opened: a preview link names a fingerprint, and this build has an app version.\nOpen pr-12 in the app.",
+        );
+        expect(log.success.mock.calls[0]?.[0]).not.toContain("pr-12");
+      });
 
       it("refuses an APK: --open is for a Simulator build", async () => {
         const bytes = await apk("sandbox.axml");
