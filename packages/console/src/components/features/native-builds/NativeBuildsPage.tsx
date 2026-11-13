@@ -1,5 +1,6 @@
 import { AlertTriangle, HardDrive, RefreshCw } from "lucide-react";
 
+import { ChannelPicker } from "@/components/ChannelPicker";
 import {
   Alert,
   AlertAction,
@@ -7,17 +8,9 @@ import {
   AlertTitle,
 } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useChannelsQuery, useNativeBuildsQuery } from "@/lib/api";
-import { ALL_CHANNELS, ALL_CHANNELS_LABEL } from "@/lib/constants";
+import { ALL_CHANNELS } from "@/lib/constants";
 import {
   type NativeBuildsSearch,
   resolveNativeBuildsSearch,
@@ -26,12 +19,6 @@ import {
 import { ImportBuildDialog } from "./ImportBuild";
 import { NativeBuildsNav } from "./NativeBuildsNav";
 import { NativeBuildsTable } from "./NativeBuildsTable";
-
-/**
- * The filter's values: a channel's is its name behind a prefix, so no channel
- * name, `all` included, can be taken for "All channels".
- */
-const CHANNEL_VALUE_PREFIX = "channel:";
 
 /**
  * The list while its channel is unknown: loading, whatever the cache holds,
@@ -44,7 +31,6 @@ const PENDING_BUILDS = {
   isPlaceholderData: false,
   refetch: () => undefined,
 } as const;
-const channelValue = (name: string) => `${CHANNEL_VALUE_PREFIX}${name}`;
 
 /**
  * The native builds Hot Updater tracks: one page at a time, newest first,
@@ -59,7 +45,7 @@ export function NativeBuildsPage({
   readonly search: NativeBuildsSearch;
   readonly onSearchChange: (search: NativeBuildsSearch) => void;
 }) {
-  // The filter's choices; the rows decode their channel from its ID.
+  // The default channel's input; the rows decode their channel from its ID.
   const channels = useChannelsQuery();
   const channelNames = channels.data?.map(({ name }) => name) ?? [];
   // The page the list shows: a URL without a channel opens on the default
@@ -73,11 +59,6 @@ export function NativeBuildsPage({
   // Nothing reads every channel's builds on the way to the default channel's.
   const query = useNativeBuildsQuery(page ?? {}, { enabled: !pending });
   const builds = pending ? PENDING_BUILDS : query;
-  // A filtered channel may be gone, or not loaded yet: it stays a choice.
-  const choices =
-    channel === undefined || channelNames.includes(channel)
-      ? channelNames
-      : [channel, ...channelNames];
   const filterBy = (next: string | undefined) =>
     onSearchChange(
       next === undefined ? { channels: ALL_CHANNELS } : { channel: next },
@@ -101,58 +82,14 @@ export function NativeBuildsPage({
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 bg-muted/5 p-3 sm:p-6">
         <NativeBuildsNav current="builds" />
-        <div className="flex items-center gap-2">
-          <Select
-            disabled={pending}
-            items={[
-              { label: ALL_CHANNELS_LABEL, value: ALL_CHANNELS },
-              ...choices.map((name) => ({
-                label: name,
-                value: channelValue(name),
-              })),
-            ]}
-            onOpenChange={(open) => {
-              // A pull request's channel appears while the page is open.
-              if (open) void channels.refetch();
-            }}
-            onValueChange={(value) =>
-              filterBy(
-                value?.startsWith(CHANNEL_VALUE_PREFIX)
-                  ? value.slice(CHANNEL_VALUE_PREFIX.length)
-                  : undefined,
-              )
-            }
-            value={
-              pending
-                ? null
-                : channel === undefined
-                  ? ALL_CHANNELS
-                  : channelValue(channel)
-            }
-          >
-            <SelectTrigger
-              aria-label="Channel"
-              className="min-w-0 flex-1 text-xs data-[size=default]:h-11 sm:w-48 sm:flex-none sm:data-[size=default]:h-8"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value={ALL_CHANNELS}>
-                  {ALL_CHANNELS_LABEL}
-                </SelectItem>
-                {choices.map((name) => (
-                  <SelectItem
-                    key={name}
-                    translate="no"
-                    value={channelValue(name)}
-                  >
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+        <div className="flex flex-wrap items-center gap-2">
+          <ChannelPicker
+            allChannels
+            className="max-sm:min-w-0 max-sm:basis-full"
+            onValueChange={filterBy}
+            pending={pending}
+            value={channel}
+          />
           <div className="ml-auto">
             <ImportBuildDialog />
           </div>

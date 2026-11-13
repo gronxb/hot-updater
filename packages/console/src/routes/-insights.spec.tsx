@@ -31,6 +31,7 @@ vi.mock("@/lib/insights-usage-rpc", () => ({
 vi.mock("@/lib/api", () => ({
   useChannelsQuery: () => ({
     data: [{ name: "production" }, { name: "beta" }],
+    refetch: vi.fn(),
   }),
 }));
 vi.mock("@tanstack/react-router", async () => {

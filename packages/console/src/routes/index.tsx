@@ -16,6 +16,7 @@ import { Fragment, type ReactNode, useEffect, useState } from "react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
+import { ChannelPicker } from "@/components/ChannelPicker";
 import {
   DataCard,
   DataCardSkeletons,
@@ -80,7 +81,7 @@ import {
   useReleaseFoldQuery,
   useReleasesQuery,
 } from "@/lib/api";
-import { ALL_CHANNELS, ALL_CHANNELS_LABEL } from "@/lib/constants";
+import { ALL_CHANNELS } from "@/lib/constants";
 import type { Fold } from "@/lib/server/foldedPage";
 import type { ReleaseListRow } from "@/lib/server/releaseReachability";
 import { cn } from "@/lib/utils";
@@ -144,13 +145,6 @@ function BundleFilterToolbar({
 }) {
   // Releases list by channel and platform together: the index serves that pair.
   const channelSelected = search.channelId !== undefined;
-  const channelFilterItems = [
-    { label: ALL_CHANNELS_LABEL, value: "all" },
-    ...channels.map((channel) => ({
-      label: channel.name,
-      value: channel.id,
-    })),
-  ];
 
   return (
     <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-2 border-b bg-background px-3 py-3 sm:h-12 sm:flex-nowrap sm:bg-card/70 sm:px-4 sm:py-0 sm:backdrop-blur-sm">
@@ -160,35 +154,28 @@ function BundleFilterToolbar({
         <Filter className="size-3.5" />
         <span className="text-xs font-medium">Filters</span>
       </div>
-      <Select
-        disabled={pending}
-        items={channelFilterItems}
-        onValueChange={(value) =>
+      <ChannelPicker
+        allChannels
+        className="max-sm:order-1 max-sm:min-w-0 max-sm:basis-full"
+        onValueChange={(name) =>
           onChange(
-            value === null || value === "all"
+            name === undefined
               ? { channelId: undefined, channels: ALL_CHANNELS }
-              : { channelId: value },
+              : {
+                  channelId:
+                    channels.find((channel) => channel.name === name)?.id ??
+                    name,
+                },
           )
         }
-        value={pending ? null : (search.channelId ?? "all")}
-      >
-        <SelectTrigger
-          aria-label="Channel"
-          className="w-[calc(50%-0.25rem)] min-w-[132px] text-xs data-[size=default]:h-11 sm:w-[140px] sm:data-[size=default]:h-8"
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectGroup>
-            <SelectItem value="all">{ALL_CHANNELS_LABEL}</SelectItem>
-            {channels.map((channel) => (
-              <SelectItem key={channel.id} value={channel.id}>
-                {channel.name}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
+        pending={pending}
+        value={
+          search.channelId === undefined
+            ? undefined
+            : (channels.find(({ id }) => id === search.channelId)?.name ??
+              search.channelId)
+        }
+      />
       <Select
         disabled={!channelSelected}
         items={platformFilterItems}
@@ -199,7 +186,7 @@ function BundleFilterToolbar({
       >
         <SelectTrigger
           aria-label="Platform"
-          className="w-[calc(50%-0.25rem)] min-w-[132px] text-xs data-[size=default]:h-11 max-sm:order-2 sm:w-[140px] sm:data-[size=default]:h-8"
+          className="w-[calc(50%-0.25rem)] min-w-[132px] text-sm data-[size=default]:h-11 max-sm:order-2 sm:w-[140px] sm:text-xs sm:data-[size=default]:h-8"
           title={channelSelected ? undefined : "Choose a channel first"}
         >
           <SelectValue />
@@ -234,7 +221,7 @@ function BundleFilterToolbar({
       >
         <SelectTrigger
           aria-label="Status"
-          className="w-[calc(50%-0.25rem)] min-w-[132px] text-xs data-[size=default]:h-11 max-sm:order-2 sm:w-[140px] sm:data-[size=default]:h-8"
+          className="w-[calc(50%-0.25rem)] min-w-[132px] text-sm data-[size=default]:h-11 max-sm:order-2 sm:w-[140px] sm:text-xs sm:data-[size=default]:h-8"
         >
           <SelectValue />
         </SelectTrigger>
@@ -248,7 +235,7 @@ function BundleFilterToolbar({
       </Select>
       <Button
         aria-label="Manage channels"
-        className="size-11 max-sm:order-1 sm:size-7"
+        className="size-11 max-sm:ml-auto sm:size-7"
         onClick={onManageChannels}
         size="icon-sm"
         title="Manage channels"
