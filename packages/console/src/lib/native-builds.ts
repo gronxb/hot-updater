@@ -9,7 +9,6 @@ import {
   decodeChannelKey,
   encodeChannelKey,
 } from "@hot-updater/protocol";
-import { isSandboxChannel } from "@hot-updater/protocol/native-artifact";
 
 import { shellQuote } from "./shell";
 
@@ -339,8 +338,8 @@ export const SANDBOX_NO_PATCH_BASE =
 /**
  * The native build scope whose base new deploys of a release patch from, or
  * null when it has none: a release of an app version range, rather than one
- * exact version, targets many builds, and a sandbox channel's builds are no
- * patch base.
+ * exact version, targets many builds. The scope holds no sandbox build, which
+ * is no patch base.
  */
 export const releaseNativeBuildScope = (release: {
   readonly platform: "ios" | "android";
@@ -348,7 +347,6 @@ export const releaseNativeBuildScope = (release: {
   readonly fingerprintHash: string | null;
   readonly targetAppVersion: string | null;
 }): NativeBuildScope | null => {
-  if (isSandboxChannel(release.channel)) return null;
   if (release.fingerprintHash !== null) {
     return {
       platform: release.platform,

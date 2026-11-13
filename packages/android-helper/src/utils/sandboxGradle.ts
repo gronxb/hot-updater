@@ -6,7 +6,6 @@ import path from "path";
 import { getCwd } from "@hot-updater/cli-tools";
 import {
   SANDBOX_APPLICATION_ID_SUFFIX,
-  sandboxChannelOf,
   sandboxUrlSchemeOf,
 } from "@hot-updater/protocol/native-artifact";
 
@@ -147,7 +146,6 @@ export const withSandboxGradleArgs = async <T>(
     await fs.promises.writeFile(
       overlay,
       sandboxManifestOverlay({
-        channel: sandboxChannelOf(scheme.hotUpdaterSchemeName),
         urlScheme,
         launcher,
       }),

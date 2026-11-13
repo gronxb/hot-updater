@@ -165,7 +165,10 @@ const channels = defineTable(
 /**
  * The native builds `native-build android` and `native-build ios` track, newest first
  * in each scope: a platform, a channel, and the fingerprint or app version
- * the build compiled in. `min_bundle_id` names the build's built-in bundle,
+ * the build compiled in. A sandbox build's scope has no channel: its app ID,
+ * URL scheme, artifact kind and distribution in its place, so pull requests
+ * reuse it across channels, while `channel_id` still names the channel it
+ * embeds. `min_bundle_id` names the build's built-in bundle,
  * a `bundles` row no release publishes. Its references keep no counters, so
  * adding this table changes no existing one; a channel with builds is
  * refused deletion through `byChannel`. `build_key` is the native build key
@@ -180,8 +183,8 @@ const channels = defineTable(
  * newest build. The engine copies the scope key into `store_build_scope_key`
  * for that build alone, so `byStoreBuild` holds one entry per scope at most,
  * on every store, while any number of a scope's builds hold none.
- * `is_sandbox` is true on a sandbox build, set when it registers and never
- * changed, and `sandbox_url_scheme` is the URL scheme its artifact registers,
+ * `is_sandbox` is true on a sandbox build, set from its artifact when it
+ * registers and never changed, and `sandbox_url_scheme` is the URL scheme its artifact registers,
  * which its preview links open; null on any other build, and on a sandbox
  * build registered before the column, which registered the derived one.
  * `export_method` is how an `.ipa` was exported, read from its profile when

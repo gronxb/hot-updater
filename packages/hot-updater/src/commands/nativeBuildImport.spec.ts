@@ -330,7 +330,7 @@ describe("native-build import", () => {
         "base/dex/classes.dex": fixture("sandbox.dex"),
       });
 
-    it("registers a sandbox build on its reserved channel, recorded as one", async () => {
+    it("registers a sandbox build on the channel it compiled in, recorded as one", async () => {
       const file = await writeArtifact(dir, "sandbox.aab", sandboxAab());
       await handleNativeBuildImport(file, { json: true });
 
@@ -369,18 +369,34 @@ describe("native-build import", () => {
       });
     });
 
-    it("refuses a sandbox build on another channel", async () => {
+    it("registers a sandbox build on the channel it's given, with the app ID it reports", async () => {
       const file = await writeArtifact(dir, "sandbox.aab", sandboxAab());
-      expect(await refused(file, { channel: "production" })).toEqual([
-        "SANDBOX_MISMATCH",
-      ]);
+      await handleNativeBuildImport(file, { json: true, channel: "pr-134" });
+
+      expect(process.exitCode).toBeUndefined();
+      const { nativeBuild } = printedJson(stdout);
+      expect(nativeBuild).toMatchObject({
+        channel_id: "channel:cHItMTM0",
+        is_sandbox: true,
+      });
+      expect(nativeBuild.scope_key).toMatch(
+        /^v1:sandbox:android:com\.example\.app\.sandbox:hu-sandbox-com-example-app:aab:store:/,
+      );
     });
 
-    it("refuses a normal build on a reserved channel", async () => {
-      const file = await writeArtifact(dir, "app.aab", aab());
-      expect(await refused(file, { channel: "sandbox-beta" })).toEqual([
-        "SANDBOX_MISMATCH",
+    it("says a sandbox build imported again is already imported", async () => {
+      const file = await writeArtifact(dir, "sandbox.aab", sandboxAab());
+      await handleNativeBuildImport(file, { json: true, channel: "pr-134" });
+      const first = printedJson(stdout).nativeBuild;
+      expect(await refused(file, { channel: "pr-140" })).toEqual([
+        "ALREADY_IMPORTED",
       ]);
+      expect(first.is_sandbox).toBe(true);
+    });
+
+    it("registers a normal build on a channel named sandbox-*", async () => {
+      const file = await writeArtifact(dir, "app.aab", aab());
+      expect(await refused(file, { channel: "sandbox-beta" })).toEqual([]);
     });
   });
 

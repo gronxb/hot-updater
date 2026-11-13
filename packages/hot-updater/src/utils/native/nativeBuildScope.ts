@@ -1,9 +1,16 @@
-import { fitText, getCwd, type loadConfig, p } from "@hot-updater/cli-tools";
-import type { NativeBuildScope, Platform } from "@hot-updater/plugin-core";
+import path from "path";
+
 import {
-  isSandboxChannel,
-  sandboxChannelOf,
-} from "@hot-updater/protocol/native-artifact";
+  type EnrichedNativeBuildIosScheme,
+  exportsForAppStoreConnect,
+} from "@hot-updater/apple-helper";
+import { fitText, getCwd, type loadConfig, p } from "@hot-updater/cli-tools";
+import type {
+  NativeBuildSandboxScope,
+  NativeBuildScope,
+  Platform,
+} from "@hot-updater/plugin-core";
+import { sandboxUrlSchemeOf } from "@hot-updater/protocol/native-artifact";
 
 import { generateFingerprint } from "../fingerprint";
 import { getChannel } from "../setChannel";
@@ -11,14 +18,79 @@ import {
   formatAppVersionCandidates,
   isAmbiguousAppVersion,
 } from "../version/appVersionCandidates";
+import { resolveSandboxApplicationId } from "../version/getAndroidVersion";
 import { resolveNativeAppVersion } from "../version/getNativeAppVersion";
 import { nativeBuildAppVersionScope } from "./appVersionScope";
+
+/** What a sandbox scope reads of a `nativeBuild` scheme, of either platform. */
+interface SandboxSchemeConfig {
+  readonly sandbox?: unknown;
+  readonly sandboxUrlScheme?: string | null;
+  readonly packageName?: string;
+  readonly bundleIdentifier?: string;
+  readonly aab?: boolean;
+  readonly simulator?: boolean;
+  readonly variant?: string;
+  readonly applicationId?: string;
+  readonly appModuleName?: string;
+  readonly exportOptionsPlist?: string;
+}
+
+/**
+ * What a scheme's sandbox build is found by, on any channel, or null for a
+ * scheme that isn't a sandbox's: the app ID its artifact reports, the URL
+ * scheme it registers, its kind of artifact, and how that installs. Android's
+ * application ID is read from the Gradle files as the build makes it; when
+ * that differs from the build's, the lookup finds nothing and a build runs.
+ */
+export const resolveSandboxScope = async (
+  platform: Platform,
+  schemeConfig: SandboxSchemeConfig | undefined,
+): Promise<NativeBuildSandboxScope | null> => {
+  if (!schemeConfig?.sandbox) return null;
+  if (platform === "android") {
+    const scheme = schemeConfig as SandboxSchemeConfig & {
+      readonly packageName: string;
+    };
+    const artifactKind = (scheme.aab ?? true) ? "aab" : "apk";
+    return {
+      appId: await resolveSandboxApplicationId(scheme),
+      urlScheme:
+        scheme.sandboxUrlScheme ?? sandboxUrlSchemeOf(scheme.packageName),
+      artifactKind,
+      distribution: artifactKind === "aab" ? "store" : "direct",
+    };
+  }
+  const scheme = schemeConfig as SandboxSchemeConfig & {
+    readonly bundleIdentifier: string;
+  };
+  const artifactKind = scheme.simulator ? "app" : "ipa";
+  const exportOptionsPlist =
+    scheme.exportOptionsPlist === undefined
+      ? undefined
+      : path.resolve(getCwd(), scheme.exportOptionsPlist);
+  return {
+    appId: scheme.bundleIdentifier,
+    urlScheme:
+      scheme.sandboxUrlScheme ?? sandboxUrlSchemeOf(scheme.bundleIdentifier),
+    artifactKind,
+    distribution:
+      artifactKind === "ipa" &&
+      (await exportsForAppStoreConnect({
+        exportOptionsPlist,
+      } as EnrichedNativeBuildIosScheme))
+        ? "store"
+        : "direct",
+  };
+};
 
 /**
  * What a build of the project would embed, read without writing the native
  * projects: a lookup must not rewrite them, as the build adapter's prebuild
  * (such as `expo prebuild`) would. The adapter reports what its prebuild
  * would write; anything else is read from the native projects as they are.
+ * A sandbox scheme's scope also has its `sandbox`, so its lookups find a
+ * sandbox build on any channel.
  */
 export const resolveNativeBuildScope = async (
   config: Awaited<ReturnType<typeof loadConfig>>,
@@ -43,26 +115,9 @@ export const resolveNativeBuildScope = async (
     {};
   const schemeConfig =
     scheme === undefined ? undefined : config.nativeBuild[platform][scheme];
-  // A sandbox build's channel comes from its scheme, whatever the project says.
-  if (schemeConfig?.sandbox) {
-    const reserved = sandboxChannelOf(scheme!);
-    if (channel !== undefined && channel !== reserved) {
-      throw new Error(
-        `The sandbox scheme ${scheme} builds channel ${reserved}, not ${channel}.\nRemove --channel.`,
-      );
-    }
-  } else if (
-    scheme !== undefined &&
-    channel !== undefined &&
-    isSandboxChannel(channel)
-  ) {
-    throw new Error(
-      `Channel ${channel} is reserved for sandbox builds, and the scheme ${scheme} isn't one.\nPass another --channel.`,
-    );
-  }
-  const buildChannel = schemeConfig?.sandbox
-    ? sandboxChannelOf(scheme!)
-    : (channel ?? prebuildValues.channel ?? (await getChannel(platform)).value);
+  const buildChannel =
+    channel ?? prebuildValues.channel ?? (await getChannel(platform)).value;
+  const sandbox = await resolveSandboxScope(platform, schemeConfig);
   if (config.updateStrategy === "fingerprint") {
     // From the config's fingerprint inputs, as a build writes fingerprint.json
     // and deploy targets, whatever the committed fingerprint.json records.
@@ -72,6 +127,7 @@ export const resolveNativeBuildScope = async (
       channel: buildChannel,
       fingerprintHash: hash,
       appVersion: null,
+      ...(sandbox === null ? {} : { sandbox }),
     };
   }
   const versionScope =
@@ -110,5 +166,6 @@ export const resolveNativeBuildScope = async (
     channel: buildChannel,
     fingerprintHash: null,
     appVersion: resolved.version,
+    ...(sandbox === null ? {} : { sandbox }),
   };
 };

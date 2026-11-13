@@ -562,9 +562,12 @@ describe("checkNativeBuildInstall: the newer build a registered device's row nam
     readonly devices: readonly string[];
     readonly bundleId?: string;
   };
-  const check = async (newer: Ipa | null) => {
+  const check = async (
+    newer: Ipa | null,
+    base: Partial<NativeBuildRow> = {},
+  ) => {
     const builds: (Ipa & { readonly id: string })[] = [
-      { id: BUILD, row: production, devices: [PHONE] },
+      { id: BUILD, row: { ...production, ...base }, devices: [PHONE] },
       ...(newer === null ? [] : [{ id: NEWER, ...newer }]),
     ];
     const files = new Map<string, Uint8Array>();
@@ -639,6 +642,34 @@ describe("checkNativeBuildInstall: the newer build a registered device's row nam
     // The sandbox build's row decides, without reading its IPA.
     expect(core.getNativeBuild).toHaveBeenCalledTimes(2);
     expect(urls).not.toContain(newerUrl);
+  });
+
+  describe("of a sandbox build, which pull requests reuse across channels", () => {
+    const sandbox = {
+      is_sandbox: true,
+      scope_key:
+        "v1:sandbox:ios:com.example.app:acme-preview:ipa:direct:fingerprint:fp",
+    };
+
+    it("offers a newer sandbox build of its scope that another pull request's channel embeds", async () => {
+      const { result } = await check(
+        sameApp({ ...sandbox, channel_id: "channel:pr-140" }),
+        { ...sandbox, channel_id: "channel:pr-120" },
+      );
+      expect(result).toMatchObject({ newerBuild: NEWER });
+    });
+
+    it("offers nothing for a newer sandbox build of another scope, reading no IPA", async () => {
+      const { result, urls } = await check(
+        sameApp({
+          ...sandbox,
+          scope_key: sandbox.scope_key.replace(":fp", ":fp-other"),
+        }),
+        sandbox,
+      );
+      expect(result).toMatchObject({ newerBuild: null });
+      expect(urls).not.toContain(newerUrl);
+    });
   });
 
   it.each<[string, Partial<NativeBuildRow>]>([

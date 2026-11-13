@@ -80,20 +80,7 @@ export const SANDBOX_URL_TYPE_NAME = "hot-updater-sandbox";
  */
 export const SANDBOX_URL_SCHEME_META_DATA = "com.hotupdater.sandbox.URL_SCHEME";
 
-const SANDBOX_CHANNEL_PREFIX = "sandbox-";
 const SANDBOX_URL_SCHEME_PREFIX = "hu-sandbox-";
-
-/**
- * The channel a scheme's sandbox build registers on. `sandbox-*` is reserved:
- * only a sandbox build registers there, and the registry records `sandbox` on
- * it.
- */
-export const sandboxChannelOf = (scheme: string): string =>
-  `${SANDBOX_CHANNEL_PREFIX}${scheme}`;
-
-/** Whether a channel is reserved for sandbox builds. */
-export const isSandboxChannel = (channel: string): boolean =>
-  channel.startsWith(SANDBOX_CHANNEL_PREFIX);
 
 /**
  * The URL scheme a sandbox build registers when its scheme sets none, derived

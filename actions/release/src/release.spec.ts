@@ -33,6 +33,7 @@ const fakeCli = ({
   buildChannel,
   findFails = [] as string[],
   findStdout,
+  sandbox,
   deployFails = false,
   buildFails = false,
   built = {} as Record<string, unknown>,
@@ -46,6 +47,8 @@ const fakeCli = ({
   findFails?: string[];
   /** What `find` prints instead of its result. */
   findStdout?: string;
+  /** What `find` says of a sandbox scheme: its app ID and URL scheme. */
+  sandbox?: Record<string, unknown>;
   deployFails?: boolean;
   buildFails?: boolean;
   /** Fields of what `native-build <platform> --json` prints. */
@@ -75,6 +78,7 @@ const fakeCli = ({
             fingerprintHash: "fp-abcdef012345",
             appVersion: null,
             nativeBuild: registry[platform] ?? null,
+            ...(sandbox === undefined ? {} : { sandbox }),
           }),
       };
     }
@@ -555,49 +559,50 @@ describe("runAction", () => {
     expect(result.platforms[0].outcome).toBe("failed");
   });
 
-  it("refuses a sandbox channel input before anything runs", async () => {
+  it("releases on a channel named sandbox-*, which is a channel like any", async () => {
     const fake = fakeCli({ registry: { android: row() } });
-    const { error, outputs } = await run(fake, {
+    const { error, result } = await run(fake, {
       INPUT_CHANNEL: "sandbox-release",
     });
 
-    expect(error?.message).toBe(
-      "sandbox-release is a sandbox channel, which never goes to a store. Release on another channel.",
-    );
-    expect(fake.calls).toEqual([]);
-    expect(outputs).toEqual({});
+    expect(error).toBeUndefined();
+    expect(fake.calls[0]).toContain("-c sandbox-release");
+    expect(result.platforms[0]).toMatchObject({ channel: "sandbox-release" });
   });
 
   it.each([
     ["with a build", { android: row() }],
     ["without a build", {}],
   ])(
-    "deploys and builds nothing when the native project embeds a sandbox channel, %s",
+    "deploys and builds nothing for a sandbox scheme on any channel, %s",
     async (_name, registry) => {
-      const fake = fakeCli({ channel: "sandbox-release", registry });
+      const fake = fakeCli({
+        channel: "production",
+        registry,
+        sandbox: {
+          appId: "com.example.app",
+          urlScheme: "acme-preview",
+          channel: null,
+        },
+      });
       const { error, result, lines } = await run(fake);
 
-      expect(error?.message).toContain("sandbox-release is a sandbox channel");
+      expect(error?.message).toContain(
+        "The android-scheme release is a sandbox scheme, which never goes to a store. Use a scheme without sandbox: true.",
+      );
       expect(fake.calls).toEqual([
         "native-build find -p android -s release --json",
       ]);
       expect(result.platforms[0]).toMatchObject({
-        channel: "sandbox-release",
+        channel: "production",
         decision: "none",
         outcome: "failed",
       });
       expect(lines).toEqual([
-        "android · fingerprint fp-abcde · none · sandbox-release is a sandbox channel",
+        "android · fingerprint fp-abcde · none · release is a sandbox scheme",
       ]);
     },
   );
-
-  it("takes a channel that only starts like a sandbox one", async () => {
-    const fake = fakeCli();
-    const { error } = await run(fake, { INPUT_CHANNEL: "sandboxed" });
-    expect(error).toBeUndefined();
-    expect(fake.calls[0]).toContain("-c sandboxed");
-  });
 
   it("sets nothing when the inputs are wrong", async () => {
     const fake = fakeCli();

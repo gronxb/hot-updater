@@ -131,7 +131,14 @@ describe("createPatch", () => {
         minBundleId: `018f0000-0000-7000-8000-00000000000${n}`,
         gitCommitHash: null,
         buildKey: null,
-        ...(isSandbox === undefined ? {} : { isSandbox }),
+        ...(isSandbox === undefined
+          ? {}
+          : {
+              isSandbox,
+              sandboxUrlScheme: "acme-preview",
+              sandboxAppId: "com.example.app",
+              exportMethod: "ad-hoc" as const,
+            }),
         artifact: {
           kind: "ipa",
           storageUri: `storage://native-builds/ios/b00${n}/App.ipa`,
@@ -152,28 +159,30 @@ describe("createPatch", () => {
         platform: "ios",
       });
 
-    it("refuses a sandbox build's, before making the patch, whatever the server checks", async () => {
+    it("reports the server's refusal of a sandbox build's, which createBundleDiff cleans up after", async () => {
       const exit = vi
         .spyOn(process, "exit")
         .mockImplementation(() => undefined as never);
       try {
-        const sandbox = await register(1, "sandbox-release", true);
+        const sandbox = await register(1, "pr-134", true);
+        mockServer.createBundleDiff.mockRejectedValueOnce(
+          new Error("A sandbox build's built-in bundle is no patch base."),
+        );
 
         await patchFrom(sandbox.min_bundle_id);
 
-        expect(mockServer.createBundleDiff).not.toHaveBeenCalled();
+        expect(mockServer.createBundleDiff).toHaveBeenCalledOnce();
         expect(mockCli.p.log.error).toHaveBeenCalledWith(
           "A sandbox build's built-in bundle is no patch base.",
         );
         expect(exit).toHaveBeenCalledWith(1);
-        expect(databaseHarness.dispose).toHaveBeenCalledOnce();
       } finally {
         exit.mockRestore();
       }
     });
 
     it("patches from another build's", async () => {
-      await register(1, "sandbox-release", true);
+      await register(1, "pr-134", true);
       const store = await register(2, "production");
 
       await patchFrom(store.min_bundle_id);

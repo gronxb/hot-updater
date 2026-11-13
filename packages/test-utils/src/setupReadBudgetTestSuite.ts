@@ -272,6 +272,13 @@ const nativeBuildScope = {
   fingerprintHash: "native-fingerprint",
   appVersion: null,
 } as const;
+/** A sandbox scope of `nativeBuildScope`'s fingerprint, which no build has. */
+const nativeBuildSandboxScope = {
+  appId: "com.example.app",
+  urlScheme: "acme-preview",
+  artifactKind: "ipa",
+  distribution: "direct",
+} as const;
 /** The native build key the older of the two native builds is registered with. */
 const nativeBuildKey = `nbk1:${"0".repeat(64)}`;
 const bundleEvents = {
@@ -691,15 +698,26 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "native build older than a bundle in a sandbox scope: no read",
-    // A sandbox build's built-in bundle is no patch base, and only sandbox
-    // builds register on a sandbox-* channel.
+    // A sandbox build's built-in bundle is no patch base.
     read: ({ core }) =>
       core.findNativeBuild(
-        { ...nativeBuildScope, channel: "sandbox-release" },
+        { ...nativeBuildScope, sandbox: nativeBuildSandboxScope },
         { builtInOlderThan: "ffffffff-ffff-7fff-bfff-ffffffffffff" },
       ),
     adapter: reads(0, 0, 0, 0),
     engine: { calls: 0, rows: 0 },
+    check: (build) => expect(build).toBeNull(),
+  }),
+  budget({
+    api: "sandbox build on any channel: byScope descending, limit 1",
+    read: ({ core }) =>
+      core.findNativeBuild({
+        ...nativeBuildScope,
+        channel: "pr-140",
+        sandbox: nativeBuildSandboxScope,
+      }),
+    adapter: reads(0, 0, 1, 0),
+    engine: { calls: 1, rows: 0 },
     check: (build) => expect(build).toBeNull(),
   }),
   budget({
@@ -1119,6 +1137,13 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     check: (device) => expect(device?.udid).toBe(BUDGET_PENDING_UDID),
   }),
   budget({
+    api: "iOS device account read, no claim yet: its row, then the rows that name one",
+    read: ({ core }) => core.findIosDeviceAccount(),
+    adapter: reads(1, 1, 1, 2),
+    engine: { calls: 2, rows: 2 },
+    check: (account) => expect(account).toEqual({ issuerId: "issuer-a" }),
+  }),
+  budget({
     api: "iOS device account, first claim: its one row's read, the registry's rows once, and 1 write",
     // No account yet: the registry's rows (the requested iPhone and the one
     // issuer-a registered) say whose it is, before the claim writes.
@@ -1128,6 +1153,13 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     writes: 1,
     check: (claim) =>
       expect(claim).toEqual({ issuerId: "issuer-a", claimed: true }),
+  }),
+  budget({
+    api: "iOS device account read, claimed: its one row's read",
+    read: ({ core }) => core.findIosDeviceAccount(),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    check: (account) => expect(account).toEqual({ issuerId: "issuer-a" }),
   }),
   budget({
     api: "iOS device account, claimed: its one row's read",

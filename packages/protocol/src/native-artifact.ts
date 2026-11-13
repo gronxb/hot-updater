@@ -44,7 +44,6 @@ export {
   createPreviewLink,
   isConfigurableSandboxUrlScheme,
   isRecordedUrlSchemeSyntax,
-  isSandboxChannel,
   isSandboxUrlScheme,
   parsePreviewLink,
   type PreviewLink,
@@ -58,6 +57,5 @@ export {
   SANDBOX_URL_SCHEME_INFO_PLIST_KEY,
   SANDBOX_URL_SCHEME_META_DATA,
   SANDBOX_URL_TYPE_NAME,
-  sandboxChannelOf,
   sandboxUrlSchemeOf,
 } from "./nativeArtifact/sandbox";

@@ -202,16 +202,14 @@ describe("declaredUrlSchemes", () => {
 describe("sandboxManifestOverlay", () => {
   const overlayOf = (components: string) =>
     sandboxManifestOverlay({
-      channel: "sandbox-release",
       urlScheme: "hu-sandbox-com-example-app",
       launcher: resolveSandboxLauncher(merged(components)),
     });
 
-  it("replaces the app's channel and declares the sandbox", () => {
+  it("keeps the app's channel and declares the sandbox", () => {
     const overlay = overlayOf(activity());
-    expect(overlay).toContain(
-      '<meta-data android:name="com.hotupdater.CHANNEL" android:value="sandbox-release" tools:replace="android:value" />',
-    );
+    // The build embeds the project's channel, as any scheme's build does.
+    expect(overlay).not.toContain("com.hotupdater.CHANNEL");
     expect(overlay).toContain(
       '<meta-data android:name="com.hotupdater.SANDBOX" android:value="true" />',
     );
@@ -338,10 +336,10 @@ describe("sandboxManifestOverlay", () => {
 
   it("escapes what it copies", () => {
     const overlay = sandboxManifestOverlay({
-      channel: 'a"b&c',
       urlScheme: "hu-sandbox-com-example-app",
       launcher: {
         kind: "activity",
+        label: 'a"b&c',
         name: "com.example.app.Main$Activity",
         filter: {
           attributes: {},
@@ -351,7 +349,7 @@ describe("sandboxManifestOverlay", () => {
         },
       },
     });
-    expect(overlay).toContain('android:value="a&quot;b&amp;c"');
+    expect(overlay).toContain('android:label="a&quot;b&amp;c"');
     expect(overlay).toContain('android:name="a&lt;b"');
   });
 });

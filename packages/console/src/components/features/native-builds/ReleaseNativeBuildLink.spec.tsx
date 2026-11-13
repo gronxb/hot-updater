@@ -132,22 +132,6 @@ describe("ReleaseNativeBuildLink", () => {
     ).toBe("/native-builds?channel=production");
   });
 
-  it("shows no build and reads nothing for a sandbox channel, whose builds are no patch base", () => {
-    renderLink(
-      {
-        platform: "ios",
-        fingerprint_hash: "fp-ios-sandbox",
-        target_app_version: null,
-        bundle_id: "019a0000-0000-7000-8000-0000000000a5",
-      },
-      [],
-      "sandbox-release",
-    );
-
-    expect(screen.queryByText("Native build")).toBeNull();
-    expect(read).not.toHaveBeenCalled();
-  });
-
   it("shows no build and reads nothing for an app version range", () => {
     for (const target_app_version of ["1.4.x", ">=1.0.0", "1.4"]) {
       renderLink({

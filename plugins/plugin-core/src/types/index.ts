@@ -216,7 +216,7 @@ export interface NativeBuildAndroidScheme {
   /**
    * Builds the app with the sandbox native layer, for testing OTA bundles on
    * a device, as a separate app: the application ID gets a `.sandbox` suffix.
-   * It registers on the reserved channel `sandbox-<scheme>`, and reaches
+   * It embeds the project's channel, as any scheme's build does, and reaches
    * Google Play's internal testing only. No other build compiles the layer.
    * An object turns it on with options: `urlScheme` is the URL scheme its
    * preview links and QR codes open, `hu-sandbox-<packageName>` by default.
@@ -356,8 +356,8 @@ export interface NativeBuildIosScheme {
    * a device. It has the bundle identifier its Xcode configuration builds,
    * which `bundleIdentifier` must name: the store app's by default, which it
    * replaces on a device, or its own from a separate configuration. It
-   * registers on the reserved channel `sandbox-<scheme>`, and its `.ipa` is for
-   * TestFlight internal testing only, never App Store review. No other build
+   * embeds the project's channel, as any scheme's build does, and its `.ipa`
+   * is for TestFlight internal testing only, never App Store review. No other build
    * compiles the layer. An object turns it on with options: `urlScheme` is
    * the URL scheme its preview links and QR codes open,
    * `hu-sandbox-<bundleIdentifier>` by default.

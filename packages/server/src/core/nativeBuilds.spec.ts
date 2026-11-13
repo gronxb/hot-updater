@@ -53,6 +53,37 @@ const registration = (
     ...overrides,
   }) as NativeBuildRegistration;
 
+/**
+ * A sandbox build's registration: on a pull request's channel like any build,
+ * with what its artifact says of it.
+ */
+const sandboxRegistration = (
+  n: number,
+  overrides: Partial<NativeBuildRegistration> = {},
+): NativeBuildRegistration =>
+  registration(n, {
+    channel: "pr-134",
+    isSandbox: true,
+    sandboxUrlScheme: "acme-preview",
+    sandboxAppId: "com.example.app",
+    exportMethod: "ad-hoc",
+    ...overrides,
+  });
+
+/** The sandbox scope a lookup of `sandboxRegistration`'s builds names. */
+const sandboxScope = {
+  platform: "ios",
+  channel: "pr-140",
+  fingerprintHash: "fingerprint-a",
+  appVersion: null,
+  sandbox: {
+    appId: "com.example.app",
+    urlScheme: "acme-preview",
+    artifactKind: "ipa",
+    distribution: "direct",
+  },
+} as const;
+
 const channelKey = encodeChannelKey("production");
 const productionId = `channel:${channelKey}`;
 
@@ -92,9 +123,7 @@ const setRow = (
 describe("the native build registry", () => {
   it("records a sandbox build, and no other", async () => {
     const core = setup();
-    const sandboxBuild = await core.registerNativeBuild(
-      registration(1, { channel: "sandbox-release", isSandbox: true }),
-    );
+    const sandboxBuild = await core.registerNativeBuild(sandboxRegistration(1));
     const plain = await core.registerNativeBuild(registration(2));
 
     expect(sandboxBuild.is_sandbox).toBe(true);
@@ -102,31 +131,33 @@ describe("the native build registry", () => {
     expect(plain.is_store_build).toBe(false);
     expect(await core.getNativeBuild(buildId(1))).toEqual(sandboxBuild);
     expect(await core.getNativeBuild(buildId(2))).toEqual(plain);
-    expect(
-      await core.findNativeBuild({
-        platform: "ios",
-        channel: "sandbox-release",
-        fingerprintHash: "fingerprint-a",
-        appVersion: null,
-      }),
-    ).toEqual(sandboxBuild);
+    expect(await core.findNativeBuild(sandboxScope)).toEqual(sandboxBuild);
   });
 
   it.each([
     [
-      "a sandbox build off a sandbox-* channel",
-      { channel: "production", isSandbox: true },
-      "a sandbox build registers on a sandbox-* channel, not production",
+      "a sandbox build without its URL scheme",
+      { isSandbox: true, sandboxAppId: "com.example.app" },
+      "a sandbox build needs the sandboxUrlScheme its artifact registers",
     ],
     [
-      "a build without the record on a sandbox-* channel",
-      { channel: "sandbox-release" },
-      "channel sandbox-release is reserved for sandbox builds",
+      "a sandbox build without its app ID",
+      { isSandbox: true, sandboxUrlScheme: "acme-preview" },
+      "a sandbox build needs the sandboxAppId its artifact reports, which an older hot-updater CLI doesn't send. Upgrade the hot-updater CLI to the version that matches this server, and build again",
     ],
     [
-      "a false record on a sandbox-* channel",
-      { channel: "sandbox-release", isSandbox: false },
-      "channel sandbox-release is reserved for sandbox builds",
+      "a sandbox app ID that isn't one",
+      {
+        isSandbox: true,
+        sandboxUrlScheme: "acme-preview",
+        sandboxAppId: "com example",
+      },
+      "sandboxAppId must be the artifact's bundle identifier or application ID, up to 255 characters",
+    ],
+    [
+      "a sandbox app ID on a build of no sandbox",
+      { channel: "production", sandboxAppId: "com.example.app" },
+      "sandboxAppId is a sandbox build's, and this isn't one",
     ],
     [
       "a null record",
@@ -157,7 +188,11 @@ describe("the native build registry", () => {
       (sandboxUrlScheme) =>
         [
           `a sandbox URL scheme of ${JSON.stringify(sandboxUrlScheme)}`,
-          { channel: "sandbox-release", isSandbox: true, sandboxUrlScheme },
+          {
+            isSandbox: true,
+            sandboxAppId: "com.example.app",
+            sandboxUrlScheme,
+          },
           "sandboxUrlScheme must be a URL scheme in lower case, up to 255 characters, or null",
         ] as const,
     ),
@@ -173,28 +208,18 @@ describe("the native build registry", () => {
     expect(await core.getNativeBuild(buildId(1))).toBeNull();
   });
 
-  it("records the URL scheme a sandbox build's artifact registers, and null without one", async () => {
+  it("records the URL scheme a sandbox build's artifact registers, and null on any other build", async () => {
     const core = setup();
     const custom = await core.registerNativeBuild(
-      registration(1, {
-        channel: "sandbox-release",
-        isSandbox: true,
-        sandboxUrlScheme: "acme.preview+qa",
-      }),
-    );
-    // An RC CLI sends no scheme: its build registered the derived one.
-    const legacy = await core.registerNativeBuild(
-      registration(2, { channel: "sandbox-release", isSandbox: true }),
+      sandboxRegistration(1, { sandboxUrlScheme: "acme.preview+qa" }),
     );
     const plain = await core.registerNativeBuild(
       registration(3, { sandboxUrlScheme: null }),
     );
 
     expect(custom.sandbox_url_scheme).toBe("acme.preview+qa");
-    expect(legacy.sandbox_url_scheme).toBeNull();
     expect(plain.sandbox_url_scheme).toBeNull();
     expect(await core.getNativeBuild(buildId(1))).toEqual(custom);
-    expect(await core.getNativeBuild(buildId(2))).toEqual(legacy);
   });
 
   it("finds the newest build of a platform, channel, and fingerprint", async () => {
@@ -533,7 +558,7 @@ describe("the native build registry", () => {
       {
         bundle,
         release: {
-          channel: "sandbox-release",
+          channel: "pr-134",
           enabled: true,
           fingerprintHash: "fingerprint-a",
           message: null,
@@ -542,9 +567,7 @@ describe("the native build registry", () => {
         },
       },
     ]);
-    await core.registerNativeBuild(
-      registration(1, { channel: "sandbox-release", isSandbox: true }),
-    );
+    await core.registerNativeBuild(sandboxRegistration(1));
     await core.registerNativeBuild(registration(2));
     await core.registerNativeBuild(registration(3));
     const patchFrom = (n: number) => ({
@@ -572,7 +595,7 @@ describe("the native build registry", () => {
         {
           bundle: { ...deployed, patches: [patchFrom(1)] },
           release: {
-            channel: "sandbox-release",
+            channel: "pr-134",
             enabled: true,
             fingerprintHash: "fingerprint-a",
             message: null,
@@ -1041,9 +1064,7 @@ describe("the store build mark", () => {
 
   it("refuses a sandbox build, and answers null for an unknown one", async () => {
     const core = setup();
-    await core.registerNativeBuild(
-      registration(1, { channel: "sandbox-release", isSandbox: true }),
-    );
+    await core.registerNativeBuild(sandboxRegistration(1));
 
     await expect(
       core.markNativeBuild(buildId(1), { storeBuild: true }),
@@ -1061,11 +1082,9 @@ describe("the store build mark", () => {
   it("refuses a build by its sandbox record, not by its channel", async () => {
     const { core, db } = setupWithDb();
     await core.registerNativeBuild(registration(1, { channel: "pr-130" }));
-    await core.registerNativeBuild(
-      registration(2, { channel: "sandbox-release", isSandbox: true }),
-    );
-    // Rows no registration writes: a sandbox build on another channel, and a
-    // build on a sandbox channel with no record.
+    await core.registerNativeBuild(sandboxRegistration(2));
+    // Rows no registration writes: a normal build recorded as a sandbox build,
+    // and the reverse.
     await setRow(db, buildId(1), { is_sandbox: true });
     await setRow(db, buildId(2), { is_sandbox: false });
 
@@ -1086,8 +1105,10 @@ describe("the store build mark", () => {
       const build = await core.registerNativeBuild(
         registration(1, {
           platform: "android",
-          channel: "sandbox-release",
+          channel: "pr-134",
           isSandbox: true,
+          sandboxUrlScheme: "acme-preview",
+          sandboxAppId: "com.example.app.sandbox",
           artifact: {
             kind: "aab",
             storageUri: "storage://app.aab",
@@ -1113,9 +1134,7 @@ describe("the store build mark", () => {
 
   it("keeps a sandbox build's record through its submission", async () => {
     const core = setup();
-    await core.registerNativeBuild(
-      registration(1, { channel: "sandbox-release", isSandbox: true }),
-    );
+    await core.registerNativeBuild(sandboxRegistration(1));
     await expect(
       core.recordNativeBuildSubmission(buildId(1), {
         destination: "testflight",
@@ -1268,10 +1287,7 @@ describe("the store build mark", () => {
 
   it("finds no patch base in a sandbox scope, whose builds the other reads still find", async () => {
     const core = setup();
-    const sandbox = await core.registerNativeBuild(
-      registration(1, { channel: "sandbox-release", isSandbox: true }),
-    );
-    const sandboxScope = { ...scope, channel: "sandbox-release" };
+    const sandbox = await core.registerNativeBuild(sandboxRegistration(1));
 
     expect(
       await core.findNativeBuild(sandboxScope, {
@@ -1279,6 +1295,167 @@ describe("the store build mark", () => {
       }),
     ).toBeNull();
     expect(await core.findNativeBuild(sandboxScope)).toEqual(sandbox);
+  });
+});
+
+describe("sandbox builds on any channel", () => {
+  const normalScope = {
+    platform: "ios",
+    channel: "pr-134",
+    fingerprintHash: "fingerprint-a",
+    appVersion: null,
+  } as const;
+
+  it("registers a sandbox build on a pull request's channel", async () => {
+    const core = setup();
+    const build = await core.registerNativeBuild(sandboxRegistration(1));
+    expect(build).toMatchObject({
+      channel_id: `channel:${encodeChannelKey("pr-134")}`,
+      is_sandbox: true,
+      sandbox_url_scheme: "acme-preview",
+      scope_key:
+        "v1:sandbox:ios:com.example.app:acme-preview:ipa:direct:fingerprint:fingerprint-a",
+    });
+    expect(await core.findChannelByName("pr-134")).not.toBeNull();
+  });
+
+  it("keeps a normal build and a newer sandbox build of the same fingerprint apart", async () => {
+    const core = setup();
+    const normal = await core.registerNativeBuild(
+      registration(1, { channel: "pr-134" }),
+    );
+    const sandbox = await core.registerNativeBuild(sandboxRegistration(2));
+
+    expect(await core.findNativeBuild(normalScope)).toEqual(normal);
+    expect(
+      await core.findNativeBuild(normalScope, {
+        builtInOlderThan: "01ff0000-0000-7000-8000-000000000000",
+      }),
+    ).toEqual(normal);
+    expect(await core.findNativeBuild(sandboxScope)).toEqual(sandbox);
+  });
+
+  it("finds a sandbox build registered on another pull request's channel", async () => {
+    const core = setup();
+    const built = await core.registerNativeBuild(
+      sandboxRegistration(1, { channel: "pr-120" }),
+    );
+    // The lookup names pr-140, the channel a build of it would embed.
+    expect(await core.findNativeBuild(sandboxScope)).toEqual(built);
+    expect(
+      await core.findNativeBuild({
+        ...sandboxScope,
+        fingerprintHash: "fingerprint-b",
+      }),
+    ).toBeNull();
+  });
+
+  it("finds a sandbox build by what installs it: app ID, URL scheme, kind, and distribution", async () => {
+    const core = setup();
+    const adHoc = await core.registerNativeBuild(sandboxRegistration(1));
+    // Newer builds of the same fingerprint that install another way.
+    const store = await core.registerNativeBuild(
+      sandboxRegistration(2, { exportMethod: "app-store" }),
+    );
+    await core.registerNativeBuild(
+      sandboxRegistration(3, { sandboxAppId: "com.example.other" }),
+    );
+    await core.registerNativeBuild(
+      sandboxRegistration(4, { sandboxUrlScheme: "other-preview" }),
+    );
+    // An .ipa whose profile wasn't read installs neither way for sure.
+    await core.registerNativeBuild(
+      sandboxRegistration(5, { exportMethod: null }),
+    );
+
+    expect(await core.findNativeBuild(sandboxScope)).toEqual(adHoc);
+    expect(
+      await core.findNativeBuild({
+        ...sandboxScope,
+        sandbox: { ...sandboxScope.sandbox, distribution: "store" },
+      }),
+    ).toEqual(store);
+    expect(
+      await core.findNativeBuild({
+        ...sandboxScope,
+        sandbox: { ...sandboxScope.sandbox, appId: "com.example.other" },
+      }),
+    ).toMatchObject({ id: buildId(3) });
+  });
+
+  it("finds no APK sandbox build for an AAB lookup", async () => {
+    const core = setup();
+    const android = {
+      platform: "android",
+      sandboxAppId: "com.example.app.sandbox",
+      exportMethod: null,
+    } as const;
+    const apk = await core.registerNativeBuild(
+      sandboxRegistration(1, {
+        ...android,
+        artifact: { kind: "apk", storageUri: "storage://app.apk", byteSize: 1 },
+      }),
+    );
+    const scope = {
+      ...sandboxScope,
+      platform: "android",
+      sandbox: {
+        appId: "com.example.app.sandbox",
+        urlScheme: "acme-preview",
+        artifactKind: "aab",
+        distribution: "store",
+      },
+    } as const;
+    expect(await core.findNativeBuild(scope)).toBeNull();
+    expect(
+      await core.findNativeBuild({
+        ...scope,
+        sandbox: {
+          ...scope.sandbox,
+          artifactKind: "apk",
+          distribution: "direct",
+        },
+      }),
+    ).toEqual(apk);
+  });
+
+  it.each([
+    ["an app ID that isn't one", { appId: "com example" }],
+    ["an empty app ID", { appId: "" }],
+    ["an app ID past 255 characters", { appId: `a${"b".repeat(255)}` }],
+    ["a URL scheme in upper case", { urlScheme: "Acme" }],
+    ["another platform's kind", { artifactKind: "apk" }],
+    ["an unknown distribution", { distribution: "testflight" }],
+  ])("refuses a sandbox lookup with %s", async (_, sandbox) => {
+    const core = setup();
+    await expect(
+      core.findNativeBuild({
+        ...sandboxScope,
+        sandbox: { ...sandboxScope.sandbox, ...sandbox } as never,
+      }),
+    ).rejects.toThrow(NativeBuildInputError);
+  });
+
+  it("tells an older CLI's sandbox registration to upgrade the CLI", async () => {
+    const core = setup();
+    // What a 1.2 prerelease CLI sent: its reserved channel, no app ID.
+    const older = registration(1, {
+      channel: "sandbox-release",
+      isSandbox: true,
+      sandboxUrlScheme: "acme-preview",
+      exportMethod: "ad-hoc",
+    });
+    await expect(core.registerNativeBuild(older)).rejects.toThrow(
+      "Upgrade the hot-updater CLI to the version that matches this server, and build again.",
+    );
+    expect(await core.getNativeBuild(buildId(1))).toBeNull();
+  });
+
+  it("refuses a sandbox registration on a channel no release can target", async () => {
+    const core = setup();
+    await expect(
+      core.registerNativeBuild(sandboxRegistration(1, { channel: " pr-1" })),
+    ).rejects.toThrow(NativeBuildInputError);
   });
 });
 

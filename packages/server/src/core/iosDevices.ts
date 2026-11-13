@@ -139,6 +139,7 @@ export const createIosDeviceApi = (
   | "markIosDevicesInBuild"
   | "deleteIosDevice"
   | "claimIosDeviceAccount"
+  | "findIosDeviceAccount"
 > => {
   const findIosDevice = async (udid: string) => {
     const key = normalizeIosUdid(udid);
@@ -372,6 +373,19 @@ export const createIosDeviceApi = (
           tx.update("ios_devices", row, { build_id: buildId });
         });
       }
+    },
+
+    // What a claim would answer, with nothing written: the claim's row, or
+    // the account the rows name.
+    async findIosDeviceAccount() {
+      const existing = await db.findOne("ios_device_account", {
+        id: ACCOUNT_ROW,
+      });
+      const issuerId =
+        existing === null
+          ? await accountOfRows()
+          : (existing.apple_issuer_id as string);
+      return issuerId === null ? null : { issuerId };
     },
 
     async claimIosDeviceAccount(issuerId) {

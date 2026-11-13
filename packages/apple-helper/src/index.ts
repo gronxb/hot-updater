@@ -56,6 +56,7 @@ export {
 } from "./utils/savedAdHocProfiles";
 export {
   assertSandboxExportOptions,
+  exportsForAppStoreConnect,
   exportsForRegisteredDevices,
 } from "./utils/xcodeSigning";
 export type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";

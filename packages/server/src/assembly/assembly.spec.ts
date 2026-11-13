@@ -188,6 +188,7 @@ describe("createHotUpdater with plugins", () => {
       { method: "POST", path: "/ios-devices", access: "admin" },
       { method: "GET", path: "/ios-devices/udid/:udid", access: "admin" },
       { method: "POST", path: "/ios-devices/in-build", access: "admin" },
+      { method: "GET", path: "/ios-devices/account", access: "admin" },
       { method: "POST", path: "/ios-devices/account", access: "admin" },
       { method: "POST", path: "/ios-devices/:id/approval", access: "admin" },
       { method: "POST", path: "/ios-devices/:id/outcome", access: "admin" },

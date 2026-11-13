@@ -18,9 +18,9 @@ import {
   assertStorageOperations,
   type NativeBuildArtifactKind,
   type NativeBuildRow,
-  type NativeBuildScope,
   type Platform,
 } from "@hot-updater/plugin-core";
+import { decodeChannelKey } from "@hot-updater/protocol";
 import {
   blobSource,
   readNativeArtifact,
@@ -37,7 +37,12 @@ import {
   nativeBuildFileName,
   resolveNativeBuildDownloadUrl,
 } from "../utils/native/downloadNativeBuild";
+import {
+  type IosDeviceCoverage,
+  readIosDeviceCoverage,
+} from "../utils/native/iosDeviceCoverage";
 import { resolveNativeBuildScope } from "../utils/native/nativeBuildScope";
+import { readSchemeAppleDevices } from "../utils/native/schemeAppleDevices";
 import { findMissingStorePatch } from "../utils/native/storeBuildPatch";
 import {
   applyStoreTestFlightGroup,
@@ -71,7 +76,10 @@ export interface NativeBuildFindOptions {
  * strategy, the version of the app its scheme builds, on the channel it
  * would embed. With a scheme, the build must also be the kind of artifact
  * the scheme builds: a Simulator scheme can't use an `.ipa`, nor an APK
- * scheme an `.aab`. Printing no build is a result, not a failure.
+ * scheme an `.aab`. A sandbox scheme's build is found on any channel, by
+ * its app ID, URL scheme, artifact kind and distribution. Under `--json`, a
+ * found ad hoc `.ipa` says whether it still installs on the device
+ * registry's devices. Printing no build is a result, not a failure.
  */
 export const handleNativeBuildFind = async (
   options: NativeBuildFindOptions,
@@ -110,7 +118,7 @@ export const handleNativeBuildFind = async (
     const server = await loadServer(await loadConfig(null));
     let nativeBuild: NativeBuildRow | null;
     let downloadUrl: string | null = null;
-    let otherBuilds = false;
+    let iosDevices: IosDeviceCoverage | null = null;
     try {
       nativeBuild = await server.core.findNativeBuild(scope);
       if (
@@ -126,8 +134,29 @@ export const handleNativeBuildFind = async (
           nativeBuild,
         );
       }
-      if (options.json && sandbox !== null && nativeBuild === null) {
-        otherBuilds = await hasOtherSandboxBuilds(server, scope);
+      if (options.json && nativeBuild !== null) {
+        const { scheme } = options;
+        iosDevices = await readIosDeviceCoverage(
+          server,
+          nativeBuild,
+          // A credential this run can't resolve reads as Apple's state
+          // unknown: the build waits, rather than building on a guess.
+          async () =>
+            scheme === undefined || options.platform !== "ios"
+              ? {
+                  kind: "unavailable",
+                  reason: "no nativeBuild.ios scheme names its Apple account",
+                }
+              : readSchemeAppleDevices(config, scheme),
+        ).catch((error) => {
+          // Without the registry or the artifact, the run decides as before.
+          console.error(
+            fitText(
+              `Couldn't check the build's devices: ${error instanceof Error ? error.message : String(error)}`,
+            ),
+          );
+          return null;
+        });
       }
     } finally {
       await safeDispose(server);
@@ -155,13 +184,17 @@ export const handleNativeBuildFind = async (
             nativeBuild,
             downloadUrl,
             ...(options.storeStatus ? { store } : {}),
+            ...(iosDevices === null ? {} : { iosDevices }),
             ...(sandbox === null
               ? {}
               : {
                   sandbox: {
                     appId: sandbox.appId,
                     urlScheme: sandboxUrlSchemeFor(sandbox, nativeBuild),
-                    otherBuilds,
+                    // The channel the found build embeds, which may be
+                    // another pull request's.
+                    channel:
+                      nativeBuild === null ? null : channelNameOf(nativeBuild),
                   },
                 }),
           },
@@ -189,7 +222,11 @@ export const handleNativeBuildFind = async (
       ui.block("Native build found", [
         ui.kv("ID", ui.id(nativeBuild.id)),
         ui.kv("Platform", ui.platform(scope.platform)),
-        ui.kv("Channel", ui.channel(scope.channel)),
+        // A sandbox build found on another pull request's channel says so.
+        ui.kv(
+          "Channel",
+          ui.channel(channelNameOf(nativeBuild) ?? scope.channel),
+        ),
         target,
         artifactVersionRow(nativeBuild),
         ui.kv("Kind", kindOf(nativeBuild)),
@@ -280,39 +317,15 @@ const sandboxUrlSchemeFor = (
     ? sandbox.urlScheme
     : (nativeBuild.sandbox_url_scheme ?? sandboxUrlSchemeOf(sandbox.appId));
 
-/** One page of a channel's builds, newest first. */
-const SANDBOX_BUILDS_PAGE = 100;
-
-/**
- * Whether the scope's sandbox channel has a build of the platform with other
- * native code, which tells a pull request that changed its native code from a
- * project with no sandbox build yet. Android and iOS can share the channel of
- * a scheme name, and no index holds a channel's builds by platform, so it reads
- * pages until one has such a build or the channel runs out. It reads nothing
- * when a build matched.
- */
-const hasOtherSandboxBuilds = async (
-  server: LoadedServer,
-  scope: NativeBuildScope,
-): Promise<boolean> => {
-  const channel = await server.core.findChannelByName(scope.channel);
-  if (channel === null) return false;
-  for (let after: string | undefined; ; ) {
-    const page = await server.core.listNativeBuilds({
-      channelId: channel.id,
-      order: "desc",
-      limit: SANDBOX_BUILDS_PAGE,
-      ...(after === undefined ? {} : { after }),
-    });
-    const found = page.some(
-      (build) =>
-        build.platform === scope.platform &&
-        (build.fingerprint_hash !== scope.fingerprintHash ||
-          build.app_version !== scope.appVersion),
-    );
-    if (found) return true;
-    if (page.length < SANDBOX_BUILDS_PAGE) return false;
-    after = page.at(-1)!.id;
+/** The name of the channel a build embeds, from its row's channel key. */
+const channelNameOf = (
+  build: Pick<NativeBuildRow, "channel_id">,
+): string | null => {
+  const key = build.channel_id.replace(/^channel:/u, "");
+  try {
+    return decodeChannelKey(key);
+  } catch {
+    return null;
   }
 };
 

@@ -88,13 +88,40 @@ export interface StoredBundleDeployment {
 export type Deployment = BundleDeployment | StoredBundleDeployment;
 
 /**
+ * How a native build's artifact reaches a device: installed directly (an
+ * APK, a simulator `.app`, or an ad hoc, development or enterprise `.ipa`),
+ * or through a store (an AAB, or an App Store `.ipa`). Part of the core API
+ * a standalone server's client implements.
+ */
+export type NativeBuildDistribution = "direct" | "store";
+
+/**
+ * What tells sandbox builds apart in place of the channel, which pull requests
+ * reuse a sandbox build across: the app ID its artifact reports (its bundle
+ * identifier or application ID, with Android's `.sandbox` suffix), the URL
+ * scheme its preview links open, its artifact's kind, and how that installs.
+ * Part of the core API a standalone server's client implements.
+ */
+export interface NativeBuildSandboxScope {
+  readonly appId: string;
+  readonly urlScheme: string;
+  readonly artifactKind: NativeBuildArtifactKind;
+  readonly distribution: NativeBuildDistribution;
+}
+
+/**
  * A native build's scope: its platform, the default channel it compiled in,
  * and whichever of the fingerprint and the app version the update strategy
- * selects by.
+ * selects by. With `sandbox`, the scope of sandbox builds of that fingerprint
+ * or app version, on any channel: `channel` is then the one a new build would
+ * embed, and no lookup reads it. A registration ignores `sandbox`: its own
+ * `isSandbox`, `sandboxAppId`, `sandboxUrlScheme`, `exportMethod` and
+ * artifact decide its scope.
  */
 export type NativeBuildScope = {
   readonly platform: Platform;
   readonly channel: string;
+  readonly sandbox?: NativeBuildSandboxScope | null;
 } & (
   | { readonly fingerprintHash: string; readonly appVersion: null }
   | { readonly fingerprintHash: null; readonly appVersion: string }
@@ -119,16 +146,23 @@ export type NativeBuildRegistration = NativeBuildScope & {
    */
   readonly buildNumber?: string | null;
   /**
-   * Whether the artifact is a sandbox build; left out, it isn't. It must agree
-   * with the channel: a sandbox build registers on a reserved `sandbox-*`
-   * channel, and only a sandbox build does.
+   * Whether the artifact is a sandbox build, as the artifact says; left out,
+   * it isn't. A sandbox build registers on any channel, and is found through
+   * its sandbox scope, never a normal one.
    */
   readonly isSandbox?: boolean;
   /**
    * The URL scheme a sandbox build's artifact registers, which its preview
-   * links open; null or left out for any other build.
+   * links open: required for a sandbox build, and null or left out for any
+   * other.
    */
   readonly sandboxUrlScheme?: string | null;
+  /**
+   * The app ID a sandbox build's artifact reports, its bundle identifier or
+   * application ID: required for a sandbox build, and null or left out for
+   * any other.
+   */
+  readonly sandboxAppId?: string | null;
   /**
    * How an `.ipa` was exported, read from its embedded profile; null or left
    * out for any other artifact, or an `.ipa` whose profile wasn't read.
@@ -185,6 +219,12 @@ export interface IosDeviceOutcomeInput {
   readonly outcome: IosDeviceOutcome;
   /** Apple's words for `refused`, kept as the row's `apple_error`. */
   readonly reason?: string;
+}
+
+/** The Apple account a device registry belongs to. */
+export interface IosDeviceAccount {
+  /** The App Store Connect issuer of the account. */
+  readonly issuerId: string;
 }
 
 /** The device registry's Apple account, after a build tried to claim it. */
@@ -261,8 +301,10 @@ export interface HotUpdaterCoreApi {
    * scope whose built-in bundle is older than that bundle: one read when the
    * newest is, and then a page of older builds per read until one is, when
    * builds made after the bundle are in the way. With `buildKey` too, only
-   * builds of that key. A sandbox build's built-in bundle is no patch base, so
-   * with `builtInOlderThan` a sandbox scope answers null without a read.
+   * builds of that key. With `scope.sandbox`, sandbox builds on any channel;
+   * without it, never one. A sandbox build's built-in bundle is no patch
+   * base, so with `builtInOlderThan` a sandbox scope answers null without a
+   * read.
    */
   findNativeBuild(
     scope: NativeBuildScope,
@@ -419,6 +461,13 @@ export interface HotUpdaterCoreApi {
    * account registers nothing.
    */
   claimIosDeviceAccount(issuerId: string): Promise<IosDeviceAccountClaim>;
+  /**
+   * The Apple account the device registry belongs to, read without claiming
+   * it: the claimed account, or with no claim yet, the one
+   * `claimIosDeviceAccount` would give it, the earliest its rows name. Null
+   * while nothing names one, when the first claim takes it.
+   */
+  findIosDeviceAccount(): Promise<IosDeviceAccount | null>;
   /**
    * Records that a native build's .ipa lists these devices, one write per
    * row: a row removed meanwhile is skipped.

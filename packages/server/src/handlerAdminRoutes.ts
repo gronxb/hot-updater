@@ -7,6 +7,7 @@ import {
   type Deployment,
   type KeysetInput,
   type NativeBuildRegistration,
+  type NativeBuildSandboxScope,
   type NativeBuildScope,
   type ReleaseFilter,
   type ReleasePolicyPatch,
@@ -292,9 +293,46 @@ const nativeBuildScopeOf = (url: URL): NativeBuildScope => {
       "A native build lookup needs platform, channel, and fingerprintHash or appVersion.",
     );
   }
-  return fingerprintHash !== null
-    ? { platform, channel, fingerprintHash, appVersion: null }
-    : { platform, channel, fingerprintHash: null, appVersion: appVersion! };
+  const sandbox = sandboxScopeOf(params);
+  const scope: NativeBuildScope =
+    fingerprintHash !== null
+      ? { platform, channel, fingerprintHash, appVersion: null }
+      : { platform, channel, fingerprintHash: null, appVersion: appVersion! };
+  return sandbox === null ? scope : { ...scope, sandbox };
+};
+
+/** The query parameters a sandbox lookup names, all four or none. */
+const SANDBOX_SCOPE_PARAMS = [
+  "sandboxAppId",
+  "sandboxUrlScheme",
+  "artifactKind",
+  "distribution",
+] as const;
+
+/**
+ * A lookup's sandbox scope: null without one, and a bad request for one
+ * named in part. Core checks each value.
+ */
+const sandboxScopeOf = (
+  params: URLSearchParams,
+): NativeBuildSandboxScope | null => {
+  const [appId, urlScheme, artifactKind, distribution] =
+    SANDBOX_SCOPE_PARAMS.map((name) => params.get(name));
+  const named = [appId, urlScheme, artifactKind, distribution].filter(
+    (value) => value !== null,
+  ).length;
+  if (named === 0) return null;
+  if (named !== SANDBOX_SCOPE_PARAMS.length) {
+    throw new HandlerBadRequestError(
+      `A sandbox build lookup needs ${SANDBOX_SCOPE_PARAMS.join(", ")}.`,
+    );
+  }
+  return {
+    appId: appId!,
+    urlScheme: urlScheme!,
+    artifactKind: artifactKind as NativeBuildSandboxScope["artifactKind"],
+    distribution: distribution as NativeBuildSandboxScope["distribution"],
+  };
 };
 
 /** A native build or scope core refuses: a bad request. */
@@ -330,6 +368,7 @@ const isNativeBuildRegistration = (
   (value.isSandbox === undefined || typeof value.isSandbox === "boolean") &&
   (value.sandboxUrlScheme === undefined ||
     isTextOrNull(value.sandboxUrlScheme)) &&
+  (value.sandboxAppId === undefined || isTextOrNull(value.sandboxAppId)) &&
   (value.exportMethod === undefined || isTextOrNull(value.exportMethod)) &&
   (value.nativeAppVersion === undefined ||
     isTextOrNull(value.nativeAppVersion)) &&
@@ -800,6 +839,12 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     });
   }),
 
+  // No account yet answers 200 with null data, so a 404 means a server
+  // without the route.
+  findIosDeviceAccount: onCore(async (core) =>
+    json({ data: await core.findIosDeviceAccount() }),
+  ),
+
   markIosDevicesInBuild: onCore(async (core, request) => {
     const input = await body(request);
     const { buildId, ids } = input;
@@ -933,6 +978,11 @@ export const ADMIN_ROUTES: readonly {
     method: "POST",
     path: "/ios-devices/in-build",
     handler: "markIosDevicesInBuild",
+  },
+  {
+    method: "GET",
+    path: "/ios-devices/account",
+    handler: "findIosDeviceAccount",
   },
   {
     method: "POST",

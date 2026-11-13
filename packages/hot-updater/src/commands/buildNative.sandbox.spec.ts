@@ -140,7 +140,7 @@ vi.mock("@/utils/native/createNativeBuild", () => ({
       platform: "ios",
       scheme: "release",
       minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
-      channel: "sandbox-release",
+      channel: "pr-134",
       fingerprintHash: "fp",
       appVersion: null,
       artifactPath: "/out/export/App.ipa",
@@ -151,7 +151,7 @@ vi.mock("@/utils/native/createNativeBuild", () => ({
 vi.mock("../utils/native/nativeBuildScope", () => ({
   resolveNativeBuildScope: vi.fn(async () => ({
     platform: "ios",
-    channel: "sandbox-release",
+    channel: "pr-134",
     fingerprintHash: "fp",
     appVersion: null,
   })),
@@ -172,7 +172,7 @@ vi.mock("../utils/native/reuseNativeBuild", () => ({
               platform: "ios",
               scheme: "release",
               minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
-              channel: "sandbox-release",
+              channel: "pr-134",
               fingerprintHash: "fp",
               appVersion: null,
               artifactPath: "/out/cached/App.ipa",
@@ -283,7 +283,6 @@ describe("native-build of a sandbox scheme", () => {
     expect(assertBuiltArtifact).toHaveBeenCalledWith(
       expect.objectContaining({
         sandbox: true,
-        channel: "sandbox-release",
         fingerprintHash: "fp",
       }),
     );

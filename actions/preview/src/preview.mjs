@@ -30,8 +30,10 @@ export { parseJsonOutput };
  * @typedef {import("./comment.mjs").PlatformPreview} PlatformPreview
  *
  * @typedef {object} PreviewOutputs What later steps read of a platform's build.
- * @property {string} installUrl What a person opens: the Console's download
- *   link, or for a simulator build, the `native-build install` command.
+ * @property {string} installUrl What a person opens: the store's page of a
+ *   store build, the Console's build page for an `.ipa`, where an iPhone
+ *   installs it, the Console's download link for an Android build, or for a
+ *   simulator build, the `native-build install` command.
  * @property {string | null} downloadUrl The storage's URL of the artifact,
  *   which a step fetches without a Console session; null when it gives none.
  *
@@ -44,9 +46,6 @@ export { parseJsonOutput };
  *   builds embed and its bundles deploy to.
  * @property {Partial<Record<Platform, "testflight" | "play-internal">>} submits
  *   The store each platform's sandbox build goes to; none previews as before.
- * @property {Partial<Record<Platform, string>>} fallbackSchemes The normal
- *   scheme each platform builds on the pull request's channel when its native
- *   code differs from its sandbox builds'.
  * @property {string | null} testFlightGroup The internal TestFlight group of an
  *   iOS sandbox build.
  * @property {boolean} credit
@@ -166,18 +165,6 @@ export const parseInputs = (env, event) => {
   const channel = input("CHANNEL") || `pr-${event.number}`;
 
   const submits = parseSubmits(input);
-  /** @type {Inputs["fallbackSchemes"]} */
-  const fallbackSchemes = {};
-  for (const platform of platforms) {
-    const fallback = input(`${platform.toUpperCase()}_FALLBACK_SCHEME`);
-    if (fallback === "") continue;
-    if (submits[platform] !== undefined) {
-      throw new Error(
-        `${platform}-fallback-scheme doesn't go with ${platform}-submit: the store gets a new sandbox build.\nRemove one of them.`,
-      );
-    }
-    fallbackSchemes[platform] = fallback;
-  }
   const testFlightGroup = input("IOS_TESTFLIGHT_GROUP") || null;
   if (testFlightGroup !== null && submits.ios === undefined) {
     throw new Error(
@@ -207,7 +194,6 @@ export const parseInputs = (env, event) => {
     schemes,
     channel,
     submits,
-    fallbackSchemes,
     testFlightGroup,
     credit: parseFlag(input, "CREDIT", true),
     comment: parseFlag(input, "COMMENT", true),
@@ -254,15 +240,14 @@ const artifactFileName = (storageUri) => {
 const findDownloadUrl = async (
   deps,
   inputs,
-  { platform, nativeBuild: { id }, sandbox, store, fallbackScheme },
+  { platform, nativeBuild: { id } },
 ) => {
   try {
+    // A sandbox scheme's lookup finds its build on any channel.
     const found = await findNativeBuild(deps, {
       platform,
-      scheme:
-        fallbackScheme ?? /** @type {string} */ (inputs.schemes[platform]),
-      // A sandbox scheme's channel is its own, which `find` refuses to be told.
-      channel: sandbox || store ? null : inputs.channel,
+      scheme: /** @type {string} */ (inputs.schemes[platform]),
+      channel: inputs.channel,
     });
     if (found.nativeBuild?.id === id) return found.downloadUrl ?? null;
     deps.log.notice(
@@ -278,7 +263,7 @@ const findDownloadUrl = async (
 
 /**
  * Finds or makes a store build of a sandbox scheme, which every pull request
- * with its native code shares, on the scheme's own channel. A build the store
+ * with its native code shares, whichever channel it embeds. A build the store
  * still offers needs no upload, and joins the requested internal group, which
  * may not be the one it was uploaded for. Anything else goes through `native-build
  * --submit`, which reuses a build the store never took; one the store no longer
@@ -298,7 +283,6 @@ const findOrSubmitStoreBuild = async (
   submit,
 ) => {
   const scheme = /** @type {string} */ (inputs.schemes[platform]);
-  const sandboxChannel = `sandbox-${scheme}`;
   const group = platform === "ios" ? inputs.testFlightGroup : null;
   // With a group to apply, that one command reads the store's word too.
   const found = await findNativeBuild(deps, {
@@ -381,9 +365,9 @@ const findOrSubmitStoreBuild = async (
     },
     { buildLogOutput: `${platform}-build-log` },
   );
-  if (built.build.channel !== sandboxChannel) {
+  if (built.build.channel !== found.channel) {
     throw new Error(
-      `native-build ${platform} built a native build that embeds the ${built.build.channel} channel, not ${sandboxChannel}.`,
+      `native-build ${platform} built a native build that embeds the ${built.build.channel} channel, not ${found.channel}.`,
     );
   }
   if (built.nativeBuild === null) {
@@ -423,18 +407,31 @@ const findOrSubmitStoreBuild = async (
  *
  * @param {Inputs} inputs
  * @param {Platform} platform
- * @param {{ appId: string, urlScheme: string } | undefined} sandbox
+ * @param {{ appId: string, urlScheme: string, channel: string | null } | undefined} sandbox
  * @param {import("../../shared/nativeBuild.mjs").BuildTarget} target
  * @param {NativeBuildRow} build
+ * @param {boolean} built Whether this run built it.
  * @returns {{ sandbox?: import("./comment.mjs").SandboxPreview }}
  */
-const sandboxOf = (inputs, platform, sandbox, { fingerprintHash }, build) => {
+const sandboxOf = (
+  inputs,
+  platform,
+  sandbox,
+  { fingerprintHash },
+  build,
+  built,
+) => {
   if (sandbox === undefined) return {};
   const urlScheme = build.sandbox_url_scheme ?? sandbox.urlScheme;
   return {
     sandbox: {
       appId: sandbox.appId,
       urlScheme,
+      // Another pull request's channel, when it made the reused build.
+      fromChannel:
+        !built && sandbox.channel !== null && sandbox.channel !== inputs.channel
+          ? sandbox.channel
+          : null,
       link:
         fingerprintHash === null
           ? null
@@ -491,21 +488,16 @@ const previewPlatform = async (deps, inputs, event, platform, onDeployed) => {
       built,
       bundleId,
       store,
-      ...sandboxOf(inputs, platform, sandbox, target, build),
+      ...sandboxOf(inputs, platform, sandbox, target, build, built),
       installUrl:
         store?.url ?? nativeBuildInstallUrl(inputs.consoleUrl, nativeBuild),
     };
   }
-  // With no channel, `find` answers for a sandbox scheme's own, and otherwise
-  // for what the project embeds, which `channel set` made the pull request's.
+  // With no channel, `find` answers for what the project embeds, which
+  // `channel set` made the pull request's, and a sandbox scheme's build on
+  // any channel.
   const found = await findNativeBuild(deps, { platform, scheme });
-  const fallback = inputs.fallbackSchemes[platform];
   if (found.sandbox === undefined) {
-    if (fallback !== undefined) {
-      throw new Error(
-        `${platform}-fallback-scheme goes with a sandbox scheme, and ${scheme} isn't one.\nSet sandbox: true on it, or remove ${platform}-fallback-scheme.`,
-      );
-    }
     const { preview } = await deployOnNativeBuild(deps, inputs, event, {
       platform,
       scheme,
@@ -523,27 +515,6 @@ const previewPlatform = async (deps, inputs, event, platform, onDeployed) => {
     });
     return preview;
   }
-  if (
-    found.nativeBuild === null &&
-    found.sandbox?.otherBuilds &&
-    fallback !== undefined
-  ) {
-    deps.log.info(
-      `Building ${fallback} for ${platform}: the sandbox builds have other native code than ${describeTarget(found)}.`,
-    );
-    const { preview } = await deployOnNativeBuild(deps, inputs, event, {
-      platform,
-      scheme: fallback,
-      channel: inputs.channel,
-      onDeployed,
-      found: await findNativeBuild(deps, {
-        platform,
-        scheme: fallback,
-        channel: inputs.channel,
-      }),
-    });
-    return { ...preview, fallbackScheme: fallback };
-  }
   const { preview, build } = await deployOnNativeBuild(deps, inputs, event, {
     platform,
     scheme,
@@ -553,13 +524,24 @@ const previewPlatform = async (deps, inputs, event, platform, onDeployed) => {
   });
   return {
     ...preview,
-    ...sandboxOf(inputs, platform, found.sandbox, preview.target, build),
+    ...sandboxOf(
+      inputs,
+      platform,
+      found.sandbox,
+      preview.target,
+      build,
+      preview.built,
+    ),
   };
 };
 
 /**
  * Deploys the pull request's bundle after finding, or building and tracking,
- * a native build of the scheme that embeds `channel`.
+ * a native build of the scheme that embeds `channel`: a sandbox scheme's
+ * found build may embed another pull request's. A found ad hoc `.ipa` that
+ * lacks a device approved since it was built, or whose profile expired or
+ * can't be read, is built again past the cache, which would hand back the
+ * same `.ipa`.
  *
  * @param {Deps} deps
  * @param {Inputs} inputs
@@ -580,10 +562,27 @@ const deployOnNativeBuild = async (
   };
   /** @type {NativeBuildRow} */
   let build;
-  const built = found.nativeBuild === null;
-  if (found.nativeBuild === null) {
+  const devices = found.iosDevices;
+  if (devices && devices.waiting.length > 0) {
+    deps.log.notice(
+      `The ${platform} build doesn't have ${devices.waiting
+        .map(({ name, reason }) => `${name} (${reason})`)
+        .join(", ")}. The next preview builds again once a build can add them.`,
+    );
+  }
+  const rebuild = found.nativeBuild !== null && devices?.reusable === false;
+  const built = found.nativeBuild === null || rebuild;
+  if (found.nativeBuild === null || rebuild) {
     deps.log.info(
-      `Building ${platform}: no native build on ${channel} has ${describeTarget(found)}.`,
+      rebuild
+        ? `Building ${platform}: native build ${found.nativeBuild?.id} ${
+            devices?.reason === "missing"
+              ? `lacks ${devices.missing.join(", ")}`
+              : devices?.reason === "expired"
+                ? "has an expired profile"
+                : "has a profile that can't be read"
+          }.`
+        : `Building ${platform}: no native build on ${channel} has ${describeTarget(found)}.`,
     );
     const since = Date.now();
     // Every native build is tracked, so the preview can install it.
@@ -593,6 +592,7 @@ const deployOnNativeBuild = async (
         platform,
         "--scheme",
         scheme,
+        ...(rebuild ? ["--no-cache"] : []),
         "--json",
       ]).catch((error) => {
         reportBuildLogs(deps, `${platform}-build-log`, since);
@@ -621,7 +621,9 @@ const deployOnNativeBuild = async (
     build = registered.nativeBuild;
   } else {
     deps.log.info(
-      `Reusing ${platform} native build ${found.nativeBuild.id} (${describeTarget(found)}).`,
+      found.sandbox?.channel && found.sandbox.channel !== inputs.channel
+        ? `Reusing ${platform} native build ${found.nativeBuild.id} from ${found.sandbox.channel} (${describeTarget(found)}).`
+        : `Reusing ${platform} native build ${found.nativeBuild.id} (${describeTarget(found)}).`,
     );
     build = found.nativeBuild;
     await refreshFingerprint(deps, found);
@@ -770,10 +772,12 @@ const failureOf = (failures) =>
       );
 
 /**
- * Deletes the closed pull request's channel with its bundles and the native
- * builds that embed it, each with its artifact, and says so in its comment.
- * It fails when the channel is kept, as when a bundle or a build is added to
- * it meanwhile.
+ * Deletes the closed pull request's bundles and the normal native builds that
+ * embed its channel, each with its artifact, and the channel, and says so in
+ * its comment. Its sandbox builds stay, merged or not, since other pull
+ * requests with the same native code reuse them, and so does the channel they
+ * embed. It fails when the channel is kept for anything else, as when a
+ * bundle or a build is added to it meanwhile.
  *
  * @param {Deps} deps
  * @param {Inputs} inputs
@@ -785,20 +789,23 @@ export const runCleanup = async (deps, inputs, event) => {
     "delete",
     inputs.channel,
     "--native-builds",
+    "--keep-sandbox-builds",
     "--yes",
     "--json",
   ];
   const { code, stdout } = await deps.cli(args, { capture: true });
   const result =
-    /** @type {{ deleted: boolean, reason?: string, deletedBundleIds?: string[], deletedNativeBuildIds?: string[] }} */ (
+    /** @type {{ deleted: boolean, reason?: string, deletedBundleIds?: string[], deletedNativeBuildIds?: string[], keptNativeBuildIds?: string[] }} */ (
       parseJsonOutput(stdout)
     );
   const outcome =
     result.reason === "not_found"
       ? "missing"
-      : result.deleted
-        ? "deleted"
-        : "kept";
+      : result.reason === "sandbox_builds"
+        ? "kept-sandbox"
+        : result.deleted
+          ? "deleted"
+          : "kept";
   if (outcome !== "kept" && code !== 0) {
     throw new Error(`hot-updater ${args.join(" ")} exited with ${code}.`);
   }
@@ -807,6 +814,7 @@ export const runCleanup = async (deps, inputs, event) => {
     outcome,
     deletedBundles: result.deletedBundleIds?.length ?? 0,
     deletedNativeBuilds: result.deletedNativeBuildIds?.length ?? 0,
+    keptSandboxBuilds: result.keptNativeBuildIds?.length ?? 0,
     credit: inputs.credit,
   });
   deps.setOutput("comment-body", body);

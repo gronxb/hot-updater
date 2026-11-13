@@ -299,6 +299,10 @@ channelCommand
     "--native-builds",
     "also delete the native builds that embed the channel, with their artifacts",
   )
+  .option(
+    "--keep-sandbox-builds",
+    "with --native-builds, keep the sandbox builds, and the channel they embed",
+  )
   .option("--json", "output the result as JSON")
   .option("-y, --yes", "skip confirmation prompt")
   .action(handleChannelDelete);

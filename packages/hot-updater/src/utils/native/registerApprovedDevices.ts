@@ -110,7 +110,7 @@ const readExportOptions = async (
  * Why Xcode's automatic ad hoc profile can't sign this scheme, which is what
  * picks up a newly registered device: manual signing, or a named profile.
  */
-const manualSigning = async (exportOptionsPlist: string | undefined) => {
+export const manualSigning = async (exportOptionsPlist: string | undefined) => {
   if (exportOptionsPlist === undefined) return false;
   const options = await readExportOptions(exportOptionsPlist);
   const profiles = options["provisioningProfiles"];
@@ -226,12 +226,7 @@ export const registerApprovedDevices = async ({
   if (toRegister.length === 0 && ours.length === 0) return otherAccount();
   if (toRegister.length < approved.length) otherAccount();
 
-  const atApple = new Map<string, AscDevice>(
-    (await listAscDevices({ apiKey })).map((device) => [
-      normalizeIosUdid(device.udid) ?? device.udid.toLowerCase(),
-      device,
-    ]),
-  );
+  const atApple = ascDevicesByUdid(await listAscDevices({ apiKey }));
   const expected: ExpectedIosDevice[] = [];
   const report = {
     registered: [] as string[],
@@ -330,6 +325,59 @@ export const registerApprovedDevices = async ({
     );
   }
   return { expected, report };
+};
+
+/** An Apple account's devices, by the UDID as the registry stores it. */
+export const ascDevicesByUdid = (
+  devices: readonly AscDevice[],
+): ReadonlyMap<string, AscDevice> =>
+  new Map(
+    devices.map((device) => [
+      normalizeIosUdid(device.udid) ?? device.udid.toLowerCase(),
+      device,
+    ]),
+  );
+
+/**
+ * What the next ad hoc build of a scheme signing in the `issuer` account does
+ * with a registry row, read without writing anything, as
+ * `registerApprovedDevices` decides it: lists it in its `.ipa` (`include`),
+ * registers it with Apple first and then lists it (`register`), or leaves it
+ * out (`pending`, with why). An approved row Apple refused before isn't sent
+ * again: a refusal says what Apple can't take now.
+ */
+export const nextBuildDeviceOutcome = (
+  row: Pick<
+    IosDeviceRow,
+    "udid" | "status" | "apple_issuer_id" | "apple_error"
+  >,
+  atApple: ReadonlyMap<string, Pick<AscDevice, "status">>,
+  issuer: string,
+):
+  | { readonly kind: "include" | "register" }
+  | { readonly kind: "pending"; readonly reason: string } => {
+  const device = atApple.get(row.udid);
+  if (row.status === "registered") {
+    if (row.apple_issuer_id !== issuer) {
+      return { kind: "pending", reason: "in another Apple account" };
+    }
+    if (device === undefined) {
+      return { kind: "pending", reason: "gone from the Apple account" };
+    }
+    return device.status === "DISABLED"
+      ? { kind: "pending", reason: "disabled at Apple" }
+      : { kind: "include" };
+  }
+  if (row.apple_issuer_id !== null && row.apple_issuer_id !== issuer) {
+    return { kind: "pending", reason: "in another Apple account" };
+  }
+  if (device?.status === "DISABLED") {
+    return { kind: "pending", reason: "disabled at Apple" };
+  }
+  if (device !== undefined) return { kind: "include" };
+  return row.apple_error === null
+    ? { kind: "register" }
+    : { kind: "pending", reason: `Apple refused it: ${row.apple_error}` };
 };
 
 /**

@@ -77,13 +77,22 @@ const AFTER_NATIVE = {
 } as const;
 
 const STAGES: Readonly<Record<string, Expected>> = {
-  // The native project embeds a sandbox channel: no decision, and nothing runs.
-  "sandbox-channel": {
+  // A channel named sandbox-* is a channel like any: a normal scheme decides.
+  "sandbox-named-channel": {
+    platforms: { android: { decision: "build", outcome: "decided" } },
+    builds: [],
+    releases: noBundles,
+    uploads: 0,
+    refused: [],
+    commands: [FIND],
+  },
+  // A sandbox scheme on a pull request's channel: no decision, nothing runs.
+  "sandbox-scheme": {
     platforms: {
       android: {
         decision: "none",
         outcome: "failed",
-        error: "is a sandbox channel",
+        error: "is a sandbox scheme",
       },
     },
     fails: true,

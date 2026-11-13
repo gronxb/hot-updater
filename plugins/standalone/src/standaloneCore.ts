@@ -9,6 +9,7 @@ import type {
   ChannelDeleteResult,
   ChannelRow,
   HotUpdaterCoreApi,
+  IosDeviceAccount,
   IosDeviceAccountClaim,
   IosDeviceRequestResult,
   IosDeviceRow,
@@ -79,10 +80,19 @@ const nativeBuildScopeParams = ({
   channel,
   fingerprintHash,
   appVersion,
+  sandbox,
 }: NativeBuildScope): Record<string, string> => ({
   platform,
   channel,
   ...(fingerprintHash === null ? { appVersion } : { fingerprintHash }),
+  ...(sandbox === undefined || sandbox === null
+    ? {}
+    : {
+        sandboxAppId: sandbox.appId,
+        sandboxUrlScheme: sandbox.urlScheme,
+        artifactKind: sandbox.artifactKind,
+        distribution: sandbox.distribution,
+      }),
 });
 
 const keysetParams = ({ order, after, through, limit }: KeysetInput) => ({
@@ -318,6 +328,18 @@ export const createStandaloneCoreApi = (
       });
       if (buildKey !== undefined && row?.build_key !== buildKey) return null;
       if (options?.storeBuild && row?.is_store_build !== true) return null;
+      // A server without sandbox lookups answers the channel's scope, whose
+      // newest build may be a normal build or another sandbox scope's.
+      const sandbox = scope.sandbox;
+      if (
+        sandbox &&
+        row !== null &&
+        (row.is_sandbox !== true ||
+          row.artifact_kind !== sandbox.artifactKind ||
+          row.sandbox_url_scheme !== sandbox.urlScheme)
+      ) {
+        return null;
+      }
       return row;
     },
     // A server without the native build routes holds no native builds: its
@@ -458,6 +480,10 @@ export const createStandaloneCoreApi = (
         requiredRoute: "iOS device registry",
       });
     },
+    findIosDeviceAccount: () =>
+      call<IosDeviceAccount>("GET", "/ios-devices/account", {
+        requiredRoute: "iOS device registry",
+      }),
     claimIosDeviceAccount: async (issuerId) =>
       (await call<IosDeviceAccountClaim>("POST", "/ios-devices/account", {
         body: { issuerId },

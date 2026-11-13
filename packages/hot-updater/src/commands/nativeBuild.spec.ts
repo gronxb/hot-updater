@@ -52,7 +52,7 @@ const register = (
   > &
     Pick<
       Partial<NativeBuildRegistration>,
-      "sandboxUrlScheme" | "nativeAppVersion"
+      "sandboxUrlScheme" | "sandboxAppId" | "nativeAppVersion"
     >,
 ) =>
   databaseHarness.core.registerNativeBuild({
@@ -128,16 +128,32 @@ const output = () =>
 
 describe("handleNativeBuildFind", () => {
   describe("with a sandbox scheme", () => {
-    const find = async (platform: "android" | "ios", scheme = "sandbox") => {
+    const find = async (
+      platform: "android" | "ios",
+      scheme = "sandbox",
+      channel?: string,
+    ) => {
       const { handleNativeBuildFind } = await import("./nativeBuild");
-      await handleNativeBuildFind({ platform, scheme, json: true });
+      await handleNativeBuildFind({
+        platform,
+        scheme,
+        json: true,
+        ...(channel === undefined ? {} : { channel }),
+      });
       return output();
     };
-    const sandboxScope = (platform: "android" | "ios") => ({
+    /** A sandbox build of the scheme, as its artifact registers it. */
+    const sandboxBuild = (platform: "android" | "ios", channel: string) => ({
       platform,
-      channel: "sandbox-sandbox",
+      channel,
       appVersion: null,
       isSandbox: true as const,
+      // Android's application ID has the sandbox's suffix.
+      sandboxAppId: "com.example.sandbox",
+      sandboxUrlScheme:
+        platform === "android"
+          ? "hu-sandbox-com-example"
+          : "hu-sandbox-com-example-sandbox",
     });
 
     beforeEach(() => {
@@ -148,11 +164,15 @@ describe("handleNativeBuildFind", () => {
       });
     });
 
-    it("names the scheme's app ID, and no other builds on an empty channel", async () => {
+    it("names the scheme's app ID, and the project's channel a new build embeds", async () => {
       expect(await find("android")).toMatchObject({
-        channel: "sandbox-sandbox",
+        channel: "preview",
         nativeBuild: null,
-        sandbox: { appId: "com.example", otherBuilds: false },
+        sandbox: {
+          appId: "com.example",
+          urlScheme: "hu-sandbox-com-example",
+          channel: null,
+        },
       });
     });
 
@@ -160,85 +180,44 @@ describe("handleNativeBuildFind", () => {
       expect((await find("ios")).sandbox.appId).toBe("com.example.sandbox");
     });
 
-    it("says when the platform's builds have other native code", async () => {
+    it("finds a sandbox build another pull request's channel embeds, and names that channel", async () => {
+      const built = await register("1", {
+        ...sandboxBuild("android", "pr-120"),
+        fingerprintHash: "fingerprint-a",
+      });
+      getChannel.mockResolvedValue({ value: "pr-140", paths: [] });
+
+      expect(await find("android")).toMatchObject({
+        channel: "pr-140",
+        nativeBuild: { id: built.id, is_sandbox: true },
+        sandbox: { channel: "pr-120" },
+      });
+    });
+
+    it("takes the channel a new build would embed", async () => {
+      expect(await find("android", "sandbox", "pr-140")).toMatchObject({
+        channel: "pr-140",
+        nativeBuild: null,
+        sandbox: { channel: null },
+      });
+    });
+
+    it("finds no build of other native code, and no normal build of the same", async () => {
       await register("1", {
-        ...sandboxScope("android"),
+        ...sandboxBuild("android", "preview"),
         fingerprintHash: "fingerprint-old",
+      });
+      await register("2", {
+        platform: "android",
+        channel: "preview",
+        fingerprintHash: "fingerprint-a",
+        appVersion: null,
+        isSandbox: false,
       });
 
       expect(await find("android")).toMatchObject({
         nativeBuild: null,
-        sandbox: { otherBuilds: true },
-      });
-    });
-
-    it("doesn't count another platform's build on a shared channel", async () => {
-      await register("1", {
-        ...sandboxScope("ios"),
-        fingerprintHash: "fingerprint-old",
-      });
-
-      expect(await find("android")).toMatchObject({
-        nativeBuild: null,
-        sandbox: { otherBuilds: false },
-      });
-    });
-
-    describe("past a page of the other platform's builds", () => {
-      const PAGE = 100;
-      const registerAndroidPage = async () => {
-        for (let build = 1; build <= PAGE; build += 1) {
-          await register(String(build), {
-            ...sandboxScope("android"),
-            fingerprintHash: "fingerprint-old",
-          });
-        }
-      };
-      const countListReads = () => {
-        const server = testServer({ database: databaseHarness.database });
-        const list = vi.spyOn(server.core, "listNativeBuilds");
-        loadServer.mockResolvedValue(server);
-        return list;
-      };
-
-      it("finds the platform's older build", async () => {
-        await register("0", {
-          ...sandboxScope("ios"),
-          fingerprintHash: "fingerprint-old",
-        });
-        await registerAndroidPage();
-        const list = countListReads();
-
-        expect(await find("ios")).toMatchObject({
-          nativeBuild: null,
-          sandbox: { otherBuilds: true },
-        });
-        expect(list).toHaveBeenCalledTimes(2);
-      });
-
-      it("says none once the channel runs out", async () => {
-        await registerAndroidPage();
-        const list = countListReads();
-
-        expect(await find("ios")).toMatchObject({
-          nativeBuild: null,
-          sandbox: { otherBuilds: false },
-        });
-        expect(list).toHaveBeenCalledTimes(2);
-      });
-
-      it("stops at the first page that has one", async () => {
-        await register("0", {
-          ...sandboxScope("ios"),
-          fingerprintHash: "fingerprint-old",
-        });
-        await registerAndroidPage();
-        const list = countListReads();
-
-        expect(await find("android")).toMatchObject({
-          sandbox: { otherBuilds: true },
-        });
-        expect(list).toHaveBeenCalledTimes(1);
+        sandbox: { channel: null },
       });
     });
 
@@ -268,57 +247,33 @@ describe("handleNativeBuildFind", () => {
         );
       });
 
-      it("is the configured one when no build matches, which the next build registers", async () => {
+      it("is the configured one, and a build of another one isn't found", async () => {
         withUrlScheme("acme-preview");
-        expect((await find("android")).sandbox).toEqual({
-          appId: "com.example",
-          urlScheme: "acme-preview",
-          otherBuilds: false,
-        });
-      });
-
-      it("is the matched build's own, whatever the config says now", async () => {
-        withUrlScheme("acme-next");
         await register("1", {
-          ...sandboxScope("android"),
+          ...sandboxBuild("android", "preview"),
+          fingerprintHash: "fingerprint-a",
+          sandboxUrlScheme: "acme-next",
+        });
+        expect(await find("android")).toMatchObject({
+          nativeBuild: null,
+          sandbox: {
+            appId: "com.example",
+            urlScheme: "acme-preview",
+            channel: null,
+          },
+        });
+        const built = await register("2", {
+          ...sandboxBuild("android", "preview"),
           fingerprintHash: "fingerprint-a",
           sandboxUrlScheme: "acme-preview",
         });
-        expect((await find("android")).sandbox.urlScheme).toBe("acme-preview");
+        expect((await find("android")).nativeBuild?.id).toBe(built.id);
       });
-
-      it("is the derived one for a build registered before the scheme was recorded", async () => {
-        withUrlScheme("acme-preview");
-        await register("1", {
-          ...sandboxScope("android"),
-          fingerprintHash: "fingerprint-a",
-        });
-        const found = await find("android");
-        expect(found.nativeBuild?.sandbox_url_scheme).toBeNull();
-        expect(found.sandbox.urlScheme).toBe("hu-sandbox-com-example");
-      });
-    });
-
-    it("reads no other builds once one matches", async () => {
-      await register("1", {
-        ...sandboxScope("android"),
-        fingerprintHash: "fingerprint-old",
-      });
-      await register("2", {
-        ...sandboxScope("android"),
-        fingerprintHash: "fingerprint-a",
-      });
-
-      const found = await find("android");
-
-      expect(found.nativeBuild?.fingerprint_hash).toBe("fingerprint-a");
-      expect(found.nativeBuild?.is_sandbox).toBe(true);
-      expect(found.sandbox.otherBuilds).toBe(false);
     });
 
     it("tags the build it finds as a sandbox build in its text", async () => {
       await register("1", {
-        ...sandboxScope("android"),
+        ...sandboxBuild("android", "preview"),
         fingerprintHash: "fingerprint-a",
       });
       const { handleNativeBuildFind } = await import("./nativeBuild");
@@ -333,7 +288,7 @@ describe("handleNativeBuildFind", () => {
 
     it("names a fingerprint build's own app version in its text", async () => {
       await register("1", {
-        ...sandboxScope("android"),
+        ...sandboxBuild("android", "preview"),
         fingerprintHash: "fingerprint-a",
         nativeAppVersion: "1.6.0",
       });
@@ -854,7 +809,7 @@ describe("handleNativeBuildFind", () => {
       });
     });
 
-    it("looks on its reserved channel, whatever the native project's is, with the existing read", async () => {
+    it("looks on the native project's channel for a new build, and finds a sandbox build on any", async () => {
       const scope = {
         platform: "android",
         fingerprintHash: "fingerprint-a",
@@ -862,46 +817,29 @@ describe("handleNativeBuildFind", () => {
       } as const;
       await register("1", {
         ...scope,
-        channel: "sandbox-beta",
+        channel: "pr-120",
         isSandbox: true,
+        sandboxUrlScheme: "hu-sandbox-com-example",
+        sandboxAppId: "com.example.sandbox",
       });
       await register("2", { ...scope, channel: "preview" });
 
-      await find({
-        platform: "android",
-        scheme: "beta",
-        json: true,
-      });
+      await find({ platform: "android", scheme: "beta", json: true });
 
       const printed = output();
-      expect(printed.channel).toBe("sandbox-beta");
+      expect(printed.channel).toBe("preview");
       expect(printed.nativeBuild.id).toContain("1");
-      expect(getChannel).not.toHaveBeenCalled();
+      expect(printed.sandbox.channel).toBe("pr-120");
     });
 
-    it("refuses another channel for a sandbox scheme, and a reserved one for a normal scheme", async () => {
-      await expect(
-        find({
-          platform: "android",
-          scheme: "beta",
-          channel: "preview",
-          json: true,
-        }),
-      ).rejects.toThrow("process.exit");
-      expect(log.error).toHaveBeenCalledWith(
-        "The sandbox scheme beta builds channel sandbox-beta, not preview.\nRemove --channel.",
-      );
-      await expect(
-        find({
-          platform: "android",
-          scheme: "releaseApk",
-          channel: "sandbox-beta",
-          json: true,
-        }),
-      ).rejects.toThrow("process.exit");
-      expect(log.error).toHaveBeenCalledWith(
-        "Channel sandbox-beta is reserved for sandbox builds, and the scheme releaseApk isn't one.\nPass another --channel.",
-      );
+    it("takes any channel, one named sandbox-* too", async () => {
+      await find({
+        platform: "android",
+        scheme: "releaseApk",
+        channel: "sandbox-beta",
+        json: true,
+      });
+      expect(output().channel).toBe("sandbox-beta");
     });
   });
 

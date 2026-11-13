@@ -77,7 +77,7 @@ describe("withSandboxGradleArgs", () => {
           `new File('${written.overlay}')`,
         );
         const overlay = fs.readFileSync(written.overlay, "utf-8");
-        expect(overlay).toContain('android:value="sandbox-release"');
+        expect(overlay).not.toContain("com.hotupdater.CHANNEL");
         expect(overlay).toContain(
           'android:scheme="hu-sandbox-com-example-app"',
         );

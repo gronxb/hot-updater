@@ -9,7 +9,6 @@ import {
   isRecordedUrlSchemeSyntax,
   isSandboxUrlScheme,
   recordedSandboxUrlScheme,
-  sandboxChannelOf,
   sandboxUrlSchemeOf,
 } from "@hot-updater/protocol/native-artifact";
 import { execa } from "execa";
@@ -185,7 +184,8 @@ export interface SandboxPlistScheme {
 }
 
 /**
- * The app's dedicated URL scheme, default channel, and the sandbox's key. The
+ * The app's dedicated URL scheme and the sandbox's key: its channel stays the
+ * project's, as any build's does. The
  * URL scheme, unless the scheme sets one, and App Store Connect's app come
  * from the scheme's `bundleIdentifier`, while Xcode's build settings decide
  * the app's ID, so an app of another ID stops here, before anything is signed
@@ -222,11 +222,6 @@ const patchAppInfoPlist = async (plist: string, scheme: SandboxPlistScheme) => {
       `The sandbox scheme ${scheme.hotUpdaterSchemeName} registers URL scheme ${urlScheme}, which the app registers itself.\nSet sandbox.urlScheme to a scheme the app doesn't register.`,
     );
   }
-  await setString(
-    plist,
-    "HOT_UPDATER_CHANNEL",
-    sandboxChannelOf(scheme.hotUpdaterSchemeName),
-  );
   await plutil(["-replace", SANDBOX_INFO_PLIST_KEY, "-bool", "true", plist]);
   await addUrlScheme(plist, urlScheme, urlTypes, patchedBefore);
   await setString(plist, SANDBOX_URL_SCHEME_INFO_PLIST_KEY, urlScheme);
@@ -311,8 +306,7 @@ const extensionInfoPlists = (appPath: string): string[] =>
 
 /**
  * Makes the archived app a sandbox app before `-exportArchive`, which signs
- * what it finds, so no project file changes: its URL scheme, default channel
- * and key, and from App Store Connect, the version a closed train needs and
+ * what it finds, so no project file changes: its URL scheme and key, and from App Store Connect, the version a closed train needs and
  * the next build number, in its extensions too, which must match it.
  */
 export const patchSandboxArchive = async ({

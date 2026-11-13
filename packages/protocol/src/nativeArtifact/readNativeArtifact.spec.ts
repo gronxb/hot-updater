@@ -23,11 +23,9 @@ import {
 } from "./readNativeArtifact";
 import {
   isConfigurableSandboxUrlScheme,
-  isSandboxChannel,
   createPreviewLink,
   recordedSandboxUrlScheme,
   parsePreviewLink,
-  sandboxChannelOf,
   sandboxUrlSchemeOf,
 } from "./sandbox";
 import { openZipEntry, readZipDirectory } from "./zip";
@@ -541,12 +539,12 @@ describe("the sandbox layer", () => {
   ] as const)("refuses an .apk with %s", async (_, files) => {
     const checked = checkNativeArtifact(
       await read(sandboxApk(files), "app.apk"),
-      { updateStrategy: "fingerprint", channel: "sandbox-release" },
+      { updateStrategy: "fingerprint" },
     );
     expect(codes(checked)).toEqual(["SANDBOX_MISMATCH"]);
   });
 
-  it("registers a sandbox build on its reserved channel, and a normal one elsewhere", async () => {
+  it("registers a sandbox build and a normal one on the channel each compiled in", async () => {
     expect(
       checkNativeArtifact(await read(sandboxApk(), "app.apk"), {
         updateStrategy: "fingerprint",
@@ -575,7 +573,7 @@ describe("the sandbox layer", () => {
     ).toMatchObject({ ok: true, build: { sandbox: false } });
   });
 
-  it("refuses a sandbox build on another channel, and a normal build on a reserved one", async () => {
+  it("registers a sandbox build on the channel the app reports, and a normal build on any", async () => {
     const onChannel = async (
       files: Record<string, Uint8Array | string>,
       channel: string,
@@ -584,12 +582,14 @@ describe("the sandbox layer", () => {
         updateStrategy: "fingerprint",
         channel,
       });
-    expect(codes(await onChannel(sandboxApk(), "production"))).toEqual([
-      "SANDBOX_MISMATCH",
-    ]);
-    expect(codes(await onChannel(apk(), "sandbox-release"))).toEqual([
-      "SANDBOX_MISMATCH",
-    ]);
+    expect(await onChannel(sandboxApk(), "pr-134")).toMatchObject({
+      ok: true,
+      build: { channel: "pr-134", sandbox: true },
+    });
+    expect(await onChannel(apk(), "sandbox-release")).toMatchObject({
+      ok: true,
+      build: { channel: "sandbox-release", sandbox: false },
+    });
   });
 
   it("reads who takes the launcher and the links, from the artifact", async () => {
@@ -819,7 +819,6 @@ describe("the sandbox layer", () => {
       expect(
         sandboxArtifactProblem(
           info({ ...whole, entry: { ...sandboxEntry, launchers } }),
-          "sandbox-release",
         )?.code,
       ).toBe("SANDBOX_MISMATCH");
     }
@@ -832,16 +831,12 @@ describe("the sandbox layer", () => {
             launchers: ["com.example.app.MainActivity"],
           },
         }),
-        "sandbox-release",
       )?.message,
     ).toBe(
       "The .aab is a sandbox build, but its launcher is com.example.app.MainActivity.\nBuild it again with hot-updater native-build.",
     );
     expect(
-      sandboxArtifactProblem(
-        info({ ...whole, entry: sandboxEntry }),
-        "sandbox-release",
-      ),
+      sandboxArtifactProblem(info({ ...whole, entry: sandboxEntry })),
     ).toBeNull();
   });
 
@@ -852,25 +847,29 @@ describe("the sandbox layer", () => {
           ...whole,
           entry: { ...sandboxEntry, sandboxUrlScheme: null },
         }),
-        "sandbox-release",
       )?.message,
     ).toBe(
       "The .aab is a sandbox build with no sandbox URL scheme, so no link can open it.\nBuild it again with hot-updater native-build.",
     );
   });
 
-  it("says what is wrong and what to do, in a line each", () => {
+  it("takes a sandbox build on any channel, and a normal build on a channel named sandbox-*", () => {
+    // The channel no longer marks a sandbox build: the artifact does.
+    for (const channel of ["pr-134", "production"]) {
+      expect(
+        checkNativeArtifact(info({ ...whole, entry: sandboxEntry, channel }), {
+          updateStrategy: "fingerprint",
+        }),
+      ).toMatchObject({ ok: true, build: { channel, sandbox: true } });
+    }
     expect(
-      sandboxArtifactProblem(
-        info({ ...whole, entry: sandboxEntry }),
-        "production",
-      )?.message,
-    ).toBe(
-      "The .aab is a sandbox build, which can't register on channel production.\nUse a sandbox-<scheme> channel.",
-    );
-    expect(sandboxArtifactProblem(info({}), "sandbox-release")?.message).toBe(
-      "Channel sandbox-release is reserved for sandbox builds, and the .aab isn't one.\nUse another channel, or build it with sandbox: true.",
-    );
+      checkNativeArtifact(info({ channel: "sandbox-release" }), {
+        updateStrategy: "fingerprint",
+      }),
+    ).toMatchObject({
+      ok: true,
+      build: { channel: "sandbox-release", sandbox: false },
+    });
   });
 
   describe("preview links", () => {
@@ -974,11 +973,7 @@ describe("the sandbox layer", () => {
     });
   });
 
-  it("derives the reserved channel and a URL scheme any platform takes", () => {
-    expect(sandboxChannelOf("release")).toBe("sandbox-release");
-    expect(isSandboxChannel("sandbox-release")).toBe(true);
-    expect(isSandboxChannel("sandboxes")).toBe(false);
-    expect(isSandboxChannel("production")).toBe(false);
+  it("derives a URL scheme any platform takes", () => {
     expect(sandboxUrlSchemeOf("com.Example.example_app")).toBe(
       "hu-sandbox-com-example-example-app",
     );

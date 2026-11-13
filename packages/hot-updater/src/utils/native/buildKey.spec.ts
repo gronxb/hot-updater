@@ -287,7 +287,7 @@ describe("computeNativeBuildKey", () => {
       const sandbox = await key({
         ...base,
         schemeConfig: { ...schemeConfig, sandbox: true },
-        channel: "sandbox-release",
+        channel: "pr-134",
       });
 
       expect(normal.key).toMatch(/^nbk1:/);
@@ -302,7 +302,7 @@ describe("computeNativeBuildKey", () => {
       platform: "android",
       artifactKind: "apk",
       buildAdapter: "bare",
-      channel: "sandbox-release",
+      channel: "pr-134",
     } as const;
     const schemeConfig = {
       variant: "Release",

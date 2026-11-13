@@ -1,6 +1,7 @@
 import { fitText, loadConfig, p } from "@hot-updater/cli-tools";
 import {
   assertStorageOperations,
+  type ChannelDeleteResult,
   type NativeBuildRow,
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -104,7 +105,9 @@ const PAGE = 100;
  * deletes one. A missing channel deletes nothing and succeeds, so the
  * cleanup can run again. Without `nativeBuilds`, a native build that embeds
  * the channel keeps it: its bundles are deleted, the channel is not, and
- * the command fails.
+ * the command fails. With `keepSandboxBuilds` too, its sandbox builds stay,
+ * which other pull requests with the same native code reuse, and so does the
+ * channel they embed: the command succeeds when nothing else is left.
  */
 export const handleChannelDelete = (
   channel: string,
@@ -112,6 +115,7 @@ export const handleChannelDelete = (
     readonly json?: boolean;
     readonly yes?: boolean;
     readonly nativeBuilds?: boolean;
+    readonly keepSandboxBuilds?: boolean;
   },
 ) =>
   withPublicBundleErrors(async () => {
@@ -133,19 +137,51 @@ export const handleChannelDelete = (
         return;
       }
 
-      const releases: ReleaseRow[] = [];
-      for (const platform of ["ios", "android"] as const) {
-        for (let after: string | undefined; ; ) {
+      const keepSandbox =
+        options.nativeBuilds === true && options.keepSandboxBuilds === true;
+      /** Every release on the channel, each platform a page at a time. */
+      const listReleases = async () => {
+        const releases: ReleaseRow[] = [];
+        for (const platform of ["ios", "android"] as const) {
+          for (let after: string | undefined; ; ) {
+            const page = await core.listReleases({
+              filter: { kind: "channelPlatform", channelId: row.id, platform },
+              limit: PAGE,
+              ...(after === undefined ? {} : { after }),
+            });
+            releases.push(...page);
+            if (page.length < PAGE) break;
+            after = page.at(-1)!.id;
+          }
+        }
+        return releases;
+      };
+      /** Whether any release is on the channel: one row of each platform. */
+      const hasReleases = async () => {
+        for (const platform of ["ios", "android"] as const) {
           const page = await core.listReleases({
             filter: { kind: "channelPlatform", channelId: row.id, platform },
+            limit: 1,
+          });
+          if (page.length > 0) return true;
+        }
+        return false;
+      };
+      /** Every build that embeds the channel, a page at a time. */
+      const listBuilds = async () => {
+        const builds: NativeBuildRow[] = [];
+        for (let after: string | undefined; ; ) {
+          const page = await core.listNativeBuilds({
+            channelId: row.id,
             limit: PAGE,
             ...(after === undefined ? {} : { after }),
           });
-          releases.push(...page);
-          if (page.length < PAGE) break;
+          builds.push(...page);
+          if (page.length < PAGE) return builds;
           after = page.at(-1)!.id;
         }
-      }
+      };
+      const releases = await listReleases();
 
       const builds: NativeBuildRow[] = [];
       let deleteArtifact: ((storageUri: string) => Promise<unknown>) | null =
@@ -155,22 +191,17 @@ export const handleChannelDelete = (
         const storage = server.storage;
         assertStorageOperations(storage, ["delete"]);
         deleteArtifact = (storageUri) => storage.delete({ storageUri });
-        for (let after: string | undefined; ; ) {
-          const page = await core.listNativeBuilds({
-            channelId: row.id,
-            limit: PAGE,
-            ...(after === undefined ? {} : { after }),
-          });
-          builds.push(...page);
-          if (page.length < PAGE) break;
-          after = page.at(-1)!.id;
-        }
+        builds.push(
+          ...(await listBuilds()).filter(
+            ({ is_sandbox }) => !(keepSandbox && is_sandbox),
+          ),
+        );
       }
 
       const bundles = `${releases.length} bundle${releases.length === 1 ? "" : "s"}`;
       await confirmMutation(
         options.nativeBuilds
-          ? `Delete the ${channel} channel, its ${bundles}, and its ${builds.length} native build${builds.length === 1 ? "" : "s"} with their artifacts?`
+          ? `Delete the ${channel} channel, its ${bundles}, and its ${builds.length}${keepSandbox ? " normal" : ""} native build${builds.length === 1 ? "" : "s"} with their artifacts?`
           : `Delete the ${channel} channel and its ${bundles}?`,
         options.yes,
       );
@@ -203,7 +234,29 @@ export const handleChannelDelete = (
           );
         }
       }
-      const result = await core.deleteChannel(row.id);
+      let result:
+        | ChannelDeleteResult
+        | {
+            readonly deleted: false;
+            readonly reason: "sandbox_builds";
+            readonly keptNativeBuildIds: string[];
+          } = await core.deleteChannel(row.id);
+      // The channel stays for the sandbox builds it keeps, when nothing else
+      // is on it: what is left now, every build read, and one release.
+      if (!result.deleted && result.reason === "not_empty" && keepSandbox) {
+        const left = await listBuilds();
+        if (
+          left.length > 0 &&
+          left.every(({ is_sandbox }) => is_sandbox) &&
+          !(await hasReleases())
+        ) {
+          result = {
+            deleted: false,
+            reason: "sandbox_builds",
+            keptNativeBuildIds: left.map(({ id }) => id),
+          };
+        }
+      }
       const deletedBundleIds = releases.map(({ id }) => id);
 
       if (options.json) {
@@ -226,6 +279,11 @@ export const handleChannelDelete = (
             ui.kv("Bundles", String(deletedBundleIds.length)),
             options.nativeBuilds &&
               ui.kv("Native builds", String(deletedNativeBuildIds.length)),
+            "keptNativeBuildIds" in result &&
+              ui.kv(
+                "Sandbox builds kept",
+                String(result.keptNativeBuildIds.length),
+              ),
           ]),
         );
       }
@@ -240,7 +298,7 @@ export const handleChannelDelete = (
         else p.log.error(message);
         process.exitCode = 1;
       }
-      if (!result.deleted) {
+      if (!result.deleted && result.reason !== "sandbox_builds") {
         // Under --json, stdout stays one JSON document: it says why.
         if (!options.json) {
           p.log.error(

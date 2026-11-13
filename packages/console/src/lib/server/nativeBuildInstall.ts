@@ -214,7 +214,8 @@ const isExpired = ({ expiresAtMs }: IpaInstallInfo, now: number) =>
 /**
  * The build a registered device's row names, when it is newer than `build`,
  * of the same app (bundle ID, read from its IPA, and sandbox or not), on the
- * same channel, ad hoc, unexpired, and its IPA lists the device; null
+ * same channel, or for a sandbox build, of the same sandbox scope on any
+ * channel, ad hoc, unexpired, and its IPA lists the device; null
  * otherwise, and for a build gone or unreadable. Its row is read only for a
  * registered device whose row names a newer build, and its IPA only when the
  * row matches.
@@ -245,8 +246,12 @@ const newerBuildListing = async (
     newer === null ||
     newer.artifact_kind !== "ipa" ||
     newer.platform !== build.platform ||
-    newer.channel_id !== build.channel_id ||
     newer.is_sandbox !== build.is_sandbox ||
+    // A sandbox build's replacement may embed another pull request's
+    // channel: its scope, which names none, says it is the same app.
+    (build.is_sandbox
+      ? newer.scope_key !== build.scope_key
+      : newer.channel_id !== build.channel_id) ||
     // Null on an IPA registered before it was recorded: its profile decides.
     (newer.export_method !== null && newer.export_method !== "ad-hoc")
   ) {

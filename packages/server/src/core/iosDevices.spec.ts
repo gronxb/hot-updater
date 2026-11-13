@@ -374,6 +374,51 @@ describe("the iOS device registry", () => {
     });
   });
 
+  it("reads the registry's account without claiming it, and keeps a claimed one with no rows left", async () => {
+    const core = setup();
+    expect(await core.findIosDeviceAccount()).toBeNull();
+    // Reading takes nothing: the first claim still decides.
+    expect(await core.claimIosDeviceAccount(OTHER_ISSUER)).toEqual({
+      issuerId: OTHER_ISSUER,
+      claimed: true,
+    });
+    const device = await approved(core, PHONE);
+    await core.recordIosDeviceOutcome({
+      id: device.id,
+      seen: seenOf(device),
+      issuerId: OTHER_ISSUER,
+      outcome: "registered",
+    });
+    expect(await core.findIosDeviceAccount()).toEqual({
+      issuerId: OTHER_ISSUER,
+    });
+    await core.deleteIosDevice(device.id);
+    expect(await core.findIosDeviceAccount()).toEqual({
+      issuerId: OTHER_ISSUER,
+    });
+    expect(await core.claimIosDeviceAccount(ISSUER)).toMatchObject({
+      claimed: false,
+    });
+  });
+
+  it("reads an unclaimed registry's account as the claim would give it, from its rows", async () => {
+    const core = setup();
+    const device = await approved(core, PHONE);
+    await core.recordIosDeviceOutcome({
+      id: device.id,
+      seen: seenOf(device),
+      issuerId: OTHER_ISSUER,
+      outcome: "registered",
+    });
+    expect(await core.findIosDeviceAccount()).toEqual({
+      issuerId: OTHER_ISSUER,
+    });
+    expect(await core.claimIosDeviceAccount(ISSUER)).toEqual({
+      issuerId: OTHER_ISSUER,
+      claimed: false,
+    });
+  });
+
   it("deletes a row and answers null for an unknown one", async () => {
     const core = setup();
     const device = await requested(core);

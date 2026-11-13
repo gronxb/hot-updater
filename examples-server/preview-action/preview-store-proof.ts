@@ -44,6 +44,8 @@ interface Stage {
   readonly storeCodes: readonly number[];
   /** Tracked builds, oldest first, by the version code each reached the store as. */
   readonly builds: readonly number[];
+  /** The channel each tracked build embeds: the pull request's that made it. */
+  readonly buildChannels?: readonly string[];
   /** Bundles on a channel, by its name; null for a deleted channel. */
   readonly channels: Readonly<Record<string, number | null>>;
   /** Whether a store build's comment and outputs must be checked. */
@@ -90,12 +92,14 @@ const stages: Readonly<Record<string, Stage>> = {
     channels: { "pr-1": 1, "pr-2": 1 },
     comment: "reused",
   },
+  // The closed pull request's bundles go; its sandbox build, which pr-2
+  // reuses, stays, and so does the channel it embeds.
   closed: {
     fails: false,
-    commands: ["channel delete pr-1"],
+    commands: ["channel delete pr-1 --native-builds --keep-sandbox-builds"],
     storeCodes: [41, 42],
     builds: [42],
-    channels: { "pr-1": null, "pr-2": 1 },
+    channels: { "pr-1": 0, "pr-2": 1 },
   },
   replaced: {
     fails: false,
@@ -103,7 +107,8 @@ const stages: Readonly<Record<string, Stage>> = {
     commandHolds: { [BUILD]: ["--no-cache"] },
     storeCodes: [41, 42, 43, 44],
     builds: [42, 44],
-    channels: { "pr-2": 2 },
+    buildChannels: ["pr-1", "pr-2"],
+    channels: { "pr-1": 0, "pr-2": 2 },
     comment: "built for this commit",
   },
 };
@@ -182,7 +187,6 @@ const readArtifact = async (storageUri: string) => {
         /android:versionCode\(0x0101021b\)="?(\d+)/.exec(manifest)?.[1],
       ),
       packageName: /package="([^"]+)"/.exec(manifest)?.[1],
-      sandboxChannel: manifest.includes('"sandbox-sandboxStore"'),
       signer: execFileSync(
         "keytool",
         ["-J-Duser.language=en", "-printcert", "-jarfile", aab],
@@ -260,9 +264,10 @@ try {
   for (const [i, code] of stage.builds.entries()) {
     const build = builds[i];
     if (!build) continue;
+    const birth = stage.buildChannels?.[i] ?? "pr-1";
     check(
-      build.channel === "sandbox-sandboxStore",
-      `build ${build.id} is on ${build.channel}, not the sandbox channel`,
+      build.channel === birth,
+      `build ${build.id} is on ${build.channel}, not ${birth}, the channel of the pull request that made it`,
     );
     check(
       build.submitted_to === "play-internal" &&
@@ -310,6 +315,7 @@ try {
       rows.length === count,
       `${rows.length} bundles on ${channel}, not ${count}`,
     );
+    if (count === 0) continue;
     check(
       rows.at(-1)?.fingerprint_hash === builds.at(-1)?.fingerprint_hash,
       `${channel}'s bundle targets ${rows.at(-1)?.fingerprint_hash}, not the build's ${builds.at(-1)?.fingerprint_hash}`,

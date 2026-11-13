@@ -3,8 +3,10 @@ import {
   isUUIDv7,
   type HotUpdaterCoreApi,
   type KeysetInput,
+  type NativeBuildDistribution,
   type NativeBuildRegistration,
   type NativeBuildRow,
+  type NativeBuildSandboxScope,
   type NativeBuildScope,
 } from "@hot-updater/plugin-core";
 import {
@@ -46,6 +48,26 @@ const URL_SCHEME = new RegExp(
   `^[a-z][a-z0-9+.-]{0,${SANDBOX_URL_SCHEME_MAX_LENGTH - 1}}$`,
 );
 
+/**
+ * A bundle identifier or application ID, as an artifact reports it: letters,
+ * digits, dots, dashes and underscores, which a scope key holds as they are.
+ */
+const APP_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
+
+/** A fingerprint hash as a Release Catalog scope key holds it. */
+const FINGERPRINT_HASH = /^[A-Za-z0-9._~-]{1,255}$/;
+
+/** How each kind of artifact can install. */
+const DISTRIBUTIONS = {
+  apk: ["direct"],
+  app: ["direct"],
+  aab: ["store"],
+  ipa: ["direct", "store"],
+} as const satisfies Record<
+  NativeBuildRow["artifact_kind"],
+  readonly NativeBuildDistribution[]
+>;
+
 /** A native build or scope core cannot store or look up: the caller's input. */
 export class NativeBuildInputError extends TypeError {
   override readonly name = "NativeBuildInputError";
@@ -86,13 +108,6 @@ const EXPORT_METHODS: ReadonlySet<string> = new Set([
 ] satisfies NonNullable<NativeBuildRow["export_method"]>[]);
 
 /**
- * The channels only sandbox builds register on: a registration's `sandbox`
- * must agree with it. The registry's convention, as
- * `@hot-updater/protocol/native-artifact` checks it for a build's artifact.
- */
-const SANDBOX_CHANNEL_PREFIX = "sandbox-";
-
-/**
  * How many older builds of a scope one read takes, looking for one older than
  * a bundle when a build made after the bundle is the newest.
  */
@@ -107,13 +122,92 @@ const BUILD_NUMBER_MAX_LENGTH = 64;
 /** `native_builds.submitted_version`'s bound in core's schema. */
 const SUBMITTED_VERSION_MAX_LENGTH = 255;
 
+const checkedScopeKey = (scopeKey: string): string => {
+  if (scopeKey.length > SCOPE_KEY_MAX_LENGTH) {
+    throw new NativeBuildInputError(
+      `Invalid native build scope: its key is longer than ${SCOPE_KEY_MAX_LENGTH} characters; shorten the channel or app version.`,
+    );
+  }
+  return scopeKey;
+};
+
+/**
+ * How a registered artifact installs: an `.ipa` by its export method, and
+ * `unknown` for one whose export no profile confirmed, which no lookup asks
+ * for, so it is never reused as either.
+ */
+const registeredDistribution = (
+  kind: NativeBuildRow["artifact_kind"],
+  exportMethod: NativeBuildRow["export_method"] | undefined,
+): NativeBuildDistribution | "unknown" =>
+  kind !== "ipa"
+    ? DISTRIBUTIONS[kind][0]
+    : exportMethod === undefined || exportMethod === null
+      ? "unknown"
+      : exportMethod === "app-store"
+        ? "store"
+        : "direct";
+
+/**
+ * A sandbox build scope's key, which names no channel: the app ID, URL
+ * scheme, artifact kind and distribution in its place, then the fingerprint,
+ * or the app-version strategy and the exact app version. `v1:sandbox:` is no
+ * Release Catalog strategy, so it never meets a normal build's key.
+ */
+const sandboxScopeKey = (
+  scope: Pick<NativeBuildScope, "platform" | "fingerprintHash" | "appVersion">,
+  sandbox: Omit<NativeBuildSandboxScope, "distribution"> & {
+    readonly distribution: NativeBuildDistribution | "unknown";
+  },
+): string => {
+  const { appId, urlScheme, artifactKind, distribution } = sandbox;
+  const problem =
+    typeof appId !== "string" || !APP_ID.test(appId)
+      ? "its app ID must be a bundle identifier or application ID, up to 255 characters"
+      : typeof urlScheme !== "string" || !URL_SCHEME.test(urlScheme)
+        ? `its URL scheme must be a URL scheme in lower case, up to ${SANDBOX_URL_SCHEME_MAX_LENGTH} characters`
+        : !(
+              ARTIFACT_KINDS[scope.platform] as readonly string[] | undefined
+            )?.includes(artifactKind)
+          ? `its artifact kind must be one an ${scope.platform} build makes`
+          : distribution !== "unknown" &&
+              !(DISTRIBUTIONS[artifactKind] as readonly string[]).includes(
+                distribution,
+              )
+            ? `an .${artifactKind} doesn't install as ${String(distribution)}`
+            : scope.fingerprintHash !== null &&
+                !FINGERPRINT_HASH.test(scope.fingerprintHash)
+              ? "its fingerprint hash must be 1-255 URL-safe ASCII characters"
+              : null;
+  if (problem !== null) {
+    throw new NativeBuildInputError(`Invalid sandbox build scope: ${problem}.`);
+  }
+  const target =
+    scope.fingerprintHash === null
+      ? `app-version:${encodeURIComponent(scope.appVersion as string)}`
+      : `fingerprint:${scope.fingerprintHash}`;
+  return checkedScopeKey(
+    `v1:sandbox:${scope.platform}:${appId}:${urlScheme}:${artifactKind}:${distribution}:${target}`,
+  );
+};
+
 /**
  * A native build scope's key: the Release Catalog scope key of a
  * fingerprint, or of the app-version strategy followed by the exact app
  * version the build compiled in. One key serves both strategies, so one
- * index finds the newest build of either.
+ * index finds the newest build of either. A sandbox scope's key names no
+ * channel, so pull requests find a sandbox build on any.
  */
 export const nativeBuildScopeKey = (scope: NativeBuildScope): string => {
+  const { sandbox } = scope;
+  if (sandbox !== undefined && sandbox !== null) {
+    if (sandbox.distribution !== "direct" && sandbox.distribution !== "store") {
+      throw new NativeBuildInputError(
+        "Invalid sandbox build scope: its distribution must be direct or store.",
+      );
+    }
+    return sandboxScopeKey(scope, sandbox);
+  }
   let scopeKey: string;
   try {
     const channelKey = encodeChannelKey(scope.channel);
@@ -135,12 +229,38 @@ export const nativeBuildScopeKey = (scope: NativeBuildScope): string => {
       `Invalid native build scope: ${error instanceof Error ? error.message : String(error)}.`,
     );
   }
-  if (scopeKey.length > SCOPE_KEY_MAX_LENGTH) {
+  return checkedScopeKey(scopeKey);
+};
+
+/** The channel row a registration names, or the refusal of its channel. */
+const channelIdOf = (channel: string): string => {
+  try {
+    return `channel:${encodeChannelKey(channel)}`;
+  } catch (error) {
     throw new NativeBuildInputError(
-      `Invalid native build scope: its key is longer than ${SCOPE_KEY_MAX_LENGTH} characters; shorten the channel or app version.`,
+      `Invalid native build scope: ${error instanceof Error ? error.message : String(error)}.`,
     );
   }
-  return scopeKey;
+};
+
+/**
+ * A registration's scope key, from the registration's own facts: a sandbox
+ * build's from what its artifact says, whatever `sandbox` it names.
+ */
+const registrationScopeKey = (registration: NativeBuildRegistration) => {
+  // The channel is checked whatever the key: it names the channel row.
+  channelIdOf(registration.channel);
+  return registration.isSandbox === true
+    ? sandboxScopeKey(registration, {
+        appId: registration.sandboxAppId as string,
+        urlScheme: registration.sandboxUrlScheme as string,
+        artifactKind: registration.artifact.kind,
+        distribution: registeredDistribution(
+          registration.artifact.kind,
+          registration.exportMethod,
+        ),
+      })
+    : nativeBuildScopeKey({ ...registration, sandbox: null });
 };
 
 /**
@@ -181,6 +301,7 @@ const problemOf = ({
   buildNumber,
   isSandbox,
   sandboxUrlScheme,
+  sandboxAppId,
   exportMethod,
   nativeAppVersion,
   artifact,
@@ -197,13 +318,6 @@ const problemOf = ({
   if (isSandbox !== undefined && typeof isSandbox !== "boolean") {
     return "isSandbox must be true or false";
   }
-  const reserved = channel.startsWith(SANDBOX_CHANNEL_PREFIX);
-  if (isSandbox === true && !reserved) {
-    return `a sandbox build registers on a ${SANDBOX_CHANNEL_PREFIX}* channel, not ${channel}`;
-  }
-  if (isSandbox !== true && reserved) {
-    return `channel ${channel} is reserved for sandbox builds`;
-  }
   if (sandboxUrlScheme !== undefined && sandboxUrlScheme !== null) {
     if (isSandbox !== true) {
       return "sandboxUrlScheme is a sandbox build's, and this isn't one";
@@ -213,6 +327,25 @@ const problemOf = ({
       !URL_SCHEME.test(sandboxUrlScheme)
     ) {
       return `sandboxUrlScheme must be a URL scheme in lower case, up to ${SANDBOX_URL_SCHEME_MAX_LENGTH} characters, or null`;
+    }
+  }
+  if (sandboxAppId !== undefined && sandboxAppId !== null) {
+    if (isSandbox !== true) {
+      return "sandboxAppId is a sandbox build's, and this isn't one";
+    }
+    if (typeof sandboxAppId !== "string" || !APP_ID.test(sandboxAppId)) {
+      return "sandboxAppId must be the artifact's bundle identifier or application ID, up to 255 characters";
+    }
+  }
+  if (isSandbox === true) {
+    // What its scope is made of in place of a channel.
+    if (sandboxUrlScheme === undefined || sandboxUrlScheme === null) {
+      return "a sandbox build needs the sandboxUrlScheme its artifact registers";
+    }
+    if (sandboxAppId === undefined || sandboxAppId === null) {
+      // An older CLI sends none: it registers on a channel this server no
+      // longer reserves, and only an upgrade fixes it.
+      return "a sandbox build needs the sandboxAppId its artifact reports, which an older hot-updater CLI doesn't send. Upgrade the hot-updater CLI to the version that matches this server, and build again";
     }
   }
   if (
@@ -281,8 +414,8 @@ export const createNativeBuildApi = (
       throw new NativeBuildInputError(`Invalid native build: ${problem}.`);
     }
     // The scope key checks the channel before it names a channel row.
-    const scopeKey = nativeBuildScopeKey(registration);
-    const channelId = `channel:${encodeChannelKey(registration.channel)}`;
+    const scopeKey = registrationScopeKey(registration);
+    const channelId = channelIdOf(registration.channel);
     const { embeddedBundle } = registration;
     const row: NativeBuildRow = {
       id: registration.id,
@@ -386,11 +519,12 @@ export const createNativeBuildApi = (
           });
     };
     const bundleId = options?.builtInOlderThan;
-    // A deploy's patch base: never a sandbox build's built-in bundle, and
-    // only sandbox builds register on a sandbox-* channel, so no read.
+    // A deploy's patch base: never a sandbox build's built-in bundle, so a
+    // sandbox scope has none, with no read.
     if (
       bundleId !== undefined &&
-      scope.channel.startsWith(SANDBOX_CHANNEL_PREFIX)
+      scope.sandbox !== undefined &&
+      scope.sandbox !== null
     ) {
       return null;
     }

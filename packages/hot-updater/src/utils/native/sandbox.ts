@@ -16,11 +16,9 @@ import type {
 } from "@hot-updater/plugin-core";
 import {
   blobSource,
-  isSandboxChannel,
   type NativeArtifactInfo,
   readNativeArtifact,
   sandboxArtifactProblem,
-  sandboxChannelOf,
 } from "@hot-updater/protocol/native-artifact";
 
 import {
@@ -29,7 +27,6 @@ import {
   readLocalFingerprint,
   summarizeFingerprintDiff,
 } from "../fingerprint";
-import { getChannel } from "../setChannel";
 
 /**
  * The stores a sandbox build may go to: the internal ones, which never reach
@@ -58,16 +55,9 @@ export const usesSwiftPackageManager = (iosDir: string): boolean => {
 };
 
 /**
- * Whether a scheme's name makes a channel the build can embed: a channel that
- * XML and a plist hold as it is.
- */
-const SCHEME_NAME = /^[A-Za-z0-9._-]+$/u;
-
-/**
- * Refuses, before any work, a sandbox scheme this build can't make, and a
- * normal scheme on a channel reserved for sandbox builds. It reads only the
- * project's files that exist, so it runs again after an adapter's prebuild
- * writes the rest.
+ * Refuses, before any work, a sandbox scheme this build can't make. It reads
+ * only the project's files that exist, so it runs again after an adapter's
+ * prebuild writes the rest.
  */
 export const assertSandboxBuildAllowed = async ({
   platform,
@@ -86,19 +76,7 @@ export const assertSandboxBuildAllowed = async ({
   buildAdapter?: string;
 }): Promise<void> => {
   const schemeConfig = platform === "ios" ? iosScheme : androidScheme;
-  if (!schemeConfig?.sandbox) {
-    // No native project yet, as before a prebuild, has no channel to refuse.
-    const native = await getChannel(platform).then(
-      ({ value }) => value,
-      () => undefined,
-    );
-    if (native !== undefined && isSandboxChannel(native)) {
-      throw new Error(
-        `Channel ${native} is reserved for sandbox builds, and the scheme ${scheme} isn't one.\nSet sandbox: true on it, or run:\nnpx hot-updater channel set production`,
-      );
-    }
-    return;
-  }
+  if (!schemeConfig?.sandbox) return;
   const type =
     platform === "ios"
       ? iosScheme?.configuration
@@ -106,11 +84,6 @@ export const assertSandboxBuildAllowed = async ({
   if (/debug$/iu.test(type ?? "")) {
     throw new Error(
       `The sandbox scheme ${scheme} builds ${type}, which skips OTA updates.\nBuild a release configuration.`,
-    );
-  }
-  if (!SCHEME_NAME.test(scheme)) {
-    throw new Error(
-      `The sandbox scheme's name ${scheme} can't name a channel.\nUse letters, digits, dots, dashes, or underscores.`,
     );
   }
   if (submit && !SANDBOX_SUBMIT_TARGETS[platform].includes(submit)) {
@@ -193,8 +166,8 @@ const fingerprintInputsChanged = async (
 /**
  * Refuses an artifact that isn't what its scheme asked for, before it is
  * recorded or uploaded, reading the artifact alone: a sandbox build holds the
- * sandbox layer whole, on its own channel, and embeds the fingerprint a normal
- * build would; a normal build holds none of it. A normal build that can't be
+ * sandbox layer whole and embeds the fingerprint a normal build would; a
+ * normal build holds none of it. A normal build that can't be
  * read warns instead: nothing about it asked for the layer.
  */
 export const assertBuiltArtifact = async ({
@@ -202,15 +175,12 @@ export const assertBuiltArtifact = async ({
   platform,
   scheme,
   sandbox,
-  channel,
   fingerprintHash,
 }: {
   artifactPath: string;
   platform: Platform;
   scheme: string;
   sandbox: boolean;
-  /** The channel the build reports. */
-  channel: string;
   /** The fingerprint computed before the build; null under appVersion. */
   fingerprintHash: string | null;
 }): Promise<NativeArtifactInfo | null> => {
@@ -243,15 +213,9 @@ export const assertBuiltArtifact = async ({
         : `The scheme ${scheme} isn't a sandbox scheme, but its build holds the sandbox layer.\nRemove hotUpdaterSandbox from gradle.properties.`,
     );
   }
-  const problem = sandboxArtifactProblem(info, channel);
+  const problem = sandboxArtifactProblem(info);
   if (problem) throw new Error(problem.message);
   if (sandbox) {
-    const expected = sandboxChannelOf(scheme);
-    if (channel !== expected) {
-      throw new Error(
-        `The sandbox scheme ${scheme} built channel ${channel}, not ${expected}.\nRemove the channel its build type or flavor sets.`,
-      );
-    }
     // Any other SHA-256 literal in the app, such as a library's, is no matter.
     if (
       fingerprintHash !== null &&
