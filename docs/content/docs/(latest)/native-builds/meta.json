@@ -10,6 +10,7 @@
     "iphone-install",
     "google-play",
     "sandbox",
+    "../guides/pull-request-previews",
     "../guides/ci-native-build",
     "../guides/release-from-ci"
   ]

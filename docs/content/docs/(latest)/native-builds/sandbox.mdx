@@ -7,8 +7,12 @@ icon: FlaskConical
 ## What a sandbox build is
 
 A sandbox build is your own app, with the same native modules and the same
-fingerprint, plus a native layer for testing. Set `sandbox: true` on a scheme
-in `hot-updater.config.ts`:
+fingerprint, plus a native layer for testing. Testers install it once, then
+open other bundles in it. With
+[pull request previews](/docs/guides/pull-request-previews), they scan each pull
+request's QR code to open its bundle.
+
+Set `sandbox: true` on a scheme in `hot-updater.config.ts`:
 
 ```ts title="hot-updater.config.ts"
 export default defineConfig({

@@ -25,8 +25,8 @@ independent **Self Hosting (Managed)** and **Self Hosting (Custom)** groups.
 The Workflows section holds **OTA updates**, **Native builds**, **Operate** and
 **Security**. Concepts owns Secrets: who shares the CLI's keys, this machine or
 the team. Native builds splits building and tracking (Build), the store
-credentials, TestFlight, Google Play and CI into one page each, under its
-Overview. Start here stays short:
+credentials, TestFlight, Google Play, sandbox builds, pull request previews
+and CI into one page each, under its Overview. Start here stays short:
 the introduction, the agent path, the manual path (a group of its steps:
 Choose infrastructure, Install packages, Connect your app), Test an OTA update,
 and the v0 migration. Workflows such as Control update timing belong to their
