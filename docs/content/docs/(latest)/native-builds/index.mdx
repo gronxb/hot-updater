@@ -13,9 +13,10 @@ server. A tracked build is three things at once:
 - **An OTA patch base.** The JavaScript bundle built into the app is kept, so
   a fresh install's first OTA downloads a small patch instead of the complete
   bundle. See [Bundle Diffing](/docs/guides/bundle-diffing#first-ota-update).
-- **A preview build.** The Console lists each build with an install link, and
-  [pull request previews](/docs/guides/pull-request-previews) find the build a
-  pull request's update runs on.
+- **A preview build.** The Console lists each build with an install link. With
+  [pull request previews](/docs/guides/pull-request-previews), testers install
+  one [sandbox build](/docs/native-builds/sandbox) and scan each pull request's
+  QR code to open its bundle.
 - **A store upload.** `testflight` and `google-play upload` build, track, and
   upload in one command, and the Console shows which builds are on a store.
 
@@ -32,6 +33,8 @@ A build made elsewhere can be tracked too, by
    [Google Play](/docs/native-builds/google-play): upload to the stores.
 4. [Sandbox builds](/docs/native-builds/sandbox): build your app with a native
    testing layer that store builds never compile.
-5. [Install on an iPhone](/docs/native-builds/iphone-install): register iPhones
+5. [Pull request previews](/docs/guides/pull-request-previews): install one
+   sandbox build, then scan each pull request's QR code to open its bundle.
+6. [Install on an iPhone](/docs/native-builds/iphone-install): register iPhones
    in the Console, approve them, and install an ad hoc build.
-6. [CI](/docs/guides/ci-native-build): build and upload from a CI job.
+7. [CI](/docs/guides/ci-native-build): build and upload from a CI job.
