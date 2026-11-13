@@ -30,6 +30,15 @@ describe("channelInitScript", () => {
       channel: "it's\\x",
     });
     expect(quoted).toContain("def channel = 'it\\'s\\\\x'");
+    // A canonical channel with XML's special characters, as a real build
+    // round-trips it into the merged manifest.
+    expect(
+      channelInitScript({
+        appModuleName: "app",
+        variant: "Release",
+        channel: `pr-7 & <"q">'s`,
+      }),
+    ).toContain(`def channel = 'pr-7 & <"q">\\'s'`);
     expect(script).toContain(".replace('&', '&amp;').replace('\"', '&quot;')");
   });
 });

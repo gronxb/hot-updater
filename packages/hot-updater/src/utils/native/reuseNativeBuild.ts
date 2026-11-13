@@ -212,6 +212,7 @@ export const reuseNativeBuild = async ({
     >,
     artifactKind: artifactKindOf(platform, iosScheme, androidScheme),
     channel,
+    channelOverride: channelOption ?? null,
     ...target,
     outputPath,
     cacheDir: resolvedCacheDir,

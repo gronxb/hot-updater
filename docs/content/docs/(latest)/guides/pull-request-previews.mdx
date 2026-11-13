@@ -222,7 +222,8 @@ jobs:
 One job previews the platforms in order and writes one comment. The same job
 cleans up when the pull request closes.
 
-The action runs on Linux and macOS runners. To preview Android only, run the
+The action runs your project's CLI, and needs the one from the same
+hot-updater release as its tag. It runs on Linux and macOS runners. To preview Android only, run the
 job on `ubuntu-latest`, leave out `platforms`, `ios-scheme`, and the Ruby step.
 When the app has a `Gemfile`, as React Native and Expo projects do, the CLI
 runs CocoaPods through Bundler, so `ruby/setup-ruby` runs in the directory of

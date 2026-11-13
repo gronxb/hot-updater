@@ -586,12 +586,16 @@ const buildNativeInternal = async ({
               );
         // The channel --channel asked for, read from the artifact itself:
         // one it doesn't embed, or can't be read, fails before anything
-        // records it.
-        if (channel !== undefined && trackingSkipped !== "debug") {
+        // records it. A Debug build, which is never tracked, is read too.
+        if (channel !== undefined) {
+          const read =
+            trackingSkipped === "debug"
+              ? await readBuiltArtifact(result.artifactPath).catch(() => null)
+              : artifact;
           const embedded =
-            artifact === null || typeof artifact.channel !== "string"
+            read === null || typeof read.channel !== "string"
               ? null
-              : artifact.channel;
+              : read.channel;
           if (embedded !== channel) {
             throw new NativeBuildFailure(
               [

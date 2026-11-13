@@ -248,6 +248,17 @@ const archiveAndExport = async ({
   /** UDIDs the `.ipa` must list: see `buildIos`. */
   expectedDevices?: readonly string[];
 }) => {
+  // An archive it doesn't export keeps the signature Xcode gave its app,
+  // which a stamped Info.plist would break: only an export signs it again.
+  if (
+    channel !== undefined &&
+    !schemeConfig.exportOptionsPlist &&
+    !authenticationArgs
+  ) {
+    throw new Error(
+      `The scheme ${schemeConfig.hotUpdaterSchemeName} archives without exporting, so its app can't embed a --channel and stay signed.\nSet exportOptionsPlist or signing.ascApiKey on the scheme.`,
+    );
+  }
   const iosProjectRoot = path.join(getCwd(), "ios");
   const archiveDir = path.join(buildDirectory, "archive");
   const exportDir = path.join(buildDirectory, "export");

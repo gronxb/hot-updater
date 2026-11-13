@@ -97,6 +97,12 @@ export interface NativeBuildKeyInput {
   readonly schemeConfig: Readonly<Record<string, unknown>>;
   readonly artifactKind: NativeBuildArtifactKind;
   readonly channel: string;
+  /**
+   * The channel `--channel` stamps into the artifact, or null (or left out)
+   * without one: a stamped build never shares a key with an unstamped one,
+   * even when both embed the same channel.
+   */
+  readonly channelOverride?: string | null;
   readonly fingerprintHash: string | null;
   readonly appVersion: string | null;
   /** Where the artifact is copied, which the key leaves out. */
@@ -1492,6 +1498,10 @@ const readSettings = async (
   settings["scheme"] = sha256(schemeJson);
   settings["artifact"] = input.artifactKind;
   settings["channel"] = input.channel;
+  // Only a stamped build has it, so an unstamped build's key stays as it was.
+  if (input.channelOverride !== undefined && input.channelOverride !== null) {
+    settings["channel-override"] = input.channelOverride;
+  }
   if (input.fingerprintHash !== null) {
     settings["fingerprint"] = input.fingerprintHash;
   } else {

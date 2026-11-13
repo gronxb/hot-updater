@@ -297,6 +297,28 @@ describe("computeNativeBuildKey", () => {
     },
   );
 
+  it("never shares a key between a build --channel stamps and one it doesn't, whichever channel each embeds", async () => {
+    // The project's source says production; --channel production stamps it.
+    const unstamped = await key({ channel: "production" });
+    const stamped = await key({
+      channel: "production",
+      channelOverride: "production",
+    });
+    expect(stamped.key).not.toBe(unstamped.key);
+    // A flavor's overlay embeds staging; --channel staging stamps it.
+    const flavor = await key({ channel: "staging" });
+    const stampedStaging = await key({
+      channel: "staging",
+      channelOverride: "staging",
+    });
+    expect(stampedStaging.key).not.toBe(flavor.key);
+    // Each stays its own: the same request keys the same slot.
+    expect(
+      (await key({ channel: "production", channelOverride: "production" })).key,
+    ).toBe(stamped.key);
+    expect((await key({ channel: "production" })).key).toBe(unstamped.key);
+  });
+
   it("keys a sandbox build apart by the URL scheme it registers", async () => {
     const base = {
       platform: "android",

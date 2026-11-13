@@ -23,7 +23,7 @@ afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
 });
 
-describe("stampAppChannel", () => {
+describe.runIf(process.platform === "darwin")("stampAppChannel", () => {
   it("makes an app an Expo config plugin built for production report the channel", async () => {
     const app = path.join(root, "App.app");
     await fs.mkdir(app);

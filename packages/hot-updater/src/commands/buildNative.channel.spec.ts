@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /** What the built artifact embeds, per test: null for one that can't be read. */
 let embedded: string | null = "pr-7";
+/** The build type the scheme builds, per test. */
+let buildType = "Release";
 
 vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/android-helper")>()),
@@ -35,8 +37,8 @@ vi.mock("@/utils/setChannel", () => ({
 }));
 vi.mock("@/utils/native/prepareNativeBuild", () => ({
   prepareNativeBuild: vi.fn(async (options) => {
-    const iosScheme = { configuration: "Release", simulator: true };
-    const androidScheme = { variant: "Release", aab: false };
+    const iosScheme = { configuration: buildType, simulator: true };
+    const androidScheme = { variant: buildType, aab: false };
     await options.beforePrebuild?.({
       scheme: "preview",
       ...(options.platform === "ios" ? { iosScheme } : { androidScheme }),
@@ -77,6 +79,10 @@ vi.mock("../utils/native/sandbox", async (importOriginal) => ({
       ? null
       : { channel: embedded, appId: null, entry: { sandboxUrlScheme: null } },
   ),
+  readBuiltArtifact: vi.fn(async () => {
+    if (embedded === null) throw new Error("unreadable");
+    return { channel: embedded };
+  }),
 }));
 vi.mock("../utils/native/nativeBuildScope", () => ({
   resolveNativeBuildScope: vi.fn(async () => null),
@@ -116,6 +122,7 @@ describe("native-build ios|android --channel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     embedded = "pr-7";
+    buildType = "Release";
   });
 
   it.each(["ios", "android"] as const)(
@@ -173,6 +180,51 @@ describe("native-build ios|android --channel", () => {
       "Couldn't read the channel the build embeds, so it can't be checked against --channel pr-7.",
     );
     expect(registerNativeBuild).not.toHaveBeenCalled();
+  });
+
+  describe("a Debug build, which is never tracked", () => {
+    beforeEach(() => {
+      buildType = "Debug";
+    });
+
+    it.each([
+      [
+        "embeds another channel",
+        "production",
+        "The build embeds the production channel, not pr-7.",
+      ],
+      [
+        "embeds a channel that can't be read",
+        null,
+        "Couldn't read the channel the build embeds, so it can't be checked against --channel pr-7.",
+      ],
+    ] as const)("still fails when it %s", async (_, channel, message) => {
+      embedded = channel;
+      const exit = mockExit();
+      try {
+        await expect(
+          handleNativeBuildCreate("android", {
+            scheme: "preview",
+            channel: "pr-7",
+          }),
+        ).rejects.toThrow("exit");
+      } finally {
+        exit.mockRestore();
+      }
+      expect(vi.mocked(p.log.error).mock.calls.flat().join("\n")).toContain(
+        message,
+      );
+      expect(registerNativeBuild).not.toHaveBeenCalled();
+    });
+
+    it("passes when it embeds the channel, and stays untracked and uncached", async () => {
+      await handleNativeBuildCreate("ios", {
+        scheme: "preview",
+        channel: "pr-7",
+      });
+      expect(registerNativeBuild).not.toHaveBeenCalled();
+      expect(reuseNativeBuild).not.toHaveBeenCalled();
+    });
   });
 
   it("refuses a channel no release can target before it builds", async () => {

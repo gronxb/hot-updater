@@ -54,7 +54,8 @@ environment. It never signs in to an Apple or Google account.
 
 ## Add the workflow
 
-Use the tag of the hot-updater release your project installs. iOS builds need a
+Use the tag of the hot-updater release your project installs: the action runs
+your project's CLI, and needs the one from the same release. iOS builds need a
 macOS runner, so each platform gets its own job, and a failure in either fails
 the workflow run:
 

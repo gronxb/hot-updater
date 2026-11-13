@@ -2401,7 +2401,7 @@ SPEC CHECKSUMS:
   React: c8a434eb4c7720649ce29b79ec65a8a085d9ef89
   React-callinvoker: 4c2b5f172ed44389be239e98c3f337c5196cace7
   React-Core: bf2977380d26b10c311fc205c66f856bc46d19cd
-  React-Core-prebuilt: adf36c00abaad5334073b1cd2f4bc871559d2aca
+  React-Core-prebuilt: b4eda82be3e3674a8ca88776ddd7cfafc700a26b
   React-CoreModules: a3ce5ded6a0e1ce1994afe27108d91a3c1cfb815
   React-cxxreact: f6321e3f111c22152d95505cfdb5ca7f31319276
   React-debug: 4f438e5a751a73ea73cded17cd51db62588d7bac
@@ -2464,9 +2464,9 @@ SPEC CHECKSUMS:
   ReactAppDependencyProvider: 5cc0b8b95a5be99ad92aee2d59bc59987df97753
   ReactCodegen: 20409cf38ef9a262a6a8ec06460f656c25047c05
   ReactCommon: 4d9dcc879c31dcfb3ebcef8d3189293ba501d6b3
-  ReactNativeDependencies: eafd380377ade7578b5e29b7830911eb6c7f0676
+  ReactNativeDependencies: f9ef5979fb38c927d64604c9c45f8e655156a4a4
   Yoga: 3a3ee5afb97f3a990839cfae6092b0540c7441a4
 
 PODFILE CHECKSUM: 176ab61087839e465333965a2190158d40da8ec4
 
-COCOAPODS: 1.17.0
+COCOAPODS: 1.15.2
