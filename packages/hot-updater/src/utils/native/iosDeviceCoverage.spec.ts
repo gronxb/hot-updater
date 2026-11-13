@@ -134,7 +134,7 @@ describe("iosDeviceCoverage", () => {
     });
     // The first run builds; the build Apple didn't enable the device for is
     // newer than the approval, so the next run reuses it.
-    expect(coverage(ipa([]), [pending]).reusable).toBe(false);
+    expect(coverage(ipa([]), [pending])?.reusable).toBe(false);
     expect(coverage(ipa([]), [pending], BUILT_AT + 2)).toEqual({
       reusable: true,
       reason: null,

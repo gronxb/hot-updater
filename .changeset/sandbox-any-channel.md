@@ -24,5 +24,5 @@ Sandbox builds live on the project's channel. A sandbox build embeds the channel
 For a release candidate already in use:
 
 - `android-fallback-scheme` and `ios-fallback-scheme` are removed. Remove them from your workflow: a pull request with new native code gets a new sandbox build.
-- Deploy the server first, then the CLI (1.2.0-rc.41 or later), the actions and the Console. An older CLI's sandbox registration is refused, since it sends no `sandboxAppId`, and its lookup misses the new builds.
+- Deploy the server first, then the CLI of this release or later, the actions and the Console. An older CLI's sandbox registration is refused, since it sends no `sandboxAppId`, and its lookup misses the new builds.
 - No migration runs. Sandbox builds already on `sandbox-*` channels stay where they are, and the first preview after the upgrade builds a new sandbox build once per platform. Delete the old ones with `npx hot-updater channel delete sandbox-<scheme> --native-builds` once you no longer need them.
