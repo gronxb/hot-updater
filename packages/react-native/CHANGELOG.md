@@ -1,5 +1,14 @@
 # @hot-updater/react-native
 
+## 1.1.13
+
+### Patch Changes
+
+- 412883b: Add a `fetch` option to `HotUpdater.init` so an instance's JavaScript requests (release catalogs, artifact lookups, and client plugins such as `insights()`) can use a fetch other than the global one, such as `react-native-nitro-fetch`. It defaults to the global `fetch`; native downloads and the native recovery check don't use it.
+- @hot-updater/protocol@1.1.13
+  - @hot-updater/plugin-insights@1.1.13
+  - @hot-updater/plugin-remote-config@1.1.13
+
 ## 1.1.12
 
 ### Patch Changes

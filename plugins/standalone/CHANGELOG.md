@@ -1,5 +1,12 @@
 # @hot-updater/standalone
 
+## 1.1.13
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.13
+  - @hot-updater/plugin-core@1.1.13
+
 ## 1.1.12
 
 ### Patch Changes

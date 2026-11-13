@@ -1,5 +1,7 @@
 # @hot-updater/plugin-api-keys
 
+## 1.1.13
+
 ## 1.1.12
 
 ## 1.1.11
