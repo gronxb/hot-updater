@@ -1,5 +1,15 @@
 # @hot-updater/azure
 
+## 1.2.0-rc.43
+
+### Patch Changes
+
+- Updated dependencies [6d1b8f8]
+  - @hot-updater/plugin-core@1.2.0-rc.43
+  - @hot-updater/server@1.2.0-rc.43
+  - @hot-updater/cli-tools@1.2.0-rc.43
+  - @hot-updater/protocol@1.2.0-rc.43
+
 ## 1.2.0-rc.42
 
 ### Patch Changes

@@ -1,5 +1,49 @@
 # @hot-updater/supabase
 
+## 1.2.0-rc.43
+
+### Minor Changes
+
+- 6d1b8f8: A pull request preview can offer an iPhone build and a Simulator build of the same native code, and the Console links them.
+
+  **Preview action.** `ios-scheme` takes several schemes, comma-separated, such as `sandbox, sandboxSimulator`.
+  - **One run, one bundle, one comment.**
+    - Each scheme's build is found, or built, before the platform's single bundle deploys.
+    - The schemes must build the same native code. Schemes with different fingerprints or app versions fail the platform before anything deploys.
+    - A scheme that fails doesn't stop the others. The comment names it, and `ios-build-log` lists every failed scheme's log.
+  - **Outputs.** With several schemes, each `previews` entry carries its `scheme`, and the platform's other outputs are its first successful scheme's. `ios-submit` takes one `ios-scheme`.
+  - **A single scheme** works exactly as before. The one change is a sandbox Simulator scheme: its comment and `ios-install-url` give `npx hot-updater native-build install <id> --open <channel>` instead of a QR code a Simulator can't scan.
+
+  **CLI.** `hot-updater native-build install <id> --open <channel>` installs a sandbox Simulator build on the selected Simulator and opens the channel's latest bundle through its preview link, as the QR code does on a phone. It refuses a normal build, which opens the channel it embeds. A sandbox build of an app version installs and launches as it is, since its link would need a fingerprint, and the command says so.
+
+  **`native-build find --scheme`** finds the newest build of the scheme's own artifact kind, so a newer Simulator `.app` of the same channel and fingerprint no longer hides the `.ipa`, or the reverse, and a preview reuses each one instead of building or downloading it again.
+
+  **Console.** The Install card of a sandbox build switches between **iPhone** and **Simulator**, a link to the newest build of the other target of the same native code, when there is one.
+  - An `.ipa` qualifies when it was exported for direct install, no store took it, and it isn't the store build. The same rule applies on both sides.
+  - The build page reads it with one more query. The Native builds list and its pages are unchanged.
+
+  **Core.**
+  - `findNativeBuild(scope, { artifactKind })` reads a new `native_builds_byScopeKind (scope_key, artifact_kind, id)` index, and keeps to the kind with `buildKey` or `storeBuild` too. When the index has no row, it falls back to the scope's newest row and keeps it only if its kind matches.
+  - `findNativeBuildSibling(build)` is new, with the admin route `GET /native-builds/:id/sibling`.
+
+  If a 1.2.0 prerelease migrated your database before this release:
+  - **SQL and MongoDB** find any matching row with or without the index, since they read rows by their fields. Create the index once for speed; this is safe to run again.
+  - **DynamoDB, Firestore, and Cosmos DB** keep no copy of the new index for a row written before it. Such a build is found only while it is its scope's newest. A cached build behind a newer build of the other kind, such as an `.app` behind a newer `.ipa`, isn't found until the native code changes. The cost is a download of the build again, never a build of the wrong kind.
+
+  The statements:
+  - Cloudflare D1, SQLite, PostgreSQL, Neon: `CREATE INDEX IF NOT EXISTS "native_builds_byScopeKind" ON "native_builds" ("scope_key", "artifact_kind", "id");`
+  - Supabase: `CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byScopeKind" ON "hot_updater_v1_native_builds" ("scope_key", "artifact_kind", "id");`
+  - MySQL: run `SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'native_builds' AND index_name = 'native_builds_byScopeKind';`. Only when it returns 0, run ``CREATE INDEX `native_builds_byScopeKind` ON `native_builds` (`scope_key`, `artifact_kind`, `id`);``.
+  - MongoDB, DynamoDB, Firestore, Cosmos DB: nothing to run.
+
+### Patch Changes
+
+- Updated dependencies [6d1b8f8]
+  - @hot-updater/plugin-core@1.2.0-rc.43
+  - @hot-updater/server@1.2.0-rc.43
+  - @hot-updater/cli-tools@1.2.0-rc.43
+  - @hot-updater/protocol@1.2.0-rc.43
+
 ## 1.2.0-rc.42
 
 ### Patch Changes

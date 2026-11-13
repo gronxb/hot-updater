@@ -1,5 +1,7 @@
 # @hot-updater/plugin-api-keys
 
+## 1.2.0-rc.43
+
 ## 1.2.0-rc.42
 
 ## 1.2.0-rc.41
