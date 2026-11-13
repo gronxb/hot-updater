@@ -23,6 +23,7 @@ import {
 import { decodeChannelKey } from "@hot-updater/protocol";
 import {
   blobSource,
+  createPreviewLink,
   readNativeArtifact,
   sandboxUrlSchemeOf,
 } from "@hot-updater/protocol/native-artifact";
@@ -120,7 +121,12 @@ export const handleNativeBuildFind = async (
     let downloadUrl: string | null = null;
     let iosDevices: IosDeviceCoverage | null = null;
     try {
-      nativeBuild = await server.core.findNativeBuild(scope);
+      // The scheme's kind, so a newer build of another kind of the scope,
+      // such as its Simulator .app beside its .ipa, hides nothing.
+      nativeBuild =
+        artifactKind === undefined
+          ? await server.core.findNativeBuild(scope)
+          : await server.core.findNativeBuild(scope, { artifactKind });
       if (
         nativeBuild !== null &&
         artifactKind !== undefined &&
@@ -475,8 +481,39 @@ export interface NativeBuildInstallOptions {
   readonly simulator?: string;
   /** The Android device's serial, as `adb devices` lists it, for an APK. */
   readonly device?: string;
+  /**
+   * A channel a sandbox Simulator build opens instead of its own: its
+   * preview link, which a QR code holds on a phone.
+   */
+  readonly open?: string;
   readonly json?: boolean;
 }
+
+/**
+ * Why `--open` can't open a channel in a build: only a sandbox Simulator
+ * build has a preview link to open; null when it can.
+ */
+const openRefusal = (build: NativeBuildRow): string | null =>
+  build.artifact_kind !== "app"
+    ? "--open opens a channel in a Simulator build."
+    : !build.is_sandbox
+      ? "This build opens the channel it embeds.\nLeave out --open."
+      : null;
+
+/**
+ * A sandbox build's preview link of `channel`, of the URL scheme it
+ * registered, or null for a build of an app version: a link names a
+ * fingerprint.
+ */
+const previewLinkOf = (build: NativeBuildRow, channel: string, appId: string) =>
+  build.fingerprint_hash === null
+    ? null
+    : createPreviewLink({
+        urlScheme: build.sandbox_url_scheme ?? sandboxUrlSchemeOf(appId),
+        channel,
+        fingerprintHash: build.fingerprint_hash,
+        platform: build.platform,
+      });
 
 /**
  * Downloads a registered simulator `.app` or `.apk`, installs it on a booted
@@ -497,6 +534,13 @@ export const handleNativeBuildInstall = async (
       const build = await requireNativeBuild(server, id);
       const notInstallable = NOT_INSTALLABLE[build.artifact_kind];
       if (notInstallable !== undefined) throw new Error(notInstallable);
+      const { open } = options;
+      if (open !== undefined) {
+        const refusal = openRefusal(build);
+        if (refusal !== null) throw new Error(refusal);
+        // A channel no link can name fails before anything downloads.
+        previewLinkOf(build, open, build.sandbox_url_scheme ?? "app");
+      }
       const isSimulatorApp = build.artifact_kind === "app";
       if (isSimulatorApp ? options.device : options.simulator) {
         throw new Error(
@@ -536,6 +580,8 @@ export const handleNativeBuildInstall = async (
         throw new Error("The artifact names no app to open.");
       }
 
+      // An app-version build has no link: it opens as it is.
+      const url = open === undefined ? null : previewLinkOf(build, open, appId);
       if (isSimulatorApp) {
         await installOnSimulator({
           udid: targetId,
@@ -544,6 +590,7 @@ export const handleNativeBuildInstall = async (
             outputPath: path.join(directory, "app"),
           }),
           appId,
+          ...(url === null ? {} : { url }),
         });
       } else {
         await installOnAndroidDevice({
@@ -556,17 +603,31 @@ export const handleNativeBuildInstall = async (
       if (options.json) {
         console.log(
           JSON.stringify(
-            { id, platform: build.platform, device: targetId, appId },
+            {
+              id,
+              platform: build.platform,
+              device: targetId,
+              appId,
+              ...(url === null ? {} : { channel: open }),
+            },
             null,
             2,
           ),
         );
         return;
       }
+      if (open !== undefined && url === null) {
+        p.log.info(
+          `${open} isn't opened: a preview link names a fingerprint, and this build has an app version.\nOpen ${open} in the app.`,
+        );
+      }
       p.log.success(
         ui.block("Native build installed and opened", [
           ui.kv("ID", ui.id(id)),
           ui.kv("App", appId),
+          url !== null &&
+            open !== undefined &&
+            ui.kv("Channel", ui.channel(open)),
           "udid" in target
             ? ui.kv("Simulator", `${target.name} (${target.udid})`)
             : ui.kv("Device", target.serial),

@@ -140,6 +140,7 @@ model native_builds {
   @@id([id])
   @@index([scope_key, id], map: "native_builds_byScope")
   @@index([scope_key, build_key, id], map: "native_builds_byBuildKey")
+  @@index([scope_key, artifact_kind, id], map: "native_builds_byScopeKind")
   @@unique([store_build_scope_key], map: "native_builds_byStoreBuild")
   @@index([channel_id, id], map: "native_builds_byChannel")
   @@unique([min_bundle_id], map: "native_builds_min_bundle_id")

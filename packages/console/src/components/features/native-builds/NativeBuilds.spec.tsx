@@ -130,6 +130,7 @@ const detail = (
     storeBuildInScope: null,
     servedNow: [],
     patches: patchPage([]),
+    sibling: null,
     ...overrides,
   };
 };
@@ -1080,6 +1081,54 @@ describe("InstallCard", () => {
   beforeEach(() => {
     downloadLinkQuery.mockReturnValue({ data: ISSUED_LINK });
     downloadUrlQuery.mockReset();
+  });
+
+  describe("beside the other install target of the same native code", () => {
+    const ipa = build({
+      platform: "ios",
+      artifact_kind: "ipa",
+      artifact_storage_uri: "r2://bucket/native-builds/ios/019a/App.ipa",
+      is_sandbox: true,
+      export_method: "ad-hoc",
+    });
+    const app = build({
+      id: id(9),
+      platform: "ios",
+      artifact_kind: "app",
+      artifact_storage_uri: "r2://bucket/native-builds/ios/019b/App.app.zip",
+      is_sandbox: true,
+    });
+    const targets = () =>
+      within(screen.getByRole("navigation", { name: "Install target" }))
+        .getAllByRole("link")
+        .map((link) => [
+          link.textContent,
+          link.getAttribute("href"),
+          link.getAttribute("aria-current"),
+        ]);
+
+    it("links both targets' pages, iPhone first, and marks this build's", () => {
+      render(<InstallCard build={ipa} sibling={app} />);
+      expect(targets()).toEqual([
+        ["iPhone", `/native-builds/${ipa.id}`, "page"],
+        ["Simulator", `/native-builds/${app.id}`, null],
+      ]);
+
+      cleanup();
+      render(<InstallCard build={app} sibling={ipa} />);
+      expect(targets()).toEqual([
+        ["iPhone", `/native-builds/${ipa.id}`, null],
+        ["Simulator", `/native-builds/${app.id}`, "page"],
+      ]);
+    });
+
+    it("shows no switch, and says nothing, without one", () => {
+      render(<InstallCard build={ipa} />);
+      expect(
+        screen.queryByRole("navigation", { name: "Install target" }),
+      ).toBeNull();
+      expect(document.body.textContent).not.toMatch(/Simulator/);
+    });
   });
 
   describe("with a signed link", () => {

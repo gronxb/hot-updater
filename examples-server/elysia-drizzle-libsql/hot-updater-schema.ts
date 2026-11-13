@@ -137,6 +137,7 @@ export const native_builds = sqliteTable("native_builds", {
   primaryKey({ columns: [table["id"]] }),
   index("native_builds_byScope").on(table["scope_key"], table["id"]),
   index("native_builds_byBuildKey").on(table["scope_key"], table["build_key"], table["id"]),
+  index("native_builds_byScopeKind").on(table["scope_key"], table["artifact_kind"], table["id"]),
   uniqueIndex("native_builds_byStoreBuild").on(table["store_build_scope_key"]),
   index("native_builds_byChannel").on(table["channel_id"], table["id"]),
   uniqueIndex("native_builds_min_bundle_id").on(table["min_bundle_id"]),

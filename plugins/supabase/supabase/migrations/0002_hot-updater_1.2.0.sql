@@ -6,6 +6,8 @@ CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byScope" ON "hot_update
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byBuildKey" ON "hot_updater_v1_native_builds" ("scope_key", "build_key", "id");
 
+CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byScopeKind" ON "hot_updater_v1_native_builds" ("scope_key", "artifact_kind", "id");
+
 CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byStoreBuild" ON "hot_updater_v1_native_builds" ("store_build_scope_key");
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byChannel" ON "hot_updater_v1_native_builds" ("channel_id", "id");

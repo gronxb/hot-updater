@@ -304,7 +304,12 @@ export interface HotUpdaterCoreApi {
    * builds of that key. With `scope.sandbox`, sandbox builds on any channel;
    * without it, never one. A sandbox build's built-in bundle is no patch
    * base, so with `builtInOlderThan` a sandbox scope answers null without a
-   * read.
+   * read. With `artifactKind`, only a build of that kind, with any other
+   * option. Alone, it reads the scope's builds of that kind, so a newer
+   * `.app` doesn't hide the scope's `.ipa`: one read, and when that finds
+   * none, a second of the scope's newest, kept only when it is of the kind.
+   * A key-value store holds no index copy of this for a row written before
+   * it, so such a row is found only while it is its scope's newest.
    */
   findNativeBuild(
     scope: NativeBuildScope,
@@ -312,8 +317,18 @@ export interface HotUpdaterCoreApi {
       readonly buildKey?: string;
       readonly storeBuild?: true;
       readonly builtInOlderThan?: string;
+      readonly artifactKind?: NativeBuildArtifactKind;
     },
   ): Promise<NativeBuildRow | null>;
+  /**
+   * The newest build of the other install target of an iOS sandbox build's
+   * native code: its Simulator `.app` for a direct-install `.ipa`, or the
+   * reverse, of the same app ID, URL scheme and fingerprint or app version,
+   * on any channel. Null, with no read, for any other build, and for a store
+   * or store-marked build on either side. One read. The Console's build page
+   * offers it beside its install.
+   */
+  findNativeBuildSibling(build: NativeBuildRow): Promise<NativeBuildRow | null>;
   /**
    * One page of native builds, by ID: oldest or newest first. With
    * `channelId`, only the builds that embed that channel, also one read.

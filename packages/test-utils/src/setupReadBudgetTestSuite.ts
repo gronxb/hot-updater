@@ -2,6 +2,7 @@ import {
   type DatabaseAdapter,
   type DatabaseReadCount,
   type HotUpdaterCoreApi,
+  type NativeBuildRow,
   type PhysicalTable,
   SETTINGS_TABLE,
   targetBaseCandidateKey,
@@ -279,6 +280,34 @@ const nativeBuildSandboxScope = {
   artifactKind: "ipa",
   distribution: "direct",
 } as const;
+/**
+ * A sandbox ad hoc .ipa of `nativeBuildScope`'s fingerprint, as a build page
+ * holds its row: the source of a sibling read.
+ */
+const sandboxIpaRow: NativeBuildRow = {
+  id: "01ffffff-ffff-7fff-bfff-ffffffffffff",
+  scope_key: `v1:sandbox:ios:${nativeBuildSandboxScope.appId}:${nativeBuildSandboxScope.urlScheme}:ipa:direct:fingerprint:${nativeBuildScope.fingerprintHash}`,
+  platform: "ios",
+  channel_id: "channel:pr-140",
+  fingerprint_hash: nativeBuildScope.fingerprintHash,
+  app_version: null,
+  min_bundle_id: "01ffffff-ffff-7fff-bfff-fffffffffffe",
+  artifact_kind: "ipa",
+  artifact_storage_uri: "storage://read-budgets/native-builds/ipa/App.ipa",
+  byte_size: 1_000,
+  git_commit_hash: null,
+  created_at_ms: 0,
+  build_key: null,
+  build_number: null,
+  submitted_to: null,
+  submitted_at_ms: null,
+  submitted_version: null,
+  is_store_build: false,
+  is_sandbox: true,
+  sandbox_url_scheme: nativeBuildSandboxScope.urlScheme,
+  export_method: "ad-hoc",
+  native_app_version: null,
+};
 /** The native build key the older of the two native builds is registered with. */
 const nativeBuildKey = `nbk1:${"0".repeat(64)}`;
 const bundleEvents = {
@@ -363,6 +392,29 @@ const seed = async (database: MeasuredDatabase) => {
   }
   await core.markNativeBuild(createBundleFixture("8011").id, {
     storeBuild: true,
+  });
+  // A sandbox Simulator build of that fingerprint, on another channel: the
+  // other install target of a sandbox ad hoc .ipa of it.
+  await core.registerNativeBuild({
+    ...nativeBuildScope,
+    channel: "beta",
+    id: createBundleFixture("8005").id,
+    minBundleId: createBundleFixture("005").id,
+    gitCommitHash: null,
+    buildKey: null,
+    isSandbox: true,
+    sandboxAppId: nativeBuildSandboxScope.appId,
+    sandboxUrlScheme: nativeBuildSandboxScope.urlScheme,
+    artifact: {
+      kind: "app",
+      storageUri: "storage://read-budgets/native-builds/005/App.app.zip",
+      byteSize: 1_000,
+    },
+    embeddedBundle: {
+      manifestStorageUri: "storage://bundles/005/manifest.json",
+      manifestFileHash: "manifest-hash-005",
+      assetBaseStorageUri: "storage://read-budgets/assets",
+    },
   });
   // Two requested iPhones, one approved and one still pending.
   const pendingDevice = (
@@ -731,6 +783,49 @@ const READ_BUDGETS: readonly ReadBudget[] = [
         min_bundle_id: createBundleFixture("011").id,
         build_key: nativeBuildKey,
       }),
+  }),
+  budget({
+    api: "native build of a kind: byScopeKind descending, limit 1",
+    read: ({ core }) =>
+      core.findNativeBuild(nativeBuildScope, { artifactKind: "ipa" }),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("012").id,
+      }),
+  }),
+  budget({
+    api: "native build of a kind with none: byScopeKind, then byScope, limit 1",
+    // The scope's newest stands for a row written before byScopeKind.
+    read: ({ core }) =>
+      core.findNativeBuild(nativeBuildScope, { artifactKind: "app" }),
+    adapter: reads(0, 0, 2, 1),
+    engine: { calls: 2, rows: 1 },
+    check: (build) => expect(build).toBeNull(),
+  }),
+  budget({
+    api: "sandbox build's other install target: byScope descending, limit 1",
+    read: ({ core }) => core.findNativeBuildSibling(sandboxIpaRow),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        id: createBundleFixture("8005").id,
+        artifact_kind: "app",
+      }),
+  }),
+  budget({
+    api: "normal build's other install target: no read",
+    read: ({ core }) =>
+      core.findNativeBuildSibling({
+        ...sandboxIpaRow,
+        is_sandbox: false,
+        scope_key: "normal",
+      }),
+    adapter: reads(0, 0, 0, 0),
+    engine: { calls: 0, rows: 0 },
+    check: (build) => expect(build).toBeNull(),
   }),
   budget({
     api: "native build list: all descending, limit rows",

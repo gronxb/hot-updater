@@ -252,6 +252,9 @@ const nativeBuilds = defineTable(
     indexes: {
       byScope: { eq: ["scope_key"], sort: ["id"] },
       byBuildKey: { eq: ["scope_key", "build_key"], sort: ["id"] },
+      // A scope's builds of one kind, so its newer `.app` never hides its
+      // `.ipa`.
+      byScopeKind: { eq: ["scope_key", "artifact_kind"], sort: ["id"] },
       byStoreBuild: { eq: ["store_build_scope_key"], sort: [], unique: true },
       // Rooted at the channel, so deleting a channel reads its builds under
       // the channel row a registration bumps.

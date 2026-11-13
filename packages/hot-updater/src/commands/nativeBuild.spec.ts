@@ -54,6 +54,10 @@ const register = (
       Partial<NativeBuildRegistration>,
       "sandboxUrlScheme" | "sandboxAppId" | "nativeAppVersion"
     >,
+  kind: NativeBuildRegistration["artifact"]["kind"] = scope.platform ===
+  "android"
+    ? "apk"
+    : "app",
 ) =>
   databaseHarness.core.registerNativeBuild({
     ...scope,
@@ -62,7 +66,7 @@ const register = (
     gitCommitHash: null,
     buildKey: null,
     artifact: {
-      kind: scope.platform === "android" ? "apk" : "app",
+      kind,
       storageUri: `storage://native-builds/${scope.platform}/b00${suffix}/artifact`,
       byteSize: 1_024,
     },
@@ -396,6 +400,38 @@ describe("handleNativeBuildFind", () => {
     expect(output().nativeBuild.id).toBe(
       "01900000-0000-7000-8000-00000000b002",
     );
+  });
+
+  it("finds the scheme's kind past a newer build of another kind of the scope", async () => {
+    const scope = {
+      platform: "ios",
+      channel: "preview",
+      fingerprintHash: "fingerprint-a",
+      appVersion: null,
+    } as const;
+    await register("1", scope, "ipa");
+    // The same native code's Simulator build, registered after the .ipa.
+    await register("2", scope, "app");
+    const { handleNativeBuildFind } = await import("./nativeBuild");
+
+    await handleNativeBuildFind({
+      platform: "ios",
+      scheme: "device",
+      json: true,
+    });
+    expect(output().nativeBuild).toMatchObject({
+      id: "01900000-0000-7000-8000-00000000b001",
+      artifact_kind: "ipa",
+    });
+    await handleNativeBuildFind({
+      platform: "ios",
+      scheme: "simulator",
+      json: true,
+    });
+    expect(output().nativeBuild).toMatchObject({
+      id: "01900000-0000-7000-8000-00000000b002",
+      artifact_kind: "app",
+    });
   });
 
   it.each([

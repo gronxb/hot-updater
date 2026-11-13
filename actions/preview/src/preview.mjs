@@ -19,6 +19,7 @@ import {
   qrCodeValues,
   renderClosedComment,
   renderPreviewComment,
+  simulatorOpens,
 } from "./comment.mjs";
 import { findComment, updateComment, upsertComment } from "./github.mjs";
 import { removeQrCodes, writeQrCodes } from "./qrBranch.mjs";
@@ -40,8 +41,9 @@ export { parseJsonOutput };
  * @typedef {object} Inputs
  * @property {string} consoleUrl
  * @property {Platform[]} platforms
- * @property {Partial<Record<Platform, string>>} schemes The `nativeBuild`
- *   scheme each platform builds.
+ * @property {Partial<Record<Platform, string[]>>} schemes The `nativeBuild`
+ *   schemes each platform builds, in order: several are targets of the same
+ *   native code, such as an ad hoc and a Simulator scheme.
  * @property {string} channel The pull request's channel, which its native
  *   builds embed and its bundles deploy to.
  * @property {Partial<Record<Platform, "testflight" | "play-internal">>} submits
@@ -160,11 +162,28 @@ export const parseInputs = (env, event) => {
   }
 
   const platforms = parsePlatforms(input("PLATFORMS") || "android");
-  const schemes = parseSchemes(input);
+  // Comma-separated, so a scheme's name keeps its spaces.
+  /** @type {Inputs["schemes"]} */
+  const schemes = Object.fromEntries(
+    Object.entries(parseSchemes(input)).map(([platform, value]) => [
+      platform,
+      value
+        .split(",")
+        .map((scheme) => scheme.trim())
+        .filter((scheme) => scheme !== ""),
+    ]),
+  );
 
   const channel = input("CHANNEL") || `pr-${event.number}`;
 
   const submits = parseSubmits(input);
+  for (const platform of /** @type {const} */ (["android", "ios"])) {
+    if (submits[platform] && (schemes[platform]?.length ?? 0) > 1) {
+      throw new Error(
+        `${platform}-submit takes one ${platform}-scheme.\nList one scheme, or remove ${platform}-submit.`,
+      );
+    }
+  }
   const testFlightGroup = input("IOS_TESTFLIGHT_GROUP") || null;
   if (testFlightGroup !== null && submits.ios === undefined) {
     throw new Error(
@@ -180,7 +199,7 @@ export const parseInputs = (env, event) => {
       : mode;
   if (resolvedMode === "preview") {
     for (const platform of platforms) {
-      if (schemes[platform] === undefined) {
+      if (!schemes[platform]?.length) {
         throw new Error(
           `${platform}-scheme is required: the nativeBuild.${platform} scheme the preview build uses.`,
         );
@@ -235,18 +254,20 @@ const artifactFileName = (storageUri) => {
  * @param {Deps} deps
  * @param {Inputs} inputs
  * @param {PlatformPreview} preview
+ * @param {string} scheme The scheme that previewed it.
  * @returns {Promise<string | null>}
  */
 const findDownloadUrl = async (
   deps,
   inputs,
   { platform, nativeBuild: { id } },
+  scheme,
 ) => {
   try {
     // A sandbox scheme's lookup finds its build on any channel.
     const found = await findNativeBuild(deps, {
       platform,
-      scheme: /** @type {string} */ (inputs.schemes[platform]),
+      scheme,
       channel: inputs.channel,
     });
     if (found.nativeBuild?.id === id) return found.downloadUrl ?? null;
@@ -273,6 +294,7 @@ const findDownloadUrl = async (
  * @param {Inputs} inputs
  * @param {PullRequestEvent} event
  * @param {Platform} platform
+ * @param {string} scheme
  * @param {"testflight" | "play-internal"} submit
  */
 const findOrSubmitStoreBuild = async (
@@ -280,9 +302,9 @@ const findOrSubmitStoreBuild = async (
   inputs,
   event,
   platform,
+  scheme,
   submit,
 ) => {
-  const scheme = /** @type {string} */ (inputs.schemes[platform]);
   const group = platform === "ios" ? inputs.testFlightGroup : null;
   // With a group to apply, that one command reads the store's word too.
   const found = await findNativeBuild(deps, {
@@ -446,6 +468,97 @@ const sandboxOf = (
 };
 
 /**
+ * A scheme's native build, found or built and tracked, before its bundle is
+ * deployed: a build this run makes has a built-in bundle newer than any
+ * bundle deployed before it, so every scheme of a platform resolves first.
+ *
+ * @typedef {object} ResolvedScheme
+ * @property {string} scheme
+ * @property {NativeBuildRow} build
+ * @property {import("../../shared/nativeBuild.mjs").BuildTarget} target What
+ *   the artifact embeds, which the bundle deploys to.
+ * @property {boolean} built Whether this run built it.
+ * @property {{ appId: string, urlScheme: string, channel: string | null } | undefined} sandbox
+ *   `find`'s word on a sandbox scheme.
+ */
+
+/**
+ * Finds the scheme's native build that embeds the pull request's channel,
+ * or a sandbox scheme's on any channel, or builds and tracks one.
+ *
+ * @param {Deps} deps
+ * @param {Inputs} inputs
+ * @param {Platform} platform
+ * @param {string} scheme
+ * @returns {Promise<ResolvedScheme>}
+ */
+const resolveScheme = async (deps, inputs, platform, scheme) => {
+  // With no channel, `find` answers for what the project embeds, which
+  // `channel set` made the pull request's, and a sandbox scheme's build on
+  // any channel.
+  const found = await findNativeBuild(deps, { platform, scheme });
+  // A new sandbox build is one more build of the pull request's channel; a
+  // found one may embed another pull request's.
+  const resolved = await resolveNativeBuild(deps, inputs, {
+    platform,
+    scheme,
+    // The build embeds the pull request's channel, whatever the project's.
+    found:
+      found.sandbox !== undefined || found.channel === inputs.channel
+        ? found
+        : await findNativeBuild(deps, {
+            platform,
+            scheme,
+            channel: inputs.channel,
+          }),
+  });
+  return { scheme, ...resolved, sandbox: found.sandbox };
+};
+
+/**
+ * A resolved scheme's preview, once its bundle is deployed.
+ *
+ * @param {Inputs} inputs
+ * @param {Platform} platform
+ * @param {ResolvedScheme} resolved
+ * @param {string} bundleId
+ * @returns {PlatformPreview & { installUrl: string }}
+ */
+const previewOf = (
+  inputs,
+  platform,
+  { build, target, built, sandbox },
+  bundleId,
+) => {
+  const nativeBuild = {
+    id: build.id,
+    artifactKind: build.artifact_kind,
+    fileName: artifactFileName(build.artifact_storage_uri),
+  };
+  const sandboxPreview = sandboxOf(
+    inputs,
+    platform,
+    sandbox,
+    target,
+    build,
+    built,
+  );
+  return {
+    platform,
+    target,
+    nativeBuild,
+    built,
+    bundleId,
+    installUrl: nativeBuildInstallUrl(
+      inputs.consoleUrl,
+      nativeBuild,
+      simulatorOpens({ nativeBuild, ...sandboxPreview }, inputs.channel),
+    ),
+    ...sandboxPreview,
+  };
+};
+
+/**
  * Deploys one platform's bundle to the pull request's channel, after
  * building and registering a native build that embeds the channel when the
  * registry has none for the project's fingerprint, or app version, there.
@@ -456,15 +569,29 @@ const sandboxOf = (
  * @param {Inputs} inputs
  * @param {PullRequestEvent} event
  * @param {Platform} platform
+ * @param {string} scheme
  * @param {() => void} onDeployed Runs once the bundle is on the channel.
  * @returns {Promise<PlatformPreview & { installUrl: string }>}
  */
-const previewPlatform = async (deps, inputs, event, platform, onDeployed) => {
-  const scheme = /** @type {string} */ (inputs.schemes[platform]);
+const previewPlatform = async (
+  deps,
+  inputs,
+  event,
+  platform,
+  scheme,
+  onDeployed,
+) => {
   const submit = inputs.submits[platform];
   if (submit) {
     const { build, target, built, store, sandbox } =
-      await findOrSubmitStoreBuild(deps, inputs, event, platform, submit);
+      await findOrSubmitStoreBuild(
+        deps,
+        inputs,
+        event,
+        platform,
+        scheme,
+        submit,
+      );
     const bundleId = await deployBundle(deps, {
       platform,
       channel: inputs.channel,
@@ -492,46 +619,100 @@ const previewPlatform = async (deps, inputs, event, platform, onDeployed) => {
         store?.url ?? nativeBuildInstallUrl(inputs.consoleUrl, nativeBuild),
     };
   }
-  // With no channel, `find` answers for what the project embeds, which
-  // `channel set` made the pull request's, and a sandbox scheme's build on
-  // any channel.
-  const found = await findNativeBuild(deps, { platform, scheme });
-  if (found.sandbox === undefined) {
-    const { preview } = await deployOnNativeBuild(deps, inputs, event, {
-      platform,
-      scheme,
-      onDeployed,
-      // The build embeds the pull request's channel, whatever the project's.
-      found:
-        found.channel === inputs.channel
-          ? found
-          : await findNativeBuild(deps, {
-              platform,
-              scheme,
-              channel: inputs.channel,
-            }),
-    });
-    return preview;
-  }
-  // A new sandbox build is one more build of the pull request's channel; a
-  // found one may embed another pull request's.
-  const { preview, build } = await deployOnNativeBuild(deps, inputs, event, {
+  const resolved = await resolveScheme(deps, inputs, platform, scheme);
+  const bundleId = await deployBundle(deps, {
     platform,
-    scheme,
-    found,
+    channel: inputs.channel,
+    target: resolved.target,
+    message: deployMessage(event),
     onDeployed,
   });
-  return {
-    ...preview,
-    ...sandboxOf(
-      inputs,
-      platform,
-      found.sandbox,
-      preview.target,
-      build,
-      preview.built,
+  return previewOf(inputs, platform, resolved, bundleId);
+};
+
+/**
+ * Previews several schemes of one platform, targets of the same native code
+ * such as an ad hoc `.ipa` and a Simulator `.app`: each is found or built
+ * first, then the platform's one bundle deploys to the target they share.
+ * A scheme that fails leaves the others; schemes of different native code
+ * deploy nothing, since one deploy targets one fingerprint or app version.
+ *
+ * @param {Deps} deps
+ * @param {Inputs} inputs
+ * @param {PullRequestEvent} event
+ * @param {Platform} platform
+ * @param {string[]} schemes
+ * @param {() => void} onDeployed
+ * @returns {Promise<{ previews: (PlatformPreview & { installUrl: string, scheme: string })[], failures: { scheme?: string, error: unknown, deployed?: boolean }[] }>}
+ *   A failure's `deployed` says whether its bundle reached the channel: a
+ *   scheme that failed before the deploy has none.
+ */
+const previewSchemes = async (
+  deps,
+  inputs,
+  event,
+  platform,
+  schemes,
+  onDeployed,
+) => {
+  /** @type {ResolvedScheme[]} */
+  const resolved = [];
+  /** @type {{ scheme?: string, error: unknown, deployed?: boolean }[]} */
+  const failures = [];
+  for (const scheme of schemes) {
+    try {
+      resolved.push(await resolveScheme(deps, inputs, platform, scheme));
+    } catch (error) {
+      failures.push({ scheme, error, deployed: false });
+    }
+  }
+  const targets = new Set(
+    resolved.map(({ target }) =>
+      target.fingerprintHash === null
+        ? `app version ${target.appVersion}`
+        : `fingerprint ${target.fingerprintHash}`,
     ),
-  };
+  );
+  if (targets.size > 1) {
+    failures.push({
+      error: new Error(
+        `The ${platform}-scheme schemes build different native code: ${resolved
+          .map(({ scheme, target }) => `${scheme} (${describeTarget(target)})`)
+          .join(", ")}. List schemes of one native code.`,
+      ),
+    });
+    return { previews: [], failures };
+  }
+  const [first] = resolved;
+  if (first === undefined) return { previews: [], failures };
+  let deployed = false;
+  try {
+    const bundleId = await deployBundle(deps, {
+      platform,
+      channel: inputs.channel,
+      target: first.target,
+      message: deployMessage(event),
+      onDeployed: () => {
+        deployed = true;
+        onDeployed();
+      },
+    });
+    return {
+      previews: resolved.map((scheme) => ({
+        scheme: scheme.scheme,
+        ...previewOf(inputs, platform, scheme, bundleId),
+      })),
+      failures,
+    };
+  } catch (error) {
+    return {
+      previews: [],
+      failures: [
+        ...failures,
+        ...resolved.map(({ scheme }) => ({ scheme, error, deployed })),
+      ],
+    };
+  }
 };
 
 /**
@@ -553,24 +734,21 @@ const assertEmbedsChannel = (platform, embedded, channel) => {
 };
 
 /**
- * Deploys the pull request's bundle after finding, or building and tracking,
- * a native build of the scheme that embeds the pull request's channel: a sandbox scheme's
- * found build may embed another pull request's. A found ad hoc `.ipa` that
- * lacks a device approved since it was built, or whose profile expired or
- * can't be read, is built again past the cache, which would hand back the
- * same `.ipa`.
+ * Finds, or builds and tracks, a native build of the scheme that embeds the
+ * pull request's channel: a sandbox scheme's found build may embed another
+ * pull request's. A found ad hoc `.ipa` that lacks a device approved since
+ * it was built, or whose profile expired or can't be read, is built again
+ * past the cache, which would hand back the same `.ipa`.
  *
  * @param {Deps} deps
  * @param {Inputs} inputs
- * @param {PullRequestEvent} event
- * @param {{ platform: Platform, scheme: string, found: import("../../shared/nativeBuild.mjs").NativeBuildFindResult, onDeployed: () => void }} options
- * @returns {Promise<{ preview: PlatformPreview & { installUrl: string }, build: NativeBuildRow }>}
+ * @param {{ platform: Platform, scheme: string, found: import("../../shared/nativeBuild.mjs").NativeBuildFindResult }} options
+ * @returns {Promise<{ build: NativeBuildRow, target: import("../../shared/nativeBuild.mjs").BuildTarget, built: boolean }>}
  */
-const deployOnNativeBuild = async (
+const resolveNativeBuild = async (
   deps,
   inputs,
-  event,
-  { platform, scheme, found, onDeployed },
+  { platform, scheme, found },
 ) => {
   /** @type {import("../../shared/nativeBuild.mjs").BuildTarget} */
   let target = {
@@ -643,32 +821,8 @@ const deployOnNativeBuild = async (
     await refreshFingerprint(deps, found);
   }
 
-  const bundleId = await deployBundle(deps, {
-    platform,
-    channel: inputs.channel,
-    target,
-    message: deployMessage(event),
-    onDeployed,
-  });
-  const nativeBuild = {
-    id: build.id,
-    artifactKind: build.artifact_kind,
-    fileName: artifactFileName(build.artifact_storage_uri),
-  };
-
-  return {
-    build,
-    preview: {
-      platform,
-      target,
-      nativeBuild,
-      built,
-      bundleId,
-      installUrl: nativeBuildInstallUrl(inputs.consoleUrl, nativeBuild),
-    },
-  };
+  return { build, target, built };
 };
-
 /**
  * @param {Deps} deps
  * @param {Inputs} inputs
@@ -680,28 +834,77 @@ export const runPreview = async (deps, inputs, event) => {
   await deps.cli(["channel", "set", inputs.channel]);
   /** @type {(PlatformPreview & { installUrl: string })[]} */
   const previews = [];
-  /** @type {{ platform: Platform, error: unknown, deployed: boolean }[]} */
+  /** The scheme each preview was made with. */
+  const schemeOf = new Map();
+  /** @type {{ platform: Platform, scheme?: string, error: unknown, deployed: boolean }[]} */
   const failures = [];
   // Each platform deploys on its own, so the comment names this run's
   // commit only beside the platforms that deployed it.
   for (const platform of inputs.platforms) {
+    const schemes = /** @type {string[]} */ (inputs.schemes[platform]);
     let deployed = false;
-    try {
-      previews.push(
-        await deps.log.group(`Preview ${platform}`, () =>
-          previewPlatform(deps, inputs, event, platform, () => {
-            deployed = true;
-          }),
+    const onDeployed = () => {
+      deployed = true;
+    };
+    /** @type {{ scheme?: string, error: unknown, deployed?: boolean }[]} */
+    let failed = [];
+    const [only] = schemes;
+    if (schemes.length === 1 && only !== undefined) {
+      try {
+        const preview = await deps.log.group(`Preview ${platform}`, () =>
+          previewPlatform(deps, inputs, event, platform, only, onDeployed),
+        );
+        previews.push(preview);
+        schemeOf.set(preview, only);
+      } catch (error) {
+        failed = [{ error }];
+      }
+    } else {
+      // Each failed scheme's build log, set once, so none hides another's.
+      const logName = `${platform}-build-log`;
+      /** @type {string[]} */
+      const logs = [];
+      const result = await deps.log.group(`Preview ${platform}`, () =>
+        previewSchemes(
+          {
+            ...deps,
+            setOutput: (name, value) =>
+              name === logName ? logs.push(value) : deps.setOutput(name, value),
+          },
+          inputs,
+          event,
+          platform,
+          schemes,
+          onDeployed,
         ),
       );
-    } catch (error) {
+      if (logs.length > 0) deps.setOutput(logName, logs.join("\n"));
+      for (const preview of result.previews) {
+        previews.push(preview);
+        schemeOf.set(preview, preview.scheme);
+      }
+      failed = result.failures;
+    }
+    for (const failure of failed) {
       // A failure after the deploy leaves the channel with this run's
       // bundle, which the comment can't name a commit for any more.
-      failures.push({ platform, error, deployed });
-      // The run fails with it at the end; say so now, before the next build.
-      if (platform !== inputs.platforms.at(-1)) {
-        deps.log.error(`${platform}: ${messageOf(error)}`);
-      }
+      failures.push({
+        platform,
+        ...(failure.scheme === undefined ? {} : { scheme: failure.scheme }),
+        error: failure.error,
+        deployed: failure.deployed ?? deployed,
+      });
+    }
+    // The run fails with it at the end; say so now, before the next build.
+    if (failed.length > 0 && platform !== inputs.platforms.at(-1)) {
+      deps.log.error(
+        failed
+          .map(
+            ({ scheme, error }) =>
+              `${labelOf(platform, scheme)}: ${messageOf(error)}`,
+          )
+          .join("\n"),
+      );
     }
   }
   // With nothing deployed, the comment still says what the channel has.
@@ -733,7 +936,11 @@ export const runPreview = async (deps, inputs, event) => {
     qrImages,
     commitSha: event.commitSha,
     repositoryUrl: event.repositoryUrl,
-    failed: failures.map(({ platform, deployed }) => ({ platform, deployed })),
+    failed: failures.map(({ platform, scheme, deployed }) => ({
+      platform,
+      ...(scheme === undefined ? {} : { scheme }),
+      deployed,
+    })),
     runUrl: event.runUrl,
     credit: inputs.credit,
   });
@@ -742,11 +949,21 @@ export const runPreview = async (deps, inputs, event) => {
   for (const preview of previews) {
     outputs.push({
       ...preview,
-      downloadUrl: await findDownloadUrl(deps, inputs, preview),
+      downloadUrl: await findDownloadUrl(
+        deps,
+        inputs,
+        preview,
+        schemeOf.get(preview),
+      ),
     });
   }
   deps.setOutput("previews", JSON.stringify(outputs));
+  // A platform's outputs are its first successful listed scheme's.
+  /** @type {Set<Platform>} */
+  const named = new Set();
   for (const { platform, installUrl, downloadUrl, store, sandbox } of outputs) {
+    if (named.has(platform)) continue;
+    named.add(platform);
     deps.setOutput(`${platform}-install-url`, installUrl);
     deps.setOutput(`${platform}-download-url`, downloadUrl ?? "");
     if (sandbox) deps.setOutput(`${platform}-sandbox-link`, sandbox.link ?? "");
@@ -772,16 +989,27 @@ const messageOf = (error) =>
   error instanceof Error ? error.message : String(error);
 
 /**
+ * A platform as a failure names it, with the scheme when it has several.
+ * @param {Platform} platform
+ * @param {string | undefined} scheme
+ */
+const labelOf = (platform, scheme) =>
+  scheme === undefined ? platform : `${platform} (${scheme})`;
+
+/**
  * The error a run with failed platforms ends with: the one platform's own,
  * or each platform's message.
- * @param {{ platform: Platform, error: unknown }[]} failures
+ * @param {{ platform: Platform, scheme?: string, error: unknown }[]} failures
  */
 const failureOf = (failures) =>
   failures.length === 1
     ? failures[0]?.error
     : new Error(
         failures
-          .map(({ platform, error }) => `${platform}: ${messageOf(error)}`)
+          .map(
+            ({ platform, scheme, error }) =>
+              `${labelOf(platform, scheme)}: ${messageOf(error)}`,
+          )
           .join("\n"),
       );
 

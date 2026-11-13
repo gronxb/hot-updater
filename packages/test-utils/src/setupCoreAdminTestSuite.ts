@@ -774,6 +774,74 @@ export const setupCoreAdminTestSuite = (options: {
       await marked.text();
     });
 
+    it("finds a scope's build of one kind, and a sandbox build's other install target", async () => {
+      const channel = `kinds-${namespace}`;
+      const register = async (
+        suffix: string,
+        kind: "ipa" | "app",
+        body: Record<string, unknown> = {},
+      ) => {
+        const builtIn = bundleRow(suffix);
+        const response = await admin(
+          "/native-builds",
+          jsonRequest("POST", {
+            id: bundleRow(`8${suffix}`).id,
+            platform: "ios",
+            channel,
+            fingerprintHash: "kind-fingerprint",
+            appVersion: null,
+            minBundleId: builtIn.id,
+            gitCommitHash: null,
+            buildKey: null,
+            artifact: {
+              kind,
+              storageUri: `storage://native-builds/ios/${suffix}/App.${kind === "ipa" ? "ipa" : "app.zip"}`,
+              byteSize: 1_000,
+            },
+            embeddedBundle: {
+              manifestStorageUri: builtIn.manifest_storage_uri,
+              manifestFileHash: builtIn.manifest_file_hash,
+              assetBaseStorageUri: builtIn.asset_base_storage_uri,
+            },
+            ...body,
+          }),
+        );
+        expect(response.status).toBe(201);
+        return ((await response.json()) as { data: NativeBuildRow }).data;
+      };
+      const sandbox = (exportMethod: string | null) => ({
+        isSandbox: true,
+        sandboxUrlScheme: "acme-preview",
+        sandboxAppId: "com.example.app",
+        exportMethod,
+      });
+
+      const ipa = await register("81", "ipa");
+      const app = await register("82", "app");
+      const latest = `/native-builds/latest?platform=ios&channel=${encodeURIComponent(channel)}&fingerprintHash=kind-fingerprint`;
+      expect((await adminJson(latest)).data).toEqual(app);
+      expect((await adminJson(`${latest}&kind=ipa`)).data).toEqual(ipa);
+      const refused = await admin(`${latest}&kind=apk`);
+      expect(refused.status).toBe(400);
+      await refused.text();
+
+      const sandboxIpa = await register("83", "ipa", sandbox("ad-hoc"));
+      const sandboxApp = await register("84", "app", sandbox(null));
+      expect(
+        (await adminJson(`/native-builds/${sandboxIpa.id}/sibling`)).data,
+      ).toEqual(sandboxApp);
+      expect(
+        (await adminJson(`/native-builds/${sandboxApp.id}/sibling`)).data,
+      ).toEqual(sandboxIpa);
+      // A normal build pairs with nothing, and an unknown ID finds nothing.
+      expect(
+        (await adminJson(`/native-builds/${ipa.id}/sibling`)).data,
+      ).toBeNull();
+      expect(
+        (await adminJson(`/native-builds/${bundleRow("899").id}/sibling`)).data,
+      ).toBeNull();
+    });
+
     it("requests, approves, renames, records, and removes iOS devices", async () => {
       // A UDID of the test's own: 40 hex digits from its namespace.
       const udid = namespace.replaceAll("-", "").padEnd(40, "0");

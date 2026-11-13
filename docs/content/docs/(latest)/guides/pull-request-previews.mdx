@@ -232,6 +232,47 @@ the `Gemfile`.
 A run that builds a sandbox build takes far longer than one that only deploys
 the bundle. Give the job a `timeout-minutes` above the build's time.
 
+### Add the iOS Simulator
+
+A Simulator build of the same native code lets someone on a Mac test the pull
+request without an iPhone. Add a sandbox scheme with `simulator: true` and the
+same `bundleIdentifier`, and list it after the iPhone's:
+
+```ts title="hot-updater.config.ts"
+    ios: {
+      sandbox: {
+        // ...the iPhone scheme above
+      },
+      sandboxSimulator: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        configuration: "Release",
+        simulator: true,
+        sandbox: true,
+      },
+    },
+```
+
+```yaml
+          ios-scheme: sandbox, sandboxSimulator
+```
+
+When the native code changes, one run builds both, then deploys one bundle.
+Pull requests with the same native code share both, as they share the sandbox
+app. The comment's iOS section keeps the iPhone's install link and QR code,
+and adds a command for the Simulator build, which a Simulator can't scan. Run
+in your project, it installs the build on the booted Simulator and opens the
+pull request's latest bundle:
+
+```sh
+npx hot-updater native-build install <build id> --open pr-12
+```
+
+On the Console, the Install card of either build switches to the other with
+**iPhone** and **Simulator**. Under the `appVersion` strategy, the command
+installs and opens the app, but can't open the pull request, since a link
+names a fingerprint.
+
 ### pnpm, Yarn, and Bun
 
 The action runs the CLI with `cli`, `npx --no-install hot-updater` by default.
@@ -381,14 +422,15 @@ hand. Until then a release stays a draft, and the comment says so.
 Before anything else, the action runs `hot-updater channel set <channel>`.
 Every native build it makes is built with `--channel <channel>`, so it embeds
 the pull request's channel, whatever the project or an Expo config plugin
-sets. Then, for each platform:
+sets. Then, for each platform, and each of its schemes in order:
 
 1. `hot-updater native-build find -p <platform> -s <scheme> --json`
    prints the newest tracked build that a build of the project would
    match: the channel it would embed, the same fingerprint, from the config's
    fingerprint inputs, or with the `appVersion` strategy, the version of the app
    the scheme builds, and the kind of artifact the scheme builds, so a Simulator
-   scheme never reuses an `.ipa`, nor an APK scheme an `.aab`. See
+   scheme never reuses an `.ipa`, nor an APK scheme an `.aab`, and a newer
+   build of one kind never hides the other's. See
    [Find a build](/docs/guides/native-build#find-a-build). A sandbox scheme's
    build is found on any channel, and `sandbox.channel` names the one it
    embeds. For another scheme, when the project embeds another channel than
@@ -403,10 +445,12 @@ sets. Then, for each platform:
    `--no-cache`. With a build, the action skips the native build and runs
    `hot-updater fingerprint create`, since a committed `fingerprint.json` can
    be older than the project.
-3. `hot-updater deploy -p <platform> -c <channel>` deploys the bundle to the
-   pull request's channel, with the build's app version as its target with the
-   `appVersion` strategy. The action checks that the bundle targets the build's
-   fingerprint or app version.
+3. Once each scheme has its build, `hot-updater deploy -p <platform> -c <channel>`
+   deploys the platform's one bundle to the pull request's channel, with the
+   build's app version as its target with the `appVersion` strategy. The action
+   checks that the bundle targets the build's fingerprint or app version.
+   Schemes that build different native code fail the platform before the
+   deploy.
 
 Once every platform is done, `native-build find` runs once more for each, for
 the build's [download URL](#outputs). A failed lookup or another match leaves
@@ -580,7 +624,7 @@ every run.
 | `console-url`          |                                | The Console's URL, which the comment's install links point at                                                   |
 | `platforms`            | `android`                      | The platforms to preview, comma-separated: `android`, `ios`. iOS needs a macOS runner                           |
 | `android-scheme`       |                                | The `nativeBuild.android` scheme of the preview build. Required to preview Android                              |
-| `ios-scheme`           |                                | The `nativeBuild.ios` scheme of the preview build, a `simulator: true` scheme for a Simulator app               |
+| `ios-scheme`           |                                | The `nativeBuild.ios` scheme of the preview build, a `simulator: true` scheme for a Simulator app. Several, comma-separated, share one bundle |
 | `android-submit`       |                                | `play-internal` releases a sandbox scheme's `.aab` to Google Play's internal testing track                      |
 | `ios-submit`           |                                | `testflight` uploads a sandbox scheme's `.ipa` to TestFlight for internal testing                               |
 | `ios-testflight-group` |                                | With `ios-submit`, the internal TestFlight group to add the build to. A group that takes every build needs none |
@@ -597,7 +641,7 @@ every run.
 | Output                                     | Description                                                                                                                                                                                                                                                     |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `comment-body`                             | The comment's Markdown                                                                                                                                                                                                                                          |
-| `previews`                                 | A JSON array of each platform's `platform`, `target`, `nativeBuild` (`id`, `artifactKind`, `fileName`), `built`, `bundleId`, `installUrl`, `downloadUrl`, with a store input, `store` (`destination`, `url`, `version`, `state`, `expiresAtMs`, `reusable`), and on a sandbox build, `sandbox` (`appId`, `urlScheme`, `link`, `minBundleId`, `fromChannel`: the other pull request's channel a reused build embeds, or null) |
+| `previews`                                 | A JSON array of each platform's `platform`, `target`, `nativeBuild` (`id`, `artifactKind`, `fileName`), `built`, `bundleId`, `installUrl`, `downloadUrl`, with a store input, `store` (`destination`, `url`, `version`, `state`, `expiresAtMs`, `reusable`), and on a sandbox build, `sandbox` (`appId`, `urlScheme`, `link`, `minBundleId`, `fromChannel`: the other pull request's channel a reused build embeds, or null). With several schemes on a platform, each has its `scheme`, and the platform's other outputs are its first successful scheme's |
 | `android-install-url`, `ios-install-url`   | What a person opens: the comment's download link for an APK, the build's Console page for an `.ipa`, where **Install on iPhone** checks the device, for a Simulator app its `npx hot-updater native-build install <build id>` command, or with a store input, the store's link |
 | `android-download-url`, `ios-download-url` | The storage's URL of the artifact, for a later step. Empty when the storage gives none, where `previews` has `null`                                                                                                                                             |
 | `android-sandbox-link`, `ios-sandbox-link` | On a sandbox build, the link the comment's QR code holds. Empty under the `appVersion` strategy |

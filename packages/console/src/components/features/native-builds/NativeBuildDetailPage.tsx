@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, ChevronLeft, HardDrive, RefreshCw } from "lucide-react";
+import { Fragment } from "react";
 
 import { PlatformIcon } from "@/components/PlatformIcon";
 import {
@@ -167,8 +168,10 @@ export function NativeBuildDetailPage({
               </EmptyContent>
             </Empty>
           ) : (
-            <>
-              <InstallCard build={detail.build} />
+            // Keyed by the build, so a switch to another build's page keeps
+            // none of this one's state, such as its devices.
+            <Fragment key={detail.build.id}>
+              <InstallCard build={detail.build} sibling={detail.sibling} />
               {/* A store's IPA lists no devices: its page reads nothing more. */}
               {detail.build.artifact_kind === "ipa" &&
               !isSubmitted(detail.build) ? (
@@ -190,7 +193,7 @@ export function NativeBuildDetailPage({
                 }
                 page={page}
               />
-            </>
+            </Fragment>
           )}
         </div>
       </div>

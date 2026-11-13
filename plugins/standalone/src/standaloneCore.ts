@@ -323,10 +323,21 @@ export const createStandaloneCoreApi = (
           ...(options?.builtInOlderThan === undefined
             ? {}
             : { builtInOlderThan: options.builtInOlderThan }),
+          ...(options?.artifactKind === undefined
+            ? {}
+            : { kind: options.artifactKind }),
         },
         requiredRoute: "native build",
       });
       if (buildKey !== undefined && row?.build_key !== buildKey) return null;
+      // A server that predates `kind` answers the scope's newest build.
+      if (
+        options?.artifactKind !== undefined &&
+        row !== null &&
+        row.artifact_kind !== options.artifactKind
+      ) {
+        return null;
+      }
       if (options?.storeBuild && row?.is_store_build !== true) return null;
       // A server without sandbox lookups answers the channel's scope, whose
       // newest build may be a normal build or another sandbox scope's.
@@ -342,6 +353,9 @@ export const createStandaloneCoreApi = (
       }
       return row;
     },
+    // A server that predates the route answers 404: no sibling.
+    findNativeBuildSibling: (build) =>
+      call<NativeBuildRow>("GET", `/native-builds/${encode(build.id)}/sibling`),
     // A server without the native build routes holds no native builds: its
     // schema fence refuses a database whose schema has them. So its 404
     // lists none, which keeps doctor working against it.

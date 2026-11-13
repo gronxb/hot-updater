@@ -99,17 +99,25 @@ export const extractSimulatorApp = async ({
   return path.join(outputPath, app);
 };
 
-/** Installs a `.app` on a booted simulator, and opens it. */
+/**
+ * Installs a `.app` on a booted simulator, and opens it: with `url`, through
+ * that URL, which starts the app with it as a scanned link does.
+ */
 export const installOnSimulator = async ({
   udid,
   appPath,
   appId,
+  url,
 }: {
   readonly udid: string;
   readonly appPath: string;
   /** The app's `CFBundleIdentifier`. */
   readonly appId: string;
+  /** A URL of a scheme the app registers, which opens it instead. */
+  readonly url?: string;
 }): Promise<void> => {
   await simctl(["install", udid, appPath]);
-  await simctl(["launch", udid, appId]);
+  await simctl(
+    url === undefined ? ["launch", udid, appId] : ["openurl", udid, url],
+  );
 };
