@@ -287,6 +287,10 @@ export default defineConfig({
 });
 ```
 
+## One-Click Deploy
+
+[![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/Hot%20Updater/)
+
 ## End-to-end tests
 
 Contributors can run `pnpm -w e2e -- --platform ios` or the Android equivalent
