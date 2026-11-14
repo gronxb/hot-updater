@@ -1,5 +1,14 @@
 # @hot-updater/bugsnag-plugin
 
+## 1.1.14
+
+### Patch Changes
+
+- Updated dependencies [a250d09]
+- Updated dependencies [d58dcfa]
+  - @hot-updater/plugin-core@1.1.14
+  - @hot-updater/protocol@1.1.14
+
 ## 1.1.13
 
 ### Patch Changes
