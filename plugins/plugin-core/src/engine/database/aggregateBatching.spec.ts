@@ -530,6 +530,177 @@ describe("aggregate batching", () => {
     expect(await logRows(shared)).toEqual([]);
   });
 
+  /** An adapter that counts the reads and writes made through it. */
+  const counted = (base: DatabaseAdapter) => {
+    const count = { queries: 0, queryRows: 0, gets: 0, writes: 0 };
+    const getTables: string[] = [];
+    const queried: Record<string, number> = {};
+    const adapter: DatabaseAdapter = {
+      ...base,
+      async query(table, request) {
+        const rows = await base.query(table, request);
+        count.queries += 1;
+        count.queryRows += rows.length;
+        queried[table.name] = (queried[table.name] ?? 0) + rows.length;
+        return rows;
+      },
+      async get(table, keys) {
+        count.gets += 1;
+        getTables.push(table.name);
+        return base.get(table, keys);
+      },
+      async write(ops) {
+        count.writes += 1;
+        return base.write(ops);
+      },
+    };
+    const reset = () => {
+      Object.assign(count, { queries: 0, queryRows: 0, gets: 0, writes: 0 });
+      getTables.length = 0;
+      for (const name of Object.keys(queried)) delete queried[name];
+    };
+    return { adapter, count, getTables, queried, reset };
+  };
+
+  it("reads past log rows naming an aggregate it lacks, without compacting on every read", async () => {
+    const shared = createMemoryAdapter();
+    await shared.migrations?.apply(batched.tables);
+    const full = await setup({
+      adapter: shared,
+      batching: { mode: "log", windowMs: 60_000 },
+    });
+    // A newer process's rows: they name `distribution` and `users`.
+    for (let step = 0; step < 6; step += 1) {
+      await open(full.db, `i${step}`, "A");
+    }
+    const partialModule = { id: "stats", schema: { installs, opens } };
+    const store = counted(shared);
+    const partial = createDatabaseEngine({
+      adapter: store.adapter,
+      schema: resolveSchema([partialModule, aggregateBatchingModule]),
+      batching: { mode: "log", windowMs: 60_000 },
+      // Ten minutes later, after a rollback to a release without them.
+      now: () => full.clock.now + 600_000,
+    });
+    const db = partial.database(partialModule);
+    const read = () =>
+      db.findAggregates("opens", { index: "all", where: {}, limit: 10 });
+    await read();
+    const rowsLeft = (await logRows(shared)).length;
+    expect(rowsLeft).toBeGreaterThan(0);
+
+    store.reset();
+    for (let at = 0; at < 3; at += 1) await read();
+    // Each read checks the log tables past the rows it can't apply, finds
+    // none, and takes no lease; the rows wait for a process that has their
+    // aggregates.
+    const logRead = LOG_TABLES.reduce(
+      (sum, name) => sum + (store.queried[name] ?? 0),
+      0,
+    );
+    expect({ writes: store.count.writes, logRead }).toEqual({
+      writes: 0,
+      logRead: 0,
+    });
+    expect((await logRows(shared)).length).toBe(rowsLeft);
+    await full.engine.flush();
+    expect(await logRows(shared)).toEqual([]);
+  });
+
+  it("reads each aggregate row once per compaction group, however often the group halves to fit", async () => {
+    const reference = await setup();
+    const store = counted(createMemoryAdapter());
+    await store.adapter.migrations?.apply(batched.tables);
+    const log = await setup({
+      adapter: { ...store.adapter, fits: (ops) => ops.length <= 12 },
+      batching: { mode: "log", windowMs: 60_000 },
+    });
+    // 30 days of opens: more rows than one write takes, so groups halve.
+    const days = async (db: Db) => {
+      for (let day = 1; day <= 30; day += 1)
+        await open(db, `i${day}`, "A", day);
+    };
+    await days(reference.db);
+    await days(log.db);
+    store.reset();
+    const before = log.writes.length;
+    await log.engine.flush();
+    const flushed = log.writes.slice(before);
+    const aggregateGets = store.getTables.filter((name) =>
+      ["distribution", "users"].includes(name),
+    ).length;
+    expect(await snapshot(log.db)).toEqual(await snapshot(reference.db));
+    // A group writes once with the lease; its rewritten aggregates,
+    // `distribution` and `users`, are each read once for it.
+    const groups = flushed.filter((ops) =>
+      ops.some(
+        (op) =>
+          op.table.name === "aggregate_lease" &&
+          op.type === "patch" &&
+          String(op.set.applied ?? "[]") !== "[]",
+      ),
+    ).length;
+    expect(groups).toBeGreaterThan(1);
+    expect(aggregateGets).toBeLessThanOrEqual(2 * groups);
+  });
+
+  it("applies gauge moves that cancel across a group when the group halves to fit", async () => {
+    const reference = await setup();
+    const log = await setup({
+      batching: { mode: "log", windowMs: 60_000 },
+      maxOps: 6,
+    });
+    for (const { db, engine } of [reference, log]) {
+      await open(db, "i1", "A");
+      await engine.flush();
+      // i1 leaves A and comes back: A's and B's gauges cancel over the
+      // group, but not over its first log row alone.
+      await open(db, "i1", "B", 2);
+      await open(db, "i1", "A", 3);
+      for (let day = 4; day <= 13; day += 1) {
+        await open(db, `i${day}`, "C", day);
+      }
+      await engine.flush();
+    }
+    expect(await logRows(log.memory)).toEqual([]);
+    expect(await snapshot(log.db)).toEqual(await snapshot(reference.db));
+  });
+
+  it("reads each pending log row once in a compaction, however many groups apply them", async () => {
+    const store = counted(createMemoryAdapter());
+    await store.adapter.migrations?.apply(batched.tables);
+    const log = await setup({
+      adapter: { ...store.adapter, fits: (ops) => ops.length <= 12 },
+      batching: { mode: "log", windowMs: 60_000 },
+    });
+    // 30 days of opens: more rows than one write takes, so it takes groups.
+    for (let day = 1; day <= 30; day += 1) {
+      await open(log.db, `i${day}`, "A", day);
+    }
+    const pending = (await logRows(store.adapter)).length;
+    store.reset();
+    const before = log.writes.length;
+    await log.engine.flush();
+    expect(await logRows(store.adapter)).toEqual([]);
+    const groups = log.writes
+      .slice(before)
+      .filter((ops) =>
+        ops.some(
+          (op) =>
+            op.table.name === "aggregate_lease" &&
+            op.type === "patch" &&
+            String(op.set.applied ?? "[]") !== "[]",
+        ),
+      ).length;
+    const logRead = LOG_TABLES.reduce(
+      (sum, name) => sum + (store.queried[name] ?? 0),
+      0,
+    );
+    expect(groups).toBeGreaterThan(1);
+    // The rows once, besides the flush's check of each table's oldest row.
+    expect(logRead).toBeLessThanOrEqual(pending + LOG_TABLES.length);
+  });
+
   it("keeps memory-mode changes in the process until the window passes or a read", async () => {
     vi.useFakeTimers();
     const { db, writes, memory } = await setup({
