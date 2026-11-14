@@ -7,6 +7,7 @@ import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -15,11 +16,14 @@ import java.io.File
 import kotlin.coroutines.EmptyCoroutineContext
 
 /**
- * The start under the screen over the SDK's real bundle store and crash recovery:
- * a real [HotUpdaterImpl] over test directories, the sandbox's real live host and
- * preferences, and a crash marker in the format the crash handler writes. Each
- * "process" is a new SDK and coordinator over the same directories. There is no
- * server config, as on a fresh install: the link waits for one.
+ * The start under the screen over the SDK's real bundle store and launch recovery:
+ * a real [HotUpdaterImpl] over test directories, and the sandbox's real live host
+ * and preferences. Each "process" is a new SDK and coordinator over the same
+ * directories. A crash is a fixture at the recovery boundary: the marker the crash
+ * handler writes, not a crash the handler caught. The start under the screen is a
+ * counter, and the launch it makes is the SDK's bundle read and, where a test says
+ * so, the real first-content path. No server config is saved, as on a fresh
+ * install, except in the test of the answered check.
  */
 @Suppress("DEPRECATION")
 class HotUpdaterSandboxLiveStorageTest {
@@ -152,7 +156,7 @@ class HotUpdaterSandboxLiveStorageTest {
     }
 
     @Test
-    fun `a pending bundle that crashes before first content under the screen rolls back, and the next screen tells it`() {
+    fun `a pending bundle whose launch under the screen leaves a rollback crash marker rolls back, and the next screen tells it`() {
         val context = context()
         stage(context, "ota", verified = false)
         startUnderTheScreen(context)
@@ -173,9 +177,9 @@ class HotUpdaterSandboxLiveStorageTest {
     }
 
     @Test
-    fun `a pending bundle that rendered under the screen, then crashed, stays selected, and the next screen tells it`() {
+    fun `a pre-verified bundle whose launch under the screen leaves a crash marker stays selected, and the next screen tells it`() {
         val context = context()
-        // Its first content under the screen verified it, as it would in front.
+        // Verified before this launch: no rollback is due.
         stage(context, "ota", verified = true)
         startUnderTheScreen(context)
         crash(context, "ota", shouldRollback = false)
@@ -192,7 +196,7 @@ class HotUpdaterSandboxLiveStorageTest {
     }
 
     @Test
-    fun `the built-in bundle crashing under the screen is told, and the link waits`() {
+    fun `the built-in bundle's launch under the screen leaving a crash marker is told, and the link waits`() {
         val context = context()
         startUnderTheScreen(context)
         crash(context, null, shouldRollback = false)
@@ -241,7 +245,7 @@ class HotUpdaterSandboxLiveStorageTest {
     }
 
     @Test
-    fun `the app's own answered check, saved through the SDK, asks the link with nothing else`() {
+    fun `the app's answered check saving its config through the SDK asks the link with nothing else`() {
         val context = context()
         val first = startUnderTheScreen(context)
         // What JavaScript's answered check saves, through the SDK's storage.
@@ -260,6 +264,50 @@ class HotUpdaterSandboxLiveStorageTest {
         while (first.phase !is HotUpdaterSandboxPhase.Confirming && System.currentTimeMillis() < until) Thread.sleep(10)
         assertTrue(first.phase is HotUpdaterSandboxPhase.Confirming)
         assertEquals(1, first.starts)
+    }
+
+    @Test
+    fun `a pending bundle whose launch under the screen reaches first content is verified through the real path and stays selected`() {
+        val context = context()
+        stage(context, "ota", verified = false)
+        val first = startUnderTheScreen(context)
+        assertEquals("PENDING", first.impl.notifyAppReady()["status"])
+
+        // The app's first content under the screen, as React Native reports it.
+        HotUpdaterRecoveryManager.contentAppeared(HotUpdaterInstanceEnvironment.MAIN_NAME)
+        assertEquals("UPDATE_APPLIED", first.impl.notifyAppReady()["status"])
+        assertEquals(false, first.impl.getActiveUpdateState()["verificationPending"])
+
+        val next = Process(context)
+        next.refresh()
+        assertEquals(
+            "ota",
+            next.coordinator.state.selection
+                ?.bundleId,
+        )
+        assertTrue(next.impl.getCrashHistory().isEmpty())
+    }
+
+    @Test
+    fun `a launch under the screen that ends cleanly after first content leaves nothing to tell, and the next start runs`() {
+        val context = context()
+        stage(context, "ota", verified = false)
+        startUnderTheScreen(context)
+        HotUpdaterRecoveryManager.contentAppeared(HotUpdaterInstanceEnvironment.MAIN_NAME)
+        // The process ends with no crash: a person left, or the system reclaimed it.
+
+        val next = Process(context)
+        next.refresh()
+        assertEquals(
+            "ota",
+            next.coordinator.state.selection
+                ?.bundleId,
+        )
+        assertNull(next.store.lastLaunch)
+        assertEquals(listOf(link), next.store.pendingLinks)
+        // Nothing to tell: this process starts the app under the screen for the link once more.
+        assertEquals(1, next.starts)
+        assertEquals(true, (next.phase as HotUpdaterSandboxPhase.WaitingForServer).checking)
     }
 
     private companion object {
