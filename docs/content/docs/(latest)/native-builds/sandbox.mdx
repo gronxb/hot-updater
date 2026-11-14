@@ -209,7 +209,9 @@ of its update checks. Until then **Enter a channel** stays off, and a link start
 your app under the screen, so its own check can answer, then asks. An app that
 holds its first check back, such as behind a sign-in or a consent prompt, gets a
 minute, and a host that starts React Native before the screen can hold it gets
-none. Then the screen asks you to open the app, and the link waits across restarts.
+none. Then the screen asks you to open the app. Opening it from there, or **Reload**
+over it, starts it anew, so its check runs again and the link asks over the app.
+The link waits across restarts.
 
 ### Supported hosts
 
