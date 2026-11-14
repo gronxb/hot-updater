@@ -22,6 +22,8 @@ export const FUNCTION_SETTINGS = {
   storageConnectionString: "HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING",
   blobContainer: "HOT_UPDATER_AZURE_BLOB_CONTAINER",
   cosmosConnectionString: "HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING",
+  /** The plugins the function runs, as `parseManagedPlugins` reads them. */
+  plugins: "HOT_UPDATER_PLUGINS",
 } as const;
 
 /** The `package.json` of the zip package: it points the Functions host at the bundled `index.mjs`. */

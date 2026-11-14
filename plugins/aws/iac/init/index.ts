@@ -1,4 +1,7 @@
-import type { InitProviderDefinition } from "@hot-updater/cli-tools";
+import {
+  type InitProviderDefinition,
+  managedPluginsInput,
+} from "@hot-updater/cli-tools";
 
 export const AWS_AUTH_MODES = [
   "local-session",
@@ -154,5 +157,6 @@ export const initProvider = {
       help: "Existing CloudFront distribution ID",
       optional: true,
     },
+    plugins: managedPluginsInput,
   },
 } as const satisfies InitProviderDefinition;

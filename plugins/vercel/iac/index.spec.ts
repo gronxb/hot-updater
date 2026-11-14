@@ -68,6 +68,10 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     printAppSetup: mocks.printAppSetup,
     provisionClientCredential: mocks.provisionClientCredential,
     readHotUpdaterInitEnv: mocks.readHotUpdaterInitEnv,
+    // The plugin prompt, answered with the saved selection.
+    selectManagedPlugins: (
+      options: Parameters<typeof actual.selectManagedPlugins>[0],
+    ) => actual.selectManagedPlugins({ ...options, nonInteractive: true }),
     writeHotUpdaterFiles: mocks.writeHotUpdaterFiles,
   };
 });
@@ -185,6 +189,8 @@ describe("Vercel init", () => {
     // The connection already added the token for production.
     expect(mocks.api.setProductionEnv.mock.calls).toEqual([
       ["prj_1", "HOT_UPDATER_VERCEL_DATABASE_URL", DATABASE_URL],
+      // Every plugin, since no selection was saved.
+      ["prj_1", "HOT_UPDATER_PLUGINS", "insights,apiKeys,remoteConfig"],
     ]);
     expect(mocks.deployFunction).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -225,6 +231,38 @@ describe("Vercel init", () => {
     );
   });
 
+  it("deploys the Function with the saved plugin selection, and lists it in the config", async () => {
+    givenInitEnv({ ...replayEnv, HOT_UPDATER_PLUGINS: "none" });
+
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    // The Function reads the selection, which init keeps for its next run.
+    expect(mocks.api.setProductionEnv).toHaveBeenCalledWith(
+      "prj_1",
+      "HOT_UPDATER_PLUGINS",
+      "none",
+    );
+    expect(mocks.makeEnv).toHaveBeenCalledWith(
+      expect.objectContaining({ HOT_UPDATER_PLUGINS: "none" }),
+    );
+    // Every plugin's tables still, so running one later needs no migration.
+    expect(mocks.migratePostgres).toHaveBeenCalledWith(
+      DATABASE_URL,
+      expect.arrayContaining([
+        expect.objectContaining({ id: "insights" }),
+        expect.objectContaining({ id: "apiKeys" }),
+        expect.objectContaining({ id: "remoteConfig" }),
+      ]),
+    );
+    // The credential and the config follow the Function's plugins: none.
+    expect(mocks.assembleServer).toHaveBeenCalledWith(
+      expect.objectContaining({ plugins: [] }),
+    );
+    const [scaffold] = mocks.writeHotUpdaterFiles.mock.calls.at(-1)!;
+    expect(scaffold.text).toContain("  plugins: [],\n");
+    expect(scaffold.text).not.toContain("hot-updater/plugins");
+  });
+
   it("reuses an existing store's connection and copies its token for the Function", async () => {
     givenInitEnv(replayEnv);
     mocks.api.listBlobStores.mockResolvedValue([
@@ -256,6 +294,7 @@ describe("Vercel init", () => {
     expect(mocks.api.connectBlobStore).not.toHaveBeenCalled();
     expect(mocks.api.setProductionEnv.mock.calls).toEqual([
       ["prj_1", "HOT_UPDATER_VERCEL_DATABASE_URL", DATABASE_URL],
+      ["prj_1", "HOT_UPDATER_PLUGINS", "insights,apiKeys,remoteConfig"],
       ["prj_1", "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN", BLOB_TOKEN],
     ]);
   });

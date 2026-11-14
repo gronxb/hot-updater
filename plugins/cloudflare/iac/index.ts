@@ -4,6 +4,7 @@ import {
   assembleServer,
   confirmInitInputPersistence,
   copyDirToTmp,
+  formatManagedPlugins,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -15,10 +16,12 @@ import {
   provisionClientCredential,
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
+  resolveInitProviderInput,
   type RunInitOptions,
+  selectManagedPlugins,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
-import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+import { managedPlugins } from "@hot-updater/server/plugins";
 import { Cloudflare } from "cloudflare";
 
 import { d1Database } from "../src/d1Database";
@@ -59,6 +62,7 @@ const deployWorker = async (
     d1DatabaseId,
     d1DatabaseName,
     nonInteractive,
+    plugins,
     r2BucketName,
     r2Credentials,
     workerName,
@@ -67,6 +71,8 @@ const deployWorker = async (
     d1DatabaseId: string;
     d1DatabaseName: string;
     nonInteractive: boolean;
+    /** The plugins the Worker runs, as `parseManagedPlugins` reads them. */
+    plugins: string;
     r2BucketName: string;
     /** R2's S3-compatible credentials, with which the Worker presigns download URLs. */
     r2Credentials: { accessKeyId: string; secretAccessKey: string };
@@ -89,6 +95,7 @@ const deployWorker = async (
       accountId,
       d1DatabaseId,
       d1DatabaseName,
+      plugins,
       r2BucketName,
     });
 
@@ -549,6 +556,15 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     workersSubdomain: subdomains.subdomain,
   });
 
+  // The plugins the Worker runs, which the config lists and the app follows.
+  const plugins = await selectManagedPlugins({
+    nonInteractive,
+    saved: resolveInitProviderInput(
+      initInputEnv,
+      CLOUDFLARE_INIT_PROVIDER.inputs.plugins,
+    ),
+  });
+
   const resolvedInputs = {
     ...existingInputs,
     accessKeyId,
@@ -557,6 +573,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     bucketName: selectedBucketName,
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
+    plugins: formatManagedPlugins(plugins),
     r2Private: String(isPrivate),
     secretAccessKey,
     workerName,
@@ -655,6 +672,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
     nonInteractive,
+    plugins: formatManagedPlugins(plugins),
     r2BucketName: selectedBucketName,
     r2Credentials: { accessKeyId, secretAccessKey },
     workerName,
@@ -669,7 +687,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   // assembling it neither reads nor writes.
   const server = assembleServer({
     database,
-    plugins: [insights(), apiKeys(), remoteConfig()],
+    plugins: managedPlugins(plugins).plugins,
   });
   // The app's credential, through the managed server's plugins, on the tables they read.
   let credential: ProvisionedClientCredential | undefined;
@@ -686,7 +704,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   p.log.success("Generated '.env.hotupdater' file with Cloudflare settings.");
-  await writeHotUpdaterFiles(getConfigScaffold(build), {
+  await writeHotUpdaterFiles(getConfigScaffold(build, plugins), {
     cwd,
     settings: "Cloudflare",
   });

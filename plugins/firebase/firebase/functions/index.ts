@@ -1,5 +1,5 @@
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+import { managedPlugins } from "@hot-updater/server/plugins";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { onRequest } from "firebase-functions/v2/https";
 import { Hono } from "hono";
@@ -11,6 +11,8 @@ declare global {
   var HotUpdater: {
     REGION: string;
     FIRESTORE_DATABASE_ID: string;
+    /** The plugins the function runs, as init selected them. */
+    PLUGINS: string;
   };
 }
 
@@ -32,13 +34,13 @@ const hotUpdater = createHotUpdater({
     ...adminOptions,
     databaseId: HotUpdater.FIRESTORE_DATABASE_ID,
   }),
-  plugins: [insights(), apiKeys(), remoteConfig()],
+  ...managedPlugins(HotUpdater.PLUGINS),
   storage: firebaseStorage({
     ...adminOptions,
     storageBucket,
     cdnUrl,
   }),
-});
+} as Parameters<typeof createHotUpdater>[0]);
 
 const app = new Hono();
 

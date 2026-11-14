@@ -1,4 +1,7 @@
-import type { InitProviderDefinition } from "@hot-updater/cli-tools";
+import {
+  type InitProviderDefinition,
+  managedPluginsInput,
+} from "@hot-updater/cli-tools";
 
 export const isFirebaseRegion = (value: string | undefined): value is string =>
   value !== undefined && /^[a-z]+(?:-[a-z]+)+[0-9]+$/.test(value);
@@ -59,5 +62,6 @@ export const initProvider = {
         type: "text",
       },
     },
+    plugins: managedPluginsInput,
   },
 } as const satisfies InitProviderDefinition;

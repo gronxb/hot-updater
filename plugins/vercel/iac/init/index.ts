@@ -1,4 +1,7 @@
-import type { InitProviderDefinition } from "@hot-updater/cli-tools";
+import {
+  type InitProviderDefinition,
+  managedPluginsInput,
+} from "@hot-updater/cli-tools";
 
 /**
  * A Vercel project name: up to 100 lowercase letters, digits, `.`, `_`, and
@@ -90,5 +93,6 @@ export const initProvider = {
       persistence: "with-consent",
       preflight: false,
     },
+    plugins: managedPluginsInput,
   },
 } as const satisfies InitProviderDefinition;

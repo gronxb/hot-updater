@@ -1,4 +1,7 @@
-import type { InitProviderDefinition } from "@hot-updater/cli-tools";
+import {
+  type InitProviderDefinition,
+  managedPluginsInput,
+} from "@hot-updater/cli-tools";
 
 import { SUPABASE_V1_FUNCTION_NAME } from "../../src/supabaseInfrastructureNames";
 
@@ -119,5 +122,6 @@ export const initProvider = {
         type: "password",
       },
     },
+    plugins: managedPluginsInput,
   },
 } as const satisfies InitProviderDefinition;

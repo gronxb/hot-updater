@@ -2,13 +2,17 @@ import {
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
   type HotUpdaterConfigScaffold,
+  type ManagedPluginId,
+  managedPluginsConfig,
   type ProviderConfig,
   type BuildType,
   type ManagedHelperStatement,
 } from "@hot-updater/cli-tools";
 
+/** The config for `build`, listing `plugins`, the ones the Cloud Function runs: all by default. */
 export const getConfigScaffold = (
   build: BuildType,
+  plugins?: readonly ManagedPluginId[],
 ): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/firebase", named: ["firebaseStorage"] }],
@@ -44,15 +48,7 @@ const credential = applicationDefault();`.trim(),
     .setBuildType(build)
     .setStorage(storageConfig)
     .setDatabase(databaseConfig)
-    .setPlugins({
-      imports: [
-        {
-          pkg: "hot-updater/plugins",
-          named: ["apiKeys", "insights", "remoteConfig"],
-        },
-      ],
-      configString: "[apiKeys(), insights(), remoteConfig()]",
-    })
+    .setPlugins(managedPluginsConfig(plugins))
     .addImport({ pkg: "firebase-admin/app", named: ["applicationDefault"] })
     .setIntermediateCode(
       helperStatements.map((statement) => statement.code.trim()).join("\n\n"),

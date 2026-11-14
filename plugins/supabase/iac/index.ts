@@ -6,6 +6,7 @@ import {
   assembleServer,
   confirmInitInputPersistence,
   copyDirToTmp,
+  formatManagedPlugins,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -18,13 +19,15 @@ import {
   provisionClientCredential,
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
+  resolveInitProviderInput,
   type RunInitOptions,
   resolvePackageVersion,
+  selectManagedPlugins,
   transformEnv,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
-import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+import { managedPlugins } from "@hot-updater/server/plugins";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
@@ -679,10 +682,13 @@ export const createSelectedBucket = async (
 const stageEdgeFunction = async ({
   bucketName,
   functionName,
+  plugins,
   workdir,
 }: {
   readonly bucketName: string;
   readonly functionName: string;
+  /** The plugins the function runs, as `parseManagedPlugins` reads them. */
+  readonly plugins: string;
   readonly workdir: string;
 }) => {
   if (!isSupabaseFunctionName(functionName)) {
@@ -701,6 +707,7 @@ const stageEdgeFunction = async ({
     transformEnv(path.join(workdir, "supabase", "edge-functions", "index.ts"), {
       BUCKET_NAME: bucketName,
       FUNCTION_NAME: functionName,
+      PLUGINS: plugins,
     }),
   );
   const denoConfig = await resolveEdgeFunctionDenoConfig(targetDir);
@@ -1002,6 +1009,14 @@ const runInitWithoutCliMetadata = async ({
       selection: bucketSelection,
     });
   }
+  // The plugins the function runs, which the config lists and the app follows.
+  const plugins = await selectManagedPlugins({
+    nonInteractive,
+    saved: resolveInitProviderInput(
+      initInputEnv,
+      SUPABASE_INIT_PROVIDER.inputs.plugins,
+    ),
+  });
   const inputsBeforeProvisioning = {
     ...savedInputs,
     ...projectCreationInputs,
@@ -1009,6 +1024,7 @@ const runInitWithoutCliMetadata = async ({
     bucketName: bucketSelection.name,
     databasePassword: dbPassword,
     functionName,
+    plugins: formatManagedPlugins(plugins),
     projectId: project?.id,
   };
   const databasePasswordKey =
@@ -1053,6 +1069,7 @@ const runInitWithoutCliMetadata = async ({
     await stageEdgeFunction({
       bucketName: bucketSelection.name,
       functionName,
+      plugins: formatManagedPlugins(plugins),
       workdir: tmpDir,
     });
 
@@ -1126,7 +1143,7 @@ const runInitWithoutCliMetadata = async ({
     // assembling neither reads nor writes.
     const managedServer = assembleServer({
       database,
-      plugins: [insights(), apiKeys(), remoteConfig()],
+      plugins: managedPlugins(plugins).plugins,
     });
     ({ clientPlugins } = managedServer);
     // The app's credential, through the managed server's plugins, on the tables they read.
@@ -1147,7 +1164,7 @@ const runInitWithoutCliMetadata = async ({
   }
 
   p.log.success("Generated '.env.hotupdater' file with Supabase settings.");
-  await writeHotUpdaterFiles(getConfigScaffold(build), {
+  await writeHotUpdaterFiles(getConfigScaffold(build, plugins), {
     cwd: process.cwd(),
     settings: "Supabase",
   });
