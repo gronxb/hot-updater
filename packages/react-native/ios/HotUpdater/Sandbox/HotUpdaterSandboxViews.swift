@@ -411,7 +411,7 @@ private struct HomeScreen: View {
         SandboxCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 12) {
-                    if status.progress == nil { ProgressView() }
+                    if status.spins { ProgressView() }
                     Text(status.text)
                         .font(SandboxFont.body)
                         .foregroundColor(SandboxColor.text)

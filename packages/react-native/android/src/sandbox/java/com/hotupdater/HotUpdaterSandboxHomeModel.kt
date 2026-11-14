@@ -76,6 +76,11 @@ internal data class HotUpdaterSandboxHomeModel(
         val text: String,
         /** From 0 to 1 while a download reports it. */
         val progress: Double?,
+        /**
+         * Whether something runs now with no progress to show, such as a check. A
+         * link waiting for a server spins only while the app it started checks.
+         */
+        val spins: Boolean = false,
     )
 
     companion object {
@@ -278,8 +283,13 @@ internal data class HotUpdaterSandboxHomeModel(
             when (phase) {
                 is HotUpdaterSandboxPhase.Working ->
                     when (phase.step) {
-                        HotUpdaterSandboxStep.PREFLIGHT, HotUpdaterSandboxStep.CHECK -> Status("Checking ${phase.target}…", null)
-                        HotUpdaterSandboxStep.RESET -> Status("Removing downloaded bundles…", null)
+                        HotUpdaterSandboxStep.PREFLIGHT, HotUpdaterSandboxStep.CHECK ->
+                            Status(
+                                "Checking ${phase.target}…",
+                                null,
+                                spins = true,
+                            )
+                        HotUpdaterSandboxStep.RESET -> Status("Removing downloaded bundles…", null, spins = true)
                         HotUpdaterSandboxStep.DOWNLOAD -> {
                             val progress = phase.progress ?: 0.0
                             Status("Downloading ${phase.target}… ${(progress * 100).toInt()}%", progress)
@@ -287,7 +297,7 @@ internal data class HotUpdaterSandboxHomeModel(
                     }
                 is HotUpdaterSandboxPhase.WaitingForServer ->
                     if (phase.checking) {
-                        Status("Checking ${phase.link.channel}…", null)
+                        Status("Checking ${phase.link.channel}…", null, spins = true)
                     } else {
                         Status(
                             "${phase.link.channel} needs an answer from your update server first. Open the app so it can check for updates.",

@@ -2574,6 +2574,22 @@ struct HotUpdaterSandboxHomeModelTests {
     }
 
     @Test
+    func onlyARunningCheckSpinsNeverALinkThatWaitsForTheAppToBeOpened() {
+        let link = HotUpdaterSandboxLink(url: "hu-sandbox-app://hot-updater/preview?channel=pr-1&fingerprint=fp")!
+        // The app the sandbox started under the screen checks now.
+        #expect(home(state(selection: selection(), phase: .waitingForServer(link, checking: true))).status
+            == HotUpdaterSandboxHomeModel.Status(text: "Checking pr-1…", progress: nil, spins: true))
+        // Past its time, or on a host the app can't start under: the screen watches on, with nothing spinning.
+        let waiting = home(state(selection: selection(), phase: .waitingForServer(link, checking: false))).status
+        #expect(waiting?.spins == false)
+        #expect(waiting?.text == "pr-1 needs an answer from your update server first. Open the app so it can check for updates.")
+        #expect(home(state(selection: selection(), phase: .working(operationId: 1, target: "pr-2", step: .check, progress: nil))).status?.spins == true)
+        #expect(home(state(selection: selection(), phase: .working(operationId: 1, target: "", step: .reset, progress: nil))).status?.spins == true)
+        // A download shows its bar instead.
+        #expect(home(state(selection: selection(), phase: .working(operationId: 1, target: "pr-2", step: .download, progress: 0.5))).status?.spins == false)
+    }
+
+    @Test
     func infoShowsWhatTheStoreHolds() {
         var withPending = state(selection: selection(bundleId: "019a3f00aabbc2"))
         withPending.details = HotUpdaterSandboxDetails(
