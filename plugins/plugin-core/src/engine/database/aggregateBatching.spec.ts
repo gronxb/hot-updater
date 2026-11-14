@@ -567,7 +567,7 @@ describe("aggregate batching", () => {
     await shared.migrations?.apply(batched.tables);
     const full = await setup({
       adapter: shared,
-      batching: { mode: "log", windowMs: 60_000 },
+      batching: { windowMs: 60_000 },
     });
     // A newer process's rows: they name `distribution` and `users`.
     for (let step = 0; step < 6; step += 1) {
@@ -578,7 +578,7 @@ describe("aggregate batching", () => {
     const partial = createDatabaseEngine({
       adapter: store.adapter,
       schema: resolveSchema([partialModule, aggregateBatchingModule]),
-      batching: { mode: "log", windowMs: 60_000 },
+      batching: { windowMs: 60_000 },
       // Ten minutes later, after a rollback to a release without them.
       now: () => full.clock.now + 600_000,
     });
@@ -613,7 +613,7 @@ describe("aggregate batching", () => {
     await store.adapter.migrations?.apply(batched.tables);
     const log = await setup({
       adapter: { ...store.adapter, fits: (ops) => ops.length <= 12 },
-      batching: { mode: "log", windowMs: 60_000 },
+      batching: { windowMs: 60_000 },
     });
     // 30 days of opens: more rows than one write takes, so groups halve.
     const days = async (db: Db) => {
@@ -649,7 +649,7 @@ describe("aggregate batching", () => {
     await store.adapter.migrations?.apply(batched.tables);
     const log = await setup({
       adapter: { ...store.adapter, fits: (ops) => ops.length <= 12 },
-      batching: { mode: "log", windowMs: 60_000 },
+      batching: { windowMs: 60_000 },
     });
     // 30 days of opens: more rows than one write takes, so it takes groups.
     for (let day = 1; day <= 30; day += 1) {
