@@ -30,6 +30,12 @@ const WINDOW_MS = 60_000;
 /** Log rows a compaction reads from each log table for one group. */
 const LOG_PAGE = 200;
 /**
+ * How old a log row this process can't apply must be before its reads step
+ * past it: older than any transaction still committing, between servers
+ * whose clocks agree this closely.
+ */
+const SKIP_AFTER_MS = 300_000;
+/**
  * Groups one compaction applies: after a commit, so the request that runs
  * it waits for one group; before a read; and on flush.
  */
@@ -183,35 +189,58 @@ const rewrite = (
     : { type: "patch", table, key, set, guard, previous: current };
 };
 
+/** A shard row's place in what `readCurrent` read. */
+const rowId = (model: ResolvedModel, key: DatabaseKey) =>
+  JSON.stringify([model.table.name, key]);
+
+/** The shard key each change writes: shard 0, since one compaction runs at a time. */
+const keysOf = (changes: readonly AggregateChange[]) =>
+  changes.map(({ key }) => [...key.slice(0, -1), 0]);
+
 /**
- * The write for each change on shard 0, since one compaction runs at a time:
- * a blind increment that creates the row for counters, and a guarded rewrite
- * for gauges and sketches, whose rows are read in one batch per table.
+ * The current rows of the changes that rewrite theirs (gauges and sketches),
+ * read in one batch per table.
  */
-const compile = async (
+const readCurrent = async (
   adapter: DatabaseAdapter,
   changes: readonly AggregateChange[],
-): Promise<(WriteOp | undefined)[]> => {
-  const keys = changes.map(({ key }) => [...key.slice(0, -1), 0]);
-  const reads = new Map<ResolvedModel, number[]>();
+): Promise<ReadonlyMap<string, StoredRow | null>> => {
+  const keys = keysOf(changes);
+  const reads = new Map<ResolvedModel, DatabaseKey[]>();
   changes.forEach((change, at) => {
     if (rewrites(change)) {
-      reads.set(change.model, [...(reads.get(change.model) ?? []), at]);
+      reads.set(change.model, [...(reads.get(change.model) ?? []), keys[at]!]);
     }
   });
-  const current = new Map<number, StoredRow | null>();
+  const current = new Map<string, StoredRow | null>();
   await Promise.all(
-    [...reads].map(async ([model, positions]) => {
-      const rows = await adapter.get(
-        model.table,
-        positions.map((at) => keys[at]!),
-      );
-      positions.forEach((at, index) => current.set(at, rows[index] ?? null));
+    [...reads].map(async ([model, wanted]) => {
+      const rows = await adapter.get(model.table, wanted);
+      wanted.forEach((key, at) => {
+        current.set(rowId(model, key), rows[at] ?? null);
+      });
     }),
   );
+  return current;
+};
+
+/**
+ * The write for each change: a blind increment that creates the row for
+ * counters, and a guarded rewrite for gauges and sketches, over the rows
+ * `current` read.
+ */
+const build = (
+  changes: readonly AggregateChange[],
+  current: ReadonlyMap<string, StoredRow | null>,
+): (WriteOp | undefined)[] => {
+  const keys = keysOf(changes);
   return changes.map((change, at) =>
-    current.has(at)
-      ? rewrite(change, keys[at]!, current.get(at)!)
+    rewrites(change)
+      ? rewrite(
+          change,
+          keys[at]!,
+          current.get(rowId(change.model, keys[at]!)) ?? null,
+        )
       : increment(change, keys[at]!),
   );
 };
@@ -362,6 +391,17 @@ export const createAggregateBatches = ({
   let compacting: Promise<void> | undefined;
   /** Log rows this process read, by `[log table's index, id]`, for the deletes after a group. */
   const known = new Map<string, StoredRow>();
+  /**
+   * Each log table's last row of a run at its head that this process can't
+   * apply (it names an aggregate or metric this schema lacks), whose reads
+   * start past it. The rows wait for a process that can apply them, and a
+   * restart reads them again.
+   */
+  const skipped: (string | undefined)[] = LOG_TABLES.map(() => undefined);
+  const past = (shard: number) =>
+    skipped[shard] === undefined ? {} : { range: { gt: skipped[shard] } };
+  /** When a log row's transaction stamped its ID. */
+  const stampOf = (id: string) => Number.parseInt(id.slice(0, 9), 36);
   const idOf = (shard: number, id: unknown) => JSON.stringify([shard, id]);
 
   /** The lease row as stored once `set` is written over it. */
@@ -490,6 +530,7 @@ export const createAggregateBatches = ({
         const page = await engine.reads.findMany(name, {
           index: "oldest",
           limit: LOG_PAGE,
+          ...past(shard),
         });
         more ||= page.next !== undefined;
         const decoded = await Promise.all(
@@ -499,6 +540,12 @@ export const createAggregateBatches = ({
             changes: await decode(String(row.changes)),
           })),
         );
+        const settled = now() - SKIP_AFTER_MS;
+        for (const { row, changes } of decoded) {
+          const id = String(row.id);
+          if (changes !== undefined || stampOf(id) >= settled) break;
+          skipped[shard] = id;
+        }
         return decoded.flatMap(({ changes, ...entry }) =>
           changes === undefined ? [] : [{ ...entry, changes }],
         );
@@ -512,9 +559,6 @@ export const createAggregateBatches = ({
     return { logs, more };
   };
 
-  const rowsFor = async (changes: readonly AggregateChange[]) =>
-    (await compile(adapter, changes)).filter(isOp);
-
   /**
    * Applies the oldest pending log rows whose merged changes fit in one
    * atomic write with the lease, which lists them as applied; the rows are
@@ -523,6 +567,15 @@ export const createAggregateBatches = ({
    * log rows it applied whole, or undefined when a conflict stopped it.
    */
   const applyGroup = async (held: StoredRow, logs: readonly LogRow[]) => {
+    // Every halving writes rows of these: read once for the group.
+    const current = await readCurrent(adapter, [
+      ...mergeAll(
+        new Map(),
+        logs.flatMap((entry) => [...entry.changes.values()]),
+      ).values(),
+    ]);
+    const rowsFor = (changes: readonly AggregateChange[]) =>
+      build(changes, current).filter(isOp);
     for (let count = logs.length; count > 0; count = Math.floor(count / 2)) {
       const batch = logs.slice(0, count);
       const changes = mergeAll(
@@ -531,7 +584,7 @@ export const createAggregateBatches = ({
       );
       const applied = batch.map(({ shard, row }) => [shard, row.id]);
       const lease = leaseOp(held, { applied: JSON.stringify(applied) });
-      const ops = [...(await rowsFor([...changes.values()])), lease.op];
+      const ops = [...rowsFor([...changes.values()]), lease.op];
       if (!adapter.fits(ops)) continue;
       for (const { shard, row } of batch) known.set(idOf(shard, row.id), row);
       return (await commit(ops)) ? { held: lease.next, count } : undefined;
@@ -549,7 +602,7 @@ export const createAggregateBatches = ({
         previous: row,
       };
       const lease = leaseOp(held, {});
-      const ops = [...(await rowsFor(entries.slice(0, take))), kept, lease.op];
+      const ops = [...rowsFor(entries.slice(0, take)), kept, lease.op];
       if (adapter.fits(ops)) {
         return (await commit(ops)) ? { held: lease.next, count: 0 } : undefined;
       }
@@ -569,11 +622,13 @@ export const createAggregateBatches = ({
     if (held === undefined) return;
     let pending = true;
     let clear = false;
+    // Rows read and not yet applied, which the next group takes first.
+    let carried: { logs: readonly LogRow[]; more: boolean } | undefined;
     try {
       for (let group = 0; ; group += 1) {
         clear = await deleteApplied(held);
         if (!clear || !pending || group === groups) break;
-        const { logs, more } = await readLogs();
+        const { logs, more } = carried ?? (await readLogs());
         if (logs.length === 0) {
           pending = false;
           break;
@@ -581,6 +636,9 @@ export const createAggregateBatches = ({
         const applied = await applyGroup(held, logs);
         if (applied === undefined) break;
         [held, clear] = [applied.held, false];
+        // A row split in parts changed; the next group reads it again.
+        const rest = applied.count === 0 ? [] : logs.slice(applied.count);
+        carried = rest.length > 0 ? { logs: rest, more } : undefined;
         pending = more || applied.count < logs.length;
       }
     } finally {
@@ -607,8 +665,12 @@ export const createAggregateBatches = ({
   /** Whether any log row waits; reads at once share one check. */
   const hasPending = () =>
     (checking ??= Promise.all(
-      LOG_TABLES.map((name) =>
-        engine.reads.findMany(name, { index: "oldest", limit: 1 }),
+      LOG_TABLES.map((name, shard) =>
+        engine.reads.findMany(name, {
+          index: "oldest",
+          limit: 1,
+          ...past(shard),
+        }),
       ),
     )
       .then((pages) => pages.some((page) => page.rows.length > 0))
