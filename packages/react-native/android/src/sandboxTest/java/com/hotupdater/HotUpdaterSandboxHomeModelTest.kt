@@ -675,6 +675,13 @@ class HotUpdaterSandboxHomeModelTest {
     }
 
     @Test
+    fun `the spinner holds still while the system has animations turned off`() {
+        assertFalse(hotUpdaterSandboxSpinnerTurns(0f))
+        assertTrue(hotUpdaterSandboxSpinnerTurns(0.5f))
+        assertTrue(hotUpdaterSandboxSpinnerTurns(1f))
+    }
+
+    @Test
     fun `only a running check spins, never a link that waits for the app to be opened`() {
         val link = HotUpdaterSandboxLink("hu-sandbox-app://hot-updater/preview?channel=pr-1", "hu-sandbox-app", "pr-1", "fp")
         // The app the sandbox started under the screen checks now.
