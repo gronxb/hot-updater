@@ -290,7 +290,7 @@ jobs:
           deploy: false
           comment: false
 
-  # One iOS bundle, after both iOS builds, which it finds and never builds.
+  # One iOS bundle, after both iOS builds, against the builds they report.
   ios-deploy:
     needs: [ios-adhoc, ios-simulator]
     if: ${{ !cancelled() && github.event.action != 'closed' }}
@@ -318,6 +318,9 @@ jobs:
           ios-scheme: sandbox, sandboxSimulator
           build: false
           comment: false
+          results: |
+            ios-adhoc ${{ needs.ios-adhoc.result }} ${{ needs.ios-adhoc.outputs.result }}
+            ios-simulator ${{ needs.ios-simulator.result }} ${{ needs.ios-simulator.outputs.result }}
 
   # The one comment and its QR codes, from each job's result, also when one
   # of them failed.
@@ -361,10 +364,11 @@ jobs:
   comment (`comment: false`). The Android job also deploys the Android bundle.
   The iOS jobs only build (`deploy: false`).
 - **The ios-deploy job** waits for both iOS builds, then deploys the one iOS
-  bundle on Linux, against the builds they made or reused (`build: false`: it
-  compiles nothing, and fails a scheme with no build). The bundle is newer
-  than both builds, so both run it, also after a re-run of one iOS job, which
-  re-runs this one too. Each push deploys one bundle per platform.
+  bundle on Linux, against the builds their `result` outputs name
+  (`build: false`). It compiles nothing and looks up no other build: a scheme
+  whose job failed or was skipped stays failed. The bundle is newer than both
+  builds, so both run it, also after a re-run of one iOS job, which re-runs
+  this one too. Each push deploys one bundle per platform.
 - **The comment job** waits for all of them, then writes the one comment and
   its QR codes from their `result` outputs. A job that failed shows as failed,
   the others as usual. It checks the pull request's head before writing and
@@ -421,8 +425,8 @@ silicon test the pull request without an iPhone. Add a sandbox scheme with
     },
 ```
 
-Without it, leave out the `ios-simulator` job, its line in `results`,
-`ios-simulator` in the `needs` of `ios-deploy` and `comment`, and
+Without it, leave out the `ios-simulator` job, its lines in the `results` of
+`ios-deploy` and `comment`, `ios-simulator` in their `needs`, and
 `sandboxSimulator` in the `ios-scheme` of `ios-deploy`.
 
 The comment's iOS section keeps the iPhone's install link and QR code, and
@@ -573,19 +577,9 @@ In the `ios-adhoc` job:
           comment: false
 ```
 
-In the `ios-deploy` job, the same scheme and store, and no Simulator scheme,
-since a store input takes one scheme:
-
-```yaml
-        with:
-          console-url: ${{ vars.CONSOLE_URL }}
-          platforms: ios
-          ios-scheme: sandbox
-          ios-submit: testflight
-          ios-testflight-group: QA
-          build: false
-          comment: false
-```
+The `ios-deploy` job stays as it is: it deploys against the store build the
+`ios-adhoc` job reports, and runs no store command, so it needs no store input
+and no App Store Connect key.
 
 Pull requests with the same native code share the store build:
 
@@ -804,8 +798,9 @@ export default defineConfig({
 });
 ```
 
-Use [the workflow](#add-the-workflow) without the `ios-adhoc` job, its line
-in `results`, and `ios-adhoc` in the `needs` of `ios-deploy` and `comment`.
+Use [the workflow](#add-the-workflow) without the `ios-adhoc` job, its lines
+in the `results` of `ios-deploy` and `comment`, and `ios-adhoc` in their
+`needs`.
 Set `android-scheme: previewApk` in the `android` job, and
 `ios-scheme: previewSimulator` in the `ios-simulator` and `ios-deploy` jobs.
 
@@ -837,9 +832,10 @@ every run.
 | `channel`              | `pr-<number>`                  | The pull request's channel, which its bundles deploy to and its non-sandbox native builds embed                 |
 | `credit`               | `true`                         | Whether the comment ends with "Preview by hot-updater"                                                          |
 | `comment`              | `true`                         | Whether to write the comment, and its sandbox QR codes to the `hot-updater-preview` branch                      |
-| `deploy`               | `true`                         | Whether to deploy each platform's bundle. `false` only builds, as the Simulator job does                        |
+| `deploy`               | `true`                         | Whether to deploy each platform's bundle. `false` only builds, as the iOS build jobs do                         |
+| `build`                | `true`                         | Whether a scheme with no build builds one. `false` deploys against the builds `results` names, and compiles and looks up nothing, as the `ios-deploy` job does |
 | `mode`                 | `auto`                         | `preview`, `cleanup`, `comment`, or `auto`: `cleanup` when the pull request closed, else `preview`. `comment` writes the comment from `results` |
-| `results`              |                                | With `mode: comment`, one line per build job: its name, `needs.<job>.result`, and `needs.<job>.outputs.result` |
+| `results`              |                                | With `mode: comment` or `build: false`, one line per job: its name, `needs.<job>.result`, and `needs.<job>.outputs.result` |
 | `working-directory`    | `.`                            | The app's directory, with `hot-updater.config.ts`                                                               |
 | `cli`                  | `npx --no-install hot-updater` | The command that runs the project's CLI                                                                         |
 | `github-token`         | `github.token`                 | The token that writes the comment and the QR codes. A personal access token's push starts your `push` workflows |

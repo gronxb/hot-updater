@@ -63,8 +63,8 @@ inputs:
   build:
     description: >-
       Whether a scheme with no native build builds one. A job that deploys
-      against the builds its lanes made sets it to false, and then compiles
-      nothing: a scheme with no build fails.
+      against the builds its lanes reported in results sets it to false: it
+      then compiles and looks up nothing, and a scheme no lane reported fails.
     default: "true"
   mode:
     description: >-
@@ -74,9 +74,9 @@ inputs:
     default: auto
   results:
     description: >-
-      With mode comment, a line for each lane's job: its name, its conclusion,
-      and its result output: the job id, needs.<job>.result, and
-      needs.<job>.outputs.result, separated by spaces.
+      With mode comment or build false, a line for each lane's job: its name,
+      its conclusion, and its result output: the job id, needs.<job>.result,
+      and needs.<job>.outputs.result, separated by spaces.
   working-directory:
     description: The app's directory, which has hot-updater.config.ts.
     default: .

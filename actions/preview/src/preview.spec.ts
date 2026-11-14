@@ -1111,6 +1111,7 @@ describe("parseInputs", () => {
       comment: false,
       deploy: true,
       build: true,
+      reported: null,
       results: "",
       mode: "preview",
     });
@@ -1126,6 +1127,7 @@ describe("parseInputs", () => {
       "mode must be auto, preview, cleanup, or comment.",
     ],
     [{ INPUT_MODE: "comment" }, "mode: comment needs results"],
+    [{ INPUT_BUILD: "false" }, "build: false takes results"],
     [{ INPUT_ANDROID_SCHEME: "" }, "android-scheme is required"],
   ])("refuses %j", (overrides, message) => {
     expect(() => parseInputs(env(overrides), event)).toThrow(message);

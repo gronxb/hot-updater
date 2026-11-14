@@ -61,6 +61,8 @@ const qrPath = (value: string) =>
 const fakeServer = ({
   failing = [] as SchemeName[],
   unconfirmed = [] as string[],
+  /** Build IDs whose ad hoc profile expired, which `find` says of an .ipa. */
+  expired = [] as string[],
 } = {}) => {
   const builds: Build[] = [];
   const releases: { id: string; platform: string; channel: string }[] = [];
@@ -98,6 +100,23 @@ const fakeServer = ({
             fingerprintHash,
             appVersion: null,
             nativeBuild: found && row(found),
+            ...(found?.kind === "ipa"
+              ? {
+                  iosDevices: expired.includes(found.id)
+                    ? {
+                        reusable: false,
+                        reason: "expired",
+                        missing: [],
+                        waiting: [],
+                      }
+                    : {
+                        reusable: true,
+                        reason: null,
+                        missing: [],
+                        waiting: [],
+                      },
+                }
+              : {}),
             downloadUrl:
               found && `https://storage.example.com/${found.id}?${SIGNED}`,
             sandbox: {
@@ -168,7 +187,21 @@ const fakeServer = ({
       throw new Error(`unexpected command ${args.join(" ")}`);
     });
   };
-  return { cliOf, builds, releases, calls, failing };
+  /** Registers a build of `kind`, as another pull request's run would. */
+  const register = (kind: "apk" | "ipa" | "app", channel: string) => {
+    const platform = kind === "apk" ? "android" : "ios";
+    const build: Build = {
+      id: idOf(++clock),
+      platform,
+      kind,
+      channel,
+      fingerprintHash: FINGERPRINTS[platform],
+      minBundleId: idOf(++clock),
+    };
+    builds.push(build);
+    return build;
+  };
+  return { cliOf, builds, releases, calls, failing, expired, register };
 };
 
 const row = (build: Build) => ({
@@ -216,15 +249,19 @@ const LANES: Job[] = [
   },
 ];
 
-/** The job that deploys the iOS bundle once both iOS lanes are done. */
-const IOS_DEPLOY: Job = {
+/**
+ * The job that deploys the iOS bundle once both iOS lanes are done, against
+ * the builds their results name.
+ */
+const iosDeploy = (lanes: JobRun[]): Job => ({
   name: "ios-deploy",
   env: {
     INPUT_PLATFORMS: "ios",
     INPUT_IOS_SCHEME: "adhoc, simulator",
     INPUT_BUILD: "false",
+    INPUT_RESULTS: resultsOf(lanes),
   },
-};
+});
 
 type JobRun = {
   name: string;
@@ -269,7 +306,7 @@ const runLanes = async (
   const lanes = await Promise.all(
     LANES.map((lane) => runJob(server, github, lane)),
   );
-  return [...lanes, await runJob(server, github, IOS_DEPLOY)];
+  return [...lanes, await runJob(server, github, iosDeploy(lanes.slice(1)))];
 };
 
 /** The `results` input: each job's name, its conclusion, its result. */
@@ -542,7 +579,12 @@ describe("lanes and a comment job", () => {
     // "Re-run failed jobs": the Simulator lane, then the jobs that need it.
     server.failing.length = 0;
     const simulator = await runJob(server, github, LANES[2]!);
-    const redeploy = await runJob(server, github, IOS_DEPLOY);
+    // The ad hoc lane's result is the one kept from the first attempt.
+    const redeploy = await runJob(
+      server,
+      github,
+      iosDeploy([adhoc!, simulator]),
+    );
     await runComment(
       github,
       resultsOf([android!, adhoc!, simulator, redeploy]),
@@ -565,22 +607,79 @@ describe("lanes and a comment job", () => {
       `| iOS Simulator | \`${newSimulator.id}\` · built for this commit | \`${FINGERPRINTS.ios.slice(0, 12)}\` | \`${bundle}\` |`,
     );
     expect(body).not.toContain("failed on this run");
+    // One iOS deploy for both builds on the re-run.
+    expect(
+      server.releases.filter(({ platform }) => platform === "ios"),
+    ).toHaveLength(2);
   });
 
-  it("build nothing in a job with build: false, and fail each scheme it has no build of", async () => {
+  it("build and look up nothing in a job with build: false, and fail each scheme no lane reported", async () => {
     const server = fakeServer();
+    // An earlier pull request's builds, which the registry still has.
+    server.register("ipa", "pr-10");
+    server.register("app", "pr-10");
 
-    const deploy = await runJob(server, fakeGitHub(), IOS_DEPLOY);
+    const deploy = await runJob(
+      server,
+      fakeGitHub(),
+      iosDeploy([
+        { name: "ios-adhoc", outputs: {}, error: new Error("failed") },
+        { name: "ios-simulator", outputs: {}, error: new Error("failed") },
+      ]),
+    );
 
     expect(deploy.error).not.toBeNull();
     expect(
-      server.calls.filter((call) => call.startsWith("native-build ios ")),
+      server.calls.filter((call) => call.startsWith("native-build ")),
     ).toEqual([]);
     expect(server.releases).toEqual([]);
     expect(JSON.parse(deploy.outputs["result"]!).failed).toEqual([
       { platform: "ios", scheme: "adhoc", deployed: false },
       { platform: "ios", scheme: "simulator", deployed: false },
     ]);
+  });
+
+  it("never revive an expired ad hoc build its lane failed to replace", async () => {
+    const server = fakeServer({ failing: ["adhoc"] });
+    const github = fakeGitHub();
+    const stale = server.register("ipa", "pr-10");
+    server.expired.push(stale.id);
+
+    const jobs = await runLanes(server, github);
+    await runComment(github, resultsOf(jobs));
+
+    const deploy = JSON.parse(jobs[3]!.outputs["result"]!);
+    expect(
+      deploy.previews.map(({ scheme }: { scheme: string }) => scheme),
+    ).toEqual(["simulator"]);
+    expect(deploy.failed).toEqual([
+      { platform: "ios", scheme: "adhoc", deployed: false },
+    ]);
+    const body = github.comment()!;
+    expect(body).not.toContain(stale.id);
+    expect(body).not.toContain("Install on iPhone");
+    expect(body).toContain("**iOS** (`adhoc`) failed on this run");
+    expect(body).toContain("- **iOS Simulator**:");
+  });
+
+  it("deploy against the build its lane reported, not one another pull request registered since", async () => {
+    const server = fakeServer();
+    const github = fakeGitHub();
+    const lanes = await Promise.all(
+      LANES.map((lane) => runJob(server, github, lane)),
+    );
+    const reported = server.builds.find(({ kind }) => kind === "ipa")!;
+    // Another pull request's newer ad hoc build of the same native code.
+    const newer = server.register("ipa", "pr-99");
+
+    const deploy = await runJob(server, github, iosDeploy(lanes.slice(1)));
+    await runComment(github, resultsOf([...lanes, deploy]));
+
+    const [adhoc] = JSON.parse(deploy.outputs["result"]!).previews;
+    expect(adhoc.nativeBuild.id).toBe(reported.id);
+    const body = github.comment()!;
+    expect(body).not.toContain(newer.id);
+    expect(body.match(/^\| iOS \|/gm)).toHaveLength(1);
   });
 
   it("keep the QR codes the earlier comment shows when the new comment fails to land", async () => {

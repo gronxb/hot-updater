@@ -62,8 +62,11 @@ export { parseJsonOutput };
  *   lane that only builds, such as each iOS lane beside the job that deploys
  *   the iOS bundle after both, sets it to false.
  * @property {boolean} build Whether a scheme with no native build builds
- *   one. A job that deploys against the builds other jobs made sets it to
- *   false, and then compiles nothing.
+ *   one. A job that deploys against the builds its lanes reported in
+ *   `results` sets it to false: it then compiles nothing and looks up no
+ *   other build.
+ * @property {Map<string, PlatformPreview & { scheme?: string }> | null} reported
+ *   With `build: false`, the build each lane reported, by platform and scheme.
  * @property {string} results With `comment`, each lane's line: its job's
  *   name, its conclusion, and its `result` output.
  * @property {"preview" | "cleanup" | "comment"} mode
@@ -224,6 +227,12 @@ export const parseInputs = (env, event) => {
         ? "cleanup"
         : "preview"
       : mode;
+  const build = parseFlag(input, "BUILD", true);
+  if (resolvedMode === "preview" && !build && results === "") {
+    throw new Error(
+      "build: false takes results: the result line of each job that builds, which this job deploys against.",
+    );
+  }
   if (resolvedMode === "preview") {
     for (const platform of platforms) {
       if (!schemes[platform]?.length) {
@@ -244,7 +253,8 @@ export const parseInputs = (env, event) => {
     credit: parseFlag(input, "CREDIT", true),
     comment: parseFlag(input, "COMMENT", true),
     deploy: parseFlag(input, "DEPLOY", true),
-    build: parseFlag(input, "BUILD", true),
+    build,
+    reported: build ? null : reportedBuilds(results),
     results,
     mode: resolvedMode,
   };
@@ -392,7 +402,6 @@ const findOrSubmitStoreBuild = async (
     };
   }
   const noLongerOffered = submitted !== null;
-  if (!inputs.build) throw noBuildHere(platform, scheme, found);
   deps.log.info(
     noLongerOffered
       ? `Building ${platform}: ${STORES[platform].name} no longer offers ${submitted.id} (${foundStore?.state ?? "expiring"}).`
@@ -511,6 +520,8 @@ const sandboxOf = (
  * @property {boolean} built Whether this run built it.
  * @property {{ appId: string, urlScheme: string, channel: string | null } | undefined} sandbox
  *   `find`'s word on a sandbox scheme.
+ * @property {PlatformPreview & { scheme?: string }} [reported] With
+ *   `build: false`, the build its lane reported, which stands for all of it.
  */
 
 /**
@@ -524,6 +535,23 @@ const sandboxOf = (
  * @returns {Promise<ResolvedScheme>}
  */
 const resolveScheme = async (deps, inputs, platform, scheme) => {
+  if (inputs.reported !== null) {
+    const reported = inputs.reported.get(`${platform}:${scheme}`);
+    if (reported === undefined) {
+      throw new Error(
+        `The job that builds ${scheme} reported no ${platform} build, and this job doesn't build: see that job.`,
+      );
+    }
+    await refreshFingerprint(deps, reported.target);
+    return {
+      scheme,
+      build: /** @type {NativeBuildRow} */ (/** @type {unknown} */ (null)),
+      target: reported.target,
+      built: reported.built,
+      sandbox: undefined,
+      reported,
+    };
+  }
   // With no channel, `find` answers for what the project embeds, which
   // `channel set` made the pull request's, and a sandbox scheme's build on
   // any channel.
@@ -558,9 +586,20 @@ const resolveScheme = async (deps, inputs, platform, scheme) => {
 const previewOf = (
   inputs,
   platform,
-  { build, target, built, sandbox },
+  { build, target, built, sandbox, reported },
   bundleId,
 ) => {
+  if (reported !== undefined) {
+    return {
+      ...reported,
+      bundleId,
+      installUrl: nativeBuildInstallUrl(
+        inputs.consoleUrl,
+        reported.nativeBuild,
+        simulatorOpens(reported, inputs.channel),
+      ),
+    };
+  }
   const nativeBuild = {
     id: build.id,
     artifactKind: build.artifact_kind,
@@ -612,7 +651,10 @@ const previewPlatform = async (
   scheme,
   onDeployed,
 ) => {
-  const submit = inputs.submits[platform];
+  // A job with `build: false` deploys against its lanes' builds, a store
+  // build's too, and runs no store command.
+  const submit =
+    inputs.reported === null ? inputs.submits[platform] : undefined;
   if (submit) {
     const { build, target, built, store, sandbox } =
       await findOrSubmitStoreBuild(
@@ -760,17 +802,25 @@ const previewSchemes = async (
 };
 
 /**
- * Why a job with `build: false` has no native build of a scheme: its build
- * job failed, was skipped, or hasn't registered one.
+ * The build each lane reported, by platform and scheme, which a job with
+ * `build: false` deploys against. A lane that failed or was skipped reports
+ * none, and its scheme stays failed.
  *
- * @param {Platform} platform
- * @param {string} scheme
- * @param {import("../../shared/nativeBuild.mjs").BuildTarget} target
+ * @param {string} results
+ * @returns {Map<string, PlatformPreview & { scheme?: string }>}
  */
-const noBuildHere = (platform, scheme, target) =>
-  new Error(
-    `No ${platform} native build of ${scheme} has ${describeTarget(target)}, and this job doesn't build: see the job that builds ${scheme}.`,
-  );
+const reportedBuilds = (results) => {
+  /** @type {Map<string, PlatformPreview & { scheme?: string }>} */
+  const builds = new Map();
+  for (const { result } of parseLanes(results)) {
+    for (const preview of result?.previews ?? []) {
+      if (preview.scheme !== undefined) {
+        builds.set(`${preview.platform}:${preview.scheme}`, preview);
+      }
+    }
+  }
+  return builds;
+};
 
 /**
  * Refuses a native build this run made that embeds another channel than the
@@ -822,13 +872,7 @@ const resolveNativeBuild = async (
         .join(", ")}. The next preview builds again once a build can add them.`,
     );
   }
-  // A job that doesn't build reuses what the build job made, which already
-  // added every device a new build could.
-  const rebuild =
-    inputs.build && found.nativeBuild !== null && devices?.reusable === false;
-  if (found.nativeBuild === null && !inputs.build) {
-    throw noBuildHere(platform, scheme, found);
-  }
+  const rebuild = found.nativeBuild !== null && devices?.reusable === false;
   const built = found.nativeBuild === null || rebuild;
   if (found.nativeBuild === null || rebuild) {
     deps.log.info(
@@ -1034,12 +1078,11 @@ export const runPreview = async (deps, inputs, event) => {
   for (const preview of previews) {
     outputs.push({
       ...preview,
-      downloadUrl: await findDownloadUrl(
-        deps,
-        inputs,
-        preview,
-        schemeOf.get(preview),
-      ),
+      // A job with `build: false` looks up nothing: its lanes have the URLs.
+      downloadUrl:
+        inputs.reported === null
+          ? await findDownloadUrl(deps, inputs, preview, schemeOf.get(preview))
+          : null,
     });
   }
   deps.setOutput("previews", JSON.stringify(outputs));
