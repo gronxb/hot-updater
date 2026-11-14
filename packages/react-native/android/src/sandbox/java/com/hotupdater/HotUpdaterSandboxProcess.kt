@@ -2,12 +2,30 @@ package com.hotupdater
 
 import android.app.Activity
 import android.app.Application
+import android.content.ComponentName
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
 import java.io.File
+import java.lang.ref.WeakReference
+
+/**
+ * A host start the sandbox's screen covers: the next creation of [host] in the
+ * screen's task brings that screen back on top, before the host's first frame.
+ */
+internal class HotUpdaterSandboxCover(
+    val host: ComponentName,
+    val taskId: Int,
+    screen: HotUpdaterSandboxActivity,
+) {
+    private val screen = WeakReference(screen)
+
+    fun isFrom(activity: HotUpdaterSandboxActivity) = screen.get() === activity
+
+    fun screen(): HotUpdaterSandboxActivity? = screen.get()
+}
 
 /**
  * Follows the app's own activities from the process's start, since a provider
@@ -34,6 +52,19 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
         @Volatile
         var crashMarkerAtStart: PendingCrashRecovery? = null
             private set
+
+        /** The host start a screen covers, until that host is created or the screen lets go. */
+        @Volatile
+        var pendingCover: HotUpdaterSandboxCover? = null
+
+        /** The app's activity a screen started under itself and covers. */
+        @Volatile
+        var coveredHost: WeakReference<Activity>? = null
+
+        /** Lets go of [screen]'s cover, if the pending one is its. */
+        fun dropCover(screen: HotUpdaterSandboxActivity) {
+            if (pendingCover?.isFrom(screen) == true) pendingCover = null
+        }
 
         /** Main's marker, under the app's files directory. */
         internal fun crashMarkerFile(filesDir: File?) = File(File(filesDir, "bundle-store"), "recovery-crash-marker.json")
@@ -64,6 +95,11 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
                     if (!isHost(activity)) return
                     hostActivities += 1
                     hostStarted = true
+                    val cover = pendingCover
+                    if (cover != null && activity.componentName == cover.host && activity.taskId == cover.taskId) {
+                        pendingCover = null
+                        cover.screen()?.coverHost(activity)
+                    }
                 }
 
                 override fun onActivityDestroyed(activity: Activity) {

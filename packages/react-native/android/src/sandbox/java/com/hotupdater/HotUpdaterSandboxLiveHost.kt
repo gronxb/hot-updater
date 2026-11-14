@@ -107,6 +107,10 @@ internal class HotUpdaterSandboxLiveHost(
 
     override fun isAppRunning(): Boolean = HotUpdaterSandboxProcess.hostActivities > 0
 
+    override fun canStartAppUnderScreen(): Boolean = HotUpdaterSandbox.canStartHostUnderScreen()
+
+    override fun startAppUnderScreen() = HotUpdaterSandbox.startHostUnderScreen()
+
     override fun launchEvidence(): HotUpdaterSandboxLaunchEvidence {
         val builtIn = HotUpdaterImpl.getMinBundleId()
         // The launch report is a read: JavaScript gets the same one after.

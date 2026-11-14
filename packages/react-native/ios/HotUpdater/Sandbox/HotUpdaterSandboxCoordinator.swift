@@ -267,6 +267,14 @@ final class HotUpdaterSandboxCoordinator {
     private static let serverPollSlowMs: UInt64 = 5_000
     /// With no screen up, a waiting link stops looking after this many looks: the next launch asks it.
     private static let serverPollLinkLooks = 600
+    /// How long the app started under the screen has to answer, before the screen says to open it.
+    private static let appCheckWindowMs = Double(serverPollFastLooks) * Double(serverPollFastMs)
+    /// A clock that keeps counting while the process is suspended, for the app's time to answer.
+    private let elapsedMs: () -> Double
+    /// The one start of the app under the screen this process makes for a waiting
+    /// link, and when its time to answer ends. Neither a link nor a new watch renews it.
+    private var appCheckDeadlineMs: Double?
+    private var appCheckOver = false
     /// The server watch's pause between two looks, in milliseconds.
     private let serverPoll: (UInt64) async -> Void
     /// Runs once the watch saw a server answer, after the state has it: a link may ask now.
@@ -297,7 +305,7 @@ final class HotUpdaterSandboxCoordinator {
         onServerAnswer: @escaping () -> Void = {},
         elapsedMs: @escaping () -> Double = { Double(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)) / 1_000_000 }
     ) {
-        _ = elapsedMs
+        self.elapsedMs = elapsedMs
         self.serverPoll = serverPoll
         self.onServerAnswer = onServerAnswer
         self.isOwnScheme = isOwnScheme
@@ -334,6 +342,7 @@ final class HotUpdaterSandboxCoordinator {
     /// Reads what storage holds, and asks about the oldest unanswered link.
     /// Sends no request: opening the screen costs the update server nothing.
     func refresh() async {
+        expireAppCheck()
         // A switch may be copying into the shelf: its partial copy isn't listed yet.
         if case .working = state.phase {
             await relist(reconciling: false)
@@ -370,7 +379,8 @@ final class HotUpdaterSandboxCoordinator {
             defer { log("server watch stopped") }
             var looks = 0
             while true {
-                await poll(looks < Self.serverPollFastLooks ? Self.serverPollFastMs : Self.serverPollSlowMs)
+                let fast = looks < Self.serverPollFastLooks || self?.isAppChecking == true
+                await poll(fast ? Self.serverPollFastMs : Self.serverPollSlowMs)
                 looks += 1
                 // Cancelled: whoever cancelled it cleared it.
                 guard let self, !Task.isCancelled else { return }
@@ -385,6 +395,7 @@ final class HotUpdaterSandboxCoordinator {
                     onServerAnswer()
                     return
                 }
+                expireAppCheck()
                 if listeners.isEmpty, looks >= Self.serverPollLinkLooks {
                     serverWatch = nil
                     return
@@ -881,10 +892,38 @@ final class HotUpdaterSandboxCoordinator {
             setPhase(.refused(.otherFingerprint(link: link, buildFingerprintHash: fingerprintHash)))
             return
         }
+        let hasServerConfig = readServerConfig()
+        if !hasServerConfig { startAppToCheck() }
         var next = state
-        next.hasServerConfig = readServerConfig()
-        next.phase = next.hasServerConfig ? .confirming(link) : .waitingForServer(link)
+        next.hasServerConfig = hasServerConfig
+        next.phase = hasServerConfig ? .confirming(link) : .waitingForServer(link, checking: isAppChecking)
         publish(next)
+    }
+
+    private var isAppChecking: Bool {
+        appCheckDeadlineMs != nil && !appCheckOver
+    }
+
+    /// A link waits for a server, and nothing has run the app's check: the app starts
+    /// under the screen once in this process, so its own check can answer. Only after
+    /// the screen read what the last launch left, and never while that's still to tell,
+    /// so a start that crashed doesn't start again.
+    private func startAppToCheck() {
+        guard appCheckDeadlineMs == nil, !listeners.isEmpty, state.selection != nil, state.lastLaunch == nil else { return }
+        guard !host.isInSession, !host.isAppRunning(), host.canStartAppUnderScreen() else { return }
+        appCheckDeadlineMs = elapsedMs() + Self.appCheckWindowMs
+        log("starting the app under the screen for its check")
+        host.startAppUnderScreen()
+    }
+
+    /// Past its time, the app's check no longer counts as running: the screen says to open the app.
+    private func expireAppCheck() {
+        guard let deadline = appCheckDeadlineMs, !appCheckOver, elapsedMs() >= deadline else { return }
+        appCheckOver = true
+        log("the app's check didn't answer in time")
+        if case .waitingForServer(let link, _) = state.phase {
+            setPhase(.waitingForServer(link, checking: false))
+        }
     }
 
     private func clearLinkInFlight() {

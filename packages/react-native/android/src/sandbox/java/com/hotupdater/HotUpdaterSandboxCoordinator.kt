@@ -20,6 +20,9 @@ private const val SERVER_POLL_SLOW_MS = 5_000L
 /** With no screen up, a waiting link stops looking after this many looks: the next launch asks it. */
 private const val SERVER_POLL_LINK_LOOKS = 600
 
+/** How long the app started under the screen has to answer, before the screen says to open it. */
+private const val APP_CHECK_WINDOW_MS = SERVER_POLL_FAST_LOOKS * SERVER_POLL_FAST_MS
+
 /** What a check of the target channel did. */
 internal sealed class HotUpdaterSandboxStaged {
     /** The update is staged or committed: `bundleId` is what a launch selects, null for the built-in bundle. */
@@ -319,8 +322,15 @@ internal class HotUpdaterSandboxCoordinator(
     /** Runs once the watch saw a server answer, after the state has it: a link may ask now. */
     private val onServerAnswer: () -> Unit = {},
     /** A clock that keeps counting while the process is suspended, for the app's time to answer. */
-    @Suppress("unused") private val elapsedMs: () -> Long = android.os.SystemClock::elapsedRealtime,
+    private val elapsedMs: () -> Long = android.os.SystemClock::elapsedRealtime,
 ) {
+    /**
+     * The one start of the app under the screen this process makes for a waiting
+     * link, and when its time to answer ends. Neither a link nor a new watch renews it.
+     */
+    private var appCheckDeadlineMs: Long? = null
+    private var appCheckOver = false
+
     /** The Downloaded list as the shelf last reported it: the screen reads only this. */
     private var downloaded = emptyList<HotUpdaterSandboxShelfEntry>()
     private var downloadedBytes = 0L
@@ -415,6 +425,7 @@ internal class HotUpdaterSandboxCoordinator(
     }
 
     private suspend fun reread() {
+        expireAppCheck()
         // A switch may be copying into the shelf: its partial copy isn't listed yet.
         relist(state.phase !is HotUpdaterSandboxPhase.Working)
         val selection = readSelection()
@@ -440,7 +451,8 @@ internal class HotUpdaterSandboxCoordinator(
                 try {
                     var looks = 0
                     while (true) {
-                        serverPoll(if (looks < SERVER_POLL_FAST_LOOKS) SERVER_POLL_FAST_MS else SERVER_POLL_SLOW_MS)
+                        val fast = looks < SERVER_POLL_FAST_LOOKS || isAppChecking()
+                        serverPoll(if (fast) SERVER_POLL_FAST_MS else SERVER_POLL_SLOW_MS)
                         looks += 1
                         if (state.hasServerConfig || !waitsForServer()) return@launch
                         if (host.hasServerConfig()) {
@@ -450,6 +462,7 @@ internal class HotUpdaterSandboxCoordinator(
                             onServerAnswer()
                             return@launch
                         }
+                        expireAppCheck()
                         if (listeners.isEmpty() && looks >= SERVER_POLL_LINK_LOOKS) return@launch
                     }
                 } finally {
@@ -665,6 +678,7 @@ internal class HotUpdaterSandboxCoordinator(
      * from starting. Its row can be tapped again, and links waiting are asked about.
      */
     fun resumed() {
+        expireAppCheck()
         if (pendingStoredBundleId == null) return
         // The relaunch took its handoff first: it's replacing this process, so the guard
         // stays, on this resume and every later one. A handoff not sent yet is called off
@@ -1031,6 +1045,7 @@ internal class HotUpdaterSandboxCoordinator(
             return
         }
         val hasServerConfig = readServerConfig()
+        if (!hasServerConfig) startAppToCheck()
         publish(
             state.copy(
                 hasServerConfig = hasServerConfig,
@@ -1038,10 +1053,36 @@ internal class HotUpdaterSandboxCoordinator(
                     if (hasServerConfig) {
                         HotUpdaterSandboxPhase.Confirming(link)
                     } else {
-                        HotUpdaterSandboxPhase.WaitingForServer(link)
+                        HotUpdaterSandboxPhase.WaitingForServer(link, checking = isAppChecking())
                     },
             ),
         )
+    }
+
+    private fun isAppChecking() = appCheckDeadlineMs != null && !appCheckOver
+
+    /**
+     * A link waits for a server, and nothing has run the app's check: the app starts
+     * under the screen once in this process, so its own check can answer. Only after
+     * the screen read what the last launch left, and never while that's still to tell,
+     * so a start that crashed doesn't start again.
+     */
+    private fun startAppToCheck() {
+        if (appCheckDeadlineMs != null || listeners.isEmpty() || state.selection == null || state.lastLaunch != null) return
+        if (host.isInSession || host.isAppRunning() || !host.canStartAppUnderScreen()) return
+        appCheckDeadlineMs = elapsedMs() + APP_CHECK_WINDOW_MS
+        log("starting the app under the screen for its check")
+        host.startAppUnderScreen()
+    }
+
+    /** Past its time, the app's check no longer counts as running: the screen says to open the app. */
+    private fun expireAppCheck() {
+        val deadline = appCheckDeadlineMs ?: return
+        if (appCheckOver || elapsedMs() < deadline) return
+        appCheckOver = true
+        log("the app's check didn't answer in time")
+        val phase = state.phase
+        if (phase is HotUpdaterSandboxPhase.WaitingForServer) publish(state.copy(phase = phase.copy(checking = false)))
     }
 
     private fun remove(url: String) {

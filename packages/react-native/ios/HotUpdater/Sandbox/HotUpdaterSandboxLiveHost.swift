@@ -34,6 +34,19 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
         appIsRunning()
     }
 
+    /// Set by the bridge, which owns the gate.
+    @MainActor var canStartUnderScreenAction: () -> Bool = { false }
+    @MainActor var startUnderScreenAction: () -> Void = {}
+
+    /// The coordinator, on the main actor, is the only caller of these two.
+    func canStartAppUnderScreen() -> Bool {
+        MainActor.assumeIsolated { canStartUnderScreenAction() }
+    }
+
+    func startAppUnderScreen() {
+        MainActor.assumeIsolated { startUnderScreenAction() }
+    }
+
     private func config() -> HotUpdaterRecoveryCheckConfig? {
         HotUpdaterRecoveryCheckConfig(json: impl.getStorageItem(HotUpdaterRecoveryCheckConfig.storageKey))
     }

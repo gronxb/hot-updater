@@ -15,11 +15,15 @@ extern BOOL HotUpdaterPerformRecoveryReload(void);
 // Swift header imports React, whose C++ headers a plain Objective-C file can't read
 // when React Native is a prebuilt framework.
 @interface HotUpdaterSandboxBridge : NSObject
-+ (void)configureWithRelease:(void (^)(void))release reload:(BOOL (^)(void))reload isReleased:(BOOL (^)(void))isReleased;
++ (void)configureWithRelease:(void (^)(void))release
+            startUnderScreen:(BOOL (^)(void))startUnderScreen
+                      reload:(BOOL (^)(void))reload
+                  isReleased:(BOOL (^)(void))isReleased;
 + (void)dropCrashOfLastDevProcess;
 + (void)presentScreenIn:(nullable UIWindowScene *)scene;
 + (void)receiveLink:(NSURL *)url scene:(nullable UIWindowScene *)scene;
 + (void)hideScreen;
++ (void)revealIfHidden;
 + (void)keepKeyWindow:(UIWindow *)window;
 + (void)captureLaunchEvidence;
 + (void)appShowedContent;
@@ -76,17 +80,27 @@ static void EndHoldTask(void) {
   [UIApplication.sharedApplication endBackgroundTask:gHoldTask];
 }
 
-static void ReleaseReactNative(NSString *reason) {
-  if (gReleased) return;
+/// Starts the held React Native. The screen stays: what shows the app is the caller's.
+static BOOL StartReactNative(NSString *reason) {
+  if (gReleased) return NO;
   gReleased = YES;
   HULog(@"released: %@, %lu held", reason, (unsigned long)gHeld.count);
   NSArray<dispatch_block_t> *held = gHeld;
   gHeld = nil;
   for (dispatch_block_t start in held) start();
-  [HotUpdaterSandboxBridge hideScreen];
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kBackgroundRunSeconds * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
     EndHoldTask();
   });
+  return YES;
+}
+
+/// Starts React Native and shows the app. After a start under the screen, only shows it.
+static void ReleaseReactNative(NSString *reason) {
+  if (!StartReactNative(reason)) {
+    [HotUpdaterSandboxBridge revealIfHidden];
+    return;
+  }
+  [HotUpdaterSandboxBridge hideScreen];
 }
 
 /// A view a React Native host can hold on to as its root before one exists. It
@@ -269,13 +283,18 @@ static UIView *GatedView3(id self, SEL cmd, NSString *name, NSDictionary *props,
 /// that arrives then leaves it up: the host's handler runs, and the app waits.
 static void EnterForBackgroundWork(NSString *reason) {
   HULog(@"entry point: %@, state=%ld", reason, (long)UIApplication.sharedApplication.applicationState);
-  if (UIApplication.sharedApplication.applicationState == UIApplicationStateBackground) {
+  // Background work isn't for a person, so an app already started under the screen stays under it.
+  if (!gReleased && UIApplication.sharedApplication.applicationState == UIApplicationStateBackground) {
     ReleaseReactNative(reason);
   }
 }
 
 static void ReceiveOwnLinkWhileHeld(NSURL *url) {
-  if (gReleased) return;
+  if (gReleased) {
+    // The app's own link is for an app a person sees.
+    [HotUpdaterSandboxBridge revealIfHidden];
+    return;
+  }
   gOwnLinkWhileHeld = url;
   ReleaseReactNative(@"the app's own link");
 }
@@ -466,6 +485,9 @@ static void SetDelegate(id self, SEL cmd, id delegate) {
   [HotUpdaterSandboxBridge
       configureWithRelease:^{
         ReleaseReactNative(@"the screen opened the app");
+      }
+      startUnderScreen:^BOOL {
+        return StartReactNative(@"under the screen, for the app's update check");
       }
       reload:^BOOL {
         return HotUpdaterPerformRecoveryReload();

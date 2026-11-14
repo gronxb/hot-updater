@@ -286,10 +286,14 @@ internal data class HotUpdaterSandboxHomeModel(
                         }
                     }
                 is HotUpdaterSandboxPhase.WaitingForServer ->
-                    Status(
-                        "${phase.link.channel} needs an answer from your update server first. Open the app so it can check for updates.",
-                        null,
-                    )
+                    if (phase.checking) {
+                        Status("Checking ${phase.link.channel}…", null)
+                    } else {
+                        Status(
+                            "${phase.link.channel} needs an answer from your update server first. Open the app so it can check for updates.",
+                            null,
+                        )
+                    }
                 else -> null
             }
     }
