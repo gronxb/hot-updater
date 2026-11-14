@@ -143,11 +143,21 @@ export const sqlTableShapes = (
           ),
           notNull: true,
         }));
-        const indexTable = {
+        const indexTable: SqlTableShape = {
           name: `${name}__${index.name}`,
           columns: entries,
           key: columns,
-          indexes: [],
+          // A row's entries go by the row's key, which ends the table's key:
+          // without an index that leads with it, replacing or pruning them
+          // reads the whole table.
+          indexes: [
+            {
+              kind: "index",
+              name: shortSqlName(`${name}__${index.name}__key`),
+              unique: false,
+              columns: table.key,
+            },
+          ],
         };
         return [{ kind: "table", table: indexTable }];
       }

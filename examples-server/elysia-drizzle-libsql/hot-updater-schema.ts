@@ -206,6 +206,7 @@ export const bundle_events__byBundle = sqliteTable("bundle_events__byBundle", {
   "id": column("TEXT")("id").notNull(),
 }, (table) => [
   primaryKey({ columns: [table["platform"], table["channel"], table["type"], table["bundle_ref"], table["day"], table["received_at_ms"], table["id"]] }),
+  index("bundle_events__byBundle__key").on(table["id"]),
 ]);
 
 export const bundle_event_heads = sqliteTable("bundle_event_heads", {

@@ -22,6 +22,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_ios_devices_udid" ON "hot_upda
 
 CREATE TABLE IF NOT EXISTS "hot_updater_v1_ios_device_account" ("id" varchar(16) COLLATE "C" NOT NULL, "apple_issuer_id" varchar(64) COLLATE "C" NOT NULL, "claimed_at_ms" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
+CREATE INDEX IF NOT EXISTS "hot_updater_v1_bundle_events__byBundle__key" ON "hot_updater_v1_bundle_events__byBundle" ("id");
+
 ALTER TABLE "hot_updater_v1_native_builds" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "hot_updater_v1_ios_devices" ENABLE ROW LEVEL SECURITY;

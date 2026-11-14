@@ -64,6 +64,8 @@ CREATE INDEX IF NOT EXISTS "bundle_events_movementsByInstall" ON "bundle_events"
 
 CREATE TABLE IF NOT EXISTS "bundle_events__byBundle" ("platform" TEXT NOT NULL, "channel" TEXT NOT NULL, "type" TEXT NOT NULL, "bundle_ref" TEXT NOT NULL, "day" INTEGER NOT NULL, "received_at_ms" INTEGER NOT NULL, "id" TEXT NOT NULL, PRIMARY KEY ("platform", "channel", "type", "bundle_ref", "day", "received_at_ms", "id"));
 
+CREATE INDEX IF NOT EXISTS "bundle_events__byBundle__key" ON "bundle_events__byBundle" ("id");
+
 CREATE INDEX IF NOT EXISTS "bundle_events_byDay" ON "bundle_events" ("day", "received_at_ms", "id");
 
 CREATE TABLE IF NOT EXISTS "bundle_event_heads" ("install_id" TEXT NOT NULL, "id" TEXT NOT NULL, "type" TEXT NOT NULL, "user_id" TEXT, "from_release_id" TEXT, "from_bundle_id" TEXT, "to_release_id" TEXT, "to_bundle_id" TEXT NOT NULL, "platform" TEXT NOT NULL, "app_version" TEXT NOT NULL, "channel" TEXT NOT NULL, "metadata" TEXT NOT NULL, "received_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("install_id"));
