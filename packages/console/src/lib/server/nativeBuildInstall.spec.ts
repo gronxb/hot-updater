@@ -5,11 +5,14 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type {
-  IosDeviceRow,
-  NativeBuildRow,
-  StorageAdapter,
+import {
+  createMemoryAdapter,
+  type IosDeviceRow,
+  meterReads,
+  type NativeBuildRow,
+  type StorageAdapter,
 } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -722,6 +725,57 @@ describe("readNativeBuildIpaDevices", () => {
       ].sort((a, b) => (a.udid < b.udid ? -1 : 1)),
     });
     expect(core.listIosDevices).toHaveBeenCalledTimes(1);
+  });
+
+  it("names the IPA's devices in as many reads however many devices the registry has", async () => {
+    const bytes = await ipaBytes(adHocProfile([PHONE, LATER_PHONE]));
+    /** The registry's reads, past `others` devices the IPA doesn't list. */
+    const readsPast = async (others: number) => {
+      const database = meterReads({
+        name: "memory",
+        adapter: createMemoryAdapter(),
+      });
+      const { core } = createHotUpdater({
+        database,
+        storage: { name: "none", protocol: "none" },
+        plugins: [],
+        clientAccess: "public",
+      });
+      await core.requestIosDevice({
+        udid: PHONE,
+        name: "Kim's iPhone",
+        requestedBy: null,
+      });
+      for (let i = 1; i <= others; i += 1) {
+        await core.requestIosDevice({
+          udid: i.toString(16).padStart(40, "0"),
+          name: "Not in this IPA",
+          requestedBy: null,
+        });
+      }
+      const { fetch } = rangeServer(bytes);
+      const { result, adapter } = await database.measureReads(() =>
+        readNativeBuildIpaDevices(
+          BUILD,
+          {
+            core: { ...core, getNativeBuild: async () => rowOf(bytes.length) },
+            storage: storageOf(),
+          },
+          fetch,
+        ),
+      );
+      expect(result).toEqual({
+        status: "listed",
+        devices: [
+          { udid: PHONE.toLowerCase(), name: "Kim's iPhone" },
+          { udid: LATER_PHONE.toLowerCase(), name: null },
+        ].sort((a, b) => (a.udid < b.udid ? -1 : 1)),
+      });
+      return adapter;
+    };
+
+    // More than a page of the registry at both sizes.
+    expect(await readsPast(450)).toEqual(await readsPast(250));
   });
 
   it("is unavailable for a missing build, and reads no registry", async () => {
