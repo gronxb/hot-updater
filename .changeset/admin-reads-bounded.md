@@ -18,12 +18,13 @@ perf(server): four admin reads no longer grow with the size of a table. None of 
 
 If a 1.2.0 prerelease migrated your database before this release:
 
-- **SQL and MongoDB** answer correctly without the index, which only makes the read fast. Create it once; this is safe to run again.
+- **SQL and MongoDB** answer correctly without the index, which only makes the read fast. Create it once with the statement below; it is safe to run again.
 - **DynamoDB, Firestore, and Cosmos DB** keep no copy of the new index for a row written before it. Such a row is missed only by the account read of a registry with no account claimed yet. Builds always claim the account before they register a device, so that combination doesn't occur.
 
 The statements:
 
 - Cloudflare D1, SQLite, PostgreSQL, Neon: `CREATE INDEX IF NOT EXISTS "ios_devices_byRegistration" ON "ios_devices" ("registered_at_ms", "id");`
 - Supabase: `CREATE INDEX IF NOT EXISTS "hot_updater_v1_ios_devices_byRegistration" ON "hot_updater_v1_ios_devices" ("registered_at_ms", "id");`
-- MySQL: run ``SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ios_devices' AND index_name = 'ios_devices_byRegistration';``. Only when it returns 0, run ``CREATE INDEX `ios_devices_byRegistration` ON `ios_devices` (`registered_at_ms`, `id`);``.
-- MongoDB, DynamoDB, Firestore, Cosmos DB: nothing to run.
+- MySQL: run `SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ios_devices' AND index_name = 'ios_devices_byRegistration';`. Only when it returns 0, run ``CREATE INDEX `ios_devices_byRegistration` ON `ios_devices` (`registered_at_ms`, `id`);``.
+- MongoDB: `db.ios_devices.createIndex({ registered_at_ms: 1, id: 1 }, { name: "byRegistration" })`, with your collection prefix.
+- DynamoDB, Firestore, Cosmos DB: nothing to run.

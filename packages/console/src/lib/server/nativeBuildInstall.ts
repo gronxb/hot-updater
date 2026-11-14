@@ -462,6 +462,9 @@ export type NativeBuildIpaDevices =
   | { readonly status: "store" | "enterprise" }
   | { readonly status: "listed"; readonly devices: NativeBuildIpaDevice[] };
 
+/** How many of an IPA's UDIDs the registry is asked about at once. */
+const UDID_READS = 8;
+
 /**
  * The devices an IPA's profile lists, read from storage as the install check
  * reads it, each named by the device registry when it knows the UDID. The IPA
@@ -486,10 +489,19 @@ export const readNativeBuildIpaDevices = async (
   if (info.distribution === "store" || info.distribution === "enterprise") {
     return { status: info.distribution };
   }
-  // The listed UDIDs are lower case, as the registry keys them.
-  const rows = await Promise.all(
-    [...new Set(info.devices)].map((udid) => core.findIosDevice(udid)),
-  );
+  // The listed UDIDs are lower case, as the registry keys them. A profile
+  // lists up to about 100, read a few at a time.
+  const udids = [...new Set(info.devices)];
+  const rows: Awaited<ReturnType<typeof core.findIosDevice>>[] = [];
+  for (let at = 0; at < udids.length; at += UDID_READS) {
+    rows.push(
+      ...(await Promise.all(
+        udids
+          .slice(at, at + UDID_READS)
+          .map((udid) => core.findIosDevice(udid)),
+      )),
+    );
+  }
   const names = new Map(
     rows.flatMap((row) =>
       row === null ? [] : [[row.udid, row.name] as const],
