@@ -1,6 +1,11 @@
-import { createMemoryAdapter } from "@hot-updater/plugin-core";
+import {
+  createEngine,
+  createMemoryAdapter,
+  meterReads,
+} from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
+import { createCoreApi } from "./api";
 import { createInProcessCoreApi } from "./inProcess.testFixtures";
 import {
   IOS_DEVICE_DISABLED_ERROR,
@@ -18,6 +23,21 @@ const setup = () => {
   return createInProcessCoreApi(createMemoryAdapter(), {
     now: () => (clock += 1),
   });
+};
+
+/** Core's API over a memory adapter whose reads `measureReads` reports. */
+const setupMetered = () => {
+  let clock = 1_000;
+  const database = meterReads({
+    name: "memory",
+    adapter: createMemoryAdapter(),
+  });
+  const core = createCoreApi(
+    createEngine(database).core,
+    { resolveFileUrl: async () => null },
+    { now: () => (clock += 1) },
+  );
+  return { core, measureReads: database.measureReads };
 };
 
 const requested = async (
@@ -417,6 +437,35 @@ describe("the iOS device registry", () => {
       issuerId: OTHER_ISSUER,
       claimed: false,
     });
+  });
+
+  it("reads an unclaimed registry's account in as many reads however many rows it has", async () => {
+    /** The reads of the account's read and claim, past `pending` requests. */
+    const readsPast = async (pending: number) => {
+      const { core, measureReads } = setupMetered();
+      for (let i = 1; i <= pending; i += 1) {
+        await requested(core, i.toString(16).padStart(40, "0"));
+      }
+      const device = await approved(core, PHONE);
+      await core.recordIosDeviceOutcome({
+        id: device.id,
+        seen: seenOf(device),
+        issuerId: OTHER_ISSUER,
+        outcome: "registered",
+      });
+      const found = await measureReads(() => core.findIosDeviceAccount());
+      const claimed = await measureReads(() =>
+        core.claimIosDeviceAccount(ISSUER),
+      );
+      expect(found.result).toEqual({ issuerId: OTHER_ISSUER });
+      expect(claimed.result).toEqual({
+        issuerId: OTHER_ISSUER,
+        claimed: false,
+      });
+      return { found: found.adapter, claimed: claimed.adapter };
+    };
+
+    expect(await readsPast(250)).toEqual(await readsPast(50));
   });
 
   it("deletes a row and answers null for an unknown one", async () => {
