@@ -26,6 +26,8 @@ class HotUpdaterSandboxRelaunchActivity : Activity() {
         const val EXTRA_STORED_BUNDLE = "com.hotupdater.sandbox.STORED_BUNDLE"
         const val EXTRA_HANDOFF = "com.hotupdater.sandbox.HANDOFF"
         const val EXTRA_STORED_RELEASE = "com.hotupdater.sandbox.STORED_RELEASE"
+        const val EXTRA_CHECK_TOKEN = "com.hotupdater.sandbox.CHECK_TOKEN"
+        const val EXTRA_CHECK_LINK = "com.hotupdater.sandbox.CHECK_LINK"
         private const val TAG = "HotUpdaterSandboxDev"
         private const val CLAIM_POLL_MS = 50L
         private const val KILL_DELAY_MS = 100L
@@ -78,6 +80,11 @@ class HotUpdaterSandboxRelaunchActivity : Activity() {
             files.writeClaim(
                 HotUpdaterSandboxDevClaim(session, host, Process.myPid(), SystemClock.elapsedRealtime()),
             )
+        } else if (intent.hasExtra(EXTRA_CHECK_TOKEN)) {
+            // Straight into the app, with the handoff only this launch carries.
+            restart
+                .putExtra(EXTRA_CHECK_TOKEN, intent.getStringExtra(EXTRA_CHECK_TOKEN))
+                .putExtra(EXTRA_CHECK_LINK, intent.getStringExtra(EXTRA_CHECK_LINK))
         } else {
             // Back to the first screen, not straight into the app's JavaScript.
             restart.putExtra(HotUpdaterSandboxActivity.EXTRA_OVER_APP, true)

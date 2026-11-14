@@ -486,16 +486,16 @@ internal class HotUpdaterSandboxCoordinator(
     /**
      * Keeps what the last launch left, for a launch that started without the
      * screen: the next screen tells it, once that launch's evidence is gone.
-     * [linkWaits]: the sandbox restarted the app for a link that waits for a
-     * server, so this process looks for the app's answer and asks over the app.
+     * [linkUrl]: the sandbox restarted the app for this link, which waits for a
+     * server, so this process looks for the app's answer and asks it over the app.
+     * Only while it's still the next link to ask.
      */
     fun noteLastLaunch(linkUrl: String? = null) {
-        val linkWaits = linkUrl != null
         scope.launch {
             // Read first: before a launch, it settles what the previous process left.
             host.selection()
             publish(state.copy(lastLaunch = settledLastLaunch(host.launchBundleId())))
-            if (!linkWaits || queue.isEmpty()) return@launch
+            if (linkUrl == null || queue.firstOrNull() != linkUrl) return@launch
             pump()
             if (state.phase is HotUpdaterSandboxPhase.Confirming) onServerAnswer()
         }
@@ -632,8 +632,9 @@ internal class HotUpdaterSandboxCoordinator(
                 // Over a running app, opening shows what it runs: what's selected waits
                 // for its launch. Before the app starts, what's selected is what opens.
                 // An app nobody has seen yet opens on what's selected, as it would have from here.
-                // One whose check ran out of time with no answer starts anew, so its check runs again.
-                val missedCheck = appCheckOver && host.isAppHidden() && !readServerConfig()
+                // After the app's time to answer ran out with no answer, opening starts it
+                // anew, seen or not, so its launch check runs again.
+                val missedCheck = appCheckOver && !host.isInSession && !readServerConfig()
                 val restarts = (launchFixed && (!host.isAppRunning() || host.isAppHidden())) || missedCheck
                 acknowledgeLastLaunch()
                 publish(reading(selection, launched))

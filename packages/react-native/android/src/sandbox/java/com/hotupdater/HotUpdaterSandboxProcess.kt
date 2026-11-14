@@ -66,7 +66,7 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
             private set
 
         private const val COVERED_START = "coveredStart"
-        private const val RESTART_FOR_LINK = "restartForLink"
+        private const val CHECK_HANDOFF = "checkHandoff"
 
         /**
          * Whether the process before this one was covering the app it started under
@@ -79,15 +79,24 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
         /** [coveredStartAtStart], once: the start's first decision takes it. */
         fun takeCoveredStartAtStart(): Boolean = coveredStartAtStart.also { coveredStartAtStart = false }
 
-        /**
-         * Whether the sandbox restarted the app while a link waited for a server, so
-         * this process asks it once the app's check answers. Read and erased at the start.
-         */
-        @Volatile
-        private var restartForLinkAtStart = false
+        /** The sandbox's restarts for a link that waits for a server, as the restarted process takes them. */
+        fun checkHandoffs(context: Context): HotUpdaterSandboxCheckHandoffs {
+            val preferences = context.applicationContext.getSharedPreferences(HotUpdaterSandboxPreferences.NAME, Context.MODE_PRIVATE)
+            return HotUpdaterSandboxCheckHandoffs(
+                read = { preferences.getString(CHECK_HANDOFF, null) },
+                write = { value ->
+                    if (value == null) {
+                        preferences.edit().remove(CHECK_HANDOFF).commit()
+                    } else {
+                        preferences.edit().putString(CHECK_HANDOFF, value).commit()
+                    }
+                },
+            )
+        }
 
-        /** [restartForLinkAtStart], once: the app's first resume takes it. */
-        fun takeRestartForLinkAtStart(): Boolean = restartForLinkAtStart.also { restartForLinkAtStart = false }
+        /** The link this process's restart handed to the app's activity the screen started, until it resumes. */
+        @Volatile
+        var hostHandoff: HotUpdaterSandboxHostHandoff? = null
 
         /**
          * Records whether a screen covers the app it started, for the next process to
@@ -96,24 +105,12 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
         fun markCoveredStart(
             context: Context,
             covering: Boolean,
-        ) = mark(context, COVERED_START, covering)
-
-        /** Records, for the next process, that the sandbox restarts the app while a link waits for a server. */
-        fun markRestartForLink(
-            context: Context,
-            linkWaits: Boolean,
-        ) = mark(context, RESTART_FOR_LINK, linkWaits)
-
-        private fun mark(
-            context: Context,
-            key: String,
-            on: Boolean,
         ) {
             val preferences = context.applicationContext.getSharedPreferences(HotUpdaterSandboxPreferences.NAME, Context.MODE_PRIVATE)
-            if (on) {
-                preferences.edit().putBoolean(key, true).commit()
-            } else if (preferences.contains(key)) {
-                preferences.edit().remove(key).commit()
+            if (covering) {
+                preferences.edit().putBoolean(COVERED_START, true).commit()
+            } else if (preferences.contains(COVERED_START)) {
+                preferences.edit().remove(COVERED_START).commit()
             }
         }
 
@@ -151,14 +148,7 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
         application?.let {
             val preferences = it.getSharedPreferences(HotUpdaterSandboxPreferences.NAME, Context.MODE_PRIVATE)
             coveredStartAtStart = preferences.getBoolean(COVERED_START, false)
-            restartForLinkAtStart = preferences.getBoolean(RESTART_FOR_LINK, false)
-            if (coveredStartAtStart || restartForLinkAtStart) {
-                preferences
-                    .edit()
-                    .remove(COVERED_START)
-                    .remove(RESTART_FOR_LINK)
-                    .commit()
-            }
+            if (coveredStartAtStart) preferences.edit().remove(COVERED_START).commit()
         }
         val shake = application?.let(::HotUpdaterSandboxShake)
         application?.registerActivityLifecycleCallbacks(
@@ -197,7 +187,10 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
                     shake?.watch(activity)
                     if (!notedLastLaunch) {
                         notedLastLaunch = true
-                        HotUpdaterSandbox.coordinator(activity).noteLastLaunch(if (takeRestartForLinkAtStart()) "" else null)
+                        // Only the activity the restart's screen started takes its link.
+                        val handoff = hostHandoff
+                        hostHandoff = null
+                        HotUpdaterSandbox.coordinator(activity).noteLastLaunch(handoff?.forFirstResume(activity.componentName.className))
                     }
                 }
 

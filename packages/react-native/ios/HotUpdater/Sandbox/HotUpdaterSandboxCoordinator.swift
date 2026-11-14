@@ -542,8 +542,9 @@ final class HotUpdaterSandboxCoordinator {
         // Over a running app, opening shows what it runs: what's selected waits for
         // its launch. Before the app starts, what's selected is what opens.
         // An app nobody has seen yet opens on what's selected, as it would have from here.
-        // One whose check ran out of time with no answer starts anew, so its check runs again.
-        let missedCheck = appCheckOver && host.isAppHidden() && !readServerConfig()
+        // After the app's time to answer ran out with no answer, opening starts it
+        // anew, seen or not, so its launch check runs again.
+        let missedCheck = appCheckOver && !host.isInSession && !readServerConfig()
         let reloads = (launchFixed && (!host.isAppRunning() || host.isAppHidden())) || missedCheck
         acknowledgeLastLaunch()
         publish(reading(selection, launched: launched))

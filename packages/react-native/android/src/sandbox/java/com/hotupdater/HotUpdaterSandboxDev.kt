@@ -415,6 +415,13 @@ internal object HotUpdaterSandboxDev {
                     .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_STORED_RELEASE, relaunch.releaseId)
             }
             HotUpdaterSandboxRelaunch.FirstScreen -> Unit
+            // Recorded before the request goes out; only the launch carrying its token takes it.
+            is HotUpdaterSandboxRelaunch.CheckLink -> {
+                val token = HotUpdaterSandboxProcess.checkHandoffs(context).issue(relaunch.url)
+                intent
+                    .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_CHECK_TOKEN, token)
+                    .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_CHECK_LINK, relaunch.url)
+            }
         }
         Log.i(TAG, "relaunching: $relaunch")
         context.applicationContext.startActivity(intent)
@@ -442,6 +449,11 @@ internal sealed class HotUpdaterSandboxRelaunch {
     ) : HotUpdaterSandboxRelaunch()
 
     object FirstScreen : HotUpdaterSandboxRelaunch()
+
+    /** Straight into the app, which asks [url] over itself once its check answers: see [HotUpdaterSandboxCheckHandoffs]. */
+    data class CheckLink(
+        val url: String,
+    ) : HotUpdaterSandboxRelaunch()
 }
 
 /**
