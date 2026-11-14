@@ -3228,6 +3228,30 @@ struct HotUpdaterSandboxStartUnderScreenTests {
     }
 
     @Test
+    func overAnAppAPersonSawReloadWhileALinkWaitsForAServerRunsTheAppAnew() async {
+        let fixture = Fixture()
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.host.appRunning = true
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.checking == false)
+        fixture.coordinator.reloadApp()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[true, true]])
+        #expect(fixture.store.pendingLinks == [link("pr-1")])
+
+        // A question on screen still holds it back.
+        let asking = Fixture()
+        asking.host.appRunning = true
+        asking.coordinator.receiveLink(link("pr-1"))
+        guard case .confirming = asking.coordinator.state.phase else {
+            Issue.record("expected the link's confirmation")
+            return
+        }
+        asking.coordinator.reloadApp()
+        #expect(asking.opens.isEmpty)
+        stop()
+    }
+
+    @Test
     func aLinkTheAppWillStartForSaysCheckingFromTheScreensFirstFrameBeforeTheFirstRead() async {
         let fixture = Fixture()
         fixture.host.serverConfig = false

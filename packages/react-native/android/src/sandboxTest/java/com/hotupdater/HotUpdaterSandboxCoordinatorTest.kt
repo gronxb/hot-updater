@@ -1811,6 +1811,27 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
+    fun `over an app a person saw, Reload while a link waits for a server runs the app anew`() {
+        val fixture = Fixture()
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        fixture.host.appRunning = true
+        fixture.coordinator.receiveLink(link("pr-1"))
+        assertEquals(false, fixture.checking)
+        fixture.coordinator.reloadApp()
+        assertEquals(listOf(true to true), fixture.opens)
+        assertEquals(listOf(link("pr-1")), fixture.store.pendingLinks)
+
+        // A question on screen still holds it back.
+        val asking = Fixture()
+        asking.host.appRunning = true
+        asking.coordinator.receiveLink(link("pr-1"))
+        assertTrue(asking.phase is HotUpdaterSandboxPhase.Confirming)
+        asking.coordinator.reloadApp()
+        assertTrue(asking.opens.isEmpty())
+        stop()
+    }
+
+    @Test
     fun `the process the sandbox restarted for a waiting link watches for the app's answer and asks over the app`() {
         val ticks = ServerTicks()
         val fixture = Fixture(pendingLinks = listOf(link("pr-1")), serverPoll = ticks::next)
