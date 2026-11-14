@@ -697,7 +697,7 @@ class HotUpdaterSandboxHomeModelTest {
             )
         assertEquals("This QR is for iOS", question?.title)
         assertEquals("Scan the Android QR code for pr-12.", question?.message)
-        assertEquals("OK", question?.accept)
+        assertEquals("Done", question?.accept)
         assertNull(question?.decline)
     }
 

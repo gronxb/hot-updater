@@ -114,14 +114,14 @@ big row to start your app.
 
 ### The screen
 
-| Part            | What it does                                                                                                            |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Big row         | Starts the bundle the next launch runs, named by the bundle: an update on the default channel isn't the built-in bundle |
-| Dev server      | Lists hosts and takes a new one. Tapping one runs its JavaScript in this build. See [Dev server](#dev-server)           |
-| Scan QR code    | iOS scans in the app. Android opens the system camera, so check that your phone's camera opens the link                 |
-| Enter a channel | A channel name or a whole link, then **Open latest**                                                                   |
-| Downloaded      | The last 10 bundles a QR code, a link, or a channel downloaded. See [Downloaded bundles](#downloaded-bundles)           |
-| Info            | The build's version, fingerprint and built-in bundle, what's selected and pending, and **Reset to built-in bundle**     |
+| Part                   | What it does                                                                                                                        |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Big row                | Starts the bundle the next launch runs, named by the bundle: an update on the default channel isn't the built-in bundle             |
+| Scan a channel QR code | iOS scans in the app. Android opens the system camera, so check that your phone's camera opens the link                             |
+| Enter a channel        | A channel name or a whole link, then **Open latest**                                                                                |
+| Downloaded             | The last 10 bundles a QR code, a link, or a channel downloaded. See [Downloaded bundles](#downloaded-bundles)                       |
+| Dev server             | The last card. Opens to the hosts you used and a new address, or shows the running one with **Exit**. See [Dev server](#dev-server) |
+| Info                   | The build's version, fingerprint and built-in bundle, what's selected and pending, and **Reset to built-in bundle**                 |
 
 Opening the screen sends your update server nothing. Starting the bundle the
 next launch runs, such as the built-in bundle, is your app's launch: its own
@@ -237,19 +237,19 @@ one of those: Hot Updater's CLI already refuses `expo-updates`, which does this.
 ## Dev server
 
 A sandbox build can run JavaScript from a dev server instead of a bundle. Start
-Metro, and enter its address on the first screen, such as `192.168.0.2:8081`. The
-screen lists addresses you used before and asks each once whether it's running.
-Addresses are entered on the device: a link can't set one.
+Metro, open **Dev server** at the end of the first screen, and enter its address,
+such as `192.168.0.2:8081`. It lists addresses you used before and asks each once
+whether it's running. Addresses are entered on the device: a link can't set one.
 
 The build loads a `dev=false` bundle and reloads when you tap **Reload**, which
 fetches it again. There's no Fast Refresh, dev menu or debugger, and changes don't
-appear until you reload. To change the address, tap **Exit dev server**, then connect
-to the new one.
+appear until you reload. To change the address, tap **Exit** on the dev server
+row, then open the new one.
 
 While a dev server runs:
 
-- `reload()` stays on the dev server. Only **Exit dev server** on the screen returns
-  to your app's bundle.
+- `reload()` stays on the dev server. Only **Exit** on the screen's dev server row
+  returns to your app's bundle.
 - A crash ends the session: the next launch is a normal one, and a crash of dev
   JavaScript is never held against a bundle.
 - An update check finds nothing, so `wrap`'s forced update can't end the session.
@@ -262,7 +262,7 @@ While a dev server runs:
   reports that channel. Plugin values live in the session, apart from your app's.
   `setCohort` still applies, since it belongs to the device.
 - A preview link asks first, then exits the dev server and asks again on your
-  app's bundle. Switching channels waits for **Exit dev server** the same way.
+  app's bundle. Switching channels waits for **Exit** the same way.
 
 On Android, the JavaScript and its assets download into the app's files, apart from
 updates, and go when a normal launch starts. Each of these replaces the process. On

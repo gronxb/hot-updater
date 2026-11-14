@@ -1,10 +1,12 @@
 package com.hotupdater
 
 import android.os.Build
+import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
@@ -59,6 +61,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -92,11 +95,16 @@ internal data class SandboxColors(
     val text: Color,
     val textSecondary: Color,
     val muted: Color,
-    val success: Color,
     val danger: Color,
+    /** Orange drawn on a surface, such as text, a focus ring, or a progress bar: darker in light mode so it reads at AA. */
+    val accentText: Color,
 ) {
+    /** The brand orange as a fill: primary buttons and the primary tile. */
     val accent = Color(0xFFF97316)
     val accentPressed = Color(0xFFEA580C)
+
+    /** What sits on `accent`: 5.88:1 on it, 4.63:1 on `accentPressed`. */
+    val onAccent = Color(0xFF1F1F1F)
 
     companion object {
         val light =
@@ -109,8 +117,8 @@ internal data class SandboxColors(
                 text = Color(0xFF000000),
                 textSecondary = Color(0xFF6C6C70),
                 muted = Color(0xFF8E8E93),
-                success = Color(0xFF34C759),
                 danger = Color(0xFFFF3B30),
+                accentText = Color(0xFFC2410C),
             )
         val dark =
             SandboxColors(
@@ -122,8 +130,8 @@ internal data class SandboxColors(
                 text = Color(0xFFFFFFFF),
                 textSecondary = Color(0xFF98989F),
                 muted = Color(0xFF8E8E93),
-                success = Color(0xFF30D158),
                 danger = Color(0xFFFF453A),
+                accentText = Color(0xFFF97316),
             )
     }
 }
@@ -159,7 +167,16 @@ internal object SandboxType {
 }
 
 internal object SandboxMotion {
-    fun <T> spring() = spring<T>(dampingRatio = 0.86f, stiffness = 320f)
+    /** The design's spring, or none while the system's animations are off (Remove animations). */
+    @Composable
+    fun <T> spring(): FiniteAnimationSpec<T> {
+        val context = LocalContext.current
+        val off =
+            remember(context) {
+                Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+            }
+        return if (off) snap() else spring(dampingRatio = 0.86f, stiffness = 320f)
+    }
 }
 
 internal val LocalSandboxColors = staticCompositionLocalOf { SandboxColors.light }
@@ -288,7 +305,7 @@ internal fun SandboxSection(
                     SandboxText(
                         action.first,
                         SandboxType.subhead,
-                        colors.accent,
+                        colors.accentText,
                         Modifier
                             .clip(RoundedCornerShape(6.dp))
                             .sandboxPressable(pressedColor = colors.fill, onClick = action.second)
@@ -333,10 +350,6 @@ internal sealed class SandboxLead {
         val resource: Int,
     ) : SandboxLead()
 
-    data class Dot(
-        val running: Boolean,
-    ) : SandboxLead()
-
     data class Primary(
         val resource: Int,
     ) : SandboxLead()
@@ -358,15 +371,6 @@ private fun SandboxLeadView(lead: SandboxLead) {
                     .background(colors.fill),
                 contentAlignment = Alignment.Center,
             ) { SandboxIcon(lead.resource, colors.textSecondary, 18.dp * scale) }
-        is SandboxLead.Dot ->
-            Box(Modifier.size(32.dp * scale), contentAlignment = Alignment.Center) {
-                Box(
-                    Modifier
-                        .size(10.dp * scale)
-                        .clip(CircleShape)
-                        .background(if (lead.running) colors.success else colors.muted),
-                )
-            }
         is SandboxLead.Primary ->
             Box(
                 Modifier
@@ -374,7 +378,7 @@ private fun SandboxLeadView(lead: SandboxLead) {
                     .clip(RoundedCornerShape(10.dp))
                     .background(colors.accent),
                 contentAlignment = Alignment.Center,
-            ) { SandboxIcon(lead.resource, Color.White, 22.dp * scale) }
+            ) { SandboxIcon(lead.resource, colors.onAccent, 22.dp * scale) }
     }
 }
 
@@ -508,7 +512,7 @@ internal fun SandboxPrimaryButton(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
-        SandboxText(title, SandboxType.headline, Color.White)
+        SandboxText(title, SandboxType.headline, colors.onAccent)
     }
 }
 
@@ -543,7 +547,7 @@ internal fun SandboxField(
         onValueChange = onValueChange,
         singleLine = true,
         textStyle = SandboxType.code.copy(color = colors.text),
-        cursorBrush = SolidColor(colors.accent),
+        cursorBrush = SolidColor(colors.accentText),
         keyboardOptions =
             KeyboardOptions(
                 autoCorrectEnabled = false,
@@ -564,15 +568,43 @@ internal fun SandboxField(
                     .heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(colors.fill)
-                    .border(if (focused) 2.dp else 0.dp, if (focused) colors.accent else Color.Transparent, RoundedCornerShape(10.dp))
+                    .border(if (focused) 2.dp else 0.dp, if (focused) colors.accentText else Color.Transparent, RoundedCornerShape(10.dp))
                     .padding(horizontal = 12.dp, vertical = 12.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                if (value.isEmpty()) SandboxText(placeholder, SandboxType.code, colors.muted)
+                if (value.isEmpty()) SandboxText(placeholder, SandboxType.code, colors.textSecondary)
                 field()
             }
         },
     )
+}
+
+/** A host used before, inside the dev server form: its address and whether it answered. */
+@Composable
+internal fun SandboxHostButton(
+    address: String,
+    status: String,
+    onClick: () -> Unit,
+) {
+    val colors = LocalSandboxColors.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(colors.fill)
+            .sandboxPressable(onClick = onClick)
+            .semantics(mergeDescendants = true) {}
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            SandboxText(address, SandboxType.code)
+            SandboxText(status, SandboxType.footnote, colors.textSecondary)
+        }
+        Spacer(Modifier.width(8.dp))
+        SandboxIcon(R.drawable.hot_updater_sandbox_chevron, colors.muted, 18.dp)
+    }
 }
 
 /** A row that opens a field and a button in its own card, on the design's spring. */
@@ -581,6 +613,8 @@ internal fun SandboxAccordion(
     lead: SandboxLead,
     title: String,
     expanded: Boolean,
+    /** Shown under the title while closed, such as a dev server that answered. */
+    value: String? = null,
     enabled: Boolean = true,
     onToggle: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
@@ -593,7 +627,7 @@ internal fun SandboxAccordion(
                 .sandboxPressable(enabled = enabled, onClick = onToggle)
                 .semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" },
         ) {
-            SandboxRowContent(lead = lead, title = title, trailing = {
+            SandboxRowContent(lead = lead, title = title, detail = value.takeIf { !expanded }, detailStyle = SandboxType.code, trailing = {
                 // The chevron points down, and turns up when open.
                 SandboxIcon(R.drawable.hot_updater_sandbox_chevron, colors.muted, 18.dp, Modifier.rotate(90f + turn))
             })
@@ -612,7 +646,7 @@ internal fun SandboxAccordion(
     }
 }
 
-/** A question, in the design's card: text buttons, the main one in accent, a destructive one in danger. */
+/** A question, in the design's card: text buttons, the main one in accentText, a destructive one in danger. */
 @Composable
 internal fun SandboxDialog(
     title: String,
@@ -646,7 +680,7 @@ internal fun SandboxDialog(
             }
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.End) {
                 if (dismiss != null) DialogButton(dismiss, colors.textSecondary, onClick = onDismiss)
-                DialogButton(confirm, if (destructive) colors.danger else colors.accent, onClick = onConfirm)
+                DialogButton(confirm, if (destructive) colors.danger else colors.accentText, onClick = onConfirm)
             }
         }
     }
@@ -675,7 +709,7 @@ internal fun SandboxActionsDialog(
                 modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 8.dp).semantics { heading() },
             )
             actions.forEach { (action, destructive, run) ->
-                DialogButton(action, if (destructive) colors.danger else colors.accent, Modifier.fillMaxWidth()) {
+                DialogButton(action, if (destructive) colors.danger else colors.accentText, Modifier.fillMaxWidth()) {
                     onDismiss()
                     run()
                 }
@@ -707,7 +741,7 @@ internal fun SandboxTextDialog(
                 SandboxText(text, SandboxType.footnote, colors.textSecondary)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                DialogButton("Close", colors.accent, onClick = onClose)
+                DialogButton("Close", colors.accentText, onClick = onClose)
             }
         }
     }

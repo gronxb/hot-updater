@@ -15,9 +15,18 @@ enum SandboxColor {
     static let text = Color(UIColor.label)
     static let textSecondary = Color(UIColor.secondaryLabel)
     static let muted = Color(UIColor.systemGray)
+    /// The brand orange as a fill: primary buttons and the primary tile.
     static let accent = Color(red: 0xF9 / 255, green: 0x73 / 255, blue: 0x16 / 255)
     static let accentPressed = Color(red: 0xEA / 255, green: 0x58 / 255, blue: 0x0C / 255)
-    static let success = Color(UIColor.systemGreen)
+    /// What sits on `accent`: 5.88:1 on it, 4.63:1 on `accentPressed`.
+    static let onAccent = Color(red: 0x1F / 255, green: 0x1F / 255, blue: 0x1F / 255)
+    /// Orange drawn on a surface, such as text, a focus ring, or a progress bar:
+    /// darker in light mode so it reads at AA (5.18:1 on white).
+    static let accentText = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0xF9 / 255, green: 0x73 / 255, blue: 0x16 / 255, alpha: 1)
+            : UIColor(red: 0xC2 / 255, green: 0x41 / 255, blue: 0x0C / 255, alpha: 1)
+    })
     static let danger = Color(UIColor.systemRed)
 }
 
@@ -60,8 +69,14 @@ enum SandboxFont {
 
 @available(iOS 16.0, *)
 enum SandboxMotion {
-    static let spring = Animation.spring(response: 0.35, dampingFraction: 0.86)
-    static let release = Animation.easeOut(duration: 0.15)
+    /// None while Reduce Motion is on: what changes then appears in place.
+    static var spring: Animation? {
+        UIAccessibility.isReduceMotionEnabled ? nil : .spring(response: 0.35, dampingFraction: 0.86)
+    }
+
+    static var release: Animation? {
+        UIAccessibility.isReduceMotionEnabled ? nil : .easeOut(duration: 0.15)
+    }
 }
 
 enum SandboxHaptic {
@@ -104,7 +119,7 @@ struct SandboxSection<Content: View>: View {
                     if let action {
                         Button(action.title, action: action.run)
                             .font(SandboxFont.subhead)
-                            .foregroundColor(SandboxColor.accent)
+                            .foregroundColor(SandboxColor.accentText)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -152,7 +167,6 @@ struct SandboxDivider: View {
 @available(iOS 16.0, *)
 enum SandboxLead {
     case icon(String)
-    case dot(Color)
     case primary(String)
 }
 
@@ -161,11 +175,9 @@ struct SandboxLeadView: View {
     let lead: SandboxLead
     @ScaledMetric(relativeTo: .body) private var scaledTile: CGFloat = 32
     @ScaledMetric(relativeTo: .body) private var scaledPrimaryTile: CGFloat = 40
-    @ScaledMetric(relativeTo: .body) private var scaledDot: CGFloat = 10
     // They grow with the text, up to where they'd crowd it.
     private var tile: CGFloat { min(scaledTile, 48) }
     private var primaryTile: CGFloat { min(scaledPrimaryTile, 56) }
-    private var dot: CGFloat { min(scaledDot, 14) }
 
     var body: some View {
         switch lead {
@@ -175,15 +187,10 @@ struct SandboxLeadView: View {
                 .foregroundColor(SandboxColor.textSecondary)
                 .frame(width: tile, height: tile)
                 .background(SandboxColor.fill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        case .dot(let color):
-            Circle()
-                .fill(color)
-                .frame(width: dot, height: dot)
-                .frame(width: tile, height: tile)
         case .primary(let name):
             Image(systemName: name)
                 .font(.system(size: primaryTile * 0.45, weight: .semibold))
-                .foregroundColor(.white)
+                .foregroundColor(SandboxColor.onAccent)
                 .frame(width: primaryTile, height: primaryTile)
                 .background(SandboxColor.accent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
@@ -329,7 +336,7 @@ struct SandboxPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(SandboxFont.button)
-            .foregroundColor(.white)
+            .foregroundColor(SandboxColor.onAccent)
             .frame(maxWidth: .infinity, minHeight: 48)
             .background(
                 configuration.isPressed ? SandboxColor.accentPressed : SandboxColor.accent,
@@ -355,7 +362,7 @@ struct SandboxBadge: View {
     }
 }
 
-/// A field, `fill` with a ring in `accent` while it's focused.
+/// A field, `fill` with a ring in `accentText` while it's focused.
 @available(iOS 16.0, *)
 struct SandboxFieldStyle: ViewModifier {
     let isFocused: Bool
@@ -368,8 +375,52 @@ struct SandboxFieldStyle: ViewModifier {
             .background(SandboxColor.fill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(SandboxColor.accent, lineWidth: isFocused ? 2 : 0)
+                    .strokeBorder(SandboxColor.accentText, lineWidth: isFocused ? 2 : 0)
             )
+    }
+}
+
+/// A host used before, inside the dev server form: its address and whether it answered.
+@available(iOS 16.0, *)
+struct SandboxHostButton: View {
+    let address: String
+    let status: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(address)
+                        .font(SandboxFont.code)
+                        .foregroundColor(SandboxColor.text)
+                    Text(status)
+                        .font(SandboxFont.footnote)
+                        .foregroundColor(SandboxColor.textSecondary)
+                }
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                SandboxChevron()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(SandboxHostButtonStyle())
+    }
+}
+
+@available(iOS 16.0, *)
+private struct SandboxHostButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                configuration.isPressed ? SandboxColor.surfacePressed : SandboxColor.fill,
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+            .animation(configuration.isPressed ? nil : SandboxMotion.release, value: configuration.isPressed)
     }
 }
 
@@ -378,6 +429,8 @@ struct SandboxFieldStyle: ViewModifier {
 struct SandboxAccordion<Content: View>: View {
     let lead: SandboxLead
     let title: String
+    /// Shown under the title while closed, such as a dev server that answered.
+    var value: String?
     let isExpanded: Bool
     var isEnabled = true
     let toggle: () -> Void
@@ -386,7 +439,12 @@ struct SandboxAccordion<Content: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             Button(action: toggle) {
-                SandboxRowContent(lead: lead, title: title) {
+                SandboxRowContent(
+                    lead: lead,
+                    title: title,
+                    detail: isExpanded ? nil : value,
+                    detailFont: SandboxFont.code
+                ) {
                     Image(systemName: "chevron.down")
                         .font(.footnote.weight(.semibold))
                         .foregroundColor(SandboxColor.muted)

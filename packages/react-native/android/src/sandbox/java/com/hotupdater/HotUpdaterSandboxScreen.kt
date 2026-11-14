@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -65,6 +67,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
@@ -127,7 +130,7 @@ internal data class HotUpdaterSandboxQuestion(
                                 Kind.REFUSED,
                                 "This link can't be read",
                                 "It isn't a link for this app.",
-                                "OK",
+                                "Done",
                                 null,
                             )
                         is HotUpdaterSandboxRefusal.InvalidChannel ->
@@ -135,7 +138,7 @@ internal data class HotUpdaterSandboxQuestion(
                                 Kind.REFUSED,
                                 "That isn't a channel name",
                                 "Check \"${refusal.channel}\" and try again.",
-                                "OK",
+                                "Done",
                                 null,
                             )
                         is HotUpdaterSandboxRefusal.OtherFingerprint ->
@@ -143,7 +146,7 @@ internal data class HotUpdaterSandboxQuestion(
                                 Kind.REFUSED,
                                 "${refusal.link.channel} needs another build",
                                 "Its native code differs from this build. Install the sandbox build for that fingerprint.",
-                                "OK",
+                                "Done",
                                 null,
                             )
                         is HotUpdaterSandboxRefusal.OtherPlatform ->
@@ -151,7 +154,7 @@ internal data class HotUpdaterSandboxQuestion(
                                 Kind.REFUSED,
                                 "This QR is for iOS",
                                 "Scan the Android QR code for ${refusal.link.channel}.",
-                                "OK",
+                                "Done",
                                 null,
                             )
                     }
@@ -349,7 +352,7 @@ internal class HotUpdaterSandboxScreen(
         onClick: () -> Unit,
     ) {
         val colors = LocalSandboxColors.current
-        val color = if (selected) colors.accent else colors.muted
+        val color = if (selected) colors.accentText else colors.textSecondary
         Column(
             Modifier
                 .weight(1f)
@@ -453,64 +456,11 @@ internal class HotUpdaterSandboxScreen(
                 }
             }
             SandboxSection(
-                "Dev server",
-                "Help" to {
-                    runCatching { activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(HELP_URL))) }
-                    Unit
-                },
-            ) {
-                SandboxCard {
-                    val running = devServer.runningDevServerHost
-                    if (running != null) {
-                        SandboxRow(
-                            SandboxLead.Dot(true),
-                            running,
-                            SandboxType.codeHeadline,
-                            devServer.lastDevServerError ?: "Dev server running",
-                        ) { devServer.reloadDevServer() }
-                        SandboxDivider()
-                        SandboxRow(SandboxLead.Icon(R.drawable.hot_updater_sandbox_exit), "Exit dev server", showsChevron = false) {
-                            devServer.exitDevServer()
-                        }
-                    } else {
-                        devServer.devServerHosts.forEach { host ->
-                            key(host.address) {
-                                SandboxRow(
-                                    SandboxLead.Dot(host.isRunning == true),
-                                    host.address,
-                                    SandboxType.codeHeadline,
-                                    when (host.isRunning) {
-                                        true -> "Dev server running"
-                                        false -> "Not running. Start your dev server, then tap to retry."
-                                        null -> "Tap to connect"
-                                    },
-                                    enabled = !home.isBusy,
-                                ) { connect(host.address) }
-                                SandboxDivider()
-                            }
-                        }
-                        Entry(
-                            id = "url",
-                            expanded = expanded,
-                            onExpand = { expanded = it },
-                            icon = R.drawable.hot_updater_sandbox_link,
-                            title = "Enter URL manually",
-                            placeholder = "192.168.0.10:8081",
-                            fieldLabel = "Dev server address",
-                            action = "Connect",
-                            keyboardType = KeyboardType.Uri,
-                            enabled = !home.isBusy,
-                            submit = ::connect,
-                        )
-                    }
-                }
-            }
-            SandboxSection(
                 "Channels",
                 footer = listOfNotNull(home.previewHint, HotUpdaterSandboxHomeModel.SWITCH_NOTE).joinToString(" "),
             ) {
                 SandboxCard {
-                    SandboxRow(SandboxLead.Icon(R.drawable.hot_updater_sandbox_qr), "Scan QR code", enabled = !home.isBusy) {
+                    SandboxRow(SandboxLead.Icon(R.drawable.hot_updater_sandbox_qr), "Scan a channel QR code", enabled = !home.isBusy) {
                         SandboxHaptic.tap(haptics)
                         openCamera()
                     }
@@ -561,6 +511,7 @@ internal class HotUpdaterSandboxScreen(
                     }
                 }
             }
+            DevServerCard(home)
             SandboxText(
                 HotUpdaterSandboxHomeModel.HINT,
                 SandboxType.footnote,
@@ -568,6 +519,89 @@ internal class HotUpdaterSandboxScreen(
                 Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
             )
+        }
+    }
+
+    /** One card at the page's end: the running dev server with Exit, or a row that opens the hosts used before, an address field, and Help. */
+    @Composable
+    private fun DevServerCard(home: HotUpdaterSandboxHomeModel) {
+        val colors = LocalSandboxColors.current
+        SandboxCard {
+            val running = devServer.runningDevServerHost
+            if (running != null) {
+                Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f).sandboxPressable { devServer.reloadDevServer() }) {
+                        SandboxRowContent(
+                            lead = SandboxLead.Icon(R.drawable.hot_updater_sandbox_link),
+                            title = "Dev server",
+                            subtitle = devServer.lastDevServerError,
+                            detail = running,
+                            detailStyle = SandboxType.code,
+                        )
+                    }
+                    Box(
+                        Modifier
+                            .fillMaxHeight()
+                            .widthIn(min = 48.dp)
+                            .sandboxPressable { devServer.exitDevServer() }
+                            .semantics { contentDescription = "Exit dev server" }
+                            .padding(horizontal = 16.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        // The button's description says what it exits.
+                        SandboxText("Exit", SandboxType.subhead, colors.accentText, Modifier.clearAndSetSemantics {})
+                    }
+                }
+            } else {
+                val hosts = devServer.devServerHosts
+                Entry(
+                    id = "url",
+                    expanded = expanded,
+                    onExpand = { expanded = it },
+                    icon = R.drawable.hot_updater_sandbox_link,
+                    title = "Dev server",
+                    placeholder = "192.168.0.10:8081",
+                    fieldLabel = "Dev server address",
+                    action = "Open",
+                    keyboardType = KeyboardType.Uri,
+                    enabled = !home.isBusy,
+                    value = hosts.firstOrNull { it.isRunning == true }?.address,
+                    above =
+                        if (hosts.isEmpty()) {
+                            null
+                        } else {
+                            {
+                                hosts.forEach { host ->
+                                    key(host.address) {
+                                        SandboxHostButton(
+                                            host.address,
+                                            when (host.isRunning) {
+                                                true -> "Running"
+                                                false -> "Not running. Start your dev server, then tap to retry."
+                                                null -> "Tap to open"
+                                            },
+                                        ) { connect(host.address) }
+                                    }
+                                }
+                            }
+                        },
+                    below = {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .sandboxPressable(pressedColor = colors.fill) {
+                                    runCatching { activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(HELP_URL))) }
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            SandboxText("Help", SandboxType.subhead, colors.accentText)
+                        }
+                    },
+                    submit = ::connect,
+                )
+            }
         }
     }
 
@@ -584,6 +618,9 @@ internal class HotUpdaterSandboxScreen(
         action: String,
         keyboardType: KeyboardType,
         enabled: Boolean,
+        value: String? = null,
+        above: (@Composable ColumnScope.() -> Unit)? = null,
+        below: (@Composable ColumnScope.() -> Unit)? = null,
         submit: (String) -> Unit,
     ) {
         val haptics = LocalView.current
@@ -633,6 +670,7 @@ internal class HotUpdaterSandboxScreen(
             SandboxAccordion(
                 lead = SandboxLead.Icon(icon),
                 title = title,
+                value = value,
                 expanded = isOpen,
                 enabled = enabled,
                 onToggle = {
@@ -641,10 +679,12 @@ internal class HotUpdaterSandboxScreen(
                     onExpand(if (isOpen) null else id)
                 },
             ) {
+                above?.invoke(this)
                 SandboxField(text, { typed[id] = it }, placeholder, fieldLabel, keyboardType, field, send)
                 Box(Modifier.bringIntoViewRequester(button)) {
                     SandboxPrimaryButton(action, enabled = text.isNotBlank(), onClick = send)
                 }
+                below?.invoke(this)
             }
         }
     }
@@ -733,7 +773,7 @@ internal class HotUpdaterSandboxScreen(
                             Modifier
                                 .fillMaxWidth(progress.toFloat().coerceIn(0f, 1f))
                                 .fillMaxHeight()
-                                .background(colors.accent),
+                                .background(colors.accentText),
                         )
                     }
                 }
@@ -908,7 +948,7 @@ internal class HotUpdaterSandboxScreen(
             SandboxDialog(
                 title = title,
                 message = message,
-                confirm = "OK",
+                confirm = "Done",
                 dismissible = true,
                 onConfirm = { notice = null },
                 onDismiss = { notice = null },

@@ -418,7 +418,7 @@ struct HotUpdaterSandboxQuestion: Equatable {
                 title = "This QR is for Android"
                 message = "Scan the iPhone QR code for \(link.channel)."
             }
-            accept = "OK"
+            accept = "Done"
             decline = nil
         case .failed(_, let target, _, let failure, let selection):
             kind = .failed

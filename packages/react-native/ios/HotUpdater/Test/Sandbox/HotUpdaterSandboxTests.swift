@@ -2563,7 +2563,7 @@ struct HotUpdaterSandboxHomeModelTests {
         let question = HotUpdaterSandboxQuestion(phase: .refused(.otherPlatform(link: android)), isOverApp: false)
         #expect(question?.title == "This QR is for Android")
         #expect(question?.message == "Scan the iPhone QR code for pr-12.")
-        #expect(question?.accept == "OK")
+        #expect(question?.accept == "Done")
         #expect(question?.decline == nil)
     }
 

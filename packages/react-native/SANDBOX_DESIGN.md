@@ -30,12 +30,19 @@ elevated dark surfaces come for free. Android uses the hex values.
 | muted          | `#8E8E93` | `#8E8E93` | `systemGray`                         |
 | accent         | `#F97316` | `#F97316` | the same hex                         |
 | accentPressed  | `#EA580C` | `#EA580C` | the same hex                         |
-| onAccent       | `#FFFFFF` | `#FFFFFF` | `white`                              |
-| success        | `#34C759` | `#30D158` | `systemGreen`                        |
+| accentText     | `#C2410C` | `#F97316` | the same hexes, by trait             |
+| onAccent       | `#1F1F1F` | `#1F1F1F` | the same hex                         |
 | danger         | `#FF3B30` | `#FF453A` | `systemRed`                          |
 
 `fill` backs fields, badges, neutral icon tiles, and the monogram of an app
-without an icon. `muted` is for chevrons, placeholders, and idle status dots.
+without an icon. `muted` is for chevrons. Placeholders are `textSecondary`, which reads at AA
+on `fill`.
+
+`accent` is the brand orange as a fill, under `onAccent` (5.88:1). Orange
+drawn on a surface, such as text, a ring, a bar or the selected tab, is
+`accentText`, which is darker in light mode so it reads at AA (5.18:1 on
+white). `text` and `textSecondary` stay the platform's label colors, so they
+follow dark mode and Increase Contrast.
 
 ### Type
 
@@ -75,13 +82,12 @@ A 4-point grid, in points on iOS and `dp` on Android.
 | leadGap        | 12    | from a row's leading slot to its text             |
 | tile           | 32    | a row's icon tile, radius 8                       |
 | primaryTile    | 40    | the primary row's tile, radius 10                 |
-| dot            | 10    | a status dot                                      |
 | appIcon        | 56    | the header's app icon, radius 13                  |
 | cardRadius     | 12    | cards                                             |
 | control        | 48    | buttons and fields, radius 10                     |
-| focusRing      | 2     | a focused field's ring, in `accent`               |
+| focusRing      | 2     | a focused field's ring, in `accentText`           |
 
-Icon tiles, the dot, and the app icon scale with the text size.
+Icon tiles and the app icon scale with the text size.
 
 ### Motion
 
@@ -94,6 +100,10 @@ once the card has opened, so the keyboard is its own second motion.
 A pressed row or button changes its background at once and eases it back in
 150 ms.
 
+With Reduce Motion on iOS, or animations off on Android (an animator duration
+scale of 0), nothing springs: a card opens and closes in place, and the
+chevron turns at once.
+
 ## Components
 
 **Header.** The app icon at `appIcon`, with a hairline border in `separator`.
@@ -103,7 +113,7 @@ circular close button in `fill` with an `xmark` in `textSecondary`, labelled
 "Back to the app".
 
 **Section.** A `label` in `textSecondary`, with an optional action on the
-right in `subhead` `accent`, such as **Help** or **Clear**. Then a card, then
+right in `subhead` `accentText`, such as **Clear**. Then a card, then
 an optional footer in `footnote` `textSecondary`.
 
 **Card.** `surface`, `cardRadius`, no shadow. Rows inside are divided by a
@@ -113,18 +123,19 @@ hairline in `separator`, inset to where the row's text starts.
 `textSecondary`, and an optional detail in `footnote` `textSecondary`. A
 chevron in `muted` when it opens something. Pressed, its background turns
 `surfacePressed`. Disabled, it's at 40% opacity. The leading slot holds an icon
-tile in `fill` with the glyph in `textSecondary`, or a status dot.
+tile in `fill` with the glyph in `textSecondary`.
 
 **Primary row.** The row that opens or reloads the app. Its tile is
-`primaryTile` in `accent`, with a white glyph: play, or reload.
+`primaryTile` in `accent`, with the glyph in `onAccent`: play, or reload.
 
-**Accordion.** A row whose chevron points down and turns up when open. Open,
-it shows a field and a primary button, 12 apart, inside the same card, with
+**Accordion.** A row whose chevron points down and turns up when open. Closed,
+it can show a value in `code` `textSecondary` as its detail line. Open, it
+shows a field and a primary button, 12 apart, inside the same card, with
 `gutter` around them. One accordion is open at a time. Its state is spoken:
 "Expanded" or "Collapsed".
 
 **Field.** `fill`, `control` tall, radius 10, `body` text, the placeholder in
-`muted`. Focused, a `focusRing` in `accent`.
+`textSecondary`. Focused, a `focusRing` in `accentText`.
 
 **Primary button.** `accent`, `control` tall, radius 10, `headline` in
 `onAccent`. Pressed, `accentPressed`. Disabled, 40% opacity.
@@ -135,7 +146,7 @@ text, with no leading slot. It always asks first.
 **Badge.** A capsule in `fill`, 8 by 2 padding, `badge` in `textSecondary`.
 
 **Status.** A card with the text in `body`, and while a download reports it, a
-4-point bar in `accent` over `fill`.
+4-point bar in `accentText` over `fill`.
 
 **Crash banner.** A card, not a colored one: a warning triangle in `danger`,
 the text in `body`, and when the crashed bundle stays selected, a destructive
@@ -150,15 +161,26 @@ iOS, the dialog card on Android. The footer gives the count and size, or, while
 empty, what the list is for. A stored bundle running puts **Back to current
 bundle** under the primary row.
 
-**Tabs.** Home and Info. The selected tab is `accent`, the other `muted`.
+**Tabs.** Home and Info. The selected tab is `accentText`, the other
+`textSecondary`.
 
 ## Screens
 
 **Home.** The header, then a status and a crash banner when there is one. Then
-the primary row under the label the model gives it, the Dev server section,
-the Channels section with **Scan QR code** and the **Enter a channel**
-accordion, and the Downloaded list under **Downloaded**. The hint to shake the
-device ends the page.
+the primary row under the label the model gives it, the Channels section with
+**Scan a channel QR code** and the **Enter a channel** accordion, the
+Downloaded list under **Downloaded**, and the dev server card. The hint to
+shake the device ends the page.
+
+**Dev server card.** One card with no section label, after Downloaded. With
+no dev server running, it's an accordion titled **Dev server** with a link
+tile; closed, its value is the first saved host that answered. Open, it lists
+the saved hosts as `fill` buttons, `control` tall, with the host in `code` and
+its state in `footnote` (**Running**, "Not running…", **Tap to open**), then
+the address field, **Open**, and a **Help** text button in `accentText`. With a
+dev server running, it's one row: **Dev server** with the host in `code` (and
+the last error as the subtitle), which reloads, and a text button **Exit** in
+`accentText`, labelled "Exit dev server".
 
 **Info.** The title, the Build and Bundle cards of name and value rows, and the
 destructive row **Reset to built-in bundle** with the note under it, and
@@ -187,4 +209,4 @@ Each platform keeps its own:
 - **Android:** system back and predictive back, edge-to-edge with insets, the
   pressed state above, haptics through `performHapticFeedback`, the font scale,
   and TalkBack descriptions. Questions use the same card as a dialog, with
-  text buttons: the main one in `accent`, a destructive one in `danger`.
+  text buttons: the main one in `accentText`, a destructive one in `danger`.
