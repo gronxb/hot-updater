@@ -557,7 +557,10 @@ final class HotUpdaterSandboxCoordinator {
 
     /// Runs the app again from the screen over it: the bundle a launch selects now.
     func reloadApp() {
-        guard canStart else { return }
+        // A link waiting for a server holds nothing back: the app's new start checks again.
+        var waitsForServer = false
+        if case .waitingForServer = state.phase { waitsForServer = true }
+        guard canStart || waitsForServer else { return }
         if let stored = host.storedSessionBundleId {
             openDownloaded(stored)
             return

@@ -96,7 +96,7 @@ internal object HotUpdaterSandbox {
         context: Context,
         activity: Activity?,
     ) {
-        Log.i(TAG, "restarting to apply the switch")
+        Log.i(TAG, "restarting the app")
         // This restart opens the app on purpose: the next process doesn't come back to the screen.
         HotUpdaterSandboxProcess.markCoveredStart(context, false)
         // A link still waiting for a server is asked over the app once its new start's check answers.

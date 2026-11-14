@@ -639,7 +639,8 @@ internal class HotUpdaterSandboxCoordinator(
 
     /** Runs the app again from the screen over it: the bundle a launch selects now. */
     fun reloadApp() {
-        if (!canStart()) return
+        // A link waiting for a server holds nothing back: the app's new start checks again.
+        if (!canStart() && state.phase !is HotUpdaterSandboxPhase.WaitingForServer) return
         host.storedSessionBundleId?.let {
             openDownloaded(it)
             return
