@@ -1090,8 +1090,7 @@ internal class HotUpdaterSandboxCoordinator(
             state.selection == null && state.lastLaunch == null && store.lastLaunch == null && canStartAppToCheck()
         }
 
-    private fun canStartAppToCheck() =
-        listeners.isNotEmpty() && !host.isInSession && !host.isAppRunning() && host.canStartAppUnderScreen()
+    private fun canStartAppToCheck() = listeners.isNotEmpty() && !host.isInSession && !host.isAppRunning() && host.canStartAppUnderScreen()
 
     /**
      * A link waits for a server, and nothing has run the app's check: the app starts

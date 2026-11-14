@@ -153,7 +153,11 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
             coveredStartAtStart = preferences.getBoolean(COVERED_START, false)
             restartForLinkAtStart = preferences.getBoolean(RESTART_FOR_LINK, false)
             if (coveredStartAtStart || restartForLinkAtStart) {
-                preferences.edit().remove(COVERED_START).remove(RESTART_FOR_LINK).commit()
+                preferences
+                    .edit()
+                    .remove(COVERED_START)
+                    .remove(RESTART_FOR_LINK)
+                    .commit()
             }
         }
         val shake = application?.let(::HotUpdaterSandboxShake)
