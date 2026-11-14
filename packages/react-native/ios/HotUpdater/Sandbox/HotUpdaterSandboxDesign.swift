@@ -16,11 +16,10 @@ enum SandboxColor {
             ? UIColor(red: 0x2C / 255, green: 0x2C / 255, blue: 0x2E / 255, alpha: 1)
             : UIColor(red: 0xEF / 255, green: 0xEF / 255, blue: 0xF4 / 255, alpha: 1)
     })
-    static let fill = Color(UIColor.tertiarySystemFill)
-    /// `fill` as an opaque color, Android's hexes: a pressed text or icon action
-    /// sits on it, so its AA pair doesn't depend on what's underneath
-    /// (`accentText` 4.52:1 light, 4.97:1 dark; `dangerText` 5.27:1, 4.94:1).
-    static let pressedFill = Color(UIColor { traits in
+    /// Opaque, Android's hexes, not the translucent `tertiarySystemFill`: text
+    /// sits on it (badges, fields, saved hosts, pressed text actions), so its AA
+    /// pair can't depend on what's underneath, such as a held row.
+    static let fill = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark
             ? UIColor(red: 0x2C / 255, green: 0x2C / 255, blue: 0x2E / 255, alpha: 1)
             : UIColor(red: 0xEF / 255, green: 0xEF / 255, blue: 0xF4 / 255, alpha: 1)
@@ -235,14 +234,14 @@ struct SandboxLeadView: View {
     }
 }
 
-/// A text or icon action's look: pressed, `pressedFill` behind it, under which
+/// A text or icon action's look: pressed, `fill` behind it, under which
 /// `accentText` still reads at AA.
 @available(iOS 16.0, *)
 struct SandboxTextButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(
-                configuration.isPressed ? SandboxColor.pressedFill : Color.clear,
+                configuration.isPressed ? SandboxColor.fill : Color.clear,
                 in: RoundedRectangle(cornerRadius: 8, style: .continuous)
             )
             .animation(configuration.isPressed ? nil : SandboxMotion.release, value: configuration.isPressed)

@@ -612,7 +612,7 @@ internal class HotUpdaterSandboxScreen(
                                 .fillMaxWidth()
                                 .heightIn(min = 48.dp)
                                 .clip(RoundedCornerShape(10.dp))
-                                .sandboxPressable(pressedColor = colors.fill, onClick = ::openHelp),
+                                .sandboxPressable(enabled = !home.isBusy, pressedColor = colors.fill, onClick = ::openHelp),
                             contentAlignment = Alignment.Center,
                         ) {
                             SandboxText("Help", SandboxType.subhead, colors.accentText)

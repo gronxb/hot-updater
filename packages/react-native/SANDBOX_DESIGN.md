@@ -23,7 +23,7 @@ elevated dark surfaces come for free. Android uses the hex values.
 | background     | `#F2F2F7` | `#000000` | `systemGroupedBackground`            |
 | surface        | `#FFFFFF` | `#1C1C1E` | `secondarySystemGroupedBackground`   |
 | surfacePressed | `#EFEFF4` | `#2C2C2E` | the same hexes, by trait             |
-| fill           | `#EFEFF4` | `#2C2C2E` | `tertiarySystemFill` on `surface`    |
+| fill           | `#EFEFF4` | `#2C2C2E` | the same hexes, by trait             |
 | separator      | `#C6C6C8` | `#38383A` | `separator`                          |
 | text           | `#000000` | `#FFFFFF` | `label`                              |
 | textSecondary  | `#6C6C70` | `#98989F` | the same hexes; `secondaryLabel` at high contrast |
@@ -45,7 +45,8 @@ drawn on a surface, such as text, a ring, a bar or the selected tab, is
 white). `danger` is for the warning icon; a destructive action's text is
 `dangerText`, which reads at AA on a surface and pressed. A text or icon
 action presses to `fill`, opaque on both platforms (iOS draws the hexes, not
-`tertiarySystemFill`), under which `accentText` reads at 4.52:1 light and
+the translucent `tertiarySystemFill`, so a badge or field keeps its pair on a
+held row), under which `accentText` reads at 4.52:1 light and
 4.97:1 dark. A pressed row is `surfacePressed`, under which `textSecondary`
 reads at 4.56:1 light and 4.86:1 dark.
 
