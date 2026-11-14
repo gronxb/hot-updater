@@ -22,7 +22,7 @@ elevated dark surfaces come for free. Android uses the hex values.
 | -------------- | --------- | --------- | ------------------------------------ |
 | background     | `#F2F2F7` | `#000000` | `systemGroupedBackground`            |
 | surface        | `#FFFFFF` | `#1C1C1E` | `secondarySystemGroupedBackground`   |
-| surfacePressed | `#E5E5EA` | `#2C2C2E` | `systemGray5`                        |
+| surfacePressed | `#EFEFF4` | `#2C2C2E` | the same hexes, by trait             |
 | fill           | `#EFEFF4` | `#2C2C2E` | `tertiarySystemFill` on `surface`    |
 | separator      | `#C6C6C8` | `#38383A` | `separator`                          |
 | text           | `#000000` | `#FFFFFF` | `label`                              |
@@ -47,7 +47,8 @@ white). `danger` is for the warning icon; a destructive action's text is
 action presses to `fill`, opaque on both platforms (iOS draws the hexes, not
 `tertiarySystemFill`), under which `accentText` reads at 4.52:1 light and
 4.97:1 dark.
-`text` and `textSecondary` stay the platform's label colors, so they follow
+A pressed row is `surfacePressed`, under which `textSecondary` reads at
+4.56:1 light and 4.86:1 dark. `text` and `textSecondary` stay the platform's label colors, so they follow
 dark mode and Increase Contrast.
 
 ### Type
@@ -183,7 +184,9 @@ shake the device ends the page.
 no dev server running, it's an accordion titled **Dev server** with a link
 tile; closed, its value is the first saved host that answered. Open, it lists
 the saved hosts as `fill` buttons, `control` tall, with the host in `code` and
-its state in `footnote` (**Running**, "Not running…", **Tap to open**), then
+its state in `footnote` (**Running**, "Not running…", **Tap to open**); a held
+host turns `surface`, the card's own color, since no shade darker than `fill`
+keeps `textSecondary` at AA. Then
 the address field, **Open**, and a **Help** text button in `accentText`. While
 Home is busy, all of them are disabled. With a dev server running, it's one
 row: **Dev server** with the host in `code` (and the last error as the

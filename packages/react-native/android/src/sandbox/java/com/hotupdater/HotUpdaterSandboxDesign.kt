@@ -119,7 +119,7 @@ internal data class SandboxColors(
             SandboxColors(
                 background = Color(0xFFF2F2F7),
                 surface = Color(0xFFFFFFFF),
-                surfacePressed = Color(0xFFE5E5EA),
+                surfacePressed = Color(0xFFEFEFF4),
                 fill = Color(0xFFEFEFF4),
                 separator = Color(0xFFC6C6C8),
                 text = Color(0xFF000000),
@@ -638,7 +638,9 @@ internal fun SandboxHostButton(
             .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(colors.fill)
-            .sandboxPressable(enabled = enabled, onClick = onClick)
+            // It rests on `fill`, so it presses to the card's own `surface`: no
+            // shade darker than `fill` keeps `textSecondary` at AA.
+            .sandboxPressable(enabled = enabled, pressedColor = colors.surface, onClick = onClick)
             .semantics(mergeDescendants = true) {}
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

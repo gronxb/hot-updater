@@ -9,7 +9,13 @@ import UIKit
 enum SandboxColor {
     static let background = Color(UIColor.systemGroupedBackground)
     static let surface = Color(UIColor.secondarySystemGroupedBackground)
-    static let surfacePressed = Color(UIColor.systemGray5)
+    /// A pressed row: light enough that `textSecondary` stays at AA on it
+    /// (4.56:1 light, 4.86:1 dark).
+    static let surfacePressed = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0x2C / 255, green: 0x2C / 255, blue: 0x2E / 255, alpha: 1)
+            : UIColor(red: 0xEF / 255, green: 0xEF / 255, blue: 0xF4 / 255, alpha: 1)
+    })
     static let fill = Color(UIColor.tertiarySystemFill)
     /// `fill` as an opaque color, Android's hexes: a pressed text or icon action
     /// sits on it, so its AA pair doesn't depend on what's underneath
@@ -453,7 +459,9 @@ private struct SandboxHostButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(
-                configuration.isPressed ? SandboxColor.surfacePressed : SandboxColor.fill,
+                // It rests on `fill`, so it presses to the card's own `surface`:
+                // no shade darker than `fill` keeps `textSecondary` at AA.
+                configuration.isPressed ? SandboxColor.surface : SandboxColor.fill,
                 in: RoundedRectangle(cornerRadius: 10, style: .continuous)
             )
             .animation(configuration.isPressed ? nil : SandboxMotion.release, value: configuration.isPressed)
