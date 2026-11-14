@@ -54,13 +54,16 @@ const missingMysqlIndexes = async (
     sql: "SELECT DISTINCT TABLE_NAME AS t, INDEX_NAME AS i FROM information_schema.statistics WHERE TABLE_SCHEMA = DATABASE()",
     params: [],
   });
-  const present = new Set(rows.map(({ t, i }) => JSON.stringify([t, i])));
+  // MySQL compares index names, and with lower_case_table_names table names,
+  // without case, and reports them folded: compare both folded.
+  const folded = (table: unknown, index: unknown) =>
+    JSON.stringify([String(table).toLowerCase(), String(index).toLowerCase()]);
+  const present = new Set(rows.map(({ t, i }) => folded(t, i)));
   return flatten(
     sqlTableShapes("mysql", [...schema.tables, SETTINGS_TABLE], tablePrefix),
   ).flatMap((shape) =>
     shape.indexes.flatMap((index) =>
-      index.kind === "index" &&
-      !present.has(JSON.stringify([shape.name, index.name]))
+      index.kind === "index" && !present.has(folded(shape.name, index.name))
         ? [
             `CREATE ${index.unique ? "UNIQUE " : ""}INDEX ${quote(index.name)} ON ${quote(shape.name)} (${index.columns.map(quote).join(", ")})`,
           ]
