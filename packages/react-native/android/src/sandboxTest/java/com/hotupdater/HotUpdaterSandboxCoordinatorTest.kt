@@ -1892,6 +1892,26 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
+    fun `a link that came before the screen says Checking in the screen's first render`() {
+        val fixture = Fixture()
+        fixture.host.serverConfig = false
+        fixture.host.canStartUnderScreen = true
+        // A cold link reaches the coordinator before any screen observes it.
+        fixture.coordinator.receiveLink(link("pr-1"))
+        assertEquals(false, fixture.checking)
+        val shown = ArrayList<Boolean>()
+        val stop =
+            fixture.coordinator.observe { state ->
+                (state.phase as? HotUpdaterSandboxPhase.WaitingForServer)?.let { shown += it.checking }
+            }
+        assertEquals(listOf(true), shown)
+        fixture.coordinator.refresh()
+        assertEquals(1, fixture.host.startsUnderScreen)
+        assertFalse(shown.contains(false))
+        stop()
+    }
+
+    @Test
     fun `before the first read, Checking turns into the message when the read refuses the start`() {
         // The last launch crashed: the read finds it, and nothing starts.
         val crashed = Fixture()

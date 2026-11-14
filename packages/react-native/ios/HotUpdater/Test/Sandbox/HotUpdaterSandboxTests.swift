@@ -3272,6 +3272,25 @@ struct HotUpdaterSandboxStartUnderScreenTests {
     }
 
     @Test
+    func aLinkThatCameBeforeTheScreenSaysCheckingInTheScreensFirstRender() async {
+        let fixture = Fixture()
+        fixture.host.serverConfig = false
+        fixture.host.canStartUnderScreen = true
+        // A cold link reaches the coordinator from the scene's options, before the screen.
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.checking == false)
+        var shown: [Bool] = []
+        let stop = fixture.coordinator.observe { state in
+            if case .waitingForServer(_, let checking) = state.phase { shown.append(checking) }
+        }
+        #expect(shown == [true])
+        await fixture.coordinator.refresh()
+        #expect(fixture.host.startsUnderScreen == 1)
+        #expect(!shown.contains(false))
+        stop()
+    }
+
+    @Test
     func beforeTheFirstReadCheckingTurnsIntoTheMessageWhenTheReadRefusesTheStart() async {
         // The last launch crashed: the read finds it, and nothing starts.
         let crashed = Fixture()
