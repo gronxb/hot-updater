@@ -1,5 +1,19 @@
 # hot-updater
 
+## 1.1.16
+
+### Patch Changes
+
+- Updated dependencies [df8792a]
+  - @hot-updater/plugin-core@1.1.16
+  - @hot-updater/android-helper@1.1.16
+  - @hot-updater/apple-helper@1.1.16
+  - @hot-updater/cli-tools@1.1.16
+  - @hot-updater/console@1.1.16
+  - @hot-updater/server@1.1.16
+  - @hot-updater/bsdiff@1.1.16
+  - @hot-updater/protocol@1.1.16
+
 ## 1.1.15
 
 ### Patch Changes
