@@ -16,9 +16,16 @@ import org.json.JSONObject
  */
 internal class HotUpdaterSandboxLiveHost(
     context: Context,
+    /** Main's SDK: the app's, or a test's over its own directories. */
+    private val mainImpl: () -> HotUpdaterImpl = { HotUpdater.getInstance(context.applicationContext) },
+    /** What the previous process's crash left, read before anything settled it. */
+    private val crashMarkerAtStart: () -> PendingCrashRecovery? = { HotUpdaterSandboxProcess.crashMarkerAtStart },
+    private val appRunning: () -> Boolean = { HotUpdaterSandboxProcess.hostActivities > 0 },
+    private val canStartUnderScreen: () -> Boolean = HotUpdaterSandbox::canStartHostUnderScreen,
+    private val startUnderScreen: () -> Unit = HotUpdaterSandbox::startHostUnderScreen,
 ) : HotUpdaterSandboxHost {
     private val context = context.applicationContext
-    private val impl get() = HotUpdater.getInstance(context)
+    private val impl get() = mainImpl()
 
     private fun config() = RecoveryCheckConfig.parse(impl.getStorageItem(RecoveryCheckConfig.KEY))
 
@@ -105,11 +112,11 @@ internal class HotUpdaterSandboxLiveHost(
             withContext(Dispatchers.IO) { impl.getBundleIdForUpdateCheck() ?: HotUpdaterImpl.getMinBundleId() }
         }
 
-    override fun isAppRunning(): Boolean = HotUpdaterSandboxProcess.hostActivities > 0
+    override fun isAppRunning(): Boolean = appRunning()
 
-    override fun canStartAppUnderScreen(): Boolean = HotUpdaterSandbox.canStartHostUnderScreen()
+    override fun canStartAppUnderScreen(): Boolean = canStartUnderScreen()
 
-    override fun startAppUnderScreen() = HotUpdaterSandbox.startHostUnderScreen()
+    override fun startAppUnderScreen() = startUnderScreen()
 
     override fun launchEvidence(): HotUpdaterSandboxLaunchEvidence {
         val builtIn = HotUpdaterImpl.getMinBundleId()
@@ -118,7 +125,7 @@ internal class HotUpdaterSandboxLiveHost(
         val from = report["fromBundleId"] as? String
         return HotUpdaterSandboxLaunchEvidence(
             marker =
-                HotUpdaterSandboxProcess.crashMarkerAtStart?.let {
+                crashMarkerAtStart()?.let {
                     HotUpdaterSandboxCrashMarker(it.launchedBundleId ?: builtIn, it.shouldRollback)
                 },
             rollback =

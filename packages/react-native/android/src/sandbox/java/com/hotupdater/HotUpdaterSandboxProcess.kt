@@ -2,29 +2,40 @@ package com.hotupdater
 
 import android.app.Activity
 import android.app.Application
-import android.content.ComponentName
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
+import com.facebook.react.ReactActivity
 import java.io.File
 import java.lang.ref.WeakReference
 
-/**
- * A host start the sandbox's screen covers: the next creation of [host] in the
- * screen's task brings that screen back on top, before the host's first frame.
- */
-internal class HotUpdaterSandboxCover(
-    val host: ComponentName,
-    val taskId: Int,
-    screen: HotUpdaterSandboxActivity,
-) {
-    private val screen = WeakReference(screen)
+/** The app's activity a screen started under itself. */
+internal class HotUpdaterSandboxLiveCoveredHost(
+    activity: Activity,
+    private val taskId: Int,
+) : HotUpdaterSandboxCoveredHost {
+    private val activity = WeakReference(activity)
 
-    fun isFrom(activity: HotUpdaterSandboxActivity) = screen.get() === activity
+    fun isActivity(other: Activity) = activity.get() === other
 
-    fun screen(): HotUpdaterSandboxActivity? = screen.get()
+    override val isGone: Boolean
+        get() = activity.get()?.let { it.isFinishing || it.isDestroyed || it.taskId != taskId } ?: true
+
+    private fun reactDelegate() = (activity.get() as? ReactActivity)?.reactDelegate
+
+    override fun resumeReact() {
+        reactDelegate()?.onHostResume()
+    }
+
+    override fun pauseReact() {
+        reactDelegate()?.onHostPause()
+    }
+
+    override fun finish() {
+        activity.get()?.finish()
+    }
 }
 
 /**
@@ -53,17 +64,18 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
         var crashMarkerAtStart: PendingCrashRecovery? = null
             private set
 
-        /** The host start a screen covers, until that host is created or the screen lets go. */
+        /** This process's one start of the app under a screen, until that screen goes for good. */
         @Volatile
-        var pendingCover: HotUpdaterSandboxCover? = null
+        var cover: HotUpdaterSandboxCover? = null
 
-        /** The app's activity a screen started under itself and covers. */
+        /** A screen recreated before its start under itself could run hands it to its successor in this task. */
         @Volatile
-        var coveredHost: WeakReference<Activity>? = null
+        var startHandoffTaskId: Int? = null
 
-        /** Lets go of [screen]'s cover, if the pending one is its. */
-        fun dropCover(screen: HotUpdaterSandboxActivity) {
-            if (pendingCover?.isFrom(screen) == true) pendingCover = null
+        /** Lets go of [screen]'s cover before the app's activity exists: the app starts uncovered. */
+        fun dropPendingCover(screen: HotUpdaterSandboxActivity) {
+            val pending = cover ?: return
+            if (pending.isOwnedBy(screen) && pending.host == null) cover = null
         }
 
         /** Main's marker, under the app's files directory. */
@@ -95,15 +107,22 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
                     if (!isHost(activity)) return
                     hostActivities += 1
                     hostStarted = true
-                    val cover = pendingCover
-                    if (cover != null && activity.componentName == cover.host && activity.taskId == cover.taskId) {
-                        pendingCover = null
-                        cover.screen()?.coverHost(activity)
+                    val pending = cover
+                    if (pending != null &&
+                        pending.host == null &&
+                        activity.componentName.className == pending.hostClassName &&
+                        activity.taskId == pending.taskId
+                    ) {
+                        pending.hostCreated(HotUpdaterSandboxLiveCoveredHost(activity, pending.taskId))
+                        (pending.owner() as? HotUpdaterSandboxActivity)?.coverHost(activity)
                     }
                 }
 
                 override fun onActivityDestroyed(activity: Activity) {
-                    if (isHost(activity)) hostActivities -= 1
+                    if (!isHost(activity)) return
+                    hostActivities -= 1
+                    val covered = cover?.host as? HotUpdaterSandboxLiveCoveredHost
+                    if (covered != null && covered.isActivity(activity)) cover?.hostDestroyed(covered)
                 }
 
                 override fun onActivityStarted(activity: Activity) = Unit
