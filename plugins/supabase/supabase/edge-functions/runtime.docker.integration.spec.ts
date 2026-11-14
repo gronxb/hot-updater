@@ -28,7 +28,9 @@ import { createHotUpdater } from "@hot-updater/server";
 import {
   apiKeys,
   createInsightsModel,
+  formatManagedPlugins,
   insights,
+  MANAGED_PLUGIN_IDS,
   remoteConfig,
   type BundleEventRow,
 } from "@hot-updater/server/plugins";
@@ -1294,6 +1296,7 @@ const writeSupabaseRuntimeFiles = async ({
     {
       BUCKET_NAME,
       FUNCTION_NAME,
+      PLUGINS: formatManagedPlugins(MANAGED_PLUGIN_IDS),
     },
   );
   const importMap = {
