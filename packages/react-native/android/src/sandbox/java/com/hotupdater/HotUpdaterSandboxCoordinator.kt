@@ -481,7 +481,7 @@ internal class HotUpdaterSandboxCoordinator(
      * Keeps what the last launch left, for a launch that started without the
      * screen: the next screen tells it, once that launch's evidence is gone.
      */
-    fun noteLastLaunch() {
+    fun noteLastLaunch(linkWaits: Boolean = false) {
         scope.launch {
             // Read first: before a launch, it settles what the previous process left.
             host.selection()
