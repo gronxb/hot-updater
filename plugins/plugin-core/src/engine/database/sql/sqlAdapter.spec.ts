@@ -369,7 +369,7 @@ describe("sql core", () => {
       (render) => render(() => "$1"),
     );
     expect(postgres).toBe(
-      'DELETE FROM "conformance_expiring" WHERE "conformance_expiring"."at" <= $1 AND ("conformance_expiring"."at", "conformance_expiring"."received", "conformance_expiring"."id") <= (SELECT b."at", b."received", b."id" FROM (SELECT i."at", i."received", i."id" FROM "conformance_expiring" i WHERE i."at" <= $1 ORDER BY i."at" ASC, i."received" ASC, i."id" ASC LIMIT 10) b ORDER BY b."at" DESC, b."received" DESC, b."id" DESC LIMIT 1)',
+      'DELETE FROM "conformance_expiring" WHERE ("conformance_expiring"."at", "conformance_expiring"."received", "conformance_expiring"."id") <= (SELECT b."at", b."received", b."id" FROM (SELECT i."at", i."received", i."id" FROM "conformance_expiring" i WHERE i."at" <= $1 ORDER BY i."at" ASC, i."received" ASC, i."id" ASC LIMIT 10) b ORDER BY b."at" DESC, b."received" DESC, b."id" DESC LIMIT 1) AND "conformance_expiring"."at" <= $1',
     );
     const [entries, rows] = pruneStatements(
       "mysql",
