@@ -1,5 +1,13 @@
 # @hot-updater/react-native
 
+## 1.1.16
+
+### Patch Changes
+
+- @hot-updater/plugin-insights@1.1.16
+  - @hot-updater/plugin-remote-config@1.1.16
+  - @hot-updater/protocol@1.1.16
+
 ## 1.1.15
 
 ### Patch Changes
