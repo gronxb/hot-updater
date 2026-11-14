@@ -54,9 +54,23 @@ inputs:
       the hot-updater-preview branch. Without it, the comment-body output has the
       comment's links and no QR code.
     default: "true"
+  deploy:
+    description: >-
+      Whether to deploy each platform's bundle. A lane that only builds, such
+      as a Simulator lane beside the ad hoc lane that deploys the iOS bundle,
+      sets it to false.
+    default: "true"
   mode:
-    description: auto (preview, or cleanup when the pull request closed), preview, or cleanup.
+    description: >-
+      auto (preview, or cleanup when the pull request closed), preview,
+      cleanup, or comment: the one comment, and its QR codes, from the lanes'
+      results.
     default: auto
+  results:
+    description: >-
+      With mode comment, a line for each lane's job: its name, its conclusion,
+      and its result output: the job id, needs.<job>.result, and
+      needs.<job>.outputs.result, separated by spaces.
   working-directory:
     description: The app's directory, which has hot-updater.config.ts.
     default: .
@@ -75,6 +89,12 @@ outputs:
   comment-body:
     description: The comment's Markdown.
     value: ${{ steps.run.outputs.comment-body }}
+  result:
+    description: >-
+      JSON of what the comment shows of this run's previews and failed
+      platforms, for a mode comment job: no download or storage URL. It is set
+      when the builds are done, also when the run then fails.
+    value: ${{ steps.run.outputs.result }}
   previews:
     description: >-
       JSON of each platform's preview: platform, target, nativeBuild (id,
@@ -170,7 +190,9 @@ runs:
         INPUT_CHANNEL: ${{ inputs.channel }}
         INPUT_CREDIT: ${{ inputs.credit }}
         INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_DEPLOY: ${{ inputs.deploy }}
         INPUT_MODE: ${{ inputs.mode }}
+        INPUT_RESULTS: ${{ inputs.results }}
         INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         INPUT_CLI: ${{ inputs.cli }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}

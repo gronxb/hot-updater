@@ -360,6 +360,7 @@ describe("no sandbox scheme", () => {
       "android-install-url",
       "comment-body",
       "previews",
+      "result",
     ]);
     expect(JSON.parse(outputs["previews"]!)[0]).not.toHaveProperty("sandbox");
     expect(written).toEqual([]);

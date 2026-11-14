@@ -257,7 +257,14 @@ describe("runAction preview", () => {
       runAction(d, env({ INPUT_PLATFORMS: "ios" }), event),
     ).rejects.toThrow("hot-updater native-build ios");
 
-    expect(outputs).toEqual({ "ios-build-log": logFile });
+    expect(outputs["ios-build-log"]).toBe(logFile);
+    // Set before the run fails, for a comment job to show the failure.
+    expect(JSON.parse(outputs["result"]!)).toEqual({
+      channel: "pr-12",
+      commitSha: event.commitSha,
+      previews: [],
+      failed: [{ platform: "ios", scheme: "simulator", deployed: false }],
+    });
     expect(d.log.info).toHaveBeenCalledWith(`Build log: ${logFile}`);
     expect(buildLogs).toHaveBeenCalledTimes(1);
     // Nothing deploys after the build fails.
@@ -579,6 +586,7 @@ describe("runAction preview", () => {
           "ios-download-url": "https://storage.example.com/build-3?sig=1",
           "ios-install-url": "npx hot-updater native-build install build-3",
           "previews": "[{"platform":"android","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-1","artifactKind":"apk","fileName":"app-release.apk"},"built":true,"bundleId":"bundle-2","installUrl":"https://console.example.com/api/native-builds/build-1/download","downloadUrl":"https://storage.example.com/build-1?sig=1"},{"platform":"ios","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-3","artifactKind":"app","fileName":"App.app.zip"},"built":true,"bundleId":"bundle-4","installUrl":"npx hot-updater native-build install build-3","downloadUrl":"https://storage.example.com/build-3?sig=1"}]",
+          "result": "{"channel":"pr-12","commitSha":"0123456789abcdef","previews":[{"platform":"android","scheme":"releaseApk","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-1","artifactKind":"apk","fileName":"app-release.apk"},"built":true,"bundleId":"bundle-2"},{"platform":"ios","scheme":"simulator","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-3","artifactKind":"app","fileName":"App.app.zip"},"built":true,"bundleId":"bundle-4"}],"failed":[]}",
         }
       `);
     });
@@ -687,6 +695,7 @@ describe("runAction preview", () => {
           "ios-download-url": "https://storage.example.com/build-1?sig=1",
           "ios-install-url": "npx hot-updater native-build install build-1",
           "previews": "[{"platform":"ios","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-1","artifactKind":"app","fileName":"App.app.zip"},"built":true,"bundleId":"bundle-2","installUrl":"npx hot-updater native-build install build-1","downloadUrl":"https://storage.example.com/build-1?sig=1"}]",
+          "result": "{"channel":"pr-12","commitSha":"0123456789abcdef","previews":[{"platform":"ios","scheme":"Ad Hoc","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-1","artifactKind":"app","fileName":"App.app.zip"},"built":true,"bundleId":"bundle-2"}],"failed":[]}",
         }
       `);
     });
@@ -746,7 +755,7 @@ describe("runAction preview", () => {
     expect(github.comment()).toBe(body);
   });
 
-  it("removes a pull request's old QR codes once it has none", async () => {
+  it("keeps a pull request's earlier QR codes, which the comment a failed run left may show, until it closes", async () => {
     const fake = fakeCli();
     const github = fakeGitHub();
     await writeQrCodes(github.github, 12, ["hu-sandbox-x://old"]);
@@ -754,7 +763,7 @@ describe("runAction preview", () => {
 
     await runAction(d, env({ INPUT_COMMENT: "true" }), event);
 
-    expect(Object.keys(github.files()!)).toEqual(["README.md"]);
+    expect(Object.keys(github.files()!)).toHaveLength(2);
   });
 
   describe("install and download outputs", () => {
@@ -1100,6 +1109,8 @@ describe("parseInputs", () => {
       testFlightGroup: null,
       credit: true,
       comment: false,
+      deploy: true,
+      results: "",
       mode: "preview",
     });
   });
@@ -1109,7 +1120,11 @@ describe("parseInputs", () => {
     [{ INPUT_CONSOLE_URL: "" }, "console-url is required."],
     [{ INPUT_CONSOLE_URL: "console.example.com" }, "console-url must be"],
     [{ INPUT_CREDIT: "no" }, "credit must be true or false."],
-    [{ INPUT_MODE: "deploy" }, "mode must be auto, preview, or cleanup."],
+    [
+      { INPUT_MODE: "deploy" },
+      "mode must be auto, preview, cleanup, or comment.",
+    ],
+    [{ INPUT_MODE: "comment" }, "mode: comment needs results"],
     [{ INPUT_ANDROID_SCHEME: "" }, "android-scheme is required"],
   ])("refuses %j", (overrides, message) => {
     expect(() => parseInputs(env(overrides), event)).toThrow(message);
