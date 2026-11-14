@@ -644,6 +644,28 @@ describe("aggregate batching", () => {
     expect(aggregateGets).toBeLessThanOrEqual(2 * groups);
   });
 
+  it("applies gauge moves that cancel across a group when the group halves to fit", async () => {
+    const reference = await setup();
+    const log = await setup({
+      batching: { mode: "log", windowMs: 60_000 },
+      maxOps: 6,
+    });
+    for (const { db, engine } of [reference, log]) {
+      await open(db, "i1", "A");
+      await engine.flush();
+      // i1 leaves A and comes back: A's and B's gauges cancel over the
+      // group, but not over its first log row alone.
+      await open(db, "i1", "B", 2);
+      await open(db, "i1", "A", 3);
+      for (let day = 4; day <= 13; day += 1) {
+        await open(db, `i${day}`, "C", day);
+      }
+      await engine.flush();
+    }
+    expect(await logRows(log.memory)).toEqual([]);
+    expect(await snapshot(log.db)).toEqual(await snapshot(reference.db));
+  });
+
   it("reads each pending log row once in a compaction, however many groups apply them", async () => {
     const store = counted(createMemoryAdapter());
     await store.adapter.migrations?.apply(batched.tables);
