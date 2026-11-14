@@ -99,6 +99,8 @@ internal object HotUpdaterSandbox {
         Log.i(TAG, "restarting to apply the switch")
         // This restart opens the app on purpose: the next process doesn't come back to the screen.
         HotUpdaterSandboxProcess.markCoveredStart(context, false)
+        // A link still waiting for a server is asked over the app once its new start's check answers.
+        HotUpdaterSandboxProcess.markRestartForLink(context, coordinator?.state?.phase is HotUpdaterSandboxPhase.WaitingForServer)
         val intent =
             Intent(context, HotUpdaterRestartActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)

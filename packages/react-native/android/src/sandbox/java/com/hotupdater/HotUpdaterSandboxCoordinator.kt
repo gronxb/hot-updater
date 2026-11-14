@@ -480,12 +480,17 @@ internal class HotUpdaterSandboxCoordinator(
     /**
      * Keeps what the last launch left, for a launch that started without the
      * screen: the next screen tells it, once that launch's evidence is gone.
+     * [linkWaits]: the sandbox restarted the app for a link that waits for a
+     * server, so this process looks for the app's answer and asks over the app.
      */
     fun noteLastLaunch(linkWaits: Boolean = false) {
         scope.launch {
             // Read first: before a launch, it settles what the previous process left.
             host.selection()
             publish(state.copy(lastLaunch = settledLastLaunch(host.launchBundleId())))
+            if (!linkWaits || queue.isEmpty()) return@launch
+            pump()
+            if (state.phase is HotUpdaterSandboxPhase.Confirming) onServerAnswer()
         }
     }
 
@@ -614,12 +619,15 @@ internal class HotUpdaterSandboxCoordinator(
         opening = true
         scope.launch {
             try {
+                expireAppCheck()
                 val selection = readSelection()
                 val launched = host.launchBundleId()
                 // Over a running app, opening shows what it runs: what's selected waits
                 // for its launch. Before the app starts, what's selected is what opens.
                 // An app nobody has seen yet opens on what's selected, as it would have from here.
-                val restarts = launchFixed && (!host.isAppRunning() || host.isAppHidden())
+                // One whose check ran out of time with no answer starts anew, so its check runs again.
+                val missedCheck = appCheckOver && host.isAppHidden() && !readServerConfig()
+                val restarts = (launchFixed && (!host.isAppRunning() || host.isAppHidden())) || missedCheck
                 acknowledgeLastLaunch()
                 publish(reading(selection, launched))
                 openApp(false, restarts)
@@ -1063,7 +1071,20 @@ internal class HotUpdaterSandboxCoordinator(
         )
     }
 
-    private fun isAppChecking() = appCheckDeadlineMs != null && !appCheckOver
+    /**
+     * The app runs its check under the screen, within its time. Before the screen's
+     * first read, a link the app is about to start for counts too, so the screen
+     * never says to open the app first.
+     */
+    private fun isAppChecking() =
+        if (appCheckDeadlineMs != null) {
+            !appCheckOver
+        } else {
+            state.selection == null && state.lastLaunch == null && store.lastLaunch == null && canStartAppToCheck()
+        }
+
+    private fun canStartAppToCheck() =
+        listeners.isNotEmpty() && !host.isInSession && !host.isAppRunning() && host.canStartAppUnderScreen()
 
     /**
      * A link waits for a server, and nothing has run the app's check: the app starts
@@ -1072,8 +1093,7 @@ internal class HotUpdaterSandboxCoordinator(
      * so a start that crashed doesn't start again.
      */
     private fun startAppToCheck() {
-        if (appCheckDeadlineMs != null || listeners.isEmpty() || state.selection == null || state.lastLaunch != null) return
-        if (host.isInSession || host.isAppRunning() || !host.canStartAppUnderScreen()) return
+        if (appCheckDeadlineMs != null || state.selection == null || state.lastLaunch != null || !canStartAppToCheck()) return
         appCheckDeadlineMs = elapsedMs() + APP_CHECK_WINDOW_MS
         log("starting the app under the screen for its check")
         host.startAppUnderScreen()
