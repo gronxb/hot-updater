@@ -160,6 +160,14 @@ export interface ReadBudgetSuiteOptions {
     /** SQL backends: the rows the database examined for the adapter's reads. */
     readonly examined?: RowsExamined;
     /**
+     * The rows each statement of the adapter's writes and prunes read, as D1
+     * bills them, since `reset`.
+     */
+    readonly written?: {
+      reset(): void;
+      rows(): Promise<readonly number[]>;
+    };
+    /**
      * Index reads return row copies without `_v`, as the key-value adapter's
      * do, so a transaction reads the rows it guards again, whole.
      */
@@ -854,6 +862,7 @@ export const setupReadBudgetTestSuite = (
 ): void => {
   describe(`${options.name} read budgets`, () => {
     let created: Awaited<ReturnType<ReadBudgetSuiteOptions["createAdapter"]>>;
+    let tables: readonly PhysicalTable[];
     let database: MeasuredDatabase;
     let seeded: Seeded;
     let writes = 0;
@@ -863,8 +872,9 @@ export const setupReadBudgetTestSuite = (
       const { insights, apiKeys, remoteConfig } =
         await import("@hot-updater/server/plugins");
       const plugins = [insights(), apiKeys(), remoteConfig()];
+      tables = [...toolingTargetOf(plugins).schema.tables, SETTINGS_TABLE];
       created = await options.createAdapter({
-        tables: [...toolingTargetOf(plugins).schema.tables, SETTINGS_TABLE],
+        tables,
         nativePageSize: NATIVE_PAGE_SIZE,
       });
       const { adapter } = created;
@@ -918,5 +928,48 @@ export const setupReadBudgetTestSuite = (
         }
       });
     }
+
+    /** Install `n`'s first event, all in one hour of day 4: the same rows each. */
+    const newInstall = (n: number) =>
+      eventOf(400 + n, {
+        install_id: `new-install-${n}`,
+        user_id: null,
+        received_at_ms: T0 + 4 * DAY + n * 1_000,
+      });
+    /** Events of later days, which no prune below reaches. */
+    const store = async (from: number, count: number) => {
+      for (let n = from; n < from + count; n += 1) {
+        await seeded.insights.recordEvent(newInstall(n));
+      }
+    };
+
+    it("record an insights event: no statement reads more than its row and the write's guard row, with 60 or 120 events stored", async (context) => {
+      const { written } = created;
+      if (written === undefined) return context.skip();
+      const most = async (n: number) => {
+        written.reset();
+        await seeded.insights.recordEvent(newInstall(n));
+        return Math.max(...(await written.rows()));
+      };
+      await store(1, 60);
+      expect(await most(61)).toBeLessThanOrEqual(2);
+      await store(62, 60);
+      expect(await most(122)).toBeLessThanOrEqual(2);
+    });
+
+    it("prune: deletes 5 expired events reading no more rows with 60 more events stored", async (context) => {
+      const { adapter, written } = created;
+      if (written === undefined) return context.skip();
+      const events = tables.find(({ name }) => name === "bundle_events")!;
+      // The 72 history events of the day before T0 are the expired ones.
+      const prune = async () => {
+        written.reset();
+        expect(await adapter.prune!(events, T0 - DAY, 5)).toBe(5);
+        return (await written.rows()).reduce((sum, rows) => sum + rows, 0);
+      };
+      const before = await prune();
+      await store(200, 60);
+      expect(await prune()).toBeLessThanOrEqual(before);
+    });
   });
 };

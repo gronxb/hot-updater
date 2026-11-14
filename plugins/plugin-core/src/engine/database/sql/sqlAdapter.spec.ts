@@ -15,10 +15,11 @@ import {
 } from "@hot-updater/test-utils/node";
 import { afterAll, describe, expect, it } from "vitest";
 
-import type { PhysicalTable } from "../../../database/adapter";
+import type { PhysicalTable, WriteOp } from "../../../database/adapter";
 import { coreSchema } from "../../db/coreDatabase";
 import {
   createSqlAdapter,
+  type SqlConnection,
   type SqlExecutor,
   type SqlStatement,
   WRITE_GUARD_TABLE,
@@ -368,7 +369,7 @@ describe("sql core", () => {
       (render) => render(() => "$1"),
     );
     expect(postgres).toBe(
-      'DELETE FROM "conformance_expiring" WHERE "conformance_expiring"."at" <= $1 AND ("conformance_expiring"."at", "conformance_expiring"."received", "conformance_expiring"."id") <= (SELECT b."at", b."received", b."id" FROM (SELECT i."at", i."received", i."id" FROM "conformance_expiring" i WHERE i."at" <= $1 ORDER BY i."at" ASC, i."received" ASC, i."id" ASC LIMIT 10) b ORDER BY b."at" DESC, b."received" DESC, b."id" DESC LIMIT 1)',
+      'DELETE FROM "conformance_expiring" WHERE ("conformance_expiring"."at", "conformance_expiring"."received", "conformance_expiring"."id") <= (SELECT b."at", b."received", b."id" FROM (SELECT i."at", i."received", i."id" FROM "conformance_expiring" i WHERE i."at" <= $1 ORDER BY i."at" ASC, i."received" ASC, i."id" ASC LIMIT 10) b ORDER BY b."at" DESC, b."received" DESC, b."id" DESC LIMIT 1) AND "conformance_expiring"."at" <= $1',
     );
     const [entries, rows] = pruneStatements(
       "mysql",
@@ -415,6 +416,233 @@ describe("sql core", () => {
       // Each row had two tag entries; the pruned rows' went with them.
       expect(await count("conformance_expiring__byTag")).toBe(4);
       sqlite?.close();
+    },
+  );
+
+  it.each([
+    ["SQLite", "transaction"],
+    ["SQLite", "batch"],
+    ["PGlite", "transaction"],
+    ["PGlite", "batch"],
+  ] as const)(
+    "reads no table whole to insert, update, or read rows, or to prune them on SQLite, on %s (%s)",
+    async (engine, mode) => {
+      const sqlite = engine === "SQLite" ? new DatabaseSync(":memory:") : null;
+      const pg = sqlite ? null : new PGlite();
+      // Small tables plan as production-sized ones: no sequential scan.
+      await pg?.exec("SET enable_seqscan = off");
+      const base = sqlite
+        ? (mode === "batch" ? sqliteBatchExecutor : sqliteExecutor)(sqlite)
+        : (mode === "batch" ? pgliteBatchExecutor : pgliteExecutor)(pg!);
+      /** Statements that read a table or an index whole, with the step. */
+      const scans: string[] = [];
+      let counting = false;
+      /** Each index's leading column, which a read must bound to seek. */
+      const leading = new Map<string, string>();
+      /**
+       * Each plan step that walks a table or an index whole, but for an
+       * ordered read its LIMIT bounds. PostgreSQL also matches an index on a
+       * later column, which still walks the whole index.
+       */
+      const explain = async (
+        connection: SqlConnection,
+        statement: SqlStatement,
+      ) => {
+        if (!counting) return;
+        const bounded = /^SELECT\b.* LIMIT \d+$/su.test(statement.sql);
+        if (sqlite) {
+          const { rows } = await connection.execute({
+            ...statement,
+            sql: `EXPLAIN QUERY PLAN ${statement.sql}`,
+          });
+          const details = rows.map(({ detail }) => String(detail));
+          // A subquery's own rows, which that subquery's reads bound.
+          const derived = details.flatMap(
+            (detail) => /^(?:CO-ROUTINE|MATERIALIZE) (\S+)/u.exec(detail) ?? [],
+          );
+          for (const detail of details) {
+            const scan = /^SCAN (\S+)( USING .*INDEX)?/u.exec(detail);
+            // A table-valued function (json_each) walks one row's value.
+            if (
+              scan &&
+              !detail.includes(" VIRTUAL TABLE") &&
+              scan[1] !== "CONSTANT" &&
+              !derived.includes(scan[1]!) &&
+              !(scan[2] && bounded)
+            ) {
+              scans.push(`${statement.sql} -- ${detail}`);
+            }
+          }
+          return;
+        }
+        const { rows } = await connection.execute({
+          ...statement,
+          sql: `EXPLAIN (FORMAT JSON) ${statement.sql}`,
+        });
+        interface PlanNode {
+          readonly "Node Type": string;
+          readonly "Relation Name"?: string;
+          readonly "Index Name"?: string;
+          readonly "Index Cond"?: string;
+          readonly Plans?: readonly PlanNode[];
+        }
+        const steps: PlanNode[] = [];
+        const walk = (node: PlanNode) => {
+          steps.push(node);
+          for (const child of node.Plans ?? []) walk(child);
+        };
+        walk((rows[0]!["QUERY PLAN"] as [{ Plan: PlanNode }])[0].Plan);
+        for (const step of steps) {
+          const type = step["Node Type"];
+          const index = step["Index Name"];
+          let whole = type === "Seq Scan";
+          if (index !== undefined) {
+            if (!leading.has(index)) {
+              const { rows: found } = await connection.execute({
+                sql: "SELECT a.attname FROM pg_index x JOIN pg_class c ON c.oid = x.indexrelid JOIN pg_attribute a ON a.attrelid = x.indrelid AND a.attnum = x.indkey[0] WHERE c.relname = $1",
+                params: [index],
+              });
+              leading.set(index, String(found[0]!.attname));
+            }
+            const column = leading.get(index)!;
+            // `((id)::text = 'a'::text)` reads `id = 'a'`.
+            const cond = step["Index Cond"]
+              ?.replaceAll(/::[a-z]+(?: precision)?/gu, "")
+              .replaceAll(/[()"]/gu, "");
+            whole =
+              cond === undefined
+                ? !bounded
+                : !new RegExp(`(?:^| )(?:\\w+\\.)?${column} [=<>]`, "u").test(
+                    cond,
+                  );
+          }
+          if (whole) {
+            scans.push(
+              `${statement.sql} -- ${type} on ${step["Relation Name"] ?? index}${index ? ` using ${index} (${step["Index Cond"]})` : ""}`,
+            );
+          }
+        }
+      };
+      const watch = (connection: SqlConnection): SqlConnection => ({
+        async execute(statement) {
+          await explain(connection, statement);
+          return connection.execute(statement);
+        },
+      });
+      const executor: SqlExecutor = {
+        ...base,
+        execute: watch(base).execute,
+        transaction: (fn) => base.transaction((tx) => fn(watch(tx))),
+        ...(base.batch && {
+          async batch(statements) {
+            for (const statement of statements) {
+              await explain(base, statement);
+            }
+            return base.batch!(statements);
+          },
+        }),
+      };
+      const tables = [
+        conformanceItems,
+        conformanceCounters,
+        conformanceExpiring,
+      ];
+      const adapter = createSqlAdapter({ executor });
+      await adapter.migrations!.apply(
+        mode === "batch" ? [...tables, WRITE_GUARD_TABLE] : tables,
+      );
+      const item = (id: string, grp: string, tags: string[]) => ({
+        id,
+        grp,
+        score: 1,
+        ratio: null,
+        flag: false,
+        label: null,
+        tags,
+        payload: null,
+        note: null,
+        _v: 0,
+      });
+      // Rows no op below touches, so a statement that reads them all shows.
+      const others = Array.from({ length: 40 }, (_, n) => `f${n}`);
+      expect(
+        await adapter.write(
+          others.flatMap((id): WriteOp[] => [
+            {
+              type: "insert",
+              table: conformanceItems,
+              row: item(id, "f", ["f", "g"]),
+            },
+            {
+              type: "insert",
+              table: conformanceExpiring,
+              row: { id, grp: "f", at: null, tags: ["f", "g"], _v: 0 },
+            },
+          ]),
+        ),
+      ).toEqual({ ok: true });
+      await pg?.exec("VACUUM ANALYZE");
+      counting = true;
+
+      expect(
+        await adapter.write([
+          {
+            type: "insert",
+            table: conformanceItems,
+            row: item("a", "g", ["x"]),
+          },
+          { type: "insert", table: conformanceItems, row: item("b", "g", []) },
+          {
+            type: "insert",
+            table: conformanceExpiring,
+            row: { id: "e", grp: "g", at: 5, tags: ["x", "y"], _v: 0 },
+          },
+          {
+            type: "increment",
+            table: conformanceCounters,
+            key: ["s", 0],
+            by: { hits: 1 },
+            init: { scope: "s", shard: 0, hits: 0, _v: 0 },
+          },
+        ]),
+      ).toEqual({ ok: true });
+      const [a] = await adapter.get(conformanceItems, [["a"]]);
+      // A patch of a column outside every index keeps the row's entries.
+      expect(
+        await adapter.write([
+          {
+            type: "patch",
+            table: conformanceItems,
+            key: ["a"],
+            set: { note: "patched" },
+            guard: { v: 0 },
+            previous: a!,
+          },
+          {
+            type: "check",
+            table: conformanceItems,
+            key: ["b"],
+            guard: { v: 0 },
+          },
+        ]),
+      ).toEqual({ ok: true });
+      for (const index of conformanceItems.indexes) {
+        await adapter.query(conformanceItems, {
+          index: index.name,
+          eq: index.eq.map((column) =>
+            column === "tags" ? "x" : column === "flag" ? false : "g",
+          ),
+          order: "asc",
+          limit: 10,
+        });
+      }
+      if (sqlite) {
+        expect(await adapter.prune!(conformanceExpiring, 10, 500)).toBe(1);
+      }
+
+      expect(scans).toEqual([]);
+      sqlite?.close();
+      await pg?.close();
     },
   );
 
