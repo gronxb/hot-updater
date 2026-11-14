@@ -69,6 +69,8 @@ protocol HotUpdaterSandboxHost: AnyObject {
     func launchBundleId() async -> String
     /// Whether the app is up under the screen, so opening it starts nothing.
     func isAppRunning() -> Bool
+    /// Whether the app runs under the screen that started it, and nobody has seen it yet.
+    func isAppHidden() -> Bool
     /// Whether this host can start the app under the screen without showing it, so
     /// its own update check can answer a waiting link.
     func canStartAppUnderScreen() -> Bool
@@ -100,6 +102,10 @@ extension HotUpdaterSandboxHost {
     }
 
     func isAppRunning() -> Bool {
+        false
+    }
+
+    func isAppHidden() -> Bool {
         false
     }
 

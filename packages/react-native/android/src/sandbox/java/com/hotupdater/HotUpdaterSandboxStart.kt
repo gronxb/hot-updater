@@ -27,6 +27,11 @@ internal data class HotUpdaterSandboxStartFacts(
     val restored: Boolean,
     /** This build's own URL scheme, or null in a build from before it was recorded. */
     val ownScheme: String? = null,
+    /**
+     * The process before this one was covering the app it started under the
+     * screen, for a waiting link, when it ended.
+     */
+    val coveredStartInterrupted: Boolean = false,
 )
 
 internal object HotUpdaterSandboxStart {

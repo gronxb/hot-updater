@@ -142,6 +142,13 @@ private final class FakeHost: HotUpdaterSandboxHost {
         MainActor.assumeIsolated { appRunning }
     }
 
+    /// The app runs under the screen that started it, unseen.
+    var appHidden = false
+
+    nonisolated func isAppHidden() -> Bool {
+        MainActor.assumeIsolated { appHidden && appRunning }
+    }
+
     /// Whether this host can start the app under the screen: off unless a test turns it on.
     var canStartUnderScreen = false
     var startsUnderScreen = 0
@@ -3113,6 +3120,43 @@ struct HotUpdaterSandboxStartUnderScreenTests {
         #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, false]])
         // The link still waits for the app's answer.
         #expect(fixture.store.pendingLinks == [link("pr-1")])
+        stop()
+    }
+
+    @Test
+    func openAfterTheHiddenAppStagedAnotherBundleRestartsOntoItAndOverAnAppAPersonSawItDoesnt() async {
+        let fixture = Fixture()
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        // The app's own check under the screen staged an update: the next launch selects it.
+        fixture.host.runningBundleId = "built-in"
+        fixture.host.bundleId = "ota"
+        await fixture.coordinator.open()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, true]], "the reload applies what's selected")
+
+        // A person has seen the app: Open shows what it runs, as before.
+        fixture.host.appHidden = false
+        await fixture.coordinator.open()
+        #expect(fixture.opens.last.map { [$0.0, $0.1] } == [false, false])
+        stop()
+    }
+
+    @Test
+    func openAfterResetUnderAHiddenAppThatRunsAnotherBundleReloadsOntoTheBuiltInBundle() async {
+        let fixture = Fixture()
+        fixture.host.bundleId = "ota"
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.host.runningBundleId = "ota"
+        fixture.host.serverConfig = true
+        fixture.coordinator.dismiss()
+        fixture.coordinator.resetToBuiltIn()
+        await settle { fixture.coordinator.state.selection?.bundleId == "built-in" }
+        #expect(fixture.coordinator.state.selection?.bundleId == "built-in")
+        await fixture.coordinator.open()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, true]])
         stop()
     }
 

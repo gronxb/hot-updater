@@ -126,6 +126,11 @@ private class FakeHost : HotUpdaterSandboxHost {
 
     override fun isAppRunning() = appRunning
 
+    /** The app runs under the screen that started it, unseen. */
+    var appHidden = false
+
+    override fun isAppHidden() = appHidden && appRunning
+
     /** Whether this host can start the app under the screen: off unless a test turns it on. */
     var canStartUnderScreen = false
     var startsUnderScreen = 0
@@ -1754,6 +1759,46 @@ class HotUpdaterSandboxCoordinatorTest {
         val failed = fixture.phase as HotUpdaterSandboxPhase.Failed
         assertEquals(HotUpdaterSandboxFailure.Superseded, failed.failure)
         assertEquals("sandbox-release", failed.selection.channel)
+        stop()
+    }
+
+    @Test
+    fun `Open after the hidden app staged another bundle restarts onto it, and over an app a person saw it doesn't`() {
+        val fixture = Fixture()
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        // The app's own check under the screen staged an update: the next launch selects it.
+        fixture.host.runningBundleId = "built-in"
+        fixture.host.bundleId = "ota"
+        fixture.coordinator.open()
+        assertEquals("the restart applies what's selected", listOf(false to true), fixture.opens)
+
+        // A person has seen the app: Open shows what it runs, as before.
+        fixture.host.appHidden = false
+        fixture.coordinator.open()
+        assertEquals(false to false, fixture.opens.last())
+        stop()
+    }
+
+    @Test
+    fun `Open after Reset under a hidden app that runs another bundle restarts onto the built-in bundle`() {
+        val fixture = Fixture()
+        fixture.host.bundleId = "ota"
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.host.runningBundleId = "ota"
+        fixture.host.serverConfig = true
+        fixture.coordinator.dismiss()
+        fixture.coordinator.resetToBuiltIn()
+        assertEquals(
+            "built-in",
+            fixture.coordinator.state.selection
+                ?.bundleId,
+        )
+        fixture.coordinator.open()
+        assertEquals(listOf(false to true), fixture.opens)
         stop()
     }
 }

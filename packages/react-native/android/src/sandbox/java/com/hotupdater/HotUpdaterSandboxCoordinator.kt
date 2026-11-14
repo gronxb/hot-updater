@@ -122,6 +122,9 @@ internal interface HotUpdaterSandboxHost {
     /** Whether the app is up under the screen, so opening it starts nothing. */
     fun isAppRunning(): Boolean = false
 
+    /** Whether the app runs under the screen that started it, and nobody has seen it yet. */
+    fun isAppHidden(): Boolean = false
+
     /**
      * Whether this host can start the app under the screen without showing it, so
      * its own update check can answer a waiting link.

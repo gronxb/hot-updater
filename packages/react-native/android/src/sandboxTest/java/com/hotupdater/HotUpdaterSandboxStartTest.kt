@@ -38,6 +38,20 @@ class HotUpdaterSandboxStartTest {
     }
 
     @Test
+    fun `the SDK's restart of an app the screen covered comes back to the screen, which asks the waiting link`() {
+        // A forced update the app's check under the screen found restarts the process.
+        val restart =
+            launcher.copy(
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK,
+                coveredStartInterrupted = true,
+            )
+        assertEquals(HotUpdaterSandboxStartDecision.SHOW_SCREEN, decide(restart))
+        // Anything else that names the app still opens it.
+        val shortcut = restart.copy(flags = 0, hasExtras = true, action = "com.example.SHORTCUT")
+        assertEquals(HotUpdaterSandboxStartDecision.OPEN_HOST, decide(shortcut))
+    }
+
+    @Test
     fun `only its own scheme's link stops, and another is the app's`() {
         val own = sandboxLink.copy(dataScheme = "acme-preview", ownScheme = "acme-preview")
         assertEquals(HotUpdaterSandboxStartDecision.SHOW_LINK, decide(own))
