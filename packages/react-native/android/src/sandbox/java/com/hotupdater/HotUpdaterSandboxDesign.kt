@@ -107,12 +107,18 @@ internal data class SandboxColors(
     /** Orange drawn on a surface, such as text, a focus ring, or a progress bar: darker in light mode so it reads at AA. */
     val accentText: Color,
 ) {
-    /** The brand orange as a fill: primary buttons and the primary tile. */
-    val accent = Color(0xFFF97316)
-    val accentPressed = Color(0xFFEA580C)
+    /**
+     * The orange fill under content: the primary tile and primary buttons. A step
+     * deeper than the brand's #F97316 so white reads on it: 3.56:1, enough for the
+     * tile's glyph and the button's large-text label.
+     */
+    val accent = Color(0xFFEA580C)
 
-    /** What sits on `accent`: 5.88:1 on it, 4.63:1 on `accentPressed`. */
-    val onAccent = Color(0xFF1F1F1F)
+    /** `accent` pressed: white is 5.18:1 on it. */
+    val accentPressed = Color(0xFFC2410C)
+
+    /** What sits on `accent`. */
+    val onAccent = Color.White
 
     companion object {
         val light =
@@ -153,6 +159,7 @@ internal object SandboxType {
             Font(R.font.hot_updater_sandbox_geist_regular, FontWeight.Normal),
             Font(R.font.hot_updater_sandbox_geist_medium, FontWeight.Medium),
             Font(R.font.hot_updater_sandbox_geist_semibold, FontWeight.SemiBold),
+            Font(R.font.hot_updater_sandbox_geist_bold, FontWeight.Bold),
         )
     private val mono =
         FontFamily(
@@ -167,6 +174,9 @@ internal object SandboxType {
 
     val title = sans(22, FontWeight.SemiBold)
     val headline = sans(17, FontWeight.SemiBold)
+
+    /** Bold at 19 is WCAG large text, so white on `accent` (3.56:1) passes. */
+    val button = sans(19, FontWeight.Bold)
     val body = sans(17, FontWeight.Normal)
     val subhead = sans(15, FontWeight.Normal)
     val footnote = sans(13, FontWeight.Normal)
@@ -554,7 +564,7 @@ internal fun SandboxPrimaryButton(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
-        SandboxText(title, SandboxType.headline, colors.onAccent)
+        SandboxText(title, SandboxType.button, colors.onAccent)
     }
 }
 

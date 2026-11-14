@@ -38,11 +38,14 @@ enum SandboxColor {
             : UIColor(red: 0x6C / 255, green: 0x6C / 255, blue: 0x70 / 255, alpha: 1)
     })
     static let muted = Color(UIColor.systemGray)
-    /// The brand orange as a fill: primary buttons and the primary tile.
-    static let accent = Color(red: 0xF9 / 255, green: 0x73 / 255, blue: 0x16 / 255)
-    static let accentPressed = Color(red: 0xEA / 255, green: 0x58 / 255, blue: 0x0C / 255)
-    /// What sits on `accent`: 5.88:1 on it, 4.63:1 on `accentPressed`.
-    static let onAccent = Color(red: 0x1F / 255, green: 0x1F / 255, blue: 0x1F / 255)
+    /// The orange fill under content: the primary tile and primary buttons. A
+    /// step deeper than the brand's #F97316 so white reads on it: 3.56:1, enough
+    /// for the tile's glyph and the button's large-text label.
+    static let accent = Color(red: 0xEA / 255, green: 0x58 / 255, blue: 0x0C / 255)
+    /// `accent` pressed: white is 5.18:1 on it.
+    static let accentPressed = Color(red: 0xC2 / 255, green: 0x41 / 255, blue: 0x0C / 255)
+    /// What sits on `accent`.
+    static let onAccent = Color.white
     /// Orange drawn on a surface, such as text, a focus ring, or a progress bar:
     /// darker in light mode so it reads at AA (5.18:1 on white).
     static let accentText = Color(UIColor { traits in
@@ -73,12 +76,13 @@ enum SandboxFont {
     static let footnote = sans(.regular, 13, .footnote)
     static let label = sans(.semibold, 13, .footnote)
     static let badge = sans(.semibold, 12, .caption)
-    static let button = sans(.semibold, 17, .headline)
+    /// Bold at 19 is WCAG large text, so white on `accent` (3.56:1) passes.
+    static let button = sans(.bold, 19, .headline)
     static let codeHeadline = mono(.medium, 15, .headline)
     static let code = mono(.regular, 15, .body)
 
     enum Weight {
-        case regular, medium, semibold
+        case regular, medium, semibold, bold
     }
 
     static func sans(_ weight: Weight, _ size: CGFloat, _ style: Font.TextStyle) -> Font {
@@ -88,6 +92,7 @@ enum SandboxFont {
         case .regular: name = "Geist-Regular"
         case .medium: name = "Geist-Medium"
         case .semibold: name = "Geist-SemiBold"
+        case .bold: name = "Geist-Bold"
         }
         return .custom(name, size: size, relativeTo: style)
     }

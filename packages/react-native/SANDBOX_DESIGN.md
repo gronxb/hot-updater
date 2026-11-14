@@ -28,10 +28,10 @@ elevated dark surfaces come for free. Android uses the hex values.
 | text           | `#000000` | `#FFFFFF` | `label`                              |
 | textSecondary  | `#6C6C70` | `#98989F` | the same hexes; `secondaryLabel` at high contrast |
 | muted          | `#8E8E93` | `#8E8E93` | `systemGray`                         |
-| accent         | `#F97316` | `#F97316` | the same hex                         |
-| accentPressed  | `#EA580C` | `#EA580C` | the same hex                         |
+| accent         | `#EA580C` | `#EA580C` | the same hex                         |
+| accentPressed  | `#C2410C` | `#C2410C` | the same hex                         |
 | accentText     | `#C2410C` | `#F97316` | the same hexes, by trait             |
-| onAccent       | `#1F1F1F` | `#1F1F1F` | the same hex                         |
+| onAccent       | `#FFFFFF` | `#FFFFFF` | `white`                              |
 | danger         | `#FF3B30` | `#FF453A` | `systemRed`                          |
 | dangerText     | `#C4161C` | `#FF6961` | the same hexes, by trait             |
 
@@ -39,7 +39,10 @@ elevated dark surfaces come for free. Android uses the hex values.
 without an icon. `muted` is for chevrons. Placeholders are `textSecondary`, which reads at AA
 on `fill`.
 
-`accent` is the brand orange as a fill, under `onAccent` (5.88:1). Orange
+`accent` is the orange fill under content, the primary tile and primary
+buttons, a step deeper than the brand's #F97316 so white `onAccent` reads on
+it: 3.56:1, enough for the tile's glyph (a graphic, 3:1) and the button's
+`button` label (WCAG large text, 3:1), and 5.18:1 on `accentPressed`. Orange
 drawn on a surface, such as text, a ring, a bar or the selected tab, is
 `accentText`, which is darker in light mode so it reads at AA (5.18:1 on
 white). `danger` is for the warning icon; a destructive action's text is
@@ -58,7 +61,7 @@ Increase Contrast on, iOS uses the system's high-contrast `secondaryLabel`.
 ### Type
 
 Geist and Geist Mono 1.8.2 (SIL Open Font License 1.1), in Regular, Medium,
-and SemiBold for Sans and Regular and Medium for Mono, ship only in a sandbox
+SemiBold and Bold for Sans and Regular and Medium for Mono, ship only in a sandbox
 build: as `src/sandbox/res/font` on Android, and on iOS as bytes in
 `HotUpdaterSandboxFonts.swift`, registered for the process at the screen's
 first use, since a pod's resources would reach every build. A script Geist
@@ -72,6 +75,7 @@ them.
 | -------- | ---- | -------- | -------------- | ------------------------------------------- |
 | title    | 22   | semibold | `title2`       | the app name, the Info title                |
 | headline | 17   | semibold | `headline`     | the primary row's title                     |
+| button   | 19   | bold     | `headline`     | primary buttons: WCAG large text on `accent` |
 | body     | 17   | regular  | `body`         | action rows, the banner, fields, Info rows  |
 | subhead  | 15   | regular  | `subheadline`  | row subtitles, dialog messages              |
 | footnote | 13   | regular  | `footnote`     | row details, section footers, the hint      |
@@ -149,7 +153,7 @@ shows a field and a primary button, 12 apart, inside the same card, with
 **Field.** `fill`, `control` tall, radius 10, `body` text, the placeholder in
 `textSecondary`. Focused, a `focusRing` in `accentText`.
 
-**Primary button.** `accent`, `control` tall, radius 10, `headline` in
+**Primary button.** `accent`, `control` tall, radius 10, `button` in
 `onAccent`. Pressed, `accentPressed`. Disabled, 40% opacity.
 
 **Destructive row.** A row whose title is `body` in `dangerText`, centered by its
