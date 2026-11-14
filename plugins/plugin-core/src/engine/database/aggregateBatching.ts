@@ -207,7 +207,7 @@ const keysOf = (changes: readonly AggregateChange[], shard: Shard) =>
 
 /**
  * The current rows of the changes that rewrite theirs (gauges and sketches),
- * read in one batch per table.
+ * each once, in one batch per table.
  */
 const readCurrent = async (
   adapter: DatabaseAdapter,
@@ -215,17 +215,19 @@ const readCurrent = async (
   shard: Shard,
 ): Promise<ReadonlyMap<string, StoredRow | null>> => {
   const keys = keysOf(changes, shard);
-  const reads = new Map<ResolvedModel, DatabaseKey[]>();
+  const reads = new Map<ResolvedModel, Map<string, DatabaseKey>>();
   changes.forEach((change, at) => {
-    if (rewrites(change)) {
-      reads.set(change.model, [...(reads.get(change.model) ?? []), keys[at]!]);
-    }
+    if (!rewrites(change)) return;
+    const wanted = reads.get(change.model) ?? new Map<string, DatabaseKey>();
+    wanted.set(rowId(change.model, keys[at]!), keys[at]!);
+    reads.set(change.model, wanted);
   });
   const current = new Map<string, StoredRow | null>();
   await Promise.all(
     [...reads].map(async ([model, wanted]) => {
-      const rows = await adapter.get(model.table, wanted);
-      wanted.forEach((key, at) => {
+      const keys = [...wanted.values()];
+      const rows = await adapter.get(model.table, keys);
+      keys.forEach((key, at) => {
         current.set(rowId(model, key), rows[at] ?? null);
       });
     }),
@@ -667,15 +669,12 @@ export const createAggregateBatches = ({
    * log rows it applied whole, or undefined when a conflict stopped it.
    */
   const applyGroup = async (held: StoredRow, logs: readonly LogRow[]) => {
-    // Every halving writes rows of these: read once for the group.
+    // Every halving writes rows of these: read once for the group, from each
+    // log row's changes, since gauge moves that cancel over the group may
+    // not cancel over the part a halving writes.
     const current = await readCurrent(
       adapter,
-      [
-        ...mergeAll(
-          new Map(),
-          logs.flatMap((entry) => [...entry.changes.values()]),
-        ).values(),
-      ],
+      logs.flatMap((entry) => [...entry.changes.values()]),
       () => 0,
     );
     const rowsFor = (changes: readonly AggregateChange[]) =>
