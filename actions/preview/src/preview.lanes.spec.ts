@@ -168,7 +168,7 @@ const fakeServer = ({
       throw new Error(`unexpected command ${args.join(" ")}`);
     });
   };
-  return { cliOf, builds, releases, calls };
+  return { cliOf, builds, releases, calls, failing };
 };
 
 const row = (build: Build) => ({
@@ -187,67 +187,97 @@ const log = () => ({
   group: <T>(_: string, body: () => Promise<T>) => body(),
 });
 
-type Lane = {
+type Job = {
   name: string;
-  platform: "android" | "ios";
-  scheme: SchemeName;
-  deploy: boolean;
+  env: Record<string, string>;
 };
 
-const LANES: Lane[] = [
-  { name: "android", platform: "android", scheme: "apk", deploy: true },
-  { name: "ios-adhoc", platform: "ios", scheme: "adhoc", deploy: true },
+/** The build lanes, which run at once, each building and deploying nothing else. */
+const LANES: Job[] = [
+  {
+    name: "android",
+    env: { INPUT_PLATFORMS: "android", INPUT_ANDROID_SCHEME: "apk" },
+  },
+  {
+    name: "ios-adhoc",
+    env: {
+      INPUT_PLATFORMS: "ios",
+      INPUT_IOS_SCHEME: "adhoc",
+      INPUT_DEPLOY: "false",
+    },
+  },
   {
     name: "ios-simulator",
-    platform: "ios",
-    scheme: "simulator",
-    deploy: false,
+    env: {
+      INPUT_PLATFORMS: "ios",
+      INPUT_IOS_SCHEME: "simulator",
+      INPUT_DEPLOY: "false",
+    },
   },
 ];
 
-/**
- * Runs each lane's job at once, as the workflow's lanes run, with
- * `comment: false`, and returns each one's outputs and failure.
- */
-const runLanes = (
+/** The job that deploys the iOS bundle once both iOS lanes are done. */
+const IOS_DEPLOY: Job = {
+  name: "ios-deploy",
+  env: {
+    INPUT_PLATFORMS: "ios",
+    INPUT_IOS_SCHEME: "adhoc, simulator",
+    INPUT_BUILD: "false",
+  },
+};
+
+type JobRun = {
+  name: string;
+  outputs: Record<string, string>;
+  error: Error | null;
+};
+
+/** Runs one job of the workflow with `comment: false`. */
+const runJob = async (
   server: ReturnType<typeof fakeServer>,
   github: ReturnType<typeof fakeGitHub>,
-) =>
-  Promise.all(
-    LANES.map(async (lane) => {
-      const outputs: Record<string, string> = {};
-      const error = await runAction(
-        {
-          cli: server.cliOf(),
-          buildLogs: vi.fn(() => []),
-          github: github.github,
-          setOutput: (name: string, value: string) => {
-            outputs[name] = value;
-          },
-          log: log(),
-        } as never,
-        {
-          INPUT_CONSOLE_URL: CONSOLE,
-          INPUT_PLATFORMS: lane.platform,
-          [`INPUT_${lane.platform.toUpperCase()}_SCHEME`]: lane.scheme,
-          INPUT_COMMENT: "false",
-          INPUT_DEPLOY: String(lane.deploy),
-        },
-        event,
-      ).then(
-        () => null,
-        (error: unknown) => error as Error,
-      );
-      return { lane, outputs, error };
-    }),
+  { name, env }: Job,
+): Promise<JobRun> => {
+  const outputs: Record<string, string> = {};
+  const error = await runAction(
+    {
+      cli: server.cliOf(),
+      buildLogs: vi.fn(() => []),
+      github: github.github,
+      setOutput: (output: string, value: string) => {
+        outputs[output] = value;
+      },
+      log: log(),
+    } as never,
+    { INPUT_CONSOLE_URL: CONSOLE, INPUT_COMMENT: "false", ...env },
+    event,
+  ).then(
+    () => null,
+    (error: unknown) => error as Error,
   );
+  return { name, outputs, error };
+};
 
-/** The `results` input: each lane's name, its job's conclusion, its result. */
-const resultsOf = (lanes: Awaited<ReturnType<typeof runLanes>>) =>
-  lanes
+/**
+ * Runs the lanes at once, as the workflow does, then the iOS deploy job
+ * that needs both iOS lanes.
+ */
+const runLanes = async (
+  server: ReturnType<typeof fakeServer>,
+  github: ReturnType<typeof fakeGitHub>,
+) => {
+  const lanes = await Promise.all(
+    LANES.map((lane) => runJob(server, github, lane)),
+  );
+  return [...lanes, await runJob(server, github, IOS_DEPLOY)];
+};
+
+/** The `results` input: each job's name, its conclusion, its result. */
+const resultsOf = (jobs: JobRun[]) =>
+  jobs
     .map(
-      ({ lane, outputs, error }) =>
-        `${lane.name} ${error ? "failure" : "success"} ${outputs["result"] ?? ""}`,
+      ({ name, outputs, error }) =>
+        `${name} ${error ? "failure" : "success"} ${outputs["result"] ?? ""}`,
     )
     .join("\n");
 
@@ -287,12 +317,12 @@ describe("lanes and a comment job", () => {
     const server = fakeServer();
     const github = fakeGitHub();
 
-    const lanes = await runLanes(server, github);
-    // No lane writes to GitHub.
+    const jobs = await runLanes(server, github);
+    // No build job writes to GitHub.
     expect(github.calls).toEqual([]);
-    expect(lanes.map(({ error }) => error)).toEqual([null, null, null]);
+    expect(jobs.map(({ error }) => error)).toEqual([null, null, null, null]);
 
-    const { error } = await runComment(github, resultsOf(lanes));
+    const { error } = await runComment(github, resultsOf(jobs));
 
     expect(error).toBeNull();
     expect(server.releases.map(({ platform }) => platform).sort()).toEqual([
@@ -324,23 +354,32 @@ describe("lanes and a comment job", () => {
     expect(body).toContain(
       `npx hot-updater native-build install ${simulator.id} --open pr-12`,
     );
-    // The Simulator lane deployed nothing: its row shows the iOS bundle.
+    // The deploy job's one iOS bundle, which both builds run.
+    expect(body).toContain(
+      `| iOS | \`${adhoc.id}\` · built for this commit | \`${FINGERPRINTS.ios.slice(0, 12)}\` | \`${iosBundle}\` |`,
+    );
     expect(body).toContain(
       `| iOS Simulator | \`${simulator.id}\` · built for this commit | \`${FINGERPRINTS.ios.slice(0, 12)}\` | \`${iosBundle}\` |`,
     );
+    expect(iosBundle > adhoc.minBundleId).toBe(true);
+    expect(iosBundle > simulator.minBundleId).toBe(true);
+    // The order of the results lines changes no row.
+    const reversed = fakeGitHub();
+    await runComment(reversed, resultsOf([...jobs].reverse()));
+    const rows = (text: string) => text.match(/^\| .*$/gm)!.sort();
+    expect(rows(reversed.comment()!)).toEqual(rows(body));
     expect(body.match(/<img /g)).toHaveLength(2);
     expect(Object.keys(github.files()!).sort()).toEqual(
       ["README.md", qrPath(link("android")), qrPath(link("ios"))].sort(),
     );
-    expect(body).not.toContain("older than the sandbox build accepts");
     expect(body).not.toContain("failed on this run");
   });
 
   it("carry no download URL, storage URI, or secret in a lane's result", async () => {
     const server = fakeServer();
-    const lanes = await runLanes(server, fakeGitHub());
+    const jobs = await runLanes(server, fakeGitHub());
 
-    for (const { outputs } of lanes) {
+    for (const { outputs } of jobs) {
       expect(outputs["result"]).toBeDefined();
       expect(outputs["result"]).not.toContain(SIGNED);
       expect(outputs["result"]).not.toContain(SECRET);
@@ -348,15 +387,15 @@ describe("lanes and a comment job", () => {
       expect(outputs["result"]).not.toContain("https://");
     }
     // The lane's own outputs still give the download URL.
-    expect(lanes[0]!.outputs["android-download-url"]).toContain(SIGNED);
+    expect(jobs[0]!.outputs["android-download-url"]).toContain(SIGNED);
   });
 
   it("show a lane whose build failed, which deployed nothing, beside the others", async () => {
     const server = fakeServer({ failing: ["simulator"] });
     const github = fakeGitHub();
 
-    const lanes = await runLanes(server, github);
-    const simulator = lanes[2]!;
+    const jobs = await runLanes(server, github);
+    const simulator = jobs[2]!;
     expect(simulator.error).not.toBeNull();
     expect(JSON.parse(simulator.outputs["result"]!)).toEqual({
       channel: "pr-12",
@@ -365,9 +404,13 @@ describe("lanes and a comment job", () => {
       failed: [{ platform: "ios", scheme: "simulator", deployed: false }],
     });
 
-    await runComment(github, resultsOf(lanes));
+    await runComment(github, resultsOf(jobs));
 
     const body = github.comment()!;
+    // The lane's failure, and the deploy job's missing build, are one line.
+    expect(body.split("**iOS** (`simulator`) failed on this run")).toHaveLength(
+      2,
+    );
     expect(body).toContain(
       `**iOS** (\`simulator\`) failed on this run: [see the logs](${RUN}).`,
     );
@@ -380,12 +423,12 @@ describe("lanes and a comment job", () => {
     const server = fakeServer({ unconfirmed: ["android"] });
     const github = fakeGitHub();
 
-    const lanes = await runLanes(server, github);
-    expect(JSON.parse(lanes[0]!.outputs["result"]!).failed).toEqual([
+    const jobs = await runLanes(server, github);
+    expect(JSON.parse(jobs[0]!.outputs["result"]!).failed).toEqual([
       { platform: "android", scheme: "apk", deployed: true },
     ]);
 
-    await runComment(github, resultsOf(lanes));
+    await runComment(github, resultsOf(jobs));
 
     expect(github.comment()).toContain(
       `**Android** (\`apk\`) failed on this run, after deploying its bundle: [see the logs](${RUN}).`,
@@ -433,12 +476,34 @@ describe("lanes and a comment job", () => {
     expect(github.calls.filter((call) => !call.startsWith("GET"))).toEqual([]);
   });
 
+  it("leave the comment as it was when only a build-only lane succeeded", async () => {
+    const server = fakeServer({ failing: ["apk", "adhoc"] });
+    const github = fakeGitHub();
+    await upsertComment(github.github, 12, `${COMMENT_MARKER}\n\nearlier`);
+    const [android, adhoc, simulator] = await Promise.all(
+      LANES.map((lane) => runJob(server, github, lane)),
+    );
+    expect(JSON.parse(simulator!.outputs["result"]!).previews).toHaveLength(1);
+
+    const { error, log } = await runComment(
+      github,
+      // The deploy job failed before the action, so it has no result.
+      `${resultsOf([android!, adhoc!, simulator!])}\nios-deploy failure `,
+    );
+
+    expect(error).toBeNull();
+    expect(github.comment()).toBe(`${COMMENT_MARKER}\n\nearlier`);
+    expect(log.notice).toHaveBeenCalledWith(
+      "No job deployed a bundle, so the comment stays as it was.",
+    );
+  });
+
   it("write nothing once the pull request has a newer head", async () => {
     const server = fakeServer();
     const github = fakeGitHub({ headSha: "fedcba9876543210" });
-    const lanes = await runLanes(server, github);
+    const jobs = await runLanes(server, github);
 
-    const { error, log } = await runComment(github, resultsOf(lanes));
+    const { error, log } = await runComment(github, resultsOf(jobs));
 
     expect(error).toBeNull();
     expect(github.comments).toEqual([]);
@@ -446,6 +511,76 @@ describe("lanes and a comment job", () => {
     expect(log.notice).toHaveBeenCalledWith(
       "Not writing the comment: the pull request's head is fedcba9 now, not this run's 0123456.",
     );
+  });
+
+  it("write no comment when the pull request's head moves during the QR codes' commit", async () => {
+    const server = fakeServer();
+    const github = fakeGitHub();
+    const results = resultsOf(await runLanes(server, github));
+    github.onNextRefWrite(() => github.setHeadSha("fedcba9876543210"));
+
+    const { error, log } = await runComment(github, results);
+
+    expect(error).toBeNull();
+    // The QR codes landed, and harm nothing: they stay until cleanup.
+    expect(github.files()).not.toBeNull();
+    expect(github.comments).toEqual([]);
+    expect(log.notice).toHaveBeenCalledWith(
+      "Not writing the comment: the pull request's head is fedcba9 now, not this run's 0123456.",
+    );
+  });
+
+  it("deploy after a Simulator lane's re-run a bundle both iOS builds run", async () => {
+    const server = fakeServer({ failing: ["simulator"] });
+    const github = fakeGitHub();
+    const [android, adhoc, , deploy] = await runLanes(server, github);
+    expect(deploy!.error).not.toBeNull();
+    const firstBundle = server.releases.find(
+      ({ platform }) => platform === "ios",
+    )!.id;
+
+    // "Re-run failed jobs": the Simulator lane, then the jobs that need it.
+    server.failing.length = 0;
+    const simulator = await runJob(server, github, LANES[2]!);
+    const redeploy = await runJob(server, github, IOS_DEPLOY);
+    await runComment(
+      github,
+      resultsOf([android!, adhoc!, simulator, redeploy]),
+    );
+
+    const newSimulator = server.builds.find(({ kind }) => kind === "app")!;
+    const adhocBuild = server.builds.find(({ kind }) => kind === "ipa")!;
+    // The Simulator build is newer than the first bundle, which it refuses.
+    expect(newSimulator.minBundleId > firstBundle).toBe(true);
+    const bundle = server.releases
+      .filter(({ platform }) => platform === "ios")
+      .at(-1)!.id;
+    expect(bundle > newSimulator.minBundleId).toBe(true);
+    expect(bundle > adhocBuild.minBundleId).toBe(true);
+    const body = github.comment()!;
+    expect(body).toContain(
+      `| iOS | \`${adhocBuild.id}\` · built for this commit | \`${FINGERPRINTS.ios.slice(0, 12)}\` | \`${bundle}\` |`,
+    );
+    expect(body).toContain(
+      `| iOS Simulator | \`${newSimulator.id}\` · built for this commit | \`${FINGERPRINTS.ios.slice(0, 12)}\` | \`${bundle}\` |`,
+    );
+    expect(body).not.toContain("failed on this run");
+  });
+
+  it("build nothing in a job with build: false, and fail each scheme it has no build of", async () => {
+    const server = fakeServer();
+
+    const deploy = await runJob(server, fakeGitHub(), IOS_DEPLOY);
+
+    expect(deploy.error).not.toBeNull();
+    expect(
+      server.calls.filter((call) => call.startsWith("native-build ios ")),
+    ).toEqual([]);
+    expect(server.releases).toEqual([]);
+    expect(JSON.parse(deploy.outputs["result"]!).failed).toEqual([
+      { platform: "ios", scheme: "adhoc", deployed: false },
+      { platform: "ios", scheme: "simulator", deployed: false },
+    ]);
   });
 
   it("keep the QR codes the earlier comment shows when the new comment fails to land", async () => {

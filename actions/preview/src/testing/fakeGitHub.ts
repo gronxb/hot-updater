@@ -45,6 +45,7 @@ export const fakeGitHub = ({
   const base = `${apiUrl}/repos/${repository}`;
   let pendingRace = beforeRefWrite;
   let commentWritesFail = failCommentWrites;
+  let head = headSha;
 
   const fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
     const url = String(input);
@@ -57,7 +58,7 @@ export const fakeGitHub = ({
       });
     }
     if (url.startsWith(`${base}/pulls/`)) {
-      return Response.json({ head: { sha: headSha } });
+      return Response.json({ head: { sha: head } });
     }
     if (url.startsWith(`${base}/issues/`)) {
       if (method !== "GET" && commentWritesFail) {
@@ -183,6 +184,10 @@ export const fakeGitHub = ({
       return Object.fromEntries(
         [...tree].map(([path, sha]) => [path, git.blobs.get(sha)!]),
       );
+    },
+    /** Moves the pull request's head, as a push does. */
+    setHeadSha: (sha: string) => {
+      head = sha;
     },
     /** Fails every later comment write. */
     failCommentWrites: () => {

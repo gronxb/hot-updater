@@ -397,12 +397,6 @@ export const renderPreviewComment = ({
   const simulator = sandboxes.some(
     ({ nativeBuild }) => nativeBuild.artifactKind === "app",
   );
-  const older = sandboxes.filter(
-    ({ sandbox, bundleId }) =>
-      sandbox?.minBundleId &&
-      bundleId !== null &&
-      bundleId < sandbox.minBundleId,
-  );
   const scannable = linked.some(
     ({ sandbox }) => qrImages[/** @type {string} */ (sandbox?.link)],
   );
@@ -460,10 +454,6 @@ export const renderPreviewComment = ({
             ].join("\n\n");
           }),
         ]),
-    ...older.map(
-      ({ bundleId }) =>
-        `Bundle ${code(String(bundleId))} is older than the sandbox build accepts: push again.`,
-    ),
     ...(own.length === 0
       ? []
       : [

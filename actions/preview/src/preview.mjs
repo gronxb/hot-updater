@@ -22,6 +22,7 @@ import {
   simulatorOpens,
 } from "./comment.mjs";
 import {
+  createComment,
   findComment,
   pullRequestHead,
   updateComment,
@@ -58,8 +59,11 @@ export { parseJsonOutput };
  * @property {boolean} credit
  * @property {boolean} comment Whether to write the pull request comment.
  * @property {boolean} deploy Whether to deploy each platform's bundle. A
- *   lane that only builds, such as a Simulator lane beside the ad hoc lane
- *   that deploys the iOS bundle, sets it to false.
+ *   lane that only builds, such as each iOS lane beside the job that deploys
+ *   the iOS bundle after both, sets it to false.
+ * @property {boolean} build Whether a scheme with no native build builds
+ *   one. A job that deploys against the builds other jobs made sets it to
+ *   false, and then compiles nothing.
  * @property {string} results With `comment`, each lane's line: its job's
  *   name, its conclusion, and its `result` output.
  * @property {"preview" | "cleanup" | "comment"} mode
@@ -240,6 +244,7 @@ export const parseInputs = (env, event) => {
     credit: parseFlag(input, "CREDIT", true),
     comment: parseFlag(input, "COMMENT", true),
     deploy: parseFlag(input, "DEPLOY", true),
+    build: parseFlag(input, "BUILD", true),
     results,
     mode: resolvedMode,
   };
@@ -387,6 +392,7 @@ const findOrSubmitStoreBuild = async (
     };
   }
   const noLongerOffered = submitted !== null;
+  if (!inputs.build) throw noBuildHere(platform, scheme, found);
   deps.log.info(
     noLongerOffered
       ? `Building ${platform}: ${STORES[platform].name} no longer offers ${submitted.id} (${foundStore?.state ?? "expiring"}).`
@@ -754,6 +760,19 @@ const previewSchemes = async (
 };
 
 /**
+ * Why a job with `build: false` has no native build of a scheme: its build
+ * job failed, was skipped, or hasn't registered one.
+ *
+ * @param {Platform} platform
+ * @param {string} scheme
+ * @param {import("../../shared/nativeBuild.mjs").BuildTarget} target
+ */
+const noBuildHere = (platform, scheme, target) =>
+  new Error(
+    `No ${platform} native build of ${scheme} has ${describeTarget(target)}, and this job doesn't build: see the job that builds ${scheme}.`,
+  );
+
+/**
  * Refuses a native build this run made that embeds another channel than the
  * pull request's, before anything is deployed: every build a preview makes,
  * a sandbox build too, is told the pull request's channel with `--channel`,
@@ -803,7 +822,13 @@ const resolveNativeBuild = async (
         .join(", ")}. The next preview builds again once a build can add them.`,
     );
   }
-  const rebuild = found.nativeBuild !== null && devices?.reusable === false;
+  // A job that doesn't build reuses what the build job made, which already
+  // added every device a new build could.
+  const rebuild =
+    inputs.build && found.nativeBuild !== null && devices?.reusable === false;
+  if (found.nativeBuild === null && !inputs.build) {
+    throw noBuildHere(platform, scheme, found);
+  }
   const built = found.nativeBuild === null || rebuild;
   if (found.nativeBuild === null || rebuild) {
     deps.log.info(
@@ -1154,12 +1179,15 @@ export const parseLanes = (text) =>
   });
 
 /**
- * Writes the one comment, and its QR codes, from the lanes that previewed the
- * pull request at the same time: a build-only lane's preview takes the
- * bundle another lane deployed to the same target. A lane with no result
- * gets a line. With nothing deployed anywhere, the comment stays as it is.
- * Nothing is written once the pull request has a newer head than this run's,
- * whose own run writes it.
+ * Writes the one comment, and its QR codes, from the jobs that previewed the
+ * pull request at the same time. A build appears once, with the bundle a job
+ * deployed to it when one did, and a failure once per platform and scheme; a
+ * job with no result gets a line. With no bundle deployed anywhere, the
+ * comment stays as it is. The pull request's head is read before anything
+ * is written and again just before the comment is, and a newer head than
+ * this run's skips the comment, which that head's run writes. GitHub has no
+ * transaction across the two, so a push landing during that last write can
+ * still see this run's comment until its own run replaces it.
  *
  * @param {Deps} deps
  * @param {Inputs} inputs
@@ -1167,24 +1195,45 @@ export const parseLanes = (text) =>
  */
 export const runComment = async (deps, inputs, event) => {
   const lanes = parseLanes(inputs.results);
-  /** @type {(PlatformPreview & { scheme?: string })[]} */
-  const previews = [];
-  /** @type {import("./comment.mjs").FailedPreview[]} */
-  const failed = [];
+  /** @type {Map<string, PlatformPreview & { scheme?: string }>} */
+  const builds = new Map();
+  /** @type {Map<string, import("./comment.mjs").FailedPreview>} */
+  const failures = new Map();
   let { commitSha } = event;
   let { channel } = inputs;
   for (const { name, status, result } of lanes) {
     if (result === null) {
-      failed.push({
+      failures.set(`lane:${name}`, {
         lane: name,
         status: status === "skipped" ? "skipped" : "missing",
       });
       continue;
     }
     ({ commitSha, channel } = result);
-    previews.push(...result.previews);
-    failed.push(...result.failed);
+    // A build is built for this commit when its lane built it, whichever
+    // job deployed its bundle.
+    for (const preview of result.previews) {
+      const seen = builds.get(preview.nativeBuild.id);
+      const kept =
+        seen === undefined || seen.bundleId === null ? preview : seen;
+      builds.set(preview.nativeBuild.id, {
+        ...kept,
+        built: preview.built || Boolean(seen?.built),
+      });
+    }
+    for (const failure of result.failed) {
+      const key = `${failure.platform}:${failure.scheme ?? ""}`;
+      const seen = failures.get(key);
+      if (
+        seen === undefined ||
+        (failure.deployed && "deployed" in seen && !seen.deployed)
+      ) {
+        failures.set(key, failure);
+      }
+    }
   }
+  const previews = [...builds.values()];
+  const failed = [...failures.values()];
   for (const preview of previews) {
     if (preview.bundleId !== null) continue;
     const deployed = previews.find(
@@ -1196,25 +1245,28 @@ export const runComment = async (deps, inputs, event) => {
     );
     preview.bundleId = deployed?.bundleId ?? null;
   }
+  // A build no job deployed a bundle to doesn't count.
   if (
-    previews.length === 0 &&
+    previews.every(({ bundleId }) => bundleId === null) &&
     failed.every((failure) => !("deployed" in failure) || !failure.deployed)
   ) {
     deps.log.notice(
-      "No lane deployed a bundle, so the comment stays as it was.",
+      "No job deployed a bundle, so the comment stays as it was.",
     );
     return { written: false };
   }
   const github = inputs.comment ? deps.github : null;
-  if (github && event.headSha) {
+  /** Whether the pull request has moved past this run's head. */
+  const stale = async () => {
+    if (!github || !event.headSha) return false;
     const head = await pullRequestHead(github, event.number);
-    if (head !== event.headSha) {
-      deps.log.notice(
-        `Not writing the comment: the pull request's head is ${head.slice(0, 7)} now, not this run's ${event.headSha.slice(0, 7)}.`,
-      );
-      return { written: false };
-    }
-  }
+    if (head === event.headSha) return false;
+    deps.log.notice(
+      `Not writing the comment: the pull request's head is ${head.slice(0, 7)} now, not this run's ${event.headSha.slice(0, 7)}.`,
+    );
+    return true;
+  };
+  if (await stale()) return { written: false };
   /** @type {Record<string, string>} */
   let qrImages = {};
   /** @type {unknown} */
@@ -1242,7 +1294,12 @@ export const runComment = async (deps, inputs, event) => {
     credit: inputs.credit,
   });
   deps.setOutput("comment-body", body);
-  if (github) await upsertComment(github, event.number, body);
+  if (github) {
+    const existing = await findComment(github, event.number);
+    if (await stale()) return { written: false };
+    if (existing) await updateComment(github, existing.id, body);
+    else await createComment(github, event.number, body);
+  }
   if (qrError) throw qrError;
   return { written: github !== null, body };
 };

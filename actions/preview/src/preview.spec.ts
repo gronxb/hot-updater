@@ -1110,6 +1110,7 @@ describe("parseInputs", () => {
       credit: true,
       comment: false,
       deploy: true,
+      build: true,
       results: "",
       mode: "preview",
     });

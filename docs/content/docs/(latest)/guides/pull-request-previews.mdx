@@ -252,6 +252,9 @@ jobs:
           console-url: ${{ vars.CONSOLE_URL }}
           platforms: ios
           ios-scheme: sandbox
+          # The ios-deploy job deploys the iOS bundle once both iOS builds
+          # are done.
+          deploy: false
           comment: false
 
   ios-simulator:
@@ -284,15 +287,42 @@ jobs:
           console-url: ${{ vars.CONSOLE_URL }}
           platforms: ios
           ios-scheme: sandboxSimulator
-          # The iPhone's job deploys the iOS bundle, which this build runs
-          # too.
           deploy: false
+          comment: false
+
+  # One iOS bundle, after both iOS builds, which it finds and never builds.
+  ios-deploy:
+    needs: [ios-adhoc, ios-simulator]
+    if: ${{ !cancelled() && github.event.action != 'closed' }}
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.preview.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - id: preview
+        uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          HOT_UPDATER_BUNDLE_SIGNING_KEY: ${{ secrets.HOT_UPDATER_BUNDLE_SIGNING_KEY }}
+          # ...and the deploy variables your config reads with secret()
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          platforms: ios
+          ios-scheme: sandbox, sandboxSimulator
+          build: false
           comment: false
 
   # The one comment and its QR codes, from each job's result, also when one
   # of them failed.
   comment:
-    needs: [android, ios-adhoc, ios-simulator]
+    needs: [android, ios-adhoc, ios-simulator, ios-deploy]
     if: ${{ !cancelled() && github.event.action != 'closed' }}
     runs-on: ubuntu-latest
     steps:
@@ -304,6 +334,7 @@ jobs:
             android ${{ needs.android.result }} ${{ needs.android.outputs.result }}
             ios-adhoc ${{ needs.ios-adhoc.result }} ${{ needs.ios-adhoc.outputs.result }}
             ios-simulator ${{ needs.ios-simulator.result }} ${{ needs.ios-simulator.outputs.result }}
+            ios-deploy ${{ needs.ios-deploy.result }} ${{ needs.ios-deploy.outputs.result }}
 
   cleanup:
     if: github.event.action == 'closed'
@@ -320,19 +351,26 @@ jobs:
       - run: npm ci
       - uses: gronxb/hot-updater/actions/preview@v1.2.0
         env:
-          # ...the deploy variables your config reads with secret()
+          HOT_UPDATER_BUNDLE_SIGNING_KEY: ${{ secrets.HOT_UPDATER_BUNDLE_SIGNING_KEY }}
+          # ...and the deploy variables your config reads with secret()
         with:
           console-url: ${{ vars.CONSOLE_URL }}
 ```
 
 - **The three build jobs** each find or build their build, and write no
-  comment (`comment: false`). The Android job deploys the Android bundle, and
-  the iPhone's job the iOS one. The Simulator job only builds
-  (`deploy: false`), so each push deploys one bundle per platform.
-- **The comment job** waits for all three, then writes the one comment and its
-  QR codes from their `result` outputs. A job that failed shows as failed, the
-  others as usual. It writes nothing when the pull request has a newer commit,
-  whose own run writes the comment.
+  comment (`comment: false`). The Android job also deploys the Android bundle.
+  The iOS jobs only build (`deploy: false`).
+- **The ios-deploy job** waits for both iOS builds, then deploys the one iOS
+  bundle on Linux, against the builds they made or reused (`build: false`: it
+  compiles nothing, and fails a scheme with no build). The bundle is newer
+  than both builds, so both run it, also after a re-run of one iOS job, which
+  re-runs this one too. Each push deploys one bundle per platform.
+- **The comment job** waits for all of them, then writes the one comment and
+  its QR codes from their `result` outputs. A job that failed shows as failed,
+  the others as usual. It checks the pull request's head before writing and
+  again just before the comment, and writes no comment for an older commit,
+  whose newer run writes it. A push that lands during that last write can
+  still show the older comment until its own run replaces it.
 - **The cleanup job** runs when the pull request closes.
 
 The action runs your project's CLI, and needs the one from the same
@@ -360,7 +398,7 @@ four-ABI 277 MB APK's build under 12 GB:
 
 To use fewer macOS minutes, one iOS job can build both schemes in order,
 `ios-scheme: sandbox, sandboxSimulator`, and deploy one bundle after them, at
-the cost of waiting for both builds.
+the cost of waiting for both builds: it replaces the three iOS jobs.
 
 ### Add the iOS Simulator
 
@@ -383,7 +421,9 @@ silicon test the pull request without an iPhone. Add a sandbox scheme with
     },
 ```
 
-Without it, leave out the `ios-simulator` job and its line in `results`.
+Without it, leave out the `ios-simulator` job, its line in `results`,
+`ios-simulator` in the `needs` of `ios-deploy` and `comment`, and
+`sandboxSimulator` in the `ios-scheme` of `ios-deploy`.
 
 The comment's iOS section keeps the iPhone's install link and QR code, and
 adds a command for the Simulator build, which a Simulator can't scan. Run in
@@ -456,8 +496,8 @@ A device holds one sandbox app, so a tester moving between pull requests with
 different native code installs again each time.
 
 A new sandbox build's `MIN_BUNDLE_ID` can pass other open pull requests'
-bundles of the same native code. The comment says whether its bundle runs on the
-sandbox build, and nothing redeploys the others, so push them again.
+bundles of the same native code. Nothing redeploys them, so when a run makes a
+new sandbox build, its comment asks you to push the others again.
 
 An ad hoc `.ipa` includes the iPhones registered when it was built. Before
 reusing one, the action checks the iPhones it lacks against Apple's device list,
@@ -529,6 +569,21 @@ In the `ios-adhoc` job:
           ios-scheme: sandbox
           ios-submit: testflight
           ios-testflight-group: QA
+          deploy: false
+          comment: false
+```
+
+In the `ios-deploy` job, the same scheme and store, and no Simulator scheme,
+since a store input takes one scheme:
+
+```yaml
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          platforms: ios
+          ios-scheme: sandbox
+          ios-submit: testflight
+          ios-testflight-group: QA
+          build: false
           comment: false
 ```
 
@@ -749,10 +804,10 @@ export default defineConfig({
 });
 ```
 
-Use [the workflow](#add-the-workflow) without the `ios-adhoc` job and its
-line in `results`. Set `android-scheme: previewApk` in the `android` job, and
-`ios-scheme: previewSimulator` in the `ios-simulator` job, which then deploys
-the iOS bundle itself: leave out its `deploy: false`.
+Use [the workflow](#add-the-workflow) without the `ios-adhoc` job, its line
+in `results`, and `ios-adhoc` in the `needs` of `ios-deploy` and `comment`.
+Set `android-scheme: previewApk` in the `android` job, and
+`ios-scheme: previewSimulator` in the `ios-simulator` and `ios-deploy` jobs.
 
 A pull request's first run builds each platform's native build, since the
 build embeds the pull request's channel: an Android APK on an Ubuntu runner,

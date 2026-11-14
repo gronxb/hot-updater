@@ -57,8 +57,14 @@ inputs:
   deploy:
     description: >-
       Whether to deploy each platform's bundle. A lane that only builds, such
-      as a Simulator lane beside the ad hoc lane that deploys the iOS bundle,
+      as an iOS lane beside the job that deploys the iOS bundle after them,
       sets it to false.
+    default: "true"
+  build:
+    description: >-
+      Whether a scheme with no native build builds one. A job that deploys
+      against the builds its lanes made sets it to false, and then compiles
+      nothing: a scheme with no build fails.
     default: "true"
   mode:
     description: >-
@@ -191,6 +197,7 @@ runs:
         INPUT_CREDIT: ${{ inputs.credit }}
         INPUT_COMMENT: ${{ inputs.comment }}
         INPUT_DEPLOY: ${{ inputs.deploy }}
+        INPUT_BUILD: ${{ inputs.build }}
         INPUT_MODE: ${{ inputs.mode }}
         INPUT_RESULTS: ${{ inputs.results }}
         INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}

@@ -136,13 +136,24 @@ export const upsertComment = async (github, issueNumber, body) => {
     await updateComment(github, existing.id, body);
     return { id: existing.id, created: false };
   }
+  return { id: await createComment(github, issueNumber, body), created: true };
+};
+
+/**
+ * Comments `body` on the pull request, and returns the comment's ID.
+ *
+ * @param {GitHubContext} github
+ * @param {number} issueNumber
+ * @param {string} body
+ */
+export const createComment = async (github, issueNumber, body) => {
   const response = await request(
     github,
     `${github.apiUrl}/repos/${github.repository}/issues/${issueNumber}/comments`,
     { method: "POST", body: JSON.stringify({ body }) },
   );
   const { id } = /** @type {{ id: number }} */ (await response.json());
-  return { id, created: true };
+  return id;
 };
 
 /**
