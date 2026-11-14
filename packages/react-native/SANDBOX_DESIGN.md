@@ -44,7 +44,9 @@ drawn on a surface, such as text, a ring, a bar or the selected tab, is
 `accentText`, which is darker in light mode so it reads at AA (5.18:1 on
 white). `danger` is for the warning icon; a destructive action's text is
 `dangerText`, which reads at AA on a surface and pressed. A text or icon
-action presses to `fill`, under which `accentText` still reads at AA (4.52:1).
+action presses to `fill`, opaque on both platforms (iOS draws the hexes, not
+`tertiarySystemFill`), under which `accentText` reads at 4.52:1 light and
+4.97:1 dark.
 `text` and `textSecondary` stay the platform's label colors, so they follow
 dark mode and Increase Contrast.
 
