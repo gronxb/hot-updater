@@ -171,6 +171,15 @@ const statusOf = (error: unknown): unknown => {
   return undefined;
 };
 
+/**
+ * The most items read by point reads rather than one query. On Strong
+ * consistency a point read of a ~600 B item costs 2 RU and a query of 1, 3,
+ * or 10 ids 5.9, 6.4, and 8.3 RU (Azure Cosmos DB, 2026-11-14). A point
+ * read's charge grows faster with the item's size: it costs more than the
+ * query from about 50 KB, where rows such as release catalogs hold 1–2 KB.
+ */
+const POINT_READS = 2;
+
 /** A missing database or container reads as a missing schema, like SQL's 42P01. */
 const missingContainer = (error: unknown): never => {
   throw statusOf(error) === 404
@@ -322,6 +331,14 @@ interface Planned {
   readonly onFailure: OnFailure;
 }
 
+/** An item as a point read returns it. */
+interface CosmosItem {
+  readonly id: string;
+  readonly _etag: string;
+  readonly row?: { readonly _v?: unknown };
+  readonly expireAt?: number | null;
+}
+
 /** What a write reads before it plans: an item's ETag, `_v`, and expiry. */
 interface ReadState {
   readonly etag: string;
@@ -388,6 +405,36 @@ export const createCosmosStore = ({
   const container = async () => (await open()).container;
 
   /**
+   * The item `id` names, or undefined when it is missing. A missing item
+   * answers 404 from its partition; a missing container or database answers
+   * 404 with a substatus and no partition, and reads as a missing schema.
+   */
+  const pointRead = async (id: string) => {
+    const response = await (
+      await container()
+    )
+      .item(id, COSMOS_PARTITION)
+      .read<CosmosItem>()
+      .catch(missingContainer);
+    if (response.statusCode !== 404) return response.resource;
+    const headers = response.headers as Record<string, unknown>;
+    if (
+      headers["x-ms-documentdb-partitionkeyrangeid"] === undefined &&
+      headers["x-ms-substatus"] !== undefined
+    ) {
+      missingContainer(
+        Object.assign(
+          new Error(`Cosmos DB container ${containerId} is missing.`),
+          {
+            code: 404,
+          },
+        ),
+      );
+    }
+    return undefined;
+  };
+
+  /**
    * The state of the items `ids` names, by id, with the rows of `rowIds`;
    * a missing item has none.
    */
@@ -400,6 +447,18 @@ export const createCosmosStore = ({
       [ids.filter((id) => !rowIds.has(id)), ""],
       [ids.filter((id) => rowIds.has(id)), ", c.row"],
     ] as const) {
+      if (group.length <= POINT_READS) {
+        for (const item of await Promise.all(group.map(pointRead))) {
+          if (item === undefined) continue;
+          states.set(item.id, {
+            etag: item._etag,
+            v: item.row?._v,
+            expireAt: item.expireAt ?? null,
+            row: projection === "" ? undefined : item.row,
+          });
+        }
+        continue;
+      }
       for (let at = 0; at < group.length; at += GET_BATCH) {
         const { resources } = await (
           await container()
@@ -614,6 +673,12 @@ export const createCosmosStore = ({
     async get(keys) {
       const found = new Map<string, StoredRow>();
       const ids = [...new Set(keys.map(cosmosItemId))];
+      if (ids.length <= POINT_READS) {
+        for (const item of await Promise.all(ids.map(pointRead))) {
+          if (item !== undefined) found.set(item.id, toRow(item.row));
+        }
+        return keys.map((key) => found.get(cosmosItemId(key)) ?? null);
+      }
       for (let at = 0; at < ids.length; at += GET_BATCH) {
         const { resources } = await (
           await container()
