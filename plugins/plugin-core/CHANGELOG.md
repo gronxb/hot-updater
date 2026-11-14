@@ -1,5 +1,13 @@
 # @hot-updater/plugin-core
 
+## 1.1.14
+
+### Patch Changes
+
+- a250d09: fix(plugin-core): insert a row without deleting its index table entries first. A new row has none, and on SQL databases that delete read the whole index table, so every stored Insights event scanned `bundle_events__byBundle` (billed as rows read on D1).
+- d58dcfa: fix(plugin-core): prune a multi-valued index's entries on SQLite (Cloudflare D1) by the expired rows' keys. Each retention pass read the whole index table, such as `bundle_events__byBundle`, and every expired row on SQLite, instead of the rows it deletes.
+- @hot-updater/protocol@1.1.14
+
 ## 1.1.13
 
 ### Patch Changes
