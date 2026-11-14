@@ -45,7 +45,7 @@ describe("writeQrCodes", () => {
     expect(fake.calls.filter((call) => !call.startsWith("GET"))).toEqual([]);
   });
 
-  it("replaces the pull request's folder and keeps the other pull requests'", async () => {
+  it("adds to the pull request's folder, keeping its earlier QR codes and the other pull requests'", async () => {
     const fake = fakeGitHub();
     await writeQrCodes(fake.github, 12, [LINK], noWait);
     await writeQrCodes(fake.github, 13, [LINK], noWait);
@@ -53,7 +53,12 @@ describe("writeQrCodes", () => {
     await writeQrCodes(fake.github, 12, [DOWNLOAD], noWait);
 
     expect(Object.keys(fake.files()!).sort()).toEqual(
-      ["README.md", `pr-12/${name(DOWNLOAD)}`, `pr-13/${name(LINK)}`].sort(),
+      [
+        "README.md",
+        `pr-12/${name(LINK)}`,
+        `pr-12/${name(DOWNLOAD)}`,
+        `pr-13/${name(LINK)}`,
+      ].sort(),
     );
     const head = fake.git.refs.get("heads/hot-updater-preview")!;
     expect(fake.git.commits.get(head)!.parents).toHaveLength(1);

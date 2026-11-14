@@ -144,3 +144,21 @@ export const upsertComment = async (github, issueNumber, body) => {
   const { id } = /** @type {{ id: number }} */ (await response.json());
   return { id, created: true };
 };
+
+/**
+ * The pull request's head commit now, which a run checks is still the one
+ * it previewed before it writes the comment.
+ *
+ * @param {GitHubContext} github
+ * @param {number} number
+ */
+export const pullRequestHead = async (github, number) => {
+  const response = await request(
+    github,
+    `${github.apiUrl}/repos/${github.repository}/pulls/${number}`,
+  );
+  const { head } = /** @type {{ head?: { sha?: string } }} */ (
+    await response.json()
+  );
+  return String(head?.sha ?? "");
+};

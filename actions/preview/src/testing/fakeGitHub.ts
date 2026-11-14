@@ -18,7 +18,9 @@ type Tree = Map<string, string>;
  * Data API over one repository's refs, trees, and blobs, and the pull request
  * comments. `refuse` answers 403 to every write, as a token without
  * `contents: write` gets. `beforeRefWrite` runs once before the action's ref
- * write lands, as another job's push would.
+ * write lands, as another job's push would. `headSha` is the pull request's
+ * head now. `failCommentWrites` answers 502 to every comment write, from the
+ * start or from when the returned `failCommentWrites()` is called.
  */
 export const fakeGitHub = ({
   apiUrl = "https://api.github.com",
@@ -26,18 +28,23 @@ export const fakeGitHub = ({
   repository = "octo/app",
   refuse = false,
   beforeRefWrite,
+  headSha = "0123456789abcdef",
+  failCommentWrites = false,
 }: {
   apiUrl?: string;
   serverUrl?: string;
   repository?: string;
   refuse?: boolean;
   beforeRefWrite?: (git: FakeGit) => void;
+  headSha?: string;
+  failCommentWrites?: boolean;
 } = {}) => {
   const git = new FakeGit();
   const calls: string[] = [];
   const comments: { id: number; body: string }[] = [];
   const base = `${apiUrl}/repos/${repository}`;
   let pendingRace = beforeRefWrite;
+  let commentWritesFail = failCommentWrites;
 
   const fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
     const url = String(input);
@@ -49,7 +56,13 @@ export const fakeGitHub = ({
         status: 403,
       });
     }
+    if (url.startsWith(`${base}/pulls/`)) {
+      return Response.json({ head: { sha: headSha } });
+    }
     if (url.startsWith(`${base}/issues/`)) {
+      if (method !== "GET" && commentWritesFail) {
+        return new Response("Bad Gateway", { status: 502 });
+      }
       if (method === "GET") {
         return Response.json(
           comments.map(({ id, body }) => ({
@@ -170,6 +183,10 @@ export const fakeGitHub = ({
       return Object.fromEntries(
         [...tree].map(([path, sha]) => [path, git.blobs.get(sha)!]),
       );
+    },
+    /** Fails every later comment write. */
+    failCommentWrites: () => {
+      commentWritesFail = true;
     },
     /** Runs `race` once before the next ref write lands. */
     onNextRefWrite: (race: (git: FakeGit) => void) => {

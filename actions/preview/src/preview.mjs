@@ -21,7 +21,12 @@ import {
   renderPreviewComment,
   simulatorOpens,
 } from "./comment.mjs";
-import { findComment, updateComment, upsertComment } from "./github.mjs";
+import {
+  findComment,
+  pullRequestHead,
+  updateComment,
+  upsertComment,
+} from "./github.mjs";
 import { removeQrCodes, writeQrCodes } from "./qrBranch.mjs";
 
 export { parseJsonOutput };
@@ -52,7 +57,12 @@ export { parseJsonOutput };
  *   iOS sandbox build.
  * @property {boolean} credit
  * @property {boolean} comment Whether to write the pull request comment.
- * @property {"preview" | "cleanup"} mode
+ * @property {boolean} deploy Whether to deploy each platform's bundle. A
+ *   lane that only builds, such as a Simulator lane beside the ad hoc lane
+ *   that deploys the iOS bundle, sets it to false.
+ * @property {string} results With `comment`, each lane's line: its job's
+ *   name, its conclusion, and its `result` output.
+ * @property {"preview" | "cleanup" | "comment"} mode
  *
  * @typedef {object} PullRequestEvent
  * @property {string} action
@@ -62,6 +72,8 @@ export { parseJsonOutput };
  * @property {string} title
  * @property {string} commitSha The commit the run deploys: what the app's
  *   directory has checked out.
+ * @property {string | null} [headSha] The pull request's head when the event
+ *   came, which a comment job checks is still its head before writing.
  * @property {string | null} repositoryUrl The repository's web URL, which
  *   the comment links the commit under.
  * @property {string | null} runUrl The workflow run's page, which the comment
@@ -157,8 +169,19 @@ export const parseInputs = (env, event) => {
   }
 
   const mode = input("MODE") || "auto";
-  if (mode !== "auto" && mode !== "preview" && mode !== "cleanup") {
-    throw new Error("mode must be auto, preview, or cleanup.");
+  if (
+    mode !== "auto" &&
+    mode !== "preview" &&
+    mode !== "cleanup" &&
+    mode !== "comment"
+  ) {
+    throw new Error("mode must be auto, preview, cleanup, or comment.");
+  }
+  const results = input("RESULTS");
+  if (mode === "comment" && results === "") {
+    throw new Error(
+      "mode: comment needs results: a line for each lane's job, such as ${{ needs.android.result }} and ${{ needs.android.outputs.result }} after its name.",
+    );
   }
 
   const platforms = parsePlatforms(input("PLATFORMS") || "android");
@@ -216,6 +239,8 @@ export const parseInputs = (env, event) => {
     testFlightGroup,
     credit: parseFlag(input, "CREDIT", true),
     comment: parseFlag(input, "COMMENT", true),
+    deploy: parseFlag(input, "DEPLOY", true),
+    results,
     mode: resolvedMode,
   };
 };
@@ -521,7 +546,7 @@ const resolveScheme = async (deps, inputs, platform, scheme) => {
  * @param {Inputs} inputs
  * @param {Platform} platform
  * @param {ResolvedScheme} resolved
- * @param {string} bundleId
+ * @param {string | null} bundleId Null when the run deploys no bundle.
  * @returns {PlatformPreview & { installUrl: string }}
  */
 const previewOf = (
@@ -592,13 +617,15 @@ const previewPlatform = async (
         scheme,
         submit,
       );
-    const bundleId = await deployBundle(deps, {
-      platform,
-      channel: inputs.channel,
-      target,
-      message: deployMessage(event),
-      onDeployed,
-    });
+    const bundleId = inputs.deploy
+      ? await deployBundle(deps, {
+          platform,
+          channel: inputs.channel,
+          target,
+          message: deployMessage(event),
+          onDeployed,
+        })
+      : null;
     const nativeBuild = {
       id: build.id,
       artifactKind: build.artifact_kind,
@@ -620,13 +647,15 @@ const previewPlatform = async (
     };
   }
   const resolved = await resolveScheme(deps, inputs, platform, scheme);
-  const bundleId = await deployBundle(deps, {
-    platform,
-    channel: inputs.channel,
-    target: resolved.target,
-    message: deployMessage(event),
-    onDeployed,
-  });
+  const bundleId = inputs.deploy
+    ? await deployBundle(deps, {
+        platform,
+        channel: inputs.channel,
+        target: resolved.target,
+        message: deployMessage(event),
+        onDeployed,
+      })
+    : null;
   return previewOf(inputs, platform, resolved, bundleId);
 };
 
@@ -685,6 +714,15 @@ const previewSchemes = async (
   }
   const [first] = resolved;
   if (first === undefined) return { previews: [], failures };
+  if (!inputs.deploy) {
+    return {
+      previews: resolved.map((scheme) => ({
+        scheme: scheme.scheme,
+        ...previewOf(inputs, platform, scheme, null),
+      })),
+      failures,
+    };
+  }
   let deployed = false;
   try {
     const bundleId = await deployBundle(deps, {
@@ -907,6 +945,28 @@ export const runPreview = async (deps, inputs, event) => {
       );
     }
   }
+  // Set before any failure ends the run, so the comment job shows it.
+  deps.setOutput(
+    "result",
+    JSON.stringify(
+      laneResult({
+        channel: inputs.channel,
+        commitSha: event.commitSha,
+        previews: previews.map((preview) => ({
+          ...preview,
+          scheme: schemeOf.get(preview),
+        })),
+        // A lane of one scheme names it, beside another lane's of the same
+        // platform.
+        failed: failures.map((failure) => {
+          const schemes = inputs.schemes[failure.platform] ?? [];
+          return failure.scheme === undefined && schemes.length === 1
+            ? { ...failure, scheme: schemes[0] }
+            : failure;
+        }),
+      }),
+    ),
+  );
   // With nothing deployed, the comment still says what the channel has.
   if (previews.length === 0 && failures.every(({ deployed }) => !deployed)) {
     throw failureOf(failures);
@@ -982,6 +1042,209 @@ export const runPreview = async (deps, inputs, event) => {
   }
   if (qrError) throw qrError;
   return { previews: outputs, body };
+};
+
+/**
+ * @typedef {object} LaneResult What a lane's `result` output holds: the
+ *   fields the comment shows, which the comment shows anyway, and nothing
+ *   else. No download or storage URL, no credential, and no error or log.
+ * @property {string} channel
+ * @property {string} commitSha
+ * @property {(PlatformPreview & { scheme?: string })[]} previews
+ * @property {{ platform: Platform, scheme?: string, deployed: boolean }[]} failed
+ */
+
+/**
+ * Copies of a preview's public fields, from what a run made or what a lane's
+ * output says.
+ *
+ * @param {any} preview
+ * @returns {PlatformPreview & { scheme?: string }}
+ */
+const publicPreview = ({
+  platform,
+  scheme,
+  target,
+  nativeBuild,
+  built,
+  bundleId,
+  store,
+  sandbox,
+}) => ({
+  platform,
+  ...(typeof scheme === "string" ? { scheme } : {}),
+  target: {
+    fingerprintHash: target.fingerprintHash ?? null,
+    appVersion: target.appVersion ?? null,
+  },
+  nativeBuild: {
+    id: nativeBuild.id,
+    artifactKind: nativeBuild.artifactKind,
+    fileName: nativeBuild.fileName,
+  },
+  built: Boolean(built),
+  bundleId: bundleId ?? null,
+  ...(store
+    ? {
+        store: {
+          destination: store.destination,
+          url: store.url ?? null,
+          version: store.version ?? null,
+          state: store.state ?? null,
+          expiresAtMs: null,
+          reusable: true,
+        },
+      }
+    : {}),
+  ...(sandbox
+    ? {
+        sandbox: {
+          appId: sandbox.appId,
+          urlScheme: sandbox.urlScheme,
+          link: sandbox.link ?? null,
+          minBundleId: sandbox.minBundleId ?? null,
+          fromChannel: sandbox.fromChannel ?? null,
+        },
+      }
+    : {}),
+});
+
+/**
+ * @param {{ channel: string, commitSha: string, previews: any[], failed: { platform: Platform, scheme?: string, deployed: boolean }[] }} result
+ * @returns {LaneResult}
+ */
+export const laneResult = ({ channel, commitSha, previews, failed }) => ({
+  channel,
+  commitSha,
+  previews: previews.map(publicPreview),
+  failed: failed.map(({ platform, scheme, deployed }) => ({
+    platform,
+    ...(scheme === undefined ? {} : { scheme }),
+    deployed,
+  })),
+});
+
+/**
+ * Each lane of the `results` input, one per line: its job's name, its
+ * conclusion, then its `result` output, which is empty when the job set
+ * none. A result that isn't one counts as none.
+ *
+ * @param {string} text
+ * @returns {{ name: string, status: string, result: LaneResult | null }[]}
+ */
+export const parseLanes = (text) =>
+  text.split(/\r?\n/).flatMap((line) => {
+    const match = /^\s*(\S+)\s+(\S+)\s*(.*?)\s*$/.exec(line);
+    if (!match) return [];
+    const [, name = "", status = "", json = ""] = match;
+    /** @type {LaneResult | null} */
+    let result = null;
+    try {
+      const value = JSON.parse(json);
+      result = laneResult({
+        channel: String(value.channel),
+        commitSha: String(value.commitSha),
+        previews: value.previews,
+        failed: value.failed,
+      });
+    } catch {
+      result = null;
+    }
+    return [{ name, status, result }];
+  });
+
+/**
+ * Writes the one comment, and its QR codes, from the lanes that previewed the
+ * pull request at the same time: a build-only lane's preview takes the
+ * bundle another lane deployed to the same target. A lane with no result
+ * gets a line. With nothing deployed anywhere, the comment stays as it is.
+ * Nothing is written once the pull request has a newer head than this run's,
+ * whose own run writes it.
+ *
+ * @param {Deps} deps
+ * @param {Inputs} inputs
+ * @param {PullRequestEvent} event
+ */
+export const runComment = async (deps, inputs, event) => {
+  const lanes = parseLanes(inputs.results);
+  /** @type {(PlatformPreview & { scheme?: string })[]} */
+  const previews = [];
+  /** @type {import("./comment.mjs").FailedPreview[]} */
+  const failed = [];
+  let { commitSha } = event;
+  let { channel } = inputs;
+  for (const { name, status, result } of lanes) {
+    if (result === null) {
+      failed.push({
+        lane: name,
+        status: status === "skipped" ? "skipped" : "missing",
+      });
+      continue;
+    }
+    ({ commitSha, channel } = result);
+    previews.push(...result.previews);
+    failed.push(...result.failed);
+  }
+  for (const preview of previews) {
+    if (preview.bundleId !== null) continue;
+    const deployed = previews.find(
+      ({ platform, target, bundleId }) =>
+        bundleId !== null &&
+        platform === preview.platform &&
+        target.fingerprintHash === preview.target.fingerprintHash &&
+        target.appVersion === preview.target.appVersion,
+    );
+    preview.bundleId = deployed?.bundleId ?? null;
+  }
+  if (
+    previews.length === 0 &&
+    failed.every((failure) => !("deployed" in failure) || !failure.deployed)
+  ) {
+    deps.log.notice(
+      "No lane deployed a bundle, so the comment stays as it was.",
+    );
+    return { written: false };
+  }
+  const github = inputs.comment ? deps.github : null;
+  if (github && event.headSha) {
+    const head = await pullRequestHead(github, event.number);
+    if (head !== event.headSha) {
+      deps.log.notice(
+        `Not writing the comment: the pull request's head is ${head.slice(0, 7)} now, not this run's ${event.headSha.slice(0, 7)}.`,
+      );
+      return { written: false };
+    }
+  }
+  /** @type {Record<string, string>} */
+  let qrImages = {};
+  /** @type {unknown} */
+  let qrError;
+  if (github) {
+    try {
+      qrImages = await writeQrCodes(
+        github,
+        event.number,
+        qrCodeValues(previews),
+      );
+    } catch (error) {
+      qrError = error;
+    }
+  }
+  const body = renderPreviewComment({
+    consoleUrl: inputs.consoleUrl,
+    channel,
+    previews,
+    qrImages,
+    commitSha,
+    repositoryUrl: event.repositoryUrl,
+    failed,
+    runUrl: event.runUrl,
+    credit: inputs.credit,
+  });
+  deps.setOutput("comment-body", body);
+  if (github) await upsertComment(github, event.number, body);
+  if (qrError) throw qrError;
+  return { written: github !== null, body };
 };
 
 /** @param {unknown} error */
@@ -1094,5 +1357,7 @@ export const runAction = async (deps, env, event) => {
   const inputs = parseInputs(env, event);
   return inputs.mode === "cleanup"
     ? runCleanup(deps, inputs, event)
-    : runPreview(deps, inputs, event);
+    : inputs.mode === "comment"
+      ? runComment(deps, inputs, event)
+      : runPreview(deps, inputs, event);
 };

@@ -68,17 +68,17 @@ const git = async (github, path, body, { method, allow } = {}) => {
 };
 
 /**
- * Makes the pull request's folder hold exactly `files`, on top of the
- * branch's head, or as the branch's first commit. A ref write that another
- * job's push beat reads the branch again and tries again, so jobs of
- * different pull requests keep each other's folders.
+ * Writes `files` to the pull request's folder, on top of the branch's head,
+ * or as the branch's first commit. With `prune`, the folder then holds only
+ * them. A ref write that another job's push beat reads the branch again and
+ * tries again, so jobs of different pull requests keep each other's folders.
  *
  * @param {GitHubContext} github
  * @param {number} number
  * @param {Map<string, Buffer>} files Name to content.
- * @param {Options} options
+ * @param {Options & { prune: boolean }} options
  */
-const syncFolder = async (github, number, files, { sleep = wait }) => {
+const syncFolder = async (github, number, files, { sleep = wait, prune }) => {
   const folder = `pr-${number}`;
   /** @type {Map<string, Buffer>} */
   const wanted = new Map(
@@ -102,7 +102,7 @@ const syncFolder = async (github, number, files, { sleep = wait }) => {
     }
     /** @type {{ path: string, mode: "100644", type: "blob", sha: string | null }[]} */
     const entries = [...current.keys()]
-      .filter((path) => !wanted.has(path))
+      .filter((path) => prune && !wanted.has(path))
       .map((path) => ({ path, mode: "100644", type: "blob", sha: null }));
     const added = [...wanted].filter(
       ([path, content]) => current.get(path) !== blobSha(content),
@@ -151,8 +151,10 @@ const syncFolder = async (github, number, files, { sleep = wait }) => {
 
 /**
  * Writes the QR code of each value to the pull request's folder on
- * {@link QR_BRANCH}, which then holds only these, and returns each value's
- * image URL, which GitHub shows to anyone who can read the repository.
+ * {@link QR_BRANCH}, and returns each value's image URL, which GitHub shows
+ * to anyone who can read the repository. It deletes none: a file is named by
+ * what it holds, and the comment a failed or cancelled run leaves in place
+ * still shows its own until the pull request closes.
  *
  * @param {GitHubContext} github
  * @param {number} number The pull request's.
@@ -166,7 +168,7 @@ export const writeQrCodes = async (github, number, values, options = {}) => {
     github,
     number,
     new Map([...names].map(([value, name]) => [name, qrCodePng(value)])),
-    options,
+    { ...options, prune: false },
   );
   const base = `${github.serverUrl.replace(/\/+$/, "")}/${github.repository}/raw/${QR_BRANCH}/pr-${number}`;
   return Object.fromEntries(
@@ -182,4 +184,4 @@ export const writeQrCodes = async (github, number, values, options = {}) => {
  * @param {Options} [options]
  */
 export const removeQrCodes = (github, number, options = {}) =>
-  syncFolder(github, number, new Map(), options);
+  syncFolder(github, number, new Map(), { ...options, prune: true });
