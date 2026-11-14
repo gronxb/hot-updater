@@ -1,5 +1,19 @@
 # @hot-updater/react-native
 
+## 1.2.0-rc.44
+
+### Patch Changes
+
+- 7df93d4: A fresh sandbox build opens a preview link without a manual step. When a link waits for your update server, the sandbox starts your app under its screen, once, so the app's own update check can answer. The screen says "Checking pr-134…" and then asks to open the latest bundle. If no answer comes within a minute, such as from an app that checks only after sign-in, the screen asks you to open the app, as before.
+- c7f6344: The sandbox Home leads with what the build is for. Under the current bundle come **Channels**, with **Scan a channel QR code** and **Enter a channel**, then **Downloaded**. The dev server is one compact card at the end. Closed, it's a **Dev server** row that shows a saved host that answered; open, it lists the hosts used before, takes a new address with **Open**, and links to **Help**. While a dev server runs, the card is a single row with its address, which reloads, and **Exit**. iOS and Android match.
+
+  Text reads at WCAG AA at rest and pressed. Orange text, the focus ring, the progress bar and the selected tab use a darker orange in light mode, and destructive actions use a darker red. Text and icon actions press to an opaque light fill. Labels on orange buttons are near-black. Placeholders and the unselected tab use the secondary text color. While a dev server runs, its card keeps **Help** beside **Exit**, and the running row says it reloads. With Reduce Motion on iOS, or animations off on Android, cards open and close without the spring, also when the setting changes while the screen is up. Dialogs that only show a message close with **Done** instead of **OK**. While Home is busy, the dev server form's saved hosts, field and **Open** don't respond on Android, as on iOS.
+
+- e07cfe7: The sandbox screen's orange tile and primary buttons carry white again, on a slightly deeper orange (#EA580C, pressed #C2410C) that keeps them accessible: the play and reload glyph reads at 3.56:1, and button labels are now Geist Bold at 19 so they count as large text. Sandbox builds bundle Geist Bold for it.
+- @hot-updater/plugin-insights@1.2.0-rc.44
+  - @hot-updater/plugin-remote-config@1.2.0-rc.44
+  - @hot-updater/protocol@1.2.0-rc.44
+
 ## 1.2.0-rc.43
 
 ### Patch Changes

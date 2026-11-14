@@ -1,5 +1,18 @@
 # @hot-updater/supabase
 
+## 1.2.0-rc.44
+
+### Patch Changes
+
+- 6b45f64: perf(plugin-core): index each multi-valued index table, such as `bundle_events__byBundle`, by its row's key. Replacing a row's entries on a patch or a delete, and the retention prune on PostgreSQL and Supabase, read the whole index table without it.
+- Updated dependencies [6b45f64]
+- Updated dependencies [6b45f64]
+- Updated dependencies [6b45f64]
+  - @hot-updater/plugin-core@1.2.0-rc.44
+  - @hot-updater/cli-tools@1.2.0-rc.44
+  - @hot-updater/server@1.2.0-rc.44
+  - @hot-updater/protocol@1.2.0-rc.44
+
 ## 1.2.0-rc.43
 
 ### Minor Changes
