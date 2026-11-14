@@ -3,6 +3,7 @@ import {
   createKvAdapter,
   createMemoryAdapter,
   type DatabaseAdapter,
+  meterReads,
   DatabaseConstraintError,
   DatabaseRowReferencedError,
   type NativeBuildRegistration,
@@ -109,6 +110,21 @@ const setupWithDb = () => {
     { now: () => (clock += 1) },
   );
   return { core, db };
+};
+
+/** Core's API over a memory adapter whose reads `measureReads` reports. */
+const setupMetered = () => {
+  let clock = 1_000;
+  const database = meterReads({
+    name: "memory",
+    adapter: createMemoryAdapter(),
+  });
+  const core = createCoreApi(
+    createEngine(database).core,
+    { resolveFileUrl: async () => null },
+    { now: () => (clock += 1) },
+  );
+  return { core, measureReads: database.measureReads };
 };
 
 const setRow = (
@@ -1231,6 +1247,29 @@ describe("the store build mark", () => {
         builtInOlderThan: "01800000-0000-7000-8000-000000000000",
       }),
     ).toBeNull();
+  });
+
+  it("reads as much for a build older than a bundle however many newer builds are in the way", async () => {
+    /** The reads of a lookup past `newer` builds made after the bundle. */
+    const readsPast = async (newer: number) => {
+      const { core, measureReads } = setupMetered();
+      await core.registerNativeBuild(registration(1));
+      for (let n = 2; n <= newer + 1; n += 1) {
+        await core.registerNativeBuild(
+          registration(n, {
+            minBundleId: `019a0000-0000-7000-8000-${String(n).padStart(12, "0")}`,
+          }),
+        );
+      }
+      const { adapter } = await measureReads(() =>
+        core.findNativeBuild(scope, {
+          builtInOlderThan: "01950000-0000-7000-8000-000000000000",
+        }),
+      );
+      return adapter;
+    };
+
+    expect(await readsPast(300)).toEqual(await readsPast(150));
   });
 
   it("keeps a build key through the builds newer than the bundle", async () => {
