@@ -33,6 +33,7 @@ elevated dark surfaces come for free. Android uses the hex values.
 | accentText     | `#C2410C` | `#F97316` | the same hexes, by trait             |
 | onAccent       | `#1F1F1F` | `#1F1F1F` | the same hex                         |
 | danger         | `#FF3B30` | `#FF453A` | `systemRed`                          |
+| dangerText     | `#C4161C` | `#FF6961` | the same hexes, by trait             |
 
 `fill` backs fields, badges, neutral icon tiles, and the monogram of an app
 without an icon. `muted` is for chevrons. Placeholders are `textSecondary`, which reads at AA
@@ -41,8 +42,11 @@ on `fill`.
 `accent` is the brand orange as a fill, under `onAccent` (5.88:1). Orange
 drawn on a surface, such as text, a ring, a bar or the selected tab, is
 `accentText`, which is darker in light mode so it reads at AA (5.18:1 on
-white). `text` and `textSecondary` stay the platform's label colors, so they
-follow dark mode and Increase Contrast.
+white). `danger` is for the warning icon; a destructive action's text is
+`dangerText`, which reads at AA on a surface and pressed. A text or icon
+action presses to `fill`, under which `accentText` still reads at AA (4.52:1).
+`text` and `textSecondary` stay the platform's label colors, so they follow
+dark mode and Increase Contrast.
 
 ### Type
 
@@ -102,7 +106,7 @@ A pressed row or button changes its background at once and eases it back in
 
 With Reduce Motion on iOS, or animations off on Android (an animator duration
 scale of 0), nothing springs: a card opens and closes in place, and the
-chevron turns at once.
+chevron turns at once. Both follow the setting while the screen is up.
 
 ## Components
 
@@ -113,7 +117,8 @@ circular close button in `fill` with an `xmark` in `textSecondary`, labelled
 "Back to the app".
 
 **Section.** A `label` in `textSecondary`, with an optional action on the
-right in `subhead` `accentText`, such as **Clear**. Then a card, then
+right in `subhead` `accentText`, such as **Clear**, with a 44-point (48 dp)
+target. Then a card, then
 an optional footer in `footnote` `textSecondary`.
 
 **Card.** `surface`, `cardRadius`, no shadow. Rows inside are divided by a
@@ -140,7 +145,7 @@ shows a field and a primary button, 12 apart, inside the same card, with
 **Primary button.** `accent`, `control` tall, radius 10, `headline` in
 `onAccent`. Pressed, `accentPressed`. Disabled, 40% opacity.
 
-**Destructive row.** A row whose title is `body` in `danger`, centered by its
+**Destructive row.** A row whose title is `body` in `dangerText`, centered by its
 text, with no leading slot. It always asks first.
 
 **Badge.** A capsule in `fill`, 8 by 2 padding, `badge` in `textSecondary`.
@@ -177,10 +182,12 @@ no dev server running, it's an accordion titled **Dev server** with a link
 tile; closed, its value is the first saved host that answered. Open, it lists
 the saved hosts as `fill` buttons, `control` tall, with the host in `code` and
 its state in `footnote` (**Running**, "Not running…", **Tap to open**), then
-the address field, **Open**, and a **Help** text button in `accentText`. With a
-dev server running, it's one row: **Dev server** with the host in `code` (and
-the last error as the subtitle), which reloads, and a text button **Exit** in
-`accentText`, labelled "Exit dev server".
+the address field, **Open**, and a **Help** text button in `accentText`. While
+Home is busy, all of them are disabled. With a dev server running, it's one
+row: **Dev server** with the host in `code` (and the last error as the
+subtitle), which reloads (its hint says "Reload"), then a help icon in
+`textSecondary` labelled "Help", and a text button **Exit** in `accentText`,
+labelled "Exit dev server".
 
 **Info.** The title, the Build and Bundle cards of name and value rows, and the
 destructive row **Reset to built-in bundle** with the note under it, and
@@ -209,4 +216,4 @@ Each platform keeps its own:
 - **Android:** system back and predictive back, edge-to-edge with insets, the
   pressed state above, haptics through `performHapticFeedback`, the font scale,
   and TalkBack descriptions. Questions use the same card as a dialog, with
-  text buttons: the main one in `accentText`, a destructive one in `danger`.
+  text buttons: the main one in `accentText`, a destructive one in `dangerText`.

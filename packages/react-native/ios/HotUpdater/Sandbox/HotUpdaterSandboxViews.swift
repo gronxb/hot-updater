@@ -498,6 +498,17 @@ private struct HomeScreen: View {
                         ) { EmptyView() }
                     }
                     .buttonStyle(SandboxRowStyle())
+                    .accessibilityHint("Reload")
+                    // Help stays in reach without leaving the session.
+                    Button { openURL(helpURL) } label: {
+                        Image(systemName: "questionmark.circle")
+                            .font(SandboxFont.headline)
+                            .foregroundColor(SandboxColor.textSecondary)
+                            .frame(minWidth: 44, maxHeight: .infinity)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(SandboxTextButtonStyle())
+                    .accessibilityLabel("Help")
                     Button {
                         devServer.exitDevServer()
                         model.onClose()
@@ -509,7 +520,8 @@ private struct HomeScreen: View {
                             .frame(minWidth: 44, maxHeight: .infinity)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(SandboxRowStyle())
+                    // `fill` under the pressed label keeps it at AA.
+                    .buttonStyle(SandboxTextButtonStyle())
                     .accessibilityLabel("Exit dev server")
                 }
                 .fixedSize(horizontal: false, vertical: true)
@@ -544,7 +556,7 @@ private struct HomeScreen: View {
                                 .frame(maxWidth: .infinity, minHeight: 44)
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(SandboxTextButtonStyle())
                     )
                 ) { model.connect($0) }
             }

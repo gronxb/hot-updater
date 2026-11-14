@@ -1,6 +1,9 @@
 package com.hotupdater
 
+import android.database.ContentObserver
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.view.View
@@ -36,6 +39,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -46,6 +50,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -95,7 +100,10 @@ internal data class SandboxColors(
     val text: Color,
     val textSecondary: Color,
     val muted: Color,
+    /** The warning icon. */
     val danger: Color,
+    /** A destructive action's text: AA on a surface and pressed. */
+    val dangerText: Color,
     /** Orange drawn on a surface, such as text, a focus ring, or a progress bar: darker in light mode so it reads at AA. */
     val accentText: Color,
 ) {
@@ -118,6 +126,7 @@ internal data class SandboxColors(
                 textSecondary = Color(0xFF6C6C70),
                 muted = Color(0xFF8E8E93),
                 danger = Color(0xFFFF3B30),
+                dangerText = Color(0xFFC4161C),
                 accentText = Color(0xFFC2410C),
             )
         val dark =
@@ -131,6 +140,7 @@ internal data class SandboxColors(
                 textSecondary = Color(0xFF98989F),
                 muted = Color(0xFF8E8E93),
                 danger = Color(0xFFFF453A),
+                dangerText = Color(0xFFFF6961),
                 accentText = Color(0xFFF97316),
             )
     }
@@ -169,14 +179,8 @@ internal object SandboxType {
 internal object SandboxMotion {
     /** The design's spring, or none while the system's animations are off (Remove animations). */
     @Composable
-    fun <T> spring(): FiniteAnimationSpec<T> {
-        val context = LocalContext.current
-        val off =
-            remember(context) {
-                Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
-            }
-        return if (off) snap() else spring(dampingRatio = 0.86f, stiffness = 320f)
-    }
+    fun <T> spring(): FiniteAnimationSpec<T> =
+        if (LocalSandboxAnimationsOff.current) snap() else spring(dampingRatio = 0.86f, stiffness = 320f)
 }
 
 internal val LocalSandboxColors = staticCompositionLocalOf { SandboxColors.light }
@@ -184,8 +188,33 @@ internal val LocalSandboxColors = staticCompositionLocalOf { SandboxColors.light
 @Composable
 internal fun SandboxTheme(content: @Composable () -> Unit) {
     val colors = if (isSystemInDarkTheme()) SandboxColors.dark else SandboxColors.light
-    CompositionLocalProvider(LocalSandboxColors provides colors, content = content)
+    CompositionLocalProvider(
+        LocalSandboxColors provides colors,
+        LocalSandboxAnimationsOff provides animationsOff(),
+        content = content,
+    )
 }
+
+/** Whether the system's animations are off (an animator duration scale of 0), followed live. */
+@Composable
+private fun animationsOff(): Boolean {
+    val resolver = LocalContext.current.contentResolver
+    val read = { Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f }
+    var off by remember(resolver) { mutableStateOf(read()) }
+    DisposableEffect(resolver) {
+        val observer =
+            object : ContentObserver(Handler(Looper.getMainLooper())) {
+                override fun onChange(selfChange: Boolean) {
+                    off = read()
+                }
+            }
+        resolver.registerContentObserver(Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE), false, observer)
+        onDispose { resolver.unregisterContentObserver(observer) }
+    }
+    return off
+}
+
+internal val LocalSandboxAnimationsOff = staticCompositionLocalOf { false }
 
 internal object SandboxHaptic {
     fun tap(view: View) {
@@ -249,6 +278,8 @@ internal fun Modifier.sandboxPressable(
     enabled: Boolean = true,
     role: Role = Role.Button,
     pressedColor: Color = LocalSandboxColors.current.surfacePressed,
+    /** What a screen reader says the tap does, when the label doesn't. */
+    onClickLabel: String? = null,
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ): Modifier {
@@ -263,13 +294,21 @@ internal fun Modifier.sandboxPressable(
         .background(background)
         .then(
             if (onLongClick == null) {
-                Modifier.clickable(interactionSource = source, indication = null, enabled = enabled, role = role, onClick = onClick)
+                Modifier.clickable(
+                    interactionSource = source,
+                    indication = null,
+                    enabled = enabled,
+                    onClickLabel = onClickLabel,
+                    role = role,
+                    onClick = onClick,
+                )
             } else {
                 Modifier.combinedClickable(
                     interactionSource = source,
                     indication = null,
                     enabled = enabled,
                     role = role,
+                    onClickLabel = onClickLabel,
                     onLongClick = onLongClick,
                     onClick = onClick,
                 )
@@ -309,6 +348,9 @@ internal fun SandboxSection(
                         Modifier
                             .clip(RoundedCornerShape(6.dp))
                             .sandboxPressable(pressedColor = colors.fill, onClick = action.second)
+                            .heightIn(min = 48.dp)
+                            .widthIn(min = 48.dp)
+                            .wrapContentHeight()
                             .padding(horizontal = 6.dp, vertical = 4.dp),
                     )
                 }
@@ -490,7 +532,7 @@ internal fun SandboxDestructiveRow(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
-        SandboxText(title, SandboxType.body, LocalSandboxColors.current.danger)
+        SandboxText(title, SandboxType.body, LocalSandboxColors.current.dangerText)
     }
 }
 
@@ -538,6 +580,7 @@ internal fun SandboxField(
     description: String,
     keyboardType: KeyboardType,
     focusRequester: FocusRequester,
+    enabled: Boolean = true,
     onGo: () -> Unit,
 ) {
     val colors = LocalSandboxColors.current
@@ -545,6 +588,7 @@ internal fun SandboxField(
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
+        enabled = enabled,
         singleLine = true,
         textStyle = SandboxType.code.copy(color = colors.text),
         cursorBrush = SolidColor(colors.accentText),
@@ -584,6 +628,7 @@ internal fun SandboxField(
 internal fun SandboxHostButton(
     address: String,
     status: String,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     val colors = LocalSandboxColors.current
@@ -593,7 +638,7 @@ internal fun SandboxHostButton(
             .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(colors.fill)
-            .sandboxPressable(onClick = onClick)
+            .sandboxPressable(enabled = enabled, onClick = onClick)
             .semantics(mergeDescendants = true) {}
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -646,7 +691,7 @@ internal fun SandboxAccordion(
     }
 }
 
-/** A question, in the design's card: text buttons, the main one in accentText, a destructive one in danger. */
+/** A question, in the design's card: text buttons, the main one in accentText, a destructive one in dangerText. */
 @Composable
 internal fun SandboxDialog(
     title: String,
@@ -680,7 +725,7 @@ internal fun SandboxDialog(
             }
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.End) {
                 if (dismiss != null) DialogButton(dismiss, colors.textSecondary, onClick = onDismiss)
-                DialogButton(confirm, if (destructive) colors.danger else colors.accentText, onClick = onConfirm)
+                DialogButton(confirm, if (destructive) colors.dangerText else colors.accentText, onClick = onConfirm)
             }
         }
     }
@@ -709,7 +754,7 @@ internal fun SandboxActionsDialog(
                 modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 8.dp).semantics { heading() },
             )
             actions.forEach { (action, destructive, run) ->
-                DialogButton(action, if (destructive) colors.danger else colors.accentText, Modifier.fillMaxWidth()) {
+                DialogButton(action, if (destructive) colors.dangerText else colors.accentText, Modifier.fillMaxWidth()) {
                     onDismiss()
                     run()
                 }

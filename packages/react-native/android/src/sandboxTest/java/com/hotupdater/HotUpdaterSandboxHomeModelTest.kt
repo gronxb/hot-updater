@@ -645,6 +645,23 @@ class HotUpdaterSandboxHomeModelTest {
     }
 
     @Test
+    fun `a saved host tapped after Home turns busy connects nothing`() {
+        // The dev server form was drawn while idle and stays open; a download
+        // then makes Home busy before the tap lands.
+        var current = state(selection())
+        val connected = mutableListOf<String>()
+        val connect = HotUpdaterSandboxDevServerConnect({ home(current).isBusy }) { connected += it }
+
+        connect.tap("localhost:8081")
+        assertEquals(listOf("localhost:8081"), connected)
+
+        current = state(selection(), phase = HotUpdaterSandboxPhase.Working(1, "pr-2", HotUpdaterSandboxStep.DOWNLOAD, 0.5))
+        connect.tap("localhost:8081")
+        connect.tap("192.168.0.10:8081")
+        assertEquals(listOf("localhost:8081"), connected)
+    }
+
+    @Test
     fun `a switch shows its step and holds the rows`() {
         val model =
             home(

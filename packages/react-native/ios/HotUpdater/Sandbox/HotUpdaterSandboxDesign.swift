@@ -27,7 +27,15 @@ enum SandboxColor {
             ? UIColor(red: 0xF9 / 255, green: 0x73 / 255, blue: 0x16 / 255, alpha: 1)
             : UIColor(red: 0xC2 / 255, green: 0x41 / 255, blue: 0x0C / 255, alpha: 1)
     })
+    /// The warning icon.
     static let danger = Color(UIColor.systemRed)
+    /// A destructive action's text: AA on a surface and pressed (6.04:1 and
+    /// 4.81:1 light, 6.03:1 and 4.94:1 dark).
+    static let dangerText = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0xFF / 255, green: 0x69 / 255, blue: 0x61 / 255, alpha: 1)
+            : UIColor(red: 0xC4 / 255, green: 0x16 / 255, blue: 0x1C / 255, alpha: 1)
+    })
 }
 
 /// Geist Sans for the interface and Geist Mono for what's code-like: channels,
@@ -117,9 +125,15 @@ struct SandboxSection<Content: View>: View {
                         .accessibilityAddTraits(.isHeader)
                     Spacer(minLength: 8)
                     if let action {
-                        Button(action.title, action: action.run)
-                            .font(SandboxFont.subhead)
-                            .foregroundColor(SandboxColor.accentText)
+                        Button(action: action.run) {
+                            Text(action.title)
+                                .font(SandboxFont.subhead)
+                                .foregroundColor(SandboxColor.accentText)
+                                .padding(.horizontal, 6)
+                                .frame(minWidth: 44, minHeight: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(SandboxTextButtonStyle())
                     }
                 }
                 .padding(.horizontal, 16)
@@ -194,6 +208,20 @@ struct SandboxLeadView: View {
                 .frame(width: primaryTile, height: primaryTile)
                 .background(SandboxColor.accent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
+    }
+}
+
+/// A text or icon action's look: pressed, `fill` behind it, under which
+/// `accentText` still reads at AA (4.52:1).
+@available(iOS 16.0, *)
+struct SandboxTextButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                configuration.isPressed ? SandboxColor.fill : Color.clear,
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+            )
+            .animation(configuration.isPressed ? nil : SandboxMotion.release, value: configuration.isPressed)
     }
 }
 
@@ -315,7 +343,7 @@ struct SandboxDestructiveRow: View {
         Button(action: action) {
             Text(title)
                 .font(SandboxFont.body)
-                .foregroundColor(SandboxColor.danger)
+                .foregroundColor(SandboxColor.dangerText)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, minHeight: 52)

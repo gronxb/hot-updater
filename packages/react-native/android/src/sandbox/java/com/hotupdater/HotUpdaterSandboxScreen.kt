@@ -258,10 +258,18 @@ internal class HotUpdaterSandboxScreen(
         activity.finish()
     }
 
-    private fun connect(host: String) {
-        devServer.connect(host) { problem ->
-            if (problem != null) notice = "Couldn't connect to $host" to problem
+    /** A tap on a saved host or the form's Open: nothing while Home is busy. */
+    private val devServerConnect =
+        HotUpdaterSandboxDevServerConnect({ home(state).isBusy }) { host ->
+            devServer.connect(host) { problem ->
+                if (problem != null) notice = "Couldn't connect to $host" to problem
+            }
         }
+
+    private fun connect(host: String) = devServerConnect.tap(host)
+
+    private fun openHelp() {
+        runCatching { activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(HELP_URL))) }
     }
 
     // MARK: layout
@@ -530,7 +538,7 @@ internal class HotUpdaterSandboxScreen(
             val running = devServer.runningDevServerHost
             if (running != null) {
                 Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f).sandboxPressable { devServer.reloadDevServer() }) {
+                    Box(Modifier.weight(1f).sandboxPressable(onClickLabel = "Reload") { devServer.reloadDevServer() }) {
                         SandboxRowContent(
                             lead = SandboxLead.Icon(R.drawable.hot_updater_sandbox_link),
                             title = "Dev server",
@@ -539,11 +547,23 @@ internal class HotUpdaterSandboxScreen(
                             detailStyle = SandboxType.code,
                         )
                     }
+                    // Help stays in reach without leaving the session.
                     Box(
                         Modifier
                             .fillMaxHeight()
                             .widthIn(min = 48.dp)
-                            .sandboxPressable { devServer.exitDevServer() }
+                            .sandboxPressable(pressedColor = colors.fill, onClick = ::openHelp)
+                            .semantics { contentDescription = "Help" },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        SandboxIcon(R.drawable.hot_updater_sandbox_help, colors.textSecondary, 22.dp)
+                    }
+                    Box(
+                        Modifier
+                            .fillMaxHeight()
+                            .widthIn(min = 48.dp)
+                            // `fill` under the pressed label keeps it at AA.
+                            .sandboxPressable(pressedColor = colors.fill) { devServer.exitDevServer() }
                             .semantics { contentDescription = "Exit dev server" }
                             .padding(horizontal = 16.dp),
                         contentAlignment = Alignment.Center,
@@ -580,6 +600,7 @@ internal class HotUpdaterSandboxScreen(
                                                 false -> "Not running. Start your dev server, then tap to retry."
                                                 null -> "Tap to open"
                                             },
+                                            enabled = !home.isBusy,
                                         ) { connect(host.address) }
                                     }
                                 }
@@ -591,9 +612,7 @@ internal class HotUpdaterSandboxScreen(
                                 .fillMaxWidth()
                                 .heightIn(min = 48.dp)
                                 .clip(RoundedCornerShape(10.dp))
-                                .sandboxPressable(pressedColor = colors.fill) {
-                                    runCatching { activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(HELP_URL))) }
-                                },
+                                .sandboxPressable(pressedColor = colors.fill, onClick = ::openHelp),
                             contentAlignment = Alignment.Center,
                         ) {
                             SandboxText("Help", SandboxType.subhead, colors.accentText)
@@ -658,7 +677,7 @@ internal class HotUpdaterSandboxScreen(
         }
         val send = {
             val value = text.trim()
-            if (value.isNotEmpty()) {
+            if (enabled && value.isNotEmpty()) {
                 SandboxHaptic.tap(haptics)
                 typed[id] = ""
                 focus.clearFocus()
@@ -680,9 +699,9 @@ internal class HotUpdaterSandboxScreen(
                 },
             ) {
                 above?.invoke(this)
-                SandboxField(text, { typed[id] = it }, placeholder, fieldLabel, keyboardType, field, send)
+                SandboxField(text, { typed[id] = it }, placeholder, fieldLabel, keyboardType, field, enabled, send)
                 Box(Modifier.bringIntoViewRequester(button)) {
-                    SandboxPrimaryButton(action, enabled = text.isNotBlank(), onClick = send)
+                    SandboxPrimaryButton(action, enabled = enabled && text.isNotBlank(), onClick = send)
                 }
                 below?.invoke(this)
             }
