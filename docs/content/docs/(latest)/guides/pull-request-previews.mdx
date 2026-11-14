@@ -164,25 +164,8 @@ and keep the path in `.gitignore`.
 ## Add the workflow
 
 The workflow previews three builds of the pull request: the Android APK, the
-iPhone's ad hoc `.ipa`, and an iOS Simulator `.app` of the same native code,
-which lets someone on a Mac test without an iPhone. Add a sandbox scheme with
-`simulator: true` and the iPhone scheme's `bundleIdentifier`:
-
-```ts title="hot-updater.config.ts"
-    ios: {
-      sandbox: {
-        // ...the iPhone scheme above
-      },
-      sandboxSimulator: {
-        bundleIdentifier: "com.example.app",
-        scheme: "ExampleApp",
-        configuration: "Release",
-        simulator: true,
-        sandbox: true,
-      },
-    },
-```
-
+iPhone's ad hoc `.ipa`, and an iOS Simulator `.app` of the same native code.
+[Add the iOS Simulator](#add-the-ios-simulator) adds the Simulator's scheme.
 Each build has its own job, and the three run at the same time, so a pull
 request that changes native code waits about as long as its slowest build. A
 last job writes the comment:
@@ -361,18 +344,51 @@ A job that builds takes far longer than one that only deploys the bundle. If a
 build outlasts GitHub's default limit of six hours, give its job a
 `timeout-minutes`.
 
-Without the Simulator, leave out the `ios-simulator` job and its line in
-`results`. To use fewer macOS minutes, one iOS job can build both schemes in
-order, `ios-scheme: sandbox, sandboxSimulator`, and deploy one bundle after
-them, at the cost of waiting for both builds.
+A large app's release build can outgrow the template's 2 GB Gradle heap. Give
+the `android` job more, and keep Kotlin's compiler daemon, which takes the
+same heap by default, smaller. On `ubuntu-latest`, with 16 GB, this kept a
+four-ABI 277 MB APK's build under 12 GB:
 
-### The iOS Simulator build
+```yaml
+  android:
+    env:
+      GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g
+    steps:
+      # ...before the preview step
+      - run: mkdir -p ~/.gradle && echo "kotlin.daemon.jvmargs=-Xmx2g" >> ~/.gradle/gradle.properties
+```
 
-The Simulator build is for Macs with Apple silicon. The comment's iOS section
-keeps the iPhone's install link and QR code, and adds a command for the
-Simulator build, which a Simulator can't scan. Run in your project, it
-installs the build on the booted Simulator and opens the pull request's
-latest bundle:
+To use fewer macOS minutes, one iOS job can build both schemes in order,
+`ios-scheme: sandbox, sandboxSimulator`, and deploy one bundle after them, at
+the cost of waiting for both builds.
+
+### Add the iOS Simulator
+
+A Simulator build of the same native code lets someone on a Mac with Apple
+silicon test the pull request without an iPhone. Add a sandbox scheme with
+`simulator: true` and the iPhone scheme's `bundleIdentifier`:
+
+```ts title="hot-updater.config.ts"
+    ios: {
+      sandbox: {
+        // ...the iPhone scheme above
+      },
+      sandboxSimulator: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        configuration: "Release",
+        simulator: true,
+        sandbox: true,
+      },
+    },
+```
+
+Without it, leave out the `ios-simulator` job and its line in `results`.
+
+The comment's iOS section keeps the iPhone's install link and QR code, and
+adds a command for the Simulator build, which a Simulator can't scan. Run in
+your project, it installs the build on the booted Simulator and opens the pull
+request's latest bundle:
 
 ```sh
 npx hot-updater native-build install <build id> --open pr-12
@@ -733,17 +749,14 @@ export default defineConfig({
 });
 ```
 
-```yaml
-        with:
-          console-url: ${{ vars.CONSOLE_URL }}
-          platforms: android,ios
-          android-scheme: previewApk
-          ios-scheme: previewSimulator
-```
+Use [the workflow](#add-the-workflow) without the `ios-adhoc` job and its
+line in `results`. Set `android-scheme: previewApk` in the `android` job, and
+`ios-scheme: previewSimulator` in the `ios-simulator` job, which then deploys
+the iOS bundle itself: leave out its `deploy: false`.
 
 A pull request's first run builds each platform's native build, since the
 build embeds the pull request's channel: an Android APK on an Ubuntu runner,
-and the Simulator app, which takes about 35–40 minutes on a GitHub-hosted
+and the Simulator app, whose build takes about 20–25 minutes on a GitHub-hosted
 macOS runner. Later pushes reuse the pull request's build while the native
 code doesn't change, so they only deploy the bundle.
 
