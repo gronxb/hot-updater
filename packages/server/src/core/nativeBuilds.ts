@@ -489,6 +489,7 @@ export const createNativeBuildApi = (
   HotUpdaterCoreApi,
   | "registerNativeBuild"
   | "getNativeBuild"
+  | "findNativeBuildByBuiltInBundle"
   | "findNativeBuild"
   | "findNativeBuildSibling"
   | "listNativeBuilds"
@@ -569,6 +570,13 @@ export const createNativeBuildApi = (
 
   async getNativeBuild(id) {
     const row = await db.findOne("native_builds", { id });
+    return row === null ? null : pick(row);
+  },
+
+  async findNativeBuildByBuiltInBundle(bundleId) {
+    const row = await db.findOne("native_builds", {
+      min_bundle_id: bundleId,
+    });
     return row === null ? null : pick(row);
   },
 

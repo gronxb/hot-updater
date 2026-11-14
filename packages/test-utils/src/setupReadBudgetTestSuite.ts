@@ -696,6 +696,15 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       }),
   }),
   budget({
+    api: "native build by its built-in bundle: 1 unique read",
+    read: ({ core }) =>
+      core.findNativeBuildByBuiltInBundle(createBundleFixture("011").id),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({ id: createBundleFixture("8011").id }),
+  }),
+  budget({
     api: "native build by scope: byScope descending, limit 1",
     read: ({ core }) => core.findNativeBuild(nativeBuildScope),
     adapter: reads(0, 0, 1, 1),

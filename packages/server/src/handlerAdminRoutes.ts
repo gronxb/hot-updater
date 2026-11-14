@@ -665,6 +665,15 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     }),
   ),
 
+  // The build that compiled in this bundle; none answers 200 with null data.
+  findNativeBuildByBuiltInBundle: onCore(async (core, _request, params) =>
+    json({
+      data: await core.findNativeBuildByBuiltInBundle(
+        requireRouteParam(params, "bundleId"),
+      ),
+    }),
+  ),
+
   listNativeBuilds: onCore(async (core, request) => {
     const url = new URL(request.url);
     const input = keyset(url);
@@ -965,6 +974,11 @@ export const ADMIN_ROUTES: readonly {
   },
   { method: "POST", path: "/native-builds", handler: "registerNativeBuild" },
   { method: "GET", path: "/native-builds/latest", handler: "findNativeBuild" },
+  {
+    method: "GET",
+    path: "/native-builds/built-in/:bundleId",
+    handler: "findNativeBuildByBuiltInBundle",
+  },
   {
     method: "GET",
     path: "/native-builds/:id/sibling",

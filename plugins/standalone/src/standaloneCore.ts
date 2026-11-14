@@ -310,6 +310,12 @@ export const createStandaloneCoreApi = (
       call<NativeBuildRow>("GET", `/native-builds/${encode(id)}`, {
         requiredRoute: "native build",
       }),
+    findNativeBuildByBuiltInBundle: (bundleId) =>
+      call<NativeBuildRow>(
+        "GET",
+        `/native-builds/built-in/${encode(bundleId)}`,
+        { requiredRoute: "native build" },
+      ),
     // A server that predates native build keys or the store build mark ignores
     // `buildKey` or `storeBuild` and answers the scope's newest build, whose
     // key or mark then differs: no build.

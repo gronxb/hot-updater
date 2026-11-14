@@ -166,6 +166,9 @@ describe("createStandaloneCoreApi", () => {
       ),
     ).rejects.toThrow(upgrade);
     await expect(core.getNativeBuild("build-1")).rejects.toThrow(upgrade);
+    await expect(
+      core.findNativeBuildByBuiltInBundle("bundle-1"),
+    ).rejects.toThrow(upgrade);
     await expect(core.deleteNativeBuild("build-1")).rejects.toThrow(
       `The server at ${BASE_URL} has no native build deletion route`,
     );
@@ -337,6 +340,28 @@ describe("createStandaloneCoreApi", () => {
       id: "build-1",
     });
     await expect(core.getNativeBuild("build-2")).resolves.toBeNull();
+  });
+
+  it("reads the native build that compiled in a bundle, and none as null", async () => {
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/native-builds/built-in/:bundleId`, ({ params }) =>
+        HttpResponse.json({
+          data:
+            params.bundleId === "bundle-1"
+              ? { id: "build-1", min_bundle_id: "bundle-1" }
+              : null,
+        }),
+      ),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await expect(
+      core.findNativeBuildByBuiltInBundle("bundle-1"),
+    ).resolves.toEqual({ id: "build-1", min_bundle_id: "bundle-1" });
+    await expect(
+      core.findNativeBuildByBuiltInBundle("bundle-2"),
+    ).resolves.toBeNull();
   });
 
   it("records a native build's store submission, and asks for an upgrade on a server without the route", async () => {

@@ -294,6 +294,13 @@ export interface HotUpdaterCoreApi {
   /** A native build by ID: one read of its key. */
   getNativeBuild(id: string): Promise<NativeBuildRow | null>;
   /**
+   * The native build whose built-in bundle is `bundleId`, the MIN_BUNDLE_ID
+   * it compiled in, or null: one read of its unique index.
+   */
+  findNativeBuildByBuiltInBundle(
+    bundleId: string,
+  ): Promise<NativeBuildRow | null>;
+  /**
    * The newest native build of a scope: the one registered last, in one read
    * of its index. With `buildKey`, the newest of the scope registered with that
    * native build key, also one read. With `storeBuild`, the scope's marked
