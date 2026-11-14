@@ -274,6 +274,101 @@ describe("sql core", () => {
     ]);
   });
 
+  const tagged = {
+    id: "a",
+    grp: "g",
+    score: 1,
+    ratio: null,
+    flag: false,
+    label: null,
+    tags: ["x", "y"],
+    payload: null,
+    note: null,
+    _v: 0,
+  };
+
+  it("adds an inserted row's index table entries without deleting any, and replaces them on a patch or a delete", async () => {
+    const { statements, adapter } = recorder("sqlite");
+    const entries = () =>
+      statements
+        .map(({ sql }) => sql)
+        .filter((sql) => sql.includes('"conformance_items__byTag"'));
+    const add =
+      'INSERT INTO "conformance_items__byTag" ("tags", "score", "id") VALUES (?, ?, ?)';
+    const clear = 'DELETE FROM "conformance_items__byTag" WHERE "id" = ?';
+
+    await adapter.write([
+      { type: "insert", table: conformanceItems, row: tagged },
+    ]);
+    expect(entries()).toEqual([add, add]);
+
+    statements.length = 0;
+    await adapter.write([
+      {
+        type: "patch",
+        table: conformanceItems,
+        key: ["a"],
+        set: { tags: ["z"] },
+        guard: { v: 0 },
+        previous: tagged,
+      },
+    ]);
+    expect(entries()).toEqual([clear, add]);
+
+    statements.length = 0;
+    await adapter.write([
+      {
+        type: "delete",
+        table: conformanceItems,
+        key: ["a"],
+        guard: { v: 1 },
+        previous: { ...tagged, tags: ["z"], _v: 1 },
+      },
+    ]);
+    expect(entries()).toEqual([clear]);
+  });
+
+  it("inserts a row in a batch write without scanning an index table", async () => {
+    const db = new DatabaseSync(":memory:");
+    const executor = sqliteBatchExecutor(db);
+    const written: SqlStatement[] = [];
+    const adapter = createSqlAdapter({
+      executor: {
+        ...executor,
+        batch: (statements) => {
+          written.push(...statements);
+          return executor.batch!(statements);
+        },
+      },
+    });
+    await adapter.migrations!.apply([conformanceItems, WRITE_GUARD_TABLE]);
+    await expect(
+      adapter.write([{ type: "insert", table: conformanceItems, row: tagged }]),
+    ).resolves.toEqual({ ok: true });
+
+    // D1 bills every row a statement reads, and an index table grows with
+    // every row inserted.
+    const plan: string[] = [];
+    for (const { sql, params } of written) {
+      const steps = await executor.execute({
+        sql: `EXPLAIN QUERY PLAN ${sql}`,
+        params,
+      });
+      plan.push(...steps.rows.map(({ detail }) => String(detail)));
+    }
+    expect(plan.filter((step) => step.startsWith("SCAN conformance_"))).toEqual(
+      [],
+    );
+    const rows = await adapter.query(conformanceItems, {
+      index: "byTag",
+      eq: ["y"],
+      order: "asc",
+      limit: 10,
+    });
+    expect(rows.map(({ id }) => id)).toEqual(["a"]);
+    db.close();
+  });
+
   it("indexes a retention column that no index or key already leads with", () => {
     const index = (table: PhysicalTable) =>
       createTableStatements("postgresql", [table]).filter((statement) =>
