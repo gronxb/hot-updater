@@ -2,12 +2,16 @@ import {
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
   type HotUpdaterConfigScaffold,
+  type ManagedPluginId,
+  managedPluginsConfig,
   type ProviderConfig,
   type BuildType,
 } from "@hot-updater/cli-tools";
 
+/** The config for `build`, listing `plugins`, the ones the Edge Function runs: all by default. */
 export const getConfigScaffold = (
   build: BuildType,
+  plugins?: readonly ManagedPluginId[],
 ): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
@@ -30,14 +34,6 @@ export const getConfigScaffold = (
       .setBuildType(build)
       .setStorage(storageConfig)
       .setDatabase(databaseConfig)
-      .setPlugins({
-        imports: [
-          {
-            pkg: "hot-updater/plugins",
-            named: ["apiKeys", "insights", "remoteConfig"],
-          },
-        ],
-        configString: "[apiKeys(), insights(), remoteConfig()]",
-      }),
+      .setPlugins(managedPluginsConfig(plugins)),
   );
 };

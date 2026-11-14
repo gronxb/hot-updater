@@ -21,6 +21,7 @@ workflow does not require every interactive-init input.
 | `HOT_UPDATER_SUPABASE_REGION` | Region for a new project; not needed to reuse a ready project. | Reuse the project's deployment preference and supported provider regions; ask only when a location decision is missing. |
 | `SUPABASE_ACCESS_TOKEN` | Conditional Supabase CLI/Management API authentication. Not needed when the selected tool already has suitable access. | Authenticate the tool or save a personal access token privately through its supported local credential flow. |
 | `HOT_UPDATER_SUPABASE_DB_PASSWORD` | Conditional database password for creation or a migration tool that requires direct database access. Not used by the supplied local plugins. | For a new project, generate and persist it privately before creation. For an existing project, reuse local credentials or ask the user to configure the chosen tool securely. |
+| `HOT_UPDATER_PLUGINS` | Interactive init's selection of the server plugins to run. This scaffold does not read it: its prebuilt server, config and credential helper run `insights()`, `apiKeys()` and `remoteConfig()`. | Leave unset. |
 <!-- if credential -->
 | `{{CREDENTIAL_ENV}}` | The client {{CREDENTIAL_LABEL}}, sent in `{{CREDENTIAL_HEADER}}`; required after schema setup. | Reuse the saved one or run app/provision-client-credential.mjs. Keep client-credential.local private; never replace this with the service-role key. |
 <!-- end -->

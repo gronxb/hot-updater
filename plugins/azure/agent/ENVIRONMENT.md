@@ -20,6 +20,7 @@ strings, which `az` reads; an `az login` session alone does not configure them.
 | `HOT_UPDATER_AZURE_FUNCTION_APP` | Function App that runs the server; recorded for init reuse. | Query or create the app and record its name. |
 | `HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING` | Required by the supplied local storage config and app/hotUpdater.ts, the credential helper's server definition, which stays in the scaffold and is never copied into the app. | `az storage account show-connection-string`; save it privately. |
 | `HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING` | Required by the supplied local database config and app/hotUpdater.ts. | `az cosmosdb keys list --type connection-strings`: the primary SQL connection string; save it privately. |
+| `HOT_UPDATER_PLUGINS` | Interactive init's selection of the server plugins to run. This scaffold's config and credential helper run `insights()`, `apiKeys()` and `remoteConfig()`, as the Function does when its `HOT_UPDATER_PLUGINS` Function App setting is absent. | Leave unset locally. When reusing a target an earlier init deployed to, remove its `HOT_UPDATER_PLUGINS` Function App setting so the Function runs all three. |
 
 <!-- if credential -->
 

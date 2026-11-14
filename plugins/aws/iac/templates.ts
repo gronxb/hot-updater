@@ -4,6 +4,8 @@ import {
   createHotUpdaterConfigScaffoldFromBuilder,
   type HotUpdaterConfigScaffold,
   type ManagedHelperStatement,
+  type ManagedPluginId,
+  managedPluginsConfig,
   type ProviderConfig,
 } from "@hot-updater/cli-tools";
 
@@ -12,9 +14,11 @@ export type AwsConfigScaffoldAuthMode =
   | { mode: "local"; profile: string | null }
   | { mode: "sso"; profile: string };
 
+/** The config for `build`, listing `plugins`, the ones the function runs: all by default. */
 export const getConfigScaffold = (
   build: BuildType,
   authMode: AwsConfigScaffoldAuthMode,
+  plugins?: readonly ManagedPluginId[],
 ): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/aws", named: ["s3Storage"] }],
@@ -92,15 +96,7 @@ const awsOptions = {
     .setBuildType(build)
     .setStorage(storageConfig)
     .setDatabase(databaseConfig)
-    .setPlugins({
-      imports: [
-        {
-          pkg: "hot-updater/plugins",
-          named: ["apiKeys", "insights", "remoteConfig"],
-        },
-      ],
-      configString: "[apiKeys(), insights(), remoteConfig()]",
-    })
+    .setPlugins(managedPluginsConfig(plugins))
     .setIntermediateCode(
       helperStatements.map((statement) => statement.code.trim()).join("\n\n"),
     );

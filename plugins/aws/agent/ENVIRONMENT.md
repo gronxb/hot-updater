@@ -23,6 +23,7 @@ otherwise working credential environment.
 | `HOT_UPDATER_AWS_PROFILE` | Interactive-init profile selection; not read by the supplied config. | For the scaffold's credential chain, select an existing profile with `AWS_PROFILE` instead. |
 | `HOT_UPDATER_S3_ACCESS_KEY_ID` | Optional account/access-key mode input for interactive init; not read by the supplied config. | Prefer role/profile/SSO access. If explicitly using access keys with this scaffold, configure standard AWS credentials below, not this variable. |
 | `HOT_UPDATER_S3_SECRET_ACCESS_KEY` | Secret paired with the interactive-init account/access-key input; not read by the supplied config. | Reuse secure local credentials; do not create permanent keys merely because this field appears in env.example. |
+| `HOT_UPDATER_PLUGINS` | Interactive init's selection of the server plugins to run. This scaffold does not read it: its prebuilt server, config and credential helper run `insights()`, `apiKeys()` and `remoteConfig()`. | Leave unset. |
 <!-- if credential -->
 | `{{CREDENTIAL_ENV}}` | The client {{CREDENTIAL_LABEL}}, sent in `{{CREDENTIAL_HEADER}}`; required after the table is ready. | Reuse the existing one or run app/provision-client-credential.mjs; persist the same {{CREDENTIAL_LABEL}} across retries. |
 <!-- end -->

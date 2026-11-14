@@ -121,6 +121,10 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
       }),
     },
     readHotUpdaterInitEnv: mocks.readHotUpdaterInitEnv,
+    // The plugin prompt, answered with the saved selection.
+    selectManagedPlugins: (
+      options: Parameters<typeof actual.selectManagedPlugins>[0],
+    ) => actual.selectManagedPlugins({ ...options, nonInteractive: true }),
   };
 });
 
@@ -662,7 +666,12 @@ describe("Cloudflare init discovery", () => {
         { binding: "DB", database_id: "database-id", database_name: "ota" },
       ],
       r2_buckets: [{ binding: "BUCKET", bucket_name: "bundles" }],
-      vars: { ACCOUNT_ID: "account-id", BUCKET_NAME: "bundles" },
+      // Every plugin, since no selection was saved.
+      vars: {
+        ACCOUNT_ID: "account-id",
+        BUCKET_NAME: "bundles",
+        PLUGINS: "insights,apiKeys,remoteConfig",
+      },
     });
     expect(Object.keys(deployed.migrations ?? {})).toEqual([
       "0001_hot-updater_1.0.0.sql",
@@ -714,5 +723,66 @@ describe("Cloudflare init discovery", () => {
     await expect(
       fs.access(path.join(project, ".hot-updater")),
     ).rejects.toThrow();
+  });
+
+  it("deploys the Worker with only the saved plugins, and lists them in the config", async () => {
+    // Given
+    const savedEnv = { HOT_UPDATER_PLUGINS: "remoteConfig" };
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({
+      env: savedEnv,
+      managedEnv: savedEnv,
+    });
+    mocks.api.d1.database.list.mockResolvedValue({
+      result: [{ name: "ota", uuid: "database-id" }],
+    });
+    let deployedVars: unknown;
+    const secret = Object.assign(Promise.resolve({}), {
+      stdin: { end: vi.fn() },
+    });
+    mocks.createWrangler.mockImplementation(({ cwd: workerRoot, stdio }) =>
+      stdio === "pipe"
+        ? () => secret
+        : async (...args: string[]) => {
+            if (args[0] === "deploy") {
+              deployedVars = JSON.parse(
+                await fs.readFile(
+                  path.join(workerRoot, "wrangler.json"),
+                  "utf-8",
+                ),
+              ).vars;
+            }
+            return {};
+          },
+    );
+    // No plugin provides a client credential without apiKeys().
+    mocks.provisionClientCredential.mockResolvedValue(undefined);
+
+    // When
+    await runInit({ build: "bare" });
+
+    // Then: the Worker runs the selection, which init keeps for its next run.
+    expect(deployedVars).toEqual({
+      ACCOUNT_ID: "account-id",
+      BUCKET_NAME: "bundles",
+      PLUGINS: "remoteConfig",
+    });
+    expect(mocks.makeEnv).toHaveBeenCalledWith(
+      expect.objectContaining({ HOT_UPDATER_PLUGINS: "remoteConfig" }),
+    );
+    const [server] = mocks.provisionClientCredential.mock.calls[0] as [
+      { readonly plugins: readonly { readonly id: string }[] },
+    ];
+    expect(server.plugins.map(({ id }) => id)).toEqual(["remoteConfig"]);
+    // The config and the app follow the Worker.
+    const [scaffold] = mocks.writeHotUpdaterFiles.mock.calls.at(-1)!;
+    expect(scaffold.text).toContain(
+      'import { remoteConfig } from "hot-updater/plugins";',
+    );
+    expect(scaffold.text).toContain("  plugins: [remoteConfig()],\n");
+    expect(scaffold.text).not.toContain("apiKeys");
+    expect(mocks.printAppSetup).toHaveBeenCalledWith({
+      baseURL: "https://hot-updater.example.workers.dev",
+      clientPlugins: [],
+    });
   });
 });

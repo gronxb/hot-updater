@@ -1,5 +1,5 @@
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+import { managedPlugins } from "@hot-updater/server/plugins";
 import type { CloudFrontRequestHandler } from "aws-lambda";
 import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
@@ -17,6 +17,8 @@ declare global {
     SSM_PARAMETER_NAME: string;
     SSM_REGION: string;
     S3_BUCKET_NAME: string;
+    /** The plugins the function runs, as init selected them. */
+    PLUGINS: string;
   };
 }
 
@@ -28,6 +30,7 @@ const DYNAMODB_TABLE_NAME = HotUpdater.DYNAMODB_TABLE_NAME;
 const SSM_PARAMETER_NAME = HotUpdater.SSM_PARAMETER_NAME;
 const SSM_REGION = HotUpdater.SSM_REGION;
 const S3_BUCKET_NAME = HotUpdater.S3_BUCKET_NAME;
+const PLUGINS = HotUpdater.PLUGINS;
 
 type Bindings = {
   callback: Callback;
@@ -53,7 +56,7 @@ const getHotUpdater = (distributionDomainName: string) => {
 
   const hotUpdater = createHotUpdater({
     database,
-    plugins: [insights(), apiKeys(), remoteConfig()],
+    ...managedPlugins(PLUGINS),
     storage: s3Storage({
       bucketName: S3_BUCKET_NAME,
       region: SSM_REGION,
@@ -64,7 +67,7 @@ const getHotUpdater = (distributionDomainName: string) => {
         publicBaseUrl: `https://${distributionDomainName}`,
       }),
     }),
-  });
+  } as Parameters<typeof createHotUpdater>[0]);
   hotUpdaterByDistribution.set(distributionDomainName, hotUpdater);
   return hotUpdater;
 };

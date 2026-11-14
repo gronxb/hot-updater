@@ -5,6 +5,7 @@ import path from "path";
 import {
   assembleServer,
   confirmInitInputPersistence,
+  formatManagedPlugins,
   getCwd,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
@@ -18,11 +19,17 @@ import {
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   type RunInitOptions,
+  selectManagedPlugins,
   shouldAutoSelectOnlyInitResource,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
 import { postgres } from "@hot-updater/postgres";
-import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+import {
+  apiKeys,
+  insights,
+  managedPlugins,
+  remoteConfig,
+} from "@hot-updater/server/plugins";
 import { execa } from "execa";
 
 import { getConfigScaffold } from "./configTemplate";
@@ -509,6 +516,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     ...(saved.blobStoreName ? { savedName: saved.blobStoreName } : {}),
   });
 
+  // The plugins the Function runs, which the config lists and the app follows.
+  const selectedPlugins = await selectManagedPlugins({
+    nonInteractive,
+    saved: saved.plugins,
+  });
+
   let databaseUrl = nonInteractive ? saved.databaseUrl : undefined;
   if (nonInteractive && !isPostgresUrl(databaseUrl)) {
     throw new InitError(
@@ -563,6 +576,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     blobStoreId: store.id,
     blobStoreName: store.name,
     databaseUrl,
+    plugins: formatManagedPlugins(selectedPlugins),
     projectId: project.id,
     projectName: project.name,
     teamId: scope.id,
@@ -582,6 +596,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     }),
   );
 
+  // Every managed plugin's tables and schema settings, so running one later
+  // needs no migration.
   const plugins = [insights(), apiKeys(), remoteConfig()];
   await p.tasks([
     {
@@ -595,6 +611,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       title: "Setting the Function's environment variables...",
       task: async () => {
         await api.setProductionEnv(project.id, DATABASE_URL_ENV, databaseUrl);
+        await api.setProductionEnv(
+          project.id,
+          inputs.plugins.envKey,
+          formatManagedPlugins(selectedPlugins),
+        );
         await syncFunctionBlobToken(api, project, store, blobToken);
         return "Set the Function's environment variables";
       },
@@ -616,7 +637,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const database = postgres({ connectionString: databaseUrl });
   // The managed server: its plugins over the database init set up, which
   // assembling it neither reads nor writes.
-  const server = assembleServer({ database, plugins });
+  const server = assembleServer({
+    database,
+    plugins: managedPlugins(selectedPlugins).plugins,
+  });
   let credential: ProvisionedClientCredential | undefined;
   try {
     credential = await provisionClientCredential(server, {
@@ -631,7 +655,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   p.log.success("Generated '.env.hotupdater' file with Vercel settings.");
-  await writeHotUpdaterFiles(getConfigScaffold(build), {
+  await writeHotUpdaterFiles(getConfigScaffold(build, selectedPlugins), {
     cwd,
     settings: "Vercel",
   });

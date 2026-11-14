@@ -1,4 +1,7 @@
-import type { InitProviderDefinition } from "@hot-updater/cli-tools";
+import {
+  type InitProviderDefinition,
+  managedPluginsInput,
+} from "@hot-updater/cli-tools";
 
 export const initProvider = {
   label: "Cloudflare D1 + R2 + Worker",
@@ -81,5 +84,6 @@ export const initProvider = {
       },
       validate: (value) => value === "true" || value === "false",
     },
+    plugins: managedPluginsInput,
   },
 } as const satisfies InitProviderDefinition;

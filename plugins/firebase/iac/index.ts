@@ -4,6 +4,7 @@ import path from "path";
 import {
   assembleServer,
   confirmInitInputPersistence,
+  formatManagedPlugins,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
@@ -16,12 +17,19 @@ import {
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   resolveHotUpdaterServerVersion,
+  resolveInitProviderInput,
   resolvePackageVersion,
   type RunInitOptions,
+  selectManagedPlugins,
   transformEnv,
 } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
-import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+import {
+  apiKeys,
+  insights,
+  managedPlugins,
+  remoteConfig,
+} from "@hot-updater/server/plugins";
 import { isEqual, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import {
@@ -525,8 +533,17 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     savedRegion: savedInputs.region,
     cliEnv,
   });
+  // The plugins the function runs, which the config lists and the app follows.
+  const plugins = await selectManagedPlugins({
+    nonInteractive,
+    saved: resolveInitProviderInput(
+      initInputEnv,
+      FIREBASE_INIT_PROVIDER.inputs.plugins,
+    ),
+  });
   const resolvedInputs = {
     ...savedInputs,
+    plugins: formatManagedPlugins(plugins),
     applicationCredentials: applicationCredentials || undefined,
     databaseId:
       initializeVariable.status === "ready"
@@ -558,6 +575,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const functionsCode = transformEnv(functionsIndexPath, {
     REGION: currentRegion,
     FIRESTORE_DATABASE_ID: initializeVariable.databaseId,
+    PLUGINS: formatManagedPlugins(plugins),
   });
   await fs.promises.writeFile(functionsIndexPath, functionsCode);
   await setEnv({
@@ -566,6 +584,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     storageBucket: initializeVariable.storageBucket,
     build,
     region: currentRegion,
+    plugins,
     applicationCredentials:
       persistedInputs[
         FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.envKey
@@ -624,12 +643,17 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   // assembling it neither reads nor writes.
   const server = assembleServer({
     database,
-    plugins: [insights(), apiKeys(), remoteConfig()],
+    plugins: managedPlugins(plugins).plugins,
   });
   let clientCredential: ProvisionedClientCredential | undefined;
   try {
-    // The database reads nothing until the schema settings exist.
-    await migrateFirebaseDatabase(databaseConfig, server.plugins);
+    // The database reads nothing until the schema settings exist. Every
+    // managed plugin's are written, so running one later needs no migration.
+    await migrateFirebaseDatabase(databaseConfig, [
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+    ]);
     // The app's credential, through the managed server's plugins, on the tables they read.
     clientCredential = await provisionClientCredential(server, {
       env: initInputEnv,

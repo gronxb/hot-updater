@@ -38,6 +38,7 @@ describe("the managed Worker init deploys", () => {
       accountId: "account-id",
       d1DatabaseId: "database-id",
       d1DatabaseName: "ota",
+      plugins: "insights,remoteConfig",
       r2BucketName: "bundles",
     });
 
@@ -52,7 +53,11 @@ describe("the managed Worker init deploys", () => {
         { binding: "DB", database_id: "database-id", database_name: "ota" },
       ],
       r2_buckets: [{ binding: "BUCKET", bucket_name: "bundles" }],
-      vars: { ACCOUNT_ID: "account-id", BUCKET_NAME: "bundles" },
+      vars: {
+        ACCOUNT_ID: "account-id",
+        BUCKET_NAME: "bundles",
+        PLUGINS: "insights,remoteConfig",
+      },
     });
   });
 });

@@ -1,6 +1,6 @@
 import { app, type HttpRequest } from "@azure/functions";
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+import { managedPlugins } from "@hot-updater/server/plugins";
 
 import { azureBlobStorage } from "../src/azureBlobStorage";
 import { cosmosDatabase } from "../src/cosmosDatabase";
@@ -22,14 +22,15 @@ const hotUpdater = createHotUpdater({
       "HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING",
     ),
   }),
-  plugins: [insights(), apiKeys(), remoteConfig()],
+  // The plugins init selected; every plugin when the setting is missing.
+  ...managedPlugins(process.env["HOT_UPDATER_PLUGINS"]),
   storage: azureBlobStorage({
     connectionString: requireSetting(
       "HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING",
     ),
     containerName: requireSetting("HOT_UPDATER_AZURE_BLOB_CONTAINER"),
   }),
-});
+} as Parameters<typeof createHotUpdater>[0]);
 
 // Bodies stream through as they are: a route may answer with binary data,
 // such as a storage object the server serves itself.
