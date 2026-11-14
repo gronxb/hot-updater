@@ -1,5 +1,11 @@
 # @hot-updater/plugin-insights
 
+## 1.2.0-rc.44
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.44
+
 ## 1.2.0-rc.43
 
 ### Patch Changes

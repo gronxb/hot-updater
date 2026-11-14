@@ -1,5 +1,16 @@
 # @hot-updater/one
 
+## 1.2.0-rc.44
+
+### Patch Changes
+
+- Updated dependencies [6b45f64]
+- Updated dependencies [6b45f64]
+- Updated dependencies [6b45f64]
+  - @hot-updater/plugin-core@1.2.0-rc.44
+  - @hot-updater/cli-tools@1.2.0-rc.44
+  - @hot-updater/bare@1.2.0-rc.44
+
 ## 1.2.0-rc.43
 
 ### Patch Changes

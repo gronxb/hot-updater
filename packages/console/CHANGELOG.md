@@ -1,5 +1,18 @@
 # @hot-updater/console
 
+## 1.2.0-rc.44
+
+### Patch Changes
+
+- Updated dependencies [6b45f64]
+- Updated dependencies [6b45f64]
+- Updated dependencies [6b45f64]
+  - @hot-updater/plugin-core@1.2.0-rc.44
+  - @hot-updater/cli-tools@1.2.0-rc.44
+  - @hot-updater/server@1.2.0-rc.44
+  - @hot-updater/bsdiff@1.2.0-rc.44
+  - @hot-updater/protocol@1.2.0-rc.44
+
 ## 1.2.0-rc.43
 
 ### Minor Changes
