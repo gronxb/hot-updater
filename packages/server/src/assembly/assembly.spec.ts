@@ -173,6 +173,11 @@ describe("createHotUpdater with plugins", () => {
       { method: "GET", path: "/native-builds/latest", access: "admin" },
       {
         method: "GET",
+        path: "/native-builds/built-in/:bundleId",
+        access: "admin",
+      },
+      {
+        method: "GET",
         path: "/native-builds/:id/sibling",
         access: "admin",
       },
