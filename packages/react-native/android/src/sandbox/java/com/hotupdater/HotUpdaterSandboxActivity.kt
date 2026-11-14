@@ -96,7 +96,13 @@ internal object HotUpdaterSandbox {
         context: Context,
         activity: Activity?,
     ) {
-        Log.i(TAG, "restarting to apply the switch")
+        Log.i(TAG, "restarting the app")
+        // A link still waiting for a server is asked over the app once its new start's check answers.
+        val waiting = coordinator?.state?.phase as? HotUpdaterSandboxPhase.WaitingForServer
+        if (waiting != null) {
+            HotUpdaterSandboxDev.startRelaunch(context, HotUpdaterSandboxRelaunch.CheckLink(waiting.link.url))
+            return
+        }
         // This restart opens the app on purpose: the next process doesn't come back to the screen.
         HotUpdaterSandboxProcess.markCoveredStart(context, false)
         val intent =
@@ -229,6 +235,18 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
             )
         Log.i(TAG, "start: $decision flags=0x${Integer.toHexString(intent.flags)} action=${intent.action}")
         if (decision == HotUpdaterSandboxStartDecision.OPEN_HOST && !intent.hasExtra(EXTRA_OVER_APP) && !intent.hasExtra(EXTRA_COVER)) {
+            // The sandbox's restart for a waiting link: its token hands the link to the app's activity it starts.
+            if (!restored) {
+                val handed =
+                    HotUpdaterSandboxProcess.checkHandoffs(this).take(
+                        intent.getStringExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_CHECK_TOKEN),
+                        intent.getStringExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_CHECK_LINK),
+                    )
+                val host = hostComponent()
+                if (handed != null && host != null) {
+                    HotUpdaterSandboxProcess.hostHandoff = HotUpdaterSandboxHostHandoff(handed, host.className)
+                }
+            }
             startHost(intent)
             return
         }
@@ -376,6 +394,9 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
                 .setComponent(host)
                 .setFlags(HotUpdaterSandboxStart.hostFlags(incoming.flags))
         copy.selector = null
+        // The sandbox's own handoff isn't the app's.
+        copy.removeExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_CHECK_TOKEN)
+        copy.removeExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_CHECK_LINK)
         return copy
     }
 

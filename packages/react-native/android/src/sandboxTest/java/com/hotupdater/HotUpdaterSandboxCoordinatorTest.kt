@@ -1746,6 +1746,246 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
+    fun `Open after the app's time passed with no answer restarts the app it hid, so its launch check runs again`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        // The app's one check under the screen failed: no server config, and its time runs out.
+        fixture.elapsedMs += 60_000
+        ticks.tick()
+        assertEquals(false, fixture.checking)
+
+        fixture.coordinator.open()
+        assertEquals(listOf(false to true), fixture.opens)
+        // The link waits for the new start's answer.
+        assertEquals(listOf(link("pr-1")), fixture.store.pendingLinks)
+        stop()
+    }
+
+    @Test
+    fun `Open after the deadline starts the app anew even after a person saw it, and the original link asks`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        // Open while Checking: the check may still answer, so the app is only shown.
+        fixture.coordinator.open()
+        assertEquals(listOf(false to false), fixture.opens)
+        fixture.host.appHidden = false
+        // Its one check fails; the deadline passes.
+        fixture.elapsedMs += 60_000
+        ticks.tick()
+        assertEquals(false, fixture.checking)
+        val selection = fixture.coordinator.state.selection
+        // Open from the message starts the app anew, on what a launch selects.
+        fixture.coordinator.open()
+        assertEquals(false to true, fixture.opens.last())
+        assertEquals(selection, fixture.coordinator.state.selection)
+        assertNull(fixture.store.lastLaunch)
+        assertEquals(listOf(link("pr-1")), fixture.store.pendingLinks)
+        // The new start's check answers: the original link asks.
+        fixture.host.serverConfig = true
+        ticks.tick()
+        assertEquals(HotUpdaterSandboxPhase.Confirming(HotUpdaterSandboxLink.parse(link("pr-1"))!!), fixture.phase)
+        assertEquals(1, fixture.serverAnswers)
+        // With the answer in, Open restarts nothing more.
+        fixture.coordinator.dismiss()
+        fixture.coordinator.open()
+        assertEquals(false to false, fixture.opens.last())
+        stop()
+    }
+
+    @Test
+    fun `before the deadline Open over an app a person saw restarts nothing`() {
+        val fixture = Fixture()
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.host.appHidden = false
+        fixture.elapsedMs += 59_999
+        fixture.coordinator.open()
+        assertEquals(listOf(false to false), fixture.opens)
+        stop()
+    }
+
+    @Test
+    fun `a past deadline no look saw yet counts at Open`() {
+        val fixture = Fixture()
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.elapsedMs += 60_000
+        fixture.coordinator.open()
+        assertEquals(listOf(false to true), fixture.opens)
+        stop()
+    }
+
+    @Test
+    fun `an answer that came in time keeps Open from restarting`() {
+        val fixture = Fixture()
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.host.serverConfig = true
+        fixture.coordinator.refresh()
+        fixture.coordinator.dismiss()
+        fixture.elapsedMs += 60_000
+        fixture.coordinator.open()
+        assertEquals(listOf(false to false), fixture.opens)
+        stop()
+    }
+
+    @Test
+    fun `over an app a person saw, Reload while a link waits for a server runs the app anew`() {
+        val fixture = Fixture()
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        fixture.host.appRunning = true
+        fixture.coordinator.receiveLink(link("pr-1"))
+        assertEquals(false, fixture.checking)
+        fixture.coordinator.reloadApp()
+        assertEquals(listOf(true to true), fixture.opens)
+        assertEquals(listOf(link("pr-1")), fixture.store.pendingLinks)
+
+        // A question on screen still holds it back.
+        val asking = Fixture()
+        asking.host.appRunning = true
+        asking.coordinator.receiveLink(link("pr-1"))
+        assertTrue(asking.phase is HotUpdaterSandboxPhase.Confirming)
+        asking.coordinator.reloadApp()
+        assertTrue(asking.opens.isEmpty())
+        stop()
+    }
+
+    @Test
+    fun `the process the sandbox restarted for a waiting link watches for the app's answer and asks over the app`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(pendingLinks = listOf(link("pr-1")), serverPoll = ticks::next)
+        fixture.host.serverConfig = false
+        fixture.host.appRunning = true
+        fixture.coordinator.noteLastLaunch(link("pr-1"))
+        assertTrue(ticks.isWaiting)
+        assertEquals(0, fixture.host.startsUnderScreen)
+
+        fixture.host.serverConfig = true
+        ticks.tick()
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Confirming)
+        assertEquals(1, fixture.serverAnswers)
+
+        // An answer already in by the app's first resume asks at once.
+        val answered = Fixture(pendingLinks = listOf(link("pr-1")))
+        answered.host.appRunning = true
+        answered.coordinator.noteLastLaunch(link("pr-1"))
+        assertTrue(answered.phase is HotUpdaterSandboxPhase.Confirming)
+        assertEquals(1, answered.serverAnswers)
+    }
+
+    @Test
+    fun `a restart's handoff for one link asks nothing for another`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(pendingLinks = listOf(link("pr-2"), link("pr-1")), serverPoll = ticks::next)
+        fixture.host.serverConfig = true
+        fixture.host.appRunning = true
+        fixture.coordinator.noteLastLaunch(link("pr-1"))
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Idle)
+        assertEquals(0, fixture.serverAnswers)
+        assertFalse(ticks.isWaiting)
+    }
+
+    @Test
+    fun `any other launch without the screen leaves a waiting link to the next screen`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(pendingLinks = listOf(link("pr-1")), serverPoll = ticks::next)
+        fixture.host.serverConfig = false
+        fixture.host.appRunning = true
+        fixture.coordinator.noteLastLaunch()
+        assertFalse(ticks.isWaiting)
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Idle)
+        fixture.host.serverConfig = true
+        fixture.coordinator.noteLastLaunch()
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Idle)
+        assertEquals(0, fixture.serverAnswers)
+        assertEquals(listOf(link("pr-1")), fixture.store.pendingLinks)
+    }
+
+    @Test
+    fun `a link the app will start for says Checking from the screen's first frame, before the first read`() {
+        val fixture = Fixture()
+        fixture.host.serverConfig = false
+        fixture.host.canStartUnderScreen = true
+        val shown = ArrayList<Boolean>()
+        // A cold link's order: the screen observes, takes the link, then reads.
+        val stop =
+            fixture.coordinator.observe { state ->
+                (state.phase as? HotUpdaterSandboxPhase.WaitingForServer)?.let { shown += it.checking }
+            }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        assertEquals(true, fixture.checking)
+        assertEquals(0, fixture.host.startsUnderScreen)
+        fixture.coordinator.refresh()
+        assertEquals(1, fixture.host.startsUnderScreen)
+        assertEquals(true, fixture.checking)
+        assertFalse("never the message before Checking", shown.contains(false))
+        stop()
+    }
+
+    @Test
+    fun `a link that came before the screen says Checking in the screen's first render`() {
+        val fixture = Fixture()
+        fixture.host.serverConfig = false
+        fixture.host.canStartUnderScreen = true
+        // A cold link reaches the coordinator before any screen observes it.
+        fixture.coordinator.receiveLink(link("pr-1"))
+        assertEquals(false, fixture.checking)
+        val shown = ArrayList<Boolean>()
+        val stop =
+            fixture.coordinator.observe { state ->
+                (state.phase as? HotUpdaterSandboxPhase.WaitingForServer)?.let { shown += it.checking }
+            }
+        assertEquals(listOf(true), shown)
+        fixture.coordinator.refresh()
+        assertEquals(1, fixture.host.startsUnderScreen)
+        assertFalse(shown.contains(false))
+        stop()
+    }
+
+    @Test
+    fun `before the first read, Checking turns into the message when the read refuses the start`() {
+        // The last launch crashed: the read finds it, and nothing starts.
+        val crashed = Fixture()
+        crashed.host.serverConfig = false
+        crashed.host.canStartUnderScreen = true
+        crashed.host.evidence = HotUpdaterSandboxLaunchEvidence(HotUpdaterSandboxCrashMarker("built-in", false))
+        val stopCrashed = crashed.coordinator.observe {}
+        crashed.coordinator.receiveLink(link("pr-1"))
+        crashed.coordinator.refresh()
+        assertEquals(0, crashed.host.startsUnderScreen)
+        assertEquals(false, crashed.checking)
+        stopCrashed()
+
+        // A banner still to tell, from an earlier process: the message at once.
+        val told = Fixture()
+        told.host.serverConfig = false
+        told.host.canStartUnderScreen = true
+        told.store.lastLaunch = HotUpdaterSandboxLastLaunch(HotUpdaterSandboxLastLaunch.Kind.CRASHED, "built-in", null)
+        val stopTold = told.coordinator.observe {}
+        told.coordinator.receiveLink(link("pr-1"))
+        assertEquals(false, told.checking)
+        stopTold()
+
+        // A host that can't start the app under the screen: the message at once.
+        val cannot = Fixture()
+        cannot.host.serverConfig = false
+        val stopCannot = cannot.coordinator.observe {}
+        cannot.coordinator.receiveLink(link("pr-1"))
+        assertEquals(false, cannot.checking)
+        cannot.coordinator.refresh()
+        assertEquals(false, cannot.checking)
+        stopCannot()
+    }
+
+    @Test
     fun `an app update racing the confirmed switch fails it as superseded and keeps the selection storage has`() {
         val fixture = Fixture()
         val stop = fixture.freshHomeThatCanStartTheApp()

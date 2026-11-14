@@ -331,7 +331,12 @@ final class HotUpdaterSandboxCoordinator {
         let id = nextListenerId
         nextListenerId += 1
         listeners[id] = listener
-        listener(state)
+        // A link that came before any screen: whether the app starts for it is read now that one shows.
+        if case .waitingForServer(let link, let checking) = state.phase, checking != isAppChecking {
+            setPhase(.waitingForServer(link, checking: isAppChecking))
+        } else {
+            listener(state)
+        }
         return { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
@@ -531,12 +536,16 @@ final class HotUpdaterSandboxCoordinator {
         guard !isOpening else { return }
         isOpening = true
         defer { isOpening = false }
+        expireAppCheck()
         let selection = await readSelection()
         let launched = await host.launchBundleId()
         // Over a running app, opening shows what it runs: what's selected waits for
         // its launch. Before the app starts, what's selected is what opens.
         // An app nobody has seen yet opens on what's selected, as it would have from here.
-        let reloads = launchFixed && (!host.isAppRunning() || host.isAppHidden())
+        // After the app's time to answer ran out with no answer, opening starts it
+        // anew, seen or not, so its launch check runs again.
+        let missedCheck = appCheckOver && !host.isInSession && !readServerConfig()
+        let reloads = (launchFixed && (!host.isAppRunning() || host.isAppHidden())) || missedCheck
         acknowledgeLastLaunch()
         publish(reading(selection, launched: launched))
         openApp(false, reloads)
@@ -554,7 +563,10 @@ final class HotUpdaterSandboxCoordinator {
 
     /// Runs the app again from the screen over it: the bundle a launch selects now.
     func reloadApp() {
-        guard canStart else { return }
+        // A link waiting for a server holds nothing back: the app's new start checks again.
+        var waitsForServer = false
+        if case .waitingForServer = state.phase { waitsForServer = true }
+        guard canStart || waitsForServer else { return }
         if let stored = host.storedSessionBundleId {
             openDownloaded(stored)
             return
@@ -907,8 +919,16 @@ final class HotUpdaterSandboxCoordinator {
         publish(next)
     }
 
+    /// The app runs its check under the screen, within its time. Before the screen's
+    /// first read, a link the app is about to start for counts too, so the screen
+    /// never says to open the app first.
     private var isAppChecking: Bool {
-        appCheckDeadlineMs != nil && !appCheckOver
+        if appCheckDeadlineMs != nil { return !appCheckOver }
+        return state.selection == nil && state.lastLaunch == nil && store.lastLaunch == nil && canStartAppToCheck
+    }
+
+    private var canStartAppToCheck: Bool {
+        !listeners.isEmpty && !host.isInSession && !host.isAppRunning() && host.canStartAppUnderScreen()
     }
 
     /// A link waits for a server, and nothing has run the app's check: the app starts
@@ -916,8 +936,7 @@ final class HotUpdaterSandboxCoordinator {
     /// the screen read what the last launch left, and never while that's still to tell,
     /// so a start that crashed doesn't start again.
     private func startAppToCheck() {
-        guard appCheckDeadlineMs == nil, !listeners.isEmpty, state.selection != nil, state.lastLaunch == nil else { return }
-        guard !host.isInSession, !host.isAppRunning(), host.canStartAppUnderScreen() else { return }
+        guard appCheckDeadlineMs == nil, state.selection != nil, state.lastLaunch == nil, canStartAppToCheck else { return }
         appCheckDeadlineMs = elapsedMs() + Self.appCheckWindowMs
         log("starting the app under the screen for its check")
         host.startAppUnderScreen()

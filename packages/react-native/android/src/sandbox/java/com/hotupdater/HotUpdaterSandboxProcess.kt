@@ -66,6 +66,7 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
             private set
 
         private const val COVERED_START = "coveredStart"
+        private const val CHECK_HANDOFF = "checkHandoff"
 
         /**
          * Whether the process before this one was covering the app it started under
@@ -77,6 +78,25 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
 
         /** [coveredStartAtStart], once: the start's first decision takes it. */
         fun takeCoveredStartAtStart(): Boolean = coveredStartAtStart.also { coveredStartAtStart = false }
+
+        /** The sandbox's restarts for a link that waits for a server, as the restarted process takes them. */
+        fun checkHandoffs(context: Context): HotUpdaterSandboxCheckHandoffs {
+            val preferences = context.applicationContext.getSharedPreferences(HotUpdaterSandboxPreferences.NAME, Context.MODE_PRIVATE)
+            return HotUpdaterSandboxCheckHandoffs(
+                read = { preferences.getString(CHECK_HANDOFF, null) },
+                write = { value ->
+                    if (value == null) {
+                        preferences.edit().remove(CHECK_HANDOFF).commit()
+                    } else {
+                        preferences.edit().putString(CHECK_HANDOFF, value).commit()
+                    }
+                },
+            )
+        }
+
+        /** The link this process's restart handed to the app's activity the screen started, until it resumes. */
+        @Volatile
+        var hostHandoff: HotUpdaterSandboxHostHandoff? = null
 
         /**
          * Records whether a screen covers the app it started, for the next process to
@@ -167,7 +187,10 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
                     shake?.watch(activity)
                     if (!notedLastLaunch) {
                         notedLastLaunch = true
-                        HotUpdaterSandbox.coordinator(activity).noteLastLaunch()
+                        // Only the activity the restart's screen started takes its link.
+                        val handoff = hostHandoff
+                        hostHandoff = null
+                        HotUpdaterSandbox.coordinator(activity).noteLastLaunch(handoff?.forFirstResume(activity.componentName.className))
                     }
                 }
 

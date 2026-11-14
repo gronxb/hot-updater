@@ -3161,6 +3161,206 @@ struct HotUpdaterSandboxStartUnderScreenTests {
     }
 
     @Test
+    func openAfterTheAppsTimePassedWithNoAnswerReloadsTheAppItHidSoItsLaunchCheckRunsAgain() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        // The app's one check under the screen failed: no server config, and its time runs out.
+        fixture.advance(60_000)
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { fixture.checking == false }
+        #expect(fixture.checking == false)
+
+        await fixture.coordinator.open()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, true]])
+        // The link waits for the reloaded app's answer.
+        #expect(fixture.store.pendingLinks == [link("pr-1")])
+        stop()
+    }
+
+    @Test
+    func openAfterTheDeadlineReloadsTheAppEvenAfterAPersonSawItAndTheOriginalLinkAsks() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        // Open while Checking: the check may still answer, so the app is only shown.
+        await fixture.coordinator.open()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, false]])
+        fixture.host.appHidden = false
+        // Its one check fails; the deadline passes.
+        fixture.advance(60_000)
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { fixture.checking == false }
+        #expect(fixture.checking == false)
+        let selection = fixture.coordinator.state.selection
+        // Open from the message reloads the app, on what a launch selects.
+        await fixture.coordinator.open()
+        #expect(fixture.opens.last.map { [$0.0, $0.1] } == [false, true])
+        #expect(fixture.coordinator.state.selection == selection)
+        #expect(fixture.store.lastLaunch == nil)
+        #expect(fixture.store.pendingLinks == [link("pr-1")])
+        // The reloaded app's check answers: the original link asks.
+        fixture.host.serverConfig = true
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { if case .confirming = fixture.coordinator.state.phase { return true } else { return false } }
+        guard case .confirming(let asked) = fixture.coordinator.state.phase else {
+            Issue.record("expected the original link to ask")
+            return
+        }
+        #expect(asked.url == link("pr-1"))
+        #expect(fixture.serverAnswers == 1)
+        // With the answer in, Open reloads nothing more.
+        fixture.coordinator.dismiss()
+        await fixture.coordinator.open()
+        #expect(fixture.opens.last.map { [$0.0, $0.1] } == [false, false])
+        stop()
+    }
+
+    @Test
+    func beforeTheDeadlineOpenOverAnAppAPersonSawReloadsNothing() async {
+        let fixture = Fixture()
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.host.appHidden = false
+        fixture.advance(59_999)
+        await fixture.coordinator.open()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, false]])
+        stop()
+    }
+
+    @Test
+    func aPastDeadlineNoLookSawYetCountsAtOpen() async {
+        let fixture = Fixture()
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.advance(60_000)
+        await fixture.coordinator.open()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, true]])
+        stop()
+    }
+
+    @Test
+    func anAnswerThatCameInTimeKeepsOpenFromReloading() async {
+        let fixture = Fixture()
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.host.serverConfig = true
+        await fixture.coordinator.refresh()
+        fixture.coordinator.dismiss()
+        fixture.advance(60_000)
+        await fixture.coordinator.open()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, false]])
+        stop()
+    }
+
+    @Test
+    func overAnAppAPersonSawReloadWhileALinkWaitsForAServerRunsTheAppAnew() async {
+        let fixture = Fixture()
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.host.appRunning = true
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.checking == false)
+        fixture.coordinator.reloadApp()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[true, true]])
+        #expect(fixture.store.pendingLinks == [link("pr-1")])
+
+        // A question on screen still holds it back.
+        let asking = Fixture()
+        asking.host.appRunning = true
+        asking.coordinator.receiveLink(link("pr-1"))
+        guard case .confirming = asking.coordinator.state.phase else {
+            Issue.record("expected the link's confirmation")
+            return
+        }
+        asking.coordinator.reloadApp()
+        #expect(asking.opens.isEmpty)
+        stop()
+    }
+
+    @Test
+    func aLinkTheAppWillStartForSaysCheckingFromTheScreensFirstFrameBeforeTheFirstRead() async {
+        let fixture = Fixture()
+        fixture.host.serverConfig = false
+        fixture.host.canStartUnderScreen = true
+        var shown: [Bool] = []
+        // A cold link's order: the screen observes, takes the link, then reads.
+        let stop = fixture.coordinator.observe { state in
+            if case .waitingForServer(_, let checking) = state.phase { shown.append(checking) }
+        }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.checking == true)
+        #expect(fixture.host.startsUnderScreen == 0)
+        await fixture.coordinator.refresh()
+        #expect(fixture.host.startsUnderScreen == 1)
+        #expect(fixture.checking == true)
+        #expect(!shown.contains(false), "never the message before Checking")
+        stop()
+    }
+
+    @Test
+    func aLinkThatCameBeforeTheScreenSaysCheckingInTheScreensFirstRender() async {
+        let fixture = Fixture()
+        fixture.host.serverConfig = false
+        fixture.host.canStartUnderScreen = true
+        // A cold link reaches the coordinator from the scene's options, before the screen.
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.checking == false)
+        var shown: [Bool] = []
+        let stop = fixture.coordinator.observe { state in
+            if case .waitingForServer(_, let checking) = state.phase { shown.append(checking) }
+        }
+        #expect(shown == [true])
+        await fixture.coordinator.refresh()
+        #expect(fixture.host.startsUnderScreen == 1)
+        #expect(!shown.contains(false))
+        stop()
+    }
+
+    @Test
+    func beforeTheFirstReadCheckingTurnsIntoTheMessageWhenTheReadRefusesTheStart() async {
+        // The last launch crashed: the read finds it, and nothing starts.
+        let crashed = Fixture()
+        crashed.host.serverConfig = false
+        crashed.host.canStartUnderScreen = true
+        crashed.host.evidence = HotUpdaterSandboxLaunchEvidence(marker: HotUpdaterSandboxCrashMarker(bundleId: "built-in", shouldRollback: false))
+        let stopCrashed = crashed.coordinator.observe { _ in }
+        crashed.coordinator.receiveLink(link("pr-1"))
+        await crashed.coordinator.refresh()
+        #expect(crashed.host.startsUnderScreen == 0)
+        #expect(crashed.checking == false)
+        stopCrashed()
+
+        // A banner still to tell, from an earlier process: the message at once.
+        let told = Fixture()
+        told.host.serverConfig = false
+        told.host.canStartUnderScreen = true
+        told.store.lastLaunch = HotUpdaterSandboxLastLaunch(kind: .crashed, bundleId: "built-in", rolledBackToBundleId: nil)
+        let stopTold = told.coordinator.observe { _ in }
+        told.coordinator.receiveLink(link("pr-1"))
+        #expect(told.checking == false)
+        stopTold()
+
+        // A host that can't start the app under the screen: the message at once.
+        let cannot = Fixture()
+        cannot.host.serverConfig = false
+        let stopCannot = cannot.coordinator.observe { _ in }
+        cannot.coordinator.receiveLink(link("pr-1"))
+        #expect(cannot.checking == false)
+        await cannot.coordinator.refresh()
+        #expect(cannot.checking == false)
+        stopCannot()
+    }
+
+    @Test
     func anAppUpdateRacingTheConfirmedSwitchFailsItAsSupersededAndKeepsTheSelectionStorageHas() async {
         let fixture = Fixture()
         let stop = await fixture.freshHomeThatCanStartTheApp()
