@@ -27,7 +27,17 @@ enum SandboxColor {
     })
     static let separator = Color(UIColor.separator)
     static let text = Color(UIColor.label)
-    static let textSecondary = Color(UIColor.secondaryLabel)
+    /// Android's hexes: the system `secondaryLabel` is translucent, 3.44:1 on
+    /// the card in light mode. With Increase Contrast on, the system's own
+    /// high-contrast color, which is darker still.
+    static let textSecondary = Color(UIColor { traits in
+        if traits.accessibilityContrast == .high {
+            return UIColor.secondaryLabel.resolvedColor(with: traits)
+        }
+        return traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0x98 / 255, green: 0x98 / 255, blue: 0x9F / 255, alpha: 1)
+            : UIColor(red: 0x6C / 255, green: 0x6C / 255, blue: 0x70 / 255, alpha: 1)
+    })
     static let muted = Color(UIColor.systemGray)
     /// The brand orange as a fill: primary buttons and the primary tile.
     static let accent = Color(red: 0xF9 / 255, green: 0x73 / 255, blue: 0x16 / 255)

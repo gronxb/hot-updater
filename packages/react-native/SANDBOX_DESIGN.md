@@ -26,7 +26,7 @@ elevated dark surfaces come for free. Android uses the hex values.
 | fill           | `#EFEFF4` | `#2C2C2E` | `tertiarySystemFill` on `surface`    |
 | separator      | `#C6C6C8` | `#38383A` | `separator`                          |
 | text           | `#000000` | `#FFFFFF` | `label`                              |
-| textSecondary  | `#6C6C70` | `#98989F` | `secondaryLabel`                     |
+| textSecondary  | `#6C6C70` | `#98989F` | the same hexes; `secondaryLabel` at high contrast |
 | muted          | `#8E8E93` | `#8E8E93` | `systemGray`                         |
 | accent         | `#F97316` | `#F97316` | the same hex                         |
 | accentPressed  | `#EA580C` | `#EA580C` | the same hex                         |
@@ -46,10 +46,13 @@ white). `danger` is for the warning icon; a destructive action's text is
 `dangerText`, which reads at AA on a surface and pressed. A text or icon
 action presses to `fill`, opaque on both platforms (iOS draws the hexes, not
 `tertiarySystemFill`), under which `accentText` reads at 4.52:1 light and
-4.97:1 dark.
-A pressed row is `surfacePressed`, under which `textSecondary` reads at
-4.56:1 light and 4.86:1 dark. `text` and `textSecondary` stay the platform's label colors, so they follow
-dark mode and Increase Contrast.
+4.97:1 dark. A pressed row is `surfacePressed`, under which `textSecondary`
+reads at 4.56:1 light and 4.86:1 dark.
+
+`text` stays the platform's label color, so it follows dark mode and Increase
+Contrast. `textSecondary` is opaque on iOS too, since the system
+`secondaryLabel` is translucent and only 3.44:1 on the card in light mode; with
+Increase Contrast on, iOS uses the system's high-contrast `secondaryLabel`.
 
 ### Type
 
