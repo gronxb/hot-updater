@@ -201,6 +201,7 @@ model bundle_events__byBundle {
   received_at_ms BigInt
   id String
   @@id([platform, channel, type, bundle_ref, day, received_at_ms, id])
+  @@index([id], map: "bundle_events__byBundle__key")
 }
 model bundle_event_heads {
   install_id String

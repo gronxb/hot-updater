@@ -222,11 +222,17 @@ export const createSqlAdapter = ({
         table.columns.map((column) => column.name),
         table.columns.map((column) => bind(row[column.name], column)),
       );
-    /** Replaces the row's entries in the index table of every multi-valued index. */
+    /**
+     * Replaces the row's entries in the index table of every multi-valued
+     * index. A row being inserted has none to replace (`stale` false), and
+     * deleting them would read the whole index table: its key ends with the
+     * row's key, so no index leads with it.
+     */
     const entries = (
       key: DatabaseKey,
       row?: StoredRow,
       changed?: readonly string[],
+      stale = true,
     ) =>
       table.indexes.flatMap((index) => {
         const columns = [...index.eq, ...indexOrderColumns(table, index)];
@@ -241,7 +247,9 @@ export const createSqlAdapter = ({
         const order =
           found.length > 0 ? indexOrderTuple(table, index, row!) : [];
         return [
-          sql((bind) => `DELETE FROM ${into} WHERE ${where(bind, key)}`),
+          ...(stale
+            ? [sql((bind) => `DELETE FROM ${into} WHERE ${where(bind, key)}`)]
+            : []),
           ...found.map((eq) =>
             sql((bind) => {
               const values = [...eq, ...order].map((value) => bind(value));
@@ -254,7 +262,7 @@ export const createSqlAdapter = ({
       case "insert":
         return [
           sql((bind) => insertRow(bind, op.row)),
-          ...entries(rowKey(table, op.row), op.row),
+          ...entries(rowKey(table, op.row), op.row, undefined, false),
         ];
       case "patch":
         return [

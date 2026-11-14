@@ -206,6 +206,7 @@ export const bundle_events__byBundle = pgTable("bundle_events__byBundle", {
   "id": column("varchar(36) COLLATE \"C\"")("id").notNull(),
 }, (table) => [
   primaryKey({ columns: [table["platform"], table["channel"], table["type"], table["bundle_ref"], table["day"], table["received_at_ms"], table["id"]] }),
+  index("bundle_events__byBundle__key").on(table["id"]),
 ]);
 
 export const bundle_event_heads = pgTable("bundle_event_heads", {

@@ -9,12 +9,15 @@ import { d1Database, type D1Like } from "../../src/worker";
  * The binding, and D1's `rows_read` for each SELECT it runs outside a batch
  * while counting: the reads of the SQL core. D1 reads a batch get's key list
  * and a multi-valued index's own table beside each row it returns, and one
- * row past the end of a range.
+ * row past the end of a range. `written` keeps each batch statement's
+ * `rows_read`: the SQL core's writes and prunes, which D1 bills the same.
  */
 const rowsRead = (database: D1Database) => {
   const statements = new WeakMap<object, D1PreparedStatement>();
   let counting = false;
   let read = 0;
+  let writing = false;
+  let readByWrites: number[] = [];
   const binding: D1Like = {
     prepare: (sql) => ({
       bind: (...params) => {
@@ -32,8 +35,15 @@ const rowsRead = (database: D1Database) => {
         return bound;
       },
     }),
-    batch: (bound) =>
-      database.batch(bound.map((statement) => statements.get(statement)!)),
+    batch: async (bound) => {
+      const results = await database.batch(
+        bound.map((statement) => statements.get(statement)!),
+      );
+      if (writing) {
+        readByWrites.push(...results.map(({ meta }) => meta.rows_read));
+      }
+      return results;
+    },
   };
   const examined: RowsExamined = {
     reset() {
@@ -47,7 +57,17 @@ const rowsRead = (database: D1Database) => {
     perRow: 2,
     perRead: 1,
   };
-  return { binding, examined };
+  const written = {
+    reset() {
+      writing = true;
+      readByWrites = [];
+    },
+    async rows() {
+      writing = false;
+      return readByWrites;
+    },
+  };
+  return { binding, examined, written };
 };
 
 /**
@@ -66,7 +86,7 @@ setupReadBudgetTestSuite({
           .join("\n"),
       );
     }
-    const { binding, examined } = rowsRead(env.DB);
-    return { adapter: d1Database(binding).adapter, examined };
+    const { binding, examined, written } = rowsRead(env.DB);
+    return { adapter: d1Database(binding).adapter, examined, written };
   },
 });

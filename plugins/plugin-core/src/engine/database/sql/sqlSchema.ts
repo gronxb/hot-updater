@@ -143,11 +143,21 @@ export const sqlTableShapes = (
           ),
           notNull: true,
         }));
-        const indexTable = {
+        const indexTable: SqlTableShape = {
           name: `${name}__${index.name}`,
           columns: entries,
           key: columns,
-          indexes: [],
+          // A row's entries go by the row's key, which ends the table's key:
+          // without an index that leads with it, replacing or pruning them
+          // reads the whole table.
+          indexes: [
+            {
+              kind: "index",
+              name: shortSqlName(`${name}__${index.name}__key`),
+              unique: false,
+              columns: table.key,
+            },
+          ],
         };
         return [{ kind: "table", table: indexTable }];
       }
@@ -246,8 +256,9 @@ export const retentionOrder = (table: PhysicalTable) => {
  * column past `before` keeps. `before` renders the bound each time it
  * appears. MySQL deletes with ORDER BY and LIMIT. Elsewhere the cutoff is
  * the last of the `limit` oldest expired rows in that order, a row value
- * the index ranges over, and the shapes pass Supabase's apply RPC: no IN, no
- * AS, aliases `i` and `b`.
+ * the index ranges over. PostgreSQL's shapes pass Supabase's apply RPC: no
+ * IN, no AS, aliases `i` and `b`; SQLite's (D1's) delete each doomed row's
+ * entries by the index table's key.
  */
 export const pruneStatements = (
   dialect: SqlDialect,
@@ -263,8 +274,10 @@ export const pruneStatements = (
     order.map((column) => `${alias}.${column}${direction}`).join(", ");
   const oldest = (before: () => string) =>
     `SELECT ${list("i")} FROM ${name} i WHERE i.${at} <= ${before()} ORDER BY ${list("i", " ASC")} LIMIT ${limit}`;
+  // The row value first: SQLite bounds the index range with the first
+  // comparison it can, and the retention column alone reads every expired row.
   const doomed = (alias: string, before: () => string) =>
-    `${alias}.${at} <= ${before()} AND (${list(alias)}) <= (SELECT ${list("b")} FROM (${oldest(before)}) b ORDER BY ${list("b", " DESC")} LIMIT 1)`;
+    `(${list(alias)}) <= (SELECT ${list("b")} FROM (${oldest(before)}) b ORDER BY ${list("b", " DESC")} LIMIT 1) AND ${alias}.${at} <= ${before()}`;
   const entries = table.indexes
     .filter((index) => isMultiIndex(table, index))
     .map((index) => quote(`${tablePrefix}${table.name}__${index.name}`));
@@ -272,6 +285,33 @@ export const pruneStatements = (
     table.key
       .map((column) => `${left}.${quote(column)} = ${right}.${quote(column)}`)
       .join(" AND ");
+  if (dialect === "sqlite") {
+    // The doomed rows' entries, whole: each multi-valued column's values
+    // from its JSON array, so each entry is one seek on the index table's
+    // key. SQLite runs EXISTS once per index table row instead.
+    return [
+      ...table.indexes
+        .filter((index) => isMultiIndex(table, index))
+        .map((index) => {
+          const columns = [...index.eq, ...indexOrderColumns(table, index)];
+          const multi = columns.filter(
+            (column) => findPhysicalColumn(table, column).multi,
+          );
+          const values = columns.map((column) =>
+            multi.includes(column)
+              ? `j${multi.indexOf(column)}.${quote("value")}`
+              : `b.${quote(column)}`,
+          );
+          const each = multi.map(
+            (column, at) => `, json_each(b.${quote(column)}) j${at}`,
+          );
+          const into = quote(`${tablePrefix}${table.name}__${index.name}`);
+          return (before: () => string) =>
+            `DELETE FROM ${into} WHERE (${columns.map(quote).join(", ")}) IN (SELECT ${values.join(", ")} FROM ${name} b${each.join("")} WHERE ${doomed("b", before)})`;
+        }),
+      (before) => `DELETE FROM ${name} WHERE ${doomed(name, before)}`,
+    ];
+  }
   if (dialect === "mysql") {
     return [
       ...entries.map(
