@@ -1,5 +1,19 @@
 package com.hotupdater
 
+/**
+ * Connects a host from the dev server form only while Home is idle. The form
+ * can stay open as Home turns busy, so this asks at the tap, of the state then,
+ * not of the state the form was drawn with.
+ */
+internal class HotUpdaterSandboxDevServerConnect(
+    private val isBusy: () -> Boolean,
+    private val connect: (String) -> Unit,
+) {
+    fun tap(host: String) {
+        if (!isBusy()) connect(host)
+    }
+}
+
 /** A host the Dev server section lists. */
 internal data class HotUpdaterSandboxDevServerHost(
     val address: String,

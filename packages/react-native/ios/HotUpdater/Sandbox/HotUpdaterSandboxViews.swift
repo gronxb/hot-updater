@@ -205,7 +205,7 @@ struct HotUpdaterSandboxRootView: View {
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
-        .tint(SandboxColor.accent)
+        .tint(SandboxColor.accentText)
         .sheet(item: $model.sheet, onDismiss: model.sheetClosed) { sheet in
             switch sheet {
             case .scanner: HotUpdaterSandboxScanSheet(onLink: model.scanned)
@@ -292,7 +292,7 @@ struct HotUpdaterSandboxRootView: View {
                 Button(question.accept) { model.answer(question, accept: false) }
             }
         case .connectProblem:
-            Button("OK", role: .cancel) {}
+            Button("Done", role: .cancel) {}
         }
     }
 }
@@ -328,9 +328,9 @@ private struct HomeScreen: View {
                         if let status = home.status { statusCard(status).id("status") }
                         if let banner = home.banner { bannerCard(banner).id("banner") }
                         primary(home).id("primary")
-                        devServer(home).id("devServer")
                         previews(home).id("previews")
                         downloaded(home).id("downloaded")
+                        devServer(home).id("devServer")
                         Text(HotUpdaterSandboxHomeModel.hint)
                             .font(SandboxFont.footnote)
                             .foregroundColor(SandboxColor.textSecondary)
@@ -419,7 +419,7 @@ private struct HomeScreen: View {
                 }
                 if let progress = status.progress {
                     ProgressView(value: progress)
-                        .tint(SandboxColor.accent)
+                        .tint(SandboxColor.accentText)
                 }
             }
             .padding(16)
@@ -481,57 +481,93 @@ private struct HomeScreen: View {
         }
     }
 
+    /// One card at the page's end: the running dev server with **Exit**, or a
+    /// row that opens the hosts used before, an address field, and Help.
     private func devServer(_ home: HotUpdaterSandboxHomeModel) -> some View {
         let devServer = model.devServer
-        return SandboxSection(title: "Dev server", action: ("Help", { openURL(helpURL) })) {
-            SandboxCard {
-                if let running = devServer.runningDevServerHost {
-                    SandboxRow(
-                        lead: .dot(SandboxColor.success),
-                        title: running,
-                        titleFont: SandboxFont.codeHeadline,
-                        subtitle: devServer.lastDevServerError ?? "Dev server running",
-                        action: devServer.reloadDevServer
-                    )
-                    SandboxDivider()
-                    SandboxRow(lead: .icon("xmark.circle"), title: "Exit dev server", showsChevron: false) {
+        return SandboxCard {
+            if let running = devServer.runningDevServerHost {
+                HStack(spacing: 0) {
+                    Button(action: devServer.reloadDevServer) {
+                        SandboxRowContent(
+                            lead: .icon("link"),
+                            title: "Dev server",
+                            subtitle: devServer.lastDevServerError,
+                            detail: running,
+                            detailFont: SandboxFont.code
+                        ) { EmptyView() }
+                    }
+                    .buttonStyle(SandboxRowStyle())
+                    .accessibilityHint("Reload")
+                    // Help stays in reach without leaving the session.
+                    Button { openURL(helpURL) } label: {
+                        Image(systemName: "questionmark.circle")
+                            .font(SandboxFont.headline)
+                            .foregroundColor(SandboxColor.textSecondary)
+                            .frame(minWidth: 44, maxHeight: .infinity)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(SandboxTextButtonStyle())
+                    .accessibilityLabel("Help")
+                    Button {
                         devServer.exitDevServer()
                         model.onClose()
+                    } label: {
+                        Text("Exit")
+                            .font(SandboxFont.subhead)
+                            .foregroundColor(SandboxColor.accentText)
+                            .padding(.horizontal, 16)
+                            .frame(minWidth: 44, maxHeight: .infinity)
+                            .contentShape(Rectangle())
                     }
-                } else {
-                    ForEach(devServer.devServerHosts, id: \.address) { host in
-                        SandboxRow(
-                            lead: .dot(host.isRunning == true ? SandboxColor.success : SandboxColor.muted),
-                            title: host.address,
-                            titleFont: SandboxFont.codeHeadline,
-                            subtitle: Self.subtitle(of: host),
-                            isEnabled: !home.isBusy
-                        ) {
-                            model.connect(host.address)
-                        }
-                        SandboxDivider()
-                    }
-                    accordion(
-                        .url,
-                        lead: .icon("link"),
-                        title: "Enter URL manually",
-                        placeholder: "192.168.0.10:8081",
-                        fieldLabel: "Dev server address",
-                        action: "Connect",
-                        keyboard: .URL,
-                        text: $model.urlText,
-                        isEnabled: !home.isBusy
-                    ) { model.connect($0) }
+                    // `fill` under the pressed label keeps it at AA.
+                    .buttonStyle(SandboxTextButtonStyle())
+                    .accessibilityLabel("Exit dev server")
                 }
+                .fixedSize(horizontal: false, vertical: true)
+            } else {
+                let hosts = devServer.devServerHosts
+                accordion(
+                    .url,
+                    lead: .icon("link"),
+                    title: "Dev server",
+                    value: hosts.first { $0.isRunning == true }?.address,
+                    placeholder: "192.168.0.10:8081",
+                    fieldLabel: "Dev server address",
+                    action: "Open",
+                    keyboard: .URL,
+                    text: $model.urlText,
+                    isEnabled: !home.isBusy,
+                    above: hosts.isEmpty ? nil : AnyView(
+                        VStack(spacing: 8) {
+                            ForEach(hosts, id: \.address) { host in
+                                SandboxHostButton(
+                                    address: host.address,
+                                    status: Self.subtitle(of: host)
+                                ) { model.connect(host.address) }
+                            }
+                        }
+                    ),
+                    below: AnyView(
+                        Button { openURL(helpURL) } label: {
+                            Text("Help")
+                                .font(SandboxFont.subhead)
+                                .foregroundColor(SandboxColor.accentText)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(SandboxTextButtonStyle())
+                    )
+                ) { model.connect($0) }
             }
         }
     }
 
     private static func subtitle(of host: HotUpdaterSandboxDevServerHost) -> String {
         switch host.isRunning {
-        case true: return "Dev server running"
+        case true: return "Running"
         case false: return "Not running. Start your dev server, then tap to retry."
-        default: return "Tap to connect"
+        default: return "Tap to open"
         }
     }
 
@@ -539,7 +575,7 @@ private struct HomeScreen: View {
         let footer = [home.previewHint, HotUpdaterSandboxHomeModel.switchNote].compactMap { $0 }.joined(separator: " ")
         return SandboxSection(title: "Channels", footer: footer) {
             SandboxCard {
-                SandboxRow(lead: .icon("qrcode.viewfinder"), title: "Scan QR code", isEnabled: !home.isBusy) {
+                SandboxRow(lead: .icon("qrcode.viewfinder"), title: "Scan a channel QR code", isEnabled: !home.isBusy) {
                     SandboxHaptic.tap()
                     focus = nil
                     model.present(.scanner)
@@ -618,12 +654,15 @@ private struct HomeScreen: View {
         _ entry: Entry,
         lead: SandboxLead,
         title: String,
+        value: String? = nil,
         placeholder: String,
         fieldLabel: String,
         action: String,
         keyboard: UIKeyboardType,
         text: Binding<String>,
         isEnabled: Bool,
+        above: AnyView? = nil,
+        below: AnyView? = nil,
         submit: @escaping (String) -> Void
     ) -> some View {
         let send = {
@@ -638,6 +677,7 @@ private struct HomeScreen: View {
         return SandboxAccordion(
             lead: lead,
             title: title,
+            value: value,
             isExpanded: model.expanded == entry,
             isEnabled: isEnabled,
             toggle: {
@@ -653,18 +693,32 @@ private struct HomeScreen: View {
                 }
             }
         ) {
-            TextField(placeholder, text: text)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(keyboard)
-                .submitLabel(.go)
-                .focused($focus, equals: entry)
-                .onSubmit(send)
-                .modifier(SandboxFieldStyle(isFocused: focus == entry))
-                .accessibilityLabel(fieldLabel)
+            if let above { above }
+            // The placeholder is drawn here, in `textSecondary`: the system's is
+            // under AA on `fill`.
+            ZStack(alignment: .leading) {
+                if text.wrappedValue.isEmpty {
+                    Text(placeholder)
+                        .foregroundColor(SandboxColor.textSecondary)
+                        .lineLimit(1)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+                TextField("", text: text)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(keyboard)
+                    .submitLabel(.go)
+                    .focused($focus, equals: entry)
+                    .onSubmit(send)
+                    .accessibilityLabel(fieldLabel)
+                    .accessibilityHint(placeholder)
+            }
+            .modifier(SandboxFieldStyle(isFocused: focus == entry))
             Button(action, action: send)
                 .buttonStyle(SandboxPrimaryButtonStyle())
                 .disabled(text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            if let below { below }
         }
         .id(entry)
     }
@@ -925,7 +979,7 @@ private struct HotUpdaterSandboxScanSheet: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black.ignoresSafeArea())
-                .navigationTitle("Scan QR code")
+                .navigationTitle("Scan a channel QR code")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbarColorScheme(.dark, for: .navigationBar)
                 .toolbar {
