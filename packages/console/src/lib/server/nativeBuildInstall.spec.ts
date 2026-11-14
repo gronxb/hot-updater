@@ -130,7 +130,12 @@ const coreOf = (
     async (udid: string) =>
       registry.find((device) => device.udid === udid.toLowerCase()) ?? null,
   ),
-  listIosDevices: vi.fn(async () => [...registry]),
+  listIosDevices: vi.fn(
+    async ({ status }: { readonly status?: IosDeviceRow["status"] } = {}) =>
+      registry.filter(
+        (device) => status === undefined || device.status === status,
+      ),
+  ),
 });
 
 const registryRow = (udid: string, name: string) =>
@@ -704,7 +709,7 @@ describe("checkNativeBuildInstall: the newer build a registered device's row nam
 });
 
 describe("readNativeBuildIpaDevices", () => {
-  it("lists the IPA's devices, named by the registry where it knows them, one UDID read each", async () => {
+  it("lists the IPA's devices, named by the registry's registered and approved devices", async () => {
     const bytes = await ipaBytes(adHocProfile([PHONE, LATER_PHONE]));
     const { fetch } = rangeServer(bytes);
     const core = coreOf(rowOf(bytes.length), [
@@ -724,8 +729,10 @@ describe("readNativeBuildIpaDevices", () => {
         { udid: LATER_PHONE.toLowerCase(), name: null },
       ].sort((a, b) => (a.udid < b.udid ? -1 : 1)),
     });
-    expect(core.findIosDevice).toHaveBeenCalledTimes(2);
-    expect(core.listIosDevices).not.toHaveBeenCalled();
+    expect(
+      core.listIosDevices.mock.calls.map(([input]) => input?.status),
+    ).toEqual(["registered", "approved"]);
+    expect(core.findIosDevice).not.toHaveBeenCalled();
   });
 
   it("names the IPA's devices in as many reads however many devices the registry has", async () => {
@@ -742,11 +749,13 @@ describe("readNativeBuildIpaDevices", () => {
         plugins: [],
         clientAccess: "public",
       });
-      await core.requestIosDevice({
+      const { device } = await core.requestIosDevice({
         udid: PHONE,
         name: "Kim's iPhone",
         requestedBy: null,
       });
+      await core.approveIosDevice(device.id, { approvedBy: null });
+      // Pending requests, which any signed-in user can add.
       for (let i = 1; i <= others; i += 1) {
         await core.requestIosDevice({
           udid: i.toString(16).padStart(40, "0"),
@@ -832,7 +841,7 @@ describe("readNativeBuildIpaDevices", () => {
     expect(
       await readNativeBuildIpaDevices(BUILD, { core, storage: storageOf() }),
     ).toEqual({ status: "unavailable" });
-    expect(core.findIosDevice).not.toHaveBeenCalled();
+    expect(core.listIosDevices).not.toHaveBeenCalled();
   });
 });
 

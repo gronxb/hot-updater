@@ -17,6 +17,7 @@ import {
   nativeBuildDownloadPath,
   nativeBuildManifestPath,
 } from "../native-builds";
+import { listIosDevices } from "./iosDevices";
 import {
   issueNativeBuildDownloadLink,
   type NativeBuildDownloadLinkResult,
@@ -462,14 +463,14 @@ export type NativeBuildIpaDevices =
   | { readonly status: "store" | "enterprise" }
   | { readonly status: "listed"; readonly devices: NativeBuildIpaDevice[] };
 
-/** How many of an IPA's UDIDs the registry is asked about at once. */
-const UDID_READS = 8;
+/** The registry statuses whose devices an IPA's profile can list. */
+const NAMED_STATUSES = ["registered", "approved"] as const;
 
 /**
  * The devices an IPA's profile lists, read from storage as the install check
  * reads it, each named by the device registry when it knows the UDID. The IPA
  * decides: the registry only names what it lists. One build read, the IPA's
- * few parts, and one read of the registry's UDID index per device it lists.
+ * few parts, and the registry's registered and approved devices.
  */
 export const readNativeBuildIpaDevices = async (
   id: string,
@@ -477,7 +478,7 @@ export const readNativeBuildIpaDevices = async (
     core,
     storage,
   }: {
-    readonly core: Pick<HotUpdaterCoreApi, "getNativeBuild" | "findIosDevice">;
+    readonly core: Pick<HotUpdaterCoreApi, "getNativeBuild" | "listIosDevices">;
     readonly storage: StorageAdapter;
   },
   fetch: typeof globalThis.fetch = globalThis.fetch,
@@ -489,24 +490,19 @@ export const readNativeBuildIpaDevices = async (
   if (info.distribution === "store" || info.distribution === "enterprise") {
     return { status: info.distribution };
   }
-  // The listed UDIDs are lower case, as the registry keys them. A profile
-  // lists up to about 100, read a few at a time.
-  const udids = [...new Set(info.devices)];
-  const rows: Awaited<ReturnType<typeof core.findIosDevice>>[] = [];
-  for (let at = 0; at < udids.length; at += UDID_READS) {
-    rows.push(
-      ...(await Promise.all(
-        udids
-          .slice(at, at + UDID_READS)
-          .map((udid) => core.findIosDevice(udid)),
-      )),
-    );
-  }
-  const names = new Map(
-    rows.flatMap((row) =>
-      row === null ? [] : [[row.udid, row.name] as const],
-    ),
-  );
+  // A profile lists only devices Apple has: the registry's registered ones,
+  // and approved ones registered since. Pending requests, which any signed-in
+  // user adds, are never read; Apple caps a team's devices, which bounds the
+  // two statuses' reads.
+  const rows =
+    info.devices.length === 0
+      ? []
+      : (
+          await Promise.all(
+            NAMED_STATUSES.map((status) => listIosDevices(core, status)),
+          )
+        ).flat();
+  const names = new Map(rows.map((row) => [row.udid, row.name]));
   return {
     status: "listed",
     devices: info.devices.map((udid) => ({

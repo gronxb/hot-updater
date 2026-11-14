@@ -14,7 +14,7 @@ perf(server): four admin reads no longer grow with the size of a table. None of 
 - **`native-build import`** finds an artifact that is already registered with one read of the unique `min_bundle_id` index. It no longer pages through the whole native build registry. Core adds `findNativeBuildByBuiltInBundle(bundleId)`, and the admin API adds the route `GET /native-builds/built-in/:bundleId`. A self-hosted server without this route answers 404, and the CLI asks you to upgrade it.
 - **`findNativeBuild(scope, { builtInOlderThan })`**, the lookup a deploy uses to pick its patch base, keeps its result: the newest build of the scope whose built-in bundle is older than the bundle. When newer builds are in the way, it now reads at most 5 pages of 20 builds before the newest. It answers null when none of those 100 builds qualifies, where it used to read the whole scope. A deploy then makes no automatic patch, as it does for a scope with no older build.
 - **The iOS device registry's account**, read before any claim, comes from one read of a new `ios_devices_byRegistration (registered_at_ms, id)` index. The registry is no longer scanned 200 rows at a time.
-- **The Console's device list for an `.ipa`** looks up each UDID the IPA lists through its unique index. It no longer reads the whole registry.
+- **The Console's device list for an `.ipa`** names its devices from the registry's registered and approved devices, read by status, which Apple's device cap bounds. It no longer reads the pending requests any signed-in user can add, and makes no request per device.
 
 If a 1.2.0 prerelease migrated your database before this release:
 
