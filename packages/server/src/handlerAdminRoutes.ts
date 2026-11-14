@@ -620,8 +620,9 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
   // server without these routes.
   // With `buildKey`, the newest build of the scope with that native build key;
   // with `storeBuild=true`, its marked build; with `builtInOlderThan`, its newest
-  // build older than that bundle; with `kind`, its newest build of that
-  // artifact kind (`artifactKind` names a sandbox scope's).
+  // build older than that bundle among the newest and the 100 before it; with
+  // `kind`, its newest build of that artifact kind (`artifactKind` names a
+  // sandbox scope's).
   findNativeBuild: onCore(async (core, request) => {
     const url = new URL(request.url);
     const scope = nativeBuildScopeOf(url);

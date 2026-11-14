@@ -1226,7 +1226,7 @@ describe("the store build mark", () => {
     expect(marks).not.toContain(buildId(1));
   });
 
-  it("finds a build older than a bundle however many newer builds are in the way", async () => {
+  it("finds a build older than a bundle past pages of newer builds in the way", async () => {
     const core = setup();
     await core.registerNativeBuild(registration(1));
     for (let n = 2; n <= 12; n += 1) {
@@ -1270,6 +1270,27 @@ describe("the store build mark", () => {
     };
 
     expect(await readsPast(300)).toEqual(await readsPast(150));
+  });
+
+  it("finds a build older than a bundle behind up to 100 builds before the newest, and none behind more", async () => {
+    const findPast = async (newer: number) => {
+      const core = setup();
+      await core.registerNativeBuild(registration(1));
+      for (let n = 2; n <= newer + 1; n += 1) {
+        await core.registerNativeBuild(
+          registration(n, {
+            minBundleId: `019a0000-0000-7000-8000-${String(n).padStart(12, "0")}`,
+          }),
+        );
+      }
+      return core.findNativeBuild(scope, {
+        builtInOlderThan: "01950000-0000-7000-8000-000000000000",
+      });
+    };
+
+    // Build 1 is the 100th build before the newest, then the 101st.
+    expect(await findPast(100)).toMatchObject({ id: buildId(1) });
+    expect(await findPast(101)).toBeNull();
   });
 
   it("keeps a build key through the builds newer than the bundle", async () => {
