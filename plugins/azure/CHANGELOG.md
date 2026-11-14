@@ -1,5 +1,15 @@
 # @hot-updater/azure
 
+## 1.1.15
+
+### Patch Changes
+
+- 0b7ebc4: perf(azure): read one or two Cosmos DB items by point reads instead of a query, such as the release catalog on every update check. On Strong consistency a point read costs 2 RU and a one-id query 5.9 RU.
+- @hot-updater/cli-tools@1.1.15
+  - @hot-updater/protocol@1.1.15
+  - @hot-updater/server@1.1.15
+  - @hot-updater/plugin-core@1.1.15
+
 ## 1.1.14
 
 ### Patch Changes
