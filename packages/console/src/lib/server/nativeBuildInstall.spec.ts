@@ -5,11 +5,14 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type {
-  IosDeviceRow,
-  NativeBuildRow,
-  StorageAdapter,
+import {
+  createMemoryAdapter,
+  type IosDeviceRow,
+  meterReads,
+  type NativeBuildRow,
+  type StorageAdapter,
 } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -127,7 +130,12 @@ const coreOf = (
     async (udid: string) =>
       registry.find((device) => device.udid === udid.toLowerCase()) ?? null,
   ),
-  listIosDevices: vi.fn(async () => [...registry]),
+  listIosDevices: vi.fn(
+    async ({ status }: { readonly status?: IosDeviceRow["status"] } = {}) =>
+      registry.filter(
+        (device) => status === undefined || device.status === status,
+      ),
+  ),
 });
 
 const registryRow = (udid: string, name: string) =>
@@ -701,7 +709,7 @@ describe("checkNativeBuildInstall: the newer build a registered device's row nam
 });
 
 describe("readNativeBuildIpaDevices", () => {
-  it("lists the IPA's devices, named by the registry where it knows them, in one registry read", async () => {
+  it("lists the IPA's devices, named by the registry's registered and approved devices", async () => {
     const bytes = await ipaBytes(adHocProfile([PHONE, LATER_PHONE]));
     const { fetch } = rangeServer(bytes);
     const core = coreOf(rowOf(bytes.length), [
@@ -721,7 +729,111 @@ describe("readNativeBuildIpaDevices", () => {
         { udid: LATER_PHONE.toLowerCase(), name: null },
       ].sort((a, b) => (a.udid < b.udid ? -1 : 1)),
     });
-    expect(core.listIosDevices).toHaveBeenCalledTimes(1);
+    expect(
+      core.listIosDevices.mock.calls.map(([input]) => input?.status),
+    ).toEqual(["registered", "approved"]);
+    expect(core.findIosDevice).not.toHaveBeenCalled();
+  });
+
+  it("names the IPA's devices in as many reads however many devices the registry has", async () => {
+    const bytes = await ipaBytes(adHocProfile([PHONE, LATER_PHONE]));
+    /** The registry's reads, past `others` devices the IPA doesn't list. */
+    const readsPast = async (others: number) => {
+      const database = meterReads({
+        name: "memory",
+        adapter: createMemoryAdapter(),
+      });
+      const { core } = createHotUpdater({
+        database,
+        storage: { name: "none", protocol: "none" },
+        plugins: [],
+        clientAccess: "public",
+      });
+      const { device } = await core.requestIosDevice({
+        udid: PHONE,
+        name: "Kim's iPhone",
+        requestedBy: null,
+      });
+      await core.approveIosDevice(device.id, { approvedBy: null });
+      // Pending requests, which any signed-in user can add.
+      for (let i = 1; i <= others; i += 1) {
+        await core.requestIosDevice({
+          udid: i.toString(16).padStart(40, "0"),
+          name: "Not in this IPA",
+          requestedBy: null,
+        });
+      }
+      const { fetch } = rangeServer(bytes);
+      const { result, adapter } = await database.measureReads(() =>
+        readNativeBuildIpaDevices(
+          BUILD,
+          {
+            core: { ...core, getNativeBuild: async () => rowOf(bytes.length) },
+            storage: storageOf(),
+          },
+          fetch,
+        ),
+      );
+      expect(result).toEqual({
+        status: "listed",
+        devices: [
+          { udid: PHONE.toLowerCase(), name: "Kim's iPhone" },
+          { udid: LATER_PHONE.toLowerCase(), name: null },
+        ].sort((a, b) => (a.udid < b.udid ? -1 : 1)),
+      });
+      return adapter;
+    };
+
+    // More than a page of the registry at both sizes.
+    expect(await readsPast(450)).toEqual(await readsPast(250));
+  });
+
+  it("names an IPA of 40 devices in as many registry requests as one of 2", async () => {
+    /** The registry requests that name an IPA listing `count` approved devices. */
+    const requestsFor = async (count: number) => {
+      const udids = Array.from({ length: count }, (_, i) =>
+        (i + 1).toString(16).padStart(40, "a"),
+      );
+      const bytes = await ipaBytes(adHocProfile(udids));
+      const database = meterReads({
+        name: "memory",
+        adapter: createMemoryAdapter(),
+      });
+      const { core } = createHotUpdater({
+        database,
+        storage: { name: "none", protocol: "none" },
+        plugins: [],
+        clientAccess: "public",
+      });
+      for (const udid of udids) {
+        const { device } = await core.requestIosDevice({
+          udid,
+          name: `Phone ${udid.slice(-2)}`,
+          requestedBy: null,
+        });
+        await core.approveIosDevice(device.id, { approvedBy: null });
+      }
+      const { fetch } = rangeServer(bytes);
+      const { result, adapter } = await database.measureReads(() =>
+        readNativeBuildIpaDevices(
+          BUILD,
+          {
+            core: { ...core, getNativeBuild: async () => rowOf(bytes.length) },
+            storage: storageOf(),
+          },
+          fetch,
+        ),
+      );
+      expect(result).toMatchObject({ status: "listed" });
+      expect(
+        (result as { devices: { name: string | null }[] }).devices.every(
+          ({ name }) => name !== null,
+        ),
+      ).toBe(true);
+      return adapter.gets + adapter.queries;
+    };
+
+    expect(await requestsFor(40)).toBe(await requestsFor(2));
   });
 
   it("is unavailable for a missing build, and reads no registry", async () => {

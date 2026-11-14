@@ -31,9 +31,6 @@ const EMAIL_MAX_LENGTH = 320;
 /** `ios_devices.apple_issuer_id`'s bound. */
 const ISSUER_MAX_LENGTH = 64;
 
-/** How many registry rows one read takes while finding its account. */
-const ACCOUNT_SCAN_PAGE = 200;
-
 /** The one row of `ios_device_account`. */
 const ACCOUNT_ROW = "registry";
 
@@ -151,31 +148,22 @@ export const createIosDeviceApi = (
   /**
    * The issuer of the registry's earliest registration among its rows, by
    * when and then by ID, or null when no row names one: read only while the
-   * registry has no account yet, a page at a time.
+   * registry has no account yet, in one read of its first registration. A
+   * row names an issuer exactly when it has a registration time: both are
+   * set by its first registration and never cleared.
    */
   const accountOfRows = async (): Promise<string | null> => {
-    let earliest: IosDeviceRow | null = null;
-    for (let after: string | undefined; ; ) {
-      const { rows } = await db.findMany("ios_devices", {
-        index: "all",
-        where: {},
-        order: "asc",
-        limit: ACCOUNT_SCAN_PAGE,
-        ...(after === undefined ? {} : { range: { gt: after } }),
-      });
-      for (const row of rows.map(pick)) {
-        if (row.apple_issuer_id === null) continue;
-        if (
-          earliest === null ||
-          (row.registered_at_ms ?? 0) < (earliest.registered_at_ms ?? 0)
-        ) {
-          earliest = row;
-        }
-      }
-      if (rows.length < ACCOUNT_SCAN_PAGE)
-        return earliest?.apple_issuer_id ?? null;
-      after = rows.at(-1)!.id as string;
-    }
+    const { rows } = await db.findMany("ios_devices", {
+      index: "byRegistration",
+      where: {},
+      order: "asc",
+      limit: 1,
+      // A key-value store indexes no row without a time; SQL indexes it, so
+      // the bound keeps it out.
+      range: { gte: 0 },
+    });
+    const earliest = rows[0] === undefined ? null : pick(rows[0]);
+    return earliest?.apple_issuer_id ?? null;
   };
 
   return {

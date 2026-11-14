@@ -161,6 +161,7 @@ model ios_devices {
   hu_v BigInt @default(0) @map("_v")
   @@id([id])
   @@index([status, id], map: "ios_devices_byStatus")
+  @@index([registered_at_ms, id], map: "ios_devices_byRegistration")
   @@unique([udid], map: "ios_devices_udid")
 }
 model ios_device_account {

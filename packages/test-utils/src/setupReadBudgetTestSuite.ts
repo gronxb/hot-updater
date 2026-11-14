@@ -696,6 +696,15 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       }),
   }),
   budget({
+    api: "native build by its built-in bundle: 1 unique read",
+    read: ({ core }) =>
+      core.findNativeBuildByBuiltInBundle(createBundleFixture("011").id),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({ id: createBundleFixture("8011").id }),
+  }),
+  budget({
     api: "native build by scope: byScope descending, limit 1",
     read: ({ core }) => core.findNativeBuild(nativeBuildScope),
     adapter: reads(0, 0, 1, 1),
@@ -1240,19 +1249,19 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     check: (device) => expect(device?.udid).toBe(BUDGET_PENDING_UDID),
   }),
   budget({
-    api: "iOS device account read, no claim yet: its row, then the rows that name one",
+    api: "iOS device account read, no claim yet: its row, then the earliest registration",
     read: ({ core }) => core.findIosDeviceAccount(),
-    adapter: reads(1, 1, 1, 2),
-    engine: { calls: 2, rows: 2 },
+    adapter: reads(1, 1, 1, 1),
+    engine: { calls: 2, rows: 1 },
     check: (account) => expect(account).toEqual({ issuerId: "issuer-a" }),
   }),
   budget({
-    api: "iOS device account, first claim: its one row's read, the registry's rows once, and 1 write",
-    // No account yet: the registry's rows (the requested iPhone and the one
-    // issuer-a registered) say whose it is, before the claim writes.
+    api: "iOS device account, first claim: its one row's read, the earliest registration, and 1 write",
+    // No account yet: the registry's earliest registration (issuer-a's; the
+    // requested iPhone has none) says whose it is, before the claim writes.
     read: ({ core }) => core.claimIosDeviceAccount("issuer-a"),
-    adapter: reads(1, 1, 1, 2),
-    engine: { calls: 2, rows: 2 },
+    adapter: reads(1, 1, 1, 1),
+    engine: { calls: 2, rows: 1 },
     writes: 1,
     check: (claim) =>
       expect(claim).toEqual({ issuerId: "issuer-a", claimed: true }),

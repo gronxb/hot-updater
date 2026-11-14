@@ -10,7 +10,6 @@ import { fitText, loadConfig, p } from "@hot-updater/cli-tools";
 import {
   type HotUpdaterCoreApi,
   type NativeBuildRow,
-  type NativeBuildScope,
 } from "@hot-updater/plugin-core";
 import { encodeChannelKey } from "@hot-updater/protocol";
 import {
@@ -50,35 +49,17 @@ export interface NativeBuildImportOptions {
   readonly channel?: string;
 }
 
-/** How many native builds one read of the registry takes. */
-const LIST_PAGE = 100;
-
 /**
  * The native build whose built-in bundle is `minBundleId`, or null when a
  * bundle that is no native build's has that ID, or undefined when the ID is
- * free. Only an artifact already registered pages the registry, newest
- * first, to name the build.
+ * free: one read of the bundle, and one of the build when the bundle exists.
  */
 const findRegistered = async (
   core: HotUpdaterCoreApi,
-  scope: NativeBuildScope,
   minBundleId: string,
 ): Promise<NativeBuildRow | null | undefined> => {
   if ((await core.getBundle(minBundleId)) === null) return undefined;
-  const newest = await core.findNativeBuild(scope);
-  if (newest?.min_bundle_id === minBundleId) return newest;
-  let after: string | undefined;
-  for (;;) {
-    const page = await core.listNativeBuilds({
-      order: "desc",
-      limit: LIST_PAGE,
-      ...(after === undefined ? {} : { after }),
-    });
-    const found = page.find((row) => row.min_bundle_id === minBundleId);
-    if (found !== undefined) return found;
-    if (page.length < LIST_PAGE) return null;
-    after = page.at(-1)!.id;
-  }
+  return core.findNativeBuildByBuiltInBundle(minBundleId);
 };
 
 /** The app identifiers the config's `nativeBuild` schemes declare. */
@@ -317,20 +298,6 @@ export const handleNativeBuildImport = async (
     }
     if (!check.ok) return fail(check.problems, info);
     const { build } = check;
-    const scope: NativeBuildScope =
-      build.fingerprintHash === null
-        ? {
-            platform: build.platform,
-            channel: build.channel,
-            fingerprintHash: null,
-            appVersion: build.appVersion!,
-          }
-        : {
-            platform: build.platform,
-            channel: build.channel,
-            fingerprintHash: build.fingerprintHash,
-            appVersion: null,
-          };
 
     /**
      * The registered build `build` is already, or a refusal of an artifact
@@ -344,11 +311,7 @@ export const handleNativeBuildImport = async (
       // A fresh server each time: disposing one closes its database.
       const server = await loadServer(await loadConfig(null));
       try {
-        const registered = await findRegistered(
-          server.core,
-          scope,
-          build.minBundleId,
-        );
+        const registered = await findRegistered(server.core, build.minBundleId);
         if (registered === undefined) return undefined;
         if (
           registered !== null &&

@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS "hot_updater_v1_ios_devices" ("id" varchar(36) COLLAT
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_ios_devices_byStatus" ON "hot_updater_v1_ios_devices" ("status", "id");
 
+CREATE INDEX IF NOT EXISTS "hot_updater_v1_ios_devices_byRegistration" ON "hot_updater_v1_ios_devices" ("registered_at_ms", "id");
+
 CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_ios_devices_udid" ON "hot_updater_v1_ios_devices" ("udid");
 
 CREATE TABLE IF NOT EXISTS "hot_updater_v1_ios_device_account" ("id" varchar(16) COLLATE "C" NOT NULL, "apple_issuer_id" varchar(64) COLLATE "C" NOT NULL, "claimed_at_ms" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));

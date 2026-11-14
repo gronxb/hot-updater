@@ -307,6 +307,9 @@ const iosDevices = defineTable(
     key: ["id"],
     indexes: {
       byStatus: { eq: ["status"], sort: ["id"] },
+      // The registrations in order, so the earliest is one read: the
+      // registry's account before any claim.
+      byRegistration: { eq: [], sort: ["registered_at_ms"] },
       all: { eq: [], sort: ["id"] },
     },
   },

@@ -552,6 +552,48 @@ describe("native-build import", () => {
     });
   });
 
+  it("finds the same build in as many reads however many builds were registered after it", async () => {
+    const file = await writeArtifact(dir, "app-release.aab", aab());
+    /** The reads of an import again, past `newer` builds of its scope. */
+    const readsPast = async (newer: number) => {
+      harness.reset();
+      await handleNativeBuildImport(file, { json: true });
+      const first = printedJson(stdout).nativeBuild;
+      for (let n = 0; n < newer; n += 1) {
+        await harness.core.registerNativeBuild({
+          id: createUUIDv7(),
+          minBundleId: createUUIDv7(),
+          platform: "android",
+          channel: "beta",
+          fingerprintHash: FINGERPRINT,
+          appVersion: null,
+          gitCommitHash: null,
+          buildKey: null,
+          artifact: { kind: "aab", storageUri: "mem://b/x.aab", byteSize: 1 },
+          embeddedBundle: {
+            manifestStorageUri: "mem://b/m.json",
+            manifestFileHash: "h",
+            assetBaseStorageUri: "mem://b/assets",
+          },
+        });
+      }
+      harness.read.mockClear();
+      stdout.mockClear();
+
+      await handleNativeBuildImport(file, { json: true });
+
+      expect(printedJson(stdout)).toMatchObject({
+        ok: true,
+        alreadyImported: true,
+        nativeBuild: { id: first.id },
+      });
+      return harness.read.mock.calls.length;
+    };
+
+    // More than a page of the registry is newer at both sizes.
+    expect(await readsPast(350)).toBe(await readsPast(150));
+  });
+
   it("settles a race with another import of the same build as already imported, deleting its own upload", async () => {
     // Each server gets its own config: disposing one closes its database.
     loadConfig.mockImplementation(async () => config());

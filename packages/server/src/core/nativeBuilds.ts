@@ -113,6 +113,13 @@ const EXPORT_METHODS: ReadonlySet<string> = new Set([
  */
 const OLDER_BUILDS_PAGE = 20;
 
+/**
+ * How many pages of older builds that look reads before it answers null: 100
+ * builds made after the bundle in one scope, where a deploy's new bundle has
+ * none or a few registered while it deploys.
+ */
+const OLDER_BUILDS_PAGES = 5;
+
 /** How many times a mark runs again after losing its scope's mark to another. */
 const MARK_ATTEMPTS = 8;
 
@@ -489,6 +496,7 @@ export const createNativeBuildApi = (
   HotUpdaterCoreApi,
   | "registerNativeBuild"
   | "getNativeBuild"
+  | "findNativeBuildByBuiltInBundle"
   | "findNativeBuild"
   | "findNativeBuildSibling"
   | "listNativeBuilds"
@@ -569,6 +577,13 @@ export const createNativeBuildApi = (
 
   async getNativeBuild(id) {
     const row = await db.findOne("native_builds", { id });
+    return row === null ? null : pick(row);
+  },
+
+  async findNativeBuildByBuiltInBundle(bundleId) {
+    const row = await db.findOne("native_builds", {
+      min_bundle_id: bundleId,
+    });
     return row === null ? null : pick(row);
   },
 
@@ -661,12 +676,14 @@ export const createNativeBuildApi = (
       return newest;
     }
     // A build made after the bundle can't take it. No index orders a scope by
-    // its built-in bundles, so the older builds are read a page at a time
-    // until one is older than the bundle, or the scope runs out: only when
-    // the newest was made after the bundle.
-    for (let before = newest.id; ; ) {
+    // its built-in bundles in the order builds were registered, so the older
+    // builds are read a page at a time until one is older than the bundle, the
+    // scope runs out, or `OLDER_BUILDS_PAGES` pages had none: only when the
+    // newest was made after the bundle.
+    let before = newest.id;
+    for (let page = 0; page < OLDER_BUILDS_PAGES; page += 1) {
       const { rows: older } = await read(OLDER_BUILDS_PAGE, before);
-      // oxlint-disable-next-line hot-updater/no-filtered-find-many -- no index selects builds by their built-in bundle; this path runs only past a build made after the bundle
+      // oxlint-disable-next-line hot-updater/no-filtered-find-many -- no index selects builds by their built-in bundle; this path runs only past a build made after the bundle, a bounded number of pages
       const usable = older.find(
         ({ min_bundle_id }) => min_bundle_id < bundleId,
       );
@@ -675,6 +692,7 @@ export const createNativeBuildApi = (
       if (older.length < OLDER_BUILDS_PAGE || last === undefined) return null;
       before = last.id;
     }
+    return null;
   },
 
   async findNativeBuildSibling(build) {

@@ -160,6 +160,7 @@ export const ios_devices = pgTable("ios_devices", {
 }, (table) => [
   primaryKey({ columns: [table["id"]] }),
   index("ios_devices_byStatus").on(table["status"], table["id"]),
+  index("ios_devices_byRegistration").on(table["registered_at_ms"], table["id"]),
   uniqueIndex("ios_devices_udid").on(table["udid"]),
 ]);
 

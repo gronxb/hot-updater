@@ -840,6 +840,15 @@ export const setupCoreAdminTestSuite = (options: {
       expect(
         (await adminJson(`/native-builds/${bundleRow("899").id}/sibling`)).data,
       ).toBeNull();
+
+      // The build that compiled in a bundle, and none for an unknown bundle.
+      expect(
+        (await adminJson(`/native-builds/built-in/${ipa.min_bundle_id}`)).data,
+      ).toEqual(ipa);
+      expect(
+        (await adminJson(`/native-builds/built-in/${bundleRow("899").id}`))
+          .data,
+      ).toBeNull();
     });
 
     it("requests, approves, renames, records, and removes iOS devices", async () => {
