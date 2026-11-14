@@ -21,6 +21,7 @@ internal class HotUpdaterSandboxLiveHost(
     /** What the previous process's crash left, read before anything settled it. */
     private val crashMarkerAtStart: () -> PendingCrashRecovery? = { HotUpdaterSandboxProcess.crashMarkerAtStart },
     private val appRunning: () -> Boolean = { HotUpdaterSandboxProcess.hostActivities > 0 },
+    private val appHidden: () -> Boolean = HotUpdaterSandbox::isHostHidden,
     private val canStartUnderScreen: () -> Boolean = HotUpdaterSandbox::canStartHostUnderScreen,
     private val startUnderScreen: () -> Unit = HotUpdaterSandbox::startHostUnderScreen,
 ) : HotUpdaterSandboxHost {
@@ -113,6 +114,8 @@ internal class HotUpdaterSandboxLiveHost(
         }
 
     override fun isAppRunning(): Boolean = appRunning()
+
+    override fun isAppHidden(): Boolean = appHidden()
 
     override fun canStartAppUnderScreen(): Boolean = canStartUnderScreen()
 
@@ -235,7 +238,7 @@ internal class HotUpdaterSandboxPreferences(
     context: Context,
 ) : HotUpdaterSandboxStore {
     private val preferences: SharedPreferences =
-        context.applicationContext.getSharedPreferences("hot_updater_sandbox", Context.MODE_PRIVATE)
+        context.applicationContext.getSharedPreferences(NAME, Context.MODE_PRIVATE)
 
     override var pendingLinks: List<String>
         get() {
@@ -273,8 +276,10 @@ internal class HotUpdaterSandboxPreferences(
             preferences.edit().putString(LAST_LAUNCH, item).commit()
         }
 
-    private companion object {
-        const val PENDING_LINKS = "pendingLinks"
-        const val LAST_LAUNCH = "lastLaunch"
+    companion object {
+        /** The sandbox's own preferences file. */
+        const val NAME = "hot_updater_sandbox"
+        private const val PENDING_LINKS = "pendingLinks"
+        private const val LAST_LAUNCH = "lastLaunch"
     }
 }

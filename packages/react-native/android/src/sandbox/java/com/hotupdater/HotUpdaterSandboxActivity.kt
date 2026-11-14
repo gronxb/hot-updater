@@ -67,6 +67,9 @@ internal object HotUpdaterSandbox {
     /** The screen in front, if any. */
     fun screenInFront(): HotUpdaterSandboxActivity? = screen?.get()
 
+    /** Whether the app runs under the screen in front, which started it, and nobody has seen it. */
+    fun isHostHidden(): Boolean = screen?.get()?.coversHiddenHost == true
+
     fun attach(activity: HotUpdaterSandboxActivity) {
         screen = WeakReference(activity)
     }
@@ -94,6 +97,8 @@ internal object HotUpdaterSandbox {
         activity: Activity?,
     ) {
         Log.i(TAG, "restarting to apply the switch")
+        // This restart opens the app on purpose: the next process doesn't come back to the screen.
+        HotUpdaterSandboxProcess.markCoveredStart(context, false)
         val intent =
             Intent(context, HotUpdaterRestartActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
@@ -219,6 +224,7 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
                     flags = intent.flags,
                     restored = restored,
                     ownScheme = HotUpdaterSandboxLink.ownScheme(this),
+                    coveredStartInterrupted = HotUpdaterSandboxProcess.takeCoveredStartAtStart(),
                 ),
             )
         Log.i(TAG, "start: $decision flags=0x${Integer.toHexString(intent.flags)} action=${intent.action}")
@@ -255,6 +261,10 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
     private val hostBeneath: Boolean
         get() = HotUpdaterSandboxProcess.hostActivities > 0
 
+    /** Whether the app this screen started runs under it, and nobody has seen it. */
+    internal val coversHiddenHost: Boolean
+        get() = coversHost && hostBeneath
+
     /** Whether the screen is over an app a person has seen: what the screen says and offers. */
     internal val isOverApp: Boolean
         get() = hostBeneath && !coversHost
@@ -281,6 +291,8 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
         coversHost = true
         leaveOnBack.isEnabled = true
         HotUpdaterSandboxProcess.cover = HotUpdaterSandboxCover(host.className, taskId, this)
+        // An SDK restart from here on, such as a forced update the app's check finds, comes back to this screen.
+        HotUpdaterSandboxProcess.markCoveredStart(this, true)
         HotUpdaterSandboxCrashGuard.install { HotUpdaterSandboxProcess.cover?.liveHost() }
         try {
             startActivity(hostIntent(launcherIntent(), host).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION))
@@ -405,6 +417,7 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
             if (isFinishing) {
                 cover.end(this)
                 HotUpdaterSandboxProcess.cover = null
+                HotUpdaterSandboxProcess.markCoveredStart(this, false)
             } else {
                 cover.screenPaused(this)
             }

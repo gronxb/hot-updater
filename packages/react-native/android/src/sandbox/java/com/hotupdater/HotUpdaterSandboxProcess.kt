@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Application
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.Context
 import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
@@ -64,6 +65,35 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
         var crashMarkerAtStart: PendingCrashRecovery? = null
             private set
 
+        private const val COVERED_START = "coveredStart"
+
+        /**
+         * Whether the process before this one was covering the app it started under
+         * a screen when it ended. Read and erased at the start, so it speaks only of
+         * the process just before.
+         */
+        @Volatile
+        private var coveredStartAtStart = false
+
+        /** [coveredStartAtStart], once: the start's first decision takes it. */
+        fun takeCoveredStartAtStart(): Boolean = coveredStartAtStart.also { coveredStartAtStart = false }
+
+        /**
+         * Records whether a screen covers the app it started, for the next process to
+         * read. Written at once: the SDK's restart can end this process right after.
+         */
+        fun markCoveredStart(
+            context: Context,
+            covering: Boolean,
+        ) {
+            val preferences = context.applicationContext.getSharedPreferences(HotUpdaterSandboxPreferences.NAME, Context.MODE_PRIVATE)
+            if (covering) {
+                preferences.edit().putBoolean(COVERED_START, true).commit()
+            } else if (preferences.contains(COVERED_START)) {
+                preferences.edit().remove(COVERED_START).commit()
+            }
+        }
+
         /** This process's one start of the app under a screen, until that screen goes for good. */
         @Volatile
         var cover: HotUpdaterSandboxCover? = null
@@ -95,6 +125,11 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
             crashMarkerFile(application?.filesDir)
                 .takeIf(File::exists)
                 ?.let(PendingCrashRecovery::loadFromFile)
+        application?.let {
+            val preferences = it.getSharedPreferences(HotUpdaterSandboxPreferences.NAME, Context.MODE_PRIVATE)
+            coveredStartAtStart = preferences.getBoolean(COVERED_START, false)
+            if (coveredStartAtStart) preferences.edit().remove(COVERED_START).commit()
+        }
         val shake = application?.let(::HotUpdaterSandboxShake)
         application?.registerActivityLifecycleCallbacks(
             object : Application.ActivityLifecycleCallbacks {

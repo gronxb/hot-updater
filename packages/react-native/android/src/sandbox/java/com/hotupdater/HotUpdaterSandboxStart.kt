@@ -56,7 +56,15 @@ internal object HotUpdaterSandboxStart {
             }
         }
         if (facts.restored) return HotUpdaterSandboxStartDecision.SHOW_SCREEN
-        if (facts.flags and Intent.FLAG_ACTIVITY_CLEAR_TASK != 0) return HotUpdaterSandboxStartDecision.OPEN_HOST
+        if (facts.flags and Intent.FLAG_ACTIVITY_CLEAR_TASK != 0) {
+            // An SDK restart, such as a forced update, of an app the screen covered for a
+            // link comes back to the screen, which asks that link.
+            return if (facts.coveredStartInterrupted) {
+                HotUpdaterSandboxStartDecision.SHOW_SCREEN
+            } else {
+                HotUpdaterSandboxStartDecision.OPEN_HOST
+            }
+        }
         val fromLauncher =
             facts.action == Intent.ACTION_MAIN &&
                 facts.categories.contains(Intent.CATEGORY_LAUNCHER) &&

@@ -35,10 +35,15 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
     }
 
     /// Set by the bridge, which owns the gate.
+    @MainActor var isAppHiddenAction: () -> Bool = { false }
     @MainActor var canStartUnderScreenAction: () -> Bool = { false }
     @MainActor var startUnderScreenAction: () -> Void = {}
 
-    /// The coordinator, on the main actor, is the only caller of these two.
+    /// The coordinator, on the main actor, is the only caller of these three.
+    func isAppHidden() -> Bool {
+        MainActor.assumeIsolated { isAppHiddenAction() }
+    }
+
     func canStartAppUnderScreen() -> Bool {
         MainActor.assumeIsolated { canStartUnderScreenAction() }
     }

@@ -28,6 +28,7 @@ public final class HotUpdaterSandboxBridge: NSObject {
         let host = HotUpdaterSandboxLiveHost(isAppRunning: { isReleased?() == true })
         host.exitSessionAction = { devServer.exitDevServer() }
         host.startStoredAction = { devServer.startStored($0) }
+        host.isAppHiddenAction = { startedHidden && isReleased?() == true }
         host.canStartUnderScreenAction = { window != nil && startUnderScreen != nil && isReleased?() != true }
         host.startUnderScreenAction = {
             guard window != nil, let startUnderScreen else { return }

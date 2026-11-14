@@ -535,7 +535,8 @@ final class HotUpdaterSandboxCoordinator {
         let launched = await host.launchBundleId()
         // Over a running app, opening shows what it runs: what's selected waits for
         // its launch. Before the app starts, what's selected is what opens.
-        let reloads = launchFixed && !host.isAppRunning()
+        // An app nobody has seen yet opens on what's selected, as it would have from here.
+        let reloads = launchFixed && (!host.isAppRunning() || host.isAppHidden())
         acknowledgeLastLaunch()
         publish(reading(selection, launched: launched))
         openApp(false, reloads)
