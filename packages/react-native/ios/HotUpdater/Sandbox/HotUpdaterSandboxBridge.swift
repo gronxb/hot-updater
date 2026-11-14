@@ -7,8 +7,14 @@ import UIKit
 @MainActor
 public final class HotUpdaterSandboxBridge: NSObject {
     private static var release: (() -> Void)?
+    private static var startUnderScreen: (() -> Bool)?
     private static var reload: (() -> Bool)?
     private static var isReleased: (() -> Bool)?
+    /// The screen started the app under itself, and nobody has seen it yet: the screen
+    /// stays the first screen until it goes.
+    private static var startedHidden = false
+    /// What the screen says and offers: over an app a person has seen.
+    private static var isOverShownApp: Bool { isReleased?() == true && !startedHidden }
     /// The screen's window, and its subscription to the coordinator.
     private static let slot = HotUpdaterSandboxScreenSlot<UIWindow>(coordinator: coordinator)
     private static var window: UIWindow? { slot.screen }
@@ -22,6 +28,13 @@ public final class HotUpdaterSandboxBridge: NSObject {
         let host = HotUpdaterSandboxLiveHost(isAppRunning: { isReleased?() == true })
         host.exitSessionAction = { devServer.exitDevServer() }
         host.startStoredAction = { devServer.startStored($0) }
+        host.isAppHiddenAction = { startedHidden && isReleased?() == true }
+        host.canStartUnderScreenAction = { window != nil && startUnderScreen != nil && isReleased?() != true }
+        host.startUnderScreenAction = {
+            guard window != nil, let startUnderScreen else { return }
+            startedHidden = true
+            if !startUnderScreen() { startedHidden = false }
+        }
         return host
     }()
     private static let coordinator = HotUpdaterSandboxCoordinator(
@@ -36,10 +49,12 @@ public final class HotUpdaterSandboxBridge: NSObject {
     /// What only the gate can do: start the held React Native, ask the SDK for a reload.
     @objc public static func configure(
         release: @escaping () -> Void,
+        startUnderScreen: @escaping () -> Bool,
         reload: @escaping () -> Bool,
         isReleased: @escaping () -> Bool
     ) {
         Self.release = release
+        Self.startUnderScreen = startUnderScreen
         Self.reload = reload
         Self.isReleased = isReleased
     }
@@ -85,7 +100,15 @@ public final class HotUpdaterSandboxBridge: NSObject {
 
     /// The screen's window goes, when the app starts by another route.
     @objc public static func hideScreen() {
+        startedHidden = false
         slot.hide()?.isHidden = true
+    }
+
+    /// Something for the app arrived after the screen started it hidden: the app shows.
+    @objc public static func revealIfHidden() {
+        guard startedHidden else { return }
+        NSLog("[HotUpdaterSandbox] revealing the app started under the screen")
+        hideScreen()
     }
 
     /// Text entry and alerts stay in the screen when the app makes its own window key after it.
@@ -114,7 +137,7 @@ public final class HotUpdaterSandboxBridge: NSObject {
         let screen = HotUpdaterSandboxScreen(
             coordinator: coordinator,
             devServer: devServer,
-            isOverApp: { isReleased?() == true },
+            isOverApp: { isOverShownApp },
             onClose: {
                 coordinator.acknowledgeLastLaunch()
                 hideScreen()

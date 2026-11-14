@@ -4,10 +4,40 @@ import android.app.Activity
 import android.app.Application
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.Context
 import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
+import com.facebook.react.ReactActivity
 import java.io.File
+import java.lang.ref.WeakReference
+
+/** The app's activity a screen started under itself. */
+internal class HotUpdaterSandboxLiveCoveredHost(
+    activity: Activity,
+    private val taskId: Int,
+) : HotUpdaterSandboxCoveredHost {
+    private val activity = WeakReference(activity)
+
+    fun isActivity(other: Activity) = activity.get() === other
+
+    override val isGone: Boolean
+        get() = activity.get()?.let { it.isFinishing || it.isDestroyed || it.taskId != taskId } ?: true
+
+    private fun reactDelegate() = (activity.get() as? ReactActivity)?.reactDelegate
+
+    override fun resumeReact() {
+        reactDelegate()?.onHostResume()
+    }
+
+    override fun pauseReact() {
+        reactDelegate()?.onHostPause()
+    }
+
+    override fun finish() {
+        activity.get()?.finish()
+    }
+}
 
 /**
  * Follows the app's own activities from the process's start, since a provider
@@ -35,6 +65,49 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
         var crashMarkerAtStart: PendingCrashRecovery? = null
             private set
 
+        private const val COVERED_START = "coveredStart"
+
+        /**
+         * Whether the process before this one was covering the app it started under
+         * a screen when it ended. Read and erased at the start, so it speaks only of
+         * the process just before.
+         */
+        @Volatile
+        private var coveredStartAtStart = false
+
+        /** [coveredStartAtStart], once: the start's first decision takes it. */
+        fun takeCoveredStartAtStart(): Boolean = coveredStartAtStart.also { coveredStartAtStart = false }
+
+        /**
+         * Records whether a screen covers the app it started, for the next process to
+         * read. Written at once: the SDK's restart can end this process right after.
+         */
+        fun markCoveredStart(
+            context: Context,
+            covering: Boolean,
+        ) {
+            val preferences = context.applicationContext.getSharedPreferences(HotUpdaterSandboxPreferences.NAME, Context.MODE_PRIVATE)
+            if (covering) {
+                preferences.edit().putBoolean(COVERED_START, true).commit()
+            } else if (preferences.contains(COVERED_START)) {
+                preferences.edit().remove(COVERED_START).commit()
+            }
+        }
+
+        /** This process's one start of the app under a screen, until that screen goes for good. */
+        @Volatile
+        var cover: HotUpdaterSandboxCover? = null
+
+        /** A screen recreated before its start under itself could run hands it to its successor in this task. */
+        @Volatile
+        var startHandoffTaskId: Int? = null
+
+        /** Lets go of [screen]'s cover before the app's activity exists: the app starts uncovered. */
+        fun dropPendingCover(screen: HotUpdaterSandboxActivity) {
+            val pending = cover ?: return
+            if (pending.isOwnedBy(screen) && pending.host == null) cover = null
+        }
+
         /** Main's marker, under the app's files directory. */
         internal fun crashMarkerFile(filesDir: File?) = File(File(filesDir, "bundle-store"), "recovery-crash-marker.json")
 
@@ -52,6 +125,11 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
             crashMarkerFile(application?.filesDir)
                 .takeIf(File::exists)
                 ?.let(PendingCrashRecovery::loadFromFile)
+        application?.let {
+            val preferences = it.getSharedPreferences(HotUpdaterSandboxPreferences.NAME, Context.MODE_PRIVATE)
+            coveredStartAtStart = preferences.getBoolean(COVERED_START, false)
+            if (coveredStartAtStart) preferences.edit().remove(COVERED_START).commit()
+        }
         val shake = application?.let(::HotUpdaterSandboxShake)
         application?.registerActivityLifecycleCallbacks(
             object : Application.ActivityLifecycleCallbacks {
@@ -64,10 +142,22 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
                     if (!isHost(activity)) return
                     hostActivities += 1
                     hostStarted = true
+                    val pending = cover
+                    if (pending != null &&
+                        pending.host == null &&
+                        activity.componentName.className == pending.hostClassName &&
+                        activity.taskId == pending.taskId
+                    ) {
+                        pending.hostCreated(HotUpdaterSandboxLiveCoveredHost(activity, pending.taskId))
+                        (pending.owner() as? HotUpdaterSandboxActivity)?.coverHost(activity)
+                    }
                 }
 
                 override fun onActivityDestroyed(activity: Activity) {
-                    if (isHost(activity)) hostActivities -= 1
+                    if (!isHost(activity)) return
+                    hostActivities -= 1
+                    val covered = cover?.host as? HotUpdaterSandboxLiveCoveredHost
+                    if (covered != null && covered.isActivity(activity)) cover?.hostDestroyed(covered)
                 }
 
                 override fun onActivityStarted(activity: Activity) = Unit

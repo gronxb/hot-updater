@@ -675,6 +675,30 @@ class HotUpdaterSandboxHomeModelTest {
     }
 
     @Test
+    fun `only a running check spins, never a link that waits for the app to be opened`() {
+        val link = HotUpdaterSandboxLink("hu-sandbox-app://hot-updater/preview?channel=pr-1", "hu-sandbox-app", "pr-1", "fp")
+        // The app the sandbox started under the screen checks now.
+        assertEquals(
+            HotUpdaterSandboxHomeModel.Status("Checking pr-1…", null, spins = true),
+            home(state(selection(), phase = HotUpdaterSandboxPhase.WaitingForServer(link, checking = true))).status,
+        )
+        // Past its time, or on a host the app can't start under: the screen watches on, with nothing spinning.
+        val waiting = home(state(selection(), phase = HotUpdaterSandboxPhase.WaitingForServer(link, checking = false))).status
+        assertEquals(false, waiting?.spins)
+        assertEquals(
+            "pr-1 needs an answer from your update server first. Open the app so it can check for updates.",
+            waiting?.text,
+        )
+        val check = home(state(selection(), phase = HotUpdaterSandboxPhase.Working(1, "pr-2", HotUpdaterSandboxStep.CHECK)))
+        assertEquals(true, check.status?.spins)
+        val reset = home(state(selection(), phase = HotUpdaterSandboxPhase.Working(1, "", HotUpdaterSandboxStep.RESET)))
+        assertEquals(true, reset.status?.spins)
+        // A download shows its bar instead.
+        val download = home(state(selection(), phase = HotUpdaterSandboxPhase.Working(1, "pr-2", HotUpdaterSandboxStep.DOWNLOAD, 0.5)))
+        assertEquals(false, download.status?.spins)
+    }
+
+    @Test
     fun `info shows what the store holds`() {
         val withPending =
             state(selection(bundleId = "019a3f00aabbc2")).copy(

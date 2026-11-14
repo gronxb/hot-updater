@@ -157,8 +157,11 @@ text, with no leading slot. It always asks first.
 
 **Badge.** A capsule in `fill`, 8 by 2 padding, `badge` in `textSecondary`.
 
-**Status.** A card with the text in `body`, and while a download reports it, a
-4-point bar in `accentText` over `fill`.
+**Status.** A card with the text in `body`. While something runs with no
+progress to show, such as a check, an indeterminate spinner, 20 points, in
+`muted`, leads the text; it holds still when the system turns animations off.
+While a download reports it, a 4-point bar in `accentText` over `fill` follows.
+The message that asks to open the app has neither.
 
 **Crash banner.** A card, not a colored one: a warning triangle in `danger`,
 the text in `body`, and when the crashed bundle stays selected, a destructive

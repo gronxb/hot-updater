@@ -779,7 +779,10 @@ internal class HotUpdaterSandboxScreen(
         val colors = LocalSandboxColors.current
         SandboxCard {
             Column(Modifier.padding(16.dp).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SandboxText(status.text, SandboxType.body)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (status.spins) SandboxSpinner()
+                    SandboxText(status.text, SandboxType.body)
+                }
                 status.progress?.let { progress ->
                     Box(
                         Modifier

@@ -393,6 +393,8 @@ internal object HotUpdaterSandboxDev {
         context: Context,
         relaunch: HotUpdaterSandboxRelaunch,
     ) {
+        // The sandbox's own relaunch goes where it says, never back to a covered start.
+        HotUpdaterSandboxProcess.markCoveredStart(context, false)
         val intent =
             Intent(context.applicationContext, HotUpdaterSandboxRelaunchActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)

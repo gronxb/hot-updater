@@ -8,8 +8,11 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Process
 import android.util.Log
+import android.view.Choreographer
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -53,6 +56,20 @@ internal object HotUpdaterSandbox {
             ).also { coordinator = it }
         }
 
+    /** Whether the screen in front can start the app under itself. */
+    fun canStartHostUnderScreen(): Boolean = screen?.get()?.canStartHostUnderScreen() == true
+
+    /** Starts the app under the screen in front, which stays on top. */
+    fun startHostUnderScreen() {
+        screen?.get()?.startHostUnderScreen()
+    }
+
+    /** The screen in front, if any. */
+    fun screenInFront(): HotUpdaterSandboxActivity? = screen?.get()
+
+    /** Whether the app runs under the screen in front, which started it, and nobody has seen it. */
+    fun isHostHidden(): Boolean = screen?.get()?.coversHiddenHost == true
+
     fun attach(activity: HotUpdaterSandboxActivity) {
         screen = WeakReference(activity)
     }
@@ -80,6 +97,8 @@ internal object HotUpdaterSandbox {
         activity: Activity?,
     ) {
         Log.i(TAG, "restarting to apply the switch")
+        // This restart opens the app on purpose: the next process doesn't come back to the screen.
+        HotUpdaterSandboxProcess.markCoveredStart(context, false)
         val intent =
             Intent(context, HotUpdaterRestartActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
@@ -111,24 +130,79 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
     internal companion object {
         /** The sandbox's own start over a running app, which only it can send. */
         const val EXTRA_OVER_APP = "com.hotupdater.sandbox.OVER_APP"
+
+        /** The app's activity, started under the screen, brings the screen back on top. */
+        const val EXTRA_COVER = "com.hotupdater.sandbox.COVER"
+        private const val STATE_COVERS_HOST = "com.hotupdater.sandbox.COVERS_HOST"
     }
 
     private var stopObserving: (() -> Unit)? = null
     private var screen: HotUpdaterSandboxScreen? = null
 
+    /**
+     * This screen started the app under itself, and nobody has seen it: the screen
+     * stays the first screen. Kept across recreation, where the task may still hold
+     * the app's activity with no process behind it.
+     */
+    private var coversHost = false
+
+    /** Back on a screen over the app it started leaves, as on the first screen: it never shows the app. */
+    private val leaveOnBack =
+        object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                moveTaskToBack(true)
+            }
+        }
+
+    /** A start under this screen waits for its first frame on the display. */
+    private val firstFrame =
+        HotUpdaterSandboxFirstFrameStart(
+            schedule = { block ->
+                val callback = Choreographer.FrameCallback { block() }
+                Choreographer.getInstance().postFrameCallback(callback)
+                ({ Choreographer.getInstance().removeFrameCallback(callback) })
+            },
+            start = ::startHostNow,
+        )
+    private var drawListener: ViewTreeObserver.OnDrawListener? = null
+    private var afterDraw: Runnable? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        coversHost = savedInstanceState?.getBoolean(STATE_COVERS_HOST) == true || intent.hasExtra(EXTRA_COVER)
+        leaveOnBack.isEnabled = coversHost
+        onBackPressedDispatcher.addCallback(this, leaveOnBack)
+        // Recreated: this screen takes over its predecessor's start, which ran or waits, never a new one.
+        HotUpdaterSandboxProcess.cover?.takeIf { it.taskId == taskId && coversHost }?.adopt(this)
         handle(intent, savedInstanceState)
+        if (HotUpdaterSandboxProcess.startHandoffTaskId == taskId) {
+            HotUpdaterSandboxProcess.startHandoffTaskId = null
+            firstFrame.request()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Out of sight, or gone: what the sandbox resumed of the app pauses as it would.
+        HotUpdaterSandboxProcess.cover?.screenPaused(this)
     }
 
     override fun onResume() {
         super.onResume()
+        // The app under the screen runs as the app in front would, timers included:
+        // its own pause stopped them, and its update check resolves through one.
+        HotUpdaterSandboxProcess.cover?.screenResumed(this)
         // Back in front in this process: a stored session's relaunch still pending didn't happen.
         if (screen != null) HotUpdaterSandbox.coordinator(this).resumed()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // Back on top of the app it started: this screen keeps what started it.
+        if (intent.hasExtra(EXTRA_COVER)) {
+            Log.i(TAG, "covering the app started under the screen")
+            return
+        }
         setIntent(intent)
         handle(intent, null)
     }
@@ -145,15 +219,16 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
                     dataScheme = intent.scheme,
                     hasData = intent.data != null,
                     categories = intent.categories.orEmpty(),
-                    hasExtras = intent.extras?.isEmpty == false && !intent.hasExtra(EXTRA_OVER_APP),
+                    hasExtras = intent.extras?.isEmpty == false && !intent.hasExtra(EXTRA_OVER_APP) && !intent.hasExtra(EXTRA_COVER),
                     hasClipData = intent.clipData != null,
                     flags = intent.flags,
                     restored = restored,
                     ownScheme = HotUpdaterSandboxLink.ownScheme(this),
+                    coveredStartInterrupted = HotUpdaterSandboxProcess.takeCoveredStartAtStart(),
                 ),
             )
         Log.i(TAG, "start: $decision flags=0x${Integer.toHexString(intent.flags)} action=${intent.action}")
-        if (decision == HotUpdaterSandboxStartDecision.OPEN_HOST && !intent.hasExtra(EXTRA_OVER_APP)) {
+        if (decision == HotUpdaterSandboxStartDecision.OPEN_HOST && !intent.hasExtra(EXTRA_OVER_APP) && !intent.hasExtra(EXTRA_COVER)) {
             startHost(intent)
             return
         }
@@ -173,6 +248,7 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
             val shown = HotUpdaterSandboxScreen(this, coordinator, HotUpdaterSandbox.devServer(this), saved)
             screen = shown
             setContentView(shown.view)
+            watchFirstFrame()
             stopObserving = coordinator.observe(shown::render)
         }
         if (decision == HotUpdaterSandboxStartDecision.SHOW_LINK) {
@@ -181,9 +257,84 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
         coordinator.refresh()
     }
 
-    /** Whether the app is underneath: read from this process, never from saved state. */
-    internal val isOverApp: Boolean
+    /** Whether the app's activity is underneath: read from this process, never from saved state. */
+    private val hostBeneath: Boolean
         get() = HotUpdaterSandboxProcess.hostActivities > 0
+
+    /** Whether the app this screen started runs under it, and nobody has seen it. */
+    internal val coversHiddenHost: Boolean
+        get() = coversHost && hostBeneath
+
+    /** Whether the screen is over an app a person has seen: what the screen says and offers. */
+    internal val isOverApp: Boolean
+        get() = hostBeneath && !coversHost
+
+    /**
+     * Whether the app can start under this screen: its activity is known, and the
+     * task holds no activity of it that a restore left with no process behind it.
+     */
+    internal fun canStartHostUnderScreen(): Boolean = !isFinishing && hostComponent() != null && !(coversHost && !hostBeneath)
+
+    /**
+     * Starts the app's activity under this screen, once the screen's first frame is
+     * on the display: once it's created, it brings this screen back on top before
+     * its own first frame, and its JavaScript checks for updates.
+     */
+    internal fun startHostUnderScreen() {
+        firstFrame.request()
+    }
+
+    private fun startHostNow() {
+        // Only the screen in front, alive, starts the app under itself.
+        if (isFinishing || isDestroyed || HotUpdaterSandbox.screenInFront() !== this) return
+        val host = hostComponent() ?: return
+        coversHost = true
+        leaveOnBack.isEnabled = true
+        HotUpdaterSandboxProcess.cover = HotUpdaterSandboxCover(host.className, taskId, this)
+        // An SDK restart from here on, such as a forced update the app's check finds, comes back to this screen.
+        HotUpdaterSandboxProcess.markCoveredStart(this, true)
+        HotUpdaterSandboxCrashGuard.install { HotUpdaterSandboxProcess.cover?.liveHost() }
+        try {
+            startActivity(hostIntent(launcherIntent(), host).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION))
+            overridePendingTransition(0, 0)
+        } catch (error: RuntimeException) {
+            Log.e(TAG, "the app couldn't start under the screen", error)
+            HotUpdaterSandboxProcess.dropPendingCover(this)
+            coversHost = false
+            leaveOnBack.isEnabled = false
+        }
+    }
+
+    /** Tells [firstFrame] when the screen's first frame was drawn. */
+    private fun watchFirstFrame() {
+        val decor = window.decorView
+        val listener =
+            ViewTreeObserver.OnDrawListener {
+                // A listener can't remove itself while the frame dispatches it.
+                if (afterDraw != null) return@OnDrawListener
+                val next =
+                    Runnable {
+                        drawListener?.let { decor.viewTreeObserver.removeOnDrawListener(it) }
+                        drawListener = null
+                        firstFrame.drew()
+                    }
+                afterDraw = next
+                decor.post(next)
+            }
+        drawListener = listener
+        decor.viewTreeObserver.addOnDrawListener(listener)
+    }
+
+    /** Brings this screen back over [host], which this screen just started. */
+    internal fun coverHost(host: Activity) {
+        Log.i(TAG, "the app started under the screen: covering it")
+        host.startActivity(
+            Intent(host, HotUpdaterSandboxActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                .putExtra(EXTRA_COVER, true),
+        )
+        host.overridePendingTransition(0, 0)
+    }
 
     /** The screen closes itself over the app once nothing is left to answer. */
     internal fun closeOverApp() {
@@ -191,41 +342,59 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
     }
 
     internal fun openHost(switched: Boolean) {
-        if (isOverApp && !switched) {
+        firstFrame.withdraw()
+        HotUpdaterSandboxProcess.dropPendingCover(this)
+        // The app is beneath: running, or one this screen started that a restore
+        // left with no process, which starts now on what's selected.
+        if ((hostBeneath && !switched) || (coversHost && !hostBeneath)) {
             finish()
             return
         }
-        val launcher =
-            intent.takeUnless {
-                HotUpdaterSandboxLink.isOwnScheme(it.scheme, HotUpdaterSandboxLink.ownScheme(this)) || it.hasExtra(EXTRA_OVER_APP)
-            }
-        startHost(launcher ?: Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER))
+        startHost(launcherIntent())
+    }
+
+    /** What the app's activity gets from a screen: what started it, never a sandbox link. */
+    private fun launcherIntent(): Intent =
+        intent.takeUnless {
+            HotUpdaterSandboxLink.isOwnScheme(it.scheme, HotUpdaterSandboxLink.ownScheme(this)) || it.hasExtra(EXTRA_OVER_APP)
+        } ?: Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+
+    /** The app's activity, as the manifest names it. */
+    private fun hostComponent(): ComponentName? =
+        packageManager
+            .getActivityInfo(componentName, PackageManager.GET_META_DATA)
+            .metaData
+            ?.getString(HOST_ACTIVITY)
+            ?.let { ComponentName(packageName, it) }
+
+    private fun hostIntent(
+        incoming: Intent,
+        host: ComponentName,
+    ): Intent {
+        val copy =
+            Intent(incoming)
+                .setComponent(host)
+                .setFlags(HotUpdaterSandboxStart.hostFlags(incoming.flags))
+        copy.selector = null
+        return copy
     }
 
     /** A copy of what started this activity, for the app's: its contract with whoever sent it. */
     private fun startHost(incoming: Intent) {
-        val host =
-            packageManager
-                .getActivityInfo(componentName, PackageManager.GET_META_DATA)
-                .metaData
-                ?.getString(HOST_ACTIVITY)
+        val host = hostComponent()
         if (host == null) {
             Log.e(TAG, "no host activity in the manifest")
             finish()
             return
         }
-        val copy =
-            Intent(incoming)
-                .setComponent(ComponentName(packageName, host))
-                .setFlags(HotUpdaterSandboxStart.hostFlags(incoming.flags))
-        copy.selector = null
-        startActivity(copy)
+        startActivity(hostIntent(incoming, host))
         overridePendingTransition(0, 0)
         finish()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_COVERS_HOST, coversHost)
         screen?.save(outState)
     }
 
@@ -235,6 +404,24 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
         if (isFinishing && screen != null && isOverApp) HotUpdaterSandbox.coordinator(this).acknowledgeLastLaunch()
         stopObserving?.invoke()
         stopObserving = null
+        // Nothing this screen scheduled runs after it. Recreated, it hands a start
+        // still waiting to its successor, with no second one and no new deadline.
+        window.decorView.let { decor ->
+            afterDraw?.let(decor::removeCallbacks)
+            drawListener?.let { if (decor.viewTreeObserver.isAlive) decor.viewTreeObserver.removeOnDrawListener(it) }
+        }
+        afterDraw = null
+        drawListener = null
+        if (firstFrame.destroy() && !isFinishing) HotUpdaterSandboxProcess.startHandoffTaskId = taskId
+        HotUpdaterSandboxProcess.cover?.takeIf { it.isOwnedBy(this) }?.let { cover ->
+            if (isFinishing) {
+                cover.end(this)
+                HotUpdaterSandboxProcess.cover = null
+                HotUpdaterSandboxProcess.markCoveredStart(this, false)
+            } else {
+                cover.screenPaused(this)
+            }
+        }
         HotUpdaterSandbox.detach(this)
         super.onDestroy()
     }

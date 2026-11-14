@@ -48,6 +48,9 @@ struct HotUpdaterSandboxHomeModel: Equatable {
         let text: String
         /// From 0 to 1 while a download reports it.
         let progress: Double?
+        /// Whether something runs now with no progress to show, such as a check.
+        /// A link waiting for a server spins only while the app it started checks.
+        var spins = false
     }
 
     let banner: Banner?
@@ -280,14 +283,16 @@ struct HotUpdaterSandboxHomeModel: Equatable {
         case .working(_, let target, let step, let progress):
             switch step {
             case .preflight, .check:
-                return Status(text: "Checking \(target)…", progress: nil)
+                return Status(text: "Checking \(target)…", progress: nil, spins: true)
             case .reset:
-                return Status(text: "Removing downloaded bundles…", progress: nil)
+                return Status(text: "Removing downloaded bundles…", progress: nil, spins: true)
             case .download:
                 let percent = Int((progress ?? 0) * 100)
                 return Status(text: "Downloading \(target)… \(percent)%", progress: progress ?? 0)
             }
-        case .waitingForServer(let link):
+        case .waitingForServer(let link, true):
+            return Status(text: "Checking \(link.channel)…", progress: nil, spins: true)
+        case .waitingForServer(let link, false):
             return Status(
                 text: "\(link.channel) needs an answer from your update server first. Open the app so it can check for updates.",
                 progress: nil

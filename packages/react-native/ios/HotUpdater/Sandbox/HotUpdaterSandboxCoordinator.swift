@@ -69,6 +69,13 @@ protocol HotUpdaterSandboxHost: AnyObject {
     func launchBundleId() async -> String
     /// Whether the app is up under the screen, so opening it starts nothing.
     func isAppRunning() -> Bool
+    /// Whether the app runs under the screen that started it, and nobody has seen it yet.
+    func isAppHidden() -> Bool
+    /// Whether this host can start the app under the screen without showing it, so
+    /// its own update check can answer a waiting link.
+    func canStartAppUnderScreen() -> Bool
+    /// Starts the app under the screen, which stays on top: its JavaScript runs and checks for updates.
+    func startAppUnderScreen()
     /// Whether the target channel has a bundle this build would run. Throws when the server can't say.
     func preflight(channel: String) async throws -> Bool
     /// What the last launch left: read, never a request. Settled reads come after `selection()`.
@@ -97,6 +104,16 @@ extension HotUpdaterSandboxHost {
     func isAppRunning() -> Bool {
         false
     }
+
+    func isAppHidden() -> Bool {
+        false
+    }
+
+    func canStartAppUnderScreen() -> Bool {
+        false
+    }
+
+    func startAppUnderScreen() {}
 }
 
 /// What outlives the process.
@@ -137,8 +154,9 @@ enum HotUpdaterSandboxPhase: Equatable {
     case idle
     /// A link waits for a person to accept it. It names the link's channel.
     case confirming(HotUpdaterSandboxLink)
-    /// A link waits for a server to answer one of the app's checks.
-    case waitingForServer(HotUpdaterSandboxLink)
+    /// A link waits for a server to answer one of the app's checks. `checking`: the
+    /// sandbox started the app under the screen for it, and its time to answer runs.
+    case waitingForServer(HotUpdaterSandboxLink, checking: Bool = false)
     case refused(HotUpdaterSandboxRefusal)
     case working(operationId: Int, target: String, step: HotUpdaterSandboxStep, progress: Double?)
     /// `selection` is what storage holds now. After a reset, that's the built-in bundle.
@@ -255,6 +273,14 @@ final class HotUpdaterSandboxCoordinator {
     private static let serverPollSlowMs: UInt64 = 5_000
     /// With no screen up, a waiting link stops looking after this many looks: the next launch asks it.
     private static let serverPollLinkLooks = 600
+    /// How long the app started under the screen has to answer, before the screen says to open it.
+    private static let appCheckWindowMs = Double(serverPollFastLooks) * Double(serverPollFastMs)
+    /// A clock that keeps counting while the process is suspended, for the app's time to answer.
+    private let elapsedMs: () -> Double
+    /// The one start of the app under the screen this process makes for a waiting
+    /// link, and when its time to answer ends. Neither a link nor a new watch renews it.
+    private var appCheckDeadlineMs: Double?
+    private var appCheckOver = false
     /// The server watch's pause between two looks, in milliseconds.
     private let serverPoll: (UInt64) async -> Void
     /// Runs once the watch saw a server answer, after the state has it: a link may ask now.
@@ -282,8 +308,10 @@ final class HotUpdaterSandboxCoordinator {
         shelfQueue: DispatchQueue = DispatchQueue(label: "hot-updater-sandbox.shelf"),
         isOwnScheme: @escaping (String) -> Bool = { HotUpdaterSandboxLink.isOwnScheme($0) },
         serverPoll: @escaping (UInt64) async -> Void = { try? await Task.sleep(nanoseconds: $0 * 1_000_000) },
-        onServerAnswer: @escaping () -> Void = {}
+        onServerAnswer: @escaping () -> Void = {},
+        elapsedMs: @escaping () -> Double = { Double(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)) / 1_000_000 }
     ) {
+        self.elapsedMs = elapsedMs
         self.serverPoll = serverPoll
         self.onServerAnswer = onServerAnswer
         self.isOwnScheme = isOwnScheme
@@ -320,6 +348,7 @@ final class HotUpdaterSandboxCoordinator {
     /// Reads what storage holds, and asks about the oldest unanswered link.
     /// Sends no request: opening the screen costs the update server nothing.
     func refresh() async {
+        expireAppCheck()
         // A switch may be copying into the shelf: its partial copy isn't listed yet.
         if case .working = state.phase {
             await relist(reconciling: false)
@@ -356,7 +385,8 @@ final class HotUpdaterSandboxCoordinator {
             defer { log("server watch stopped") }
             var looks = 0
             while true {
-                await poll(looks < Self.serverPollFastLooks ? Self.serverPollFastMs : Self.serverPollSlowMs)
+                let fast = looks < Self.serverPollFastLooks || self?.isAppChecking == true
+                await poll(fast ? Self.serverPollFastMs : Self.serverPollSlowMs)
                 looks += 1
                 // Cancelled: whoever cancelled it cleared it.
                 guard let self, !Task.isCancelled else { return }
@@ -371,6 +401,7 @@ final class HotUpdaterSandboxCoordinator {
                     onServerAnswer()
                     return
                 }
+                expireAppCheck()
                 if listeners.isEmpty, looks >= Self.serverPollLinkLooks {
                     serverWatch = nil
                     return
@@ -422,7 +453,7 @@ final class HotUpdaterSandboxCoordinator {
     /// can't take the next question with it.
     func dismiss(onAnswered: (() -> Void)? = nil) {
         switch state.phase {
-        case .confirming(let link), .waitingForServer(let link):
+        case .confirming(let link), .waitingForServer(let link, _):
             remove(link.url)
         case .refused:
             refusedLink = nil
@@ -504,7 +535,8 @@ final class HotUpdaterSandboxCoordinator {
         let launched = await host.launchBundleId()
         // Over a running app, opening shows what it runs: what's selected waits for
         // its launch. Before the app starts, what's selected is what opens.
-        let reloads = launchFixed && !host.isAppRunning()
+        // An app nobody has seen yet opens on what's selected, as it would have from here.
+        let reloads = launchFixed && (!host.isAppRunning() || host.isAppHidden())
         acknowledgeLastLaunch()
         publish(reading(selection, launched: launched))
         openApp(false, reloads)
@@ -867,10 +899,38 @@ final class HotUpdaterSandboxCoordinator {
             setPhase(.refused(.otherFingerprint(link: link, buildFingerprintHash: fingerprintHash)))
             return
         }
+        let hasServerConfig = readServerConfig()
+        if !hasServerConfig { startAppToCheck() }
         var next = state
-        next.hasServerConfig = readServerConfig()
-        next.phase = next.hasServerConfig ? .confirming(link) : .waitingForServer(link)
+        next.hasServerConfig = hasServerConfig
+        next.phase = hasServerConfig ? .confirming(link) : .waitingForServer(link, checking: isAppChecking)
         publish(next)
+    }
+
+    private var isAppChecking: Bool {
+        appCheckDeadlineMs != nil && !appCheckOver
+    }
+
+    /// A link waits for a server, and nothing has run the app's check: the app starts
+    /// under the screen once in this process, so its own check can answer. Only after
+    /// the screen read what the last launch left, and never while that's still to tell,
+    /// so a start that crashed doesn't start again.
+    private func startAppToCheck() {
+        guard appCheckDeadlineMs == nil, !listeners.isEmpty, state.selection != nil, state.lastLaunch == nil else { return }
+        guard !host.isInSession, !host.isAppRunning(), host.canStartAppUnderScreen() else { return }
+        appCheckDeadlineMs = elapsedMs() + Self.appCheckWindowMs
+        log("starting the app under the screen for its check")
+        host.startAppUnderScreen()
+    }
+
+    /// Past its time, the app's check no longer counts as running: the screen says to open the app.
+    private func expireAppCheck() {
+        guard let deadline = appCheckDeadlineMs, !appCheckOver, elapsedMs() >= deadline else { return }
+        appCheckOver = true
+        log("the app's check didn't answer in time")
+        if case .waitingForServer(let link, _) = state.phase {
+            setPhase(.waitingForServer(link, checking: false))
+        }
     }
 
     private func clearLinkInFlight() {
@@ -897,7 +957,7 @@ final class HotUpdaterSandboxCoordinator {
     private func publish(_ next: HotUpdaterSandboxState) {
         let inPhase: String?
         switch next.phase {
-        case .confirming(let link), .waitingForServer(let link):
+        case .confirming(let link), .waitingForServer(let link, _):
             inPhase = link.url
         default:
             inPhase = linkInFlight
