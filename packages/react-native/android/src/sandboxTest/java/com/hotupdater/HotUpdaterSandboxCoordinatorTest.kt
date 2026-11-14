@@ -126,6 +126,21 @@ private class FakeHost : HotUpdaterSandboxHost {
 
     override fun isAppRunning() = appRunning
 
+    /** Whether this host can start the app under the screen: off unless a test turns it on. */
+    var canStartUnderScreen = false
+    var startsUnderScreen = 0
+
+    /** What the app does once it starts under the screen, such as its check answering. */
+    var onStartUnderScreen: () -> Unit = {}
+
+    override fun canStartAppUnderScreen() = canStartUnderScreen
+
+    override fun startAppUnderScreen() {
+        startsUnderScreen += 1
+        appRunning = true
+        onStartUnderScreen()
+    }
+
     override fun fingerprintHash() = fingerprint
 
     override fun hasServerConfig() = serverConfig
@@ -230,6 +245,8 @@ private class Fixture(
     // A watch never looks unless a test ticks it.
     serverPoll: suspend (pauseMs: Long) -> Unit = { awaitCancellation() },
 ) {
+    /** The clock the app's time to answer runs on, moved by hand. */
+    var elapsedMs = 5_000L
     var serverAnswers = 0
     val host = FakeHost()
     val store = FakeStore(pendingLinks)
@@ -250,9 +267,22 @@ private class Fixture(
             isOwnScheme = { HotUpdaterSandboxLink.isOwnScheme(it, ownScheme) },
             serverPoll = serverPoll,
             onServerAnswer = { serverAnswers += 1 },
+            elapsedMs = { elapsedMs },
         )
 
     val phase get() = coordinator.state.phase
+
+    /** Whether the link on screen says "Checking…": the app started under the screen and its time runs. */
+    val checking get() = (phase as? HotUpdaterSandboxPhase.WaitingForServer)?.checking
+
+    /** What a fresh install of a sandbox build looks like with its Home up: no server known yet. */
+    fun freshHomeThatCanStartTheApp(): () -> Unit {
+        host.serverConfig = false
+        host.canStartUnderScreen = true
+        val stop = coordinator.observe {}
+        coordinator.refresh()
+        return stop
+    }
 
     val canEnterChannel get() = HotUpdaterSandboxHomeModel.of(coordinator.state, isOverApp = true, nowMs = 0).canEnterChannel
 }
@@ -1499,5 +1529,231 @@ class HotUpdaterSandboxCoordinatorTest {
         fixture.host.resetResult = Result.success(false)
         fixture.coordinator.resetToBuiltIn()
         assertEquals(HotUpdaterSandboxFailure.ResetFailed, (fixture.phase as HotUpdaterSandboxPhase.Failed).failure)
+    }
+
+    @Test
+    fun `a fresh link with no server starts the app under the screen once, and asks once its check answers`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        assertEquals("opening Home starts nothing", 0, fixture.host.startsUnderScreen)
+
+        fixture.coordinator.receiveLink(link("pr-1"))
+        assertEquals(1, fixture.host.startsUnderScreen)
+        assertEquals(true, fixture.checking)
+        assertEquals(
+            "Checking pr-1…",
+            HotUpdaterSandboxHomeModel.of(fixture.coordinator.state, isOverApp = false, nowMs = 0).status?.text,
+        )
+
+        // The app's own check answers under the screen, which stays up: nothing opens.
+        fixture.host.serverConfig = true
+        ticks.tick()
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Confirming)
+        assertEquals(1, fixture.host.startsUnderScreen)
+        assertTrue(fixture.opens.isEmpty())
+        stop()
+    }
+
+    @Test
+    fun `the app has 60 s from its start to answer, then the screen says to open it, and a late answer still asks`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        fixture.coordinator.receiveLink(link("pr-1"))
+
+        fixture.elapsedMs += 59_999
+        ticks.tick()
+        assertEquals(true, fixture.checking)
+        fixture.elapsedMs += 1
+        ticks.tick()
+        assertEquals(false, fixture.checking)
+        assertEquals(
+            "pr-1 needs an answer from your update server first. Open the app so it can check for updates.",
+            HotUpdaterSandboxHomeModel.of(fixture.coordinator.state, isOverApp = false, nowMs = 0).status?.text,
+        )
+
+        // The screen keeps looking: an answer after the fallback still asks.
+        assertTrue(ticks.isWaiting)
+        fixture.host.serverConfig = true
+        ticks.tick()
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Confirming)
+        stop()
+    }
+
+    @Test
+    fun `the app's time counts from its start, not from when Home opened, and nothing renews it`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        // Home was up for two minutes before the link.
+        repeat(120) { ticks.tick() }
+        fixture.elapsedMs += 120_000
+        fixture.coordinator.receiveLink(link("pr-1"))
+        assertEquals(true, fixture.checking)
+        // While the app checks, the watch looks every second, past its first minute too.
+        ticks.tick()
+        assertEquals(1_000L, ticks.pauses.last())
+
+        // Near the end, a second link, a new Home and a refresh don't renew it.
+        fixture.elapsedMs += 50_000
+        fixture.coordinator.receiveLink(link("pr-2"))
+        stop()
+        val again = fixture.coordinator.observe {}
+        fixture.coordinator.refresh()
+        assertEquals(true, fixture.checking)
+        fixture.elapsedMs += 10_000
+        ticks.tick()
+        assertEquals(false, fixture.checking)
+        assertEquals(1, fixture.host.startsUnderScreen)
+        again()
+    }
+
+    @Test
+    fun `a suspended process past the app's time shows the fallback at its next resume, with no look`() {
+        val fixture = Fixture()
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        assertEquals(true, fixture.checking)
+
+        // Suspended for five minutes: no look ran.
+        fixture.elapsedMs += 300_000
+        fixture.coordinator.resumed()
+        assertEquals(false, fixture.checking)
+
+        val refreshed = Fixture()
+        val stopRefreshed = refreshed.freshHomeThatCanStartTheApp()
+        refreshed.coordinator.receiveLink(link("pr-1"))
+        refreshed.elapsedMs += 60_000
+        refreshed.coordinator.refresh()
+        assertEquals(false, refreshed.checking)
+        stop()
+        stopRefreshed()
+    }
+
+    @Test
+    fun `nothing starts under the screen while the app runs, in a session, with no screen, or before the first read`() {
+        val running = Fixture()
+        val stopRunning = running.freshHomeThatCanStartTheApp()
+        running.host.appRunning = true
+        running.coordinator.receiveLink(link("pr-1"))
+        assertEquals(0, running.host.startsUnderScreen)
+        assertEquals(false, running.checking)
+        stopRunning()
+
+        val session = Fixture()
+        val stopSession = session.freshHomeThatCanStartTheApp()
+        session.host.isRunningDevServer = true
+        session.coordinator.receiveLink(link("pr-1"))
+        assertEquals(0, session.host.startsUnderScreen)
+        stopSession()
+
+        // A link before any screen: the screen's first read comes first.
+        val unseen = Fixture()
+        unseen.host.serverConfig = false
+        unseen.host.canStartUnderScreen = true
+        unseen.coordinator.receiveLink(link("pr-1"))
+        assertEquals(0, unseen.host.startsUnderScreen)
+        assertEquals(false, unseen.checking)
+        unseen.coordinator.observe {}
+        unseen.coordinator.refresh()
+        assertEquals(1, unseen.host.startsUnderScreen)
+        assertEquals(true, unseen.checking)
+    }
+
+    @Test
+    fun `a host that can't start the app under the screen says to open the app at once`() {
+        val fixture = Fixture()
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        fixture.host.canStartUnderScreen = false
+        fixture.coordinator.receiveLink(link("pr-1"))
+        assertEquals(0, fixture.host.startsUnderScreen)
+        assertEquals(false, fixture.checking)
+        stop()
+    }
+
+    @Test
+    fun `a crash the last launch left blocks the start, stays to tell, and keeps the link`() {
+        val fixture = Fixture()
+        // The hidden start of the last process crashed the built-in bundle.
+        fixture.host.evidence = HotUpdaterSandboxLaunchEvidence(HotUpdaterSandboxCrashMarker("built-in", false))
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        assertEquals(0, fixture.host.startsUnderScreen)
+        assertEquals(false, fixture.checking)
+        assertNotNull(fixture.store.lastLaunch)
+        assertEquals(listOf(link("pr-1")), fixture.store.pendingLinks)
+        stop()
+    }
+
+    @Test
+    fun `the start reads the last launch first and leaves what it found to tell`() {
+        val fixture = Fixture()
+        fixture.host.evidence = HotUpdaterSandboxLaunchEvidence(HotUpdaterSandboxCrashMarker("ota", false))
+        var lastLaunchAtStart: HotUpdaterSandboxLastLaunch? = null
+        fixture.host.onStartUnderScreen = { lastLaunchAtStart = fixture.store.lastLaunch }
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        // A person moved on from that crash: the start may run, and finds nothing new to tell.
+        fixture.coordinator.acknowledgeLastLaunch()
+        fixture.host.evidence = HotUpdaterSandboxLaunchEvidence()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        assertEquals(1, fixture.host.startsUnderScreen)
+        assertNull(lastLaunchAtStart)
+
+        // A crash the app's run under the screen recovers from in this process is told, and the link stays.
+        fixture.host.evidence = HotUpdaterSandboxLaunchEvidence(rollback = HotUpdaterSandboxRollback("ota-2", "built-in"))
+        fixture.coordinator.noteLastLaunch()
+        assertNotNull(fixture.store.lastLaunch)
+        assertEquals(listOf(link("pr-1")), fixture.store.pendingLinks)
+        stop()
+    }
+
+    @Test
+    fun `one start per process, whatever links, fallbacks and repeats come after`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        fixture.host.appRunning = false
+        fixture.host.onStartUnderScreen = { fixture.host.appRunning = false }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.elapsedMs += 60_000
+        ticks.tick()
+        assertEquals(false, fixture.checking)
+        fixture.coordinator.dismiss()
+        fixture.coordinator.receiveLink(link("pr-2"))
+        assertEquals(1, fixture.host.startsUnderScreen)
+        assertEquals(false, fixture.checking)
+        stop()
+    }
+
+    @Test
+    fun `Open after the start shows the app it started, with no restart`() {
+        val fixture = Fixture()
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        assertTrue(fixture.host.appRunning)
+        fixture.coordinator.open()
+        assertEquals(listOf(false to false), fixture.opens)
+        // The link still waits for the app's answer.
+        assertEquals(listOf(link("pr-1")), fixture.store.pendingLinks)
+        stop()
+    }
+
+    @Test
+    fun `an app update racing the confirmed switch fails it as superseded and keeps the selection storage has`() {
+        val fixture = Fixture()
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.host.serverConfig = true
+        fixture.coordinator.refresh()
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Confirming)
+        // The app's own check under the screen moved the device back to its channel mid-switch.
+        fixture.host.channelAfterStaging = "sandbox-release"
+        fixture.coordinator.confirmLink()
+        val failed = fixture.phase as HotUpdaterSandboxPhase.Failed
+        assertEquals(HotUpdaterSandboxFailure.Superseded, failed.failure)
+        assertEquals("sandbox-release", failed.selection.channel)
+        stop()
     }
 }

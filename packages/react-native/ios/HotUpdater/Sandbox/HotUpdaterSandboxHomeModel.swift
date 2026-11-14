@@ -287,7 +287,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
                 let percent = Int((progress ?? 0) * 100)
                 return Status(text: "Downloading \(target)… \(percent)%", progress: progress ?? 0)
             }
-        case .waitingForServer(let link):
+        case .waitingForServer(let link, _):
             return Status(
                 text: "\(link.channel) needs an answer from your update server first. Open the app so it can check for updates.",
                 progress: nil

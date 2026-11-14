@@ -119,6 +119,15 @@ internal interface HotUpdaterSandboxHost {
     /** Whether the app is up under the screen, so opening it starts nothing. */
     fun isAppRunning(): Boolean = false
 
+    /**
+     * Whether this host can start the app under the screen without showing it, so
+     * its own update check can answer a waiting link.
+     */
+    fun canStartAppUnderScreen(): Boolean = false
+
+    /** Starts the app under the screen, which stays on top: its JavaScript runs and checks for updates. */
+    fun startAppUnderScreen() = Unit
+
     /** Whether the target channel has a bundle this build would run. Throws when the server can't say. */
     suspend fun preflight(channel: String): Boolean
 
@@ -196,9 +205,13 @@ internal sealed class HotUpdaterSandboxPhase {
         val link: HotUpdaterSandboxLink,
     ) : HotUpdaterSandboxPhase()
 
-    /** A link waits for a server to answer one of the app's checks. */
+    /**
+     * A link waits for a server to answer one of the app's checks. [checking]: the
+     * sandbox started the app under the screen for it, and its time to answer runs.
+     */
     data class WaitingForServer(
         val link: HotUpdaterSandboxLink,
+        val checking: Boolean = false,
     ) : HotUpdaterSandboxPhase()
 
     data class Refused(
@@ -305,6 +318,8 @@ internal class HotUpdaterSandboxCoordinator(
     private val serverPoll: suspend (pauseMs: Long) -> Unit = { delay(it) },
     /** Runs once the watch saw a server answer, after the state has it: a link may ask now. */
     private val onServerAnswer: () -> Unit = {},
+    /** A clock that keeps counting while the process is suspended, for the app's time to answer. */
+    @Suppress("unused") private val elapsedMs: () -> Long = android.os.SystemClock::elapsedRealtime,
 ) {
     /** The Downloaded list as the shelf last reported it: the screen reads only this. */
     private var downloaded = emptyList<HotUpdaterSandboxShelfEntry>()

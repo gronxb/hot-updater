@@ -69,6 +69,11 @@ protocol HotUpdaterSandboxHost: AnyObject {
     func launchBundleId() async -> String
     /// Whether the app is up under the screen, so opening it starts nothing.
     func isAppRunning() -> Bool
+    /// Whether this host can start the app under the screen without showing it, so
+    /// its own update check can answer a waiting link.
+    func canStartAppUnderScreen() -> Bool
+    /// Starts the app under the screen, which stays on top: its JavaScript runs and checks for updates.
+    func startAppUnderScreen()
     /// Whether the target channel has a bundle this build would run. Throws when the server can't say.
     func preflight(channel: String) async throws -> Bool
     /// What the last launch left: read, never a request. Settled reads come after `selection()`.
@@ -97,6 +102,12 @@ extension HotUpdaterSandboxHost {
     func isAppRunning() -> Bool {
         false
     }
+
+    func canStartAppUnderScreen() -> Bool {
+        false
+    }
+
+    func startAppUnderScreen() {}
 }
 
 /// What outlives the process.
@@ -137,8 +148,9 @@ enum HotUpdaterSandboxPhase: Equatable {
     case idle
     /// A link waits for a person to accept it. It names the link's channel.
     case confirming(HotUpdaterSandboxLink)
-    /// A link waits for a server to answer one of the app's checks.
-    case waitingForServer(HotUpdaterSandboxLink)
+    /// A link waits for a server to answer one of the app's checks. `checking`: the
+    /// sandbox started the app under the screen for it, and its time to answer runs.
+    case waitingForServer(HotUpdaterSandboxLink, checking: Bool = false)
     case refused(HotUpdaterSandboxRefusal)
     case working(operationId: Int, target: String, step: HotUpdaterSandboxStep, progress: Double?)
     /// `selection` is what storage holds now. After a reset, that's the built-in bundle.
@@ -282,8 +294,10 @@ final class HotUpdaterSandboxCoordinator {
         shelfQueue: DispatchQueue = DispatchQueue(label: "hot-updater-sandbox.shelf"),
         isOwnScheme: @escaping (String) -> Bool = { HotUpdaterSandboxLink.isOwnScheme($0) },
         serverPoll: @escaping (UInt64) async -> Void = { try? await Task.sleep(nanoseconds: $0 * 1_000_000) },
-        onServerAnswer: @escaping () -> Void = {}
+        onServerAnswer: @escaping () -> Void = {},
+        elapsedMs: @escaping () -> Double = { Double(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)) / 1_000_000 }
     ) {
+        _ = elapsedMs
         self.serverPoll = serverPoll
         self.onServerAnswer = onServerAnswer
         self.isOwnScheme = isOwnScheme
@@ -422,7 +436,7 @@ final class HotUpdaterSandboxCoordinator {
     /// can't take the next question with it.
     func dismiss(onAnswered: (() -> Void)? = nil) {
         switch state.phase {
-        case .confirming(let link), .waitingForServer(let link):
+        case .confirming(let link), .waitingForServer(let link, _):
             remove(link.url)
         case .refused:
             refusedLink = nil
@@ -897,7 +911,7 @@ final class HotUpdaterSandboxCoordinator {
     private func publish(_ next: HotUpdaterSandboxState) {
         let inPhase: String?
         switch next.phase {
-        case .confirming(let link), .waitingForServer(let link):
+        case .confirming(let link), .waitingForServer(let link, _):
             inPhase = link.url
         default:
             inPhase = linkInFlight
