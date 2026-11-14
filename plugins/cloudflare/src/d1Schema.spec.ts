@@ -64,6 +64,14 @@ const RC_IOS_DEVICES_STATEMENTS = [
   'CREATE TABLE IF NOT EXISTS "ios_device_account" ("id" TEXT NOT NULL, "apple_issuer_id" TEXT NOT NULL, "claimed_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"))',
 ];
 
+/**
+ * What the release notes of the registry's account read tell a database a
+ * 1.2 prerelease migrated to run by hand, after the registry's statements.
+ */
+const RC_IOS_DEVICES_BY_REGISTRATION_STATEMENTS = [
+  'CREATE INDEX IF NOT EXISTS "ios_devices_byRegistration" ON "ios_devices" ("registered_at_ms", "id")',
+];
+
 const readMigration = (name: string) =>
   fs.readFile(path.join(MIGRATIONS, name), "utf8");
 
@@ -190,8 +198,12 @@ describe("d1 schema", () => {
     }).core;
     // The fence compares schema.core, so only the read says the table is missing.
     await expect(core.listIosDevices({ limit: 1 })).rejects.toThrow();
-    for (const statement of RC_IOS_DEVICES_STATEMENTS)
+    for (const statement of [
+      ...RC_IOS_DEVICES_STATEMENTS,
+      ...RC_IOS_DEVICES_BY_REGISTRATION_STATEMENTS,
+    ]) {
       prerelease.exec(statement);
+    }
     await expect(core.listIosDevices({ limit: 1 })).resolves.toEqual([]);
     const migrated = new DatabaseSync(":memory:");
     for (const name of [...Object.keys(SHIPPED), LATEST]) {
