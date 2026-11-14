@@ -462,7 +462,7 @@ describe("sql core", () => {
     ["PGlite", "transaction"],
     ["PGlite", "batch"],
   ] as const)(
-    "reads no table whole to insert, update, or read rows, or to prune them on SQLite, on %s (%s)",
+    "reads no table whole to insert, update, delete, read, or prune rows on %s (%s)",
     async (engine, mode) => {
       const sqlite = engine === "SQLite" ? new DatabaseSync(":memory:") : null;
       const pg = sqlite ? null : new PGlite();
@@ -643,15 +643,15 @@ describe("sql core", () => {
           },
         ]),
       ).toEqual({ ok: true });
-      const [a] = await adapter.get(conformanceItems, [["a"]]);
-      // A patch of a column outside every index keeps the row's entries.
+      const [a, b] = await adapter.get(conformanceItems, [["a"], ["b"]]);
+      // A patch of a multi-valued index's columns replaces the row's entries.
       expect(
         await adapter.write([
           {
             type: "patch",
             table: conformanceItems,
             key: ["a"],
-            set: { note: "patched" },
+            set: { tags: ["y"], score: 2 },
             guard: { v: 0 },
             previous: a!,
           },
@@ -663,19 +663,28 @@ describe("sql core", () => {
           },
         ]),
       ).toEqual({ ok: true });
+      expect(
+        await adapter.write([
+          {
+            type: "delete",
+            table: conformanceItems,
+            key: ["b"],
+            guard: { v: 0 },
+            previous: b!,
+          },
+        ]),
+      ).toEqual({ ok: true });
       for (const index of conformanceItems.indexes) {
         await adapter.query(conformanceItems, {
           index: index.name,
           eq: index.eq.map((column) =>
-            column === "tags" ? "x" : column === "flag" ? false : "g",
+            column === "tags" ? "y" : column === "flag" ? false : "g",
           ),
           order: "asc",
           limit: 10,
         });
       }
-      if (sqlite) {
-        expect(await adapter.prune!(conformanceExpiring, 10, 500)).toBe(1);
-      }
+      expect(await adapter.prune!(conformanceExpiring, 10, 500)).toBe(1);
 
       expect(scans).toEqual([]);
       sqlite?.close();
