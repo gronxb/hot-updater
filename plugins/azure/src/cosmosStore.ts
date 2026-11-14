@@ -173,8 +173,10 @@ const statusOf = (error: unknown): unknown => {
 
 /**
  * The most items read by point reads rather than one query. On Strong
- * consistency a point read costs 2 RU and a query of 1, 3, or 10 ids 5.9,
- * 6.4, and 8.3 RU (Azure Cosmos DB, 2026-11-14).
+ * consistency a point read of a ~600 B item costs 2 RU and a query of 1, 3,
+ * or 10 ids 5.9, 6.4, and 8.3 RU (Azure Cosmos DB, 2026-11-14). A point
+ * read's charge grows faster with the item's size: it costs more than the
+ * query from about 50 KB, where rows such as release catalogs hold 1–2 KB.
  */
 const POINT_READS = 2;
 
