@@ -17,7 +17,6 @@ import {
   nativeBuildDownloadPath,
   nativeBuildManifestPath,
 } from "../native-builds";
-import { listIosDevices } from "./iosDevices";
 import {
   issueNativeBuildDownloadLink,
   type NativeBuildDownloadLinkResult,
@@ -467,7 +466,7 @@ export type NativeBuildIpaDevices =
  * The devices an IPA's profile lists, read from storage as the install check
  * reads it, each named by the device registry when it knows the UDID. The IPA
  * decides: the registry only names what it lists. One build read, the IPA's
- * few parts, and the registry a page at a time.
+ * few parts, and one read of the registry's UDID index per device it lists.
  */
 export const readNativeBuildIpaDevices = async (
   id: string,
@@ -475,7 +474,7 @@ export const readNativeBuildIpaDevices = async (
     core,
     storage,
   }: {
-    readonly core: Pick<HotUpdaterCoreApi, "getNativeBuild" | "listIosDevices">;
+    readonly core: Pick<HotUpdaterCoreApi, "getNativeBuild" | "findIosDevice">;
     readonly storage: StorageAdapter;
   },
   fetch: typeof globalThis.fetch = globalThis.fetch,
@@ -487,10 +486,14 @@ export const readNativeBuildIpaDevices = async (
   if (info.distribution === "store" || info.distribution === "enterprise") {
     return { status: info.distribution };
   }
+  // The listed UDIDs are lower case, as the registry keys them.
+  const rows = await Promise.all(
+    [...new Set(info.devices)].map((udid) => core.findIosDevice(udid)),
+  );
   const names = new Map(
-    info.devices.length === 0
-      ? []
-      : (await listIosDevices(core)).map((row) => [row.udid, row.name]),
+    rows.flatMap((row) =>
+      row === null ? [] : [[row.udid, row.name] as const],
+    ),
   );
   return {
     status: "listed",

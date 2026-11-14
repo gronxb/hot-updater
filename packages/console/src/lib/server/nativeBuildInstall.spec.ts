@@ -704,7 +704,7 @@ describe("checkNativeBuildInstall: the newer build a registered device's row nam
 });
 
 describe("readNativeBuildIpaDevices", () => {
-  it("lists the IPA's devices, named by the registry where it knows them, in one registry read", async () => {
+  it("lists the IPA's devices, named by the registry where it knows them, one UDID read each", async () => {
     const bytes = await ipaBytes(adHocProfile([PHONE, LATER_PHONE]));
     const { fetch } = rangeServer(bytes);
     const core = coreOf(rowOf(bytes.length), [
@@ -724,7 +724,8 @@ describe("readNativeBuildIpaDevices", () => {
         { udid: LATER_PHONE.toLowerCase(), name: null },
       ].sort((a, b) => (a.udid < b.udid ? -1 : 1)),
     });
-    expect(core.listIosDevices).toHaveBeenCalledTimes(1);
+    expect(core.findIosDevice).toHaveBeenCalledTimes(2);
+    expect(core.listIosDevices).not.toHaveBeenCalled();
   });
 
   it("names the IPA's devices in as many reads however many devices the registry has", async () => {
@@ -783,7 +784,7 @@ describe("readNativeBuildIpaDevices", () => {
     expect(
       await readNativeBuildIpaDevices(BUILD, { core, storage: storageOf() }),
     ).toEqual({ status: "unavailable" });
-    expect(core.listIosDevices).not.toHaveBeenCalled();
+    expect(core.findIosDevice).not.toHaveBeenCalled();
   });
 });
 
