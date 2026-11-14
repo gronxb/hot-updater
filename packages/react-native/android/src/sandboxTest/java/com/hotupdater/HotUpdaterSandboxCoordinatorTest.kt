@@ -1765,21 +1765,48 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
-    fun `Open shows the hidden app with no restart while its time runs, and over an app a person saw`() {
-        val fixture = Fixture()
+    fun `Open after the deadline starts the app anew even after a person saw it, and the original link asks`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(serverPoll = ticks::next)
         val stop = fixture.freshHomeThatCanStartTheApp()
         fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
         fixture.coordinator.receiveLink(link("pr-1"))
+        // Open while Checking: the check may still answer, so the app is only shown.
         fixture.coordinator.open()
-        assertEquals("its check may still answer", listOf(false to false), fixture.opens)
-
-        // A person has seen the app: Reload is the row that runs it anew.
+        assertEquals(listOf(false to false), fixture.opens)
         fixture.host.appHidden = false
+        // Its one check fails; the deadline passes.
         fixture.elapsedMs += 60_000
-        fixture.coordinator.resumed()
+        ticks.tick()
         assertEquals(false, fixture.checking)
+        val selection = fixture.coordinator.state.selection
+        // Open from the message starts the app anew, on what a launch selects.
+        fixture.coordinator.open()
+        assertEquals(false to true, fixture.opens.last())
+        assertEquals(selection, fixture.coordinator.state.selection)
+        assertNull(fixture.store.lastLaunch)
+        assertEquals(listOf(link("pr-1")), fixture.store.pendingLinks)
+        // The new start's check answers: the original link asks.
+        fixture.host.serverConfig = true
+        ticks.tick()
+        assertEquals(HotUpdaterSandboxPhase.Confirming(HotUpdaterSandboxLink.parse(link("pr-1"))!!), fixture.phase)
+        assertEquals(1, fixture.serverAnswers)
+        // With the answer in, Open restarts nothing more.
+        fixture.coordinator.dismiss()
         fixture.coordinator.open()
         assertEquals(false to false, fixture.opens.last())
+        stop()
+    }
+
+    @Test
+    fun `before the deadline Open over an app a person saw restarts nothing`() {
+        val fixture = Fixture()
+        val stop = fixture.freshHomeThatCanStartTheApp()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.host.appHidden = false
+        fixture.elapsedMs += 59_999
+        fixture.coordinator.open()
+        assertEquals(listOf(false to false), fixture.opens)
         stop()
     }
 
@@ -1837,7 +1864,7 @@ class HotUpdaterSandboxCoordinatorTest {
         val fixture = Fixture(pendingLinks = listOf(link("pr-1")), serverPoll = ticks::next)
         fixture.host.serverConfig = false
         fixture.host.appRunning = true
-        fixture.coordinator.noteLastLaunch(linkWaits = true)
+        fixture.coordinator.noteLastLaunch(link("pr-1"))
         assertTrue(ticks.isWaiting)
         assertEquals(0, fixture.host.startsUnderScreen)
 
@@ -1849,9 +1876,21 @@ class HotUpdaterSandboxCoordinatorTest {
         // An answer already in by the app's first resume asks at once.
         val answered = Fixture(pendingLinks = listOf(link("pr-1")))
         answered.host.appRunning = true
-        answered.coordinator.noteLastLaunch(linkWaits = true)
+        answered.coordinator.noteLastLaunch(link("pr-1"))
         assertTrue(answered.phase is HotUpdaterSandboxPhase.Confirming)
         assertEquals(1, answered.serverAnswers)
+    }
+
+    @Test
+    fun `a restart's handoff for one link asks nothing for another`() {
+        val ticks = ServerTicks()
+        val fixture = Fixture(pendingLinks = listOf(link("pr-2"), link("pr-1")), serverPoll = ticks::next)
+        fixture.host.serverConfig = true
+        fixture.host.appRunning = true
+        fixture.coordinator.noteLastLaunch(link("pr-1"))
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Idle)
+        assertEquals(0, fixture.serverAnswers)
+        assertFalse(ticks.isWaiting)
     }
 
     @Test

@@ -3182,21 +3182,56 @@ struct HotUpdaterSandboxStartUnderScreenTests {
     }
 
     @Test
-    func openShowsTheHiddenAppWithNoReloadWhileItsTimeRunsAndOverAnAppAPersonSaw() async {
-        let fixture = Fixture()
+    func openAfterTheDeadlineReloadsTheAppEvenAfterAPersonSawItAndTheOriginalLinkAsks() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
         let stop = await fixture.freshHomeThatCanStartTheApp()
         fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
         fixture.coordinator.receiveLink(link("pr-1"))
+        // Open while Checking: the check may still answer, so the app is only shown.
         await fixture.coordinator.open()
-        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, false]], "its check may still answer")
-
-        // A person has seen the app: Reload is the row that runs it anew.
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, false]])
         fixture.host.appHidden = false
+        // Its one check fails; the deadline passes.
         fixture.advance(60_000)
-        await fixture.coordinator.refresh()
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { fixture.checking == false }
         #expect(fixture.checking == false)
+        let selection = fixture.coordinator.state.selection
+        // Open from the message reloads the app, on what a launch selects.
+        await fixture.coordinator.open()
+        #expect(fixture.opens.last.map { [$0.0, $0.1] } == [false, true])
+        #expect(fixture.coordinator.state.selection == selection)
+        #expect(fixture.store.lastLaunch == nil)
+        #expect(fixture.store.pendingLinks == [link("pr-1")])
+        // The reloaded app's check answers: the original link asks.
+        fixture.host.serverConfig = true
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { if case .confirming = fixture.coordinator.state.phase { return true } else { return false } }
+        guard case .confirming(let asked) = fixture.coordinator.state.phase else {
+            Issue.record("expected the original link to ask")
+            return
+        }
+        #expect(asked.url == link("pr-1"))
+        #expect(fixture.serverAnswers == 1)
+        // With the answer in, Open reloads nothing more.
+        fixture.coordinator.dismiss()
         await fixture.coordinator.open()
         #expect(fixture.opens.last.map { [$0.0, $0.1] } == [false, false])
+        stop()
+    }
+
+    @Test
+    func beforeTheDeadlineOpenOverAnAppAPersonSawReloadsNothing() async {
+        let fixture = Fixture()
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.host.appHidden = false
+        fixture.advance(59_999)
+        await fixture.coordinator.open()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, false]])
         stop()
     }
 

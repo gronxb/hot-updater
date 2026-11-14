@@ -197,7 +197,7 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
                     shake?.watch(activity)
                     if (!notedLastLaunch) {
                         notedLastLaunch = true
-                        HotUpdaterSandbox.coordinator(activity).noteLastLaunch(takeRestartForLinkAtStart())
+                        HotUpdaterSandbox.coordinator(activity).noteLastLaunch(if (takeRestartForLinkAtStart()) "" else null)
                     }
                 }
 

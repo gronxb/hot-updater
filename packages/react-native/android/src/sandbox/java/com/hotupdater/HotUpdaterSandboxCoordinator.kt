@@ -489,7 +489,8 @@ internal class HotUpdaterSandboxCoordinator(
      * [linkWaits]: the sandbox restarted the app for a link that waits for a
      * server, so this process looks for the app's answer and asks over the app.
      */
-    fun noteLastLaunch(linkWaits: Boolean = false) {
+    fun noteLastLaunch(linkUrl: String? = null) {
+        val linkWaits = linkUrl != null
         scope.launch {
             // Read first: before a launch, it settles what the previous process left.
             host.selection()
