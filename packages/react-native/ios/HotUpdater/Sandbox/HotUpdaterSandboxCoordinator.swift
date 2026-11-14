@@ -331,7 +331,12 @@ final class HotUpdaterSandboxCoordinator {
         let id = nextListenerId
         nextListenerId += 1
         listeners[id] = listener
-        listener(state)
+        // A link that came before any screen: whether the app starts for it is read now that one shows.
+        if case .waitingForServer(let link, let checking) = state.phase, checking != isAppChecking {
+            setPhase(.waitingForServer(link, checking: isAppChecking))
+        } else {
+            listener(state)
+        }
         return { [weak self] in
             Task { @MainActor in
                 guard let self else { return }

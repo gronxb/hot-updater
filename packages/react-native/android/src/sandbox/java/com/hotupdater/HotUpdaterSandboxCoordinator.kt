@@ -408,7 +408,13 @@ internal class HotUpdaterSandboxCoordinator(
     /** Calls [listener] now and at every change, until the returned function runs. */
     fun observe(listener: (HotUpdaterSandboxState) -> Unit): () -> Unit {
         listeners += listener
-        listener(state)
+        // A link that came before any screen: whether the app starts for it is read now that one shows.
+        val phase = state.phase
+        if (phase is HotUpdaterSandboxPhase.WaitingForServer && phase.checking != isAppChecking()) {
+            publish(state.copy(phase = phase.copy(checking = isAppChecking())))
+        } else {
+            listener(state)
+        }
         return {
             listeners -= listener
             // The last screen closed, and no link waits: nobody needs a server now.
