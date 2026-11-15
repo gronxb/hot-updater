@@ -3,6 +3,7 @@ import path from "path";
 
 import {
   commandFailedError,
+  npxCommandLine,
   createInterfaceFingerprint,
   log,
   readReactNativeInterface,
@@ -65,7 +66,7 @@ const runBundle = async ({
     });
     stdout = result.stdout;
   } catch (error) {
-    throw commandFailedError("rock bundle", error);
+    throw commandFailedError("rock bundle", error, npxCommandLine(cwd, args));
   }
 
   return {

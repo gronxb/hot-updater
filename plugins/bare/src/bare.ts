@@ -3,6 +3,7 @@ import path from "path";
 
 import {
   commandFailedError,
+  npxCommandLine,
   log,
   reactNativeCliFingerprint,
 } from "@hot-updater/cli-tools";
@@ -74,7 +75,11 @@ const runBundle = async ({
       all: true,
     });
   } catch (error) {
-    throw commandFailedError("react-native bundle", error);
+    throw commandFailedError(
+      "react-native bundle",
+      error,
+      npxCommandLine(cwd, ["react-native", ...args]),
+    );
   }
 
   if (enableHermes) {

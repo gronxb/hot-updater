@@ -105,7 +105,7 @@ describe("on Windows", () => {
 
   // ninja 1.10.2, in the SDK's CMake 3.22.1, can't reach an object path over
   // 260 characters; at 250 CMake hashes the long part of its name.
-  it("has CMake keep object paths within MAX_PATH", async () => {
+  it("has CMake keep object paths within MAX_PATH, unless a module sets its own limit", async () => {
     vi.spyOn(fs, "existsSync").mockReturnValue(true);
     let script = "";
     vi.mocked(execa).mockImplementationOnce(((
@@ -125,7 +125,23 @@ describe("on Windows", () => {
       androidProjectPath: "/app/android",
     });
 
-    expect(script).toContain("-DCMAKE_OBJECT_PATH_MAX=250");
-    expect(script).toContain("finalizeDsl");
+    // Added once the module's build script ran, and only to a module whose
+    // own CMake arguments don't set it: in examples/v0.88.0 with real
+    // Gradle, a defaultConfig's 180 and a release build type's 190 each
+    // configured CMake alone, and a module without one got 250.
+    const add =
+      "android.defaultConfig.externalNativeBuild.cmake.arguments.add('-DCMAKE_OBJECT_PATH_MAX=250')";
+    expect(script).toContain("finalizeDsl { android ->");
+    expect(script).toContain(
+      "def configs = [android.defaultConfig] + android.buildTypes.toList() + android.productFlavors.toList()",
+    );
+    expect(script).toContain(
+      "config.externalNativeBuild.cmake.arguments.any { it.startsWith('-DCMAKE_OBJECT_PATH_MAX') }",
+    );
+    expect(script).toMatch(
+      new RegExp(
+        `if \\(!own\\) \\{\\s+${add.replace(/[.()[\]']/g, "\\$&")}\\s+\\}`,
+      ),
+    );
   });
 });

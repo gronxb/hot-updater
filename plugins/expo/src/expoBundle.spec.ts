@@ -58,6 +58,8 @@ it("fails the export with its exit code and last output, not stderr alone", asyn
       "expo export:embed exited with code 3221225477 (0xC0000005).",
       "Starting Metro Bundler",
       "npm warn config production Use --omit=dev instead.",
+      "Run it for its full output:",
+      "npx expo export:embed --platform android --entry-file index.js --bundle-output dist/index.android.bundle --dev false --minify true --assets-dest dist --reset-cache",
     ].join("\n"),
   );
 });

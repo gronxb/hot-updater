@@ -4,7 +4,7 @@ import { stripVTControlCharacters } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { displayWidth } from "./messageLines";
-import { p, toolOutput } from "./prompts";
+import { isPrintedTaskError, p, toolOutput } from "./prompts";
 import { registerSecretValue } from "./secretMasking";
 
 const CURSOR_HIDE = "\u001B[?25l";
@@ -166,6 +166,31 @@ describe("prompts", () => {
 
     expect(captured.read()).toContain("The caller does not have permission");
     expect(captured.read()).not.toContain("Something went wrong");
+  });
+
+  it("says which errors a task printed, so its caller doesn't print them again", async () => {
+    vi.stubEnv("CI", "true");
+    const captured = captureOutput();
+    const failure = new Error("expo export:embed exited with code 1.");
+
+    const thrown = await p
+      .tasks(
+        [
+          {
+            title: "Building bundle",
+            task: () => {
+              throw failure;
+            },
+          },
+        ],
+        { output: captured.output },
+      )
+      .catch((error: unknown) => error);
+
+    expect(thrown).toBe(failure);
+    expect(isPrintedTaskError(failure)).toBe(true);
+    expect(isPrintedTaskError(new Error("another"))).toBe(false);
+    expect(isPrintedTaskError("a string")).toBe(false);
   });
 
   it("omits transient progress messages when output is not a TTY", () => {

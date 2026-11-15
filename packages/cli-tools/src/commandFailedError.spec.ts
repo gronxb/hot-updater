@@ -1,7 +1,7 @@
 import { execa } from "execa";
 import { describe, expect, it } from "vitest";
 
-import { commandFailedError } from "./commandFailedError";
+import { commandFailedError, npxCommandLine } from "./commandFailedError";
 
 const failure = async (script: string) => {
   try {
@@ -88,8 +88,46 @@ describe("commandFailedError", () => {
     );
   });
 
+  it("ends with one next step: the command to run for its full output", () => {
+    const error = commandFailedError(
+      "expo export:embed",
+      {
+        exitCode: 3221225477,
+        all: "npm warn config production Use --omit=dev instead.\n",
+      },
+      "npx expo export:embed --platform android --dev false",
+    );
+    expect(error.message).toBe(
+      [
+        "expo export:embed exited with code 3221225477 (0xC0000005).",
+        "npm warn config production Use --omit=dev instead.",
+        "Run it for its full output:",
+        "npx expo export:embed --platform android --dev false",
+      ].join("\n"),
+    );
+  });
+
   it("keeps an error that isn't a command's", () => {
     const original = new Error("ENOENT: no such file");
     expect(commandFailedError("expo export:embed", original)).toBe(original);
+  });
+});
+
+describe("npxCommandLine", () => {
+  it("writes the project's paths relative to it, and quotes what a shell would split", () => {
+    expect(
+      npxCommandLine("/work/my app", [
+        "expo",
+        "export:embed",
+        "--bundle-output",
+        "/work/my app/dist/index.android.bundle",
+        "--entry-file",
+        "src/main entry.js",
+        "--assets-dest",
+        "/tmp/assets",
+      ]),
+    ).toBe(
+      "npx expo export:embed --bundle-output dist/index.android.bundle --entry-file 'src/main entry.js' --assets-dest /tmp/assets",
+    );
   });
 });

@@ -52,6 +52,17 @@ export type NativeBuildResult = NativeBuildTarget & {
   exportMethod?: string;
 };
 
+/**
+ * What `createNativeBuild` built, before the command checks the artifact:
+ * its channel is undefined when the build's own reader couldn't read it
+ * exactly, and the command reads it from the artifact.
+ */
+export type BuiltNativeBuild = NativeBuildResult extends infer Result
+  ? Result extends NativeBuildResult
+    ? Omit<Result, "channel"> & { channel: string | undefined }
+    : never
+  : never;
+
 const ARTIFACT_KINDS: Record<string, NativeBuildArtifactKind> = {
   ".apk": "apk",
   ".aab": "aab",
@@ -74,7 +85,6 @@ export const createNativeBuild = async ({
   minBundleId,
   target,
   debug,
-  readChannel,
   outputPath,
   buildAdapter,
   builder,
@@ -85,8 +95,6 @@ export const createNativeBuild = async ({
   target: NativeBuildTarget;
   /** A debug build, whose native SDK reports the nil UUID as MIN_BUNDLE_ID. */
   debug: boolean;
-  /** The native project's default channel, for a build that reads none. */
-  readChannel: () => Promise<string>;
   outputPath: string;
   buildAdapter: BuildAdapter;
   builder: () => Promise<{
@@ -114,7 +122,7 @@ export const createNativeBuild = async ({
      */
     dispose?: () => Promise<void>;
   }>;
-}): Promise<NativeBuildResult> => {
+}): Promise<BuiltNativeBuild> => {
   const { buildDirectory, buildArtifactPath, builtApp, exportMethod, dispose } =
     await builder();
   try {
@@ -126,10 +134,11 @@ export const createNativeBuild = async ({
       throw new Error(`Unexpected native build artifact: ${buildArtifactPath}`);
     }
 
+    // Never the project's: the artifact's channel, or none read yet.
     const channel =
-      builtApp && builtApp.channel !== undefined
-        ? (builtApp.channel ?? DEFAULT_CHANNEL)
-        : await readChannel();
+      builtApp?.channel === undefined
+        ? undefined
+        : (builtApp.channel ?? DEFAULT_CHANNEL);
     const builtTarget: NativeBuildTarget =
       target.appVersion !== null && builtApp?.appVersion
         ? { fingerprintHash: null, appVersion: builtApp.appVersion }

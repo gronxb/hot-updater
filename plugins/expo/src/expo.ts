@@ -5,6 +5,7 @@ import { compileHermes } from "@hot-updater/bare";
 import {
   assertSupportedExpoSdk,
   commandFailedError,
+  npxCommandLine,
   log,
   readBundleSigningPublicKeyFile,
 } from "@hot-updater/cli-tools";
@@ -180,7 +181,11 @@ const runBundle = async ({
     });
     stdout = result.stdout;
   } catch (error) {
-    throw commandFailedError("expo export:embed", error);
+    throw commandFailedError(
+      "expo export:embed",
+      error,
+      npxCommandLine(cwd, args),
+    );
   }
 
   if (enableHermes) {

@@ -55,7 +55,6 @@ describe("createNativeBuild", () => {
       minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
       target: { fingerprintHash: null, appVersion: "1.2.0" },
       debug: false,
-      readChannel: async () => "beta",
       outputPath,
       buildAdapter: buildAdapter(calls),
       builder: async () => {
@@ -69,7 +68,8 @@ describe("createNativeBuild", () => {
       platform: "ios",
       scheme: "release",
       minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
-      channel: "beta",
+      // No reader of its own: the command reads it from the artifact.
+      channel: undefined,
       fingerprintHash: null,
       appVersion: "1.2.0",
       artifactPath: path.join(outputPath, "export/App.ipa"),
@@ -96,7 +96,6 @@ describe("createNativeBuild", () => {
       minBundleId: "0190a1b2-c3d4-7000-8000-02a1b2c3d4e5",
       target: { fingerprintHash: "fingerprint", appVersion: null },
       debug: false,
-      readChannel: async () => "production",
       outputPath: path.join(root, "output"),
       buildAdapter: buildAdapter([]),
       builder: async () => built,
@@ -108,7 +107,6 @@ describe("createNativeBuild", () => {
 
   it("reports the app version and channel the built app holds, over the project's", async () => {
     const built = await writeArtifact("export/App.ipa");
-    const readChannel = vi.fn(async () => "production");
 
     const result = await createNativeBuild({
       platform: "ios",
@@ -117,7 +115,6 @@ describe("createNativeBuild", () => {
       // What the project files say, before an xcconfig overrides it.
       target: { fingerprintHash: null, appVersion: "1.0.0" },
       debug: false,
-      readChannel,
       outputPath: path.join(root, "output"),
       buildAdapter: buildAdapter([]),
       builder: async () => ({
@@ -134,7 +131,6 @@ describe("createNativeBuild", () => {
       buildNumber: "66",
       nativeAppVersion: "2.0.0",
     });
-    expect(readChannel).not.toHaveBeenCalled();
   });
 
   it("reports the default channel for a built app without one, and keeps the fingerprint", async () => {
@@ -146,7 +142,6 @@ describe("createNativeBuild", () => {
       minBundleId: "0190a1b2-c3d4-7000-8000-02a1b2c3d4e5",
       target: { fingerprintHash: "fingerprint", appVersion: null },
       debug: false,
-      readChannel: async () => "beta",
       outputPath: path.join(root, "output"),
       buildAdapter: buildAdapter([]),
       builder: async () => ({
@@ -173,7 +168,6 @@ describe("createNativeBuild", () => {
       minBundleId: "0190a1b2-c3d4-7000-8000-02a1b2c3d4e5",
       target: { fingerprintHash: "fingerprint", appVersion: null },
       debug: false,
-      readChannel: async () => "beta",
       outputPath: path.join(root, "output"),
       buildAdapter: buildAdapter([]),
       builder: async () => ({
@@ -185,7 +179,7 @@ describe("createNativeBuild", () => {
     expect(result.nativeAppVersion).toBeNull();
   });
 
-  it("reports the project's channel when the artifact's cannot be read exactly", async () => {
+  it("reports no channel, never the project's, when the artifact's cannot be read exactly", async () => {
     const built = await writeArtifact("app-release.apk");
 
     const result = await createNativeBuild({
@@ -194,7 +188,6 @@ describe("createNativeBuild", () => {
       minBundleId: "0190a1b2-c3d4-7000-8000-02a1b2c3d4e5",
       target: { fingerprintHash: null, appVersion: "1.0.0" },
       debug: false,
-      readChannel: async () => "from-project",
       outputPath: path.join(root, "output"),
       buildAdapter: buildAdapter([]),
       builder: async () => ({
@@ -203,7 +196,8 @@ describe("createNativeBuild", () => {
       }),
     });
 
-    expect(result.channel).toBe("from-project");
+    // The command reads it from the artifact, or fails.
+    expect(result.channel).toBeUndefined();
   });
 
   it("reports the nil UUID a debug build's native SDK reports as its MIN_BUNDLE_ID", async () => {
@@ -215,7 +209,6 @@ describe("createNativeBuild", () => {
       minBundleId: "0190a1b2-c3d4-7000-8000-02a1b2c3d4e5",
       target: { fingerprintHash: null, appVersion: "1.0.0" },
       debug: true,
-      readChannel: async () => "production",
       outputPath: path.join(root, "output"),
       buildAdapter: buildAdapter([]),
       builder: async () => built,
@@ -235,7 +228,6 @@ describe("createNativeBuild", () => {
       minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
       target: { fingerprintHash: "fingerprint", appVersion: null },
       debug: false,
-      readChannel: async () => "production",
       outputPath,
       buildAdapter: buildAdapter(calls),
       builder: async () => ({
@@ -268,7 +260,6 @@ describe("createNativeBuild", () => {
         minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
         target: { fingerprintHash: "fingerprint", appVersion: null },
         debug: false,
-        readChannel: async () => "production",
         outputPath: path.join(root, "output"),
         buildAdapter: {
           name: "bare",
@@ -296,7 +287,6 @@ describe("createNativeBuild", () => {
         minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
         target: { fingerprintHash: "fingerprint", appVersion: null },
         debug: false,
-        readChannel: async () => "production",
         outputPath: path.join(root, "output"),
         buildAdapter: buildAdapter([]),
         builder: async () => built,

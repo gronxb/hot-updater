@@ -8,14 +8,22 @@ import path from "path";
  * characters), and React Native's codegen object paths, which repeat the
  * project's path, pass it. At 250, CMake's own default on Windows, CMake
  * hashes the long part of an object's name. Only the names of objects
- * under `.cxx` change, never what they compile to.
+ * under `.cxx` change, never what they compile to. A module whose CMake
+ * arguments set CMAKE_OBJECT_PATH_MAX, in its default config, a build type
+ * or a flavor, keeps its own.
  */
 export const WINDOWS_INIT_SCRIPT = `// Written by hot-updater for one Windows build: object paths within MAX_PATH.
 allprojects { project ->
   ['com.android.application', 'com.android.library'].each { id ->
     project.plugins.withId(id) {
       project.extensions.getByName('androidComponents').finalizeDsl { android ->
-        android.defaultConfig.externalNativeBuild.cmake.arguments.add('-DCMAKE_OBJECT_PATH_MAX=250')
+        def configs = [android.defaultConfig] + android.buildTypes.toList() + android.productFlavors.toList()
+        def own = configs.any { config ->
+          config.externalNativeBuild.cmake.arguments.any { it.startsWith('-DCMAKE_OBJECT_PATH_MAX') }
+        }
+        if (!own) {
+          android.defaultConfig.externalNativeBuild.cmake.arguments.add('-DCMAKE_OBJECT_PATH_MAX=250')
+        }
       }
     }
   }

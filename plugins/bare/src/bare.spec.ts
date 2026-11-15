@@ -54,8 +54,14 @@ it("fails a bundle with the CLI's exit code and its last output", async () => {
   );
   expect(error).toBeInstanceOf(Error);
   // stdout and stderr interleave in the order they arrive.
-  const [first, ...tail] = (error as Error).message.split("\n");
+  const [first, ...rest] = (error as Error).message.split("\n");
   expect(first).toBe("react-native bundle exited with code 7.");
+  // One next step: the command, whole, with the project's paths.
+  expect(rest.slice(-2)).toEqual([
+    "Run it for its full output:",
+    "npx react-native bundle --assets-dest dist --bundle-output dist/index.android.bundle --dev false --entry-file index.js --platform android --minify true --reset-cache",
+  ]);
+  const tail = rest.slice(0, -2);
   expect([...tail].sort()).toEqual(
     [
       "Transforming index.js",
