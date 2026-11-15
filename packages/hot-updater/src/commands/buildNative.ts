@@ -63,6 +63,7 @@ import { assertCanonicalChannelName, NIL_UUID } from "@hot-updater/protocol";
 import { ExecaError } from "execa";
 
 import {
+  type BuiltNativeBuild,
   createNativeBuild,
   type NativeBuildResult,
   type NativeBuildTarget,
@@ -79,7 +80,6 @@ import {
   registerNativeBuild,
 } from "@/utils/native/registerNativeBuild";
 import { printBanner } from "@/utils/printBanner";
-import { getChannel } from "@/utils/setChannel";
 
 import { ARTIFACT_PATH_WIDTH, ui } from "../utils/cli-ui";
 import { loadServer } from "../utils/loadServer";
@@ -542,7 +542,7 @@ const buildNativeInternal = async ({
             : null;
         // The build's log, which the summary names.
         const buildLog: { path: string | null } = { path: null };
-        const result = reused
+        const built: BuiltNativeBuild = reused
           ? reused.result
           : await buildNow({
               platform,
@@ -577,37 +577,62 @@ const buildNativeInternal = async ({
             : await reportUploadFailure(
                 () =>
                   assertBuiltArtifact({
-                    artifactPath: result.artifactPath,
+                    artifactPath: built.artifactPath,
                     platform,
                     scheme,
                     sandbox,
                     fingerprintHash: target.fingerprintHash,
                   }),
-                stays(result.artifactPath),
+                stays(built.artifactPath),
               );
+        // The channel the artifact embeds, as the artifact reader reads it:
+        // null for none, which the native SDK reports as production, and
+        // undefined when it can't be read. A Debug build, which is never
+        // tracked, is read when it is needed.
+        const read =
+          trackingSkipped !== "debug"
+            ? artifact
+            : channel !== undefined || built.channel === undefined
+              ? await readBuiltArtifact(built.artifactPath).catch(() => null)
+              : null;
+        const embedded =
+          read === null
+            ? undefined
+            : typeof read.channel === "string" || read.channel === null
+              ? read.channel
+              : undefined;
         // The channel --channel asked for, read from the artifact itself:
         // one it doesn't embed, or can't be read, fails before anything
-        // records it. A Debug build, which is never tracked, is read too.
-        if (channel !== undefined) {
-          const read =
-            trackingSkipped === "debug"
-              ? await readBuiltArtifact(result.artifactPath).catch(() => null)
-              : artifact;
-          const embedded =
-            read === null || typeof read.channel !== "string"
-              ? null
-              : read.channel;
-          if (embedded !== channel) {
-            throw new NativeBuildFailure(
-              [
-                embedded === null
-                  ? `Couldn't read the channel the build embeds, so it can't be checked against --channel ${channel}.`
-                  : `The build embeds the ${embedded} channel, not ${channel}.`,
-                stays(result.artifactPath),
-              ].join("\n"),
-            );
-          }
+        // records it.
+        if (channel !== undefined && embedded !== channel) {
+          throw new NativeBuildFailure(
+            [
+              typeof embedded === "string"
+                ? `The build embeds the ${embedded} channel, not ${channel}.`
+                : `Couldn't read the channel the build embeds, so it can't be checked against --channel ${channel}.`,
+              stays(built.artifactPath),
+            ].join("\n"),
+          );
         }
+        // Recorded, cached and printed as the artifact's: the artifact
+        // reader's, else what the build read of it, never the project's. One
+        // neither can read fails before anything caches or records it.
+        const recorded =
+          embedded === undefined
+            ? built.channel
+            : (embedded ?? DEFAULT_CHANNEL);
+        if (recorded === undefined) {
+          throw new NativeBuildFailure(
+            [
+              "Couldn't read the channel the build embeds, so it can't be recorded.",
+              platform === "android"
+                ? "Install the Android SDK build-tools, whose aapt2 reads it, then build again."
+                : "Check HOT_UPDATER_CHANNEL in the app's Info.plist, then build again.",
+              stays(built.artifactPath),
+            ].join("\n"),
+          );
+        }
+        const result: NativeBuildResult = { ...built, channel: recorded };
         // An approved device Apple has enabled that the .ipa still lacks
         // fails the build before anything records it: the .ipa stays.
         if (deviceRegistry && deviceRegistry.expected.length > 0) {
@@ -1067,7 +1092,7 @@ const buildNow = async ({
   logHeader: string[];
   /** Receives the build log's path once the build has one. */
   onLog: (logFilePath: string | null) => void;
-}): Promise<NativeBuildResult> => {
+}): Promise<BuiltNativeBuild> => {
   let minBundleId: string;
   try {
     minBundleId = tracked ? await issueMinBundleId() : createMinBundleId();
@@ -1096,7 +1121,6 @@ const buildNow = async ({
         ? androidSchemeConfig!.variant
         : iosSchemeConfig!.configuration,
     ),
-    readChannel: async () => channel ?? (await getChannel(platform)).value,
     buildAdapter,
     outputPath,
     builder: async () => {
@@ -1443,6 +1467,9 @@ const recordSubmission = async (
 };
 
 /** Where a build that was not submitted stays. */
+/** The channel an app without a default channel reports. */
+const DEFAULT_CHANNEL = "production";
+
 const stays = (artifactPath: string) =>
   `The build stays at ${ui.fitPath(artifactPath, ARTIFACT_PATH_WIDTH - 5)}.`;
 

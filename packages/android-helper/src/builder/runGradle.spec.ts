@@ -1,13 +1,15 @@
 import fs from "fs";
+import path from "path";
 
 import { execa } from "execa";
-import { expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("execa", () => ({
   ExecaError: class extends Error {},
   execa: vi.fn(() => Object.assign(Promise.resolve({}), { all: undefined })),
 }));
 vi.mock("@hot-updater/cli-tools", () => ({
+  BuildFailedError: class extends Error {},
   getCwd: () => "/app",
   p: { log: { info: vi.fn(), error: vi.fn() } },
 }));
@@ -69,4 +71,77 @@ it("runs the wrapper itself when its environment needs no bash", async () => {
     ["app:assembleRelease", "-x", "lint"],
     expect.objectContaining({ env: { JAVA_HOME: "/jdk" } }),
   );
+});
+
+describe("on Windows", () => {
+  const platform = process.platform;
+  beforeEach(() => {
+    Object.defineProperty(process, "platform", { value: "win32" });
+  });
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: platform });
+  });
+
+  // NoDefaultCurrentDirectoryInExePath stops cmd.exe from finding a bare
+  // gradlew.bat in the current directory.
+  it("runs the project's gradlew.bat by its path", async () => {
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    vi.mocked(execa).mockClear();
+
+    await runGradle({
+      tasks: ["assembleRelease"],
+      logPrefix: "android-release-build",
+      appModuleName: "app",
+      args: {},
+      androidProjectPath: "/app/android",
+    });
+
+    expect(execa).toHaveBeenCalledWith(
+      path.join("/app/android", "gradlew.bat"),
+      expect.arrayContaining(["app:assembleRelease"]),
+      expect.objectContaining({ cwd: "/app/android" }),
+    );
+  });
+
+  // ninja 1.10.2, in the SDK's CMake 3.22.1, can't reach an object path over
+  // 260 characters; at 250 CMake hashes the long part of its name.
+  it("has CMake keep object paths within MAX_PATH, unless a module sets its own limit", async () => {
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    let script = "";
+    vi.mocked(execa).mockImplementationOnce(((
+      _command: string,
+      args: string[],
+    ) => {
+      const index = args.indexOf("--init-script");
+      if (index !== -1) script = fs.readFileSync(args[index + 1]!, "utf8");
+      return Object.assign(Promise.resolve({}), { all: undefined });
+    }) as never);
+
+    await runGradle({
+      tasks: ["assembleRelease"],
+      logPrefix: "android-release-build",
+      appModuleName: "app",
+      args: {},
+      androidProjectPath: "/app/android",
+    });
+
+    // Added once the module's build script ran, and only to a module whose
+    // own CMake arguments don't set it: in examples/v0.88.0 with real
+    // Gradle, a defaultConfig's 180 and a release build type's 190 each
+    // configured CMake alone, and a module without one got 250.
+    const add =
+      "android.defaultConfig.externalNativeBuild.cmake.arguments.add('-DCMAKE_OBJECT_PATH_MAX=250')";
+    expect(script).toContain("finalizeDsl { android ->");
+    expect(script).toContain(
+      "def configs = [android.defaultConfig] + android.buildTypes.toList() + android.productFlavors.toList()",
+    );
+    expect(script).toContain(
+      "config.externalNativeBuild.cmake.arguments.any { it.startsWith('-DCMAKE_OBJECT_PATH_MAX') }",
+    );
+    expect(script).toMatch(
+      new RegExp(
+        `if \\(!own\\) \\{\\s+${add.replace(/[.()[\]']/g, "\\$&")}\\s+\\}`,
+      ),
+    );
+  });
 });

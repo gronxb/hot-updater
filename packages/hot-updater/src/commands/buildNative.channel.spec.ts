@@ -1,9 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-/** What the built artifact embeds, per test: null for one that can't be read. */
+/**
+ * What the artifact reader reads of the built artifact's channel, per test:
+ * null for an artifact it can't read, and "none" for one without a channel.
+ */
 let embedded: string | null = "pr-7";
 /** The build type the scheme builds, per test. */
 let buildType = "Release";
+/**
+ * The channel the build's own reader (aapt2, the built Info.plist) read,
+ * per test: undefined when it can't read it exactly.
+ */
+let reported: string | undefined;
 
 vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/android-helper")>()),
@@ -56,32 +64,34 @@ vi.mock("@/utils/native/prepareNativeBuild", () => ({
   }),
 }));
 vi.mock("@/utils/native/createNativeBuild", () => ({
-  createNativeBuild: vi.fn(
-    async ({ platform, minBundleId, builder, readChannel }) => {
-      await builder();
-      return {
-        platform,
-        scheme: "preview",
-        minBundleId,
-        channel: await readChannel(),
-        fingerprintHash: null,
-        appVersion: "1.0.0",
-        artifactPath: platform === "ios" ? "/out/Example.app" : "/out/app.apk",
-        artifactKind: platform === "ios" ? "app" : "apk",
-      };
-    },
-  ),
+  createNativeBuild: vi.fn(async ({ platform, minBundleId, builder }) => {
+    await builder();
+    return {
+      platform,
+      scheme: "preview",
+      minBundleId,
+      channel: reported,
+      fingerprintHash: null,
+      appVersion: "1.0.0",
+      artifactPath: platform === "ios" ? "/out/Example.app" : "/out/app.apk",
+      artifactKind: platform === "ios" ? "app" : "apk",
+    };
+  }),
 }));
 vi.mock("../utils/native/sandbox", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/native/sandbox")>()),
   assertBuiltArtifact: vi.fn(async () =>
     embedded === null
       ? null
-      : { channel: embedded, appId: null, entry: { sandboxUrlScheme: null } },
+      : {
+          channel: embedded === "none" ? null : embedded,
+          appId: null,
+          entry: { sandboxUrlScheme: null },
+        },
   ),
   readBuiltArtifact: vi.fn(async () => {
     if (embedded === null) throw new Error("unreadable");
-    return { channel: embedded };
+    return { channel: embedded === "none" ? null : embedded };
   }),
 }));
 vi.mock("../utils/native/nativeBuildScope", () => ({
@@ -123,6 +133,7 @@ describe("native-build ios|android --channel", () => {
     vi.clearAllMocks();
     embedded = "pr-7";
     buildType = "Release";
+    reported = undefined;
   });
 
   it.each(["ios", "android"] as const)(
@@ -146,6 +157,26 @@ describe("native-build ios|android --channel", () => {
       );
     },
   );
+
+  it("records and caches the channel it checked in the artifact, whatever the build reports", async () => {
+    // aapt2.exe's CRLF output read as no channel, which the build reported
+    // as production while the artifact embedded pr-7.
+    reported = "production";
+    await handleNativeBuildCreate("android", {
+      scheme: "preview",
+      channel: "pr-7",
+    });
+
+    expect(registerNativeBuild).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: "pr-7" }),
+      expect.anything(),
+    );
+    const cache = await vi.mocked(reuseNativeBuild).mock.results[0]!.value;
+    expect(cache.remember).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: "pr-7" }),
+      null,
+    );
+  });
 
   it("fails a build that doesn't embed it, and records nothing", async () => {
     embedded = "production";
@@ -242,7 +273,7 @@ describe("native-build ios|android --channel", () => {
     expect(buildIos).not.toHaveBeenCalled();
   });
 
-  it("builds the project's channel without it, as before", async () => {
+  it("builds the project's channel without it, and records the artifact's", async () => {
     embedded = "production";
     await handleNativeBuildCreate("ios", { scheme: "preview" });
 
@@ -253,5 +284,54 @@ describe("native-build ios|android --channel", () => {
       expect.objectContaining({ channel: "production" }),
       expect.anything(),
     );
+  });
+
+  describe("without it, the channel the build records", () => {
+    it("is the artifact's when the build's own reader can't read it", async () => {
+      // aapt2 read it as unknown; the project's manifest would say production.
+      reported = undefined;
+      embedded = "beta";
+      await handleNativeBuildCreate("android", { scheme: "preview" });
+
+      expect(registerNativeBuild).toHaveBeenCalledWith(
+        expect.objectContaining({ channel: "beta" }),
+        expect.anything(),
+      );
+      const cache = await vi.mocked(reuseNativeBuild).mock.results[0]!.value;
+      expect(cache.remember).toHaveBeenCalledWith(
+        expect.objectContaining({ channel: "beta" }),
+        null,
+      );
+    });
+
+    it("is production for an artifact without one, as the native SDK reports", async () => {
+      reported = undefined;
+      embedded = "none";
+      await handleNativeBuildCreate("android", { scheme: "preview" });
+
+      expect(registerNativeBuild).toHaveBeenCalledWith(
+        expect.objectContaining({ channel: "production" }),
+        expect.anything(),
+      );
+    });
+
+    it("fails the build when no reader can read it, and caches and records nothing", async () => {
+      reported = undefined;
+      embedded = null;
+      const exit = mockExit();
+      try {
+        await expect(
+          handleNativeBuildCreate("android", { scheme: "preview" }),
+        ).rejects.toThrow("exit");
+      } finally {
+        exit.mockRestore();
+      }
+      expect(vi.mocked(p.log.error).mock.calls.flat().join("\n")).toContain(
+        "Couldn't read the channel the build embeds, so it can't be recorded.\nInstall the Android SDK build-tools, whose aapt2 reads it, then build again.",
+      );
+      const cache = await vi.mocked(reuseNativeBuild).mock.results[0]!.value;
+      expect(cache.remember).not.toHaveBeenCalled();
+      expect(registerNativeBuild).not.toHaveBeenCalled();
+    });
   });
 });

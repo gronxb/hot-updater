@@ -2,6 +2,8 @@ import fs from "fs/promises";
 import path from "path";
 
 import {
+  commandFailedError,
+  npxCommandLine,
   createInterfaceFingerprint,
   log,
   readReactNativeInterface,
@@ -12,7 +14,7 @@ import type {
   BuildAdapterConfig,
   NativeFingerprintOptions,
 } from "@hot-updater/plugin-core";
-import { ExecaError, execa } from "execa";
+import { execa } from "execa";
 import { uuidv7 } from "uuidv7";
 
 interface RunBundleArgs {
@@ -60,12 +62,11 @@ const runBundle = async ({
     const result = await execa("npx", args, {
       cwd,
       reject: true,
+      all: true,
     });
     stdout = result.stdout;
   } catch (error) {
-    if (error instanceof ExecaError) {
-      throw error.stderr;
-    }
+    throw commandFailedError("rock bundle", error, npxCommandLine(cwd, args));
   }
 
   return {

@@ -224,6 +224,16 @@ const progress: typeof clack.progress = (options = {}) => {
   };
 };
 
+/** The errors a task's spinner printed as it failed. */
+const printedTaskErrors = new WeakSet<object>();
+
+/**
+ * Whether `p.tasks` printed `error` as the task that threw it failed, so
+ * the command that catches it doesn't print it again.
+ */
+export const isPrintedTaskError = (error: unknown): boolean =>
+  typeof error === "object" && error !== null && printedTaskErrors.has(error);
+
 const tasks: typeof clack.tasks = async (taskList, options) => {
   for (const task of taskList) {
     if (task.enabled === false) continue;
@@ -234,6 +244,9 @@ const tasks: typeof clack.tasks = async (taskList, options) => {
       taskSpinner.stop(result || task.title);
     } catch (error) {
       taskSpinner.error(error instanceof Error ? error.message : String(error));
+      if (typeof error === "object" && error !== null) {
+        printedTaskErrors.add(error);
+      }
       throw error;
     }
   }
