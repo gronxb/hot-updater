@@ -139,6 +139,19 @@ class HotUpdaterSandboxStartTest {
         assertEquals(HotUpdaterSandboxStartDecision.SHOW_SCREEN, decide(moved.copy(restored = true)))
     }
 
+    @Test
+    fun `opening the app over its activity a process death left only closes the screen`() {
+        // A link over the app after its process died: the task still holds its activity.
+        assertEquals(true, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = true, coversHost = false, taskRoot = false))
+        assertEquals(true, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = false, coversHost = false, taskRoot = false))
+        // As before: over the running app with nothing switched, or the app this screen started before a death.
+        assertEquals(true, HotUpdaterSandboxStart.opensBeneath(hostRunning = true, switched = false, coversHost = false, taskRoot = false))
+        assertEquals(true, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = true, coversHost = true, taskRoot = false))
+        // Nothing beneath: the app's activity starts.
+        assertEquals(false, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = true, coversHost = false, taskRoot = true))
+        assertEquals(false, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = false, coversHost = false, taskRoot = true))
+    }
+
     /** What the SDK's restart builds, pinned against what the platform defines it to set. */
     @Test
     fun `the restart's flag is the one the decision reads`() {

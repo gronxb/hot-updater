@@ -90,6 +90,19 @@ internal object HotUpdaterSandboxStart {
         carried: Boolean,
     ): Boolean = decision == HotUpdaterSandboxStartDecision.SHOW_LINK && created && taskRoot && !carried
 
+    /**
+     * Whether opening the app from a screen only closes the screen, over the app's
+     * activity beneath it: a running one, when nothing was switched, or one a
+     * process death left in the task, which the system brings back on what's
+     * selected. Starting the app's activity there would stack a second one.
+     */
+    fun opensBeneath(
+        hostRunning: Boolean,
+        switched: Boolean,
+        coversHost: Boolean,
+        taskRoot: Boolean,
+    ): Boolean = (hostRunning && !switched) || (coversHost && !hostRunning) // RED seam
+
     /** The link an intent holds: its data, or, with none, the one a move to a task of its own carried. */
     fun linkOf(
         data: String?,
