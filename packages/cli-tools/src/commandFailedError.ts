@@ -5,15 +5,16 @@ import { stripVTControlCharacters } from "node:util";
 const OUTPUT_TAIL_LINES = 8;
 /** The lines a failure keeps from the error line on, such as Metro's. */
 const ERROR_LINES = 12;
+/** A frame of a Ruby backtrace, such as Bundler's under its exception. */
+const RUBY_FRAME = /^\s+from \S.*:\d+:in /;
 
 /**
  * The error a build adapter throws when a command it runs, such as
  * `expo export:embed`, fails: its exit code, or the signal that stopped it,
- * then its output, stdout and stderr together, without stack frames: from the
- * last line that starts with `error`, as Metro's and Expo's do, else its last
- * lines. A code above
- * 255 is a Windows NTSTATUS, such as 0xC0000005 for a crash, and prints in
- * hex too. With `rerun`, the command as people run it in the project, it ends
+ * then its output, stdout and stderr together, without Node's or Ruby's stack
+ * frames: from the last line that starts with `error`, as Metro's and Expo's
+ * do, else its last lines. A code above 255 is a Windows NTSTATUS, such as
+ * 0xC0000005 for a crash, and prints in hex too. With `rerun`, the command as people run it in the project, it ends
  * with that one next step. An error that isn't a command's is returned as
  * it is.
  */
@@ -46,7 +47,9 @@ export const commandFailedError = (
       : [stdout, stderr].filter((text) => typeof text === "string").join("\n");
   const lines = stripVTControlCharacters(output)
     .split(/\r?\n/)
-    .filter((line) => line.trim() && !/^\s*at /.test(line));
+    .filter(
+      (line) => line.trim() && !/^\s*at /.test(line) && !RUBY_FRAME.test(line),
+    );
   const errorLine = lines.findLastIndex((line) => /^\s*error\b/i.test(line));
   const shown =
     errorLine === -1
@@ -60,20 +63,20 @@ export const commandFailedError = (
 };
 
 /**
- * `npx <args>` as this platform's shell reads it, with paths under `cwd`
- * relative to it: the command a failure tells people to run. On Windows an
- * argument that needs quotes takes double quotes, which cmd.exe and
- * PowerShell both read; elsewhere, POSIX single quotes.
+ * `args`, a command and its arguments, as this platform's shell reads it on
+ * one line, with paths under `cwd` relative to it: the command a failure tells
+ * people to run. On Windows an argument that needs quotes takes double
+ * quotes, which cmd.exe and PowerShell both read; elsewhere, POSIX single
+ * quotes.
  */
-export const npxCommandLine = (
+export const shellCommandLine = (
   cwd: string,
   args: readonly string[],
 ): string => {
   const windows = process.platform === "win32";
   const paths = windows ? path.win32 : path.posix;
-  return [
-    "npx",
-    ...args.map((arg) => {
+  return args
+    .map((arg) => {
       const relative =
         paths.isAbsolute(arg) && !paths.relative(cwd, arg).startsWith("..")
           ? paths.relative(cwd, arg) || "."
@@ -83,6 +86,10 @@ export const npxCommandLine = (
       return windows
         ? `"${relative.replace(/"/g, '\\"')}"`
         : `'${relative.replace(/'/g, "'\\''")}'`;
-    }),
-  ].join(" ");
+    })
+    .join(" ");
 };
+
+/** `npx <args>`, as `shellCommandLine` writes it. */
+export const npxCommandLine = (cwd: string, args: readonly string[]): string =>
+  shellCommandLine(cwd, ["npx", ...args]);

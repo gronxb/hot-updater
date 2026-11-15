@@ -15,8 +15,8 @@ import {
 import { resolveSandboxApplicationId } from "../../utils/version/getAndroidVersion";
 import type { NativeCheckIssue } from "./issues";
 
-/** Build adapters no sandbox build has run on yet. */
-const UNQUALIFIED_ADAPTERS = new Set(["rock"]);
+/** Build adapters no iOS sandbox build has run on yet. */
+const UNQUALIFIED_ADAPTERS = new Set(["rock", "one"]);
 
 /** The supported Expo SDKs sandbox builds have run on. */
 const QUALIFIED_EXPO_SDKS = new Set([55, 57, 58]);

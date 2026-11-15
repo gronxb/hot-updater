@@ -221,7 +221,7 @@ The link waits across restarts.
 | Platform | Tested with                                                                |
 | -------- | -------------------------------------------------------------------------- |
 | iOS      | React Native 0.74, 0.85 and 0.88 app delegates, and Expo SDK 55, 57 and 58 |
-| Android  | React Native 0.74, 0.85 and 0.88, and Expo SDK 55, 57 and 58               |
+| Android  | React Native 0.74, 0.85 and 0.88, Expo SDK 55, 57 and 58, and One 2.15     |
 
 No other Expo SDK has been tested. Hot Updater needs Expo SDK 55 or later.
 
@@ -389,17 +389,17 @@ The build number becomes the one after the app's highest.
 
 `hot-updater doctor` reports each of these for a sandbox scheme.
 
-| The project has                                            | What happens                                     |
-| ---------------------------------------------------------- | ------------------------------------------------ |
-| A `Debug` configuration or variant                         | Refused: it skips OTA updates                    |
-| Swift Package Manager on iOS                               | Refused                                          |
-| AGP 9's default DSL                                        | Refused: set `android.newDsl=false`              |
-| Its own `src/<buildType>/AndroidManifest.xml`              | Refused: move what it declares to `src/main`     |
-| A `google-services.json` with no client for the ID         | Google's plugin fails the build: add the client  |
-| The Rock adapter, on Android                               | Refused: build it with the bare adapter          |
-| The SDK as a prebuilt AAR, on Android                      | Refused: compile it from source                  |
-| The Rock adapter on iOS, `use_frameworks`, app extensions  | Builds, but untested: check it on a device first |
-| An Expo SDK other than 55, 57 or 58                        | Builds, but untested: check it on a device first |
+| The project has                                                  | What happens                                     |
+| ---------------------------------------------------------------- | ------------------------------------------------ |
+| A `Debug` configuration or variant                               | Refused: it skips OTA updates                    |
+| Swift Package Manager on iOS                                     | Refused                                          |
+| AGP 9's default DSL                                              | Refused: set `android.newDsl=false`              |
+| Its own `src/<buildType>/AndroidManifest.xml`                    | Refused: move what it declares to `src/main`     |
+| A `google-services.json` with no client for the ID               | Google's plugin fails the build: add the client  |
+| The Rock adapter, on Android                                     | Refused: build it with the bare adapter          |
+| The SDK as a prebuilt AAR, on Android                            | Refused: compile it from source                  |
+| The Rock or One adapter on iOS, `use_frameworks`, app extensions | Builds, but untested: check it on a device first |
+| An Expo SDK other than 55, 57 or 58                              | Builds, but untested: check it on a device first |
 
 The build itself refuses, with the fix, a launcher its activity can't take over:
 

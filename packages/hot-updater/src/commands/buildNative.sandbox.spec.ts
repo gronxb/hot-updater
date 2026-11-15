@@ -118,7 +118,11 @@ vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("@/utils/setChannel", () => ({ getChannel: vi.fn() }));
 vi.mock("@/utils/native/prepareNativeBuild", () => ({
   prepareNativeBuild: vi.fn(async (options) => {
-    await options.beforePrebuild?.({ scheme: "release", iosScheme });
+    await options.beforePrebuild?.({
+      scheme: "release",
+      iosScheme,
+      buildAdapter: "bare",
+    });
     return {
       buildAdapter: { name: "bare" },
       config: { cacheDir: null, updateStrategy: "fingerprint" },
@@ -225,7 +229,10 @@ import { p, secret } from "@hot-updater/cli-tools";
 
 import { registerNativeBuild } from "@/utils/native/registerNativeBuild";
 
-import { assertBuiltArtifact } from "../utils/native/sandbox";
+import {
+  assertBuiltArtifact,
+  assertSandboxBuildAllowed,
+} from "../utils/native/sandbox";
 import { handleNativeBuildCreate } from "./buildNative";
 
 const fail = async (run: Promise<unknown>) => {
@@ -290,6 +297,13 @@ describe("native-build of a sandbox scheme", () => {
       expect.anything(),
       expect.objectContaining({ sandbox: true }),
     );
+    // Both checks know the build adapter, so one it refuses stops before the
+    // prebuild and the fingerprint write.
+    expect(
+      vi
+        .mocked(assertSandboxBuildAllowed)
+        .mock.calls.map(([options]) => options.buildAdapter),
+    ).toEqual(["bare", "bare"]);
   });
 
   it("registers nothing when the artifact isn't what the scheme asked for", async () => {

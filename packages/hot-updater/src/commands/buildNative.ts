@@ -262,6 +262,7 @@ const buildNativeInternal = async ({
           beforePrebuild: async ({
             scheme,
             secrets: configured,
+            buildAdapter,
             iosScheme,
             androidScheme,
           }) => {
@@ -285,6 +286,7 @@ const buildNativeInternal = async ({
                 iosScheme,
                 androidScheme,
                 submit: upload,
+                buildAdapter,
               }),
             );
             if (

@@ -174,6 +174,7 @@ describe("prepareNativeBuild", () => {
     expect(beforePrebuild).toHaveBeenCalledWith({
       scheme: "release",
       iosScheme: { scheme: "App", simulator: true },
+      buildAdapter: "bare",
     });
     expect(calls).toEqual(["beforePrebuild", "prebuild"]);
 
