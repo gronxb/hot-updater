@@ -60,6 +60,7 @@ const readEvent = () => {
     commitSha: String(
       checkedOutCommit() ?? pullRequest.head?.sha ?? env["GITHUB_SHA"] ?? "",
     ),
+    headSha: pullRequest.head?.sha ? String(pullRequest.head.sha) : null,
     repositoryUrl: repositoryUrlOf(env, payload),
     runUrl: runUrlOf(env, payload),
   };

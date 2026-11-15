@@ -106,6 +106,8 @@ describe("native-build ios|android --json", () => {
       dryRun: false,
       build,
       nativeBuild: row,
+      // A Simulator .app has no profile to expire.
+      ipa: null,
       registration: { skipped: null },
       devices: null,
       submission: {

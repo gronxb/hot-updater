@@ -360,6 +360,7 @@ describe("no sandbox scheme", () => {
       "android-install-url",
       "comment-body",
       "previews",
+      "result",
     ]);
     expect(JSON.parse(outputs["previews"]!)[0]).not.toHaveProperty("sandbox");
     expect(written).toEqual([]);
@@ -490,17 +491,6 @@ describe("a sandbox build that has the fingerprint", () => {
     expect(body).not.toContain("is older than");
     expect(body).not.toContain("made a new sandbox build");
     expect(body).not.toContain("runs on the sandbox build");
-  });
-
-  it("says when the build floors out the bundle", async () => {
-    const floor = "019a0000-0000-7000-8000-00000000ffff";
-    const { body } = await run(
-      fakeCli({ builds: [{ ...sandboxBuild(), minBundleId: floor }] }),
-    );
-
-    expect(body).toContain(
-      "Bundle `019a0000-0000-7000-8000-0000000000f1` is older than the sandbox build accepts: push again.",
-    );
   });
 
   it("keeps the link and says to open it, with no image, without its comment", async () => {

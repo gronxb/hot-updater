@@ -151,6 +151,7 @@ describe("a found ad hoc .ipa and Apple's current state", () => {
       reason: null,
       missing: [],
       waiting: [],
+      expiresAtMs: NOW + 1_000,
     });
     expect(apple).not.toHaveBeenCalled();
   });
@@ -236,6 +237,7 @@ describe("a found ad hoc .ipa and Apple's current state", () => {
         reason: null,
         missing: [],
         waiting: [{ name: "Bo's iPad", reason }],
+        expiresAtMs: NOW + 1_000,
       });
     },
   );
@@ -317,6 +319,7 @@ describe("a found ad hoc .ipa and Apple's current state", () => {
           reason: "Apple's devices couldn't be read: No secret asc-api-key.",
         },
       ],
+      expiresAtMs: NOW + 1_000,
     });
   });
 
@@ -341,7 +344,7 @@ describe("a found ad hoc .ipa and Apple's current state", () => {
     expect(downloadNativeBuild).toHaveBeenCalledOnce();
   });
 
-  it("reads nothing for another artifact, an App Store .ipa, or one that lists no devices", async () => {
+  it("reads nothing for another artifact or an App Store .ipa", async () => {
     for (const overrides of [
       { artifact_kind: "apk" },
       { export_method: "app-store" },
@@ -350,8 +353,41 @@ describe("a found ad hoc .ipa and Apple's current state", () => {
     }
     expect(downloadNativeBuild).not.toHaveBeenCalled();
     vi.mocked(readIpaInstallInfo).mockResolvedValueOnce(
-      ipa([], { distribution: "enterprise" }),
+      ipa([], { distribution: "store" }),
     );
     await expect(check([], atApple({}))).resolves.toBeNull();
+  });
+
+  it("checks an enterprise .ipa's expiry alone, listing no devices and asking Apple nothing", async () => {
+    const held = registry([device("a", "Ana's iPhone")]);
+    const apple = vi.fn(async () => atApple({}));
+    vi.mocked(readIpaInstallInfo).mockResolvedValueOnce(
+      ipa([], { distribution: "enterprise", expiresAtMs: NOW + 5_000 }),
+    );
+
+    await expect(
+      check(held, apple, { export_method: "enterprise" }),
+    ).resolves.toEqual({
+      reusable: true,
+      reason: null,
+      missing: [],
+      waiting: [],
+      expiresAtMs: NOW + 5_000,
+    });
+    expect(held.listIosDevices).not.toHaveBeenCalled();
+    expect(apple).not.toHaveBeenCalled();
+
+    vi.mocked(readIpaInstallInfo).mockResolvedValueOnce(
+      ipa([], { distribution: "enterprise", expiresAtMs: NOW }),
+    );
+    await expect(
+      check(held, apple, { export_method: "enterprise" }),
+    ).resolves.toEqual({
+      reusable: false,
+      reason: "expired",
+      missing: [],
+      waiting: [],
+      expiresAtMs: NOW,
+    });
   });
 });

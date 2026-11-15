@@ -18,11 +18,13 @@ const CREDIT = "Preview by [hot-updater](https://hot-updater.dev)";
  * @property {Platform} platform
  * @property {{ fingerprintHash: string | null, appVersion: string | null }} target
  *   What the native build was matched by.
- * @property {{ id: string, artifactKind: ArtifactKind, fileName: string }} nativeBuild
+ * @property {{ id: string, artifactKind: ArtifactKind, fileName: string, expiresAtMs?: number }} nativeBuild
  *   The tracked build, and its artifact's file name.
  * @property {boolean} built Whether this run built and registered the
  *   native build, rather than reusing a registered one.
- * @property {string} bundleId The bundle deployed to the pull request's channel.
+ * @property {string | null} bundleId The bundle deployed to the pull
+ *   request's channel; null for a build-only lane's build that no lane
+ *   deployed a bundle to.
  * @property {import("../../shared/nativeBuild.mjs").StoreStatus | null} [store]
  *   The store a sandbox build went to, which installs it instead of a download.
  * @property {SandboxPreview} [sandbox] Present when a sandbox build runs the bundle.
@@ -36,6 +38,11 @@ const CREDIT = "Preview by [hot-updater](https://hot-updater.dev)";
  * @property {string | null} minBundleId The oldest bundle ID the build runs.
  * @property {string | null} [fromChannel] The other pull request's channel a
  *   reused build embeds, or null for one this pull request's channel embeds.
+ *
+ * @typedef {{ platform: Platform, scheme?: string, deployed: boolean } | { lane: string, status: "skipped" | "missing" } | { platform: Platform, undeployed: true }} FailedPreview
+ *   A platform that failed on this run, a lane's job that gave no result (one
+ *   GitHub skipped, or one that failed, was cancelled, or set no output), or
+ *   a platform whose builds no job deployed a bundle to.
  */
 
 /**
@@ -329,7 +336,7 @@ const buildsTable = (previews) => {
           preview.target.fingerprintHash === null
             ? String(preview.target.appVersion)
             : preview.target.fingerprintHash.slice(0, 12),
-        )} | ${code(preview.bundleId)} |`,
+        )} | ${preview.bundleId === null ? "—" : code(preview.bundleId)} |`,
     ),
     "",
     "</details>",
@@ -354,10 +361,11 @@ const buildsTable = (previews) => {
  *   which each bundle's deploy message names too.
  * @param {string | null} [input.repositoryUrl] The repository's web URL, which
  *   the commit links under; without it, the commit is not a link.
- * @param {{ platform: Platform, scheme?: string, deployed: boolean }[]} [input.failed]
+ * @param {FailedPreview[]} [input.failed]
  *   The platforms that failed on this run, which the comment shows nothing
  *   else of, and names no commit for: `deployed` when the bundle reached the
  *   channel before the failure, and `scheme` when the platform has several.
+ *   A lane's job that gave no result is named by the job.
  * @param {string | null} [input.runUrl] The run's page, which a failed
  *   platform links to.
  * @param {boolean} input.credit Whether to end with "Preview by hot-updater".
@@ -390,10 +398,6 @@ export const renderPreviewComment = ({
   const simulator = sandboxes.some(
     ({ nativeBuild }) => nativeBuild.artifactKind === "app",
   );
-  const older = sandboxes.filter(
-    ({ sandbox, bundleId }) =>
-      sandbox?.minBundleId && bundleId < sandbox.minBundleId,
-  );
   const scannable = linked.some(
     ({ sandbox }) => qrImages[/** @type {string} */ (sandbox?.link)],
   );
@@ -404,10 +408,19 @@ export const renderPreviewComment = ({
   return [
     COMMENT_MARKER,
     `### Preview on ${code(channel)}`,
-    ...failed.map(
-      ({ platform, scheme, deployed }) =>
-        `**${platform === "ios" ? "iOS" : "Android"}**${scheme === undefined ? "" : ` (${code(scheme)})`} failed on this run${deployed ? ", after deploying its bundle" : ""}${runUrl === null ? "." : `: [see the logs](${runUrl}).`}`,
-    ),
+    ...failed.map((failure) => {
+      const logs = runUrl === null ? "." : `: [see the logs](${runUrl}).`;
+      if ("lane" in failure) {
+        return failure.status === "skipped"
+          ? `**${failure.lane}** was skipped on this run.`
+          : `**${failure.lane}** gave no preview result on this run${logs}`;
+      }
+      if ("undeployed" in failure) {
+        return `**${failure.platform === "ios" ? "iOS" : "Android"}** was built, but its deploy didn't run on this run${logs}`;
+      }
+      const { platform, scheme, deployed } = failure;
+      return `**${platform === "ios" ? "iOS" : "Android"}**${scheme === undefined ? "" : ` (${code(scheme)})`} failed on this run${deployed ? ", after deploying its bundle" : ""}${logs}`;
+    }),
     ...(sandboxes.length === 0
       ? []
       : [
@@ -445,10 +458,6 @@ export const renderPreviewComment = ({
             ].join("\n\n");
           }),
         ]),
-    ...older.map(
-      ({ bundleId }) =>
-        `Bundle ${code(bundleId)} is older than the sandbox build accepts: push again.`,
-    ),
     ...(own.length === 0
       ? []
       : [

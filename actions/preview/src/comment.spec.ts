@@ -269,26 +269,6 @@ npx hot-updater native-build install 019a0000-0000-7000-8000-00000000b002
     expect(body.split("Latest commit").length).toBe(2);
   });
 
-  it("says when the sandbox build floors out the bundle", () => {
-    const body = renderPreviewComment({
-      ...base,
-      previews: [
-        {
-          ...androidSandbox,
-          sandbox: {
-            ...androidSandbox.sandbox,
-            minBundleId: "019a0000-0000-7000-8000-00000000ffff",
-          },
-        },
-      ],
-      qrImages: { [ANDROID_LINK]: ANDROID_QR },
-    });
-
-    expect(body).toContain(
-      "Bundle `019a0000-0000-7000-8000-0000000000a1` is older than the sandbox build accepts: push again.",
-    );
-  });
-
   it("keeps a Console's own path in its links", () => {
     const body = renderPreviewComment({
       ...base,

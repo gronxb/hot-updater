@@ -56,6 +56,12 @@ export interface IosDeviceCoverage {
    * state that couldn't be read. They never ask for a build.
    */
   readonly waiting: readonly WaitingIosDevice[];
+  /**
+   * When the `.ipa`'s first profile expires, in epoch milliseconds, or null
+   * when it can't be read or names no date. A job that deploys against the
+   * build later can refuse it once it has passed.
+   */
+  readonly expiresAtMs: number | null;
 }
 
 /**
@@ -121,13 +127,36 @@ export const iosDeviceCoverage = async ({
   readonly now: number;
 }): Promise<IosDeviceCoverage | null> => {
   if (info === null) {
-    return { reusable: false, reason: "unreadable", missing: [], waiting: [] };
+    return {
+      reusable: false,
+      reason: "unreadable",
+      missing: [],
+      waiting: [],
+      expiresAtMs: null,
+    };
   }
-  if (info.distribution !== "ad-hoc" && info.distribution !== "development") {
-    return null;
+  const { expiresAtMs } = info;
+  const listsDevices =
+    info.distribution === "ad-hoc" || info.distribution === "development";
+  if (!listsDevices && info.distribution !== "enterprise") return null;
+  if (expiresAtMs !== null && expiresAtMs <= now) {
+    return {
+      reusable: false,
+      reason: "expired",
+      missing: [],
+      waiting: [],
+      expiresAtMs,
+    };
   }
-  if (info.expiresAtMs !== null && info.expiresAtMs <= now) {
-    return { reusable: false, reason: "expired", missing: [], waiting: [] };
+  // An enterprise profile lists no devices: only its expiry decides.
+  if (!listsDevices) {
+    return {
+      reusable: true,
+      reason: null,
+      missing: [],
+      waiting: [],
+      expiresAtMs,
+    };
   }
   // The build's own check of its .ipa, over the registry's rows.
   const lackingIds = new Set(
@@ -135,7 +164,13 @@ export const iosDeviceCoverage = async ({
   );
   const lacking = devices.filter(({ id }) => lackingIds.has(id));
   if (lacking.length === 0) {
-    return { reusable: true, reason: null, missing: [], waiting: [] };
+    return {
+      reusable: true,
+      reason: null,
+      missing: [],
+      waiting: [],
+      expiresAtMs,
+    };
   }
   const unavailable =
     (what: string) =>
@@ -178,6 +213,7 @@ export const iosDeviceCoverage = async ({
     reason: missing.length === 0 ? null : "missing",
     missing,
     waiting,
+    expiresAtMs,
   };
 };
 
@@ -243,15 +279,20 @@ export const readIosDeviceCoverage = async (
     build.artifact_kind !== "ipa" ||
     (build.export_method !== null &&
       build.export_method !== "ad-hoc" &&
-      build.export_method !== "development")
+      build.export_method !== "development" &&
+      build.export_method !== "enterprise")
   ) {
     return null;
   }
   const info = await readStoredIpaInstallInfo(storage, build);
-  const devices = [
-    ...(await listAll(core, "registered")),
-    ...(await listAll(core, "approved")),
-  ];
+  // Only a profile that lists devices is checked against the registry's.
+  const devices =
+    info?.distribution === "ad-hoc" || info?.distribution === "development"
+      ? [
+          ...(await listAll(core, "registered")),
+          ...(await listAll(core, "approved")),
+        ]
+      : [];
   return iosDeviceCoverage({
     info,
     devices,

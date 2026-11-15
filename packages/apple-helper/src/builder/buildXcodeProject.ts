@@ -220,6 +220,15 @@ const prepareBuildArgs = ({
     "build",
   ];
 
+  // A Simulator app for Apple silicon Macs, the only Macs current Xcode runs
+  // on: a generic Simulator destination would also compile x86_64, twice the
+  // build. It goes before the scheme's extraParams, whose own ARCHS comes
+  // later and wins, and the build's -xcconfig, which includes the scheme's
+  // xcconfig and outranks the command line.
+  if (deviceType === "simulator") {
+    args.push("ARCHS=arm64");
+  }
+
   if (authenticationArgs) {
     args.push(...authenticationArgs);
   }

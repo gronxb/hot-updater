@@ -227,6 +227,47 @@ describe("xcodebuild arguments", () => {
     );
   });
 
+  it("builds a Simulator app for Apple silicon, which the scheme's xcconfig or extraParams can widen", async () => {
+    await buildXcodeProject({
+      sourceDir: "/app/ios",
+      outputDirectory: "/out/app",
+      platform: "ios",
+      xcodeScheme: "App",
+      configuration: "Release",
+      deviceType: "simulator",
+      logPrefix: "ios-release-build",
+      useGenericDestination: true,
+      xcconfig: "Release.xcconfig",
+      extraParams: ["ARCHS=arm64 x86_64"],
+      minBundleId: MIN_BUNDLE_ID,
+    });
+
+    const { args } = xcodebuildCall();
+    // The last command-line value wins, and an -xcconfig outranks them all.
+    expect(args.indexOf("ARCHS=arm64")).toBeGreaterThan(-1);
+    expect(args.indexOf("ARCHS=arm64")).toBeLessThan(
+      args.indexOf("ARCHS=arm64 x86_64"),
+    );
+    expect(args.indexOf("ARCHS=arm64")).toBeLessThan(args.indexOf("-xcconfig"));
+    expect(String(writeFile.mock.calls[0]![1])).not.toContain("ARCHS");
+  });
+
+  it("sets no architecture on a device archive", async () => {
+    await archiveXcodeProject({
+      sourceDir: "/app/ios",
+      archiveDirectory: "/out/archive",
+      platform: "ios",
+      installPods: false,
+      xcodeScheme: "App",
+      logPrefix: "ios-release-build-archive",
+      minBundleId: MIN_BUNDLE_ID,
+    });
+
+    expect(xcodebuildCall().args.some((arg) => arg.startsWith("ARCHS"))).toBe(
+      false,
+    );
+  });
+
   it("includes a simulator scheme's xcconfig, under what a normal build keeps out", async () => {
     await buildXcodeProject({
       sourceDir: "/app/ios",

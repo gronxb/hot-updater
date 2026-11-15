@@ -21,7 +21,13 @@ import {
   renderPreviewComment,
   simulatorOpens,
 } from "./comment.mjs";
-import { findComment, updateComment, upsertComment } from "./github.mjs";
+import {
+  createComment,
+  findComment,
+  pullRequestHead,
+  updateComment,
+  upsertComment,
+} from "./github.mjs";
 import { removeQrCodes, writeQrCodes } from "./qrBranch.mjs";
 
 export { parseJsonOutput };
@@ -52,7 +58,18 @@ export { parseJsonOutput };
  *   iOS sandbox build.
  * @property {boolean} credit
  * @property {boolean} comment Whether to write the pull request comment.
- * @property {"preview" | "cleanup"} mode
+ * @property {boolean} deploy Whether to deploy each platform's bundle. A
+ *   lane that only builds, such as each iOS lane beside the job that deploys
+ *   the iOS bundle after both, sets it to false.
+ * @property {boolean} build Whether a scheme with no native build builds
+ *   one. A job that deploys against the builds its lanes reported in
+ *   `results` sets it to false: it then compiles nothing and looks up no
+ *   other build.
+ * @property {Map<string, PlatformPreview & { scheme?: string }> | null} reported
+ *   With `build: false`, the build each lane reported, by platform and scheme.
+ * @property {string} results With `comment`, each lane's line: its job's
+ *   name, its conclusion, and its `result` output.
+ * @property {"preview" | "cleanup" | "comment"} mode
  *
  * @typedef {object} PullRequestEvent
  * @property {string} action
@@ -62,6 +79,8 @@ export { parseJsonOutput };
  * @property {string} title
  * @property {string} commitSha The commit the run deploys: what the app's
  *   directory has checked out.
+ * @property {string | null} [headSha] The pull request's head when the event
+ *   came, which a comment job checks is still its head before writing.
  * @property {string | null} repositoryUrl The repository's web URL, which
  *   the comment links the commit under.
  * @property {string | null} runUrl The workflow run's page, which the comment
@@ -157,8 +176,19 @@ export const parseInputs = (env, event) => {
   }
 
   const mode = input("MODE") || "auto";
-  if (mode !== "auto" && mode !== "preview" && mode !== "cleanup") {
-    throw new Error("mode must be auto, preview, or cleanup.");
+  if (
+    mode !== "auto" &&
+    mode !== "preview" &&
+    mode !== "cleanup" &&
+    mode !== "comment"
+  ) {
+    throw new Error("mode must be auto, preview, cleanup, or comment.");
+  }
+  const results = input("RESULTS");
+  if (mode === "comment" && results === "") {
+    throw new Error(
+      "mode: comment needs results: a line for each lane's job, such as ${{ needs.android.result }} and ${{ needs.android.outputs.result }} after its name.",
+    );
   }
 
   const platforms = parsePlatforms(input("PLATFORMS") || "android");
@@ -197,6 +227,12 @@ export const parseInputs = (env, event) => {
         ? "cleanup"
         : "preview"
       : mode;
+  const build = parseFlag(input, "BUILD", true);
+  if (resolvedMode === "preview" && !build && results === "") {
+    throw new Error(
+      "build: false takes results: the result line of each job that builds, which this job deploys against.",
+    );
+  }
   if (resolvedMode === "preview") {
     for (const platform of platforms) {
       if (!schemes[platform]?.length) {
@@ -216,6 +252,10 @@ export const parseInputs = (env, event) => {
     testFlightGroup,
     credit: parseFlag(input, "CREDIT", true),
     comment: parseFlag(input, "COMMENT", true),
+    deploy: parseFlag(input, "DEPLOY", true),
+    build,
+    reported: build ? null : reportedBuilds(results),
+    results,
     mode: resolvedMode,
   };
 };
@@ -228,6 +268,8 @@ export const parseInputs = (env, event) => {
  * @property {{ channel: string, fingerprintHash: string | null, appVersion: string | null }} build
  * @property {NativeBuildRow | null} nativeBuild
  * @property {{ skipped: "debug" | "dry-run" | null }} [registration]
+ * @property {{ expiresAtMs: number | null } | null} [ipa] When an ad hoc
+ *   `.ipa`'s profile expires; null for any other artifact.
  */
 
 /**
@@ -480,6 +522,10 @@ const sandboxOf = (
  * @property {boolean} built Whether this run built it.
  * @property {{ appId: string, urlScheme: string, channel: string | null } | undefined} sandbox
  *   `find`'s word on a sandbox scheme.
+ * @property {number | null} [expiresAtMs] When an ad hoc `.ipa`'s profile
+ *   expires, which a later job with `build: false` checks.
+ * @property {PlatformPreview & { scheme?: string }} [reported] With
+ *   `build: false`, the build its lane reported, which stands for all of it.
  */
 
 /**
@@ -493,6 +539,48 @@ const sandboxOf = (
  * @returns {Promise<ResolvedScheme>}
  */
 const resolveScheme = async (deps, inputs, platform, scheme) => {
+  if (inputs.reported !== null) {
+    const reported = inputs.reported.get(`${platform}:${scheme}`);
+    if (reported === undefined) {
+      throw new Error(
+        `The job that builds ${scheme} reported no ${platform} build, and this job doesn't build: see that job.`,
+      );
+    }
+    // A result kept from an earlier attempt can outlive its .ipa's profile,
+    // and one that doesn't say when it expires can't be trusted to have not.
+    const { expiresAtMs, artifactKind, id } = reported.nativeBuild;
+    if (
+      artifactKind === "ipa" &&
+      !reported.store &&
+      expiresAtMs === undefined
+    ) {
+      throw new Error(
+        `The ${scheme} build ${id} has no profile expiry in its job's result, and this job doesn't build: run that job again.`,
+      );
+    }
+    if (expiresAtMs !== undefined && expiresAtMs <= Date.now()) {
+      throw new Error(
+        `The ${scheme} build ${reported.nativeBuild.id}'s profile expired at ${new Date(expiresAtMs).toISOString()}, after its job reported it, and this job doesn't build: run that job again.`,
+      );
+    }
+    // A store build the store stopped offering since, as a result kept for a
+    // re-run can be; one with no expiry stays as it was reported.
+    const storeExpiresAtMs = reported.store?.expiresAtMs ?? null;
+    if (storeExpiresAtMs !== null && storeExpiresAtMs <= Date.now()) {
+      throw new Error(
+        `The ${scheme} build ${id} expired on its store at ${new Date(storeExpiresAtMs).toISOString()}, after its job reported it, and this job doesn't build: run that job again.`,
+      );
+    }
+    await refreshFingerprint(deps, reported.target);
+    return {
+      scheme,
+      build: /** @type {NativeBuildRow} */ (/** @type {unknown} */ (null)),
+      target: reported.target,
+      built: reported.built,
+      sandbox: undefined,
+      reported,
+    };
+  }
   // With no channel, `find` answers for what the project embeds, which
   // `channel set` made the pull request's, and a sandbox scheme's build on
   // any channel.
@@ -521,19 +609,35 @@ const resolveScheme = async (deps, inputs, platform, scheme) => {
  * @param {Inputs} inputs
  * @param {Platform} platform
  * @param {ResolvedScheme} resolved
- * @param {string} bundleId
+ * @param {string | null} bundleId Null when the run deploys no bundle.
  * @returns {PlatformPreview & { installUrl: string }}
  */
 const previewOf = (
   inputs,
   platform,
-  { build, target, built, sandbox },
+  { build, target, built, sandbox, reported, expiresAtMs },
   bundleId,
 ) => {
+  if (reported !== undefined) {
+    return {
+      ...reported,
+      bundleId,
+      // A store build installs from its store, as the store path says.
+      installUrl: reported.store
+        ? (reported.store.url ??
+          nativeBuildInstallUrl(inputs.consoleUrl, reported.nativeBuild))
+        : nativeBuildInstallUrl(
+            inputs.consoleUrl,
+            reported.nativeBuild,
+            simulatorOpens(reported, inputs.channel),
+          ),
+    };
+  }
   const nativeBuild = {
     id: build.id,
     artifactKind: build.artifact_kind,
     fileName: artifactFileName(build.artifact_storage_uri),
+    ...(typeof expiresAtMs === "number" ? { expiresAtMs } : {}),
   };
   const sandboxPreview = sandboxOf(
     inputs,
@@ -581,7 +685,10 @@ const previewPlatform = async (
   scheme,
   onDeployed,
 ) => {
-  const submit = inputs.submits[platform];
+  // A job with `build: false` deploys against its lanes' builds, a store
+  // build's too, and runs no store command.
+  const submit =
+    inputs.reported === null ? inputs.submits[platform] : undefined;
   if (submit) {
     const { build, target, built, store, sandbox } =
       await findOrSubmitStoreBuild(
@@ -592,13 +699,15 @@ const previewPlatform = async (
         scheme,
         submit,
       );
-    const bundleId = await deployBundle(deps, {
-      platform,
-      channel: inputs.channel,
-      target,
-      message: deployMessage(event),
-      onDeployed,
-    });
+    const bundleId = inputs.deploy
+      ? await deployBundle(deps, {
+          platform,
+          channel: inputs.channel,
+          target,
+          message: deployMessage(event),
+          onDeployed,
+        })
+      : null;
     const nativeBuild = {
       id: build.id,
       artifactKind: build.artifact_kind,
@@ -620,13 +729,15 @@ const previewPlatform = async (
     };
   }
   const resolved = await resolveScheme(deps, inputs, platform, scheme);
-  const bundleId = await deployBundle(deps, {
-    platform,
-    channel: inputs.channel,
-    target: resolved.target,
-    message: deployMessage(event),
-    onDeployed,
-  });
+  const bundleId = inputs.deploy
+    ? await deployBundle(deps, {
+        platform,
+        channel: inputs.channel,
+        target: resolved.target,
+        message: deployMessage(event),
+        onDeployed,
+      })
+    : null;
   return previewOf(inputs, platform, resolved, bundleId);
 };
 
@@ -685,6 +796,15 @@ const previewSchemes = async (
   }
   const [first] = resolved;
   if (first === undefined) return { previews: [], failures };
+  if (!inputs.deploy) {
+    return {
+      previews: resolved.map((scheme) => ({
+        scheme: scheme.scheme,
+        ...previewOf(inputs, platform, scheme, null),
+      })),
+      failures,
+    };
+  }
   let deployed = false;
   try {
     const bundleId = await deployBundle(deps, {
@@ -716,6 +836,27 @@ const previewSchemes = async (
 };
 
 /**
+ * The build each lane reported, by platform and scheme, which a job with
+ * `build: false` deploys against. A lane that failed or was skipped reports
+ * none, and its scheme stays failed.
+ *
+ * @param {string} results
+ * @returns {Map<string, PlatformPreview & { scheme?: string }>}
+ */
+const reportedBuilds = (results) => {
+  /** @type {Map<string, PlatformPreview & { scheme?: string }>} */
+  const builds = new Map();
+  for (const { result } of parseLanes(results)) {
+    for (const preview of result?.previews ?? []) {
+      if (preview.scheme !== undefined) {
+        builds.set(`${preview.platform}:${preview.scheme}`, preview);
+      }
+    }
+  }
+  return builds;
+};
+
+/**
  * Refuses a native build this run made that embeds another channel than the
  * pull request's, before anything is deployed: every build a preview makes,
  * a sandbox build too, is told the pull request's channel with `--channel`,
@@ -743,7 +884,7 @@ const assertEmbedsChannel = (platform, embedded, channel) => {
  * @param {Deps} deps
  * @param {Inputs} inputs
  * @param {{ platform: Platform, scheme: string, found: import("../../shared/nativeBuild.mjs").NativeBuildFindResult }} options
- * @returns {Promise<{ build: NativeBuildRow, target: import("../../shared/nativeBuild.mjs").BuildTarget, built: boolean }>}
+ * @returns {Promise<{ build: NativeBuildRow, target: import("../../shared/nativeBuild.mjs").BuildTarget, built: boolean, expiresAtMs: number | null }>}
  */
 const resolveNativeBuild = async (
   deps,
@@ -757,6 +898,8 @@ const resolveNativeBuild = async (
   };
   /** @type {NativeBuildRow} */
   let build;
+  /** When an ad hoc `.ipa`'s profile expires, as the CLI read it. */
+  let expiresAtMs = null;
   const devices = found.iosDevices;
   if (devices && devices.waiting.length > 0) {
     deps.log.notice(
@@ -811,6 +954,7 @@ const resolveNativeBuild = async (
       appVersion: registered.build.appVersion,
     };
     build = registered.nativeBuild;
+    expiresAtMs = registered.ipa?.expiresAtMs ?? null;
   } else {
     deps.log.info(
       found.sandbox?.channel && found.sandbox.channel !== inputs.channel
@@ -818,10 +962,11 @@ const resolveNativeBuild = async (
         : `Reusing ${platform} native build ${found.nativeBuild.id} (${describeTarget(found)}).`,
     );
     build = found.nativeBuild;
+    expiresAtMs = devices?.expiresAtMs ?? null;
     await refreshFingerprint(deps, found);
   }
 
-  return { build, target, built };
+  return { build, target, built, expiresAtMs };
 };
 /**
  * @param {Deps} deps
@@ -907,6 +1052,28 @@ export const runPreview = async (deps, inputs, event) => {
       );
     }
   }
+  // Set before any failure ends the run, so the comment job shows it.
+  deps.setOutput(
+    "result",
+    JSON.stringify(
+      laneResult({
+        channel: inputs.channel,
+        commitSha: event.commitSha,
+        previews: previews.map((preview) => ({
+          ...preview,
+          scheme: schemeOf.get(preview),
+        })),
+        // A lane of one scheme names it, beside another lane's of the same
+        // platform.
+        failed: failures.map((failure) => {
+          const schemes = inputs.schemes[failure.platform] ?? [];
+          return failure.scheme === undefined && schemes.length === 1
+            ? { ...failure, scheme: schemes[0] }
+            : failure;
+        }),
+      }),
+    ),
+  );
   // With nothing deployed, the comment still says what the channel has.
   if (previews.length === 0 && failures.every(({ deployed }) => !deployed)) {
     throw failureOf(failures);
@@ -949,12 +1116,11 @@ export const runPreview = async (deps, inputs, event) => {
   for (const preview of previews) {
     outputs.push({
       ...preview,
-      downloadUrl: await findDownloadUrl(
-        deps,
-        inputs,
-        preview,
-        schemeOf.get(preview),
-      ),
+      // A job with `build: false` looks up nothing: its lanes have the URLs.
+      downloadUrl:
+        inputs.reported === null
+          ? await findDownloadUrl(deps, inputs, preview, schemeOf.get(preview))
+          : null,
     });
   }
   deps.setOutput("previews", JSON.stringify(outputs));
@@ -982,6 +1148,251 @@ export const runPreview = async (deps, inputs, event) => {
   }
   if (qrError) throw qrError;
   return { previews: outputs, body };
+};
+
+/**
+ * @typedef {object} LaneResult What a lane's `result` output holds: the
+ *   fields the comment shows, which the comment shows anyway, and nothing
+ *   else. No download or storage URL, no credential, and no error or log.
+ * @property {string} channel
+ * @property {string} commitSha
+ * @property {(PlatformPreview & { scheme?: string })[]} previews
+ * @property {{ platform: Platform, scheme?: string, deployed: boolean }[]} failed
+ */
+
+/**
+ * Copies of a preview's public fields, from what a run made or what a lane's
+ * output says.
+ *
+ * @param {any} preview
+ * @returns {PlatformPreview & { scheme?: string }}
+ */
+const publicPreview = ({
+  platform,
+  scheme,
+  target,
+  nativeBuild,
+  built,
+  bundleId,
+  store,
+  sandbox,
+}) => ({
+  platform,
+  ...(typeof scheme === "string" ? { scheme } : {}),
+  target: {
+    fingerprintHash: target.fingerprintHash ?? null,
+    appVersion: target.appVersion ?? null,
+  },
+  nativeBuild: {
+    id: nativeBuild.id,
+    artifactKind: nativeBuild.artifactKind,
+    fileName: nativeBuild.fileName,
+    ...(typeof nativeBuild.expiresAtMs === "number"
+      ? { expiresAtMs: nativeBuild.expiresAtMs }
+      : {}),
+  },
+  built: Boolean(built),
+  bundleId: bundleId ?? null,
+  ...(store
+    ? {
+        store: {
+          destination: store.destination,
+          url: store.url ?? null,
+          version: store.version ?? null,
+          state: store.state ?? null,
+          // When the store stops offering it, which a later job checks.
+          expiresAtMs:
+            typeof store.expiresAtMs === "number" ? store.expiresAtMs : null,
+          reusable: true,
+        },
+      }
+    : {}),
+  ...(sandbox
+    ? {
+        sandbox: {
+          appId: sandbox.appId,
+          urlScheme: sandbox.urlScheme,
+          link: sandbox.link ?? null,
+          minBundleId: sandbox.minBundleId ?? null,
+          fromChannel: sandbox.fromChannel ?? null,
+        },
+      }
+    : {}),
+});
+
+/**
+ * @param {{ channel: string, commitSha: string, previews: any[], failed: { platform: Platform, scheme?: string, deployed: boolean }[] }} result
+ * @returns {LaneResult}
+ */
+export const laneResult = ({ channel, commitSha, previews, failed }) => ({
+  channel,
+  commitSha,
+  previews: previews.map(publicPreview),
+  failed: failed.map(({ platform, scheme, deployed }) => ({
+    platform,
+    ...(scheme === undefined ? {} : { scheme }),
+    deployed,
+  })),
+});
+
+/**
+ * Each lane of the `results` input, one per line: its job's name, its
+ * conclusion, then its `result` output, which is empty when the job set
+ * none. A result that isn't one counts as none.
+ *
+ * @param {string} text
+ * @returns {{ name: string, status: string, result: LaneResult | null }[]}
+ */
+export const parseLanes = (text) =>
+  text.split(/\r?\n/).flatMap((line) => {
+    const match = /^\s*(\S+)\s+(\S+)\s*(.*?)\s*$/.exec(line);
+    if (!match) return [];
+    const [, name = "", status = "", json = ""] = match;
+    /** @type {LaneResult | null} */
+    let result = null;
+    try {
+      const value = JSON.parse(json);
+      result = laneResult({
+        channel: String(value.channel),
+        commitSha: String(value.commitSha),
+        previews: value.previews,
+        failed: value.failed,
+      });
+    } catch {
+      result = null;
+    }
+    return [{ name, status, result }];
+  });
+
+/**
+ * Writes the one comment, and its QR codes, from the jobs that previewed the
+ * pull request at the same time. A build appears once, with the bundle a job
+ * deployed to it when one did, and a failure once per platform and scheme; a
+ * job with no result gets a line. With no bundle deployed anywhere, the
+ * comment stays as it is. The pull request's head is read before anything
+ * is written and again just before the comment is, and a newer head than
+ * this run's skips the comment, which that head's run writes. GitHub has no
+ * transaction across the two, so a push landing during that last write can
+ * still see this run's comment until its own run replaces it.
+ *
+ * @param {Deps} deps
+ * @param {Inputs} inputs
+ * @param {PullRequestEvent} event
+ */
+export const runComment = async (deps, inputs, event) => {
+  const lanes = parseLanes(inputs.results);
+  /** @type {Map<string, PlatformPreview & { scheme?: string }>} */
+  const builds = new Map();
+  /** @type {Map<string, import("./comment.mjs").FailedPreview>} */
+  const failures = new Map();
+  let { commitSha } = event;
+  let { channel } = inputs;
+  for (const { name, status, result } of lanes) {
+    if (result === null) {
+      failures.set(`lane:${name}`, {
+        lane: name,
+        status: status === "skipped" ? "skipped" : "missing",
+      });
+      continue;
+    }
+    ({ commitSha, channel } = result);
+    // A build is built for this commit when its lane built it, whichever
+    // job deployed its bundle.
+    for (const preview of result.previews) {
+      const seen = builds.get(preview.nativeBuild.id);
+      const kept =
+        seen === undefined || seen.bundleId === null ? preview : seen;
+      builds.set(preview.nativeBuild.id, {
+        ...kept,
+        built: preview.built || Boolean(seen?.built),
+      });
+    }
+    for (const failure of result.failed) {
+      const key = `${failure.platform}:${failure.scheme ?? ""}`;
+      const seen = failures.get(key);
+      if (
+        seen === undefined ||
+        (failure.deployed && "deployed" in seen && !seen.deployed)
+      ) {
+        failures.set(key, failure);
+      }
+    }
+  }
+  // A build is installable only when a result of this run deployed a
+  // bundle to it. One no result did is dropped, and its platform gets a line
+  // when no failure of its scheme says why, as when its deploy job never ran.
+  const previews = [...builds.values()].filter(
+    ({ bundleId }) => bundleId !== null,
+  );
+  for (const { platform, scheme, bundleId } of builds.values()) {
+    if (
+      bundleId === null &&
+      !failures.has(`${platform}:${scheme ?? ""}`) &&
+      // A platform's own failure, such as schemes of different native code,
+      // says why already.
+      !failures.has(`${platform}:`)
+    ) {
+      failures.set(`undeployed:${platform}`, { platform, undeployed: true });
+    }
+  }
+  const failed = [...failures.values()];
+  // A build no job deployed a bundle to doesn't count.
+  if (
+    previews.every(({ bundleId }) => bundleId === null) &&
+    failed.every((failure) => !("deployed" in failure) || !failure.deployed)
+  ) {
+    deps.log.notice(
+      "No job deployed a bundle, so the comment stays as it was.",
+    );
+    return { written: false };
+  }
+  const github = inputs.comment ? deps.github : null;
+  /** Whether the pull request has moved past this run's head. */
+  const stale = async () => {
+    if (!github || !event.headSha) return false;
+    const head = await pullRequestHead(github, event.number);
+    if (head === event.headSha) return false;
+    deps.log.notice(
+      `Not writing the comment: the pull request's head is ${head.slice(0, 7)} now, not this run's ${event.headSha.slice(0, 7)}.`,
+    );
+    return true;
+  };
+  if (await stale()) return { written: false };
+  /** @type {Record<string, string>} */
+  let qrImages = {};
+  /** @type {unknown} */
+  let qrError;
+  if (github) {
+    try {
+      qrImages = await writeQrCodes(
+        github,
+        event.number,
+        qrCodeValues(previews),
+      );
+    } catch (error) {
+      qrError = error;
+    }
+  }
+  const body = renderPreviewComment({
+    consoleUrl: inputs.consoleUrl,
+    channel,
+    previews,
+    qrImages,
+    commitSha,
+    repositoryUrl: event.repositoryUrl,
+    failed,
+    runUrl: event.runUrl,
+    credit: inputs.credit,
+  });
+  deps.setOutput("comment-body", body);
+  if (github) {
+    const existing = await findComment(github, event.number);
+    if (await stale()) return { written: false };
+    if (existing) await updateComment(github, existing.id, body);
+    else await createComment(github, event.number, body);
+  }
+  if (qrError) throw qrError;
+  return { written: github !== null, body };
 };
 
 /** @param {unknown} error */
@@ -1094,5 +1505,7 @@ export const runAction = async (deps, env, event) => {
   const inputs = parseInputs(env, event);
   return inputs.mode === "cleanup"
     ? runCleanup(deps, inputs, event)
-    : runPreview(deps, inputs, event);
+    : inputs.mode === "comment"
+      ? runComment(deps, inputs, event)
+      : runPreview(deps, inputs, event);
 };

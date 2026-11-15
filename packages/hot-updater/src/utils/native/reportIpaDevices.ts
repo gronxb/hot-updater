@@ -81,3 +81,22 @@ export const readIpaDevices = async (
     return null;
   }
 };
+
+/**
+ * When an ad hoc, development, or enterprise `.ipa`'s first profile
+ * expires, in epoch milliseconds: what `native-build ios --json` prints, so
+ * a later job can refuse the build once it has passed. Null for a store's
+ * `.ipa`, which installs from the store, and for one it can't read.
+ */
+export const readIpaExpiry = async (
+  artifactPath: string,
+): Promise<number | null> => {
+  try {
+    const info = await readIpaInstallInfo(
+      blobSource(await fs.openAsBlob(artifactPath)),
+    );
+    return info.distribution === "store" ? null : info.expiresAtMs;
+  } catch {
+    return null;
+  }
+};
