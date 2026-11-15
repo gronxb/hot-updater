@@ -164,6 +164,7 @@ class HotUpdaterSandboxStartTest {
         val screen = "com.example/com.hotupdater.HotUpdaterSandboxActivity"
         val camera = "com.android.camera2/com.android.camera.CameraActivity"
         val implementations = mapOf(host to host, screen to screen, camera to camera)
+
         fun holds(
             base: String?,
             count: Int,
@@ -189,6 +190,7 @@ class HotUpdaterSandboxStartTest {
         val target = "com.example/com.example.MainActivity"
         val other = "com.example/com.example.SettingsActivity"
         val implementations = mapOf(alias to target, target to target, other to other)
+
         fun holds(
             base: String?,
             count: Int,

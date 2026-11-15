@@ -119,7 +119,7 @@ internal object HotUpdaterSandboxStart {
     ): Boolean {
         if (numActivities != 2 || baseActivity == null) return false
         val expected = implementation(host) ?: return false
-        return baseActivity == expected // RED seam
+        return implementation(baseActivity) == expected
     }
 
     /** The link an intent holds: its data, or, with none, the one a move to a task of its own carried. */
