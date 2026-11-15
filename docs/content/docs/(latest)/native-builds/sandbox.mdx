@@ -201,7 +201,10 @@ comment one with its QR code for each pull request.
 A link from another native build is refused with no request. Otherwise the screen
 asks, naming the channel, because opening one deletes downloaded bundles. Then
 the build asks the server whether the channel has a bundle for it, and stops there
-if it doesn't, with your downloads untouched. If the download fails after that,
+if it doesn't, with your downloads untouched. That holds for the channel the build
+embeds too: **Reset to built-in bundle** is what runs the built-in bundle. A bundle
+deployed before the build was made counts, so a sandbox build another pull request
+made still opens this channel's latest bundle. If the download fails after that,
 the screen shows what's selected now, the built-in bundle, and offers **Retry**.
 
 A sandbox build learns your update server from your app, when a server answers one

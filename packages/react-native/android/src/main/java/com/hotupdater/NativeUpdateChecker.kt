@@ -408,7 +408,10 @@ internal class NativeUpdateChecker(
     private suspend fun check(options: NativeCheckRequest): CheckedUpdate? {
         val currentAppVersion = state.getAppVersion()
         val currentBundleId = resolveBundleId(state.getBundleId())
-        val minimumReleaseId = state.getMinBundleId()
+        val builtInBundleId = state.getMinBundleId()
+        // The floor is the built-in bundle's ID, except for the sandbox's
+        // explicit channel open, which takes any Release of the scope.
+        val minimumReleaseId = if (options.allowsOlderThanBuiltIn) NIL_UUID else builtInBundleId
         val defaultChannel = state.getDefaultChannel()
         val runtimeChannel = state.getChannel()
         val isSwitched = runtimeChannel != defaultChannel
@@ -437,6 +440,7 @@ internal class NativeUpdateChecker(
                 baseURL = options.baseURL.trimEnd('/'),
                 currentAppVersion = currentAppVersion,
                 currentBundleId = currentBundleId,
+                builtInBundleId = builtInBundleId,
                 minimumReleaseId = minimumReleaseId,
                 currentChannel = currentChannel,
                 isSwitched = isSwitched,
@@ -523,6 +527,8 @@ internal class NativeUpdateChecker(
         val baseURL: String,
         val currentAppVersion: String,
         val currentBundleId: String,
+        val builtInBundleId: String,
+        /** The selection floor: [builtInBundleId], or nil for [NativeCheckRequest.allowsOlderThanBuiltIn]. */
         val minimumReleaseId: String,
         val currentChannel: String,
         val isSwitched: Boolean,
@@ -618,7 +624,7 @@ internal class NativeUpdateChecker(
             if (activeInTargetScope != null || (!hasAuthenticatedActive && !explicitScopeSwitch)) {
                 input.currentBundleId
             } else {
-                input.minimumReleaseId
+                input.builtInBundleId
             }
         val selectionContextHash =
             ReleaseSelector.createSelectionContextHash(
@@ -662,7 +668,7 @@ internal class NativeUpdateChecker(
             ReleaseSelector.selectDesiredRelease(
                 catalog,
                 ReleaseSelectionInput(
-                    builtInBundleId = input.minimumReleaseId,
+                    builtInBundleId = input.builtInBundleId,
                     currentBundleId = selectorCurrentBundleId,
                     activeReleaseId = activeInTargetScope?.releaseId,
                     // A staged update is active but not running yet; force decisions count
@@ -681,7 +687,7 @@ internal class NativeUpdateChecker(
 
         if (
             desired.kind == SelectionKind.BUILTIN &&
-            input.currentBundleId == input.minimumReleaseId &&
+            input.currentBundleId == input.builtInBundleId &&
             (active == null || active.kind == SelectionKind.BUILTIN.name)
         ) {
             return null
@@ -805,13 +811,13 @@ internal class NativeUpdateChecker(
     ): CheckedUpdate {
         val options = input.options
         val channel = input.currentChannel
-        val runsBuiltIn = input.currentBundleId == input.minimumReleaseId
+        val runsBuiltIn = input.currentBundleId == input.builtInBundleId
         val errorScope =
             ErrorScope(
                 bundleId = input.currentBundleId,
                 channel = channel,
                 updateStrategy = options.updateStrategy,
-                targetBundleId = input.minimumReleaseId,
+                targetBundleId = input.builtInBundleId,
             )
         events.add(
             "onUpdateCheck",
@@ -820,7 +826,7 @@ internal class NativeUpdateChecker(
                 put("channel", channel)
                 put("fromBundleId", input.currentBundleId)
                 putNullable("fromReleaseId", runningReleaseId(input.currentBundleId, channel))
-                put("toBundleId", input.minimumReleaseId)
+                put("toBundleId", input.builtInBundleId)
                 put("toReleaseId", JSONObject.NULL)
                 put("transitionKind", "USE_BUILTIN")
                 put("updateStatus", DesiredReleaseStatus.ROLLBACK.name)
@@ -834,7 +840,7 @@ internal class NativeUpdateChecker(
             JSONArray()
                 .put("LEAVE_CHANNEL")
                 .put(channel)
-                .put(input.minimumReleaseId)
+                .put(input.builtInBundleId)
                 .put(guard.catalogId)
                 .put(guard.generation)
                 .put(guard.catalogHash)
@@ -842,7 +848,7 @@ internal class NativeUpdateChecker(
                 .toString()
         val update =
             HotUpdaterUpdate(
-                id = input.minimumReleaseId,
+                id = input.builtInBundleId,
                 releaseId = null,
                 status = HotUpdaterUpdateStatus.ROLLBACK,
                 shouldForceUpdate = !runsBuiltIn,

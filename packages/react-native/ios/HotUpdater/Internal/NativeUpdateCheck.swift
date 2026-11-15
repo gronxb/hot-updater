@@ -188,22 +188,28 @@ struct NativeCheckRequest {
     let requestHeaders: [String: String]
     let channel: String?
     let requestTimeout: TimeInterval
+    /// Selects with no floor: a Release whose bundle is older than the
+    /// built-in one is eligible. Only the sandbox's explicit channel open sets
+    /// it; the built-in bundle's ID stays what it is, and nothing persists it.
+    let allowsOlderThanBuiltIn: Bool
 
     init(
         baseURL: String,
         updateStrategy: HotUpdaterUpdateStrategy,
         requestHeaders: [String: String] = [:],
         channel: String? = nil,
-        requestTimeout: TimeInterval = 5
+        requestTimeout: TimeInterval = 5,
+        allowsOlderThanBuiltIn: Bool = false
     ) {
         self.baseURL = baseURL
         self.updateStrategy = updateStrategy
         self.requestHeaders = requestHeaders
         self.channel = channel
         self.requestTimeout = requestTimeout
+        self.allowsOlderThanBuiltIn = allowsOlderThanBuiltIn
     }
 
-    init(_ instance: HotUpdaterOptions, _ check: HotUpdaterCheckOptions) {
+    init(_ instance: HotUpdaterOptions, _ check: HotUpdaterCheckOptions, allowsOlderThanBuiltIn: Bool = false) {
         var headers = instance.requestHeaders
         for (name, value) in check.requestHeaders {
             // Header names are case-insensitive: the check's spelling replaces the instance's.
@@ -215,7 +221,8 @@ struct NativeCheckRequest {
             updateStrategy: check.updateStrategy,
             requestHeaders: headers,
             channel: check.channel,
-            requestTimeout: check.requestTimeout ?? instance.requestTimeout
+            requestTimeout: check.requestTimeout ?? instance.requestTimeout,
+            allowsOlderThanBuiltIn: allowsOlderThanBuiltIn
         )
     }
 }
@@ -401,6 +408,24 @@ struct NativeUpdateRejection: LocalizedError {
     let userInfo: [String: Any]
 
     var errorDescription: String? { message ?? code }
+}
+
+/// Whether a staging failed only because a newer check's selection replaced
+/// its own: the checker's guard, or the store's through its native rejection,
+/// which carries no classification. A race between checks, not a failure.
+func isStaleReleaseSelection(_ error: Error) -> Bool {
+    if case NativeUpdateCheckError.staleReleaseCatalog = error { return true }
+    if error is StaleReleaseSelectionError { return true }
+    guard let rejection = error as? NativeUpdateRejection, rejection.userInfo["stage"] == nil else {
+        return false
+    }
+    let stale = StaleReleaseSelectionError() as NSError
+    // The store rejects with the stale error itself, or wraps it as the
+    // underlying error of an unknown storage error.
+    if rejection.userInfo[NSLocalizedDescriptionKey] as? String == stale.localizedDescription { return true }
+    guard let underlying = rejection.userInfo[NSUnderlyingErrorKey] as? NSError else { return false }
+    return underlying.domain == stale.domain && underlying.code == stale.code
+        && underlying.localizedDescription == stale.localizedDescription
 }
 
 enum NativeUpdateCheckError: LocalizedError {
@@ -1151,7 +1176,10 @@ final class NativeUpdateChecker {
     private func check(_ options: NativeCheckRequest) async throws -> HotUpdaterUpdate? {
         let currentAppVersion = host.appVersion
         let currentBundleId = resolveBundleId(host.bundleId())
-        let minimumReleaseId = host.minBundleId
+        let builtInBundleId = host.minBundleId
+        // The floor is the built-in bundle's ID, except for the sandbox's
+        // explicit channel open, which takes any Release of the scope.
+        let minimumReleaseId = options.allowsOlderThanBuiltIn ? Self.nilUUID : builtInBundleId
         let defaultChannel = host.defaultChannel()
         let nativeChannel = host.channel()
         let isSwitched = nativeChannel != defaultChannel
@@ -1190,6 +1218,7 @@ final class NativeUpdateChecker {
                 baseURL: baseURL,
                 currentAppVersion: currentAppVersion,
                 currentBundleId: currentBundleId,
+                builtInBundleId: builtInBundleId,
                 minimumReleaseId: minimumReleaseId,
                 currentChannel: currentChannel,
                 isSwitched: isSwitched,
@@ -1226,6 +1255,7 @@ final class NativeUpdateChecker {
         baseURL: String,
         currentAppVersion: String,
         currentBundleId: String,
+        builtInBundleId: String,
         minimumReleaseId: String,
         currentChannel: String,
         isSwitched: Bool,
@@ -1286,7 +1316,7 @@ final class NativeUpdateChecker {
         let selectorCurrentBundleId =
             activeInTargetScope != nil || (!hasAuthenticatedActive && !explicitScopeSwitch)
                 ? currentBundleId
-                : minimumReleaseId
+                : builtInBundleId
         let selectionContextHash = createReleaseSelectionContextHash(ReleaseSelectionContext(
             activeBundleId: selectorCurrentBundleId,
             activeReleaseId: activeInTargetScope?.releaseId,
@@ -1316,7 +1346,7 @@ final class NativeUpdateChecker {
             return leaveSwitchedChannel(
                 options: options,
                 currentBundleId: currentBundleId,
-                minimumReleaseId: minimumReleaseId,
+                builtInBundleId: builtInBundleId,
                 channel: currentChannel,
                 guardParams: guardParams
             )
@@ -1330,7 +1360,7 @@ final class NativeUpdateChecker {
             .first { $0?.bundleId.jsEquals(selectorCurrentBundleId) == true }??
             .releaseId
         guard let desired = selectDesiredRelease(catalog, input: ReleaseSelectionInput(
-            builtInBundleId: minimumReleaseId,
+            builtInBundleId: builtInBundleId,
             currentBundleId: selectorCurrentBundleId,
             activeReleaseId: activeInTargetScope?.releaseId,
             runningReleaseId: .some(runningReleaseId),
@@ -1342,7 +1372,7 @@ final class NativeUpdateChecker {
         }
 
         if desired.kind == .builtin,
-           currentBundleId.jsEquals(minimumReleaseId),
+           currentBundleId.jsEquals(builtInBundleId),
            active == nil || active?.kind.jsEquals(SelectionKind.builtin.rawValue) == true {
             return nil
         }
@@ -1542,22 +1572,22 @@ final class NativeUpdateChecker {
     private func leaveSwitchedChannel(
         options: NativeCheckRequest,
         currentBundleId: String,
-        minimumReleaseId: String,
+        builtInBundleId: String,
         channel: String,
         guardParams: [String: Any]
     ) -> HotUpdaterUpdate {
-        let runsBuiltIn = currentBundleId.jsEquals(minimumReleaseId)
+        let runsBuiltIn = currentBundleId.jsEquals(builtInBundleId)
         let errorScope = ErrorScope(
             channel: channel,
             bundleId: currentBundleId,
             updateStrategy: options.updateStrategy,
-            targetBundleId: minimumReleaseId,
+            targetBundleId: builtInBundleId,
             targetReleaseId: nil
         )
         // With the catalog's freshness guard, as ordinary selections, so a
         // leave from an older catalog never joins a current one's staging.
         let targetKey = Self.jsonKey([
-            "LEAVE_CHANNEL", channel, minimumReleaseId,
+            "LEAVE_CHANNEL", channel, builtInBundleId,
             guardParams["catalogId"] ?? NSNull(), guardParams["generation"] ?? NSNull(),
             guardParams["catalogHash"] ?? NSNull(), guardParams["selectionContextHash"] ?? NSNull(),
         ])
@@ -1592,7 +1622,7 @@ final class NativeUpdateChecker {
             "channel": channel,
             "fromBundleId": currentBundleId,
             "fromReleaseId": fromReleaseId ?? NSNull(),
-            "toBundleId": minimumReleaseId,
+            "toBundleId": builtInBundleId,
             "toReleaseId": NSNull(),
             "transitionKind": "USE_BUILTIN",
             "updateStatus": "ROLLBACK",
@@ -1600,14 +1630,14 @@ final class NativeUpdateChecker {
             "updateStrategy": options.updateStrategy.name,
         ])
         return HotUpdaterUpdate(
-            id: minimumReleaseId,
+            id: builtInBundleId,
             releaseId: nil,
             status: .rollback,
             shouldForceUpdate: !runsBuiltIn,
             message: nil,
             rolloutCohortCount: 1000,
             targetCohorts: [],
-            bundleId: minimumReleaseId,
+            bundleId: builtInBundleId,
             transitionKind: "USE_BUILTIN",
             runsCurrentBundle: runsBuiltIn,
             targetKey: targetKey,

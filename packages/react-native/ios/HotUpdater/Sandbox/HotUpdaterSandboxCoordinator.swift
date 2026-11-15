@@ -753,8 +753,9 @@ final class HotUpdaterSandboxCoordinator {
         guard let hasBundle = await attempt(operationId, target, .preflight, {
             try await self.host.preflight(channel: target)
         }) else { return }
-        // A preflight that found nothing leaves everything downloaded in place.
-        if !hasBundle && !toDefault {
+        // A preflight that found nothing leaves everything downloaded in place,
+        // on the build's own channel too: Reset is what opens the built-in bundle.
+        if !hasBundle {
             await fail(operationId, target, .preflight, .noBundle)
             return
         }
@@ -767,13 +768,14 @@ final class HotUpdaterSandboxCoordinator {
                 return
             }
         }
-        if await refuseInSession(operationId, target, .check) { return }
-        setPhase(.working(operationId: operationId, target: target, step: .check, progress: nil))
-        guard let staged = await attempt(operationId, target, .check, {
-            try await self.host.checkAndStage(channel: target) { progress in
-                Task { @MainActor in self.reportProgress(operationId, target, progress) }
-            }
-        }) else { return }
+        guard var staged = await checkAndStage(operationId, target) else { return }
+        // A check from the running app replaced the selection while it staged:
+        // the app keeps its floor, so the same scope can disagree once. One
+        // fresh check and staging, then the failure shows.
+        if case .superseded = staged {
+            guard let fresh = await checkAndStage(operationId, target) else { return }
+            staged = fresh
+        }
         switch staged {
         case .superseded:
             await fail(operationId, target, .check, .superseded)
@@ -793,6 +795,17 @@ final class HotUpdaterSandboxCoordinator {
             await shelve(bundleId: bundleId, channel: target, message: message, releaseId: releaseId)
             await finish(operationId)
         }
+    }
+
+    /// The SDK's check and staging of `target`; nil once a failure shows.
+    private func checkAndStage(_ operationId: Int, _ target: String) async -> HotUpdaterSandboxStaged? {
+        if await refuseInSession(operationId, target, .check) { return nil }
+        setPhase(.working(operationId: operationId, target: target, step: .check, progress: nil))
+        return await attempt(operationId, target, .check, {
+            try await self.host.checkAndStage(channel: target) { progress in
+                Task { @MainActor in self.reportProgress(operationId, target, progress) }
+            }
+        })
     }
 
     /// Keeps a copy of what the switch just installed, off the main thread. Main's

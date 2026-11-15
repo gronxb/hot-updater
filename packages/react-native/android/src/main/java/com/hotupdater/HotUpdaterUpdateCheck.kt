@@ -95,8 +95,14 @@ internal class NativeCheckRequest(
     val requestHeaders: Map<String, String> = emptyMap(),
     val channel: String? = null,
     val requestTimeoutMillis: Long = 5_000,
+    /**
+     * Selects with no floor: a Release whose bundle is older than the
+     * built-in one is eligible. Only the sandbox's explicit channel open sets
+     * it; the built-in bundle's ID stays what it is, and nothing persists it.
+     */
+    val allowsOlderThanBuiltIn: Boolean = false,
 ) {
-    constructor(instance: HotUpdaterOptions, check: HotUpdaterCheckOptions) : this(
+    constructor(instance: HotUpdaterOptions, check: HotUpdaterCheckOptions, allowsOlderThanBuiltIn: Boolean = false) : this(
         baseURL = instance.baseURL,
         updateStrategy = check.updateStrategy,
         requestHeaders =
@@ -109,6 +115,7 @@ internal class NativeCheckRequest(
             },
         channel = check.channel,
         requestTimeoutMillis = check.requestTimeoutMillis ?: instance.requestTimeoutMillis,
+        allowsOlderThanBuiltIn = allowsOlderThanBuiltIn,
     )
 }
 
