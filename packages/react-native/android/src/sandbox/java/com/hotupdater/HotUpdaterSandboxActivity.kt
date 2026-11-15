@@ -1,6 +1,7 @@
 package com.hotupdater
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.app.ActivityOptions
 import android.content.ComponentName
 import android.content.Context
@@ -390,7 +391,7 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
         HotUpdaterSandboxProcess.dropPendingCover(this)
         // The app is beneath: running, or one a process death left in the task,
         // which starts now on what's selected.
-        if (HotUpdaterSandboxStart.opensBeneath(hostBeneath, switched, coversHost, isTaskRoot)) {
+        if (HotUpdaterSandboxStart.opensBeneath(hostBeneath, switched, coversHost, hostUnderScreen())) {
             finish()
             return
         }
@@ -404,6 +405,19 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
                 it.hasExtra(EXTRA_OVER_APP) ||
                 it.hasExtra(EXTRA_LINK)
         } ?: Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+
+    /** Whether this screen's task holds the app's activity under it and nothing else, as the system reads the task. */
+    private fun hostUnderScreen(): Boolean {
+        val host = hostComponent() ?: return false
+        // An alias's activity runs as the activity it targets.
+        val hostClass =
+            runCatching { packageManager.getActivityInfo(host, 0) }.getOrNull()?.let { it.targetActivity ?: it.name } ?: return false
+        val tasks = getSystemService(ActivityManager::class.java)?.appTasks.orEmpty()
+
+        @Suppress("DEPRECATION")
+        val task = tasks.firstNotNullOfOrNull { runCatching { it.taskInfo }.getOrNull()?.takeIf { info -> info.persistentId == taskId } }
+        return task != null && HotUpdaterSandboxStart.holdsHostUnderScreen(task.baseActivity?.className, task.numActivities, hostClass)
+    }
 
     /** The app's activity, as the manifest names it. */
     private fun hostComponent(): ComponentName? =

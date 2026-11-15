@@ -141,15 +141,31 @@ class HotUpdaterSandboxStartTest {
 
     @Test
     fun `opening the app over its activity a process death left only closes the screen`() {
-        // A link over the app after its process died: the task still holds its activity.
-        assertEquals(true, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = true, coversHost = false, taskRoot = false))
-        assertEquals(true, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = false, coversHost = false, taskRoot = false))
+        assertEquals(true, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = true, coversHost = false, hostUnderScreen = true))
+        assertEquals(true, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = false, coversHost = false, hostUnderScreen = true))
         // As before: over the running app with nothing switched, or the app this screen started before a death.
-        assertEquals(true, HotUpdaterSandboxStart.opensBeneath(hostRunning = true, switched = false, coversHost = false, taskRoot = false))
-        assertEquals(true, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = true, coversHost = true, taskRoot = false))
-        // Nothing beneath: the app's activity starts.
-        assertEquals(false, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = true, coversHost = false, taskRoot = true))
-        assertEquals(false, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = false, coversHost = false, taskRoot = true))
+        assertEquals(true, HotUpdaterSandboxStart.opensBeneath(hostRunning = true, switched = false, coversHost = false, hostUnderScreen = false))
+        assertEquals(true, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = true, coversHost = true, hostUnderScreen = false))
+        // Not the app beneath: its activity starts.
+        assertEquals(false, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = true, coversHost = false, hostUnderScreen = false))
+        assertEquals(false, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = false, coversHost = false, hostUnderScreen = false))
+    }
+
+    @Test
+    fun `only the app's activity alone under the screen counts as the app beneath`() {
+        val host = "com.example.MainActivity"
+        val screen = "com.hotupdater.HotUpdaterSandboxActivity"
+        // [app, left by a process death; screen]
+        assertEquals(true, HotUpdaterSandboxStart.holdsHostUnderScreen(host, 2, host))
+        // [Home; the camera Scan started in its task; the link's screen]
+        assertEquals(false, HotUpdaterSandboxStart.holdsHostUnderScreen(screen, 3, host))
+        // [screen; screen]
+        assertEquals(false, HotUpdaterSandboxStart.holdsHostUnderScreen(screen, 2, host))
+        // [app; camera; screen]: closing the screen would show the camera.
+        assertEquals(false, HotUpdaterSandboxStart.holdsHostUnderScreen(host, 3, host))
+        // The screen alone, or a task that can't be read.
+        assertEquals(false, HotUpdaterSandboxStart.holdsHostUnderScreen(screen, 1, host))
+        assertEquals(false, HotUpdaterSandboxStart.holdsHostUnderScreen(null, 0, host))
     }
 
     /** What the SDK's restart builds, pinned against what the platform defines it to set. */
