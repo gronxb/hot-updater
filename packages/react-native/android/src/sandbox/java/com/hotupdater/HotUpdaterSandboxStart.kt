@@ -113,7 +113,7 @@ internal object HotUpdaterSandboxStart {
         baseActivity: String?,
         numActivities: Int,
         host: String,
-    ): Boolean = numActivities >= 2 // RED seam
+    ): Boolean = numActivities == 2 && baseActivity == host
 
     /** The link an intent holds: its data, or, with none, the one a move to a task of its own carried. */
     fun linkOf(
