@@ -1029,6 +1029,89 @@ describe("lanes and a comment job", () => {
     });
   });
 
+  it("refuse a kept TestFlight result the store stopped offering before a Simulator re-run, and deploy the Simulator", async () => {
+    vi.useFakeTimers({ now: Date.parse("2026-11-15T00:00:00Z") });
+    try {
+      const server = fakeServer({ failing: ["simulator"] });
+      const github = fakeGitHub();
+      const [android, , , firstDeploy] = await runLanes(server, github);
+      expect(firstDeploy!.error).not.toBeNull();
+      const testflight = server.register("ipa", "pr-12");
+      const storeExpiresAtMs = Date.now() + 24 * 60 * 60 * 1000;
+      // The store lane's result, kept from the first attempt.
+      const storeLane: JobRun = {
+        name: "ios-adhoc",
+        error: null,
+        outputs: {
+          result: JSON.stringify(
+            laneResult({
+              channel: "pr-12",
+              commitSha: event.commitSha,
+              previews: [
+                {
+                  platform: "ios",
+                  scheme: "adhoc",
+                  target: {
+                    fingerprintHash: FINGERPRINTS.ios,
+                    appVersion: null,
+                  },
+                  nativeBuild: {
+                    id: testflight.id,
+                    artifactKind: "ipa",
+                    fileName: "App.ipa",
+                  },
+                  built: true,
+                  bundleId: null,
+                  store: {
+                    destination: "testflight",
+                    url: "https://appstoreconnect.apple.com/apps/1/testflight/ios",
+                    version: "1.7.0 (66)",
+                    state: "ready",
+                    expiresAtMs: storeExpiresAtMs,
+                    reusable: true,
+                  },
+                },
+              ],
+              failed: [],
+            }),
+          ),
+        },
+      };
+      // The result keeps when the store stops offering the build.
+      expect(
+        JSON.parse(storeLane.outputs["result"]!).previews[0].store.expiresAtMs,
+      ).toBe(storeExpiresAtMs);
+
+      vi.setSystemTime(storeExpiresAtMs);
+      server.failing.length = 0;
+      const simulator = await runJob(server, github, LANES[2]!);
+      const redeploy = await runJob(
+        server,
+        github,
+        iosDeploy([storeLane, simulator]),
+      );
+      await runComment(
+        github,
+        resultsOf([android!, storeLane, simulator, redeploy]),
+      );
+
+      const result = JSON.parse(redeploy.outputs["result"]!);
+      expect(
+        result.previews.map(({ scheme }: { scheme: string }) => scheme),
+      ).toEqual(["simulator"]);
+      expect(result.failed).toEqual([
+        { platform: "ios", scheme: "adhoc", deployed: false },
+      ]);
+      const body = github.comment()!;
+      expect(body).toContain("**iOS** (`adhoc`) failed on this run");
+      expect(body).not.toContain("TestFlight");
+      expect(body).not.toContain(testflight.id);
+      expect(body).toContain("- **iOS Simulator**:");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keep the QR codes the earlier comment shows when the new comment fails to land", async () => {
     const server = fakeServer();
     const github = fakeGitHub();

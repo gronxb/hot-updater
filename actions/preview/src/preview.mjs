@@ -563,6 +563,14 @@ const resolveScheme = async (deps, inputs, platform, scheme) => {
         `The ${scheme} build ${reported.nativeBuild.id}'s profile expired at ${new Date(expiresAtMs).toISOString()}, after its job reported it, and this job doesn't build: run that job again.`,
       );
     }
+    // A store build the store stopped offering since, as a result kept for a
+    // re-run can be; one with no expiry stays as it was reported.
+    const storeExpiresAtMs = reported.store?.expiresAtMs ?? null;
+    if (storeExpiresAtMs !== null && storeExpiresAtMs <= Date.now()) {
+      throw new Error(
+        `The ${scheme} build ${id} expired on its store at ${new Date(storeExpiresAtMs).toISOString()}, after its job reported it, and this job doesn't build: run that job again.`,
+      );
+    }
     await refreshFingerprint(deps, reported.target);
     return {
       scheme,
@@ -1192,7 +1200,9 @@ const publicPreview = ({
           url: store.url ?? null,
           version: store.version ?? null,
           state: store.state ?? null,
-          expiresAtMs: null,
+          // When the store stops offering it, which a later job checks.
+          expiresAtMs:
+            typeof store.expiresAtMs === "number" ? store.expiresAtMs : null,
           reusable: true,
         },
       }
