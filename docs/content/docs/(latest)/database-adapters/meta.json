@@ -9,6 +9,7 @@
     "firestore",
     "postgres",
     "azure",
+    "github",
     "---Your own database---",
     "../custom/database/kysely",
     "../custom/database/drizzle",
