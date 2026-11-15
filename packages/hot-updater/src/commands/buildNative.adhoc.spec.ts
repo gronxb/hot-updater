@@ -6,6 +6,7 @@ const {
   log,
   markIosDevicesInBuild,
   readIpaDevices,
+  readIpaExpiry,
   registerApprovedDevices,
   registerNativeBuild,
   remember,
@@ -21,6 +22,7 @@ const {
   },
   markIosDevicesInBuild: vi.fn(async (_input: unknown) => {}),
   readIpaDevices: vi.fn(async (): Promise<readonly string[] | null> => []),
+  readIpaExpiry: vi.fn(async (_path: string): Promise<number | null> => null),
   registerApprovedDevices: vi.fn(),
   registerNativeBuild: vi.fn(async () => ({
     id: "0190a1b2-c3d4-7000-8000-00000000b001",
@@ -118,6 +120,7 @@ vi.mock("../utils/native/registerApprovedDevices", async (importOriginal) => ({
 }));
 vi.mock("../utils/native/reportIpaDevices", () => ({
   readIpaDevices,
+  readIpaExpiry,
   reportIpaDevices: vi.fn(async () => {}),
 }));
 // A server over a database it closes when disposed, as postgres() does: a
@@ -178,6 +181,7 @@ describe("native-build ios of an ad hoc scheme with the device registry", () => 
 
   it("exports with the devices the registry expects, and records them on the tracked build", async () => {
     readIpaDevices.mockResolvedValue([PHONE]);
+    readIpaExpiry.mockResolvedValue(1_800_000_000_000);
 
     await handleNativeBuildCreate("ios", { scheme: "testers", json: true });
 
@@ -195,6 +199,11 @@ describe("native-build ios of an ad hoc scheme with the device registry", () => 
       String(vi.mocked(console.log).mock.calls.at(-1)?.[0]),
     );
     expect(json.devices).toEqual(REPORT);
+    // When its profile expires, for a job that deploys against it later.
+    expect(json.ipa).toEqual({ expiresAtMs: 1_800_000_000_000 });
+    expect(readIpaExpiry).toHaveBeenCalledWith(
+      expect.stringMatching(/App\.ipa$/),
+    );
   });
 
   it("records the build's devices in the database the config picks for iOS, as the build loaded it", async () => {

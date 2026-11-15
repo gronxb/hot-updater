@@ -151,6 +151,7 @@ describe("a found ad hoc .ipa and Apple's current state", () => {
       reason: null,
       missing: [],
       waiting: [],
+      expiresAtMs: NOW + 1_000,
     });
     expect(apple).not.toHaveBeenCalled();
   });
@@ -236,6 +237,7 @@ describe("a found ad hoc .ipa and Apple's current state", () => {
         reason: null,
         missing: [],
         waiting: [{ name: "Bo's iPad", reason }],
+        expiresAtMs: NOW + 1_000,
       });
     },
   );
@@ -317,6 +319,7 @@ describe("a found ad hoc .ipa and Apple's current state", () => {
           reason: "Apple's devices couldn't be read: No secret asc-api-key.",
         },
       ],
+      expiresAtMs: NOW + 1_000,
     });
   });
 

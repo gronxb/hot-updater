@@ -366,7 +366,9 @@ jobs:
 - **The ios-deploy job** waits for both iOS builds, then deploys the one iOS
   bundle on Linux, against the builds their `result` outputs name
   (`build: false`). It compiles nothing and looks up no other build: a scheme
-  whose job failed or was skipped stays failed. The bundle is newer than both
+  whose job failed or was skipped stays failed, and so does an ad hoc `.ipa`
+  whose profile expired after its job reported it, as a result kept for a
+  re-run can. The bundle is newer than both
   builds, so both run it, also after a re-run of one iOS job, which re-runs
   this one too. Each push deploys one bundle per platform.
 - **The comment job** waits for all of them, then writes the one comment and

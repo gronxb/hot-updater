@@ -18,7 +18,7 @@ const CREDIT = "Preview by [hot-updater](https://hot-updater.dev)";
  * @property {Platform} platform
  * @property {{ fingerprintHash: string | null, appVersion: string | null }} target
  *   What the native build was matched by.
- * @property {{ id: string, artifactKind: ArtifactKind, fileName: string }} nativeBuild
+ * @property {{ id: string, artifactKind: ArtifactKind, fileName: string, expiresAtMs?: number }} nativeBuild
  *   The tracked build, and its artifact's file name.
  * @property {boolean} built Whether this run built and registered the
  *   native build, rather than reusing a registered one.

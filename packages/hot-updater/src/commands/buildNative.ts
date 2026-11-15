@@ -107,6 +107,7 @@ import {
 } from "../utils/native/registerApprovedDevices";
 import {
   readIpaDevices,
+  readIpaExpiry,
   reportIpaDevices,
 } from "../utils/native/reportIpaDevices";
 import {
@@ -955,11 +956,21 @@ const buildNativeInternal = async ({
           });
         }
         if (json) {
+          const ipaPath =
+            platform === "ios" && result.artifactPath?.endsWith(".ipa")
+              ? path.resolve(getCwd(), result.artifactPath)
+              : null;
           console.log(
             JSON.stringify({
               dryRun,
               build: result,
               nativeBuild: registered,
+              // When an ad hoc .ipa's profile expires, for a job that deploys
+              // against the build later; null for a store's .ipa.
+              ipa:
+                ipaPath === null
+                  ? null
+                  : { expiresAtMs: await readIpaExpiry(ipaPath) },
               registration: { skipped: trackingSkipped },
               // What the build did with the iOS device registry, by name.
               devices: deviceRegistry?.report ?? null,

@@ -40,6 +40,7 @@ import { parseJsonOutput } from "./cli.mjs";
  * @property {{ name: string, reason: string }[]} waiting The devices it lacks
  *   that a new build wouldn't add either, with why: disabled or refused at
  *   Apple, another account's, or Apple's state that couldn't be read.
+ * @property {number | null} [expiresAtMs] When the `.ipa`'s profile expires.
  *
  * @typedef {BuildTarget & { platform: Platform, channel: string, nativeBuild: NativeBuildRow | null, downloadUrl?: string | null, store?: StoreStatus | null, iosDevices?: IosDevices, sandbox?: { appId: string, urlScheme: string, channel: string | null } }} NativeBuildFindResult
  *   What `native-build find --json` prints. `channel` is the one a new build

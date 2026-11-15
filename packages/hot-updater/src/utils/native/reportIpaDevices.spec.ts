@@ -14,7 +14,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   p: { log },
 }));
 
-import { reportIpaDevices } from "./reportIpaDevices";
+import { readIpaExpiry, reportIpaDevices } from "./reportIpaDevices";
 
 const PHONE = "00008030-001C2D3E4F5A6B7C";
 const LATER_PHONE = "00008110-000A1B2C3D4E5F60";
@@ -185,4 +185,36 @@ describe("reportIpaDevices", () => {
       expect(process.exitCode).toBe(1);
     },
   );
+});
+
+describe("readIpaExpiry", () => {
+  const profile = (body: string) =>
+    `\u0000<?xml version="1.0"?><plist version="1.0"><dict>${body}</dict></plist>\u0000`;
+  const expiring = "<key>ExpirationDate</key><date>2027-03-04T05:06:07Z</date>";
+
+  it("reads when an ad hoc .ipa's embedded profile expires", async () => {
+    const file = await writeIpa(
+      "adhoc.ipa",
+      profile(
+        `${expiring}<key>ProvisionedDevices</key><array><string>${PHONE}</string></array>`,
+      ),
+    );
+
+    await expect(readIpaExpiry(file)).resolves.toBe(
+      Date.parse("2027-03-04T05:06:07Z"),
+    );
+  });
+
+  it("gives none for a store's .ipa, which no device list expires", async () => {
+    const file = await writeIpa("store.ipa", profile(expiring));
+
+    await expect(readIpaExpiry(file)).resolves.toBeNull();
+  });
+
+  it("gives none for an .ipa it can't read", async () => {
+    const file = path.join(directory, "broken.ipa");
+    await fs.writeFile(file, "not a zip");
+
+    await expect(readIpaExpiry(file)).resolves.toBeNull();
+  });
 });

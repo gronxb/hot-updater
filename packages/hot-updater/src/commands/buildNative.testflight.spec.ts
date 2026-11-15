@@ -111,6 +111,7 @@ vi.mock("../utils/native/sandbox", async (importOriginal) => ({
   assertBuiltArtifact: vi.fn(async () => null),
 }));
 vi.mock("../utils/native/reportIpaDevices", () => ({
+  readIpaExpiry: vi.fn(async () => null),
   reportIpaDevices: vi.fn(async () => {}),
 }));
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));

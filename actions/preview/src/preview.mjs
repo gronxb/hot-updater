@@ -268,6 +268,8 @@ export const parseInputs = (env, event) => {
  * @property {{ channel: string, fingerprintHash: string | null, appVersion: string | null }} build
  * @property {NativeBuildRow | null} nativeBuild
  * @property {{ skipped: "debug" | "dry-run" | null }} [registration]
+ * @property {{ expiresAtMs: number | null } | null} [ipa] When an ad hoc
+ *   `.ipa`'s profile expires; null for any other artifact.
  */
 
 /**
@@ -520,6 +522,8 @@ const sandboxOf = (
  * @property {boolean} built Whether this run built it.
  * @property {{ appId: string, urlScheme: string, channel: string | null } | undefined} sandbox
  *   `find`'s word on a sandbox scheme.
+ * @property {number | null} [expiresAtMs] When an ad hoc `.ipa`'s profile
+ *   expires, which a later job with `build: false` checks.
  * @property {PlatformPreview & { scheme?: string }} [reported] With
  *   `build: false`, the build its lane reported, which stands for all of it.
  */
@@ -540,6 +544,13 @@ const resolveScheme = async (deps, inputs, platform, scheme) => {
     if (reported === undefined) {
       throw new Error(
         `The job that builds ${scheme} reported no ${platform} build, and this job doesn't build: see that job.`,
+      );
+    }
+    // A result kept from an earlier attempt can outlive its .ipa's profile.
+    const { expiresAtMs } = reported.nativeBuild;
+    if (expiresAtMs !== undefined && expiresAtMs <= Date.now()) {
+      throw new Error(
+        `The ${scheme} build ${reported.nativeBuild.id}'s profile expired at ${new Date(expiresAtMs).toISOString()}, after its job reported it, and this job doesn't build: run that job again.`,
       );
     }
     await refreshFingerprint(deps, reported.target);
@@ -586,24 +597,29 @@ const resolveScheme = async (deps, inputs, platform, scheme) => {
 const previewOf = (
   inputs,
   platform,
-  { build, target, built, sandbox, reported },
+  { build, target, built, sandbox, reported, expiresAtMs },
   bundleId,
 ) => {
   if (reported !== undefined) {
     return {
       ...reported,
       bundleId,
-      installUrl: nativeBuildInstallUrl(
-        inputs.consoleUrl,
-        reported.nativeBuild,
-        simulatorOpens(reported, inputs.channel),
-      ),
+      // A store build installs from its store, as the store path says.
+      installUrl: reported.store
+        ? (reported.store.url ??
+          nativeBuildInstallUrl(inputs.consoleUrl, reported.nativeBuild))
+        : nativeBuildInstallUrl(
+            inputs.consoleUrl,
+            reported.nativeBuild,
+            simulatorOpens(reported, inputs.channel),
+          ),
     };
   }
   const nativeBuild = {
     id: build.id,
     artifactKind: build.artifact_kind,
     fileName: artifactFileName(build.artifact_storage_uri),
+    ...(typeof expiresAtMs === "number" ? { expiresAtMs } : {}),
   };
   const sandboxPreview = sandboxOf(
     inputs,
@@ -850,7 +866,7 @@ const assertEmbedsChannel = (platform, embedded, channel) => {
  * @param {Deps} deps
  * @param {Inputs} inputs
  * @param {{ platform: Platform, scheme: string, found: import("../../shared/nativeBuild.mjs").NativeBuildFindResult }} options
- * @returns {Promise<{ build: NativeBuildRow, target: import("../../shared/nativeBuild.mjs").BuildTarget, built: boolean }>}
+ * @returns {Promise<{ build: NativeBuildRow, target: import("../../shared/nativeBuild.mjs").BuildTarget, built: boolean, expiresAtMs: number | null }>}
  */
 const resolveNativeBuild = async (
   deps,
@@ -864,6 +880,8 @@ const resolveNativeBuild = async (
   };
   /** @type {NativeBuildRow} */
   let build;
+  /** When an ad hoc `.ipa`'s profile expires, as the CLI read it. */
+  let expiresAtMs = null;
   const devices = found.iosDevices;
   if (devices && devices.waiting.length > 0) {
     deps.log.notice(
@@ -918,6 +936,7 @@ const resolveNativeBuild = async (
       appVersion: registered.build.appVersion,
     };
     build = registered.nativeBuild;
+    expiresAtMs = registered.ipa?.expiresAtMs ?? null;
   } else {
     deps.log.info(
       found.sandbox?.channel && found.sandbox.channel !== inputs.channel
@@ -925,10 +944,11 @@ const resolveNativeBuild = async (
         : `Reusing ${platform} native build ${found.nativeBuild.id} (${describeTarget(found)}).`,
     );
     build = found.nativeBuild;
+    expiresAtMs = devices?.expiresAtMs ?? null;
     await refreshFingerprint(deps, found);
   }
 
-  return { build, target, built };
+  return { build, target, built, expiresAtMs };
 };
 /**
  * @param {Deps} deps
@@ -1149,6 +1169,9 @@ const publicPreview = ({
     id: nativeBuild.id,
     artifactKind: nativeBuild.artifactKind,
     fileName: nativeBuild.fileName,
+    ...(typeof nativeBuild.expiresAtMs === "number"
+      ? { expiresAtMs: nativeBuild.expiresAtMs }
+      : {}),
   },
   built: Boolean(built),
   bundleId: bundleId ?? null,
@@ -1275,19 +1298,13 @@ export const runComment = async (deps, inputs, event) => {
       }
     }
   }
-  const previews = [...builds.values()];
   const failed = [...failures.values()];
-  for (const preview of previews) {
-    if (preview.bundleId !== null) continue;
-    const deployed = previews.find(
-      ({ platform, target, bundleId }) =>
-        bundleId !== null &&
-        platform === preview.platform &&
-        target.fingerprintHash === preview.target.fingerprintHash &&
-        target.appVersion === preview.target.appVersion,
-    );
-    preview.bundleId = deployed?.bundleId ?? null;
-  }
+  // A build no job deployed to, whose scheme failed on this run, such as one
+  // its deploy job refused, isn't shown as installable.
+  const previews = [...builds.values()].filter(
+    ({ platform, scheme, bundleId }) =>
+      bundleId !== null || !failures.has(`${platform}:${scheme ?? ""}`),
+  );
   // A build no job deployed a bundle to doesn't count.
   if (
     previews.every(({ bundleId }) => bundleId === null) &&

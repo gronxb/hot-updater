@@ -157,6 +157,7 @@ describe("a scheme whose build adds no registry devices", () => {
             reason: "the scheme doesn't export with release-testing",
           },
         ],
+        expiresAtMs: null,
       });
     }
     expect(listAscDevices).not.toHaveBeenCalled();

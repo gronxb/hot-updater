@@ -40,7 +40,12 @@ type Build = {
   channel: string;
   fingerprintHash: string;
   minBundleId: string;
+  /** When an ad hoc .ipa's profile expires. */
+  expiresAtMs?: number;
 };
+
+/** How long a new ad hoc profile lasts in the fake: a year, as Apple's do. */
+const PROFILE_MS = 365 * 24 * 60 * 60 * 1000;
 
 const idOf = (n: number) =>
   `019a0000-0000-7000-8000-${String(n).padStart(12, "0")}`;
@@ -114,6 +119,7 @@ const fakeServer = ({
                         reason: null,
                         missing: [],
                         waiting: [],
+                        expiresAtMs: found.expiresAtMs ?? null,
                       },
                 }
               : {}),
@@ -139,6 +145,9 @@ const fakeServer = ({
           channel: flag("--channel")!,
           fingerprintHash: FINGERPRINTS[scheme.platform],
           minBundleId: idOf(++clock),
+          ...(scheme.kind === "ipa"
+            ? { expiresAtMs: Date.now() + PROFILE_MS }
+            : {}),
         };
         builds.push(build);
         return {
@@ -150,6 +159,10 @@ const fakeServer = ({
               appVersion: null,
             },
             nativeBuild: row(build),
+            ipa:
+              build.expiresAtMs === undefined
+                ? null
+                : { expiresAtMs: build.expiresAtMs },
             registration: { skipped: null },
           }),
         };
@@ -680,6 +693,126 @@ describe("lanes and a comment job", () => {
     const body = github.comment()!;
     expect(body).not.toContain(newer.id);
     expect(body.match(/^\| iOS \|/gm)).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      "the store's link",
+      "https://appstoreconnect.apple.com/apps/1/testflight/ios",
+    ],
+    ["the build's Console page when the store gave none", null],
+  ])("give a reported store build's install URL as %s", async (_, storeUrl) => {
+    const server = fakeServer();
+    const github = fakeGitHub();
+    const simulator = await runJob(server, github, LANES[2]!);
+    const testflight = server.register("ipa", "pr-12");
+    // The store lane's result: a TestFlight build with no bundle yet.
+    const storeLane: JobRun = {
+      name: "ios-adhoc",
+      error: null,
+      outputs: {
+        result: JSON.stringify(
+          laneResult({
+            channel: "pr-12",
+            commitSha: event.commitSha,
+            previews: [
+              {
+                platform: "ios",
+                scheme: "adhoc",
+                target: { fingerprintHash: FINGERPRINTS.ios, appVersion: null },
+                nativeBuild: {
+                  id: testflight.id,
+                  artifactKind: "ipa",
+                  fileName: "App.ipa",
+                },
+                built: true,
+                bundleId: null,
+                store: {
+                  destination: "testflight",
+                  url: storeUrl,
+                  version: "1.7.0 (66)",
+                  state: "ready",
+                },
+              },
+            ],
+            failed: [],
+          }),
+        ),
+      },
+    };
+
+    const before = server.calls.length;
+    const deploy = await runJob(
+      server,
+      github,
+      iosDeploy([storeLane, simulator]),
+    );
+
+    expect(deploy.error).toBeNull();
+    const expected = storeUrl ?? `${CONSOLE}/native-builds/${testflight.id}`;
+    const [store] = JSON.parse(deploy.outputs["previews"]!);
+    expect(store.nativeBuild.id).toBe(testflight.id);
+    expect(store.installUrl).toBe(expected);
+    expect(deploy.outputs["ios-install-url"]).toBe(expected);
+    // No store command, lookup, or build in the deploy job.
+    expect(
+      server.calls
+        .slice(before)
+        .filter((call) => call.startsWith("native-build ")),
+    ).toEqual([]);
+  });
+
+  it("refuse a kept ad hoc result whose profile expired before a Simulator re-run, and deploy the Simulator", async () => {
+    vi.useFakeTimers({ now: Date.parse("2026-11-15T00:00:00Z") });
+    try {
+      const server = fakeServer({ failing: ["simulator"] });
+      const github = fakeGitHub();
+      const [android, adhoc] = await runLanes(server, github);
+      const ipa = server.builds.find(({ kind }) => kind === "ipa")!;
+      expect(
+        JSON.parse(adhoc!.outputs["result"]!).previews[0].nativeBuild
+          .expiresAtMs,
+      ).toBe(ipa.expiresAtMs);
+
+      // The profile lapses before someone re-runs the failed jobs.
+      vi.setSystemTime(ipa.expiresAtMs! + 1);
+      server.failing.length = 0;
+      const iosBefore = server.releases.filter(
+        ({ platform }) => platform === "ios",
+      ).length;
+      const simulator = await runJob(server, github, LANES[2]!);
+      const redeploy = await runJob(
+        server,
+        github,
+        iosDeploy([adhoc!, simulator]),
+      );
+      await runComment(
+        github,
+        resultsOf([android!, adhoc!, simulator, redeploy]),
+      );
+
+      // One deploy, for the Simulator alone, and no build or lookup for the
+      // .ipa.
+      expect(
+        server.releases.filter(({ platform }) => platform === "ios"),
+      ).toHaveLength(iosBefore + 1);
+      const result = JSON.parse(redeploy.outputs["result"]!);
+      expect(
+        result.previews.map(({ scheme }: { scheme: string }) => scheme),
+      ).toEqual(["simulator"]);
+      expect(result.failed).toEqual([
+        { platform: "ios", scheme: "adhoc", deployed: false },
+      ]);
+      const body = github.comment()!;
+      expect(body).toContain(
+        `**iOS** (\`adhoc\`) failed on this run: [see the logs](${RUN}).`,
+      );
+      expect(body).not.toContain("Install on iPhone");
+      expect(body).not.toContain(ipa.id);
+      expect(body).toContain("- **iOS Simulator**:");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keep the QR codes the earlier comment shows when the new comment fails to land", async () => {
