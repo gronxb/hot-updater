@@ -2091,7 +2091,7 @@ struct HotUpdaterSandboxScreenStateTests {
             return
         }
         #expect(failure == .inStoredSession)
-        #expect(HotUpdaterSandboxQuestion(phase: fixture.coordinator.state.phase, isOverApp: true)?.accept == "Back")
+        #expect(HotUpdaterSandboxQuestion(phase: fixture.coordinator.state.phase, isOverApp: true, downloaded: [])?.accept == "Back")
         #expect(fixture.host.calls.isEmpty)
         fixture.coordinator.retry()
         #expect(fixture.host.devExits == 1)
@@ -2680,8 +2680,8 @@ struct HotUpdaterSandboxHomeModelTests {
     @Test
     func aLinkSaysItReplacesTheRunningBundleOnlyOverTheApp() {
         let link = HotUpdaterSandboxLink(url: "hu-sandbox-app://hot-updater/preview?channel=pr-1&fingerprint=fp")!
-        let over = HotUpdaterSandboxQuestion(phase: .confirming(link), isOverApp: true)
-        let before = HotUpdaterSandboxQuestion(phase: .confirming(link), isOverApp: false)
+        let over = HotUpdaterSandboxQuestion(phase: .confirming(link), isOverApp: true, downloaded: [])
+        let before = HotUpdaterSandboxQuestion(phase: .confirming(link), isOverApp: false, downloaded: [])
         #expect(over?.message == "This replaces the running bundle. Downloaded bundles stay listed.")
         #expect(before?.message == HotUpdaterSandboxHomeModel.switchNote)
         // It opens the channel's latest bundle, and says so.
@@ -2692,7 +2692,7 @@ struct HotUpdaterSandboxHomeModelTests {
     @Test
     func anAndroidLinkSaysWhichQrToScan() {
         let android = HotUpdaterSandboxLink(url: "hu-sandbox-app://hot-updater/preview?channel=pr-12&fingerprint=fp&platform=android")!
-        let question = HotUpdaterSandboxQuestion(phase: .refused(.otherPlatform(link: android)), isOverApp: false)
+        let question = HotUpdaterSandboxQuestion(phase: .refused(.otherPlatform(link: android)), isOverApp: false, downloaded: [])
         #expect(question?.title == "This QR is for Android")
         #expect(question?.message == "Scan the iPhone QR code for pr-12.")
         #expect(question?.accept == "Done")
@@ -2704,10 +2704,40 @@ struct HotUpdaterSandboxHomeModelTests {
         let link = HotUpdaterSandboxLink(url: "hu-sandbox-app://hot-updater/preview?channel=pr-12&fingerprint=fp")!
         let question = HotUpdaterSandboxQuestion(
             phase: .refused(.otherFingerprint(link: link, buildFingerprintHash: "abc")),
-            isOverApp: false
+            isOverApp: false,
+            downloaded: []
         )
         #expect(question?.title == "pr-12 needs another build")
         #expect(question?.message == "Its native code differs from this build. Install the sandbox build for that fingerprint.")
+    }
+
+    @Test
+    func aFailureNamesTheSelectedBundleAsTheDownloadedListDoes() {
+        let selection = HotUpdaterSandboxSelection(
+            channel: "qa-windows",
+            defaultChannel: "production",
+            bundleId: "01a1deed-0000-7000-8000-000000000001",
+            isBuiltIn: false
+        )
+        let phase = HotUpdaterSandboxPhase.failed(operationId: 1, target: "pr-2", step: .check, failure: .noBundle, selection: selection)
+        // The row lists the release's ID, which HotUpdater.getBundleId() reports.
+        let entry = HotUpdaterSandboxShelfEntry(
+            bundleId: "01a1deed-0000-7000-8000-000000000001",
+            channel: "qa-windows",
+            message: nil,
+            isolationKey: "key",
+            downloadedAtMs: 0,
+            releaseId: "01a1def0-0000-7000-8000-0000a497fa61"
+        )
+        #expect(
+            HotUpdaterSandboxQuestion(phase: phase, isOverApp: true, downloaded: [entry])?.message
+                == "pr-2 has no bundle for this build.\n\nSelected now: qa-windows, bundle 01a1def0-0000-7000-8000-0000a497fa61."
+        )
+        // A bundle the list doesn't hold keeps its own ID.
+        #expect(
+            HotUpdaterSandboxQuestion(phase: phase, isOverApp: true, downloaded: [])?.message
+                == "pr-2 has no bundle for this build.\n\nSelected now: qa-windows, bundle 01a1deed-0000-7000-8000-000000000001."
+        )
     }
 
     @Test

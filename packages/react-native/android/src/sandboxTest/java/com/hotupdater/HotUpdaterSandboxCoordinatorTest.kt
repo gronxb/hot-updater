@@ -890,7 +890,7 @@ class HotUpdaterSandboxCoordinatorTest {
         fixture.coordinator.switchTo("pr-2")
         val phase = fixture.phase as HotUpdaterSandboxPhase.Failed
         assertEquals(HotUpdaterSandboxFailure.InStoredSession, phase.failure)
-        assertEquals("Back", HotUpdaterSandboxQuestion.of(phase, isOverApp = true)?.accept)
+        assertEquals("Back", HotUpdaterSandboxQuestion.of(phase, isOverApp = true, downloaded = emptyList())?.accept)
         assertTrue(fixture.host.calls.isEmpty())
         fixture.coordinator.retry()
         assertEquals(1, fixture.host.exits)

@@ -156,7 +156,7 @@ private final class HotUpdaterSandboxFallbackScreen: UIViewController {
         let home = HotUpdaterSandboxHomeModel(state: next, isOverApp: isOverApp(), nowMs: Date().timeIntervalSince1970 * 1000)
         open.setTitle(home.bigRow.title, for: .normal)
         open.isEnabled = !home.isBusy
-        ask(HotUpdaterSandboxQuestion(phase: next.phase, isOverApp: isOverApp()))
+        ask(HotUpdaterSandboxQuestion(phase: next.phase, isOverApp: isOverApp(), downloaded: next.downloaded))
     }
 
     @objc private func openTapped() {
