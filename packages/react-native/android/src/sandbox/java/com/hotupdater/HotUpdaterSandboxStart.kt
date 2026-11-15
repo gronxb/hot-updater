@@ -101,7 +101,7 @@ internal object HotUpdaterSandboxStart {
         switched: Boolean,
         coversHost: Boolean,
         taskRoot: Boolean,
-    ): Boolean = (hostRunning && !switched) || (coversHost && !hostRunning) // RED seam
+    ): Boolean = (hostRunning && !switched) || (!hostRunning && (coversHost || !taskRoot))
 
     /** The link an intent holds: its data, or, with none, the one a move to a task of its own carried. */
     fun linkOf(

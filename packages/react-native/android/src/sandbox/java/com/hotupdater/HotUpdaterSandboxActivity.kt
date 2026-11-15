@@ -389,8 +389,8 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
     internal fun openHost(switched: Boolean) {
         firstFrame.withdraw()
         HotUpdaterSandboxProcess.dropPendingCover(this)
-        // The app is beneath: running, or one this screen started that a restore
-        // left with no process, which starts now on what's selected.
+        // The app is beneath: running, or one a process death left in the task,
+        // which starts now on what's selected.
         if (HotUpdaterSandboxStart.opensBeneath(hostBeneath, switched, coversHost, isTaskRoot)) {
             finish()
             return
