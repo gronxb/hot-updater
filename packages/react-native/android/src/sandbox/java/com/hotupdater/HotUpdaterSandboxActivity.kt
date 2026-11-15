@@ -186,7 +186,6 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
         // Recreated: this screen takes over its predecessor's start, which ran or waits, never a new one.
         HotUpdaterSandboxProcess.cover?.takeIf { it.taskId == taskId && coversHost }?.adopt(this)
         handle(intent, savedInstanceState, created = true)
-        if (isFinishing) return
         if (HotUpdaterSandboxProcess.startHandoffTaskId == taskId) {
             HotUpdaterSandboxProcess.startHandoffTaskId = null
             firstFrame.request()
