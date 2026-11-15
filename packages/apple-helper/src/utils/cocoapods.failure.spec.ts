@@ -167,3 +167,49 @@ describe("a failed pod install", () => {
     ]);
   });
 });
+
+// What `bundle install` prints with a Gemfile.lock bundled with Bundler
+// 1.17.2, on Ruby 3.3: the exception, its code frame, then its frames.
+const BUNDLER_GEMS = "/ruby/3.3.10/lib/ruby/gems/3.3.0/gems/bundler-1.17.2";
+const RUBY_ERROR = `${BUNDLER_GEMS}/lib/bundler/shared_helpers.rb:272:in \`search_up': undefined method \`untaint' for an instance of String (NoMethodError)`;
+const FAILING_BUNDLE = `#!/bin/sh
+cat >&2 <<'EOF'
+${RUBY_ERROR}
+
+      current  = File.expand_path(SharedHelpers.pwd).untaint
+                                                    ^^^^^^^^
+${Array.from(
+  { length: 16 },
+  (_, i) =>
+    `\tfrom ${BUNDLER_GEMS}/lib/bundler/shared_helpers.rb:${i}:in \`find_file'`,
+).join("\n")}
+\tfrom /ruby/3.3.10/bin/bundle:25:in \`<main>'
+EOF
+exit 1
+`;
+
+describe("a failed bundle install", () => {
+  it("prints Ruby's error and the command to rerun, without stack frames", async () => {
+    await fs.writeFile(
+      path.join(projectDir, "Gemfile"),
+      "gem 'cocoapods', '>= 1.13'\n",
+    );
+    await fs.writeFile(path.join(binDir, "bundle"), FAILING_BUNDLE, {
+      mode: 0o755,
+    });
+
+    const error = await failPodInstall();
+
+    // native-build prints a BuildFailedError's hint alone, never its stack.
+    expect(error.hint).toBe(
+      [
+        "bundle install exited with code 1.",
+        RUBY_ERROR,
+        "      current  = File.expand_path(SharedHelpers.pwd).untaint",
+        "                                                    ^^^^^^^^",
+        "Run it for its full output:",
+        "cd ios && bundle install",
+      ].join("\n"),
+    );
+  });
+});

@@ -1,6 +1,18 @@
 buildscript {
   // Buildscript is evaluated before everything else so we can't use getExtOrDefault
   def kotlin_version = rootProject.ext.has("kotlinVersion") ? rootProject.ext.get("kotlinVersion") : project.properties["HotUpdater_kotlinVersion"]
+  // The Kotlin Gradle plugin this project applies: a parent's, whose classes load
+  // first, else this classpath's. ext.kotlinVersion only names a version, such as
+  // React Native 0.88's 2.2.0 beside the 2.2.10 its Gradle plugin brings.
+  def kotlinPluginVersion = kotlin_version
+  if (project.hasProperty("hotUpdaterSandbox")) {
+    try {
+      kotlinPluginVersion = project.parent.buildscript.classLoader
+        .loadClass("org.jetbrains.kotlin.gradle.plugin.KotlinPluginWrapperKt")
+        .getKotlinPluginVersion(project)
+    } catch (ClassNotFoundException ignored) {
+    }
+  }
 
   repositories {
     google()
@@ -11,10 +23,11 @@ buildscript {
     classpath "com.android.tools.build:gradle:7.2.1"
     // noinspection DifferentKotlinGradleVersion
     classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-    if (project.hasProperty("hotUpdaterSandbox") && kotlin_version != null && !kotlin_version.toString().startsWith("1.")) {
+    if (project.hasProperty("hotUpdaterSandbox") && kotlinPluginVersion != null && !kotlinPluginVersion.toString().startsWith("1.")) {
       // A sandbox build's screen is Compose. From Kotlin 2.0 its compiler is a Kotlin
-      // Gradle plugin, which only a sandbox build puts on the classpath.
-      classpath "org.jetbrains.kotlin:compose-compiler-gradle-plugin:$kotlin_version"
+      // Gradle plugin of the Kotlin Gradle plugin's own version, which only a
+      // sandbox build puts on the classpath.
+      classpath "org.jetbrains.kotlin:compose-compiler-gradle-plugin:$kotlinPluginVersion"
     }
   }
 }

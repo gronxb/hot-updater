@@ -69,6 +69,42 @@ describe("commandFailedError", () => {
     );
   });
 
+  it("keeps a Ruby exception over its backtrace", () => {
+    // What `bundle install` printed with a Gemfile.lock bundled with Bundler
+    // 1.17.2, on Ruby 3.3: the exception, its code frame, then its frames.
+    const gems = "/ruby/3.3.10/lib/ruby/gems/3.3.0/gems/bundler-1.17.2";
+    const cause = `${gems}/lib/bundler/shared_helpers.rb:272:in \`search_up': undefined method \`untaint' for an instance of String (NoMethodError)`;
+    const all = [
+      cause,
+      "",
+      "      current  = File.expand_path(SharedHelpers.pwd).untaint",
+      "                                                    ^^^^^^^^",
+      ...Array.from(
+        { length: 14 },
+        (_, i) =>
+          `\tfrom ${gems}/lib/bundler/shared_helpers.rb:${i}:in \`find_file'`,
+      ),
+      "\tfrom <internal:/ruby/3.3.10/lib/ruby/3.3.0/rubygems/core_ext/kernel_require.rb>:136:in `require'",
+      "\tfrom /ruby/3.3.10/bin/bundle:25:in `<main>'",
+    ].join("\n");
+    expect(
+      commandFailedError(
+        "bundle install",
+        { exitCode: 1, all },
+        "cd ios && bundle install",
+      ).message,
+    ).toBe(
+      [
+        "bundle install exited with code 1.",
+        cause,
+        "      current  = File.expand_path(SharedHelpers.pwd).untaint",
+        "                                                    ^^^^^^^^",
+        "Run it for its full output:",
+        "cd ios && bundle install",
+      ].join("\n"),
+    );
+  });
+
   it("names the signal that stopped it", async () => {
     const error = commandFailedError(
       "react-native bundle",

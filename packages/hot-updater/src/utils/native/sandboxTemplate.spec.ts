@@ -260,6 +260,22 @@ describe("the sandbox template", () => {
     ).toContain("SIL OPEN FONT LICENSE Version 1.1");
   });
 
+  it("puts the Compose compiler plugin at the loaded Kotlin Gradle plugin's version, whatever ext.kotlinVersion names", () => {
+    const gradle = read("android/build.gradle");
+    // A parent's Kotlin Gradle plugin loads first, such as React Native 0.88's
+    // 2.2.10 beside the template's kotlinVersion = "2.2.0": the plugin says
+    // its own version.
+    expect(gradle).toMatch(
+      /if \(project\.hasProperty\("hotUpdaterSandbox"\)\) \{\s+try \{\s+kotlinPluginVersion = project\.parent\.buildscript\.classLoader\s+\.loadClass\("org\.jetbrains\.kotlin\.gradle\.plugin\.KotlinPluginWrapperKt"\)\s+\.getKotlinPluginVersion\(project\)/u,
+    );
+    expect(gradle).toContain(
+      'classpath "org.jetbrains.kotlin:compose-compiler-gradle-plugin:$kotlinPluginVersion"',
+    );
+    // So no build has to set ext.kotlinVersion for the screen.
+    const script = read("android/src/sandbox/hot-updater-sandbox.gradle");
+    expect(script).not.toContain("kotlinVersion");
+  });
+
   it("replaces HotUpdaterImpl only through what the generator reads", () => {
     const script = read("android/src/sandbox/hot-updater-sandbox.gradle");
     const generator = read(

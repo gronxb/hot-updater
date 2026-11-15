@@ -6,8 +6,8 @@
 
 // Compose 1.7, the last that compiles against compileSdk 34. Before Kotlin 2.0,
 // AGP adds the Compose compiler that matches the Kotlin version; from 2.0,
-// build.gradle applies the Compose compiler plugin, which must be the version
-// of the Kotlin Gradle plugin this build loads.
+// build.gradle applies the Compose compiler plugin, at the version of the Kotlin
+// Gradle plugin this build loads.
 def kotlinPluginVersion = project.ext.hotUpdaterKotlinPluginVersion
 android.buildFeatures.compose = true
 if (kotlinPluginVersion.startsWith("1.")) {
@@ -17,8 +17,6 @@ if (kotlinPluginVersion.startsWith("1.")) {
     throw new GradleException("A sandbox build needs Kotlin 1.9.22 or later for its screen, and this build loads Kotlin ${kotlinPluginVersion}.")
   }
   android.composeOptions.kotlinCompilerExtensionVersion = composeCompiler
-} else if ((rootProject.ext.has("kotlinVersion") ? rootProject.ext.get("kotlinVersion") : project.properties["HotUpdater_kotlinVersion"])?.toString() != kotlinPluginVersion) {
-  throw new GradleException("A sandbox build compiles its screen with the Kotlin Gradle plugin's version, ${kotlinPluginVersion}: set ext.kotlinVersion = \"${kotlinPluginVersion}\" in the root build.gradle.")
 }
 
 dependencies {

@@ -201,10 +201,21 @@ describe("installPodsIfNeeded", () => {
 
   it("reports a failed codegen run instead of running pod install", async () => {
     reactNativeVersion = { major: 0, minor: 88 };
-    vi.mocked(execa).mockRejectedValueOnce(new Error("codegen exploded"));
+    vi.mocked(execa).mockRejectedValueOnce(
+      Object.assign(new Error("Command failed with exit code 1"), {
+        exitCode: 1,
+        all: "codegen exploded",
+      }),
+    );
 
     await expect(installPodsIfNeeded(sourceDir)).rejects.toThrow(
-      /React Native codegen failed\.\ncodegen exploded/,
+      [
+        "React Native codegen exited with code 1.",
+        "codegen exploded",
+        "Run it for its full output:",
+        "node node_modules/react-native/scripts/generate-codegen-artifacts.js -p \\",
+        "  . -o ios -t ios",
+      ].join("\n"),
     );
     expect(vi.mocked(execa)).toHaveBeenCalledTimes(1);
   });

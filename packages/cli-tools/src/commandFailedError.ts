@@ -5,15 +5,16 @@ import { stripVTControlCharacters } from "node:util";
 const OUTPUT_TAIL_LINES = 8;
 /** The lines a failure keeps from the error line on, such as Metro's. */
 const ERROR_LINES = 12;
+/** A frame of a Ruby backtrace, such as Bundler's under its exception. */
+const RUBY_FRAME = /^\s+from \S.*:\d+:in /;
 
 /**
  * The error a build adapter throws when a command it runs, such as
  * `expo export:embed`, fails: its exit code, or the signal that stopped it,
- * then its output, stdout and stderr together, without stack frames: from the
- * last line that starts with `error`, as Metro's and Expo's do, else its last
- * lines. A code above
- * 255 is a Windows NTSTATUS, such as 0xC0000005 for a crash, and prints in
- * hex too. With `rerun`, the command as people run it in the project, it ends
+ * then its output, stdout and stderr together, without Node's or Ruby's stack
+ * frames: from the last line that starts with `error`, as Metro's and Expo's
+ * do, else its last lines. A code above 255 is a Windows NTSTATUS, such as
+ * 0xC0000005 for a crash, and prints in hex too. With `rerun`, the command as people run it in the project, it ends
  * with that one next step. An error that isn't a command's is returned as
  * it is.
  */
@@ -46,7 +47,10 @@ export const commandFailedError = (
       : [stdout, stderr].filter((text) => typeof text === "string").join("\n");
   const lines = stripVTControlCharacters(output)
     .split(/\r?\n/)
-    .filter((line) => line.trim() && !/^\s*at /.test(line));
+    .filter(
+      (line) =>
+        line.trim() && !/^\s*at /.test(line) && !RUBY_FRAME.test(line),
+    );
   const errorLine = lines.findLastIndex((line) => /^\s*error\b/i.test(line));
   const shown =
     errorLine === -1

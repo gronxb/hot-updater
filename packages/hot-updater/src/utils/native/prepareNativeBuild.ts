@@ -51,6 +51,8 @@ export type NativeBuildSchemeOptions = {
   scheme: string;
   /** The config's `secrets` adapter, which the scheme's credentials resolve from. */
   secrets: SecretsAdapter;
+  /** The config's build adapter's name, such as `bare`. */
+  buildAdapter: string;
   androidScheme?: NativeBuildAndroidScheme;
   iosScheme?: NativeBuildIosScheme;
 };
@@ -151,16 +153,21 @@ export async function prepareNativeBuild(
     return null;
   }
 
+  // Created first, so a check refuses what its adapter can't build before
+  // anything is written.
+  const buildAdapter = await config.build({ cwd });
   await options.beforePrebuild?.(
     platform === "ios"
       ? {
           scheme,
           secrets: config.secrets,
+          buildAdapter: buildAdapter.name,
           iosScheme: config.nativeBuild.ios[scheme]!,
         }
       : {
           scheme,
           secrets: config.secrets,
+          buildAdapter: buildAdapter.name,
           androidScheme: config.nativeBuild.android[scheme]!,
         },
   );
@@ -168,7 +175,6 @@ export async function prepareNativeBuild(
   options.preparing?.start();
   // The adapter's prebuild writes the native projects, such as Expo's
   // `expo prebuild`, so it runs before anything reads them.
-  const buildAdapter = await config.build({ cwd });
   await buildAdapter.nativeBuild?.prebuild?.({ platform });
 
   let target: NativeBuildTarget;

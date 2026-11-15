@@ -4,6 +4,7 @@ import path from "path";
 import {
   BuildFailedError,
   BuildLogger,
+  commandFailedError,
   getCwd,
   getReactNativeMetadatas,
   p,
@@ -20,30 +21,29 @@ export interface PodInstallSteps {
   readonly pods: boolean;
 }
 
-/** The last lines of a failed command's output, which say why. */
-const OUTPUT_TAIL_LINES = 12;
-
 /**
- * A failed command's error: the command, then the last lines of its
- * output, stdout and stderr as printed, without execa's full message.
+ * A failed command's error, as `native-build` prints a refusal: why, from its
+ * output without stack frames, then `rerun`, the command run in the project,
+ * as the one next step.
  */
-const commandFailure = (command: string, error: unknown): Error => {
-  const { all, stderr, stdout } = (error ?? {}) as {
-    all?: unknown;
-    stderr?: unknown;
-    stdout?: unknown;
-  };
-  const output = String(
-    all || [stdout, stderr].filter(Boolean).join("\n") || "",
-  ).trimEnd();
-  const tail = output
-    .split("\n")
-    .filter((line) => line.trim())
-    .slice(-OUTPUT_TAIL_LINES)
-    .join("\n");
-  const detail =
-    tail || (error instanceof Error ? error.message : String(error));
-  return new Error(`${command} failed.\n${detail}`, { cause: error });
+const commandFailure = (
+  command: string,
+  error: unknown,
+  rerun: readonly string[],
+): BuildFailedError => {
+  const { message } = commandFailedError(command, error, formatCommand(rerun));
+  return new BuildFailedError(message, {
+    logPath: null,
+    summary: [],
+    hint: message,
+    cause: error,
+  });
+};
+
+/** `command`, run from the project in `directory`. */
+const inDirectory = (directory: string, command: readonly string[]) => {
+  const relative = path.relative(getCwd(), directory);
+  return relative ? ["cd", relative, "&&", ...command] : [...command];
 };
 
 /**
@@ -195,7 +195,11 @@ export const installPodsIfNeeded = async (
       await execa("bundle", ["install"], { cwd: sourceDir, all: true });
     } catch (error) {
       bundleSpinner.error("bundle install failed");
-      throw commandFailure("bundle install", error);
+      throw commandFailure(
+        "bundle install",
+        error,
+        inDirectory(sourceDir, ["bundle", "install"]),
+      );
     }
     bundleSpinner.stop("Ruby gems installed");
   }
@@ -239,25 +243,27 @@ const runReactNativeCodegen = async ({
     force: true,
   });
 
+  const args = [
+    path.join(reactNativePath, "scripts", "generate-codegen-artifacts.js"),
+    "-p",
+    projectRoot,
+    "-o",
+    sourceDir,
+    "-t",
+    "ios",
+  ];
   const spinner = p.spinner();
   spinner.start("Running React Native codegen");
   try {
-    await execa(
-      "node",
-      [
-        path.join(reactNativePath, "scripts", "generate-codegen-artifacts.js"),
-        "-p",
-        projectRoot,
-        "-o",
-        sourceDir,
-        "-t",
-        "ios",
-      ],
-      { cwd: projectRoot, all: true },
-    );
+    await execa("node", args, { cwd: projectRoot, all: true });
   } catch (error) {
     spinner.error("React Native codegen failed");
-    throw commandFailure("React Native codegen", error);
+    throw commandFailure("React Native codegen", error, [
+      "node",
+      ...args.map((arg) =>
+        path.isAbsolute(arg) ? path.relative(projectRoot, arg) || "." : arg,
+      ),
+    ]);
   }
   spinner.stop("React Native codegen done");
 };

@@ -145,6 +145,20 @@ describe("checkSandboxSchemes", () => {
     ]);
   });
 
+  it("takes the one adapter's Android scheme, and warns about its iOS one", async () => {
+    expect(await codes(androidSandbox, "one")).toEqual([]);
+    expect(await checkSandboxSchemes(config(iosSandbox, "one"), root)).toEqual(
+      [
+        expect.objectContaining({
+          type: "warning",
+          platform: "ios",
+          code: "SANDBOX_UNQUALIFIED",
+          message: "Sandbox builds aren't tested with the one build adapter yet.",
+        }),
+      ],
+    );
+  });
+
   it("takes the Expo SDKs sandbox builds ran on, and warns about any other", async () => {
     // Below the minimum, the Expo SDK check reports it instead.
     for (const expo of ["~52.0.49", "~55.0.32", "~57.0.31", "~58.0.22"]) {
