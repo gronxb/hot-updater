@@ -26,6 +26,13 @@ class HotUpdaterSandboxStartTest {
 
     private fun decide(facts: HotUpdaterSandboxStartFacts) = HotUpdaterSandboxStart.decide(facts)
 
+    private fun opensBeneath(
+        hostRunning: Boolean,
+        switched: Boolean,
+        coversHost: Boolean,
+        hostUnderScreen: Boolean,
+    ) = HotUpdaterSandboxStart.opensBeneath(hostRunning, switched, coversHost, hostUnderScreen)
+
     @Test
     fun `the launcher's plain intent shows the screen`() {
         assertEquals(HotUpdaterSandboxStartDecision.SHOW_SCREEN, decide(launcher))
@@ -141,14 +148,14 @@ class HotUpdaterSandboxStartTest {
 
     @Test
     fun `opening the app over its activity a process death left only closes the screen`() {
-        assertEquals(true, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = true, coversHost = false, hostUnderScreen = true))
-        assertEquals(true, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = false, coversHost = false, hostUnderScreen = true))
+        assertEquals(true, opensBeneath(hostRunning = false, switched = true, coversHost = false, hostUnderScreen = true))
+        assertEquals(true, opensBeneath(hostRunning = false, switched = false, coversHost = false, hostUnderScreen = true))
         // As before: over the running app with nothing switched, or the app this screen started before a death.
-        assertEquals(true, HotUpdaterSandboxStart.opensBeneath(hostRunning = true, switched = false, coversHost = false, hostUnderScreen = false))
-        assertEquals(true, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = true, coversHost = true, hostUnderScreen = false))
+        assertEquals(true, opensBeneath(hostRunning = true, switched = false, coversHost = false, hostUnderScreen = false))
+        assertEquals(true, opensBeneath(hostRunning = false, switched = true, coversHost = true, hostUnderScreen = false))
         // Not the app beneath: its activity starts.
-        assertEquals(false, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = true, coversHost = false, hostUnderScreen = false))
-        assertEquals(false, HotUpdaterSandboxStart.opensBeneath(hostRunning = false, switched = false, coversHost = false, hostUnderScreen = false))
+        assertEquals(false, opensBeneath(hostRunning = false, switched = true, coversHost = false, hostUnderScreen = false))
+        assertEquals(false, opensBeneath(hostRunning = false, switched = false, coversHost = false, hostUnderScreen = false))
     }
 
     @Test
