@@ -112,6 +112,33 @@ class HotUpdaterSandboxStartTest {
         assertEquals(kept, HotUpdaterSandboxStart.hostFlags(kept or dropped))
     }
 
+    @Test
+    fun `a link that starts its task moves once, to a task of its own`() {
+        val link = HotUpdaterSandboxStartDecision.SHOW_LINK
+        assertEquals(true, HotUpdaterSandboxStart.movesToOwnTask(link, created = true, taskRoot = true, carried = false))
+        // The start the move made carries the link, and stays.
+        assertEquals(false, HotUpdaterSandboxStart.movesToOwnTask(link, created = true, taskRoot = true, carried = true))
+        // Over a task that runs already, or delivered to the screen in front, its identity isn't the link.
+        assertEquals(false, HotUpdaterSandboxStart.movesToOwnTask(link, created = true, taskRoot = false, carried = false))
+        assertEquals(false, HotUpdaterSandboxStart.movesToOwnTask(link, created = false, taskRoot = true, carried = false))
+        for (other in listOf(HotUpdaterSandboxStartDecision.SHOW_SCREEN, HotUpdaterSandboxStartDecision.OPEN_HOST)) {
+            assertEquals(false, HotUpdaterSandboxStart.movesToOwnTask(other, created = true, taskRoot = true, carried = false))
+        }
+    }
+
+    @Test
+    fun `the moved start asks the link it carries, and Recents or a restore only show the screen`() {
+        val link = "hu-sandbox-com-example://hot-updater/preview?channel=pr-1&fingerprint=f"
+        assertEquals(link, HotUpdaterSandboxStart.linkOf(null, link))
+        assertEquals(link, HotUpdaterSandboxStart.linkOf(link, "other://x"))
+        // The launcher's intent the move starts, read with the link it carries.
+        val moved = launcher.copy(dataScheme = "hu-sandbox-com-example", hasData = true, flags = HotUpdaterSandboxStart.OWN_TASK_FLAGS)
+        assertEquals(HotUpdaterSandboxStartDecision.SHOW_LINK, decide(moved))
+        val fromRecents = moved.copy(flags = moved.flags or Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY)
+        assertEquals(HotUpdaterSandboxStartDecision.SHOW_SCREEN, decide(fromRecents))
+        assertEquals(HotUpdaterSandboxStartDecision.SHOW_SCREEN, decide(moved.copy(restored = true)))
+    }
+
     /** What the SDK's restart builds, pinned against what the platform defines it to set. */
     @Test
     fun `the restart's flag is the one the decision reads`() {

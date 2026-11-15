@@ -75,6 +75,32 @@ internal object HotUpdaterSandboxStart {
     }
 
     /**
+     * Whether the screen for a link starts again in a task of its own before it
+     * shows. A task keeps the intent that started it as its identity, after this
+     * activity hands it to the app and finishes, and Android only brings forward
+     * a task whose identity equals a new start's: the same link again would reach
+     * nothing. The task it moves to has the launcher's intent, with the link
+     * carried along, so it is one the launcher could have started, and the start
+     * there, which carries the link, stays.
+     */
+    fun movesToOwnTask(
+        decision: HotUpdaterSandboxStartDecision,
+        created: Boolean,
+        taskRoot: Boolean,
+        carried: Boolean,
+    ): Boolean = false // RED seam
+
+    /** The link an intent holds: its data, or, with none, the one a move to a task of its own carried. */
+    fun linkOf(
+        data: String?,
+        carried: String?,
+    ): String? = data // RED seam
+
+    /** How the move starts that task: a new one, even beside this one, which it then removes. */
+    const val OWN_TASK_FLAGS =
+        Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION
+
+    /**
      * The flags of the copy that opens the app's activity: its grants and how
      * the sender wanted it started, without what only described this start.
      * `CLEAR_TASK` would clear the task this activity is about to hand over.
