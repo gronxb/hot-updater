@@ -115,6 +115,9 @@ class NativeUpdateCheckerTest {
         var stageResult = UpdateBundleResult(BundleDelivery.PATCH, patchFallback = false)
         var stageError: Exception? = null
 
+        /** Whether staging refuses a selection that is no longer current once its download ends, as the store does. */
+        var rejectsStaleSelections = false
+
         /** Fails only the next staging. */
         @Volatile var nextStageError: Exception? = null
         val stageCount = AtomicInteger()
@@ -177,6 +180,20 @@ class NativeUpdateCheckerTest {
             stageEntered.complete(Unit)
             onProgress(0.25)
             stageGate?.await()
+            // As the store: a selection another check's catalog replaced during the download.
+            if (rejectsStaleSelections) {
+                val selection = request.selection
+                val guard =
+                    ReleaseSelectionGuard(
+                        catalogId = selection.catalogId!!,
+                        scopeKey = selection.scopeKey!!,
+                        generation = selection.generation!!,
+                        catalogHash = selection.catalogHash!!,
+                        channel = selection.channel,
+                        selectionContextHash = selection.selectionContextHash!!,
+                    )
+                if (!isReleaseSelectionCurrent(guard)) throw StaleReleaseSelectionException()
+            }
             onProgress(0.255)
             onProgress(0.75)
             stageError?.let { throw it }
@@ -1958,6 +1975,31 @@ class NativeUpdateCheckerTest {
         assertTrue(fresh.updateBundle())
         assertEquals(expected, state.staged.await().bundleId)
     }
+
+    @Test
+    fun `a floor-free download the app's floored check made stale fails as a stale selection, and one fresh check stages`() =
+        runBlocking {
+            val state = FakeState().apply { rejectsStaleSelections = true }
+            val catalogs = mapOf("production" to catalog(listOf(release(releaseA1, belowA1))))
+            val sandbox = NativeUpdateChecker(state, FakeTransport(channels(catalogs)))
+            val app = NativeUpdateChecker(state, FakeTransport(channels(catalogs)))
+            val gate = CompletableDeferred<Unit>()
+            state.stageGate = gate
+            val first = sandbox.checkForUpdate(request("production", allowsOlderThanBuiltIn = true))!!
+            val staging = CoroutineScope(Dispatchers.IO).async { runCatching { first.updateBundle() } }
+            withTimeout(5_000) { state.stageEntered.await() }
+            // The download is under way when the app's own check lands.
+            assertNull(app.checkForUpdate(request()))
+            gate.complete(Unit)
+            // Unwrapped, so the sandbox reads it as superseded.
+            val failure = withTimeout(5_000) { staging.await() }.exceptionOrNull()
+            assertTrue("$failure", failure is StaleReleaseSelectionException)
+
+            state.stageGate = null
+            val fresh = sandbox.checkForUpdate(request("production", allowsOlderThanBuiltIn = true))!!
+            assertTrue(fresh.updateBundle())
+            assertEquals(belowA1, state.activeSelection?.bundleId)
+        }
 
     @Test
     fun `a floor-free staging the app's floored check of the build's own channel made stale stages after one fresh check`() =

@@ -2307,6 +2307,23 @@ extension NativeUpdateCheckTests {
         }
     }
 
+    @Test
+    func aStaleSelectionIsToldApartFromAFailedStagingInEveryShapeItArrives() {
+        // As HotUpdaterNativeUpdates turns the TurboModule's rejection into an error.
+        func rejection(_ error: Error) -> NativeUpdateRejection {
+            let error = UpdateFailureError.rejectionError(for: error)
+            return NativeUpdateRejection(code: "UNKNOWN_ERROR", message: error.localizedDescription, userInfo: error.userInfo)
+        }
+        #expect(isStaleReleaseSelection(NativeUpdateCheckError.staleReleaseCatalog))
+        // The impl's check before staging, and the store's after the download.
+        #expect(isStaleReleaseSelection(rejection(StaleReleaseSelectionError())))
+        #expect(isStaleReleaseSelection(rejection(BundleStorageError.unknown(StaleReleaseSelectionError()))))
+        // A classified failure, an unknown one, and another check error are not.
+        #expect(!isStaleReleaseSelection(rejection(UpdateFailureError(underlying: StaleReleaseSelectionError(), failure: .invalidResponse))))
+        #expect(!isStaleReleaseSelection(rejection(BundleStorageError.unknown(nil))))
+        #expect(!isStaleReleaseSelection(NativeUpdateCheckError.http(status: 500)))
+    }
+
     /// The sandbox's floor-free staging, paused in its artifact request while
     /// the app's own floored check of the same scope finishes: the app's check
     /// replaces the selection context, so the staging is stale, and one fresh
@@ -2335,6 +2352,51 @@ extension NativeUpdateCheckTests {
         let fresh = try #require(try await sandbox.checkForUpdate(options(channel: channel, allowsOlderThanBuiltIn: true)))
         #expect(try await fresh.updateBundle())
         #expect(host.stagedParams.last?["bundleId"] as? String == expected)
+    }
+
+    @Test
+    func aFloorFreeDownloadTheAppsCheckMadeStaleFailsAsAStaleSelectionAndOneFreshCheckStages() async throws {
+        let host = FakeUpdateHost()
+        host.currentIsLastAccepted = true
+        let catalogs = ["production": catalog(releases: [descriptor(releaseA1, belowA1)])]
+        let downloading = Latch()
+        let gate = Latch()
+        let paused = Flag()
+        // As the store, through the TurboModule: a selection another check's
+        // catalog replaced during the download is rejected after it.
+        host.stage = { [host] params, _ in
+            guard !paused.isSet else { return ["delivery": "archive", "patchFallback": false] }
+            paused.set()
+            downloading.open()
+            await gate.wait()
+            let guardParams = (params["selection"] as! [String: Any]).filter {
+                ["catalogId", "scopeKey", "generation", "catalogHash", "channel", "selectionContextHash"].contains($0.key)
+            }
+            guard host.isReleaseSelectionCurrent(guardParams) else {
+                let error = UpdateFailureError.rejectionError(for: BundleStorageError.unknown(StaleReleaseSelectionError()))
+                throw NativeUpdateRejection(code: "UNKNOWN_ERROR", message: error.localizedDescription, userInfo: error.userInfo)
+            }
+            return ["delivery": "archive", "patchFallback": false]
+        }
+        let sandbox = makeChecker(host, channels { catalogs })
+        let app = makeChecker(host, channels { catalogs })
+        let first = try #require(try await sandbox.checkForUpdate(options(channel: "production", allowsOlderThanBuiltIn: true)))
+        let staging = Task { try await first.updateBundle() }
+        await downloading.wait()
+        // The download is under way when the app's own check lands.
+        #expect(try await app.checkForUpdate(options()) == nil)
+        gate.open()
+        do {
+            _ = try await staging.value
+            Issue.record("expected the download to be rejected")
+        } catch {
+            // What the sandbox reads as superseded.
+            #expect(isStaleReleaseSelection(error))
+        }
+
+        let fresh = try #require(try await sandbox.checkForUpdate(options(channel: "production", allowsOlderThanBuiltIn: true)))
+        #expect(try await fresh.updateBundle())
+        #expect(host.stagedParams.last?["bundleId"] as? String == belowA1)
     }
 
     @Test

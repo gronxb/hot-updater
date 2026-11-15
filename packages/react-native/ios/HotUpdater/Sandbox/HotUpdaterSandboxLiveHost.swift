@@ -257,7 +257,7 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
         let staged: Bool
         do {
             staged = try await update.updateBundle(onProgress: onProgress)
-        } catch where hotUpdaterSandboxIsStaleSelection(error) {
+        } catch where isStaleReleaseSelection(error) {
             // Another check's catalog replaced this selection while it staged.
             staged = false
         }
@@ -288,22 +288,6 @@ func hotUpdaterSandboxChannelHasBundle(
         crashedBundleIds: crashedBundleIds
     ))
     return desired != nil && desired?.kind != .builtin
-}
-
-/// A staging that failed only because a newer check's selection replaced its
-/// own: the checker's own guard, or the store's, through the native rejection.
-func hotUpdaterSandboxIsStaleSelection(_ error: Error) -> Bool {
-    if case NativeUpdateCheckError.staleReleaseCatalog = error { return true }
-    if error is StaleReleaseSelectionError { return true }
-    guard let rejection = error as? NativeUpdateRejection else { return false }
-    let stale = StaleReleaseSelectionError() as NSError
-    func isStale(_ userInfo: [String: Any]) -> Bool {
-        userInfo[NSLocalizedDescriptionKey] as? String == stale.localizedDescription
-    }
-    // A stale selection carries no classification; a failed download does.
-    guard rejection.userInfo["stage"] == nil else { return false }
-    if isStale(rejection.userInfo) { return true }
-    return (rejection.userInfo[NSUnderlyingErrorKey] as? NSError).map { isStale($0.userInfo) || $0.localizedDescription == stale.localizedDescription } ?? false
 }
 
 /// The sandbox's own defaults: an app's data and the SDK's stores stay as they are.

@@ -410,6 +410,24 @@ struct NativeUpdateRejection: LocalizedError {
     var errorDescription: String? { message ?? code }
 }
 
+/// Whether a staging failed only because a newer check's selection replaced
+/// its own: the checker's guard, or the store's through its native rejection,
+/// which carries no classification. A race between checks, not a failure.
+func isStaleReleaseSelection(_ error: Error) -> Bool {
+    if case NativeUpdateCheckError.staleReleaseCatalog = error { return true }
+    if error is StaleReleaseSelectionError { return true }
+    guard let rejection = error as? NativeUpdateRejection, rejection.userInfo["stage"] == nil else {
+        return false
+    }
+    let stale = StaleReleaseSelectionError() as NSError
+    // The store rejects with the stale error itself, or wraps it as the
+    // underlying error of an unknown storage error.
+    if rejection.userInfo[NSLocalizedDescriptionKey] as? String == stale.localizedDescription { return true }
+    guard let underlying = rejection.userInfo[NSUnderlyingErrorKey] as? NSError else { return false }
+    return underlying.domain == stale.domain && underlying.code == stale.code
+        && underlying.localizedDescription == stale.localizedDescription
+}
+
 enum NativeUpdateCheckError: LocalizedError {
     case hotUpdater(String)
     case invalidResponse(String)
