@@ -1,5 +1,23 @@
 # @hot-updater/react-native
 
+## 1.2.0-rc.45
+
+### Patch Changes
+
+- 1fe0f8f: fix(react-native): a sandbox link whose first check didn't answer now recovers the way the screen says.
+
+  When a fresh sandbox build gets a link, it starts the app under the screen so the app's own update check can find the server. If that one check fails, for example because the first request took longer than its timeout on a slow device, the screen says after a minute to open the app. Until now, opening it showed the app that had already checked, so nothing checked again until the process was stopped by hand.
+  - **Open** after that minute, with still no answer, now starts the app anew (a reload on iOS, a restart on Android), whether or not it was already shown. Its launch check runs again, and the link asks over the app once the server answers. While the first check still has time, or once a server answered, Open only shows the app, as before.
+  - **Reload** over the app now works while a link waits for a server. It used to do nothing.
+  - Android asks the waiting link in the restarted process. The restart carries a one-time token for that link, and only the app's activity it starts takes it. A notification, another activity or another link takes nothing, and a restart that never arrived leaves the link for the next screen, as before.
+  - The screen says "Checking <channel>…" from its first frame for a link it will start the app for. It no longer shows the open-the-app message for a moment first.
+
+  Only sandbox builds change. No JavaScript or JS↔native change.
+
+- @hot-updater/plugin-insights@1.2.0-rc.45
+  - @hot-updater/plugin-remote-config@1.2.0-rc.45
+  - @hot-updater/protocol@1.2.0-rc.45
+
 ## 1.2.0-rc.44
 
 ### Patch Changes
