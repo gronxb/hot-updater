@@ -75,6 +75,64 @@ internal object HotUpdaterSandboxStart {
     }
 
     /**
+     * Whether the screen for a link starts again in a task of its own before it
+     * shows. A task keeps the intent that started it as its identity, after this
+     * activity hands it to the app and finishes, and Android only brings forward
+     * a task whose identity equals a new start's: the same link again would reach
+     * nothing. The task it moves to has the launcher's intent, with the link
+     * carried along, so it is one the launcher could have started, and the start
+     * there, which carries the link, stays.
+     */
+    fun movesToOwnTask(
+        decision: HotUpdaterSandboxStartDecision,
+        created: Boolean,
+        taskRoot: Boolean,
+        carried: Boolean,
+    ): Boolean = decision == HotUpdaterSandboxStartDecision.SHOW_LINK && created && taskRoot && !carried
+
+    /**
+     * Whether opening the app from a screen only closes the screen, over the app's
+     * activity beneath it: a running one, when nothing was switched, or one a
+     * process death left in the task, which the system brings back on what's
+     * selected. Starting the app's activity there would stack a second one.
+     */
+    fun opensBeneath(
+        hostRunning: Boolean,
+        switched: Boolean,
+        coversHost: Boolean,
+        hostUnderScreen: Boolean,
+    ): Boolean = (hostRunning && !switched) || (!hostRunning && (coversHost || hostUnderScreen))
+
+    /**
+     * Whether a task holds the app's activity under the screen and nothing else:
+     * its first activity is the app's, and the screen is the only other one. Only
+     * then does closing the screen show the app. The sandbox's own camera, for
+     * one, can start in the screen's task. [implementation] names the activity a
+     * component runs as, an alias's target, or null for one it can't read: the
+     * app's activity can be named by its launcher alias on either side.
+     */
+    fun holdsHostUnderScreen(
+        baseActivity: String?,
+        numActivities: Int,
+        host: String,
+        implementation: (String) -> String?,
+    ): Boolean {
+        if (numActivities != 2 || baseActivity == null) return false
+        val expected = implementation(host) ?: return false
+        return implementation(baseActivity) == expected
+    }
+
+    /** The link an intent holds: its data, or, with none, the one a move to a task of its own carried. */
+    fun linkOf(
+        data: String?,
+        carried: String?,
+    ): String? = data ?: carried
+
+    /** How the move starts that task: a new one, even beside this one, which it then removes. */
+    const val OWN_TASK_FLAGS =
+        Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION
+
+    /**
      * The flags of the copy that opens the app's activity: its grants and how
      * the sender wanted it started, without what only described this start.
      * `CLEAR_TASK` would clear the task this activity is about to hand over.

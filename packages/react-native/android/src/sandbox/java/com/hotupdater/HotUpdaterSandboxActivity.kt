@@ -1,10 +1,13 @@
 package com.hotupdater
 
 import android.app.Activity
+import android.app.ActivityManager
+import android.app.ActivityOptions
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
 import android.os.Process
 import android.util.Log
@@ -139,6 +142,9 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
 
         /** The app's activity, started under the screen, brings the screen back on top. */
         const val EXTRA_COVER = "com.hotupdater.sandbox.COVER"
+
+        /** The link a screen moving to a task of its own carries there. */
+        const val EXTRA_LINK = "com.hotupdater.sandbox.LINK"
         private const val STATE_COVERS_HOST = "com.hotupdater.sandbox.COVERS_HOST"
     }
 
@@ -180,7 +186,7 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
         onBackPressedDispatcher.addCallback(this, leaveOnBack)
         // Recreated: this screen takes over its predecessor's start, which ran or waits, never a new one.
         HotUpdaterSandboxProcess.cover?.takeIf { it.taskId == taskId && coversHost }?.adopt(this)
-        handle(intent, savedInstanceState)
+        handle(intent, savedInstanceState, created = true)
         if (HotUpdaterSandboxProcess.startHandoffTaskId == taskId) {
             HotUpdaterSandboxProcess.startHandoffTaskId = null
             firstFrame.request()
@@ -210,22 +216,29 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
             return
         }
         setIntent(intent)
-        handle(intent, null)
+        handle(intent, null, created = false)
     }
 
     private fun handle(
         intent: Intent,
         saved: Bundle?,
+        created: Boolean,
     ) {
         val restored = saved != null
+        val carried = intent.getStringExtra(EXTRA_LINK)?.takeIf { intent.data == null }
+        val link = HotUpdaterSandboxStart.linkOf(intent.dataString, carried)
         val decision =
             HotUpdaterSandboxStart.decide(
                 HotUpdaterSandboxStartFacts(
                     action = intent.action,
-                    dataScheme = intent.scheme,
-                    hasData = intent.data != null,
+                    dataScheme = link?.let { Uri.parse(it).scheme },
+                    hasData = link != null,
                     categories = intent.categories.orEmpty(),
-                    hasExtras = intent.extras?.isEmpty == false && !intent.hasExtra(EXTRA_OVER_APP) && !intent.hasExtra(EXTRA_COVER),
+                    hasExtras =
+                        intent.extras?.isEmpty == false &&
+                            !intent.hasExtra(EXTRA_OVER_APP) &&
+                            !intent.hasExtra(EXTRA_COVER) &&
+                            carried == null,
                     hasClipData = intent.clipData != null,
                     flags = intent.flags,
                     restored = restored,
@@ -256,6 +269,20 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
             finish()
             return
         }
+        if (HotUpdaterSandboxStart.movesToOwnTask(decision, created, isTaskRoot, carried != null)) {
+            Log.i(TAG, "moving the link to a task of its own")
+            // Gone first: this screen in front would take the start as a new intent.
+            finishAndRemoveTask()
+            startActivity(
+                Intent(Intent.ACTION_MAIN)
+                    .addCategory(Intent.CATEGORY_LAUNCHER)
+                    .setClass(this, HotUpdaterSandboxActivity::class.java)
+                    .putExtra(EXTRA_LINK, link)
+                    .addFlags(HotUpdaterSandboxStart.OWN_TASK_FLAGS),
+                ActivityOptions.makeCustomAnimation(this, 0, 0).toBundle(),
+            )
+            return
+        }
         val coordinator = HotUpdaterSandbox.coordinator(this)
         HotUpdaterSandbox.attach(this)
         if (screen == null) {
@@ -270,7 +297,7 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
             stopObserving = coordinator.observe(shown::render)
         }
         if (decision == HotUpdaterSandboxStartDecision.SHOW_LINK) {
-            intent.dataString?.let(coordinator::receiveLink)
+            link?.let(coordinator::receiveLink)
         }
         coordinator.refresh()
     }
@@ -362,9 +389,9 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
     internal fun openHost(switched: Boolean) {
         firstFrame.withdraw()
         HotUpdaterSandboxProcess.dropPendingCover(this)
-        // The app is beneath: running, or one this screen started that a restore
-        // left with no process, which starts now on what's selected.
-        if ((hostBeneath && !switched) || (coversHost && !hostBeneath)) {
+        // The app is beneath: running, or one a process death left in the task,
+        // which starts now on what's selected.
+        if (HotUpdaterSandboxStart.opensBeneath(hostBeneath, switched, coversHost, hostUnderScreen())) {
             finish()
             return
         }
@@ -374,8 +401,32 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
     /** What the app's activity gets from a screen: what started it, never a sandbox link. */
     private fun launcherIntent(): Intent =
         intent.takeUnless {
-            HotUpdaterSandboxLink.isOwnScheme(it.scheme, HotUpdaterSandboxLink.ownScheme(this)) || it.hasExtra(EXTRA_OVER_APP)
+            HotUpdaterSandboxLink.isOwnScheme(it.scheme, HotUpdaterSandboxLink.ownScheme(this)) ||
+                it.hasExtra(EXTRA_OVER_APP) ||
+                it.hasExtra(EXTRA_LINK)
         } ?: Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+
+    /** Whether this screen's task holds the app's activity under it and nothing else, as the system reads the task. */
+    private fun hostUnderScreen(): Boolean {
+        val host = hostComponent() ?: return false
+        val tasks = runCatching { getSystemService(ActivityManager::class.java)?.appTasks }.getOrNull().orEmpty()
+
+        @Suppress("DEPRECATION")
+        val task = tasks.firstNotNullOfOrNull { runCatching { it.taskInfo }.getOrNull()?.takeIf { info -> info.persistentId == taskId } }
+        return task != null &&
+            HotUpdaterSandboxStart.holdsHostUnderScreen(
+                task.baseActivity?.flattenToString(),
+                task.numActivities,
+                host.flattenToString(),
+                ::implementationOf,
+            )
+    }
+
+    /** The activity a component runs as: an alias's target, or itself. Null for one this app can't read. */
+    private fun implementationOf(name: String): String? =
+        runCatching { ComponentName.unflattenFromString(name)?.let { packageManager.getActivityInfo(it, 0) } }
+            .getOrNull()
+            ?.let { ComponentName(it.packageName, it.targetActivity ?: it.name).flattenToString() }
 
     /** The app's activity, as the manifest names it. */
     private fun hostComponent(): ComponentName? =
