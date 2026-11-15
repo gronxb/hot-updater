@@ -368,12 +368,15 @@ jobs:
   (`build: false`). It compiles nothing and looks up no other build: a scheme
   whose job failed or was skipped stays failed, and so does an ad hoc `.ipa`
   whose profile expired after its job reported it, as a result kept for a
-  re-run can. The bundle is newer than both
+  re-run can, or whose result doesn't say when it expires: re-run its job.
+  The bundle is newer than both
   builds, so both run it, also after a re-run of one iOS job, which re-runs
   this one too. Each push deploys one bundle per platform.
 - **The comment job** waits for all of them, then writes the one comment and
   its QR codes from their `result` outputs. A job that failed shows as failed,
-  the others as usual. It checks the pull request's head before writing and
+  the others as usual. A build shows only once a job deployed its bundle: when
+  the `ios-deploy` job didn't run, the comment says so instead of offering the
+  iOS builds. It checks the pull request's head before writing and
   again just before the comment, and writes no comment for an older commit,
   whose newer run writes it. A push that lands during that last write can
   still show the older comment until its own run replaces it.

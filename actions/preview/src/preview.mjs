@@ -546,8 +546,18 @@ const resolveScheme = async (deps, inputs, platform, scheme) => {
         `The job that builds ${scheme} reported no ${platform} build, and this job doesn't build: see that job.`,
       );
     }
-    // A result kept from an earlier attempt can outlive its .ipa's profile.
-    const { expiresAtMs } = reported.nativeBuild;
+    // A result kept from an earlier attempt can outlive its .ipa's profile,
+    // and one that doesn't say when it expires can't be trusted to have not.
+    const { expiresAtMs, artifactKind, id } = reported.nativeBuild;
+    if (
+      artifactKind === "ipa" &&
+      !reported.store &&
+      expiresAtMs === undefined
+    ) {
+      throw new Error(
+        `The ${scheme} build ${id} has no profile expiry in its job's result, and this job doesn't build: run that job again.`,
+      );
+    }
     if (expiresAtMs !== undefined && expiresAtMs <= Date.now()) {
       throw new Error(
         `The ${scheme} build ${reported.nativeBuild.id}'s profile expired at ${new Date(expiresAtMs).toISOString()}, after its job reported it, and this job doesn't build: run that job again.`,
@@ -1298,13 +1308,18 @@ export const runComment = async (deps, inputs, event) => {
       }
     }
   }
-  const failed = [...failures.values()];
-  // A build no job deployed to, whose scheme failed on this run, such as one
-  // its deploy job refused, isn't shown as installable.
+  // A build is installable only when a result of this run deployed a
+  // bundle to it. One no result did is dropped, and its platform gets a line
+  // when no failure of its scheme says why, as when its deploy job never ran.
   const previews = [...builds.values()].filter(
-    ({ platform, scheme, bundleId }) =>
-      bundleId !== null || !failures.has(`${platform}:${scheme ?? ""}`),
+    ({ bundleId }) => bundleId !== null,
   );
+  for (const { platform, scheme, bundleId } of builds.values()) {
+    if (bundleId === null && !failures.has(`${platform}:${scheme ?? ""}`)) {
+      failures.set(`undeployed:${platform}`, { platform, undeployed: true });
+    }
+  }
+  const failed = [...failures.values()];
   // A build no job deployed a bundle to doesn't count.
   if (
     previews.every(({ bundleId }) => bundleId === null) &&

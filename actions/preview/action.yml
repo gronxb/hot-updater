@@ -64,7 +64,9 @@ inputs:
     description: >-
       Whether a scheme with no native build builds one. A job that deploys
       against the builds its lanes reported in results sets it to false: it
-      then compiles and looks up nothing, and a scheme no lane reported fails.
+      then compiles and looks up nothing, and a scheme no lane reported fails,
+      as does a reported ad hoc .ipa whose profile expired or whose expiry the
+      result doesn't give.
     default: "true"
   mode:
     description: >-

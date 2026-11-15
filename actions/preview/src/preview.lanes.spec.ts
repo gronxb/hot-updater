@@ -68,6 +68,10 @@ const fakeServer = ({
   unconfirmed = [] as string[],
   /** Build IDs whose ad hoc profile expired, which `find` says of an .ipa. */
   expired = [] as string[],
+  /** Whether `native-build ios --json` reads no expiry from a new .ipa. */
+  unreadableExpiry = false,
+  /** Platforms whose `deploy` fails, as a failed upload does. */
+  deployFailing = [] as string[],
 } = {}) => {
   const builds: Build[] = [];
   const releases: { id: string; platform: string; channel: string }[] = [];
@@ -145,7 +149,7 @@ const fakeServer = ({
           channel: flag("--channel")!,
           fingerprintHash: FINGERPRINTS[scheme.platform],
           minBundleId: idOf(++clock),
-          ...(scheme.kind === "ipa"
+          ...(scheme.kind === "ipa" && !unreadableExpiry
             ? { expiresAtMs: Date.now() + PROFILE_MS }
             : {}),
         };
@@ -160,14 +164,17 @@ const fakeServer = ({
             },
             nativeBuild: row(build),
             ipa:
-              build.expiresAtMs === undefined
+              build.kind !== "ipa"
                 ? null
-                : { expiresAtMs: build.expiresAtMs },
+                : { expiresAtMs: build.expiresAtMs ?? null },
             registration: { skipped: null },
           }),
         };
       }
       if (command === "deploy") {
+        if (deployFailing.includes(flag("-p")!)) {
+          throw new Error("hot-updater deploy exited with 1.");
+        }
         releases.push({
           id: idOf(++clock),
           platform: flag("-p")!,
@@ -814,6 +821,104 @@ describe("lanes and a comment job", () => {
       vi.useRealTimers();
     }
   });
+
+  it.each([
+    ["a kept result from before results had one", "absent"],
+    ["a result whose expiry is null", "null"],
+    ["a build whose .ipa the CLI read no expiry from", "unread"],
+  ] as const)(
+    "refuse an ad hoc build with no profile expiry: %s, and deploy the Simulator",
+    async (_, shape) => {
+      const server = fakeServer({
+        failing: ["simulator"],
+        unreadableExpiry: shape === "unread",
+      });
+      const github = fakeGitHub();
+      const [android, adhoc] = await runLanes(server, github);
+      const ipa = server.builds.find(({ kind }) => kind === "ipa")!;
+      const kept: JobRun = { ...adhoc!, outputs: { ...adhoc!.outputs } };
+      if (shape !== "unread") {
+        const result = JSON.parse(kept.outputs["result"]!);
+        if (shape === "absent")
+          delete result.previews[0].nativeBuild.expiresAtMs;
+        else result.previews[0].nativeBuild.expiresAtMs = null;
+        kept.outputs["result"] = JSON.stringify(result);
+      }
+      expect(kept.outputs["result"]).not.toContain('expiresAtMs":1');
+
+      server.failing.length = 0;
+      const simulator = await runJob(server, github, LANES[2]!);
+      const redeploy = await runJob(
+        server,
+        github,
+        iosDeploy([kept, simulator]),
+      );
+      await runComment(
+        github,
+        resultsOf([android!, kept, simulator, redeploy]),
+      );
+
+      const result = JSON.parse(redeploy.outputs["result"]!);
+      expect(
+        result.previews.map(({ scheme }: { scheme: string }) => scheme),
+      ).toEqual(["simulator"]);
+      expect(result.failed).toEqual([
+        { platform: "ios", scheme: "adhoc", deployed: false },
+      ]);
+      const body = github.comment()!;
+      expect(body).toContain("**iOS** (`adhoc`) failed on this run");
+      expect(body).not.toContain("Install on iPhone");
+      expect(body).not.toContain(ipa.id);
+      expect(body).toContain("- **iOS Simulator**:");
+    },
+  );
+
+  it.each([
+    ["has no result, failing before the action", "missing"],
+    ["failed its deploy", "failed"],
+  ] as const)(
+    "show no iOS build as installable when the iOS deploy job %s",
+    async (_, how) => {
+      const server = fakeServer({
+        deployFailing: how === "failed" ? ["ios"] : [],
+      });
+      const github = fakeGitHub();
+      const [android, adhoc, simulator, deploy] = await runLanes(
+        server,
+        github,
+      );
+      expect([android, adhoc, simulator].map(({ error }) => error)).toEqual([
+        null,
+        null,
+        null,
+      ]);
+
+      await runComment(
+        github,
+        how === "missing"
+          ? `${resultsOf([android!, adhoc!, simulator!])}\nios-deploy failure `
+          : resultsOf([android!, adhoc!, simulator!, deploy!]),
+      );
+
+      const body = github.comment()!;
+      expect(body).toContain("- **Android**: [Download APK]");
+      expect(body).not.toContain("Install on iPhone");
+      expect(body).not.toContain("**iOS Simulator**");
+      expect(body).not.toContain("native-build install");
+      // Android's QR code only.
+      expect(body.match(/<img /g)).toHaveLength(1);
+      expect(body).not.toMatch(/^\| iOS/m);
+      if (how === "missing") {
+        expect(body).toContain(
+          `**iOS** was built, but its deploy didn't run on this run: [see the logs](${RUN}).`,
+        );
+      } else {
+        expect(body).toContain("**iOS** (`adhoc`) failed on this run");
+        expect(body).toContain("**iOS** (`simulator`) failed on this run");
+        expect(body).not.toContain("its deploy didn't run");
+      }
+    },
+  );
 
   it("keep the QR codes the earlier comment shows when the new comment fails to land", async () => {
     const server = fakeServer();

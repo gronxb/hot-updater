@@ -39,9 +39,10 @@ const CREDIT = "Preview by [hot-updater](https://hot-updater.dev)";
  * @property {string | null} [fromChannel] The other pull request's channel a
  *   reused build embeds, or null for one this pull request's channel embeds.
  *
- * @typedef {{ platform: Platform, scheme?: string, deployed: boolean } | { lane: string, status: "skipped" | "missing" }} FailedPreview
- *   A platform that failed on this run, or a lane's job that gave no result:
- *   one GitHub skipped, or one that failed, was cancelled, or set no output.
+ * @typedef {{ platform: Platform, scheme?: string, deployed: boolean } | { lane: string, status: "skipped" | "missing" } | { platform: Platform, undeployed: true }} FailedPreview
+ *   A platform that failed on this run, a lane's job that gave no result (one
+ *   GitHub skipped, or one that failed, was cancelled, or set no output), or
+ *   a platform whose builds no job deployed a bundle to.
  */
 
 /**
@@ -413,6 +414,9 @@ export const renderPreviewComment = ({
         return failure.status === "skipped"
           ? `**${failure.lane}** was skipped on this run.`
           : `**${failure.lane}** gave no preview result on this run${logs}`;
+      }
+      if ("undeployed" in failure) {
+        return `**${failure.platform === "ios" ? "iOS" : "Android"}** was built, but its deploy didn't run on this run${logs}`;
       }
       const { platform, scheme, deployed } = failure;
       return `**${platform === "ios" ? "iOS" : "Android"}**${scheme === undefined ? "" : ` (${code(scheme)})`} failed on this run${deployed ? ", after deploying its bundle" : ""}${logs}`;
