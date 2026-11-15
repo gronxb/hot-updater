@@ -60,20 +60,29 @@ export const commandFailedError = (
 };
 
 /**
- * `npx <args>` as a shell reads it, with paths under `cwd` relative to it:
- * the command a failure tells people to run.
+ * `npx <args>` as this platform's shell reads it, with paths under `cwd`
+ * relative to it: the command a failure tells people to run. On Windows an
+ * argument that needs quotes takes double quotes, which cmd.exe and
+ * PowerShell both read; elsewhere, POSIX single quotes.
  */
-export const npxCommandLine = (cwd: string, args: readonly string[]): string =>
-  [
+export const npxCommandLine = (
+  cwd: string,
+  args: readonly string[],
+): string => {
+  const windows = process.platform === "win32";
+  const paths = windows ? path.win32 : path.posix;
+  return [
     "npx",
     ...args.map((arg) => {
       const relative =
-        path.isAbsolute(arg) && !path.relative(cwd, arg).startsWith("..")
-          ? path.relative(cwd, arg) || "."
+        paths.isAbsolute(arg) && !paths.relative(cwd, arg).startsWith("..")
+          ? paths.relative(cwd, arg) || "."
           : arg;
       // A Windows path's backslashes need no quotes in cmd or PowerShell.
-      return /^[\w@%+=:,./\\-]+$/.test(relative)
-        ? relative
+      if (/^[\w@%+=:,./\\-]+$/.test(relative)) return relative;
+      return windows
+        ? `"${relative.replace(/"/g, '\\"')}"`
         : `'${relative.replace(/'/g, "'\\''")}'`;
     }),
   ].join(" ");
+};

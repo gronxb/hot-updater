@@ -1,5 +1,5 @@
 import { execa } from "execa";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { commandFailedError, npxCommandLine } from "./commandFailedError";
 
@@ -114,7 +114,13 @@ describe("commandFailedError", () => {
 });
 
 describe("npxCommandLine", () => {
+  const platform = process.platform;
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: platform });
+  });
+
   it("writes the project's paths relative to it, and quotes what a shell would split", () => {
+    Object.defineProperty(process, "platform", { value: "linux" });
     expect(
       npxCommandLine("/work/my app", [
         "expo",
@@ -129,5 +135,43 @@ describe("npxCommandLine", () => {
     ).toBe(
       "npx expo export:embed --bundle-output dist/index.android.bundle --entry-file 'src/main entry.js' --assets-dest /tmp/assets",
     );
+  });
+
+  it("keeps an apostrophe inside POSIX single quotes", () => {
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    expect(
+      npxCommandLine("/work/app", ["expo", "--entry-file", "src/it's main.js"]),
+    ).toBe("npx expo --entry-file 'src/it'\\''s main.js'");
+  });
+
+  describe("on Windows, where cmd.exe reads no single quotes", () => {
+    it("double-quotes a path with spaces, relative to the project", () => {
+      Object.defineProperty(process, "platform", { value: "win32" });
+      expect(
+        npxCommandLine("C:\\src\\my app", [
+          "react-native",
+          "bundle",
+          "--bundle-output",
+          "C:\\src\\my app\\dist\\index.android.bundle",
+          "--entry-file",
+          "src\\main entry.js",
+          "--assets-dest",
+          "D:\\out dir",
+        ]),
+      ).toBe(
+        'npx react-native bundle --bundle-output dist\\index.android.bundle --entry-file "src\\main entry.js" --assets-dest "D:\\out dir"',
+      );
+    });
+
+    it("double-quotes a path with an apostrophe, which PowerShell would read as a string", () => {
+      Object.defineProperty(process, "platform", { value: "win32" });
+      expect(
+        npxCommandLine("C:\\src\\app", [
+          "expo",
+          "--entry-file",
+          "C:\\src\\app\\src\\it's main.js",
+        ]),
+      ).toBe('npx expo --entry-file "src\\it\'s main.js"');
+    });
   });
 });
