@@ -18,12 +18,19 @@ import path from "path";
  * property, 1024 when unset, which it reads with `findProperty` as a string
  * when it applies. So the script sets that property on the root project
  * first, unless gradle.properties, the user's, `-P` or the environment set
- * it. A module whose own CMake arguments set CMAKE_OBJECT_PATH_MAX, in its
- * default config, a build type or a flavor, keeps its own.
+ * it. Their value stands, `0` included, which turns Expo's limit off and
+ * leaves CMake's own: then no module gets one from this script either. A
+ * module whose own CMake arguments set CMAKE_OBJECT_PATH_MAX, in its default
+ * config, a build type or a flavor, keeps its own.
  */
 export const WINDOWS_INIT_SCRIPT = `// Written by hot-updater for one Windows build: object paths within MAX_PATH.
+// Set by the project, a person or the environment, not this script: their
+// value stands, and 0, which turns Expo's limit off, too.
+def expoLimitSetElsewhere = false
 gradle.rootProject { root ->
-  if (!root.hasProperty('expo.android.cmakeObjectPathMax')) {
+  if (root.hasProperty('expo.android.cmakeObjectPathMax')) {
+    expoLimitSetElsewhere = true
+  } else {
     root.ext.set('expo.android.cmakeObjectPathMax', '259')
   }
 }
@@ -35,7 +42,7 @@ allprojects { project ->
         def own = configs.any { config ->
           config.externalNativeBuild.cmake.arguments.any { it.startsWith('-DCMAKE_OBJECT_PATH_MAX') }
         }
-        if (!own) {
+        if (!own && !expoLimitSetElsewhere) {
           android.defaultConfig.externalNativeBuild.cmake.arguments.add('-DCMAKE_OBJECT_PATH_MAX=259')
         }
       }

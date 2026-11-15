@@ -25,6 +25,7 @@ vi.mock("../utils/createGradleLogger", () => ({
 }));
 
 import { formatCommand } from "../utils/formatCommand";
+import { WINDOWS_INIT_SCRIPT } from "../utils/windowsGradle";
 import { runGradle } from "./runGradle";
 
 it("passes its environment to Gradle without printing it", async () => {
@@ -109,7 +110,7 @@ describe("on Windows", () => {
   // 260 characters; at 259 CMake hashes the long part of its name. At 250,
   // the Windows QA's longest object dir (179) plus the hash and a 40-character
   // file name came to 252, which CMake can't shorten.
-  it("has CMake keep object paths within MAX_PATH, unless a module sets its own limit", async () => {
+  it("runs with the init script that keeps CMake object paths within MAX_PATH", async () => {
     vi.spyOn(fs, "existsSync").mockReturnValue(true);
     let script = "";
     vi.mocked(execa).mockImplementationOnce(((
@@ -129,30 +130,13 @@ describe("on Windows", () => {
       androidProjectPath: "/app/android",
     });
 
-    // Added once the module's build script ran, and only to a module whose
-    // own CMake arguments don't set it: in examples/v0.88.0 with real
-    // Gradle, a defaultConfig's 180 and a release build type's 190 each
-    // configured CMake alone, and a module without one got 259.
-    const add =
-      "android.defaultConfig.externalNativeBuild.cmake.arguments.add('-DCMAKE_OBJECT_PATH_MAX=259')";
-    expect(script).toContain("finalizeDsl { android ->");
+    // What the script does to a module's CMake arguments, Expo's property
+    // and a 0 that turns it off included, windowsGradle.integration.spec.ts
+    // checks with real Gradle.
+    expect(script).toBe(WINDOWS_INIT_SCRIPT);
+    expect(script).toContain("-DCMAKE_OBJECT_PATH_MAX=259");
     expect(script).toContain(
-      "def configs = [android.defaultConfig] + android.buildTypes.toList() + android.productFlavors.toList()",
-    );
-    expect(script).toContain(
-      "config.externalNativeBuild.cmake.arguments.any { it.startsWith('-DCMAKE_OBJECT_PATH_MAX') }",
-    );
-    expect(script).toMatch(
-      new RegExp(
-        `if \\(!own\\) \\{\\s+${add.replace(/[.()[\]']/g, "\\$&")}\\s+\\}`,
-      ),
-    );
-    // Expo's root project plugin gives every module its own value from the
-    // expo.android.cmakeObjectPathMax property, 1024 by default, which the
-    // guard above then keeps: the script sets the property, as a string as
-    // Expo reads it, unless the project, the user or the command line did.
-    expect(script).toMatch(
-      /gradle\.rootProject \{ root ->\s+if \(!root\.hasProperty\('expo\.android\.cmakeObjectPathMax'\)\) \{\s+root\.ext\.set\('expo\.android\.cmakeObjectPathMax', '259'\)\s+\}/,
+      "root.ext.set('expo.android.cmakeObjectPathMax', '259')",
     );
   });
 
