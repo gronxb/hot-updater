@@ -50,6 +50,9 @@ private class FakeHost : HotUpdaterSandboxHost {
     var resetResult: Result<Boolean> = Result.success(true)
     var stageGate: CompletableDeferred<HotUpdaterSandboxStaged>? = null
     var stageResult: Result<HotUpdaterSandboxStaged> = Result.success(HotUpdaterSandboxStaged.Update("ota"))
+
+    /** Answers the next stagings in order, before [stageResult]. */
+    val stageResults = ArrayDeque<HotUpdaterSandboxStaged>()
     var progress: ((Double) -> Unit)? = null
     var channelAfterStaging: String? = null
     var isRunningDevServer = false
@@ -180,7 +183,7 @@ private class FakeHost : HotUpdaterSandboxHost {
     ): HotUpdaterSandboxStaged {
         calls += "check $channel"
         progress = onProgress
-        val staged = stageGate?.await() ?: stageResult.getOrThrow()
+        val staged = stageGate?.await() ?: stageResults.removeFirstOrNull() ?: stageResult.getOrThrow()
         if (staged is HotUpdaterSandboxStaged.Update) {
             this.channel = channelAfterStaging ?: channel
             bundleId = staged.bundleId ?: "built-in"
@@ -1020,12 +1023,11 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
-    fun `the default channel with nothing published needs a restart over a fixed launch`() {
+    fun `the default channel staging nothing after the reset needs a restart over a fixed launch`() {
         val fixture = Fixture()
         fixture.host.channel = "pr-1"
         fixture.host.bundleId = "ota-1"
         fixture.host.runningBundleId = "ota-1"
-        fixture.host.preflights["sandbox-release"] = Result.success(false)
         fixture.host.stageResult = Result.success(HotUpdaterSandboxStaged.NoUpdate)
         fixture.coordinator.switchTo("sandbox-release")
         assertEquals(listOf(true to true), fixture.opens)
@@ -1138,7 +1140,6 @@ class HotUpdaterSandboxCoordinatorTest {
         val fixture = Fixture()
         fixture.host.channel = "pr-1"
         fixture.host.bundleId = "ota-1"
-        fixture.host.preflights["sandbox-release"] = Result.success(false)
         fixture.host.stageResult = Result.success(HotUpdaterSandboxStaged.NoUpdate)
         fixture.coordinator.switchTo("sandbox-release")
         assertEquals(listOf(true to false), fixture.opens)
@@ -1189,21 +1190,30 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
-    fun `the default channel with nothing newer is the built-in bundle`() {
+    fun `the build's own channel with no bundle for it stops before the reset, as any channel`() {
         val fixture = Fixture()
         fixture.host.channel = "pr-1"
         fixture.host.bundleId = "ota-1"
         fixture.host.preflights["sandbox-release"] = Result.success(false)
-        fixture.host.stageResult = Result.success(HotUpdaterSandboxStaged.NoUpdate)
         fixture.coordinator.switchTo("sandbox-release")
-        assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
-        assertEquals(1, fixture.opens.size)
-        assertTrue(fixture.host.calls.contains("reset"))
-        assertEquals(
-            true,
-            fixture.coordinator.state.selection
-                ?.isBuiltIn,
-        )
+        val phase = fixture.phase as HotUpdaterSandboxPhase.Failed
+        assertEquals(HotUpdaterSandboxFailure.NoBundle, phase.failure)
+        assertEquals(listOf("preflight sandbox-release"), fixture.host.calls)
+        // What the device runs and what it downloaded stay; Reset opens the built-in bundle.
+        assertEquals("pr-1", phase.selection.channel)
+        assertEquals("ota-1", phase.selection.bundleId)
+        assertTrue(fixture.opens.isEmpty())
+    }
+
+    @Test
+    fun `the build's own channel it already runs, with no bundle left for it, stops before the check`() {
+        val fixture = Fixture()
+        fixture.host.bundleId = "ota-1"
+        fixture.host.preflights["sandbox-release"] = Result.success(false)
+        fixture.coordinator.switchTo("sandbox-release")
+        assertEquals(HotUpdaterSandboxFailure.NoBundle, (fixture.phase as HotUpdaterSandboxPhase.Failed).failure)
+        assertEquals(listOf("preflight sandbox-release"), fixture.host.calls)
+        assertTrue(fixture.opens.isEmpty())
     }
 
     @Test
@@ -1218,11 +1228,58 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
-    fun `a superseded staging is a failure`() {
+    fun `a staging superseded twice is a failure, after one fresh check`() {
         val fixture = Fixture()
         fixture.host.stageResult = Result.success(HotUpdaterSandboxStaged.Superseded)
         fixture.coordinator.switchTo("pr-1")
         assertEquals(HotUpdaterSandboxFailure.Superseded, (fixture.phase as HotUpdaterSandboxPhase.Failed).failure)
+        assertEquals(listOf("preflight pr-1", "reset", "check pr-1", "check pr-1"), fixture.host.calls)
+        assertTrue(fixture.opens.isEmpty())
+    }
+
+    @Test
+    fun `a staging the app's check superseded once opens what one fresh check stages`() {
+        val fixture = Fixture()
+        fixture.host.stageResults += HotUpdaterSandboxStaged.Superseded
+        fixture.host.stageResult = Result.success(HotUpdaterSandboxStaged.Update("ota-1"))
+        fixture.coordinator.switchTo("pr-1")
+        assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
+        assertEquals(listOf("preflight pr-1", "reset", "check pr-1", "check pr-1"), fixture.host.calls)
+        assertEquals(
+            "ota-1",
+            fixture.coordinator.state.selection
+                ?.bundleId,
+        )
+        assertEquals(1, fixture.opens.size)
+    }
+
+    @Test
+    fun `reopening the channel the device is on retries a superseded staging once, with no reset`() {
+        val fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.stageResults += HotUpdaterSandboxStaged.Superseded
+        fixture.host.stageResult = Result.success(HotUpdaterSandboxStaged.Update("ota-2"))
+        fixture.coordinator.switchTo("pr-1")
+        assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
+        assertEquals(listOf("preflight pr-1", "check pr-1", "check pr-1"), fixture.host.calls)
+        assertEquals(
+            "ota-2",
+            fixture.coordinator.state.selection
+                ?.bundleId,
+        )
+    }
+
+    @Test
+    fun `the fresh check after a superseded staging still refuses a channel switched meanwhile`() {
+        val fixture = Fixture()
+        fixture.host.stageResults += HotUpdaterSandboxStaged.Superseded
+        fixture.host.channelAfterStaging = "other"
+        fixture.coordinator.switchTo("pr-1")
+        val phase = fixture.phase as HotUpdaterSandboxPhase.Failed
+        assertEquals(HotUpdaterSandboxFailure.Superseded, phase.failure)
+        assertEquals("other", phase.selection.channel)
+        assertTrue(fixture.opens.isEmpty())
     }
 
     @Test

@@ -1302,6 +1302,16 @@ private func options(
     )
 }
 
+private func options(channel: String? = nil, allowsOlderThanBuiltIn: Bool) -> NativeCheckRequest {
+    NativeCheckRequest(
+        baseURL: baseURL,
+        updateStrategy: .appVersion,
+        requestHeaders: [:],
+        channel: channel,
+        allowsOlderThanBuiltIn: allowsOlderThanBuiltIn
+    )
+}
+
 private func descriptor(
     _ releaseId: String,
     _ bundleId: String,
@@ -1662,10 +1672,18 @@ private final class FakeUpdateHost: MemoryEventStorage, NativeUpdateHost, @unche
         return true
     }
 
-    func isReleaseSelectionCurrent(_: [String: Any]) -> Bool {
+    /// Whether a selection is current only while its catalog guard is the last
+    /// one accepted, as the store has it, instead of `isCurrent`.
+    var currentIsLastAccepted = false
+
+    func isReleaseSelectionCurrent(_ params: [String: Any]) -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        return isCurrent
+        guard currentIsLastAccepted else { return isCurrent }
+        guard let last = acceptedGuards.last else { return false }
+        return ["catalogId", "scopeKey", "catalogHash", "channel", "selectionContextHash"].allSatisfy {
+            last[$0] as? String == params[$0] as? String
+        } && (last["generation"] as? NSNumber) == (params["generation"] as? NSNumber)
     }
 
     func commitReleaseSelection(_ params: [String: Any]) async throws -> Bool {
@@ -1982,6 +2000,365 @@ private final class StallingURLProtocol: URLProtocol {
         Self.lock.lock()
         Self.stoppedValue = true
         Self.lock.unlock()
+    }
+}
+
+// MARK: - The selection floor
+
+// A shared sandbox build can be built after a channel's last deploy, so the
+// channel's bundles are older than its built-in one. Only the sandbox's
+// explicit channel open selects with no floor; every other check keeps it,
+// with the outputs it had before.
+
+private let belowA1 = "018f0000-0000-7000-8000-0000000000a1"
+private let belowA2 = "018f8000-0000-7000-8000-0000000000a2"
+private let releaseA1 = "018f0001-0000-7000-8000-0000000000c1"
+private let releaseA2 = "018f8001-0000-7000-8000-0000000000c2"
+private let aboveB = "01910000-0000-7000-8000-0000000000b0"
+private let releaseB = "01910001-0000-7000-8000-0000000000b1"
+
+// What these checks produced on origin/next before the selection floor had a
+// flag: captured there, so the flag-off path is held to them.
+private let goldenUpdate = """
+update id=01910001-0000-7000-8000-0000000000b1 release=01910001-0000-7000-8000-0000000000b1 0 force=false INSTALL runsCurrent=false staged=true
+accepted production g1 v1:68009c18b98f5ec4
+staged 01910000-0000-7000-8000-0000000000b0 BUNDLE 01910001-0000-7000-8000-0000000000b1 production v1:68009c18b98f5ec4
+resets=0
+onUpdateCheck {channel=production,fromBundleId=01900000-0000-7000-8000-000000000000,fromReleaseId=<null>,shouldForceUpdate=0,status=UPDATE_AVAILABLE,toBundleId=01910000-0000-7000-8000-0000000000b0,toReleaseId=01910001-0000-7000-8000-0000000000b1,transitionKind=INSTALL,updateStatus=UPDATE,updateStrategy=appVersion}
+onBundleDownloaded {channel=production,delivery=archive,fromBundleId=01900000-0000-7000-8000-000000000000,fromReleaseId=<null>,patchFallback=0,toBundleId=01910000-0000-7000-8000-0000000000b0,toReleaseId=01910001-0000-7000-8000-0000000000b1,updateStrategy=appVersion}
+"""
+private let goldenNoUpdate = """
+no update
+accepted production g1 v1:68009c18b98f5ec4
+resets=0
+onUpdateCheck {bundleId=01900000-0000-7000-8000-000000000000,channel=production,previousReleaseId=<null>,releaseId=<null>,status=UNCHANGED}
+"""
+private let goldenRollback = """
+update id=01900000-0000-7000-8000-000000000000 release=nil 1 force=true USE_BUILTIN runsCurrent=false staged=true
+accepted production g3 v1:a5f9a6f319a2f6b7
+committed BUILTIN 01900000-0000-7000-8000-000000000000 nil production v1:a5f9a6f319a2f6b7
+resets=0
+onUpdateCheck {channel=production,fromBundleId=01910000-0000-7000-8000-000000000001,fromReleaseId=01920000-0000-7000-8000-000000000001,shouldForceUpdate=1,status=UPDATE_AVAILABLE,toBundleId=01900000-0000-7000-8000-000000000000,toReleaseId=<null>,transitionKind=USE_BUILTIN,updateStatus=ROLLBACK,updateStrategy=appVersion}
+"""
+private let goldenScopeSwitch = """
+update id=01910001-0000-7000-8000-0000000000b1 release=01910001-0000-7000-8000-0000000000b1 0 force=false INSTALL runsCurrent=false staged=true
+accepted pr-2 g1 v1:68009c18b98f5ec4
+staged 01910000-0000-7000-8000-0000000000b0 BUNDLE 01910001-0000-7000-8000-0000000000b1 pr-2 v1:68009c18b98f5ec4
+resets=0
+onUpdateCheck {channel=pr-2,fromBundleId=01900000-0000-7000-8000-000000000000,fromReleaseId=<null>,shouldForceUpdate=0,status=UPDATE_AVAILABLE,toBundleId=01910000-0000-7000-8000-0000000000b0,toReleaseId=01910001-0000-7000-8000-0000000000b1,transitionKind=INSTALL,updateStatus=UPDATE,updateStrategy=appVersion}
+onBundleDownloaded {channel=pr-2,delivery=archive,fromBundleId=01900000-0000-7000-8000-000000000000,fromReleaseId=<null>,patchFallback=0,toBundleId=01910000-0000-7000-8000-0000000000b0,toReleaseId=01910001-0000-7000-8000-0000000000b1,updateStrategy=appVersion}
+"""
+private let goldenLeave = """
+update id=01900000-0000-7000-8000-000000000000 release=nil 1 force=true USE_BUILTIN runsCurrent=false staged=true
+accepted pr-2 g3 v1:6c6fa908b25f4954
+resets=1
+onUpdateCheck {channel=pr-2,fromBundleId=01910000-0000-7000-8000-000000000001,fromReleaseId=<null>,shouldForceUpdate=1,status=UPDATE_AVAILABLE,toBundleId=01900000-0000-7000-8000-000000000000,toReleaseId=<null>,transitionKind=USE_BUILTIN,updateStatus=ROLLBACK,updateStrategy=appVersion}
+"""
+
+private func catalogURL(_ channel: String) -> String {
+    "https://updates.example.com/api/release-catalogs/app-version/ios/\(try! encodeChannelKey(channel))/\(canonicalizeAppVersion("1.0.0")!)"
+}
+
+/// Each channel's catalog body; a channel missing from it has no catalog. Any artifact is served.
+private func channels(_ catalogs: @escaping () -> [String: String], gate: ((URL) async -> Void)? = nil) -> FakeUpdateTransport {
+    FakeUpdateTransport { url, _ in
+        if url.path.contains("/artifacts/v1/") {
+            await gate?(url)
+            return NativeUpdateResponse(status: 200, headers: [:], body: artifactBody)
+        }
+        if let channel = catalogs().keys.first(where: { catalogURL($0) == url.absoluteString }) {
+            return NativeUpdateResponse(status: 200, headers: [:], body: catalogs()[channel]!)
+        }
+        return NativeUpdateResponse(status: 404, headers: ["x-hot-updater-catalog": "none"], body: "")
+    }
+}
+
+private func selected(in channel: String, _ releaseId: String, _ bundleId: String) -> PersistedSelection {
+    PersistedSelection(
+        kind: "BUNDLE",
+        releaseId: releaseId,
+        bundleId: bundleId,
+        catalogId: catalogId,
+        scopeKey: "v1:app-version:ios:\(try! encodeChannelKey(channel))",
+        generation: 1,
+        catalogHash: catalogHash,
+        channel: channel,
+        selectionContextHash: "previous"
+    )
+}
+
+/// The selection the last staging or commit carried, as the store keeps it.
+private func receiptOf(_ params: [String: Any]?) -> PersistedSelection? {
+    guard let selection = params?["selection"] as? [String: Any] else { return nil }
+    return PersistedSelection(
+        kind: selection["kind"] as! String,
+        releaseId: selection["releaseId"] as? String,
+        bundleId: selection["bundleId"] as! String,
+        catalogId: selection["catalogId"] as? String,
+        scopeKey: selection["scopeKey"] as? String,
+        generation: (selection["generation"] as? NSNumber)?.int64Value,
+        catalogHash: selection["catalogHash"] as? String,
+        channel: selection["channel"] as! String,
+        selectionContextHash: selection["selectionContextHash"] as? String
+    )
+}
+
+private func sorted(_ object: [String: Any]) -> String {
+    "{" + object.keys.sorted().map { "\($0)=\(object[$0]!)" }.joined(separator: ",") + "}"
+}
+
+/// Everything a check and its staging leave that a caller or a plugin observes.
+private func outcome(_ update: HotUpdaterUpdate?, staged: Bool?, _ host: FakeUpdateHost) -> String {
+    var lines: [String] = []
+    if let update {
+        lines.append("update id=\(update.id) release=\(update.releaseId ?? "nil") \(update.status.rawValue) force=\(update.shouldForceUpdate) \(update.transitionKind) runsCurrent=\(update.runsCurrentBundle) staged=\(staged.map(String.init(describing:)) ?? "nil")")
+    } else {
+        lines.append("no update")
+    }
+    for accepted in host.acceptedGuards {
+        lines.append("accepted \(accepted["channel"]!) g\(accepted["generation"]!) \(accepted["selectionContextHash"]!)")
+    }
+    for committed in host.committedParams {
+        let receipt = receiptOf(committed)!
+        lines.append("committed \(receipt.kind) \(receipt.bundleId) \(receipt.releaseId ?? "nil") \(receipt.channel) \(receipt.selectionContextHash ?? "nil")")
+    }
+    for staged in host.stagedParams {
+        let receipt = receiptOf(staged)!
+        lines.append("staged \(staged["bundleId"]!) \(receipt.kind) \(receipt.releaseId ?? "nil") \(receipt.channel) \(receipt.selectionContextHash ?? "nil")")
+    }
+    lines.append("resets=\(host.resetCalls)")
+    for event in host.events() {
+        lines.append("\(event["name"]!) \(sorted(event["payload"] as! [String: Any]))")
+    }
+    return lines.joined(separator: "\n")
+}
+
+private func checkAndStage(_ host: FakeUpdateHost, _ catalogs: [String: String], _ request: NativeCheckRequest) async throws -> String {
+    let update = try await makeChecker(host, channels { catalogs }).checkForUpdate(request)
+    var staged: Bool?
+    if let update { staged = try await update.updateBundle() }
+    return outcome(update, staged: staged, host)
+}
+
+/// The check with the flag left out and set to false, against what it produced before the flag existed.
+private func expectFloorKept(
+    _ expected: String,
+    host: () -> FakeUpdateHost,
+    catalogs: [String: String],
+    channel: String? = nil
+) async throws {
+    #expect(try await checkAndStage(host(), catalogs, options(channel: channel)) == expected)
+    #expect(try await checkAndStage(host(), catalogs, options(channel: channel, allowsOlderThanBuiltIn: false)) == expected)
+}
+
+extension NativeUpdateCheckTests {
+    @Test
+    func withoutTheFlagAnUpdateStagesAsBefore() async throws {
+        try await expectFloorKept(goldenUpdate, host: { FakeUpdateHost() }, catalogs: ["production": catalog(releases: [descriptor(releaseB, aboveB)])])
+    }
+
+    @Test
+    func withoutTheFlagBundlesOlderThanTheBuiltInOneAreNoUpdateAsBefore() async throws {
+        try await expectFloorKept(goldenNoUpdate, host: { FakeUpdateHost() }, catalogs: ["production": catalog(releases: [descriptor(releaseA1, belowA1)])])
+    }
+
+    @Test
+    func withoutTheFlagAnEmptiedDefaultChannelRollsBackAsBefore() async throws {
+        try await expectFloorKept(goldenRollback, host: {
+            let host = FakeUpdateHost()
+            host.bundleIdValue = bundle1
+            host.active = selected(in: "production", release1, bundle1)
+            host.stable = host.active
+            return host
+        }, catalogs: ["production": catalog(generation: 3, releases: [])])
+    }
+
+    @Test
+    func withoutTheFlagAnExplicitChannelSwitchStagesAsBefore() async throws {
+        try await expectFloorKept(goldenScopeSwitch, host: { FakeUpdateHost() }, catalogs: ["pr-2": catalog(releases: [descriptor(releaseB, aboveB)], channel: "pr-2")], channel: "pr-2")
+    }
+
+    @Test
+    func withoutTheFlagAnEmptiedSwitchedChannelIsLeftAsBefore() async throws {
+        try await expectFloorKept(goldenLeave, host: {
+            let host = FakeUpdateHost()
+            host.channelValue = "pr-2"
+            host.bundleIdValue = bundle1
+            return host
+        }, catalogs: ["pr-2": catalog(generation: 3, releases: [], channel: "pr-2")])
+    }
+
+    @Test
+    func theFloorFreeCheckStagesTheLatestBundleOlderThanTheBuiltInOneAndNamesTheRealBuiltIn() async throws {
+        let host = FakeUpdateHost()
+        let catalogs = ["production": catalog(releases: [descriptor(releaseA2, belowA2), descriptor(releaseA1, belowA1)])]
+        let update = try #require(try await makeChecker(host, channels { catalogs }).checkForUpdate(options(channel: "production", allowsOlderThanBuiltIn: true)))
+        #expect(update.id == releaseA2)
+        #expect(update.transitionKind == "INSTALL")
+        #expect(try await update.updateBundle())
+        #expect(host.stagedParams.last?["bundleId"] as? String == belowA2)
+        let floorFree = createReleaseSelectionContextHash(ReleaseSelectionContext(
+            activeBundleId: builtInBundleId,
+            activeReleaseId: nil,
+            cohort: "1",
+            minimumReleaseId: "00000000-0000-0000-0000-000000000000",
+            strategy: .appVersion,
+            strategyValue: canonicalizeAppVersion("1.0.0")!,
+            crashedBundleIds: []
+        ))
+        #expect(receiptOf(host.stagedParams.last)?.selectionContextHash == floorFree)
+        let check = try #require(host.events().first { $0["name"] as? String == "onUpdateCheck" }?["payload"] as? [String: Any])
+        #expect(check["fromBundleId"] as? String == builtInBundleId)
+        #expect(check["toBundleId"] as? String == belowA2)
+        // Nothing persists the flag: the check after a crash keeps the floor.
+        let recorded = try #require(host.recoveryRequests.last)
+        let record = try #require(HotUpdaterRecoveryCheckConfig.json(for: recorded))
+        #expect(HotUpdaterRecoveryCheckConfig(json: record)?.request.allowsOlderThanBuiltIn == false)
+    }
+
+    @Test
+    func theFloorFreeCheckSwitchesToAnotherChannelWhoseBundlesAreOlderThanTheBuiltInOne() async throws {
+        let host = FakeUpdateHost()
+        let catalogs = ["pr-2": catalog(releases: [descriptor(releaseA1, belowA1)], channel: "pr-2")]
+        let update = try #require(try await makeChecker(host, channels { catalogs }).checkForUpdate(options(channel: "pr-2", allowsOlderThanBuiltIn: true)))
+        #expect(try await update.updateBundle())
+        #expect(host.stagedParams.last?["bundleId"] as? String == belowA1)
+        #expect(host.stagedParams.last?["channel"] as? String == "pr-2")
+    }
+
+    @Test
+    func aBundleOpenedBelowTheFloorStaysUnderFlooredChecksAndALaterDeployAboveItUpdates() async throws {
+        let host = FakeUpdateHost()
+        let catalogs = LockedValue(["production": catalog(releases: [descriptor(releaseA1, belowA1)])])
+        let checker = makeChecker(host, channels { catalogs.value })
+        let opened = try #require(try await checker.checkForUpdate(options(channel: "production", allowsOlderThanBuiltIn: true)))
+        #expect(try await opened.updateBundle())
+        // The next launch runs it, and the app's own check keeps its floor.
+        host.active = receiptOf(host.stagedParams.last)
+        host.bundleIdValue = belowA1
+        #expect(try await checker.checkForUpdate(options()) == nil)
+        #expect(try await checker.checkForUpdate(options()) == nil)
+        #expect(host.stageCalls == 1)
+
+        catalogs.value = ["production": catalog(generation: 2, releases: [descriptor(releaseB, aboveB), descriptor(releaseA1, belowA1)])]
+        let newer = try #require(try await checker.checkForUpdate(options()))
+        #expect(newer.id == releaseB)
+        #expect(try await newer.updateBundle())
+        #expect(host.stagedParams.last?["bundleId"] as? String == aboveB)
+    }
+
+    @Test
+    func removalAKeepsTheRemovedBundleUnderFlooredChecksAndTheFloorFreeCheckRollsBack() async throws {
+        let host = FakeUpdateHost()
+        host.bundleIdValue = belowA2
+        host.active = selected(in: "production", releaseA2, belowA2)
+        host.stable = host.active
+        let catalogs = ["production": catalog(generation: 2, releases: [descriptor(releaseA1, belowA1)])]
+        let checker = makeChecker(host, channels { catalogs })
+        // The accepted limitation: an ordinary check never moves below its floor.
+        #expect(try await checker.checkForUpdate(options()) == nil)
+        let reopened = try #require(try await checker.checkForUpdate(options(channel: "production", allowsOlderThanBuiltIn: true)))
+        #expect(reopened.status == .rollback)
+        #expect(reopened.id == releaseA1)
+    }
+
+    @Test
+    func removalBLeavesAnAcceptedEmptySwitchedChannelWithTheFlagOrWithout() async throws {
+        for request in [options(), options(allowsOlderThanBuiltIn: true)] {
+            let host = FakeUpdateHost()
+            host.channelValue = "pr-2"
+            host.bundleIdValue = belowA1
+            host.active = selected(in: "pr-2", releaseA1, belowA1)
+            let catalogs = ["pr-2": catalog(generation: 3, releases: [], channel: "pr-2")]
+            let update = try #require(try await makeChecker(host, channels { catalogs }).checkForUpdate(request))
+            #expect(update.transitionKind == "USE_BUILTIN")
+            #expect(update.id == builtInBundleId)
+            #expect(try await update.updateBundle())
+            #expect(host.resetCalls == 1)
+        }
+    }
+
+    @Test
+    func removalCKeepsABundleBelowTheFloorInAnEmptiedDefaultChannelUnderFlooredChecks() async throws {
+        func host() -> FakeUpdateHost {
+            let host = FakeUpdateHost()
+            host.bundleIdValue = belowA1
+            host.active = selected(in: "production", releaseA1, belowA1)
+            host.stable = host.active
+            return host
+        }
+        let catalogs = ["production": catalog(generation: 3, releases: [])]
+        #expect(try await makeChecker(host(), channels { catalogs }).checkForUpdate(options()) == nil)
+        // The sandbox's preflight refuses this channel before its check: Reset is the way back.
+        let update = try #require(try await makeChecker(host(), channels { catalogs }).checkForUpdate(options(channel: "production", allowsOlderThanBuiltIn: true)))
+        #expect(update.transitionKind == "USE_BUILTIN")
+        #expect(update.id == builtInBundleId)
+    }
+
+    @Test
+    func removalDAMissingCatalogProvesNothingWithTheFlagOrWithout() async throws {
+        for request in [options(), options(allowsOlderThanBuiltIn: true)] {
+            let host = FakeUpdateHost()
+            host.channelValue = "pr-2"
+            host.bundleIdValue = belowA1
+            host.active = selected(in: "pr-2", releaseA1, belowA1)
+            #expect(try await makeChecker(host, channels { [:] }).checkForUpdate(request) == nil)
+            #expect(host.resetCalls == 0)
+        }
+    }
+
+    /// The sandbox's floor-free staging, paused in its artifact request while
+    /// the app's own floored check of the same scope finishes: the app's check
+    /// replaces the selection context, so the staging is stale, and one fresh
+    /// floor-free check stages it.
+    private func expectFreshCheckRecovers(_ host: FakeUpdateHost, _ catalogs: [String: String], channel: String, expected: String) async throws {
+        host.currentIsLastAccepted = true
+        let entered = Latch()
+        let gate = Latch()
+        let paused = Flag()
+        let sandbox = makeChecker(host, channels({ catalogs }, gate: { _ in
+            guard !paused.isSet else { return }
+            paused.set()
+            entered.open()
+            await gate.wait()
+        }))
+        // The app's check runs in its own JavaScript, beside the sandbox's checker.
+        let app = makeChecker(host, channels { catalogs })
+        let first = try #require(try await sandbox.checkForUpdate(options(channel: channel, allowsOlderThanBuiltIn: true)))
+        let staging = Task { try await first.updateBundle() }
+        await entered.wait()
+        #expect(try await app.checkForUpdate(options()) == nil)
+        gate.open()
+        await #expect(throws: NativeUpdateCheckError.self) { try await staging.value }
+        #expect(host.stageCalls == 0)
+
+        let fresh = try #require(try await sandbox.checkForUpdate(options(channel: channel, allowsOlderThanBuiltIn: true)))
+        #expect(try await fresh.updateBundle())
+        #expect(host.stagedParams.last?["bundleId"] as? String == expected)
+    }
+
+    @Test
+    func aFloorFreeStagingTheAppsCheckOfTheOwnChannelMadeStaleStagesAfterOneFreshCheck() async throws {
+        try await expectFreshCheckRecovers(
+            FakeUpdateHost(),
+            ["production": catalog(releases: [descriptor(releaseA1, belowA1)])],
+            channel: "production",
+            expected: belowA1
+        )
+    }
+
+    @Test
+    func aFloorFreeStagingTheAppsCheckOfTheSwitchedChannelMadeStaleStagesAfterOneFreshCheck() async throws {
+        let host = FakeUpdateHost()
+        host.channelValue = "pr-2"
+        host.bundleIdValue = belowA1
+        host.active = selected(in: "pr-2", releaseA1, belowA1)
+        try await expectFreshCheckRecovers(
+            host,
+            ["pr-2": catalog(generation: 2, releases: [descriptor(releaseA2, belowA2), descriptor(releaseA1, belowA1)], channel: "pr-2")],
+            channel: "pr-2",
+            expected: belowA2
+        )
     }
 }
 #endif

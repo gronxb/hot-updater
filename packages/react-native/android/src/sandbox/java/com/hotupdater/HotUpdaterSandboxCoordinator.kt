@@ -870,8 +870,9 @@ internal class HotUpdaterSandboxCoordinator(
         val before = host.selection()
         val toDefault = target == before.defaultChannel
         val hasBundle = attempt(operationId, target, HotUpdaterSandboxStep.PREFLIGHT) { host.preflight(target) } ?: return
-        // A preflight that found nothing leaves everything downloaded in place.
-        if (!hasBundle && !toDefault) {
+        // A preflight that found nothing leaves everything downloaded in place,
+        // on the build's own channel too: Reset is what opens the built-in bundle.
+        if (!hasBundle) {
             fail(operationId, target, HotUpdaterSandboxStep.PREFLIGHT, HotUpdaterSandboxFailure.NoBundle)
             return
         }
@@ -884,14 +885,11 @@ internal class HotUpdaterSandboxCoordinator(
                 return
             }
         }
-        if (refuseInSession(operationId, target, HotUpdaterSandboxStep.CHECK)) return
-        step(operationId, target, HotUpdaterSandboxStep.CHECK)
-        val staged =
-            attempt(operationId, target, HotUpdaterSandboxStep.CHECK) {
-                host.checkAndStage(target) { progress ->
-                    scope.launch { reportProgress(operationId, target, progress) }
-                }
-            } ?: return
+        var staged = checkAndStage(operationId, target) ?: return
+        // A check from the running app replaced the selection while it staged:
+        // the app keeps its floor, so the same scope can disagree once. One
+        // fresh check and staging, then the failure shows.
+        if (staged == HotUpdaterSandboxStaged.Superseded) staged = checkAndStage(operationId, target) ?: return
         when (staged) {
             HotUpdaterSandboxStaged.Superseded -> {
                 fail(operationId, target, HotUpdaterSandboxStep.CHECK, HotUpdaterSandboxFailure.Superseded)
@@ -914,6 +912,20 @@ internal class HotUpdaterSandboxCoordinator(
             }
         }
         finish(operationId)
+    }
+
+    /** The SDK's check and staging of [target]; null once a failure shows. */
+    private suspend fun checkAndStage(
+        operationId: Long,
+        target: String,
+    ): HotUpdaterSandboxStaged? {
+        if (refuseInSession(operationId, target, HotUpdaterSandboxStep.CHECK)) return null
+        step(operationId, target, HotUpdaterSandboxStep.CHECK)
+        return attempt(operationId, target, HotUpdaterSandboxStep.CHECK) {
+            host.checkAndStage(target) { progress ->
+                scope.launch { reportProgress(operationId, target, progress) }
+            }
+        }
     }
 
     /**

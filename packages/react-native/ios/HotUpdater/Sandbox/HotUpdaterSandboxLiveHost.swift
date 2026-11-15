@@ -233,18 +233,12 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
         guard let catalog = parseReleaseCatalog(response.body, expectedScope: scope) else {
             throw NativeUpdateCheckError.invalidResponse("Received an invalid Release catalog")
         }
-        let builtIn = HotUpdaterImpl.minBundleId()
-        // What this device would select once it left its bundles behind.
-        let desired = selectDesiredRelease(catalog, input: ReleaseSelectionInput(
-            builtInBundleId: builtIn,
-            currentBundleId: builtIn,
-            activeReleaseId: nil,
-            runningReleaseId: .some(nil),
-            minimumReleaseId: builtIn,
-            cohort: normalizeCohortValue(impl.getCohort()),
+        return hotUpdaterSandboxChannelHasBundle(
+            catalog,
+            builtInBundleId: HotUpdaterImpl.minBundleId(),
+            cohort: impl.getCohort(),
             crashedBundleIds: impl.getCrashHistory()
-        ))
-        return desired != nil && desired?.kind != .builtin
+        )
     }
 
     func reset() async throws -> Bool {
@@ -257,14 +251,59 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
     ) async throws -> HotUpdaterSandboxStaged {
         let config = try requireConfig()
         let check = HotUpdaterCheckOptions(updateStrategy: config.updateStrategy, channel: channel)
-        guard let update = try await instance(config).checkForUpdate(check) else {
+        guard let update = try await instance(config).checkForUpdateOlderThanBuiltIn(check) else {
             return .noUpdate
         }
-        guard try await update.updateBundle(onProgress: onProgress) else {
+        let staged: Bool
+        do {
+            staged = try await update.updateBundle(onProgress: onProgress)
+        } catch where hotUpdaterSandboxIsStaleSelection(error) {
+            // Another check's catalog replaced this selection while it staged.
+            staged = false
+        }
+        guard staged else {
             return .superseded
         }
         return .update(bundleId: update.bundleId, message: update.message, releaseId: update.releaseId)
     }
+}
+
+/// Whether opening a channel from the sandbox finds a bundle in `catalog`: what
+/// this device would select once it left its bundles behind, with no floor, so
+/// a Release older than the built-in bundle counts. A crashed bundle doesn't.
+func hotUpdaterSandboxChannelHasBundle(
+    _ catalog: ReleaseCatalog,
+    builtInBundleId: String,
+    cohort: String,
+    crashedBundleIds: [String]
+) -> Bool {
+    let desired = selectDesiredRelease(catalog, input: ReleaseSelectionInput(
+        builtInBundleId: builtInBundleId,
+        currentBundleId: builtInBundleId,
+        activeReleaseId: nil,
+        runningReleaseId: .some(nil),
+        // No bundle ID sorts below it.
+        minimumReleaseId: "00000000-0000-0000-0000-000000000000",
+        cohort: normalizeCohortValue(cohort),
+        crashedBundleIds: crashedBundleIds
+    ))
+    return desired != nil && desired?.kind != .builtin
+}
+
+/// A staging that failed only because a newer check's selection replaced its
+/// own: the checker's own guard, or the store's, through the native rejection.
+func hotUpdaterSandboxIsStaleSelection(_ error: Error) -> Bool {
+    if case NativeUpdateCheckError.staleReleaseCatalog = error { return true }
+    if error is StaleReleaseSelectionError { return true }
+    guard let rejection = error as? NativeUpdateRejection else { return false }
+    let stale = StaleReleaseSelectionError() as NSError
+    func isStale(_ userInfo: [String: Any]) -> Bool {
+        userInfo[NSLocalizedDescriptionKey] as? String == stale.localizedDescription
+    }
+    // A stale selection carries no classification; a failed download does.
+    guard rejection.userInfo["stage"] == nil else { return false }
+    if isStale(rejection.userInfo) { return true }
+    return (rejection.userInfo[NSUnderlyingErrorKey] as? NSError).map { isStale($0.userInfo) || $0.localizedDescription == stale.localizedDescription } ?? false
 }
 
 /// The sandbox's own defaults: an app's data and the SDK's stores stay as they are.

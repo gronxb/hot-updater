@@ -317,6 +317,13 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
         try await checker.checkForUpdate(NativeCheckRequest(self.options, options))
     }
 
+    /// `checkForUpdate` for the sandbox's explicit channel open: the channel's
+    /// latest Release this build can run, even one older than the built-in
+    /// bundle. The same checker and staging as `checkForUpdate`.
+    func checkForUpdateOlderThanBuiltIn(_ options: HotUpdaterCheckOptions) async throws -> HotUpdaterUpdate? {
+        try await checker.checkForUpdate(NativeCheckRequest(self.options, options, allowsOlderThanBuiltIn: true))
+    }
+
     /// `checkForUpdate` for Objective-C; completes on the main queue.
     /// `cancel` on the returned task cancels the check.
     @discardableResult

@@ -184,22 +184,12 @@ internal class HotUpdaterSandboxLiveHost(
                     requestHeaders = config.requestHeaders,
                     requestTimeoutMillis = config.requestTimeoutMillis,
                 ) ?: return@withContext false
-            val builtIn = state.getMinBundleId()
-            // What this device would select once it left its bundles behind.
-            val desired =
-                ReleaseSelector.selectDesiredRelease(
-                    catalog,
-                    ReleaseSelectionInput(
-                        builtInBundleId = builtIn,
-                        currentBundleId = builtIn,
-                        activeReleaseId = null,
-                        runningReleaseId = RunningReleaseId.Explicit(null),
-                        minimumReleaseId = builtIn,
-                        cohort = ReleaseSelector.normalizeCohortValue(state.getCohort()),
-                        crashedBundleIds = state.getCrashHistory(),
-                    ),
-                )
-            desired != null && desired.kind != SelectionKind.BUILTIN
+            hotUpdaterSandboxChannelHasBundle(
+                catalog,
+                builtInBundleId = state.getMinBundleId(),
+                cohort = state.getCohort(),
+                crashedBundleIds = state.getCrashHistory(),
+            )
         }
 
     override suspend fun reset(): Boolean = withContext(Dispatchers.IO) { instance(requireConfig()).resetChannel() }
@@ -211,10 +201,17 @@ internal class HotUpdaterSandboxLiveHost(
         withContext(Dispatchers.IO) {
             val config = requireConfig()
             val update =
-                instance(config).checkForUpdate(
+                instance(config).checkForUpdateOlderThanBuiltIn(
                     HotUpdaterCheckOptions(updateStrategy = config.updateStrategy, channel = channel),
                 ) ?: return@withContext HotUpdaterSandboxStaged.NoUpdate
-            if (!update.updateBundle(onProgress)) return@withContext HotUpdaterSandboxStaged.Superseded
+            val staged =
+                try {
+                    update.updateBundle(onProgress)
+                } catch (error: Exception) {
+                    // Another check's catalog replaced this selection while it staged.
+                    if (hotUpdaterSandboxIsStaleSelection(error)) false else throw error
+                }
+            if (!staged) return@withContext HotUpdaterSandboxStaged.Superseded
             val active = impl.getActiveUpdateState()["activeSelection"] as? Map<*, *>
             HotUpdaterSandboxStaged.Update(
                 active?.get("bundleId") as? String ?: HotUpdaterImpl.getMinBundleId(),
@@ -228,6 +225,41 @@ internal class HotUpdaterSandboxLiveHost(
         const val PLATFORM = "android"
     }
 }
+
+/**
+ * Whether opening a channel from the sandbox finds a bundle in [catalog]: what
+ * this device would select once it left its bundles behind, with no floor, so
+ * a Release older than the built-in bundle counts. A crashed bundle doesn't.
+ */
+internal fun hotUpdaterSandboxChannelHasBundle(
+    catalog: ReleaseCatalog,
+    builtInBundleId: String,
+    cohort: String,
+    crashedBundleIds: List<String>,
+): Boolean {
+    val desired =
+        ReleaseSelector.selectDesiredRelease(
+            catalog,
+            ReleaseSelectionInput(
+                builtInBundleId = builtInBundleId,
+                currentBundleId = builtInBundleId,
+                activeReleaseId = null,
+                runningReleaseId = RunningReleaseId.Explicit(null),
+                minimumReleaseId = NO_FLOOR,
+                cohort = ReleaseSelector.normalizeCohortValue(cohort),
+                crashedBundleIds = crashedBundleIds,
+            ),
+        )
+    return desired != null && desired.kind != SelectionKind.BUILTIN
+}
+
+/** No bundle ID sorts below it. */
+private const val NO_FLOOR = "00000000-0000-0000-0000-000000000000"
+
+/** A staging that failed only because a newer check's selection replaced its own: no update failure. */
+internal fun hotUpdaterSandboxIsStaleSelection(error: Throwable): Boolean =
+    generateSequence(error) { it.cause.takeIf { cause -> cause !== it } }
+        .any { it is StaleReleaseCatalogException || it is StaleReleaseSelectionException }
 
 /**
  * The sandbox's own file: an app's data and the SDK's stores stay as they are.

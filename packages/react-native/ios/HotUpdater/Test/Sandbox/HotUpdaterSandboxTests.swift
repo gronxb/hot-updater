@@ -46,6 +46,8 @@ private final class FakeHost: HotUpdaterSandboxHost {
     var resetResult: Result<Bool, Error> = .success(true)
     var stageGate: Gate<HotUpdaterSandboxStaged>?
     var stageResult: Result<HotUpdaterSandboxStaged, Error> = .success(.update(bundleId: "ota"))
+    /// Answers the next stagings in order, before `stageResult`.
+    var stageResults: [HotUpdaterSandboxStaged] = []
     var progressReporter: ((Double) -> Void)?
     /// The OTA this process launched, which stays what it runs after a reset deletes it.
     var runningBundleId: String?
@@ -189,6 +191,8 @@ private final class FakeHost: HotUpdaterSandboxHost {
         let staged: HotUpdaterSandboxStaged
         if let stageGate {
             staged = try await stageGate.wait()
+        } else if !stageResults.isEmpty {
+            staged = stageResults.removeFirst()
         } else {
             staged = try stageResult.get()
         }
@@ -870,12 +874,11 @@ struct HotUpdaterSandboxCoordinatorTests {
     }
 
     @Test
-    func theDefaultChannelWithNothingPublishedNeedsAReloadOverAFixedLaunch() async {
+    func theDefaultChannelStagingNothingAfterTheResetNeedsAReloadOverAFixedLaunch() async {
         let fixture = Fixture()
         fixture.host.channel = "pr-1"
         fixture.host.bundleId = "ota-1"
         fixture.host.runningBundleId = "ota-1"
-        fixture.host.preflights["sandbox-release"] = .success(false)
         fixture.host.stageResult = .success(.noUpdate)
         fixture.coordinator.switchTo("sandbox-release")
         await settle()
@@ -1003,7 +1006,6 @@ struct HotUpdaterSandboxCoordinatorTests {
         let fixture = Fixture()
         fixture.host.channel = "pr-1"
         fixture.host.bundleId = "ota-1"
-        fixture.host.preflights["sandbox-release"] = .success(false)
         fixture.host.stageResult = .success(.noUpdate)
         fixture.coordinator.switchTo("sandbox-release")
         await settle()
@@ -1071,18 +1073,37 @@ struct HotUpdaterSandboxCoordinatorTests {
     }
 
     @Test
-    func theDefaultChannelWithNothingNewerIsTheBuiltInBundle() async {
+    func theBuildsOwnChannelWithNoBundleForItStopsBeforeTheResetAsAnyChannel() async {
         let fixture = Fixture()
         fixture.host.channel = "pr-1"
         fixture.host.bundleId = "ota-1"
         fixture.host.preflights["sandbox-release"] = .success(false)
-        fixture.host.stageResult = .success(.noUpdate)
         fixture.coordinator.switchTo("sandbox-release")
         await settle()
-        #expect(fixture.coordinator.state.phase == .idle)
-        #expect(fixture.opens.count == 1)
-        #expect(fixture.host.calls.contains("reset"))
-        #expect(fixture.coordinator.state.selection?.isBuiltIn == true)
+        guard case .failed(_, _, .preflight, .noBundle, let selection) = fixture.coordinator.state.phase else {
+            Issue.record("expected no bundle")
+            return
+        }
+        #expect(fixture.host.calls == ["preflight sandbox-release"])
+        // What the device runs and what it downloaded stay; Reset opens the built-in bundle.
+        #expect(selection.channel == "pr-1")
+        #expect(selection.bundleId == "ota-1")
+        #expect(fixture.opens.isEmpty)
+    }
+
+    @Test
+    func theBuildsOwnChannelItAlreadyRunsWithNoBundleLeftStopsBeforeTheCheck() async {
+        let fixture = Fixture()
+        fixture.host.bundleId = "ota-1"
+        fixture.host.preflights["sandbox-release"] = .success(false)
+        fixture.coordinator.switchTo("sandbox-release")
+        await settle()
+        guard case .failed(_, _, .preflight, .noBundle, _) = fixture.coordinator.state.phase else {
+            Issue.record("expected no bundle")
+            return
+        }
+        #expect(fixture.host.calls == ["preflight sandbox-release"])
+        #expect(fixture.opens.isEmpty)
     }
 
     @Test
@@ -1098,7 +1119,7 @@ struct HotUpdaterSandboxCoordinatorTests {
     }
 
     @Test
-    func aSupersededStagingIsAFailure() async {
+    func aStagingSupersededTwiceIsAFailureAfterOneFreshCheck() async {
         let fixture = Fixture()
         fixture.host.stageResult = .success(.superseded)
         fixture.coordinator.switchTo("pr-1")
@@ -1107,6 +1128,50 @@ struct HotUpdaterSandboxCoordinatorTests {
             Issue.record("expected superseded")
             return
         }
+        #expect(fixture.host.calls == ["preflight pr-1", "reset", "check pr-1", "check pr-1"])
+        #expect(fixture.opens.isEmpty)
+    }
+
+    @Test
+    func aStagingTheAppsCheckSupersededOnceOpensWhatOneFreshCheckStages() async {
+        let fixture = Fixture()
+        fixture.host.stageResults = [.superseded]
+        fixture.host.stageResult = .success(.update(bundleId: "ota-1"))
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        #expect(fixture.coordinator.state.phase == .idle)
+        #expect(fixture.host.calls == ["preflight pr-1", "reset", "check pr-1", "check pr-1"])
+        #expect(fixture.coordinator.state.selection?.bundleId == "ota-1")
+        #expect(fixture.opens.count == 1)
+    }
+
+    @Test
+    func reopeningTheChannelTheDeviceIsOnRetriesASupersededStagingOnceWithNoReset() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.stageResults = [.superseded]
+        fixture.host.stageResult = .success(.update(bundleId: "ota-2"))
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        #expect(fixture.coordinator.state.phase == .idle)
+        #expect(fixture.host.calls == ["preflight pr-1", "check pr-1", "check pr-1"])
+        #expect(fixture.coordinator.state.selection?.bundleId == "ota-2")
+    }
+
+    @Test
+    func theFreshCheckAfterASupersededStagingStillRefusesAChannelSwitchedMeanwhile() async {
+        let fixture = Fixture()
+        fixture.host.stageResults = [.superseded]
+        fixture.host.channelAfterStaging = "other"
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        guard case .failed(_, _, .check, .superseded, let selection) = fixture.coordinator.state.phase else {
+            Issue.record("expected superseded")
+            return
+        }
+        #expect(selection.channel == "other")
+        #expect(fixture.opens.isEmpty)
     }
 
     @Test

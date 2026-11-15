@@ -39,6 +39,50 @@ class NativeUpdateCheckerTest {
         private val CATALOG_URL = "$BASE_URL/release-catalogs/app-version/android/$CHANNEL_KEY/1.2.0"
         private val ARTIFACT_URL = "$BASE_URL/artifacts/v1/$BUNDLE_B/from/$MIN_BUNDLE_ID"
         private val ARTIFACT_V2_URL = "$BASE_URL/artifacts/v2/$BUNDLE_B/from/$MIN_BUNDLE_ID"
+
+        // What these checks produced on origin/next before the selection floor
+        // had a flag: captured there, so the flag-off path is held to them.
+        private val GOLDEN_UPDATE =
+            """
+            update id=01920000-0000-7000-8000-0000000000b1 release=01920000-0000-7000-8000-0000000000b1 UPDATE force=false INSTALL runsCurrent=false staged=true
+            accepted production g1 v1:61b690927ff079e6
+            active BUNDLE 01920000-0000-7000-8000-00000000000b 01920000-0000-7000-8000-0000000000b1 production v1:61b690927ff079e6
+            resets=0 stagings=1 channel=production
+            onUpdateCheck {channel=production,fromBundleId=01900000-0000-7000-8000-000000000000,fromReleaseId=null,shouldForceUpdate=false,status=UPDATE_AVAILABLE,toBundleId=01920000-0000-7000-8000-00000000000b,toReleaseId=01920000-0000-7000-8000-0000000000b1,transitionKind=INSTALL,updateStatus=UPDATE,updateStrategy=appVersion}
+            onBundleDownloaded {channel=production,delivery=patch,fromBundleId=01900000-0000-7000-8000-000000000000,fromReleaseId=null,patchFallback=false,toBundleId=01920000-0000-7000-8000-00000000000b,toReleaseId=01920000-0000-7000-8000-0000000000b1,updateStrategy=appVersion}
+            """.trimIndent()
+        private val GOLDEN_NO_UPDATE =
+            """
+            no update
+            accepted production g1 v1:61b690927ff079e6
+            resets=0 stagings=0 channel=production
+            onUpdateCheck {bundleId=01900000-0000-7000-8000-000000000000,channel=production,previousReleaseId=null,releaseId=null,status=UNCHANGED}
+            """.trimIndent()
+        private val GOLDEN_ROLLBACK =
+            """
+            update id=01900000-0000-7000-8000-000000000000 release=null ROLLBACK force=true USE_BUILTIN runsCurrent=false staged=true
+            accepted production g3 v1:f5a7cc915d04a275
+            committed BUILTIN 01900000-0000-7000-8000-000000000000 null production v1:f5a7cc915d04a275
+            active BUILTIN 01900000-0000-7000-8000-000000000000 null production v1:f5a7cc915d04a275
+            resets=0 stagings=0 channel=production
+            onUpdateCheck {channel=production,fromBundleId=01910000-0000-7000-8000-00000000000a,fromReleaseId=01910000-0000-7000-8000-0000000000a1,shouldForceUpdate=true,status=UPDATE_AVAILABLE,toBundleId=01900000-0000-7000-8000-000000000000,toReleaseId=null,transitionKind=USE_BUILTIN,updateStatus=ROLLBACK,updateStrategy=appVersion}
+            """.trimIndent()
+        private val GOLDEN_SCOPE_SWITCH =
+            """
+            update id=01920000-0000-7000-8000-0000000000b1 release=01920000-0000-7000-8000-0000000000b1 UPDATE force=false INSTALL runsCurrent=false staged=true
+            accepted pr-2 g1 v1:61b690927ff079e6
+            active BUNDLE 01920000-0000-7000-8000-00000000000b 01920000-0000-7000-8000-0000000000b1 pr-2 v1:61b690927ff079e6
+            resets=0 stagings=1 channel=production
+            onUpdateCheck {channel=pr-2,fromBundleId=01900000-0000-7000-8000-000000000000,fromReleaseId=null,shouldForceUpdate=false,status=UPDATE_AVAILABLE,toBundleId=01920000-0000-7000-8000-00000000000b,toReleaseId=01920000-0000-7000-8000-0000000000b1,transitionKind=INSTALL,updateStatus=UPDATE,updateStrategy=appVersion}
+            onBundleDownloaded {channel=pr-2,delivery=patch,fromBundleId=01900000-0000-7000-8000-000000000000,fromReleaseId=null,patchFallback=false,toBundleId=01920000-0000-7000-8000-00000000000b,toReleaseId=01920000-0000-7000-8000-0000000000b1,updateStrategy=appVersion}
+            """.trimIndent()
+        private val GOLDEN_LEAVE =
+            """
+            update id=01900000-0000-7000-8000-000000000000 release=null ROLLBACK force=true USE_BUILTIN runsCurrent=false staged=true
+            accepted pr-2 g3 v1:70316e1240afb586
+            resets=1 stagings=0 channel=production
+            onUpdateCheck {channel=pr-2,fromBundleId=01910000-0000-7000-8000-00000000000a,fromReleaseId=null,shouldForceUpdate=true,status=UPDATE_AVAILABLE,toBundleId=01900000-0000-7000-8000-000000000000,toReleaseId=null,transitionKind=USE_BUILTIN,updateStatus=ROLLBACK,updateStrategy=appVersion}
+            """.trimIndent()
         private val OPTIONS =
             NativeCheckRequest(
                 baseURL = "$BASE_URL/",
@@ -1550,6 +1594,392 @@ class NativeUpdateCheckerTest {
         assertEquals(RELEASE_A, encodeURIComponent(RELEASE_A))
         assertEquals(BUNDLE_A, encodeURIComponent(BUNDLE_A))
     }
+
+    // The selection floor. A shared sandbox build can be built after a
+    // channel's last deploy, so the channel's bundles are older than its
+    // built-in one. Only the sandbox's explicit channel open selects with no
+    // floor; every other check keeps it, with the outputs it had before.
+
+    private val belowA1 = "018f0000-0000-7000-8000-0000000000a1"
+    private val belowA2 = "018f8000-0000-7000-8000-0000000000a2"
+    private val releaseA1 = "018f0001-0000-7000-8000-0000000000c1"
+    private val releaseA2 = "018f8001-0000-7000-8000-0000000000c2"
+
+    private fun request(
+        channel: String? = null,
+        allowsOlderThanBuiltIn: Boolean? = null,
+    ): NativeCheckRequest =
+        if (allowsOlderThanBuiltIn == null) {
+            NativeCheckRequest(
+                baseURL = "$BASE_URL/",
+                updateStrategy = HotUpdaterUpdateStrategy.APP_VERSION,
+                requestHeaders = mapOf("Authorization" to "Bearer token"),
+                channel = channel,
+            )
+        } else {
+            NativeCheckRequest(
+                baseURL = "$BASE_URL/",
+                updateStrategy = HotUpdaterUpdateStrategy.APP_VERSION,
+                requestHeaders = mapOf("Authorization" to "Bearer token"),
+                channel = channel,
+                allowsOlderThanBuiltIn = allowsOlderThanBuiltIn,
+            )
+        }
+
+    private fun catalogUrlOf(channel: String) =
+        "$BASE_URL/release-catalogs/app-version/android/${ReleaseCatalogs.encodeChannelKey(channel)}/1.2.0"
+
+    private fun scopeKeyOf(channel: String) = "v1:app-version:android:${ReleaseCatalogs.encodeChannelKey(channel)}"
+
+    /** Each channel's catalog body; a channel missing from it has no catalog. Any artifact is served. */
+    private fun channels(catalogs: Map<String, String>): suspend (UpdateCheckRequest) -> UpdateCheckResponse =
+        { request ->
+            val channel = catalogs.keys.firstOrNull { catalogUrlOf(it) == request.url }
+            when {
+                channel != null -> ok(catalogs.getValue(channel))
+                request.url.startsWith("$BASE_URL/artifacts/v1/") -> ok(artifact())
+                request.url.startsWith("$BASE_URL/release-catalogs/") ->
+                    UpdateCheckResponse(404, "Not Found", mapOf("X-Hot-Updater-Catalog" to "none"), "")
+                else -> UpdateCheckResponse(404, "Not Found", emptyMap(), "")
+            }
+        }
+
+    private fun selectedIn(
+        channel: String,
+        releaseId: String,
+        bundleId: String,
+    ) = PersistedSelection(
+        kind = "BUNDLE",
+        releaseId = releaseId,
+        bundleId = bundleId,
+        catalogId = CATALOG_ID,
+        scopeKey = scopeKeyOf(channel),
+        generation = 1,
+        catalogHash = CATALOG_HASH,
+        channel = channel,
+        selectionContextHash = "previous",
+    )
+
+    private fun sorted(json: JSONObject): String =
+        json
+            .keys()
+            .asSequence()
+            .sorted()
+            .joinToString(",", "{", "}") { key -> "$key=${json.get(key)}" }
+
+    /** Everything a check and its staging leave that a caller or a plugin observes. */
+    private fun outcome(
+        update: HotUpdaterUpdate?,
+        staged: Boolean?,
+        state: FakeState,
+    ): String =
+        buildList {
+            add(
+                update?.let {
+                    "update id=${it.id} release=${it.releaseId} ${it.status} force=${it.shouldForceUpdate} " +
+                        "${it.transitionKind} runsCurrent=${it.runsCurrentBundle} staged=$staged"
+                } ?: "no update",
+            )
+            state.accepted.forEach { add("accepted ${it.channel} g${it.generation} ${it.selectionContextHash}") }
+            state.committed.forEach { add("committed ${it.kind} ${it.bundleId} ${it.releaseId} ${it.channel} ${it.selectionContextHash}") }
+            state.activeSelection?.let { add("active ${it.kind} ${it.bundleId} ${it.releaseId} ${it.channel} ${it.selectionContextHash}") }
+            add("resets=${state.resets.get()} stagings=${state.stageCount.get()} channel=${state.getChannel()}")
+            state.events().forEach { add("${it.getString("name")} ${sorted(it.getJSONObject("payload"))}") }
+        }.joinToString("\n")
+
+    /** Runs one check, and stages what it finds. */
+    private suspend fun checkAndStage(
+        state: FakeState,
+        catalogs: Map<String, String>,
+        request: NativeCheckRequest,
+    ): String {
+        val update = NativeUpdateChecker(state, FakeTransport(channels(catalogs))).checkForUpdate(request)
+        val staged = update?.updateBundle()
+        return outcome(update, staged, state)
+    }
+
+    /** The five check shapes with the flag left out and set to false, against what they produced before the flag existed. */
+    private fun assertFloorKept(
+        expected: String,
+        state: () -> FakeState,
+        catalogs: Map<String, String>,
+        channel: String? = null,
+    ) = runBlocking {
+        assertEquals(expected, checkAndStage(state(), catalogs, request(channel)))
+        assertEquals(expected, checkAndStage(state(), catalogs, request(channel, allowsOlderThanBuiltIn = false)))
+    }
+
+    @Test
+    fun `without the flag an update stages as before`() =
+        assertFloorKept(
+            GOLDEN_UPDATE,
+            { FakeState() },
+            mapOf("production" to catalog(listOf(release(RELEASE_B, BUNDLE_B)))),
+        )
+
+    @Test
+    fun `without the flag a channel whose bundles are older than the built-in one has no update, as before`() =
+        assertFloorKept(
+            GOLDEN_NO_UPDATE,
+            { FakeState() },
+            mapOf("production" to catalog(listOf(release(releaseA1, belowA1)))),
+        )
+
+    @Test
+    fun `without the flag an emptied default channel rolls back to the built-in bundle, as before`() =
+        assertFloorKept(
+            GOLDEN_ROLLBACK,
+            {
+                FakeState().apply {
+                    launchedBundleId = BUNDLE_A
+                    activeSelection = selectedIn("production", RELEASE_A, BUNDLE_A)
+                    stableSelection = activeSelection
+                }
+            },
+            mapOf("production" to catalog(emptyList(), generation = 3)),
+        )
+
+    @Test
+    fun `without the flag an explicit channel switch stages as before`() =
+        assertFloorKept(
+            GOLDEN_SCOPE_SWITCH,
+            { FakeState() },
+            mapOf("pr-2" to catalog(listOf(release(RELEASE_B, BUNDLE_B)), channel = "pr-2")),
+            channel = "pr-2",
+        )
+
+    @Test
+    fun `without the flag an emptied switched channel is left as before`() =
+        assertFloorKept(
+            GOLDEN_LEAVE,
+            { FakeState().also(::switchedToPr) },
+            mapOf("pr-2" to catalog(emptyList(), generation = 3, channel = "pr-2")),
+        )
+
+    @Test
+    fun `the floor-free check stages the channel's latest bundle older than the built-in one, and names the real built-in`() =
+        runBlocking {
+            val state = FakeState()
+            val catalogs = mapOf("production" to catalog(listOf(release(releaseA2, belowA2), release(releaseA1, belowA1))))
+            val update =
+                NativeUpdateChecker(state, FakeTransport(channels(catalogs)))
+                    .checkForUpdate(request("production", allowsOlderThanBuiltIn = true))!!
+            assertEquals(releaseA2, update.id)
+            assertEquals("INSTALL", update.transitionKind)
+            assertTrue(update.updateBundle())
+            assertEquals(belowA2, state.staged.await().bundleId)
+            val floorFree =
+                ReleaseSelector.createSelectionContextHash(
+                    ReleaseSelectionContextInput(
+                        activeBundleId = MIN_BUNDLE_ID,
+                        activeReleaseId = null,
+                        cohort = "500",
+                        minimumReleaseId = "00000000-0000-0000-0000-000000000000",
+                        strategy = ReleaseStrategy.APP_VERSION,
+                        strategyValue = "1.2.0",
+                        crashedBundleIds = emptyList(),
+                    ),
+                )
+            assertEquals(floorFree, state.activeSelection?.selectionContextHash)
+            val check = state.events().first { it.getString("name") == "onUpdateCheck" }.getJSONObject("payload")
+            assertEquals(MIN_BUNDLE_ID, check.getString("fromBundleId"))
+            assertEquals(belowA2, check.getString("toBundleId"))
+            val downloaded = state.events().first { it.getString("name") == "onBundleDownloaded" }.getJSONObject("payload")
+            assertEquals(MIN_BUNDLE_ID, downloaded.getString("fromBundleId"))
+            // Nothing persists the flag: the check after a crash keeps the floor.
+            assertFalse(RecoveryCheckConfig.of(state.recoveryRequests.last()).toRequest().allowsOlderThanBuiltIn)
+        }
+
+    @Test
+    fun `the floor-free check switches to another channel whose bundles are older than the built-in one`() =
+        runBlocking {
+            val state = FakeState()
+            val catalogs = mapOf("pr-2" to catalog(listOf(release(releaseA1, belowA1)), channel = "pr-2"))
+            val update =
+                NativeUpdateChecker(state, FakeTransport(channels(catalogs)))
+                    .checkForUpdate(request("pr-2", allowsOlderThanBuiltIn = true))!!
+            assertEquals(
+                belowA1,
+                state.let {
+                    update.updateBundle()
+                    it.staged.await().bundleId
+                },
+            )
+            assertEquals("pr-2", state.activeSelection?.channel)
+        }
+
+    @Test
+    fun `a bundle opened below the floor stays under floored checks, and a later deploy above it updates`() =
+        runBlocking {
+            val state = FakeState()
+            var catalogs = mapOf("production" to catalog(listOf(release(releaseA1, belowA1))))
+            val transport = FakeTransport { channels(catalogs)(it) }
+            val checker = NativeUpdateChecker(state, transport)
+            assertTrue(checker.checkForUpdate(request("production", allowsOlderThanBuiltIn = true))!!.updateBundle())
+            // The next launch runs it, and the app's own check keeps its floor.
+            state.launchedBundleId = belowA1
+            assertNull(checker.checkForUpdate(request()))
+            assertNull(checker.checkForUpdate(request()))
+            assertEquals(1, state.stageCount.get())
+            assertEquals(belowA1, state.activeSelection?.bundleId)
+            assertTrue(
+                state.events().none {
+                    it.getString("name") == "onUpdateCheck" &&
+                        it.getJSONObject("payload").getString("status") == "UPDATE_AVAILABLE" &&
+                        it.getJSONObject("payload").getString("toBundleId") != belowA1
+                },
+            )
+
+            catalogs = mapOf("production" to catalog(listOf(release(RELEASE_B, BUNDLE_B), release(releaseA1, belowA1)), generation = 2))
+            val newer = checker.checkForUpdate(request())!!
+            assertEquals(RELEASE_B, newer.id)
+            assertTrue(newer.updateBundle())
+            assertEquals(BUNDLE_B, state.activeSelection?.bundleId)
+        }
+
+    @Test
+    fun `removal a - a removed active bundle below the floor stays under floored checks, and the floor-free check rolls back`() =
+        runBlocking {
+            val state =
+                FakeState().apply {
+                    launchedBundleId = belowA2
+                    activeSelection = selectedIn("production", releaseA2, belowA2)
+                    stableSelection = activeSelection
+                }
+            val catalogs = mapOf("production" to catalog(listOf(release(releaseA1, belowA1)), generation = 2))
+            val checker = NativeUpdateChecker(state, FakeTransport(channels(catalogs)))
+            // The accepted limitation: an ordinary check never moves below its floor.
+            assertNull(checker.checkForUpdate(request()))
+            val reopened = checker.checkForUpdate(request("production", allowsOlderThanBuiltIn = true))!!
+            assertEquals(HotUpdaterUpdateStatus.ROLLBACK, reopened.status)
+            assertEquals(releaseA1, reopened.id)
+        }
+
+    @Test
+    fun `removal b - an accepted empty switched channel is left for the built-in bundle, with the flag or without`() =
+        runBlocking {
+            for (allows in listOf(null, true)) {
+                val state =
+                    FakeState().apply {
+                        channelName = "pr-2"
+                        launchedBundleId = belowA1
+                        activeSelection = selectedIn("pr-2", releaseA1, belowA1)
+                    }
+                val catalogs = mapOf("pr-2" to catalog(emptyList(), generation = 3, channel = "pr-2"))
+                val update =
+                    NativeUpdateChecker(
+                        state,
+                        FakeTransport(channels(catalogs)),
+                    ).checkForUpdate(request(allowsOlderThanBuiltIn = allows))!!
+                assertEquals("USE_BUILTIN", update.transitionKind)
+                assertEquals(MIN_BUNDLE_ID, update.id)
+                assertTrue(update.updateBundle())
+                assertEquals("production", state.getChannel())
+            }
+        }
+
+    @Test
+    fun `removal c - an emptied default channel keeps a bundle below the floor under floored checks only`() =
+        runBlocking {
+            fun state() =
+                FakeState().apply {
+                    launchedBundleId = belowA1
+                    activeSelection = selectedIn("production", releaseA1, belowA1)
+                    stableSelection = activeSelection
+                }
+            val catalogs = mapOf("production" to catalog(emptyList(), generation = 3))
+            assertNull(NativeUpdateChecker(state(), FakeTransport(channels(catalogs))).checkForUpdate(request()))
+            // The sandbox's preflight refuses this channel before its check: Reset is the way back.
+            val update =
+                NativeUpdateChecker(state(), FakeTransport(channels(catalogs)))
+                    .checkForUpdate(request("production", allowsOlderThanBuiltIn = true))!!
+            assertEquals("USE_BUILTIN", update.transitionKind)
+            assertEquals(MIN_BUNDLE_ID, update.id)
+        }
+
+    @Test
+    fun `removal d - a missing catalog proves nothing, with the flag or without`() =
+        runBlocking {
+            for (allows in listOf(null, true)) {
+                val state =
+                    FakeState().apply {
+                        channelName = "pr-2"
+                        launchedBundleId = belowA1
+                        activeSelection = selectedIn("pr-2", releaseA1, belowA1)
+                    }
+                assertNull(
+                    NativeUpdateChecker(
+                        state,
+                        FakeTransport(channels(emptyMap())),
+                    ).checkForUpdate(request(allowsOlderThanBuiltIn = allows)),
+                )
+                assertEquals(0, state.resets.get())
+                assertEquals(belowA1, state.activeSelection?.bundleId)
+            }
+        }
+
+    /**
+     * The sandbox's floor-free staging, paused in its artifact request while
+     * the app's own floored check of the same scope finishes: the app's check
+     * replaces the selection context, so the staging is stale, and one fresh
+     * floor-free check stages it.
+     */
+    private fun assertFreshCheckRecovers(
+        state: FakeState,
+        catalogs: Map<String, String>,
+        channel: String,
+        expected: String,
+    ) = runBlocking {
+        val artifactEntered = CompletableDeferred<Unit>()
+        val artifactGate = CompletableDeferred<Unit>()
+        val sandbox =
+            NativeUpdateChecker(
+                state,
+                FakeTransport { request ->
+                    if (request.url.contains("/artifacts/")) {
+                        artifactEntered.complete(Unit)
+                        artifactGate.await()
+                    }
+                    channels(catalogs)(request)
+                },
+            )
+        // The app's check runs in its own JavaScript, beside the sandbox's checker.
+        val app = NativeUpdateChecker(state, FakeTransport(channels(catalogs)))
+        val first = sandbox.checkForUpdate(request(channel, allowsOlderThanBuiltIn = true))!!
+        val staging = CoroutineScope(Dispatchers.IO).async { runCatching { first.updateBundle() } }
+        withTimeout(5_000) { artifactEntered.await() }
+        assertNull(app.checkForUpdate(request()))
+        artifactGate.complete(Unit)
+        val failure = withTimeout(5_000) { staging.await() }.exceptionOrNull()
+        assertTrue("$failure", failure is StaleReleaseCatalogException)
+        assertEquals(0, state.stageCount.get())
+
+        val fresh = sandbox.checkForUpdate(request(channel, allowsOlderThanBuiltIn = true))!!
+        assertTrue(fresh.updateBundle())
+        assertEquals(expected, state.staged.await().bundleId)
+    }
+
+    @Test
+    fun `a floor-free staging the app's floored check of the build's own channel made stale stages after one fresh check`() =
+        assertFreshCheckRecovers(
+            FakeState(),
+            mapOf("production" to catalog(listOf(release(releaseA1, belowA1)))),
+            "production",
+            belowA1,
+        )
+
+    @Test
+    fun `a floor-free staging the app's floored check of the channel it is switched to made stale stages after one fresh check`() =
+        assertFreshCheckRecovers(
+            FakeState().apply {
+                channelName = "pr-2"
+                launchedBundleId = belowA1
+                activeSelection = selectedIn("pr-2", releaseA1, belowA1)
+            },
+            mapOf("pr-2" to catalog(listOf(release(releaseA2, belowA2), release(releaseA1, belowA1)), generation = 2, channel = "pr-2")),
+            "pr-2",
+            belowA2,
+        )
 
     private fun implWithStorage(storage: BundleStorageService): HotUpdaterImpl {
         val unsafeField = Class.forName("sun.misc.Unsafe").getDeclaredField("theUnsafe")
