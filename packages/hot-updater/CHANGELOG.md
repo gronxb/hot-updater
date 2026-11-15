@@ -1,5 +1,19 @@
 # hot-updater
 
+## 1.2.0-rc.48
+
+### Patch Changes
+
+- Updated dependencies [f46aaf6]
+  - @hot-updater/android-helper@1.2.0-rc.48
+  - @hot-updater/apple-helper@1.2.0-rc.48
+  - @hot-updater/bsdiff@1.2.0-rc.48
+  - @hot-updater/cli-tools@1.2.0-rc.48
+  - @hot-updater/console@1.2.0-rc.48
+  - @hot-updater/protocol@1.2.0-rc.48
+  - @hot-updater/server@1.2.0-rc.48
+  - @hot-updater/plugin-core@1.2.0-rc.48
+
 ## 1.2.0-rc.47
 
 ### Patch Changes
