@@ -397,7 +397,8 @@ struct HotUpdaterSandboxQuestion: Equatable {
     let decline: String?
 
     /// `isOverApp`: whether a bundle runs behind the screen for a link to replace.
-    init?(phase: HotUpdaterSandboxPhase, isOverApp: Bool) {
+    /// `downloaded`: the Downloaded list, whose ID for a bundle the text uses.
+    init?(phase: HotUpdaterSandboxPhase, isOverApp: Bool, downloaded: [HotUpdaterSandboxShelfEntry]) {
         switch phase {
         case .confirming(let link):
             kind = .confirm
@@ -435,7 +436,9 @@ struct HotUpdaterSandboxQuestion: Equatable {
             case .inStoredSession: reason = "A stored bundle is running. Go back to the current bundle, then try again."
             case .error(let text): reason = text
             }
-            let bundle = selection.isBuiltIn ? "built-in bundle" : "bundle \(selection.bundleId)"
+            let bundle = selection.isBuiltIn
+                ? "built-in bundle"
+                : "bundle \(HotUpdaterSandboxHomeModel.shownId(of: selection.bundleId, in: downloaded))"
             title = "Couldn't open \(target)"
             message = "\(reason)\n\nSelected now: \(selection.channel), \(bundle)."
             accept = failure == .inStoredSession ? "Back" : "Retry"

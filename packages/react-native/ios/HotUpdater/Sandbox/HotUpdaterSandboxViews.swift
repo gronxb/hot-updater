@@ -120,7 +120,7 @@ final class HotUpdaterSandboxScreenModel: ObservableObject {
     /// place of a shown one waits for that alert to leave.
     func showQuestion() {
         guard !isSheetUp else { return }
-        let question = HotUpdaterSandboxQuestion(phase: state.phase, isOverApp: isOverApp())
+        let question = HotUpdaterSandboxQuestion(phase: state.phase, isOverApp: isOverApp(), downloaded: state.downloaded)
         if prompt == question.map(Prompt.question) { return }
         if prompt != nil {
             if case .question = prompt { prompt = nil }

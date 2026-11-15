@@ -720,12 +720,15 @@ class HotUpdaterSandboxHomeModelTest {
             )
         assertEquals(
             "This replaces the running bundle. Downloaded bundles stay listed.",
-            HotUpdaterSandboxQuestion.of(phase, isOverApp = true)?.message,
+            HotUpdaterSandboxQuestion.of(phase, isOverApp = true, downloaded = emptyList())?.message,
         )
-        assertEquals(HotUpdaterSandboxHomeModel.SWITCH_NOTE, HotUpdaterSandboxQuestion.of(phase, isOverApp = false)?.message)
+        assertEquals(
+            HotUpdaterSandboxHomeModel.SWITCH_NOTE,
+            HotUpdaterSandboxQuestion.of(phase, isOverApp = false, downloaded = emptyList())?.message,
+        )
         // It opens the channel's latest bundle, and says so.
-        assertEquals("Open latest on pr-1?", HotUpdaterSandboxQuestion.of(phase, isOverApp = false)?.title)
-        assertEquals("Open latest", HotUpdaterSandboxQuestion.of(phase, isOverApp = false)?.accept)
+        assertEquals("Open latest on pr-1?", HotUpdaterSandboxQuestion.of(phase, isOverApp = false, downloaded = emptyList())?.title)
+        assertEquals("Open latest", HotUpdaterSandboxQuestion.of(phase, isOverApp = false, downloaded = emptyList())?.accept)
     }
 
     @Test
@@ -735,6 +738,7 @@ class HotUpdaterSandboxHomeModelTest {
             HotUpdaterSandboxQuestion.of(
                 HotUpdaterSandboxPhase.Refused(HotUpdaterSandboxRefusal.OtherPlatform(ios)),
                 isOverApp = false,
+                downloaded = emptyList(),
             )
         assertEquals("This QR is for iOS", question?.title)
         assertEquals("Scan the Android QR code for pr-12.", question?.message)
@@ -749,9 +753,42 @@ class HotUpdaterSandboxHomeModelTest {
             HotUpdaterSandboxQuestion.of(
                 HotUpdaterSandboxPhase.Refused(HotUpdaterSandboxRefusal.OtherFingerprint(link, "abc")),
                 isOverApp = false,
+                downloaded = emptyList(),
             )
         assertEquals("pr-12 needs another build", question?.title)
         assertEquals("Its native code differs from this build. Install the sandbox build for that fingerprint.", question?.message)
+    }
+
+    @Test
+    fun `a failure names the selected bundle as the Downloaded list does`() {
+        val selection =
+            HotUpdaterSandboxSelection(
+                channel = "qa-windows",
+                defaultChannel = "production",
+                bundleId = "01a1deed-0000-7000-8000-000000000001",
+                isBuiltIn = false,
+            )
+        val phase =
+            HotUpdaterSandboxPhase.Failed(1, "pr-2", HotUpdaterSandboxStep.CHECK, HotUpdaterSandboxFailure.NoBundle, selection)
+        // The row lists the release's ID, which HotUpdater.getBundleId() reports.
+        val entry =
+            HotUpdaterSandboxShelfEntry(
+                bundleId = "01a1deed-0000-7000-8000-000000000001",
+                channel = "qa-windows",
+                message = null,
+                isolationKey = "key",
+                downloadedAtMs = 0,
+                releaseId = "01a1def0-0000-7000-8000-0000a497fa61",
+            )
+        assertEquals(
+            "pr-2 has no bundle for this build.\n\nSelected now: qa-windows, bundle 01a1def0-0000-7000-8000-0000a497fa61.",
+            HotUpdaterSandboxQuestion.of(phase, isOverApp = true, downloaded = listOf(entry))?.message,
+        )
+        // A bundle the list doesn't hold keeps its own ID.
+        assertEquals(
+            "pr-2 has no bundle for this build.\n\nSelected now: qa-windows, bundle 01a1deed-0000-7000-8000-000000000001.",
+            HotUpdaterSandboxQuestion.of(phase, isOverApp = true, downloaded = emptyList())?.message,
+        )
     }
 
     @Test

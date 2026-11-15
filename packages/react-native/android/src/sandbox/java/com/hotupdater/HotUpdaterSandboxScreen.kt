@@ -105,10 +105,14 @@ internal data class HotUpdaterSandboxQuestion(
     enum class Kind { CONFIRM, REFUSED, FAILED }
 
     companion object {
-        /** [isOverApp]: whether a bundle runs behind the screen for a link to replace. */
+        /**
+         * [isOverApp]: whether a bundle runs behind the screen for a link to replace.
+         * [downloaded]: the Downloaded list, whose ID for a bundle the text uses.
+         */
         fun of(
             phase: HotUpdaterSandboxPhase,
             isOverApp: Boolean,
+            downloaded: List<HotUpdaterSandboxShelfEntry>,
         ): HotUpdaterSandboxQuestion? =
             when (phase) {
                 is HotUpdaterSandboxPhase.Confirming ->
@@ -168,7 +172,9 @@ internal data class HotUpdaterSandboxQuestion(
                                 "A stored bundle is running. Go back to the current bundle, then try again."
                             is HotUpdaterSandboxFailure.Error -> failure.message
                         }
-                    val bundle = if (phase.selection.isBuiltIn) "built-in bundle" else "bundle ${phase.selection.bundleId}"
+                    val selected = phase.selection.bundleId
+                    val shown = downloaded.firstOrNull { it.bundleId == selected }?.shownId ?: selected
+                    val bundle = if (phase.selection.isBuiltIn) "built-in bundle" else "bundle $shown"
                     HotUpdaterSandboxQuestion(
                         Kind.FAILED,
                         "Couldn't open ${phase.target}",
@@ -939,7 +945,7 @@ internal class HotUpdaterSandboxScreen(
                 }
             SandboxTextDialog(GEIST_LICENSE, text) { showsLicense = false }
         }
-        val question = HotUpdaterSandboxQuestion.of(state.phase, activity.isOverApp)
+        val question = HotUpdaterSandboxQuestion.of(state.phase, activity.isOverApp, state.downloaded)
         LaunchedEffect(question) {
             if (question != null && question.kind != HotUpdaterSandboxQuestion.Kind.CONFIRM) SandboxHaptic.error(haptics)
         }

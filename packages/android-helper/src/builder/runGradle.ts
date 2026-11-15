@@ -109,66 +109,62 @@ export async function runGradleTasks({
     gradleArgs.push(`-PreactNativeDevServerPort=${args.port}`);
   }
 
-  const logger = createGradleLogger({ logPrefix });
-  await logger.start({
-    title: `Building ${tasks.join(", ")}`,
-    header: [
-      ...logHeader,
-      `Project     ${path.relative(getCwd(), androidProjectPath) || "."}`,
-      `App module  ${appModuleName}`,
-      `Tasks       ${tasks.join(", ")}`,
-      `$ ${formatCommand([path.basename(getGradleWrapper(androidProjectPath)), ...gradleArgs])}`,
-      "",
-    ],
-  });
-  let logFilePath: string | null = null;
-
-  try {
-    const [command, prefix] = gradleCommand(androidProjectPath, env);
-    const [gradleResult, loggingResult] = await withWindowsGradleArgs(
-      (platformArgs) => {
-        const gradle = execa(
-          command,
-          [...prefix, ...gradleArgs, ...platformArgs],
-          {
-            cwd: androidProjectPath,
-            env,
-            all: true,
-            // The output streams to the log file; buffered, it would fill
-            // the error's message.
-            buffer: false,
-          },
-        );
-        const outputStream = gradle.all ?? gradle.stdout;
-        // Settled together: Gradle exits before the log finishes reading
-        // its output, and its failure must wait for it.
-        return Promise.allSettled([
-          gradle,
-          outputStream ? logger.processStream(outputStream) : undefined,
-        ]);
-      },
-    );
-    if (gradleResult.status === "rejected") throw gradleResult.reason;
-    if (loggingResult.status === "rejected") throw loggingResult.reason;
-
-    logger.stop(`Built ${tasks.join(", ")}`);
-    logFilePath = logger.logFilePath;
-  } catch (e) {
-    logger.writeError(e);
-    const reason = describeFailure(e);
-    // One line says the build failed and why: `Build failed · Gradle exited
-    // with code 1`.
-    logger.stop(`Build failed · ${reason.replace(/\.$/, "")}`, false);
-    throw new BuildFailedError(`Build failed: ${reason}`, {
-      logPath: logger.logPath,
-      summary: logger.failureSummary,
-      cause: e,
+  // A Windows build runs with an init script, which the log's command names.
+  return withWindowsGradleArgs(async (platformArgs) => {
+    const finalArgs = [...gradleArgs, ...platformArgs];
+    const logger = createGradleLogger({ logPrefix });
+    await logger.start({
+      title: `Building ${tasks.join(", ")}`,
+      header: [
+        ...logHeader,
+        `Project     ${path.relative(getCwd(), androidProjectPath) || "."}`,
+        `App module  ${appModuleName}`,
+        `Tasks       ${tasks.join(", ")}`,
+        `$ ${formatCommand([path.basename(getGradleWrapper(androidProjectPath)), ...finalArgs])}`,
+        "",
+      ],
     });
-  } finally {
-    await logger.close();
-  }
+    let logFilePath: string | null = null;
 
-  return logFilePath;
+    try {
+      const [command, prefix] = gradleCommand(androidProjectPath, env);
+      const gradle = execa(command, [...prefix, ...finalArgs], {
+        cwd: androidProjectPath,
+        env,
+        all: true,
+        // The output streams to the log file; buffered, it would fill the
+        // error's message.
+        buffer: false,
+      });
+      const outputStream = gradle.all ?? gradle.stdout;
+      // Settled together: Gradle exits before the log finishes reading its
+      // output, and its failure must wait for it.
+      const [gradleResult, loggingResult] = await Promise.allSettled([
+        gradle,
+        outputStream ? logger.processStream(outputStream) : undefined,
+      ]);
+      if (gradleResult.status === "rejected") throw gradleResult.reason;
+      if (loggingResult.status === "rejected") throw loggingResult.reason;
+
+      logger.stop(`Built ${tasks.join(", ")}`);
+      logFilePath = logger.logFilePath;
+    } catch (e) {
+      logger.writeError(e);
+      const reason = describeFailure(e);
+      // One line says the build failed and why: `Build failed · Gradle
+      // exited with code 1`.
+      logger.stop(`Build failed · ${reason.replace(/\.$/, "")}`, false);
+      throw new BuildFailedError(`Build failed: ${reason}`, {
+        logPath: logger.logPath,
+        summary: logger.failureSummary,
+        cause: e,
+      });
+    } finally {
+      await logger.close();
+    }
+
+    return logFilePath;
+  });
 }
 
 /**
