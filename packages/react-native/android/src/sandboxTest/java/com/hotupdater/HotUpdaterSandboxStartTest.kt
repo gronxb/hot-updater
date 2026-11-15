@@ -160,19 +160,49 @@ class HotUpdaterSandboxStartTest {
 
     @Test
     fun `only the app's activity alone under the screen counts as the app beneath`() {
-        val host = "com.example.MainActivity"
-        val screen = "com.hotupdater.HotUpdaterSandboxActivity"
+        val host = "com.example/com.example.MainActivity"
+        val screen = "com.example/com.hotupdater.HotUpdaterSandboxActivity"
+        val camera = "com.android.camera2/com.android.camera.CameraActivity"
+        val implementations = mapOf(host to host, screen to screen, camera to camera)
+        fun holds(
+            base: String?,
+            count: Int,
+        ) = HotUpdaterSandboxStart.holdsHostUnderScreen(base, count, host, implementations::get)
         // [app, left by a process death; screen]
-        assertEquals(true, HotUpdaterSandboxStart.holdsHostUnderScreen(host, 2, host))
+        assertEquals(true, holds(host, 2))
         // [Home; the camera Scan started in its task; the link's screen]
-        assertEquals(false, HotUpdaterSandboxStart.holdsHostUnderScreen(screen, 3, host))
+        assertEquals(false, holds(screen, 3))
         // [screen; screen]
-        assertEquals(false, HotUpdaterSandboxStart.holdsHostUnderScreen(screen, 2, host))
+        assertEquals(false, holds(screen, 2))
         // [app; camera; screen]: closing the screen would show the camera.
-        assertEquals(false, HotUpdaterSandboxStart.holdsHostUnderScreen(host, 3, host))
+        assertEquals(false, holds(host, 3))
+        // [camera; screen]
+        assertEquals(false, holds(camera, 2))
         // The screen alone, or a task that can't be read.
-        assertEquals(false, HotUpdaterSandboxStart.holdsHostUnderScreen(screen, 1, host))
-        assertEquals(false, HotUpdaterSandboxStart.holdsHostUnderScreen(null, 0, host))
+        assertEquals(false, holds(screen, 1))
+        assertEquals(false, holds(null, 0))
+    }
+
+    @Test
+    fun `the app's activity counts under its launcher alias, on either side`() {
+        val alias = "com.example/com.example.Launcher"
+        val target = "com.example/com.example.MainActivity"
+        val other = "com.example/com.example.SettingsActivity"
+        val implementations = mapOf(alias to target, target to target, other to other)
+        fun holds(
+            base: String?,
+            count: Int,
+            host: String,
+        ) = HotUpdaterSandboxStart.holdsHostUnderScreen(base, count, host, implementations::get)
+        // The manifest names the alias. Android 24-28 report the task's base as the alias it started, later ones as the target.
+        assertEquals(true, holds(alias, 2, alias))
+        assertEquals(true, holds(target, 2, alias))
+        assertEquals(true, holds(alias, 2, target))
+        // Still exactly the app's activity and the screen.
+        assertEquals(false, holds(alias, 3, alias))
+        assertEquals(false, holds(other, 2, alias))
+        // An activity that can't be read isn't the app's.
+        assertEquals(false, holds("com.other/com.other.Main", 2, alias))
     }
 
     /** What the SDK's restart builds, pinned against what the platform defines it to set. */

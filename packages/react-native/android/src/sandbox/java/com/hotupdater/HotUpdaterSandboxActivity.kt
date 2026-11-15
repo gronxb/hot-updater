@@ -409,15 +409,24 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
     /** Whether this screen's task holds the app's activity under it and nothing else, as the system reads the task. */
     private fun hostUnderScreen(): Boolean {
         val host = hostComponent() ?: return false
-        // An alias's activity runs as the activity it targets.
-        val hostClass =
-            runCatching { packageManager.getActivityInfo(host, 0) }.getOrNull()?.let { it.targetActivity ?: it.name } ?: return false
-        val tasks = getSystemService(ActivityManager::class.java)?.appTasks.orEmpty()
+        val tasks = runCatching { getSystemService(ActivityManager::class.java)?.appTasks }.getOrNull().orEmpty()
 
         @Suppress("DEPRECATION")
         val task = tasks.firstNotNullOfOrNull { runCatching { it.taskInfo }.getOrNull()?.takeIf { info -> info.persistentId == taskId } }
-        return task != null && HotUpdaterSandboxStart.holdsHostUnderScreen(task.baseActivity?.className, task.numActivities, hostClass)
+        return task != null &&
+            HotUpdaterSandboxStart.holdsHostUnderScreen(
+                task.baseActivity?.flattenToString(),
+                task.numActivities,
+                host.flattenToString(),
+                ::implementationOf,
+            )
     }
+
+    /** The activity a component runs as: an alias's target, or itself. Null for one this app can't read. */
+    private fun implementationOf(name: String): String? =
+        runCatching { ComponentName.unflattenFromString(name)?.let { packageManager.getActivityInfo(it, 0) } }
+            .getOrNull()
+            ?.let { ComponentName(it.packageName, it.targetActivity ?: it.name).flattenToString() }
 
     /** The app's activity, as the manifest names it. */
     private fun hostComponent(): ComponentName? =

@@ -107,13 +107,20 @@ internal object HotUpdaterSandboxStart {
      * Whether a task holds the app's activity under the screen and nothing else:
      * its first activity is the app's, and the screen is the only other one. Only
      * then does closing the screen show the app. The sandbox's own camera, for
-     * one, can start in the screen's task.
+     * one, can start in the screen's task. [implementation] names the activity a
+     * component runs as, an alias's target, or null for one it can't read: the
+     * app's activity can be named by its launcher alias on either side.
      */
     fun holdsHostUnderScreen(
         baseActivity: String?,
         numActivities: Int,
         host: String,
-    ): Boolean = numActivities == 2 && baseActivity == host
+        implementation: (String) -> String?,
+    ): Boolean {
+        if (numActivities != 2 || baseActivity == null) return false
+        val expected = implementation(host) ?: return false
+        return baseActivity == expected // RED seam
+    }
 
     /** The link an intent holds: its data, or, with none, the one a move to a task of its own carried. */
     fun linkOf(
