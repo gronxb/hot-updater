@@ -48,8 +48,7 @@ export const commandFailedError = (
   const lines = stripVTControlCharacters(output)
     .split(/\r?\n/)
     .filter(
-      (line) =>
-        line.trim() && !/^\s*at /.test(line) && !RUBY_FRAME.test(line),
+      (line) => line.trim() && !/^\s*at /.test(line) && !RUBY_FRAME.test(line),
     );
   const errorLine = lines.findLastIndex((line) => /^\s*error\b/i.test(line));
   const shown =
