@@ -1,5 +1,16 @@
 # @hot-updater/cloudflare
 
+## 1.2.0-rc.47
+
+### Patch Changes
+
+- Updated dependencies [a699856]
+  - @hot-updater/cli-tools@1.2.0-rc.47
+  - @hot-updater/protocol@1.2.0-rc.47
+  - @hot-updater/server@1.2.0-rc.47
+  - @hot-updater/plugin-core@1.2.0-rc.47
+  - @hot-updater/storage-s3@1.2.0-rc.47
+
 ## 1.2.0-rc.46
 
 ### Patch Changes
