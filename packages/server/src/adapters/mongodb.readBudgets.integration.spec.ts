@@ -38,6 +38,11 @@ beforeAll(async () => {
     `mongodb://127.0.0.1:${port}/budgets?replicaSet=rs0&directConnection=true`,
   );
   await client.connect();
+  // Fixture times sit near the epoch, past every `_expireAt`: without this,
+  // MongoDB's TTL monitor deletes rows on a pass that lands inside a test.
+  await client
+    .db("admin")
+    .command({ setParameter: 1, ttlMonitorEnabled: false });
 }, 180_000);
 
 afterAll(async () => {
