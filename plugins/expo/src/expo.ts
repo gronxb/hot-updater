@@ -4,6 +4,7 @@ import path from "path";
 import { compileHermes } from "@hot-updater/bare";
 import {
   assertSupportedExpoSdk,
+  commandFailedError,
   log,
   readBundleSigningPublicKeyFile,
 } from "@hot-updater/cli-tools";
@@ -13,7 +14,7 @@ import type {
   BuildAdapterConfig,
   Platform,
 } from "@hot-updater/plugin-core";
-import { ExecaError, execa } from "execa";
+import { execa } from "execa";
 import { uuidv7 } from "uuidv7";
 
 import { getConfig, getConfigPlugins } from "./expoConfig";
@@ -175,12 +176,11 @@ const runBundle = async ({
     const result = await execa("npx", args, {
       cwd,
       reject: true,
+      all: true,
     });
     stdout = result.stdout;
   } catch (error) {
-    if (error instanceof ExecaError) {
-      throw error.stderr;
-    }
+    throw commandFailedError("expo export:embed", error);
   }
 
   if (enableHermes) {

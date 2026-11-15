@@ -542,7 +542,7 @@ const buildNativeInternal = async ({
             : null;
         // The build's log, which the summary names.
         const buildLog: { path: string | null } = { path: null };
-        const result = reused
+        let result = reused
           ? reused.result
           : await buildNow({
               platform,
@@ -607,6 +607,9 @@ const buildNativeInternal = async ({
               ].join("\n"),
             );
           }
+          // Recorded, cached and printed as checked, whatever the build
+          // read of it.
+          result = { ...result, channel };
         }
         // An approved device Apple has enabled that the .ipa still lacks
         // fails the build before anything records it: the .ipa stays.

@@ -56,6 +56,9 @@ const findAapt2 = (androidProjectPath: string): string | undefined => {
 
 const RAW_MARKER = '" (Raw: "';
 
+/** aapt2's output lines: aapt2.exe ends each with CRLF. */
+const outputLines = (output: string) => output.split(/\r?\n/);
+
 /**
  * An attribute aapt2 prints as `="<value>" (Raw: "<value>")`, given the text
  * after `="`. aapt2 does not escape the value, so it is the prefix the rest
@@ -101,13 +104,15 @@ const readAttribute = (
  * A `<meta-data>` value from `aapt2 dump xmltree` of the manifest: the
  * literal, or a resource reference such as `@string/channel`. null when the
  * manifest has none, and undefined when aapt2 printed one it cannot read
- * exactly.
+ * exactly, or a meta-data whose name it cannot read.
  */
 export const parseManifestMetaData = (
   xmltree: string,
   name: string,
 ): string | null | undefined => {
-  const lines = xmltree.split("\n");
+  const lines = outputLines(xmltree);
+  // A meta-data whose name can't be read exactly may be this one.
+  let unreadable = false;
   for (let i = 0; i < lines.length; i++) {
     if (!/^\s*E: meta-data\b/.test(lines[i]!)) {
       continue;
@@ -115,7 +120,9 @@ export const parseManifestMetaData = (
     let metaDataName: string | null | undefined = null;
     let value: string | null | undefined = null;
     for (let j = i + 1; j < lines.length && /^\s*A: /.test(lines[j]!); j++) {
-      metaDataName ||= readAttribute(lines[j]!, ":name(0x01010003)=");
+      if (metaDataName === null) {
+        metaDataName = readAttribute(lines[j]!, ":name(0x01010003)=");
+      }
       if (value === null) {
         value = readAttribute(lines[j]!, ":value(0x01010024)=");
       }
@@ -123,8 +130,9 @@ export const parseManifestMetaData = (
     if (metaDataName === name) {
       return value ?? undefined;
     }
+    if (metaDataName === undefined) unreadable = true;
   }
-  return null;
+  return unreadable ? undefined : null;
 };
 
 /**
@@ -135,7 +143,7 @@ export const parseManifestMetaData = (
 export const parseManifestVersionName = (
   xmltree: string,
 ): string | null | undefined => {
-  for (const line of xmltree.split("\n")) {
+  for (const line of outputLines(xmltree)) {
     const value = readAttribute(line, ":versionName(0x0101021c)=");
     if (value !== null) {
       return value;
@@ -162,7 +170,7 @@ export const parseResourceString = (
   resources: string,
   reference: string,
 ): string | undefined => {
-  const lines = resources.split("\n");
+  const lines = outputLines(resources);
   // `resource <id> <type>/<name>`, which either form of reference names.
   const start = lines.findIndex((line) => {
     const [, id, name] = line.match(/^\s*resource (0x[0-9a-f]+) (\S+)/) ?? [];

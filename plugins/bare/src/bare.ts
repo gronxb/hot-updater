@@ -1,14 +1,18 @@
 import fs from "fs/promises";
 import path from "path";
 
-import { log, reactNativeCliFingerprint } from "@hot-updater/cli-tools";
+import {
+  commandFailedError,
+  log,
+  reactNativeCliFingerprint,
+} from "@hot-updater/cli-tools";
 import type {
   BuildAdapterArgs,
   BuildAdapter,
   BuildAdapterConfig,
   NativeFingerprintOptions,
 } from "@hot-updater/plugin-core";
-import { ExecaError, execa } from "execa";
+import { execa } from "execa";
 import { uuidv7 } from "uuidv7";
 
 import { compileHermes } from "./hermes";
@@ -63,14 +67,14 @@ const runBundle = async ({
   log.normal("\n");
 
   try {
-    await execa(cliPath, args, {
+    // Run by this Node, not as a program: Windows can't run a .js file.
+    await execa(process.execPath, [cliPath, ...args], {
       cwd,
       reject: true,
+      all: true,
     });
   } catch (error) {
-    if (error instanceof ExecaError) {
-      throw error.stderr;
-    }
+    throw commandFailedError("react-native bundle", error);
   }
 
   if (enableHermes) {

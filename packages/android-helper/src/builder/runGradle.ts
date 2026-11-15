@@ -6,6 +6,7 @@ import { ExecaError, execa } from "execa";
 
 import { createGradleLogger } from "../utils/createGradleLogger";
 import { formatCommand } from "../utils/formatCommand";
+import { withWindowsGradleArgs } from "../utils/windowsGradle";
 
 type RunGradleArgs = {
   tasks: string[];
@@ -38,10 +39,13 @@ function getTaskNames(moduleName: string, tasks: string[]): Array<string> {
 }
 
 /**
- * Get gradle wrapper command based on platform
+ * The project's Gradle wrapper. On Windows by its path: cmd.exe finds no
+ * program in the current directory with NoDefaultCurrentDirectoryInExePath.
  */
-const getGradleWrapper = () =>
-  process.platform.startsWith("win") ? "gradlew.bat" : "./gradlew";
+const getGradleWrapper = (androidProjectPath: string) =>
+  process.platform.startsWith("win")
+    ? path.join(androidProjectPath, "gradlew.bat")
+    : "./gradlew";
 
 /** A variable a POSIX shell can't name, as the signing environment's are. */
 const isShellName = (name: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
@@ -53,9 +57,10 @@ const isShellName = (name: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
  * the build then signs with the project's own config. bash keeps them.
  */
 const gradleCommand = (
+  androidProjectPath: string,
   env: Record<string, string> | undefined,
 ): [string, string[]] => {
-  const wrapper = getGradleWrapper();
+  const wrapper = getGradleWrapper(androidProjectPath);
   return wrapper === "./gradlew" &&
     Object.keys(env ?? {}).some((name) => !isShellName(name))
     ? ["bash", [wrapper]]
@@ -112,29 +117,37 @@ export async function runGradleTasks({
       `Project     ${path.relative(getCwd(), androidProjectPath) || "."}`,
       `App module  ${appModuleName}`,
       `Tasks       ${tasks.join(", ")}`,
-      `$ ${formatCommand([path.basename(getGradleWrapper()), ...gradleArgs])}`,
+      `$ ${formatCommand([path.basename(getGradleWrapper(androidProjectPath)), ...gradleArgs])}`,
       "",
     ],
   });
   let logFilePath: string | null = null;
 
   try {
-    const [command, prefix] = gradleCommand(env);
-    const gradle = execa(command, [...prefix, ...gradleArgs], {
-      cwd: androidProjectPath,
-      env,
-      all: true,
-      // The output streams to the log file; buffered, it would fill the
-      // error's message.
-      buffer: false,
-    });
-    const outputStream = gradle.all ?? gradle.stdout;
-    // Settled together: Gradle exits before the log finishes reading its
-    // output, and its failure must wait for it.
-    const [gradleResult, loggingResult] = await Promise.allSettled([
-      gradle,
-      outputStream ? logger.processStream(outputStream) : undefined,
-    ]);
+    const [command, prefix] = gradleCommand(androidProjectPath, env);
+    const [gradleResult, loggingResult] = await withWindowsGradleArgs(
+      (platformArgs) => {
+        const gradle = execa(
+          command,
+          [...prefix, ...gradleArgs, ...platformArgs],
+          {
+            cwd: androidProjectPath,
+            env,
+            all: true,
+            // The output streams to the log file; buffered, it would fill
+            // the error's message.
+            buffer: false,
+          },
+        );
+        const outputStream = gradle.all ?? gradle.stdout;
+        // Settled together: Gradle exits before the log finishes reading
+        // its output, and its failure must wait for it.
+        return Promise.allSettled([
+          gradle,
+          outputStream ? logger.processStream(outputStream) : undefined,
+        ]);
+      },
+    );
     if (gradleResult.status === "rejected") throw gradleResult.reason;
     if (loggingResult.status === "rejected") throw loggingResult.reason;
 

@@ -4,6 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 let embedded: string | null = "pr-7";
 /** The build type the scheme builds, per test. */
 let buildType = "Release";
+/**
+ * The channel the native build reports, per test: undefined for the one
+ * `readChannel` gives, as when the artifact's can't be read.
+ */
+let reported: string | undefined;
 
 vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/android-helper")>()),
@@ -63,7 +68,7 @@ vi.mock("@/utils/native/createNativeBuild", () => ({
         platform,
         scheme: "preview",
         minBundleId,
-        channel: await readChannel(),
+        channel: reported ?? (await readChannel()),
         fingerprintHash: null,
         appVersion: "1.0.0",
         artifactPath: platform === "ios" ? "/out/Example.app" : "/out/app.apk",
@@ -123,6 +128,7 @@ describe("native-build ios|android --channel", () => {
     vi.clearAllMocks();
     embedded = "pr-7";
     buildType = "Release";
+    reported = undefined;
   });
 
   it.each(["ios", "android"] as const)(
@@ -146,6 +152,26 @@ describe("native-build ios|android --channel", () => {
       );
     },
   );
+
+  it("records and caches the channel it checked in the artifact, whatever the build reports", async () => {
+    // aapt2.exe's CRLF output read as no channel, which the build reported
+    // as production while the artifact embedded pr-7.
+    reported = "production";
+    await handleNativeBuildCreate("android", {
+      scheme: "preview",
+      channel: "pr-7",
+    });
+
+    expect(registerNativeBuild).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: "pr-7" }),
+      expect.anything(),
+    );
+    const cache = await vi.mocked(reuseNativeBuild).mock.results[0]!.value;
+    expect(cache.remember).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: "pr-7" }),
+      null,
+    );
+  });
 
   it("fails a build that doesn't embed it, and records nothing", async () => {
     embedded = "production";

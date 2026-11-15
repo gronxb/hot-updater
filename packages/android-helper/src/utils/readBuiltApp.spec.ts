@@ -130,9 +130,49 @@ describe("aapt2 output", () => {
   it("reads no channel from a manifest without one", () => {
     expect(
       parseManifestMetaData(
-        XMLTREE.replace("com.hotupdater.CHANNEL", "com.example.OTHER"),
+        XMLTREE.replaceAll("com.hotupdater.CHANNEL", "com.example.OTHER"),
         "com.hotupdater.CHANNEL",
       ),
     ).toBeNull();
+  });
+
+  // aapt2.exe on Windows ends every line with CRLF: the output above, with
+  // LF turned into CRLF, as the Windows QA of rc.45 saw it (506 CR, 506 LF).
+  describe("as aapt2.exe prints it, with CRLF", () => {
+    const crlf = (text: string) => text.replace(/\n/g, "\r\n");
+
+    it("reads the channel, versionName and versionCode", () => {
+      expect(
+        parseManifestMetaData(crlf(XMLTREE), "com.hotupdater.CHANNEL"),
+      ).toBe("beta");
+      expect(parseManifestVersionName(crlf(XMLTREE))).toBe("1.0-staging");
+      expect(parseManifestVersionCode(crlf(XMLTREE))).toBe(1);
+    });
+
+    it("resolves a channel from a string resource", () => {
+      const resources = `    resource 0x7f10001d string/app_name
+      () "HotUpdaterExample"
+    resource 0x7f10001e string/channel
+      (ko) "베타"
+      () "beta"
+    resource 0x7f10001f string/other
+      () "other"`;
+      expect(parseResourceString(crlf(resources), "@string/channel")).toBe(
+        "beta",
+      );
+      expect(parseResourceString(crlf(resources), "@0x7f10001e")).toBe("beta");
+    });
+  });
+
+  it("reads a channel whose meta-data name it can't read as unknown, not as none", () => {
+    // A name aapt2 printed that isn't read exactly may be the channel's:
+    // here one with a line break, which aapt2 indents.
+    const xmltree = XMLTREE.replace(
+      '="com.hotupdater.CHANNEL" (Raw: "com.hotupdater.CHANNEL")',
+      '="com.hotupdater.\n              CHANNEL" (Raw: "com.hotupdater.\n              CHANNEL")',
+    );
+    expect(
+      parseManifestMetaData(xmltree, "com.hotupdater.CHANNEL"),
+    ).toBeUndefined();
   });
 });

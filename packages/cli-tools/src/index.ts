@@ -5,6 +5,7 @@ export * from "./banner";
 export * from "./bundleSigning";
 export * from "./ConfigBuilder";
 export * from "./colors";
+export * from "./commandFailedError";
 export * from "./copyDirToTmp";
 export * from "./createTarBr";
 export * from "./createZip";
