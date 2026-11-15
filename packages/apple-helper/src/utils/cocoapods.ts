@@ -8,6 +8,7 @@ import {
   getCwd,
   getReactNativeMetadatas,
   p,
+  shellCommandLine,
 } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 
@@ -23,27 +24,21 @@ export interface PodInstallSteps {
 
 /**
  * A failed command's error, as `native-build` prints a refusal: why, from its
- * output without stack frames, then `rerun`, the command run in the project,
- * as the one next step.
+ * output without stack frames, then `rerun`, the command to run in the
+ * project, on one line, as the one next step.
  */
 const commandFailure = (
   command: string,
   error: unknown,
-  rerun: readonly string[],
+  rerun: string,
 ): BuildFailedError => {
-  const { message } = commandFailedError(command, error, formatCommand(rerun));
+  const { message } = commandFailedError(command, error, rerun);
   return new BuildFailedError(message, {
     logPath: null,
     summary: [],
     hint: message,
     cause: error,
   });
-};
-
-/** `command`, run from the project in `directory`. */
-const inDirectory = (directory: string, command: readonly string[]) => {
-  const relative = path.relative(getCwd(), directory);
-  return relative ? ["cd", relative, "&&", ...command] : [...command];
 };
 
 /**
@@ -198,7 +193,9 @@ export const installPodsIfNeeded = async (
       throw commandFailure(
         "bundle install",
         error,
-        inDirectory(sourceDir, ["bundle", "install"]),
+        sourceDir === getCwd()
+          ? "bundle install"
+          : `${shellCommandLine(getCwd(), ["cd", sourceDir])} && bundle install`,
       );
     }
     bundleSpinner.stop("Ruby gems installed");
@@ -258,12 +255,11 @@ const runReactNativeCodegen = async ({
     await execa("node", args, { cwd: projectRoot, all: true });
   } catch (error) {
     spinner.error("React Native codegen failed");
-    throw commandFailure("React Native codegen", error, [
-      "node",
-      ...args.map((arg) =>
-        path.isAbsolute(arg) ? path.relative(projectRoot, arg) || "." : arg,
-      ),
-    ]);
+    throw commandFailure(
+      "React Native codegen",
+      error,
+      shellCommandLine(projectRoot, ["node", ...args]),
+    );
   }
   spinner.stop("React Native codegen done");
 };

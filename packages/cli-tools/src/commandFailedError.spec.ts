@@ -1,7 +1,11 @@
 import { execa } from "execa";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { commandFailedError, npxCommandLine } from "./commandFailedError";
+import {
+  commandFailedError,
+  npxCommandLine,
+  shellCommandLine,
+} from "./commandFailedError";
 
 const failure = async (script: string) => {
   try {
@@ -146,6 +150,41 @@ describe("commandFailedError", () => {
   it("keeps an error that isn't a command's", () => {
     const original = new Error("ENOENT: no such file");
     expect(commandFailedError("expo export:embed", original)).toBe(original);
+  });
+});
+
+describe("shellCommandLine", () => {
+  const platform = process.platform;
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: platform });
+  });
+
+  it("keeps any command on one line, quoting a path outside the project", () => {
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    const line = shellCommandLine("/work/app", [
+      "node",
+      "/deps/react native/scripts/generate-codegen-artifacts.js",
+      "-p",
+      "/work/app",
+      "-o",
+      "/work/app/ios",
+      "-t",
+      "ios",
+    ]);
+    expect(line).toBe(
+      "node '/deps/react native/scripts/generate-codegen-artifacts.js' -p . -o ios -t ios",
+    );
+    expect(line).not.toContain("\n");
+  });
+
+  it("double-quotes on Windows", () => {
+    Object.defineProperty(process, "platform", { value: "win32" });
+    expect(
+      shellCommandLine("C:\\work\\app", [
+        "node",
+        "D:\\deps\\my rn\\codegen.js",
+      ]),
+    ).toBe('node "D:\\deps\\my rn\\codegen.js"');
   });
 });
 

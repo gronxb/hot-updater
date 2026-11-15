@@ -63,20 +63,20 @@ export const commandFailedError = (
 };
 
 /**
- * `npx <args>` as this platform's shell reads it, with paths under `cwd`
- * relative to it: the command a failure tells people to run. On Windows an
- * argument that needs quotes takes double quotes, which cmd.exe and
- * PowerShell both read; elsewhere, POSIX single quotes.
+ * `args`, a command and its arguments, as this platform's shell reads it on
+ * one line, with paths under `cwd` relative to it: the command a failure tells
+ * people to run. On Windows an argument that needs quotes takes double
+ * quotes, which cmd.exe and PowerShell both read; elsewhere, POSIX single
+ * quotes.
  */
-export const npxCommandLine = (
+export const shellCommandLine = (
   cwd: string,
   args: readonly string[],
 ): string => {
   const windows = process.platform === "win32";
   const paths = windows ? path.win32 : path.posix;
-  return [
-    "npx",
-    ...args.map((arg) => {
+  return args
+    .map((arg) => {
       const relative =
         paths.isAbsolute(arg) && !paths.relative(cwd, arg).startsWith("..")
           ? paths.relative(cwd, arg) || "."
@@ -86,6 +86,10 @@ export const npxCommandLine = (
       return windows
         ? `"${relative.replace(/"/g, '\\"')}"`
         : `'${relative.replace(/'/g, "'\\''")}'`;
-    }),
-  ].join(" ");
+    })
+    .join(" ");
 };
+
+/** `npx <args>`, as `shellCommandLine` writes it. */
+export const npxCommandLine = (cwd: string, args: readonly string[]): string =>
+  shellCommandLine(cwd, ["npx", ...args]);

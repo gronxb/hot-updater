@@ -6,12 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let root: string;
 let reactNativeVersion: { major: number; minor: number };
+/** Where React Native resolves, when not inside the project. */
+let reactNativePath: string | undefined;
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   getCwd: () => root,
   getReactNativeMetadatas: () => ({
-    packagePath: path.join(root, "node_modules", "react-native"),
+    packagePath:
+      reactNativePath ?? path.join(root, "node_modules", "react-native"),
     versionRaw: `${reactNativeVersion.major}.${reactNativeVersion.minor}.0`,
     version: reactNativeVersion,
   }),
@@ -116,6 +119,7 @@ describe("installPodsIfNeeded", () => {
 
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "apple-helper-pods-"));
+    reactNativePath = undefined;
     // pod install's log lands in the project's .hot-updater/log.
     await fs.writeFile(path.join(root, "package.json"), "{}");
     vi.spyOn(process, "cwd").mockReturnValue(root);
@@ -213,10 +217,32 @@ describe("installPodsIfNeeded", () => {
         "React Native codegen exited with code 1.",
         "codegen exploded",
         "Run it for its full output:",
-        "node node_modules/react-native/scripts/generate-codegen-artifacts.js -p \\",
-        "  . -o ios -t ios",
+        // One line, which pastes as one command.
+        "node node_modules/react-native/scripts/generate-codegen-artifacts.js -p . -o ios -t ios",
       ].join("\n"),
     );
     expect(vi.mocked(execa)).toHaveBeenCalledTimes(1);
+  });
+
+  it("quotes a codegen path with a space in the command to rerun", async () => {
+    reactNativeVersion = { major: 0, minor: 88 };
+    reactNativePath = "/deps/react native";
+    vi.mocked(execa).mockRejectedValueOnce(
+      Object.assign(new Error("Command failed with exit code 1"), {
+        exitCode: 1,
+        all: "codegen exploded",
+      }),
+    );
+
+    const error = await installPodsIfNeeded(sourceDir).catch(
+      (reason: Error) => reason,
+    );
+    expect(
+      String((error as Error).message)
+        .split("\n")
+        .at(-1),
+    ).toBe(
+      "node '/deps/react native/scripts/generate-codegen-artifacts.js' -p . -o ios -t ios",
+    );
   });
 });

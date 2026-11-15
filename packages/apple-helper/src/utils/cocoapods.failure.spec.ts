@@ -80,7 +80,8 @@ const originalPath = process.env["PATH"];
 
 beforeEach(async () => {
   // The log lands in the nearest package root's .hot-updater/log.
-  projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "pod-install-log-"));
+  // A space in the project's path stays out of the commands it prints.
+  projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "pod install log-"));
   await fs.writeFile(path.join(projectDir, "package.json"), "{}");
   await fs.mkdir(path.join(projectDir, "ios"));
   await fs.writeFile(path.join(projectDir, "ios", "Podfile"), "");
