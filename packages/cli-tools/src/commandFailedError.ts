@@ -1,10 +1,16 @@
-/** The output lines a failure keeps: enough for the cause, no more. */
+import { stripVTControlCharacters } from "node:util";
+
+/** The output lines a failure keeps without an error line: its last ones. */
 const OUTPUT_TAIL_LINES = 8;
+/** The lines a failure keeps from the error line on, such as Metro's. */
+const ERROR_LINES = 12;
 
 /**
  * The error a build adapter throws when a command it runs, such as
  * `expo export:embed`, fails: its exit code, or the signal that stopped it,
- * then the last lines of its output, stdout and stderr together. A code above
+ * then its output, stdout and stderr together, without stack frames: from the
+ * last line that starts with `error`, as Metro's and Expo's do, else its last
+ * lines. A code above
  * 255 is a Windows NTSTATUS, such as 0xC0000005 for a crash, and prints in
  * hex too. An error that isn't a command's is returned as it is.
  */
@@ -31,9 +37,13 @@ export const commandFailedError = (command: string, error: unknown): Error => {
     typeof all === "string" && all
       ? all
       : [stdout, stderr].filter((text) => typeof text === "string").join("\n");
-  const tail = output
+  const lines = stripVTControlCharacters(output)
     .split(/\r?\n/)
-    .filter((line) => line.trim())
-    .slice(-OUTPUT_TAIL_LINES);
-  return new Error([reason, ...tail].join("\n"), { cause: error });
+    .filter((line) => line.trim() && !/^\s*at /.test(line));
+  const errorLine = lines.findLastIndex((line) => /^\s*error\b/i.test(line));
+  const shown =
+    errorLine === -1
+      ? lines.slice(-OUTPUT_TAIL_LINES)
+      : lines.slice(errorLine, errorLine + ERROR_LINES);
+  return new Error([reason, ...shown].join("\n"), { cause: error });
 };

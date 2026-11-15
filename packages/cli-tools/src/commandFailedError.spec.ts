@@ -35,6 +35,40 @@ describe("commandFailedError", () => {
     expect(lines).not.toContain("line 1");
   });
 
+  it("keeps Metro's error over its stack trace", () => {
+    // The shape of what a release bundle with a broken import printed,
+    // Metro 0.87.1 and Expo SDK 55: the error line, its code frame, then
+    // the stack.
+    const all = [
+      "                Welcome to Metro v0.87.1",
+      "error Unable to resolve module ./missing from /app/index.js: ",
+      '\u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 1 |\u001b[39m import "./missing";',
+      "Error: Unable to resolve module ./missing from /app/index.js: ",
+      "None of these files exist:",
+      "  * missing",
+      '\u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 1 |\u001b[39m import "./missing";',
+      "Import stack:",
+      " app/index.js",
+      ...Array.from(
+        { length: 10 },
+        (_, i) => `    at visit (/app/node_modules/metro/src/Graph.js:${i}:1)`,
+      ),
+    ].join("\n");
+    expect(
+      commandFailedError("react-native bundle", { exitCode: 1, all }).message,
+    ).toBe(
+      [
+        "react-native bundle exited with code 1.",
+        "Error: Unable to resolve module ./missing from /app/index.js: ",
+        "None of these files exist:",
+        "  * missing",
+        '> 1 | import "./missing";',
+        "Import stack:",
+        " app/index.js",
+      ].join("\n"),
+    );
+  });
+
   it("names the signal that stopped it", async () => {
     const error = commandFailedError(
       "react-native bundle",
