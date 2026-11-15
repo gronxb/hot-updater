@@ -9,37 +9,40 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { WINDOWS_INIT_SCRIPT } from "./windowsGradle";
 
 /**
- * Gradle: `GRADLE`, the one on the PATH, or a distribution a wrapper
- * downloaded. Without one, the spec has nothing to run.
+ * The Gradle the newest example builds with (9.4.1): its wrapper, which
+ * downloads that distribution once. It runs under bash, never /bin/sh: dash,
+ * Debian's and Ubuntu's /bin/sh, drops an environment variable whose name
+ * isn't a shell name, such as ORG_GRADLE_PROJECT_expo.android.cmakeObjectPathMax,
+ * before Gradle starts, as runGradle's comment says of the signing ones.
  */
-const findGradle = (): string | undefined => {
-  const candidates = [
-    process.env["GRADLE"],
-    ...(process.env["PATH"] ?? "")
-      .split(path.delimiter)
-      .map((directory) => path.join(directory, "gradle")),
-  ];
-  const dists = path.join(os.homedir(), ".gradle", "wrapper", "dists");
-  const directories = (directory: string) =>
-    fs.existsSync(directory)
-      ? fs
-          .readdirSync(directory, { withFileTypes: true })
-          .filter((entry) => entry.isDirectory())
-          .map((entry) => path.join(directory, entry.name))
-      : [];
-  for (const dist of directories(dists).sort().reverse()) {
-    for (const home of directories(dist)) {
-      for (const distribution of directories(home)) {
-        candidates.push(path.join(distribution, "bin", "gradle"));
-      }
-    }
-  }
-  return candidates.find(
-    (candidate) => candidate !== undefined && fs.existsSync(candidate),
-  );
-};
+const gradlew = path.resolve(
+  import.meta.dirname,
+  "../../../../examples/v0.88.0/android/gradlew",
+);
 
-const gradle = findGradle();
+/** Java for Gradle: JAVA_HOME's, or the one on the PATH. */
+const hasJava = [
+  ...(process.env["JAVA_HOME"]
+    ? [path.join(process.env["JAVA_HOME"], "bin", "java")]
+    : []),
+  ...(process.env["PATH"] ?? "")
+    .split(path.delimiter)
+    .map((directory) => path.join(directory, "java")),
+].some((candidate) => fs.existsSync(candidate));
+
+/**
+ * The environment of one case: this process's, without a Gradle project
+ * property it may carry, and the case's own.
+ */
+const caseEnvironment = (env: Record<string, string>) => ({
+  ...Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([name]) => !name.startsWith("ORG_GRADLE_PROJECT_"),
+    ),
+  ),
+  GRADLE_OPTS: "-Dorg.gradle.welcome=never",
+  ...env,
+});
 
 // The Android Gradle plugin's part the script uses: the plugin id, and the
 // DSL `androidComponents.finalizeDsl` hands over once the module's build
@@ -94,7 +97,9 @@ if (!findProperty('fake.noExpo')) {
 
 const execFileAsync = promisify(execFile);
 
-describe.skipIf(gradle === undefined)(
+// The script runs on Windows hosts only, but what it does with Gradle's
+// properties is the same on any; bash runs the wrapper here.
+describe.skipIf(!hasJava || process.platform === "win32")(
   "the Windows init script with real Gradle",
   () => {
     let project: string;
@@ -153,9 +158,14 @@ gradlePlugin {
         path.join(project, "gradle.properties"),
         gradleProperties,
       );
+      // A JVM of its own per case (--no-daemon), started with that case's
+      // environment and properties.
       const { stdout } = await execFileAsync(
-        gradle!,
+        "bash",
         [
+          gradlew,
+          "--project-dir",
+          project,
           "--offline",
           "--no-daemon",
           "--quiet",
@@ -164,14 +174,7 @@ gradlePlugin {
           ...args,
           "help",
         ],
-        {
-          cwd: project,
-          env: {
-            ...process.env,
-            GRADLE_OPTS: "-Dorg.gradle.welcome=never",
-            ...env,
-          },
-        },
+        { cwd: project, env: caseEnvironment(env) },
       );
       return /CMAKE_ARGUMENTS (.*)/.exec(stdout)?.[1];
     };
