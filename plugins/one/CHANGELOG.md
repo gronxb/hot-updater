@@ -1,5 +1,14 @@
 # @hot-updater/one
 
+## 1.2.0-rc.49
+
+### Patch Changes
+
+- Updated dependencies [c0e1572]
+  - @hot-updater/cli-tools@1.2.0-rc.49
+  - @hot-updater/bare@1.2.0-rc.49
+  - @hot-updater/plugin-core@1.2.0-rc.49
+
 ## 1.2.0-rc.48
 
 ### Patch Changes
