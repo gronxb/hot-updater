@@ -29,6 +29,8 @@ const event = {
 const SCHEMES = {
   apk: { platform: "android", kind: "apk" },
   adhoc: { platform: "ios", kind: "ipa" },
+  // An enterprise export, an .ipa whose profile lists no devices.
+  enterprise: { platform: "ios", kind: "ipa" },
   simulator: { platform: "ios", kind: "app" },
 } as const;
 type SchemeName = keyof typeof SCHEMES;
@@ -72,7 +74,11 @@ const fakeServer = ({
   unreadableExpiry = false,
   /** Platforms whose `deploy` fails, as a failed upload does. */
   deployFailing = [] as string[],
+  /** A scheme's own fingerprint, for schemes of different native code. */
+  fingerprints = {} as Partial<Record<SchemeName, string>>,
 } = {}) => {
+  const fingerprintOf = (name: SchemeName) =>
+    fingerprints[name] ?? FINGERPRINTS[SCHEMES[name].platform];
   const builds: Build[] = [];
   const releases: { id: string; platform: string; channel: string }[] = [];
   const calls: string[] = [];
@@ -93,8 +99,7 @@ const fakeServer = ({
       if (command === "fingerprint") return { code: 0, stdout: "" };
       if (command === "native-build" && sub === "find") {
         const scheme = SCHEMES[flag("-s") as SchemeName];
-        const fingerprintHash =
-          FINGERPRINTS[scheme.platform as "android" | "ios"];
+        const fingerprintHash = fingerprintOf(flag("-s") as SchemeName);
         const found =
           builds.findLast(
             (build) =>
@@ -147,7 +152,7 @@ const fakeServer = ({
           platform: scheme.platform,
           kind: scheme.kind,
           channel: flag("--channel")!,
-          fingerprintHash: FINGERPRINTS[scheme.platform],
+          fingerprintHash: fingerprintOf(name),
           minBundleId: idOf(++clock),
           ...(scheme.kind === "ipa" && !unreadableExpiry
             ? { expiresAtMs: Date.now() + PROFILE_MS }
@@ -208,7 +213,11 @@ const fakeServer = ({
     });
   };
   /** Registers a build of `kind`, as another pull request's run would. */
-  const register = (kind: "apk" | "ipa" | "app", channel: string) => {
+  const register = (
+    kind: "apk" | "ipa" | "app",
+    channel: string,
+    expiresAtMs?: number,
+  ) => {
     const platform = kind === "apk" ? "android" : "ios";
     const build: Build = {
       id: idOf(++clock),
@@ -217,6 +226,7 @@ const fakeServer = ({
       channel,
       fingerprintHash: FINGERPRINTS[platform],
       minBundleId: idOf(++clock),
+      ...(expiresAtMs === undefined ? {} : { expiresAtMs }),
     };
     builds.push(build);
     return build;
@@ -273,11 +283,11 @@ const LANES: Job[] = [
  * The job that deploys the iOS bundle once both iOS lanes are done, against
  * the builds their results name.
  */
-const iosDeploy = (lanes: JobRun[]): Job => ({
+const iosDeploy = (lanes: JobRun[], schemes = "adhoc, simulator"): Job => ({
   name: "ios-deploy",
   env: {
     INPUT_PLATFORMS: "ios",
-    INPUT_IOS_SCHEME: "adhoc, simulator",
+    INPUT_IOS_SCHEME: schemes,
     INPUT_BUILD: "false",
     INPUT_RESULTS: resultsOf(lanes),
   },
@@ -919,6 +929,105 @@ describe("lanes and a comment job", () => {
       }
     },
   );
+
+  it("give schemes of different native code one iOS failure line", async () => {
+    const server = fakeServer({ fingerprints: { simulator: "e".repeat(64) } });
+    const github = fakeGitHub();
+
+    const jobs = await runLanes(server, github);
+    await runComment(github, resultsOf(jobs));
+
+    expect(JSON.parse(jobs[3]!.outputs["result"]!).failed).toEqual([
+      { platform: "ios", deployed: false },
+    ]);
+    const body = github.comment()!;
+    expect(body.match(/^\*\*iOS\*\*.*$/gm)).toEqual([
+      `**iOS** failed on this run: [see the logs](${RUN}).`,
+    ]);
+    expect(body).toContain("- **Android**: [Download APK]");
+  });
+
+  describe("an enterprise .ipa", () => {
+    const ENTERPRISE: Job = {
+      name: "ios-adhoc",
+      env: {
+        INPUT_PLATFORMS: "ios",
+        INPUT_IOS_SCHEME: "enterprise",
+        INPUT_DEPLOY: "false",
+      },
+    };
+    const run = async (server: ReturnType<typeof fakeServer>) => {
+      const github = fakeGitHub();
+      const [enterprise, simulator] = await Promise.all(
+        [ENTERPRISE, LANES[2]!].map((lane) => runJob(server, github, lane)),
+      );
+      const deploy = await runJob(
+        server,
+        github,
+        iosDeploy([enterprise!, simulator!], "enterprise, simulator"),
+      );
+      return { github, enterprise: enterprise!, simulator: simulator!, deploy };
+    };
+    const deployedSchemes = (deploy: JobRun) =>
+      JSON.parse(deploy.outputs["result"]!).previews.map(
+        ({ scheme }: { scheme: string }) => scheme,
+      );
+
+    it("deploys when its lane builds it, with its profile's expiry", async () => {
+      const server = fakeServer();
+
+      const { enterprise, deploy } = await run(server);
+
+      expect(
+        JSON.parse(enterprise.outputs["result"]!).previews[0].nativeBuild
+          .expiresAtMs,
+      ).toBe(server.builds.find(({ kind }) => kind === "ipa")!.expiresAtMs);
+      expect(deploy.error).toBeNull();
+      expect(deployedSchemes(deploy)).toEqual(["enterprise", "simulator"]);
+    });
+
+    it("deploys when its lane reuses it, with the expiry the lookup gives", async () => {
+      const server = fakeServer();
+      const reused = server.register("ipa", "pr-10", Date.now() + PROFILE_MS);
+
+      const { enterprise, deploy } = await run(server);
+
+      const [preview] = JSON.parse(enterprise.outputs["result"]!).previews;
+      expect(preview.built).toBe(false);
+      expect(preview.nativeBuild).toMatchObject({
+        id: reused.id,
+        expiresAtMs: reused.expiresAtMs,
+      });
+      expect(deploy.error).toBeNull();
+      expect(deployedSchemes(deploy)).toEqual(["enterprise", "simulator"]);
+    });
+
+    it("fails its scheme once its profile expired, and deploys the Simulator", async () => {
+      vi.useFakeTimers({ now: Date.parse("2026-11-15T00:00:00Z") });
+      try {
+        const server = fakeServer();
+        const github = fakeGitHub();
+        const [enterprise, simulator] = await Promise.all(
+          [ENTERPRISE, LANES[2]!].map((lane) => runJob(server, github, lane)),
+        );
+        const ipa = server.builds.find(({ kind }) => kind === "ipa")!;
+        vi.setSystemTime(ipa.expiresAtMs! + 1);
+
+        const deploy = await runJob(
+          server,
+          github,
+          iosDeploy([enterprise!, simulator!], "enterprise, simulator"),
+        );
+
+        expect(deployedSchemes(deploy)).toEqual(["simulator"]);
+        expect(JSON.parse(deploy.outputs["result"]!).failed).toEqual([
+          { platform: "ios", scheme: "enterprise", deployed: false },
+        ]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
 
   it("keep the QR codes the earlier comment shows when the new comment fails to land", async () => {
     const server = fakeServer();

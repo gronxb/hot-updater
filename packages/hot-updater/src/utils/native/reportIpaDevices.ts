@@ -83,11 +83,10 @@ export const readIpaDevices = async (
 };
 
 /**
- * When an ad hoc or development `.ipa`'s first profile expires, in epoch
- * milliseconds: what `native-build ios --json` prints, so a later job can
- * refuse the build once it has passed. Null for an `.ipa` a store or an
- * enterprise profile signs, which no device list expires, and for one it
- * can't read.
+ * When an ad hoc, development, or enterprise `.ipa`'s first profile
+ * expires, in epoch milliseconds: what `native-build ios --json` prints, so
+ * a later job can refuse the build once it has passed. Null for a store's
+ * `.ipa`, which installs from the store, and for one it can't read.
  */
 export const readIpaExpiry = async (
   artifactPath: string,
@@ -96,9 +95,7 @@ export const readIpaExpiry = async (
     const info = await readIpaInstallInfo(
       blobSource(await fs.openAsBlob(artifactPath)),
     );
-    return info.distribution === "ad-hoc" || info.distribution === "development"
-      ? info.expiresAtMs
-      : null;
+    return info.distribution === "store" ? null : info.expiresAtMs;
   } catch {
     return null;
   }

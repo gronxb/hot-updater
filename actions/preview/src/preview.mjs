@@ -1315,7 +1315,13 @@ export const runComment = async (deps, inputs, event) => {
     ({ bundleId }) => bundleId !== null,
   );
   for (const { platform, scheme, bundleId } of builds.values()) {
-    if (bundleId === null && !failures.has(`${platform}:${scheme ?? ""}`)) {
+    if (
+      bundleId === null &&
+      !failures.has(`${platform}:${scheme ?? ""}`) &&
+      // A platform's own failure, such as schemes of different native code,
+      // says why already.
+      !failures.has(`${platform}:`)
+    ) {
       failures.set(`undeployed:${platform}`, { platform, undeployed: true });
     }
   }

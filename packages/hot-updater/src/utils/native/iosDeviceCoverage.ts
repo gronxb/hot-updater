@@ -136,13 +136,23 @@ export const iosDeviceCoverage = async ({
     };
   }
   const { expiresAtMs } = info;
-  if (info.distribution !== "ad-hoc" && info.distribution !== "development") {
-    return null;
-  }
+  const listsDevices =
+    info.distribution === "ad-hoc" || info.distribution === "development";
+  if (!listsDevices && info.distribution !== "enterprise") return null;
   if (expiresAtMs !== null && expiresAtMs <= now) {
     return {
       reusable: false,
       reason: "expired",
+      missing: [],
+      waiting: [],
+      expiresAtMs,
+    };
+  }
+  // An enterprise profile lists no devices: only its expiry decides.
+  if (!listsDevices) {
+    return {
+      reusable: true,
+      reason: null,
       missing: [],
       waiting: [],
       expiresAtMs,
@@ -269,15 +279,20 @@ export const readIosDeviceCoverage = async (
     build.artifact_kind !== "ipa" ||
     (build.export_method !== null &&
       build.export_method !== "ad-hoc" &&
-      build.export_method !== "development")
+      build.export_method !== "development" &&
+      build.export_method !== "enterprise")
   ) {
     return null;
   }
   const info = await readStoredIpaInstallInfo(storage, build);
-  const devices = [
-    ...(await listAll(core, "registered")),
-    ...(await listAll(core, "approved")),
-  ];
+  // Only a profile that lists devices is checked against the registry's.
+  const devices =
+    info?.distribution === "ad-hoc" || info?.distribution === "development"
+      ? [
+          ...(await listAll(core, "registered")),
+          ...(await listAll(core, "approved")),
+        ]
+      : [];
   return iosDeviceCoverage({
     info,
     devices,

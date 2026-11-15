@@ -205,7 +205,18 @@ describe("readIpaExpiry", () => {
     );
   });
 
-  it("gives none for a store's .ipa, which no device list expires", async () => {
+  it("reads when an enterprise .ipa's embedded profile expires", async () => {
+    const file = await writeIpa(
+      "enterprise.ipa",
+      profile(`${expiring}<key>ProvisionsAllDevices</key><true/>`),
+    );
+
+    await expect(readIpaExpiry(file)).resolves.toBe(
+      Date.parse("2027-03-04T05:06:07Z"),
+    );
+  });
+
+  it("gives none for a store's .ipa, which installs from the store", async () => {
     const file = await writeIpa("store.ipa", profile(expiring));
 
     await expect(readIpaExpiry(file)).resolves.toBeNull();
