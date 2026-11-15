@@ -88,13 +88,13 @@ internal object HotUpdaterSandboxStart {
         created: Boolean,
         taskRoot: Boolean,
         carried: Boolean,
-    ): Boolean = false // RED seam
+    ): Boolean = decision == HotUpdaterSandboxStartDecision.SHOW_LINK && created && taskRoot && !carried
 
     /** The link an intent holds: its data, or, with none, the one a move to a task of its own carried. */
     fun linkOf(
         data: String?,
         carried: String?,
-    ): String? = data // RED seam
+    ): String? = data ?: carried
 
     /** How the move starts that task: a new one, even beside this one, which it then removes. */
     const val OWN_TASK_FLAGS =

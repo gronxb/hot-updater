@@ -271,6 +271,8 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
         }
         if (HotUpdaterSandboxStart.movesToOwnTask(decision, created, isTaskRoot, carried != null)) {
             Log.i(TAG, "moving the link to a task of its own")
+            // Gone first: this screen in front would take the start as a new intent.
+            finishAndRemoveTask()
             startActivity(
                 Intent(Intent.ACTION_MAIN)
                     .addCategory(Intent.CATEGORY_LAUNCHER)
@@ -279,7 +281,6 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
                     .addFlags(HotUpdaterSandboxStart.OWN_TASK_FLAGS),
                 ActivityOptions.makeCustomAnimation(this, 0, 0).toBundle(),
             )
-            finishAndRemoveTask()
             return
         }
         val coordinator = HotUpdaterSandbox.coordinator(this)
