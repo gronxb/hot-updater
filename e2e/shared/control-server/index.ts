@@ -3,7 +3,10 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 
+import { closeLoopbackConnectionsInProcess } from "./loopback-connections.ts";
 import e2eRoutes from "./routes.ts";
+
+closeLoopbackConnectionsInProcess();
 
 const app = new Hono();
 
