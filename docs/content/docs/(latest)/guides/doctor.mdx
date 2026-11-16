@@ -252,6 +252,8 @@ Doctor writes nothing. Each issue's `resolution` says what resolves it, and
 | `ORPHAN_PUBLIC_KEY`                                                                   | Your choice: `npx hot-updater keys remove`, or enable signing. Removing the key turns off signature verification in the app, which is wrong when signing is set up where this machine cannot see it, such as a variable only CI sets |
 | `RELEASE_CATALOG_STALE`                                                               | Any release change in the scope, such as a deploy or `bundle update`, which recompiles its catalog. See [Check Release Catalogs](#check-release-catalogs)                                                                         |
 | `RELEASE_CATALOG_IDENTITY_MISSING`                                                    | Restore the scope's catalog row from a backup                                                                                                                                                                                     |
+| `RELEASE_CATALOG_PARTITIONING_OFF`, `RELEASE_CATALOG_PARTITIONING_SWITCH_MISSING`      | `npx hot-updater db partition-catalogs`, once every server runs 1.2.0. See [Partition Release Catalogs](/docs/guides/partition-release-catalogs)                                                                                     |
+| `RELEASE_CATALOG_PARTITIONS_MISSING`                                                  | The 1.2.0 migration, as for `SCHEMA_MIGRATION_PENDING`                                                                                                                                                                            |
 
 Issues that need a code edit, such as the bundle provider or a client plugin,
 name the edit. Infrastructure issues name the command that upgrades the server.
@@ -467,6 +469,29 @@ runs the new release, migrate the database again as for
 `SCHEMA_MIGRATION_PENDING`, which writes the missing items. These checks compare projections;
 they do not recover missing source policy or replace a native OTA delivery
 test.
+
+### Partitioning
+
+Doctor also reads whether release catalogs are
+[partitioned](/docs/guides/partition-release-catalogs), in
+`details.releaseCatalogs.partitioning`: `switch` (`on` or `off`) and `table`
+(whether the server's credentials can read `release_catalog_partitions`).
+It never turns partitioning on.
+
+- On a 1.2 database with the switch off, it warns
+  `RELEASE_CATALOG_PARTITIONING_OFF`: each scope keeps its 256 KB limit. The
+  warning names the command, with `--server-url` when the config names the
+  server's database.
+- With the switch on, `compactScopes` counts the app-version scopes still
+  stored in one row. Each converts on its next write, so this is information,
+  not an issue. Each scope's `layout` comes from its own catalog row. A row in
+  the partitions table proves nothing about a scope.
+- Partitioned scopes with the switch off, as after deleting the setting by
+  hand, warn `RELEASE_CATALOG_PARTITIONING_SWITCH_MISSING`.
+- A table the server can't read is `RELEASE_CATALOG_PARTITIONS_MISSING`: a
+  warning with the switch off, an error with it on.
+- A server before 1.2.0 has no partitioning, and doctor reports nothing
+  about it.
 
 To preview a proposed change to one Bundle's policy, use
 [`bundle update --dry-run`](/docs/guides/console#preview-and-protect-automated-changes).

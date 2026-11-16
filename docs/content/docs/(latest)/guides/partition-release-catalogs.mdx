@@ -1,0 +1,89 @@
+---
+title: "Partition Release Catalogs"
+description: "Turn on partitioned release catalogs once every server runs 1.2.0, so an app-version scope has no 256 KB limit."
+icon: Layers
+---
+
+## What partitioning does
+
+Each update scope (a channel, platform and update strategy) has one release
+catalog, which devices read on every update check. Without partitioning, an
+app-version scope's catalog is one row, and a deploy that would make that
+row larger than 256 KB is refused.
+
+Partitioning stores an app-version scope as a small head row and partitions
+by app-version range. Turning it on writes one setting,
+`catalog.partitioning = on`. After that, each app-version scope converts on
+its next write. Devices get the same answers as before, rollback targets
+included, and an update check still reads one partition. Fingerprint scopes
+stay single-row.
+
+## When to turn it on
+
+Turn it on once every server that reads the database runs Hot Updater 1.2.0
+or later. A server of an earlier release can't read a partitioned scope:
+for each converted scope it answers 500 until it is replaced, and devices
+keep their current bundle.
+
+Partitioning can't be turned off. Nothing in Hot Updater removes the
+setting, and a partitioned scope stays partitioned even if the setting is
+deleted by hand.
+
+## Turn it on
+
+Run the command in the app project whose `hot-updater.config.ts` reaches the
+database:
+
+```package-install
+npx hot-updater db partition-catalogs
+```
+
+The server checks its own access to `release_catalog_partitions` first. It
+writes, reads back and deletes six probe rows to confirm that the table
+keeps keys in byte order. On MongoDB, it also confirms that the deployment
+can read at a snapshot. Then it sets the switch. The command never writes the
+switch itself:
+
+- With `standaloneRepository`, the command calls the server's admin route,
+  `POST /release-catalog-partitioning`, which your framework authenticates.
+- With the server's own database, as in a managed project, the command
+  stores a ten-minute, single-use request token in that database, then sends
+  it to the server's client route at `--server-url`, the URL the app passes
+  to `HotUpdater.init`. Only someone who can write the database can store the
+  token, so the route needs no other secret.
+
+```package-install
+npx hot-updater db partition-catalogs --server-url <url>
+```
+
+If the server refuses, the setting stays unset and the command names the
+cause: a server before 1.2.0 (404), a partitions table the server's
+credentials can't read, a table that doesn't sort keys in byte order, or
+MongoDB without snapshot reads. Fix it and run the command again. Running it
+again once partitioning is on reports that it already is.
+
+## Managed deployments
+
+`hot-updater init`, and its replay with `--from-env-file .env.hotupdater`,
+turns partitioning on only where the platform confirms that every server
+instance runs the new release:
+
+| Provider   | What init does                                                                                                                                                                                                                                                  |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AWS        | Waits for the CloudFront distribution to report `Deployed`, which means the new Lambda@Edge version runs at every edge location. Then it checks that five cache-busted `/version` requests all answer this release, and turns partitioning on through the server |
+| Cloudflare | Leaves it off and prints the command. A Workers deployment reports which version takes traffic, not when every location runs it                                                                                                                              |
+| Supabase   | Leaves it off and prints the command. An Edge Function deploy reports no point at which every region runs it                                                                                                                                                 |
+| Firebase   | Leaves it off and prints the command. A deploy reports when the new revision takes traffic, not when the previous one stops serving                                                                                                                          |
+| Vercel     | Leaves it off and prints the command. Nothing reports when the previous deployment's functions stop serving                                                                                                                                                  |
+| Azure      | Leaves it off and prints the command. Nothing reports when every Function App instance has restarted on the new package                                                                                                                                      |
+
+On AWS, if the distribution isn't `Deployed` within 30 minutes, or any
+`/version` answer is another release, init leaves partitioning off and
+prints the same command. A replay on a partitioned database reports that it
+is partitioned.
+
+## Check it
+
+`npx hot-updater doctor` reports the setting in
+`details.releaseCatalogs.partitioning`. See
+[Check Release Catalogs](/docs/guides/doctor#check-release-catalogs).
