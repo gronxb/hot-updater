@@ -451,12 +451,14 @@ export const createCoreReads = (
       readonly limit: number;
     }): Promise<string[]> {
       const scopeKeys: string[] = [];
-      for (let last = input.after; scopeKeys.length < input.limit; ) {
+      // No scope key is empty, so the first seek starts past "": a bound
+      // keeps MySQL on the index instead of sorting the table.
+      for (let last = input.after ?? ""; scopeKeys.length < input.limit; ) {
         const { rows } = await db.findMany("releases", {
           index: "scopes",
           where: {},
           limit: 1,
-          ...(last === undefined ? {} : { range: { gt: last } }),
+          range: { gt: last },
         });
         if (rows[0] === undefined) break;
         last = rows[0].scope_key;
