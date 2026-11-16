@@ -846,3 +846,103 @@ describe("preflights answer public rows and write nothing", () => {
     expect(preflight.changed).toBe(false);
   });
 });
+
+describe("staged results carry every field the atomic path returns", () => {
+  /** A drifted partitioned scope on an adapter staging past `maxOps`. */
+  const drifted = async (maxOps: number) => {
+    const { core, ids, io } = await setup({ maxOps });
+    const fixture = createReleaseCatalogPartitionFixture(io.memory);
+    const stored = await storedScope(io.memory, SCOPE);
+    const { tiling } = await fullCatalogOf(
+      (await releasesIn(core, SCOPE)).filter(
+        ({ id }) => id !== ids[0] && id !== ids[2],
+      ),
+    );
+    await fixture.publishHead(SCOPE, {
+      catalogHash: stored.row!.catalog_hash,
+      epoch: stored.liveEpoch!,
+      generation: stored.row!.generation,
+      remove: stored.live.map(({ lowerKey }) => ({
+        epoch: stored.liveEpoch!,
+        lowerKey,
+      })),
+      write: tiling!.map((partition) => ({
+        epoch: stored.liveEpoch!,
+        generation: stored.row!.generation,
+        lowerKey: partition.lowerKey,
+        partition,
+      })),
+    });
+    return { core, io };
+  };
+
+  it("a staged rebuild answers the diagnostics an atomic one does, through core and the admin route", async () => {
+    const atomic = await drifted(Number.POSITIVE_INFINITY);
+    const staged = await drifted(4);
+    const expected = await atomic.core.rebuildReleaseCatalog(SCOPE);
+    let flips = 0;
+    staged.io.hooks.beforeWrite = (pending) => {
+      if (kindOf(pending) === "flip") flips += 1;
+    };
+    const result = await staged.core.rebuildReleaseCatalog(SCOPE);
+    expect(flips).toBe(1);
+    expect(result.changed).toBe(true);
+    expect(result.diagnostics).toEqual(expected.diagnostics);
+    expect(Object.keys(result).sort()).toEqual(Object.keys(expected).sort());
+
+    // Through the admin route, as a remote CLI reads it.
+    const again = await drifted(4);
+    const { createAdminRouteHandlers } = await import("../handlerAdminRoutes");
+    const response = await createAdminRouteHandlers().rebuildReleaseCatalog!(
+      { scopeKey: encodeURIComponent(SCOPE) },
+      new Request(
+        `http://localhost/release-catalogs/${encodeURIComponent(SCOPE)}/rebuild`,
+        { method: "POST" },
+      ),
+      { core: again.core } as never,
+    );
+    const body = (await response.json()) as {
+      data: { diagnostics: unknown; changed: boolean };
+    };
+    expect(body.data.changed).toBe(true);
+    expect(body.data.diagnostics).toEqual(expected.diagnostics);
+  });
+
+  it("a staged edit answers the diagnostics and release an atomic one does", async () => {
+    const results: Awaited<ReturnType<ServerCoreApi["updateReleasePolicy"]>>[] =
+      [];
+    const flips: number[] = [];
+    for (const maxOps of [Number.POSITIVE_INFINITY, 4]) {
+      const { core, ids, io } = await setup({ maxOps });
+      let flipped = 0;
+      io.hooks.beforeWrite = (pending) => {
+        if (kindOf(pending) === "flip") flipped += 1;
+      };
+      results.push(
+        await core.updateReleasePolicy({
+          patch: { targetAppVersion: "*" },
+          releaseId: ids[0]!,
+        }),
+      );
+      flips.push(flipped);
+    }
+    // The first committed atomically; the second staged and flipped once.
+    expect(flips).toEqual([0, 1]);
+    const [atomic, staged] = results;
+    // The two databases differ in IDs and clocks; every field is present
+    // in both, and the release's policy is the same.
+    expect(Object.keys(staged!).sort()).toEqual(Object.keys(atomic!).sort());
+    const policy = (release: (typeof results)[number]["release"]) => ({
+      enabled: release!.enabled,
+      revision: release!.revision,
+      target: release!.target_app_version,
+    });
+    expect(policy(staged!.release)).toEqual(policy(atomic!.release));
+    expect(Object.keys(staged!.release!).sort()).toEqual(
+      Object.keys(atomic!.release!).sort(),
+    );
+    expect(Object.keys(staged!.catalog).sort()).toEqual(
+      Object.keys(atomic!.catalog).sort(),
+    );
+  });
+});

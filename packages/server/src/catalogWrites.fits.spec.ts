@@ -1,6 +1,12 @@
 import { writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
+// Each store's real atomic-write limits, which no package exports: the
+// specs pin conversions against the stores' own constants, not a copy.
+import { dynamoDB } from "@hot-updater/aws";
+import { cosmosDatabase } from "@hot-updater/azure";
+import { d1Database } from "@hot-updater/cloudflare";
+import { firebaseDatabase } from "@hot-updater/firebase";
 import {
   bundleToRow,
   compileReleaseCatalog,
@@ -31,21 +37,19 @@ import {
 } from "@hot-updater/test-utils/node";
 import { describe, expect, it } from "vitest";
 
-// Each store's real atomic-write limits, which no package exports: the
-// specs pin conversions against the stores' own constants, not a copy.
-import { DYNAMODB_LIMITS } from "../../../plugins/aws/src/dynamoDBStore";
-import { COSMOS_LIMITS } from "../../../plugins/azure/src/cosmosStore";
-import { D1_MAX_OPS } from "../../../plugins/cloudflare/src/d1Executor";
-import { FIRESTORE_LIMITS } from "../../../plugins/firebase/src/firestoreStore";
 import { drainScope } from "./core/catalogWrites";
 import { createInProcessCoreApi } from "./core/inProcess.testFixtures";
 
 /**
  * Design-v4 §13 modelled each conversion's atomic fit (review P3-1). Here
  * every fixture converts through core's real write path over each store's
- * real `fits`: the key-value kit over DynamoDB's, Cosmos DB's and
- * Firestore's limits, the SQL kit as D1 configures it (`D1_MAX_OPS`, 100
- * parameters, batch writes) and with its default 1,000 operations (the
+ * real `fits`, taken from each provider's public database: `dynamoDB`,
+ * `cosmosDatabase`, `firebaseDatabase` and the REST `d1Database`, built
+ * offline (none connects before a request), each judging writes against its
+ * store's own limits. The rows live in an in-memory store of the same kit
+ * (the key-value kit, or the SQL kit as D1 runs it: 100 parameters, batch
+ * writes), so only the provider decides what fits. The SQL kit also runs
+ * with its default 1,000 operations (the
  * PostgreSQL, MySQL and SQLite routes; MongoDB's `fits` is the same
  * `ops.length <= 1000`), and the memory adapter. The results replace §13's
  * "staged on" column, and the tables are written to the scratchpad given
@@ -81,28 +85,55 @@ const sqlite = (maxOps: number | undefined, batch: boolean) => {
   return { adapter, db };
 };
 
+/**
+ * Each provider's own `fits`, from its public database: built offline, as a
+ * config loads, since none connects before its first request.
+ */
+const providerFits = {
+  cosmos: () =>
+    cosmosDatabase({
+      connectionString:
+        "AccountEndpoint=https://fits.documents.azure.com:443/;AccountKey=Zml0cw==;",
+    }).adapter,
+  d1: () =>
+    d1Database({
+      accountId: "fits",
+      cloudflareApiToken: "fits",
+      databaseId: "fits",
+    }).adapter,
+  dynamodb: () =>
+    dynamoDB({
+      credentials: { accessKeyId: "fits", secretAccessKey: "fits" },
+      region: "us-east-1",
+      tableName: "fits",
+    }).adapter,
+  firestore: () => firebaseDatabase({ projectId: "fits" }).adapter,
+} as const;
+
+/** Rows in `data`, judged by the provider's own `fits`. */
+const judgedBy = (
+  data: DatabaseAdapter,
+  provider: DatabaseAdapter,
+): DatabaseAdapter =>
+  Object.assign(Object.create(data) as DatabaseAdapter, {
+    fits: (ops: Parameters<DatabaseAdapter["fits"]>[0]) => provider.fits(ops),
+  });
+
 const openStore = async (name: StoreName): Promise<DatabaseAdapter> => {
   switch (name) {
     case "memory":
       return createMemoryAdapter();
     case "dynamodb":
-      return createKvAdapter({
-        store: createMemoryKeyValueStore({ limits: DYNAMODB_LIMITS }),
-      });
     case "cosmos":
-      return createKvAdapter({
-        store: createMemoryKeyValueStore({ limits: COSMOS_LIMITS }),
-      });
     case "firestore":
-      return createKvAdapter({
-        store: createMemoryKeyValueStore({ limits: FIRESTORE_LIMITS }),
-      });
+      return judgedBy(
+        createKvAdapter({ store: createMemoryKeyValueStore() }),
+        providerFits[name](),
+      );
     case "d1":
     case "sql": {
-      const { adapter } = sqlite(
-        name === "d1" ? D1_MAX_OPS : undefined,
-        name === "d1",
-      );
+      const { adapter: data } = sqlite(undefined, name === "d1");
+      const adapter = name === "d1" ? judgedBy(data, providerFits.d1()) : data;
       await adapter.migrations!.apply([
         ...coreTarget.schema.tables,
         SETTINGS_TABLE,

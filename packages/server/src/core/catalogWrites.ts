@@ -353,6 +353,8 @@ export interface StagedPlan {
   readonly rows: readonly ReleaseCatalogPartition[];
   /** The release the change wrote, so the flip writes the very same one. */
   readonly release: ReleaseRow | null;
+  /** The compile's diagnostics, which the flip answers as an atomic write would. */
+  readonly diagnostics: Diagnostics;
   /** Assigned at registration. */
   epoch?: string;
 }
@@ -809,7 +811,7 @@ export const createCatalogWriter = (
         });
         writeHead(tx, base, head);
         if (base.row === null) await resetStaging(tx, scope.scopeKey);
-        return { catalog: head, changed: true };
+        return { catalog: head, changed: true, diagnostics: plan.diagnostics };
       }
 
       // A scope the plan left compact computes as an atomic write would.
@@ -896,6 +898,7 @@ export const createCatalogWriter = (
         plans.set(scope.scopeKey, {
           baseGeneration: base.generation,
           baseVersion: base.row === null ? null : base.row._v,
+          diagnostics,
           release,
           rows: computed.rows,
           scope,
