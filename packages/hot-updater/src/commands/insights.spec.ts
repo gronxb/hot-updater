@@ -48,6 +48,16 @@ vi.mock("./utils/load-hot-updater", async (importOriginal) => ({
 
 const BUNDLE_ID = "00000000-0000-7000-8000-000000000001";
 
+// The seed's clock, inside an hour and a UTC day. The app reports downloads
+// and a failure at REPORTED_AT_MS, launches a second later, and the CLI reads a
+// minute after that. A list's default cutoff is the read's Date.now() and lists
+// cover [since, cutoff), so on a real clock a read in the millisecond of the
+// launch left the launch out; and a launch in the millisecond of its download
+// was ordered against it by event ID alone.
+const REPORTED_AT_MS = Date.UTC(2026, 10, 16, 12, 30);
+const LAUNCHED_AT_MS = REPORTED_AT_MS + 1_000;
+const READ_AT_MS = REPORTED_AT_MS + 60_000;
+
 const createDatabase = (): EngineDatabase & {
   dispose: ReturnType<typeof vi.fn>;
 } => ({
@@ -76,6 +86,7 @@ const artifact: Bundle = {
 
 /** Deploys the bundle to production and reports a download, a launch, and a failed update of it. */
 const seed = async (db: EngineDatabase) => {
+  vi.setSystemTime(REPORTED_AT_MS);
   const server = serverOver(db);
   const [deployed] = await server.core.deploy([
     {
@@ -123,9 +134,11 @@ const seed = async (db: EngineDatabase) => {
   ])) {
     expect(response.status).toBe(204);
   }
+  vi.setSystemTime(LAUNCHED_AT_MS);
   expect(
     (await report({ installId: "install-1", type: "UPDATE_APPLIED" })).status,
   ).toBe(204);
+  vi.setSystemTime(READ_AT_MS);
   return release;
 };
 
@@ -155,6 +168,7 @@ const jsonOutput = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useFakeTimers({ toFake: ["Date"] });
   vi.spyOn(console, "log").mockImplementation(() => {});
   database = createDatabase();
   configure({ database, plugins: [insights(), apiKeys()] });
@@ -162,6 +176,7 @@ beforeEach(() => {
 
 afterEach(() => {
   process.exitCode = undefined;
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
