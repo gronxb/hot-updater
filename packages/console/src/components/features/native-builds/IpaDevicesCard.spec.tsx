@@ -68,7 +68,7 @@ describe("IpaDevicesCard", () => {
     expect(writeText).toHaveBeenCalledWith(UNKNOWN);
   });
 
-  it("says on a tap why a device has no name, and what to do", async () => {
+  it("says on a tap why a device has no name, and to register it", async () => {
     ipaDevicesQuery.mockReturnValue({
       isPending: false,
       isError: false,
@@ -80,7 +80,7 @@ describe("IpaDevicesCard", () => {
     expect(reason.textContent).toBe("Unknown device");
     fireEvent.click(reason);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "It's in your Apple account but isn't registered in Hot Updater, so it has no name here. To name it, open iOS devices on that device and register it. To leave it out of builds, disable it in your Apple account.",
+      "In your Apple account, but not in Hot Updater. Open iOS devices on that iPhone to register it.",
     );
   });
 });

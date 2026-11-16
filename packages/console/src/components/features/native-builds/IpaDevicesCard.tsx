@@ -12,12 +12,12 @@ import { maskIosUdid } from "@/lib/native-builds";
 import { ShortHash } from "./ShortHash";
 
 /**
- * Why the Console can't name a device the IPA lists, and what to do: Apple's
- * ad hoc profile lists every enabled device in the account, the registry only
- * those registered through Hot Updater.
+ * Why the Console can't name a device the IPA lists, and how to name it:
+ * Apple's ad hoc profile lists every enabled device in the account, the
+ * registry only those registered through Hot Updater.
  */
 const UNKNOWN_DEVICE_REASON =
-  "It's in your Apple account but isn't registered in Hot Updater, so it has no name here. To name it, open iOS devices on that device and register it. To leave it out of builds, disable it in your Apple account.";
+  "In your Apple account, but not in Hot Updater. Open iOS devices on that iPhone to register it.";
 
 /**
  * The devices an ad hoc IPA installs on, read from its signing profile: each
