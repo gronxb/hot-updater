@@ -9,7 +9,10 @@ services:
     ports:
       - "55432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d hot_updater"]
+      # Over TCP: the image's first-start init runs a server on the socket
+      # alone, which a socket check reports ready before the restart.
+      test:
+        ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d hot_updater"]
       interval: 2s
       timeout: 5s
       retries: 30

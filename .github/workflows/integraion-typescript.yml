@@ -111,6 +111,10 @@ jobs:
       # `pnpm test:type` generated it before the integration tests ran.
       - name: Generate the example servers' Prisma clients
         run: pnpm --filter "@examples-server/*prisma*" exec prisma generate
+      # Before the tests, so a spec's hook only starts containers. A group
+      # that lists images then runs Docker with --pull never.
+      - name: Pull the group's Docker images
+        run: node scripts/ci/pull-integration-images.mjs
       - name: Integration test
         if: ${{ !matrix.java }}
         run: pnpm test:integration

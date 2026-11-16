@@ -17,6 +17,7 @@ import { execa } from "execa";
 import mysql from "mysql2/promise";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { composeUp } from "../docker.testFixtures";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
 import { prismaAdapter } from "./prisma";
@@ -58,7 +59,7 @@ let pool: mysql.Pool;
  * runs over mysql2 through Prisma's raw query API.
  */
 beforeAll(async () => {
-  await execa("docker", [...compose, "up", "-d", "--wait", "mysql"]);
+  await composeUp({ compose, services: ["mysql"] });
   admin = mysql.createPool({ uri: server, multipleStatements: true });
   for (let attempt = 0; ; attempt += 1) {
     try {
