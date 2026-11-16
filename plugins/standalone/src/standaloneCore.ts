@@ -24,6 +24,7 @@ import type {
   ReleaseCatalogMutationResult,
   ReleaseCatalogRebuildPreflight,
   ReleaseCatalogRebuildResult,
+  ReleaseCatalogPartitioningStatus,
   ReleaseCatalogRow,
   ReleaseFilter,
   ReleaseRow,
@@ -315,6 +316,25 @@ export const createStandaloneCoreApi = (
         },
         requiredRoute: "release scope",
       })) ?? [],
+    // A server before 1.2.0 has no partitioning route: its 404 throws, with
+    // the status, which doctor reads as "nothing to report".
+    getReleaseCatalogPartitioning: async () => {
+      const status = await call<ReleaseCatalogPartitioningStatus>(
+        "GET",
+        "/release-catalog-partitioning",
+        { requiredRoute: "release catalog partitioning" },
+      );
+      if (
+        (status?.switch !== "on" && status?.switch !== "off") ||
+        (status.table !== "present" && status.table !== "missing")
+      ) {
+        throw new StandaloneDatabaseError(
+          "invalid-response",
+          "The server answered an invalid release catalog partitioning status.",
+        );
+      }
+      return status;
+    },
     listChannels: async (input) => {
       if (input === undefined) return list<ChannelRow>("/channels", {});
       const rows = await list<ChannelRow>("/channels", keysetParams(input));

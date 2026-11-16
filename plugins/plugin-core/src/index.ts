@@ -213,12 +213,14 @@ export {
   createEngine,
 } from "./engine/createEngine";
 // `Engine.core`'s snapshot reads, which core's release catalog reads take,
-// and the setting read and fit check its catalog writes take.
+// the setting read and fit check its catalog writes take, and the settings
+// swap its partitioning enable takes.
 export type {
   CatalogWriteSupport,
   SnapshotDatabase,
   SnapshotReads,
 } from "./engine/database/database";
+export type { SettingSwap } from "./engine/database/engine";
 export type { EngineReadCount } from "./engine/database/engineReads";
 export type { RetryOptions } from "./engine/database/engineTransaction";
 export {

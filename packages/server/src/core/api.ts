@@ -3,6 +3,11 @@ import {
   type ReleaseCatalogHead,
   type ReleaseCatalogState,
 } from "./catalogReads";
+import {
+  enableReleaseCatalogPartitioning,
+  issueReleaseCatalogPartitioningToken,
+  readReleaseCatalogPartitioning,
+} from "./catalogPartitioning";
 import type { CatalogWriteOptions } from "./catalogWrites";
 import { createIosDeviceApi } from "./iosDevices";
 import { createNativeBuildApi } from "./nativeBuilds";
@@ -62,6 +67,7 @@ export const createCoreApi = (
   options: CoreApiOptions = {},
 ) => {
   const reads = createCoreReads(db, storage);
+  const now = options.now ?? Date.now;
   return {
     ...reads,
     ...createCoreOperations(
@@ -81,6 +87,24 @@ export const createCoreApi = (
       cached?: ReleaseCatalogHead,
     ): Promise<ReleaseCatalogState> =>
       readReleaseCatalogState(db, scopeKey, appVersion, cached),
+    /** The partitioning switch, and whether the server reads the table. */
+    getReleaseCatalogPartitioning: () => readReleaseCatalogPartitioning(db),
+    /**
+     * For tooling that holds the server's database, such as the CLI over a
+     * managed provider's: stores a single-use request token's hash for ten
+     * minutes, and returns the token, which the server's client route
+     * `POST /release-catalog-partitioning` takes to turn partitioning on.
+     * It turns nothing on itself.
+     */
+    issueReleaseCatalogPartitioningToken: () =>
+      issueReleaseCatalogPartitioningToken(db, now),
+    /**
+     * Checks the partitions table with this process's credentials and sets
+     * the switch: for the server's routes only. `createHotUpdater` leaves it
+     * off the `core` it exposes, so no in-process caller turns it on.
+     */
+    enableReleaseCatalogPartitioning: (input?: { readonly token?: string }) =>
+      enableReleaseCatalogPartitioning(db, now, input),
     /**
      * One raw limit-1 read of the catalog table, which checks the schema
      * settings first and never assembles a partitioned scope.
@@ -99,4 +123,16 @@ export const createCoreApi = (
 export type ServerCoreApi = ReturnType<typeof createCoreApi>;
 
 /** Core's API as `createHotUpdater` exposes it. */
-export type CoreApi = Omit<ServerCoreApi, "readReleaseCatalogState">;
+export type CoreApi = Omit<
+  ServerCoreApi,
+  "readReleaseCatalogState" | "enableReleaseCatalogPartitioning"
+>;
+
+/**
+ * Core's API without the server-only enable, which only the server's
+ * routes call: what `createHotUpdater` hands tooling.
+ */
+export const publicCoreApi = (core: ServerCoreApi): CoreApi => {
+  const { enableReleaseCatalogPartitioning: _enable, ...rest } = core;
+  return rest;
+};

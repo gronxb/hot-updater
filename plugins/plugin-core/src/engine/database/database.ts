@@ -31,7 +31,11 @@ export type {
 } from "../../serverPlugin/databaseHandle";
 
 import { createAggregateBatches } from "./aggregateBatching";
-import { createStorageEngine, type DatabaseEngineOptions } from "./engine";
+import {
+  createStorageEngine,
+  type DatabaseEngineOptions,
+  type SettingSwap,
+} from "./engine";
 import type { ReadInput } from "./engineReads";
 import {
   assertOutsideTransaction,
@@ -92,6 +96,14 @@ export interface CatalogWriteSupport<S extends ModuleSchema> {
    * It may run inside a transaction's callback, and is never guarded.
    */
   readSetting(key: string): Promise<string | null>;
+  /**
+   * Changes settings rows in one atomic write, each only while it still
+   * holds `expected` (null: absent); `value` null deletes it. False when any
+   * row held another value or changed first, so the caller reads again.
+   * Core's admin route turns release catalog partitioning on with it, and
+   * consumes the request that authorized it in the same write.
+   */
+  swapSettings(changes: readonly SettingSwap[]): Promise<boolean>;
   /**
    * `snapshot`, also inside a transaction's callback: its reads are not the
    * transaction's, and nothing guards them. Core's catalog writer reads a
@@ -243,6 +255,7 @@ export const createDatabaseEngine = ({
         }),
         transaction: (fn) => transaction(typed(fn)),
         readSetting: engine.readSetting,
+        swapSettings: engine.swapSettings,
         queryBudget: engine.maxQueriesPerRequest,
         unguardedSnapshot,
         findByKeysIn: (tx, model, keys) => {
