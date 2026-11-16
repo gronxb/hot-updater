@@ -97,12 +97,17 @@ export class ReleaseCatalogCompilationError extends Error {
   }
 }
 
-type VersionInterval = {
+// The helpers below marked "Shared with releaseCatalogTiling.ts" are exported
+// for that module only; the package root lists this file's public names.
+
+/** Shared with releaseCatalogTiling.ts. */
+export type VersionInterval = {
   readonly lower: CatalogVersionBound | null;
   readonly upper: CatalogVersionBound | null;
 };
 
-function compareBounds(left: string, right: string): number {
+/** Shared with releaseCatalogTiling.ts. */
+export function compareBounds(left: string, right: string): number {
   return compare(left, right);
 }
 
@@ -180,7 +185,8 @@ function comparatorSetToInterval(
   return { lower, upper };
 }
 
-function rangeToIntervals(range: string): readonly VersionInterval[] {
+/** Shared with releaseCatalogTiling.ts. */
+export function rangeToIntervals(range: string): readonly VersionInterval[] {
   try {
     return parseRange(range).sets.flatMap((comparators) => {
       const interval = comparatorSetToInterval(comparators);
@@ -194,7 +200,8 @@ function rangeToIntervals(range: string): readonly VersionInterval[] {
   }
 }
 
-function releaseDescriptor(release: Release): ReleaseCatalogDescriptor {
+/** Shared with releaseCatalogTiling.ts. */
+export function releaseDescriptor(release: Release): ReleaseCatalogDescriptor {
   return {
     releaseId: release.id,
     kind: release.kind,
@@ -206,7 +213,8 @@ function releaseDescriptor(release: Release): ReleaseCatalogDescriptor {
   };
 }
 
-function validateReleases(
+/** Shared with releaseCatalogTiling.ts. */
+export function validateReleases(
   releases: readonly Release[],
   strategy: ReleaseStrategy,
 ): readonly Release[] {
@@ -270,8 +278,18 @@ function validateReleases(
   return enabled;
 }
 
-function collectFrontierReleaseIds(
-  releases: readonly Release[],
+/**
+ * The fields of a Release its frontier depends on, which a catalog
+ * descriptor also carries. Shared with releaseCatalogTiling.ts.
+ */
+export type FrontierRelease = Pick<
+  Release,
+  "id" | "bundleId" | "rolloutCohortCount" | "targetCohorts"
+>;
+
+/** Shared with releaseCatalogTiling.ts. */
+export function collectFrontierReleaseIds(
+  releases: readonly FrontierRelease[],
 ): ReadonlySet<string> {
   if (
     releases.every(
@@ -375,7 +393,8 @@ function collectFrontierReleaseIds(
   return retained;
 }
 
-function intervalContainsSegment(
+/** Shared with releaseCatalogTiling.ts. */
+export function intervalContainsSegment(
   interval: VersionInterval,
   segment: VersionInterval,
 ): boolean {
@@ -408,7 +427,8 @@ function intervalContainsSegment(
   return true;
 }
 
-function atomicVersionSegments(
+/** Shared with releaseCatalogTiling.ts. */
+export function atomicVersionSegments(
   intervals: readonly VersionInterval[],
 ): readonly VersionInterval[] {
   const endpoints = [
@@ -482,7 +502,11 @@ function mergeSegments(
   return merged;
 }
 
-function compileAppVersion(releases: readonly Release[]): {
+/**
+ * The APP_VERSION catalog of validated, enabled releases, newest first,
+ * without the size check. Shared with releaseCatalogTiling.ts.
+ */
+export function compileAppVersion(releases: readonly Release[]): {
   readonly envelope: Omit<
     Extract<CompiledReleaseCatalog, { strategy: "APP_VERSION" }>,
     "releaseDescriptors"
@@ -572,7 +596,8 @@ function compileFingerprint(releases: readonly Release[]): {
   };
 }
 
-async function sha256(value: string): Promise<string> {
+/** Shared with releaseCatalogTiling.ts. */
+export async function sha256(value: string): Promise<string> {
   const digest = await globalThis.crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(value),
@@ -582,7 +607,8 @@ async function sha256(value: string): Promise<string> {
     .join("")}`;
 }
 
-function canonicalStringify(value: unknown): string {
+/** Shared with releaseCatalogTiling.ts. */
+export function canonicalStringify(value: unknown): string {
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value);
   }
@@ -644,7 +670,8 @@ export async function compileReleaseCatalog(input: {
   };
 }
 
-function versionInSegment(
+/** Shared with releaseCatalogTiling.ts. */
+export function versionInSegment(
   version: string,
   segment: CompiledCatalogSegment,
 ): boolean {

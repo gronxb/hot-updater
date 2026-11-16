@@ -19,3 +19,5 @@ export * from "./setupReleaseCatalogTestSuite";
 export * from "./httpTestClient";
 export * from "./httpTestServer";
 export * from "./releaseCatalogHttpFixtures";
+export * from "./releaseCatalogTilingOracle";
+export * from "./releaseSelectionV100";
