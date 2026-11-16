@@ -128,6 +128,46 @@ export const setupCoreAdminTestSuite = (options: {
       }
     });
 
+    it("lists every scope that has releases by keyset pages", async () => {
+      const deployed = [
+        await api.deploy({
+          bundle: toDeployBundle(bundleRow("21")),
+          release: policy("scopes-a"),
+        }),
+        await api.deploy({
+          bundle: toDeployBundle(bundleRow("22")),
+          release: policy("scopes-a"),
+        }),
+        await api.deploy({
+          bundle: toDeployBundle(bundleRow("23")),
+          release: policy("scopes-b"),
+        }),
+      ];
+      const scopeKeys: string[] = [];
+      for (let cursor: string | undefined; ; ) {
+        const page = (await adminJson(
+          `/release-scopes?limit=2${cursor === undefined ? "" : `&cursor=${encodeURIComponent(cursor)}`}`,
+        )) as { data: string[]; next?: string };
+        scopeKeys.push(...page.data);
+        if (page.next === undefined) break;
+        expect(page.next).toBe(page.data.at(-1));
+        cursor = page.next;
+      }
+      expect(scopeKeys).toEqual([...new Set(scopeKeys)].sort());
+      expect(scopeKeys).toEqual(
+        expect.arrayContaining([
+          ...new Set(deployed.map(({ scope_key }) => scope_key)),
+        ]),
+      );
+
+      const refusals = await Promise.all(
+        ["/release-scopes?limit=101", "/release-scopes?order=desc"].map(
+          async (path) => (await admin(path)).status,
+        ),
+      );
+      expect(refusals).toEqual([400, 400]);
+    });
+
     it("takes at most 100 IDs a request", async () => {
       const ids = Array.from({ length: 101 }, () => crypto.randomUUID());
       const refusals = [

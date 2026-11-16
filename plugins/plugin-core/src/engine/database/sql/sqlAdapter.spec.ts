@@ -693,6 +693,24 @@ describe("sql core", () => {
         order: "asc",
         limit: 10,
       });
+      // The next group past one, as doctor walks release scopes: an index
+      // over byGroup's columns, which reads through byGroup's index.
+      await adapter.query(
+        {
+          ...conformanceItems,
+          indexes: [
+            ...conformanceItems.indexes,
+            { name: "groups", eq: [], sort: ["grp", "score"] },
+          ],
+        },
+        {
+          index: "groups",
+          eq: [],
+          lower: { values: ["g"], inclusive: false },
+          order: "asc",
+          limit: 1,
+        },
+      );
       expect(await adapter.prune!(conformanceExpiring, 10, 500)).toBe(1);
 
       expect(scans).toEqual([]);

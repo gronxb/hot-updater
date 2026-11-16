@@ -86,12 +86,29 @@ interface Size {
   readonly channels?: number;
   /** A native build on production. */
   readonly nativeBuild?: boolean;
+  /** Production iOS fingerprint scopes, one enabled release each. */
+  readonly fingerprints?: number;
 }
 
 const seed = async (
   core: HotUpdaterCoreApi,
-  { releases, channels = 0, nativeBuild = false }: Size,
+  { releases, channels = 0, nativeBuild = false, fingerprints = 0 }: Size,
 ) => {
+  for (let n = 1; n <= fingerprints; n += 1) {
+    await core.deploy([
+      {
+        bundle: bundleOf(500_000 + n),
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: `fingerprint-${n}`,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: null,
+        },
+      },
+    ]);
+  }
   for (let n = 1; n <= releases; n += 1) {
     await core.deploy([
       {
@@ -339,7 +356,7 @@ describe("doctor's catalog check", () => {
     expect(large.rows).toBe(small.rows);
   }, 120_000);
 
-  it("reads a few rows per channel", async () => {
+  it("reads no more with 1,000 channels than with 10", async () => {
     const [small, large] = await atTwoSizes(
       "doctor, channels",
       [
@@ -348,8 +365,21 @@ describe("doctor's catalog check", () => {
       ],
       (core) => checkServerData(core),
     );
-    // Each channel, then the newest release of each platform's index.
-    expect(large.rows - small.rows).toBeLessThanOrEqual(990);
-    expect(large.queries - small.queries).toBeLessThanOrEqual(990 * 2 + 5);
+    expect(large.rows).toBe(small.rows);
+    expect(large.queries).toBe(small.queries);
+  }, 120_000);
+
+  it("reads 8 rows per scope", async () => {
+    const [small, large] = await atTwoSizes(
+      "doctor, scopes",
+      [
+        { releases: 50, fingerprints: 10 },
+        { releases: 50, fingerprints: 200 },
+      ],
+      (core) => checkServerData(core),
+    );
+    // Each scope: one row for the seek past it, and 7 to compare its
+    // catalog with a rebuild from its enabled release.
+    expect(large.rows - small.rows).toBe(190 * 8);
   }, 120_000);
 });

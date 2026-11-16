@@ -227,6 +227,37 @@ describe("createStandaloneCoreApi", () => {
     await expect(refusal).rejects.toMatchObject({ code: "VERSION_CONFLICT" });
   });
 
+  it("lists release scopes by limit and cursor, and asks for an upgrade where the route is missing", async () => {
+    const queries: Record<string, string>[] = [];
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/release-scopes`, ({ request }) => {
+        queries.push(Object.fromEntries(new URL(request.url).searchParams));
+        return HttpResponse.json({ data: ["scope-b"] });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+    await expect(
+      core.listReleaseScopeKeys({ after: "scope-a", limit: 100 }),
+    ).resolves.toEqual(["scope-b"]);
+    await core.listReleaseScopeKeys({ limit: 2 });
+    expect(queries).toEqual([
+      { limit: "100", cursor: "scope-a" },
+      { limit: "2" },
+    ]);
+
+    // A server before the route answers 404, which is no empty list.
+    server.use(
+      http.get(
+        `${BASE_URL}/release-scopes`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    await expect(core.listReleaseScopeKeys({ limit: 100 })).rejects.toThrow(
+      `The server at ${BASE_URL} has no release scope route`,
+    );
+  });
+
   it("asks for a server upgrade when the server has no native build routes", async () => {
     server.use(
       version(2),

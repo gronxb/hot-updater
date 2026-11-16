@@ -306,6 +306,14 @@ export const createStandaloneCoreApi = (
       call<ReleaseCatalogRow>("GET", `/release-catalogs/${encode(scopeKey)}`),
     listReleaseCatalogs: (input) =>
       list<ReleaseCatalogRow>("/release-catalogs", keysetParams(input)),
+    listReleaseScopeKeys: async ({ after, limit }) =>
+      (await call<string[]>("GET", "/release-scopes", {
+        query: {
+          limit: String(limit),
+          ...(after === undefined ? {} : { cursor: after }),
+        },
+        requiredRoute: "release scope",
+      })) ?? [],
     listChannels: async (input) => {
       if (input === undefined) return list<ChannelRow>("/channels", {});
       const rows = await list<ChannelRow>("/channels", keysetParams(input));

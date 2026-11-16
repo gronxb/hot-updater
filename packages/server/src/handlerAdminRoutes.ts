@@ -435,6 +435,21 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     return page(rows, input, (row) => row.scope_key);
   }),
 
+  /** Up to 100 scope keys that have releases, after `cursor`: one seek each. */
+  listReleaseScopeKeys: onCore(async (core, request) => {
+    const input = keyset(new URL(request.url), 100, "asc");
+    if (input.order !== "asc" || input.through !== undefined) {
+      throw new HandlerBadRequestError(
+        "Release scopes are listed ascending, by limit and cursor only.",
+      );
+    }
+    const rows = await core.listReleaseScopeKeys({
+      limit: input.limit,
+      ...(input.after === undefined ? {} : { after: input.after }),
+    });
+    return page(rows, input, (scopeKey) => scopeKey);
+  }),
+
   /**
    * With `name`, the one channel of that name: 1 read. With `ids`, the
    * channels of up to 100 IDs: 1 batch read. With `limit` or `cursor`, one
@@ -976,6 +991,7 @@ export const ADMIN_ROUTES: readonly {
     handler: "getReleaseCatalogRow",
   },
   { method: "GET", path: "/release-catalogs", handler: "listReleaseCatalogs" },
+  { method: "GET", path: "/release-scopes", handler: "listReleaseScopeKeys" },
   {
     method: "POST",
     path: "/release-catalogs/:scopeKey/rebuild",

@@ -290,6 +290,16 @@ export interface HotUpdaterCoreApi {
   getReleaseCatalogRow(scopeKey: string): Promise<ReleaseCatalogRow | null>;
   listReleaseCatalogs(input: KeysetInput): Promise<ReleaseCatalogRow[]>;
   /**
+   * Up to `limit` scope keys that have releases, ascending after `after`,
+   * with or without a catalog row: one limit-1 seek per scope, so the reads
+   * grow with scopes, not with releases. Doctor walks them to find a scope
+   * whose catalog row was lost.
+   */
+  listReleaseScopeKeys(input: {
+    readonly after?: string;
+    readonly limit: number;
+  }): Promise<string[]>;
+  /**
    * Every channel, by name. With `input`, one keyset page of them, whose
    * cursor is the last channel's name.
    */

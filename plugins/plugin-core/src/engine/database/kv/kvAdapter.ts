@@ -229,9 +229,13 @@ export const createKvAdapter = ({
   };
 
   /** Every index and unique item a row has, by address. */
-  const itemsOf = (layout: Layout, row: StoredRow | null) => {
+  const itemsOf = (
+    layout: Layout,
+    row: StoredRow | null,
+    indexes: readonly PhysicalIndex[] = layout.indexed,
+  ) => {
     const items = new Map<string, { key: KvKey; unique: boolean }>();
-    for (const index of row === null ? [] : layout.indexed) {
+    for (const index of row === null ? [] : indexes) {
       for (const eq of indexEntries(layout.table, index, row!)) {
         const pk = partition(layout, index, eq);
         const sk = index.unique
@@ -407,6 +411,187 @@ export const createKvAdapter = ({
     return { gte, lt, lte: lt.endsWith(SEPARATOR) ? lt.slice(0, -1) : lt };
   };
 
+  /**
+   * Which of a table's indexes have items for every row: an item at
+   * `pk = <table>#`, apart from every row and index partition.
+   */
+  const fillStateOf = (layout: Layout): KvKey => ({
+    pk: `${layout.rows}#`,
+    sk: ONLY,
+  });
+
+  /** Whether the table's first and last rows have their items in `index`: true for an empty table. */
+  const holdsItems = async (layout: Layout, index: PhysicalIndex) => {
+    const ends = await Promise.all(
+      (["asc", "desc"] as const).map((order) =>
+        store.query({ pk: layout.rows, order, limit: 1 }),
+      ),
+    );
+    const keys = ends.flatMap(({ items }) =>
+      items.flatMap(({ value }) =>
+        [...itemsOf(layout, value, [index]).values()].map(({ key }) => key),
+      ),
+    );
+    if (keys.length === 0) return true;
+    return (await store.get(keys)).every((item) => item !== null);
+  };
+
+  /**
+   * Writes one row's items in `index` with a check of the row's `_v`, so a
+   * copy never outlives a concurrent change: a changed row is read again,
+   * and a deleted one needs none. A unique item another row holds stops
+   * the fill.
+   */
+  const fillRow = async (
+    layout: Layout,
+    index: PhysicalIndex,
+    first: StoredRow,
+  ) => {
+    const key = rowItem(layout, rowKey(layout.table, first));
+    const own = JSON.stringify(rowKey(layout.table, first));
+    let row: StoredRow | null = first;
+    for (let attempt = 0; row !== null; attempt += 1) {
+      if (attempt === 8) {
+        throw new Error(
+          `${layout.table.name}.${index.name}: a row kept changing while its index items were filled; run the migration again.`,
+        );
+      }
+      const ops = fillOps(layout, index, row);
+      if (ops.length === 0) return;
+      if (index.unique) {
+        const held = await store.get(ops.slice(1).map(({ key }) => key));
+        if (
+          held.some(
+            (holder) =>
+              holder !== null &&
+              JSON.stringify(rowKey(layout.table, holder)) !== own,
+          )
+        ) {
+          throw new DatabaseAdapterContractError(
+            `${layout.table.name}.${index.name}: two rows hold one unique value.`,
+          );
+        }
+      }
+      if ((await store.write(ops)).ok) return;
+      [row] = await store.get([key]);
+    }
+  };
+
+  /** One row's check and item puts in `index`; none when the row has no entry. */
+  const fillOps = (
+    layout: Layout,
+    index: PhysicalIndex,
+    row: StoredRow,
+  ): KvOp[] => {
+    const entries = [...itemsOf(layout, row, [index]).values()];
+    if (entries.length === 0) return [];
+    return [
+      {
+        type: "check",
+        key: rowItem(layout, rowKey(layout.table, row)),
+        condition: { v: Number(row[V]) },
+      },
+      ...entries.map(
+        (entry): KvOp => ({
+          type: "put",
+          key: entry.key,
+          value: copyOf(layout, row),
+          ...stamp(layout.table, row),
+        }),
+      ),
+    ];
+  };
+
+  const opBytes = (op: KvOp) =>
+    encoder.encode(
+      op.key.pk +
+        op.key.sk +
+        JSON.stringify(op.type === "put" ? op.value : null),
+    ).length;
+
+  /**
+   * Writes `index`'s items for every row, as many rows per atomic write as
+   * the store takes. A write a concurrent change fails goes row by row.
+   */
+  const fillIndex = async (layout: Layout, index: PhysicalIndex) => {
+    const { items: most, bytes } = store.limits;
+    for (let after: string | undefined; ; ) {
+      const { items, more } = await store.query({
+        pk: layout.rows,
+        order: "asc",
+        limit: 100,
+        after,
+      });
+      const rows = items.map(({ value }) => value);
+      if (index.unique) {
+        for (const row of rows) await fillRow(layout, index, row);
+      } else {
+        let chunk: { row: StoredRow; ops: KvOp[] }[] = [];
+        const flush = async () => {
+          const ops = chunk.flatMap((entry) => entry.ops);
+          if (ops.length > 0 && !(await store.write(ops)).ok) {
+            for (const { row } of chunk) await fillRow(layout, index, row);
+          }
+          chunk = [];
+        };
+        for (const row of rows) {
+          const ops = fillOps(layout, index, row);
+          const next = [...chunk.flatMap((entry) => entry.ops), ...ops];
+          if (
+            chunk.length > 0 &&
+            (next.length > most ||
+              next.reduce((sum, op) => sum + opBytes(op), 0) > bytes)
+          ) {
+            await flush();
+          }
+          chunk.push({ row, ops });
+        }
+        await flush();
+      }
+      if (!more || items.length === 0) return;
+      after = items.at(-1)!.sk;
+    }
+  };
+
+  /**
+   * Gives every row its items in each index of the table, for an index
+   * declared after rows were written: writes keep an index's items from
+   * then on, but rows written before have none. Each index is filled once
+   * and recorded; one whose table's first and last rows already have their
+   * items, or which has no rows, is recorded without a fill. A fill that
+   * stops is recorded as started, so the next migration fills it again.
+   */
+  const fillIndexes = async (layout: Layout) => {
+    if (layout.indexed.length === 0) return;
+    const at = fillStateOf(layout);
+    const [stored] = await store.get([at]);
+    const states: Record<string, string> = {
+      ...((stored?.indexes ?? {}) as Record<string, string>),
+    };
+    const record = () =>
+      store.write([
+        { type: "put", key: at, value: { indexes: { ...states } } },
+      ]);
+    let changed = false;
+    for (const index of layout.indexed) {
+      if (states[index.name] === "filled") continue;
+      changed = true;
+      if (
+        states[index.name] !== "filling" &&
+        (await holdsItems(layout, index))
+      ) {
+        states[index.name] = "filled";
+        continue;
+      }
+      states[index.name] = "filling";
+      await record();
+      await fillIndex(layout, index);
+      states[index.name] = "filled";
+      await record();
+    }
+    if (changed) await record();
+  };
+
   return {
     id: store.id,
     fits(ops) {
@@ -481,8 +666,14 @@ export const createKvAdapter = ({
             );
           },
         }),
-    // Tables need no items of their own; the store prepares itself, if at all.
-    migrations: { apply: async () => store.migrations?.apply() },
+    // Tables need no items of their own; the store prepares itself, if at all,
+    // and every row gets its items in an index declared after it.
+    migrations: {
+      apply: async (tables) => {
+        await store.migrations?.apply();
+        for (const table of tables) await fillIndexes(layoutOf(table));
+      },
+    },
     ...(store.dispose === undefined ? {} : { dispose: () => store.dispose!() }),
   };
 };

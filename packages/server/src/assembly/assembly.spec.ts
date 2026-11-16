@@ -144,6 +144,7 @@ describe("createHotUpdater with plugins", () => {
       { method: "DELETE", path: "/releases/:id", access: "admin" },
       { method: "GET", path: "/release-catalogs/:scopeKey", access: "admin" },
       { method: "GET", path: "/release-catalogs", access: "admin" },
+      { method: "GET", path: "/release-scopes", access: "admin" },
       {
         method: "POST",
         path: "/release-catalogs/:scopeKey/rebuild",

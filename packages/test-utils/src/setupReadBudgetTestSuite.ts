@@ -686,6 +686,31 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     engine: { calls: 1, rows: 1 },
   }),
   budget({
+    api: "release scopes: one limit-1 seek per scope, past each scope's releases",
+    // Production Android and staging hold 2 releases each, beta 1, and
+    // production iOS 6: 4 rows, one per scope, not 11.
+    read: ({ core }) => core.listReleaseScopeKeys({ limit: 4 }),
+    adapter: reads(0, 0, 4, 4),
+    engine: { calls: 4, rows: 4 },
+    returned: (scopeKeys) => scopeKeys.length,
+    check: (scopeKeys) =>
+      expect(scopeKeys).toEqual([
+        "v1:app-version:android:cHJvZHVjdGlvbg",
+        "v1:app-version:ios:YmV0YQ",
+        "v1:app-version:ios:c3RhZ2luZw",
+        scopeKey,
+      ]),
+  }),
+  budget({
+    api: "release scopes past the last: 1 empty query",
+    read: ({ core }) =>
+      core.listReleaseScopeKeys({ after: scopeKey, limit: 4 }),
+    adapter: reads(0, 0, 1, 0),
+    engine: { calls: 1, rows: 0 },
+    returned: (scopeKeys) => scopeKeys.length,
+    check: (scopeKeys) => expect(scopeKeys).toEqual([]),
+  }),
+  budget({
     api: "native build by ID: 1 point read",
     read: ({ core }) => core.getNativeBuild(createBundleFixture("8012").id),
     adapter: reads(1, 1, 0, 0),

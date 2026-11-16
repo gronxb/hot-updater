@@ -127,6 +127,11 @@ const releases = defineTable(
       },
       byBundle: { eq: ["bundle_id"], sort: ["id"] },
       all: { eq: [], sort: ["id"] },
+      // Every release by scope, so the scopes that have releases are
+      // listed one limit-1 seek per scope, past the last one. SQL and
+      // MongoDB read it through `byScope`'s columns; a key-value store
+      // keeps items of its own, which `db migrate` fills for earlier rows.
+      scopes: { eq: [], sort: ["scope_key"] },
     },
   },
 );
