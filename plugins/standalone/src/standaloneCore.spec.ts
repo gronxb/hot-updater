@@ -317,7 +317,9 @@ describe("createStandaloneCoreApi", () => {
   });
 
   it("reads the partitioning status, and throws a 404 with its status on a server before it", async () => {
-    let answer: unknown = { data: { switch: "on", table: "present" } };
+    let answer: Record<string, unknown> | 404 = {
+      data: { switch: "on", table: "present" },
+    };
     server.use(
       version(2),
       http.get(`${BASE_URL}/release-catalog-partitioning`, () =>
