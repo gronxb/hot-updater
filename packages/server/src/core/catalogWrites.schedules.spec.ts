@@ -1003,6 +1003,49 @@ describe("a store's per-request query cap (maxQueriesPerRequest)", () => {
     }
   });
 
+  it("a staged publication that retires an epoch sends no more queries than it counted", async () => {
+    const io = createWriteTestAdapter({ maxOps: 9 });
+    const calls = { count: 0 };
+    const counted = Object.assign(Object.create(io.adapter), {
+      get: (...args: Parameters<typeof io.adapter.get>) => {
+        calls.count += 1;
+        return io.adapter.get(...args);
+      },
+      maxQueriesPerRequest: 10_000,
+      query: (...args: Parameters<typeof io.adapter.query>) => {
+        calls.count += 1;
+        return io.adapter.query(...args);
+      },
+      write: (...args: Parameters<typeof io.adapter.write>) => {
+        calls.count += 1;
+        return io.adapter.write(...args);
+      },
+    });
+    const counts: { needed: number; budget: number }[] = [];
+    const core = createWriteTestCore(counted, {
+      catalogWrites: { onStagingBudget: (count) => counts.push(count) },
+    });
+    const other = createWriteTestCore(io.memory);
+    await setReleaseCatalogPartitioning(io.memory, "on");
+    for (let index = 0; index < 12; index += 1) {
+      await deploy(other, `${4600 + index}`, `${index + 1}.0.0`);
+    }
+    for (const [suffix, range] of [
+      ["4700", "*"],
+      ["4701", ">=2.0.0"],
+      ["4702", ">=1.0.0 <9.0.0"],
+    ] as const) {
+      const before = (await storedScope(io.memory, SCOPE)).liveEpoch;
+      calls.count = 0;
+      await deploy(core, suffix, range);
+      const after = (await storedScope(io.memory, SCOPE)).liveEpoch;
+      // Staged, over a live epoch it retired and drained.
+      expect(after).not.toBe(before);
+      expect(calls.count).toBeLessThanOrEqual(counts.at(-1)!.needed);
+    }
+    await expectConsistent(core, io);
+  });
+
   it("refuses exactly as today when the compact row wouldn't fit 256 KB", async () => {
     const run = await capped(30);
     const message = "m".repeat(6_000);
