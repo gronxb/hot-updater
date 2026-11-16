@@ -289,6 +289,43 @@ describe("doctor's release catalog check", () => {
     });
   });
 
+  it("finds a channel's app-version scope without its catalog row behind a newer fingerprint release", async () => {
+    const scopeKey = await deploy(1);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await harness.core.deploy([
+      {
+        bundle: bundle(2),
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: "fingerprint-2",
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: null,
+        },
+      },
+    ]);
+    await loseCatalogRow(scopeKey);
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: false,
+      details: {
+        releaseCatalogs: {
+          scopes: expect.arrayContaining([
+            expect.objectContaining({ scopeKey, state: "missing" }),
+          ]),
+          issues: [
+            {
+              type: "error",
+              code: "RELEASE_CATALOG_IDENTITY_MISSING",
+              scopeKey,
+            },
+          ],
+        },
+      },
+    });
+  });
+
   it("finds a scope whose releases have no catalog row, and leaves it to a backup restore", async () => {
     const scopeKey = await deploy();
     await loseCatalogRow(scopeKey);

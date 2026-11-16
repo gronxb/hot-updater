@@ -99,7 +99,7 @@ export const setupCoreAdminTestSuite = (options: {
       await missing.text();
     });
 
-    it("reads channels by ID and pages them by name, and takes at most 100 IDs a request", async () => {
+    it("reads channels by ID and pages them by name", async () => {
       const [a, b, c] = await Promise.all(
         ["a", "b", "c"].map((suffix) =>
           api.ensureChannel(`page-${namespace}-${suffix}`),
@@ -118,19 +118,6 @@ export const setupCoreAdminTestSuite = (options: {
       )) as { data: ChannelRow[] };
       expect(second.data[0]).toEqual(c);
 
-      const ids = Array.from({ length: 101 }, () => crypto.randomUUID());
-      for (const response of [
-        await admin(`/channels?ids=${ids.join(",")}`),
-        await admin("/bundles/delete", jsonRequest("POST", { ids })),
-        await admin(
-          "/ios-devices/in-build",
-          jsonRequest("POST", { buildId: crypto.randomUUID(), ids }),
-        ),
-      ]) {
-        expect(response.status).toBe(400);
-        await response.text();
-      }
-
       for (const channel of [a, b, c]) {
         const deleted = await admin(
           `/channels/${channel!.id}`,
@@ -139,6 +126,40 @@ export const setupCoreAdminTestSuite = (options: {
         expect(deleted.status).toBe(204);
         await deleted.text();
       }
+    });
+
+    it("takes at most 100 IDs a request", async () => {
+      const ids = Array.from({ length: 101 }, () => crypto.randomUUID());
+      const refusals = [
+        [
+          await admin(`/channels?ids=${ids.join(",")}`),
+          "Channels by ID take ids=<channel id>,... with 1 to 100 ids.",
+        ],
+        [
+          await admin("/bundles/delete", jsonRequest("POST", { ids })),
+          "Bundle deletion takes at most 100 ids a request.",
+        ],
+        [
+          await admin(
+            "/ios-devices/in-build",
+            jsonRequest("POST", { buildId: crypto.randomUUID(), ids }),
+          ),
+          "Marking iOS devices in a build takes at most 100 ids a request.",
+        ],
+      ] as const;
+      expect(
+        await Promise.all(
+          refusals.map(async ([response]) => ({
+            status: response.status,
+            body: await response.json().catch(() => null),
+          })),
+        ),
+      ).toEqual(
+        refusals.map(([, error]) => ({
+          status: 400,
+          body: expect.objectContaining({ error }),
+        })),
+      );
     });
 
     it("keeps a release's channel when a delete races the deploy into it", async () => {
