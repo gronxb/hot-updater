@@ -514,6 +514,7 @@ describe("supabaseDatabase on a prerelease's database, without release_catalog_p
         createHotUpdater({ ...options, clientAccess: "public" }).handlers,
       ),
     name: "supabaseDatabase (PGlite, apply RPC) without release_catalog_partitions",
+    partitioning: false,
     migrate: () => undefined,
     createDatabase: () =>
       supabaseDatabase({

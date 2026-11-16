@@ -1,5 +1,6 @@
 import {
   createEngineDatabase,
+  createKvAdapter,
   type DatabaseAdapter,
   DatabaseSnapshotUnsupportedError,
   type QueryRequest,
@@ -10,6 +11,7 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   createBundleFixture,
+  createMemoryKeyValueStore,
   createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
@@ -162,6 +164,27 @@ describe("enableReleaseCatalogPartitioning", () => {
       changed: false,
     });
     expect(inserted).toHaveLength(6);
+  });
+
+  it("probes the key-value kit's encoded keys, as DynamoDB, Firestore and Cosmos store them", async () => {
+    const adapter = createKvAdapter({ store: createMemoryKeyValueStore() });
+    const database = createEngineDatabase({ adapter, name: "kv" });
+    await (await database.createMigrator!().migrateToLatest()).execute();
+    const core = createInProcessCoreApi(adapter);
+    await expect(core.enableReleaseCatalogPartitioning()).resolves.toEqual({
+      partitioning: "on",
+      changed: true,
+    });
+    await core.deploy([
+      {
+        bundle: createBundleFixture("1"),
+        release: releasePolicy("production", "1.0.0"),
+      },
+    ]);
+    const row = await core.preflightReleaseCatalogRebuild(
+      appVersionScope("production"),
+    );
+    expect(row.layout).toBe("partitioned");
   });
 
   it("sets the switch once under concurrent calls, each probing its own keys", async () => {

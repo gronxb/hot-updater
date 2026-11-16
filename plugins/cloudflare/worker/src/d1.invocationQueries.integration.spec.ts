@@ -232,3 +232,38 @@ describe("D1 binding calls of partitioned catalog writes, capped at the Free pla
     expect(await head()).toBe(false);
   });
 });
+
+describe("D1 binding calls of turning partitioning on", () => {
+  it("probes and sets the switch through the Worker's binding in one invocation, under the Free plan's limit", async () => {
+    await (migrated ??= migrate());
+    const counted = countingBinding(env.DB);
+    const database = d1Database(counted.binding);
+    // Earlier tests in this file turned it on through the test-only insert.
+    await setReleaseCatalogPartitioning(database.adapter, "off");
+    const hotUpdater = createHotUpdater({
+      database,
+      clientAccess: "public",
+      storage: createReleaseCatalogTestStorage(),
+    });
+    let response: Response | undefined;
+    const measured = await counted.measure(async () => {
+      response = await hotUpdater.handlers.admin(
+        new Request("http://localhost/release-catalog-partitioning", {
+          method: "POST",
+        }),
+      );
+    });
+    expect(response?.status).toBe(200);
+    expect(await response?.json()).toEqual({
+      data: { partitioning: "on", changed: true },
+    });
+    expect(measured.queries).toBeLessThanOrEqual(FREE_QUERIES_PER_INVOCATION);
+    expect(
+      (
+        await env.DB.prepare(
+          "SELECT COUNT(*) AS n FROM release_catalog_partitions WHERE scope_key LIKE '~probe/%'",
+        ).first<{ n: number }>()
+      )?.n,
+    ).toBe(0);
+  });
+});

@@ -9,6 +9,7 @@ import type { HttpTestClient, HttpTestServer } from "./httpTestClient";
 import { createReleaseCatalogTestStorage } from "./releaseCatalogHttpFixtures";
 import { setupBundleMethodsTestSuite } from "./setupBundleMethodsTestSuite";
 import { setupCoreAdminTestSuite } from "./setupCoreAdminTestSuite";
+import { setupPartitioningEnableTestSuite } from "./setupPartitioningEnableTestSuite";
 import { setupReleaseCatalogTestSuite } from "./setupReleaseCatalogTestSuite";
 
 export type { DatabaseTestLifecycle } from "./databaseTestRunner";
@@ -40,12 +41,19 @@ export type DatabaseTestSuiteOptions<
   }) => HttpTestServer | Promise<HttpTestServer>;
   /** The suites of the server plugins the provider opts in to test. */
   readonly plugins?: readonly DatabasePluginTestSuite<TDatabase>[];
+  /**
+   * False for a database without `release_catalog_partitions`, such as a
+   * prerelease's before its by-hand step, whose spec checks that nothing
+   * touches the table: turning partitioning on probes it.
+   */
+  readonly partitioning?: boolean;
 };
 
 /**
  * A provider's database under Hot Updater's server: core's operations, the
- * Release Catalog contract, and bundles, all through HTTP, on the tables the
- * provider's tooling creates, then each opted-in plugin's suite.
+ * Release Catalog contract, bundles, and turning release catalog partitioning
+ * on, all through HTTP, on the tables the provider's tooling creates, then
+ * each opted-in plugin's suite.
  */
 export const setupDatabaseTestSuite = <TDatabase extends EngineDatabase>(
   options: DatabaseTestSuiteOptions<TDatabase>,
@@ -71,6 +79,10 @@ export const setupDatabaseTestSuite = <TDatabase extends EngineDatabase>(
     setupCoreAdminTestSuite({ getClient });
     setupBundleMethodsTestSuite({ getClient });
     setupReleaseCatalogTestSuite({ getClient });
+    // Last of core's: it turns the switch on, and off again after each test.
+    if (options.partitioning !== false) {
+      setupPartitioningEnableTestSuite({ getClient, getDatabase });
+    }
     for (const suite of options.plugins ?? []) {
       describe(suite.name, () => {
         suite.register({ getClient, getDatabase });
