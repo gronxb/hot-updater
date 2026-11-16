@@ -5,10 +5,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   createSqlAdapter,
   createTableStatements,
+  SETTINGS_TABLE,
   type SqlDialect,
   type ToolingDatabase,
 } from "@hot-updater/plugin-core";
 import {
+  createReleaseCatalogTestStorage,
   releaseCatalogPartitionsTable,
   setupKeyOrderTestSuite,
 } from "@hot-updater/test-utils";
@@ -24,7 +26,7 @@ import { Kysely, MysqlDialect, PostgresDialect } from "kysely";
 import { createPool as createMysqlCallbackPool } from "mysql2";
 import mysql from "mysql2/promise";
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { drizzleAdapter } from "../../adapters/drizzle";
 import { kyselyAdapter } from "../../adapters/kysely";
@@ -34,6 +36,7 @@ import {
   pgPrisma,
   prismaPushSql,
 } from "../../adapters/prismaTestClients";
+import { createHotUpdater } from "../../createHotUpdaterCore";
 import { composeUp } from "../../docker.testFixtures";
 
 assertDockerComposeAvailable(
@@ -330,4 +333,90 @@ describe.each([
       return { adapter: database_.adapter };
     },
   });
+});
+
+/**
+ * The enable route's probe on each SQL server, with the server's own
+ * database handle: the generated table passes and partitioning turns on; a
+ * table made by hand with a locale or case-insensitive collation refuses,
+ * leaving the switch unset and no probe row behind.
+ */
+describe.each([
+  ["PostgreSQL with ICU 'en' keys", "postgresql", (ddl: string) => ddl.replaceAll(' COLLATE "C"', "")],
+  ["MySQL with ascii_general_ci keys", "mysql", (ddl: string) => ddl.replaceAll("ascii_bin", "ascii_general_ci")],
+] as const)("the partitioning probe on %s", (_, dialect, handMade) => {
+  const open = async () => {
+    const provider = dialect;
+    let kysely: Kysely<object>;
+    let read: (sql: string) => Promise<readonly Record<string, unknown>[]>;
+    let exec: (sql: string) => Promise<void>;
+    if (dialect === "postgresql") {
+      const pool = await pgDatabase();
+      kysely = new Kysely<object>({ dialect: new PostgresDialect({ pool }) });
+      read = async (sql) => (await pool.query(sql)).rows;
+      exec = async (sql) => {
+        await pool.query(sql);
+      };
+    } else {
+      const { pool, uri } = await mysqlDatabase();
+      const callbacks = createMysqlCallbackPool({ uri, connectionLimit: 8 });
+      closers.push(() => new Promise((resolve) => callbacks.end(resolve)));
+      kysely = new Kysely<object>({
+        dialect: new MysqlDialect({ pool: callbacks }),
+      });
+      read = async (sql) =>
+        (await pool.query(sql))[0] as Record<string, unknown>[];
+      exec = async (sql) => {
+        await pool.query(sql);
+      };
+    }
+    const database = kyselyAdapter({ db: kysely, provider });
+    await migrated(database);
+    const server = createHotUpdater({
+      clientAccess: "public",
+      database,
+      storage: createReleaseCatalogTestStorage(),
+    });
+    const quote = (name: string) =>
+      dialect === "mysql" ? `\`${name}\`` : `"${name}"`;
+    const enable = () =>
+      server.handlers.admin(
+        new Request("http://localhost/release-catalog-partitioning", {
+          method: "POST",
+        }),
+      );
+    const switchRows = () =>
+      read(
+        `SELECT ${quote("value")} AS v FROM ${quote(SETTINGS_TABLE.name)} WHERE ${quote("key")} = 'catalog.partitioning'`,
+      );
+    const partitionRows = async () =>
+      Number(
+        (await read(`SELECT COUNT(*) AS n FROM ${quote(TABLE)}`))[0]?.["n"],
+      );
+    return { enable, exec, switchRows, partitionRows };
+  };
+
+  it("passes on the generated table and turns partitioning on", async () => {
+    const env = await open();
+    const response = await env.enable();
+    expect(response.status).toBe(200);
+    expect(await env.switchRows()).toEqual([{ v: "on" }]);
+    expect(await env.partitionRows()).toBe(0);
+  }, 60_000);
+
+  it("refuses a hand-made table that doesn't sort keys by bytes, and sets nothing", async () => {
+    const env = await open();
+    const [statement] = createTableStatements(dialect, [
+      releaseCatalogPartitionsTable,
+    ]);
+    await env.exec(`DROP TABLE ${dialect === "mysql" ? "`" + TABLE + "`" : `"${TABLE}"`}`);
+    await env.exec(handMade(statement!));
+    const response = await env.enable();
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: "PARTITIONS_KEY_ORDER",
+    });
+    expect(await env.switchRows()).toEqual([]);
+    expect(await env.partitionRows()).toBe(0);
+  }, 60_000);
 });

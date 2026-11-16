@@ -1,4 +1,5 @@
 import {
+  DatabaseConflictError,
   DatabaseConstraintError,
   DatabaseSnapshotUnsupportedError,
   type ReleaseCatalogPartitioningStatus,
@@ -216,8 +217,10 @@ const probeKeyOrder = async (db: CoreDatabase): Promise<string | null> => {
   }));
   try {
     try {
-      await db.transaction(async (tx) => {
-        for (const key of keys) {
+      // One row a write, so a key a collation folds into an earlier one
+      // fails as that key's conflict, not as a write that rolled back.
+      for (const key of keys) {
+        await db.transaction(async (tx) => {
           tx.create(PARTITIONS, {
             ...key,
             generation: 0,
@@ -225,12 +228,18 @@ const probeKeyOrder = async (db: CoreDatabase): Promise<string | null> => {
             partition_hash: "probe",
             byte_size: 2,
           });
-        }
-      });
+        });
+      }
     } catch (error) {
-      // `A` and `a` are one key under a case-insensitive collation.
-      if (error instanceof DatabaseConstraintError) {
-        return `its keys collide: ${errorMessage(error)}`;
+      // `A` and `a` are one key under a case-insensitive collation: the
+      // store refuses the second as a duplicate, which reads back as a
+      // conflict that never clears, since its exact key is still absent. A
+      // fresh scope key has no other writer.
+      if (
+        error instanceof DatabaseConstraintError ||
+        error instanceof DatabaseConflictError
+      ) {
+        return `two of its keys collide (${errorMessage(error)})`;
       }
       throw error;
     }

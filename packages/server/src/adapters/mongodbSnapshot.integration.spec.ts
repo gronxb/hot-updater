@@ -811,6 +811,53 @@ describe("MongoDB snapshot reads on a three-member replica set", () => {
     };
     const versions = ["0.9.0", "1.0.0", "1.5.0", "2.0.0", "2.5.0", "3.0.0"];
 
+    it("turns partitioning on after the probe reads its rows in one snapshot, and converts on the next write", async () => {
+      const { core, fixture } = await seeded();
+      await expect(core.enableReleaseCatalogPartitioning()).resolves.toEqual({
+        partitioning: "on",
+        changed: true,
+      });
+      await core.deploy([
+        {
+          bundle: createBundleFixture("900"),
+          release: {
+            channel: "production",
+            enabled: true,
+            fingerprintHash: null,
+            message: null,
+            shouldForceUpdate: false,
+            targetAppVersion: "4.0.0",
+          },
+        },
+      ]);
+      const head = await fixture.readRow(scopeKeyOf("production"));
+      expect(head.payload).toContain('"layout":"partitioned"');
+    });
+
+    it("refuses a partitions collection made by hand with a case-folding collation, and sets nothing", async () => {
+      databases += 1;
+      const { client } = hostile(`catalog${databases}`);
+      const database = mongoAdapter({ client });
+      await (await database.createMigrator!().migrateToLatest()).execute();
+      await client.db().dropCollection("release_catalog_partitions");
+      await client.db().createCollection("release_catalog_partitions", {
+        collation: { locale: "en", strength: 2 },
+      });
+      const core = createInProcessCoreApi(database.adapter);
+      await expect(core.enableReleaseCatalogPartitioning()).rejects.toMatchObject(
+        { code: "PARTITIONS_KEY_ORDER" },
+      );
+      expect(await core.getReleaseCatalogPartitioning()).toMatchObject({
+        switch: "off",
+      });
+      expect(
+        await client
+          .db()
+          .collection("release_catalog_partitions")
+          .countDocuments(),
+      ).toBe(0);
+    });
+
     it("answers as the compact row did, reading the head plainly, then the head and its row in one snapshot, without getMore", async () => {
       const { check, core, events, fixture } = await seeded();
       const before = await Promise.all(
@@ -1171,6 +1218,20 @@ describe("MongoDB 4.4, which has no snapshot reads", () => {
       ),
     ).rejects.toBeInstanceOf(DatabaseSnapshotUnsupportedError);
     // Still serving afterwards.
+    await expect(core.getRelease(release.id)).resolves.toEqual(release);
+
+    // Partitioning needs the snapshot reads this deployment lacks: the
+    // server refuses before it sets anything, and leaves no probe row.
+    await expect(core.enableReleaseCatalogPartitioning()).rejects.toMatchObject(
+      { code: "SNAPSHOT_UNSUPPORTED" },
+    );
+    expect(await core.getReleaseCatalogPartitioning()).toEqual({
+      switch: "off",
+      table: "present",
+    });
+    expect(
+      await legacy.db().collection("release_catalog_partitions").countDocuments(),
+    ).toBe(0);
     await expect(core.getRelease(release.id)).resolves.toEqual(release);
   });
 });
