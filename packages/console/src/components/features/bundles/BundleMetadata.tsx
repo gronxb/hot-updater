@@ -5,6 +5,7 @@ import { ExternalLink } from "lucide-react";
 import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConfigQuery } from "@/lib/api";
+import { CONSOLE_GIT_URL_GUIDE_URL } from "@/lib/constants";
 import { getCommitUrl } from "@/lib/git";
 
 interface BundleMetadataProps {
@@ -29,6 +30,10 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
     bundle?.gitCommitHash && isFetched
       ? getCommitUrl(configData?.console.gitUrl, bundle.gitCommitHash)
       : null;
+  const showGitUrlHint =
+    isFetched &&
+    Boolean(bundle?.gitCommitHash) &&
+    !configData?.console.gitUrl?.trim();
   const target =
     release.strategy === "APP_VERSION"
       ? release.target_app_version
@@ -65,22 +70,41 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
             <Row
               label="Git commit"
               value={
-                <div className="flex items-center justify-start gap-1 sm:justify-end">
-                  <HashValueDisplay
-                    className={gitCommitUrl ? "text-primary" : undefined}
-                    maxLength={12}
-                    value={bundle.gitCommitHash}
-                  />
-                  {gitCommitUrl ? (
-                    <a
-                      aria-label="Open git commit"
-                      className="shrink-0 text-primary hover:underline"
-                      href={gitCommitUrl}
-                      rel="noopener noreferrer"
-                      target="_blank"
-                    >
-                      <ExternalLink aria-hidden="true" />
-                    </a>
+                <div className="flex flex-col items-start gap-1.5 sm:items-end">
+                  <div className="flex items-center justify-start gap-1 sm:justify-end">
+                    <HashValueDisplay
+                      className={gitCommitUrl ? "text-primary" : undefined}
+                      maxLength={12}
+                      value={bundle.gitCommitHash}
+                    />
+                    {gitCommitUrl ? (
+                      <a
+                        aria-label="Open git commit"
+                        className="shrink-0 text-primary hover:underline"
+                        href={gitCommitUrl}
+                        rel="noopener noreferrer"
+                        target="_blank"
+                      >
+                        <ExternalLink aria-hidden="true" />
+                      </a>
+                    ) : null}
+                  </div>
+                  {showGitUrlHint ? (
+                    <p className="text-muted-foreground max-w-sm text-left text-xs sm:text-right">
+                      Set{" "}
+                      <code className="font-mono text-foreground">
+                        console.gitUrl
+                      </code>{" "}
+                      in your config to link commits.{" "}
+                      <a
+                        className="text-primary hover:underline"
+                        href={CONSOLE_GIT_URL_GUIDE_URL}
+                        rel="noopener noreferrer"
+                        target="_blank"
+                      >
+                        Learn more
+                      </a>
+                    </p>
                   ) : null}
                 </div>
               }
