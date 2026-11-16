@@ -51,6 +51,11 @@ interface DatabaseAdapter {
    * committed write.
    */
   readSnapshot?<T>(read: (reader: SnapshotReader) => Promise<T>): Promise<T>;
+  /**
+   * The most queries one request may send, where the runtime caps them;
+   * left out where it doesn't.
+   */
+  readonly maxQueriesPerRequest?: number;
   /** Creates tables; only the migration helpers call it. */
   readonly migrations?: {
     apply(tables: readonly PhysicalTable[]): Promise<void>;
@@ -260,6 +265,14 @@ transaction on it conflicts.
 limits on ops, items or bytes. The engine asks before every write and refuses
 a transaction that does not fit with `DatabaseConstraintError` `too_large`,
 before anything is sent. Return `true` when the backend has no limit.
+
+`maxQueriesPerRequest` declares a cap the runtime puts on one request's
+queries, counted as the backend counts them: a Worker's D1 binding declares
+50, the Free plan's limit, where one batch is one query. Core counts a
+release catalog publication too large for one write against it before it
+stages any row, and writes the catalog as one compact row when it wouldn't
+fit, as it does on a store without partitioning. Leave it out when nothing
+caps a request.
 
 ## Consumed rows
 

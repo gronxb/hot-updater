@@ -198,6 +198,16 @@ response wraps its result in `data`.
 
 `PATCH /releases/:id` takes a `ReleasePolicyPatch`. `promote` copies a Bundle
 Release into `targetChannel`; `action: "move"` also disables the source.
+
+`GET /release-catalogs` and `GET /release-catalogs/:scopeKey` return each
+scope's catalog as one compact payload, the same for a scope stored in
+partitions: the server assembles its rows. A write's result is the row the
+write stored. For a partitioned scope, the `catalog` of `POST /releases`,
+`PATCH` and `DELETE /releases/:id`, `promote` and `rebuild` is the scope's
+head: its `catalog_id`, `generation`, `catalog_hash`, and the head's own
+`payload` and `byte_size`, not an assembled catalog. Read the catalog with
+`GET /release-catalogs/:scopeKey`. The preflight routes answer compact
+payloads.
 `DELETE /releases/:id` deletes a disabled Release and names it twice, in the
 path and as `confirm`. `PATCH /bundles/:id` rejects a body whose `id` names
 another Bundle; `patches`, when given, replaces the Bundle's patches.

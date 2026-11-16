@@ -79,6 +79,12 @@ values is split to stay within D1's 100 parameters per statement, and one
 write sends at most 450 operations in its batch. A Worker counts each batch as
 one query against its invocation's limit, whatever statements it holds.
 
+A Worker can't tell its plan, so the binding version declares 50 queries per
+request, the Free plan's limit (Paid allows 1,000). When a release catalog
+change is too big for one write and staging it would send more than that, the
+Worker writes the scope as one compact catalog row instead, which devices read
+as before. The root export, over the REST API, has no such cap.
+
 The root export reaches D1 through the Cloudflare REST API, for
 `hot-updater.config.ts` and the Console. It sends each value as JSON text and
 reads it back with `json_extract`. Inside a Worker, use the binding version
