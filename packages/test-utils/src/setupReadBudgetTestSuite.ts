@@ -686,6 +686,17 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     engine: { calls: 1, rows: 1 },
   }),
   budget({
+    api: "catalog preflight: 1 catalog point read and the scope's enabled releases",
+    // Doctor's check of each scope: it writes nothing, so it reads the
+    // catalog once, without a transaction's guard reads, and no newest
+    // release, which matters only to a scope without a catalog.
+    read: ({ core }) => core.preflightReleaseCatalogRebuild(scopeKey),
+    // Production iOS holds 4 enabled releases.
+    adapter: reads(1, 1, 1, 4),
+    engine: { calls: 2, rows: 5 },
+    check: (preflight) => expect(preflight.changed).toBe(false),
+  }),
+  budget({
     api: "release scopes: one limit-1 seek per scope, past each scope's releases",
     // Production Android and staging hold 2 releases each, beta 1, and
     // production iOS 6: 4 rows, one per scope, not 11.

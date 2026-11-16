@@ -15,6 +15,7 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   createReleaseCatalogScopeKey,
+  decodeChannelKey,
   encodeChannelKey,
 } from "@hot-updater/protocol";
 
@@ -84,25 +85,38 @@ const checkScope = (scope: ReleaseCatalogScope): void => {
   }
 };
 
-/** A scope's enabled releases, all of them, under the catalog's guard. */
-const enabledReleases = async (
-  tx: CoreTransaction,
-  scopeKey: string,
+/** Every row of a paged read, as release rows. */
+const drainReleases = async (
+  page: (
+    cursor: string | undefined,
+  ) => Promise<{ readonly rows: readonly unknown[]; readonly next?: string }>,
 ): Promise<ReleaseRow[]> => {
   const rows: ReleaseRow[] = [];
   let cursor: string | undefined;
   do {
-    const page = await tx.findMany("releases", {
-      index: "byScopeEnabled",
-      where: { scope_key: scopeKey, enabled: true },
-      limit: PAGE,
-      ...(cursor === undefined ? {} : { cursor }),
-    });
-    rows.push(...page.rows.map(toReleaseRow));
-    cursor = page.next;
+    const found = await page(cursor);
+    rows.push(...found.rows.map((row) => toReleaseRow(row as never)));
+    cursor = found.next;
   } while (cursor !== undefined);
   return rows;
 };
+
+const enabledIn = (scopeKey: string, cursor: string | undefined) =>
+  ({
+    index: "byScopeEnabled",
+    where: { scope_key: scopeKey, enabled: true },
+    limit: PAGE,
+    ...(cursor === undefined ? {} : { cursor }),
+  }) as const;
+
+/** A scope's enabled releases, all of them, under the catalog's guard. */
+const enabledReleases = (
+  tx: CoreTransaction,
+  scopeKey: string,
+): Promise<ReleaseRow[]> =>
+  drainReleases((cursor) =>
+    tx.findMany("releases", enabledIn(scopeKey, cursor)),
+  );
 
 /** The scope's newest release id: `byScope` descending, limit 1. */
 const latestReleaseId = async (tx: CoreTransaction, scopeKey: string) => {
@@ -115,26 +129,21 @@ const latestReleaseId = async (tx: CoreTransaction, scopeKey: string) => {
   return rows[0]?.id ?? null;
 };
 
-/** Compiles `enabled` and writes it as the scope's next catalog generation. */
-const writeCatalog = async (
-  tx: CoreTransaction,
+/** The scope's next catalog generation, compiled as `compilation`. */
+const nextCatalog = (
   scope: ReleaseCatalogScope,
-  stored: Awaited<ReturnType<typeof readCatalog>>,
-  enabled: readonly ReleaseRow[],
+  stored: { readonly catalog: ReleaseCatalogRow | null },
+  compilation: ReleaseCatalogCompilation,
   updatedAtMs: number,
-) => {
-  const compilation = await compileReleaseCatalog({
-    strategy: scope.strategy,
-    releases: enabled.map(releaseRowToRelease),
-  });
-  const generation = (stored.generation ?? 0) + 1;
+): ReleaseCatalogRow => {
+  const generation = (stored.catalog?.generation ?? 0) + 1;
   if (!Number.isSafeInteger(generation)) {
     fail(
       "CATALOG_GENERATION_EXHAUSTED",
       `Catalog "${scope.scopeKey}" exhausted its generation counter`,
     );
   }
-  const catalog: ReleaseCatalogRow = {
+  return {
     scope_key: scope.scopeKey,
     catalog_id: stored.catalog?.catalog_id ?? createUUIDv7(),
     strategy: scope.strategy,
@@ -149,6 +158,21 @@ const writeCatalog = async (
     is_tombstone: compilation.payload.releaseDescriptors.length === 0,
     updated_at_ms: updatedAtMs,
   };
+};
+
+/** Compiles `enabled` and writes it as the scope's next catalog generation. */
+const writeCatalog = async (
+  tx: CoreTransaction,
+  scope: ReleaseCatalogScope,
+  stored: Awaited<ReturnType<typeof readCatalog>>,
+  enabled: readonly ReleaseRow[],
+  updatedAtMs: number,
+) => {
+  const compilation = await compileReleaseCatalog({
+    strategy: scope.strategy,
+    releases: enabled.map(releaseRowToRelease),
+  });
+  const catalog = nextCatalog(scope, stored, compilation, updatedAtMs);
   const { scope_key: _scopeKey, ...set } = catalog;
   if (stored.row === null) tx.create("release_catalogs", catalog);
   else tx.update("release_catalogs", stored.row, set);
@@ -280,6 +304,76 @@ export const changeReleases = (
   });
 };
 
+/** Whether `current` is what the scope's enabled releases compile to. */
+const isCurrent = (
+  scope: ReleaseCatalogScope,
+  current: ReleaseCatalogRow,
+  compilation: ReleaseCatalogCompilation,
+) =>
+  current.strategy === scope.strategy &&
+  current.channel_id === scope.channelId &&
+  current.channel_key === encodeChannelKey(scope.channelName) &&
+  current.platform === scope.platform &&
+  current.fingerprint_hash === scope.fingerprintHash &&
+  current.catalog_hash === compilation.catalogHash;
+
+/** The scope a catalog row names. */
+export const catalogRowScope = (
+  row: Pick<
+    ReleaseCatalogRow,
+    | "channel_id"
+    | "channel_key"
+    | "fingerprint_hash"
+    | "platform"
+    | "scope_key"
+    | "strategy"
+  >,
+): ReleaseCatalogScope => ({
+  channelId: row.channel_id,
+  channelName: decodeChannelKey(row.channel_key),
+  fingerprintHash: row.fingerprint_hash,
+  platform: row.platform as "ios" | "android",
+  scopeKey: row.scope_key,
+  strategy: row.strategy as "APP_VERSION" | "FINGERPRINT",
+});
+
+/**
+ * What a rebuild of the scope's catalog would write, without writing: one
+ * read of the catalog row and one of the scope's enabled releases. It needs
+ * no transaction, whose guards would read the catalog again for each read
+ * beneath it, nor the scope's newest release, which matters only to a scope
+ * without a catalog row; that one is not found.
+ */
+export const preflightRebuild = async (
+  db: CoreDatabase,
+  scopeKey: string,
+  updatedAtMs: number,
+) => {
+  const row = await db.findOne("release_catalogs", { scope_key: scopeKey });
+  if (row === null) {
+    throw new Error(`Release catalog "${scopeKey}" was not found.`);
+  }
+  const current = toCatalogRow(row);
+  const scope = catalogRowScope(current);
+  checkScope(scope);
+  const enabled = await drainReleases((cursor) =>
+    db.findMany("releases", enabledIn(scopeKey, cursor)),
+  );
+  const compilation = await compileReleaseCatalog({
+    strategy: scope.strategy,
+    releases: enabled.map(releaseRowToRelease),
+  });
+  const changed = !isCurrent(scope, current, compilation);
+  return {
+    changed,
+    currentCatalog: current,
+    diagnostics: compilation.diagnostics,
+    projectedCatalog: changed
+      ? nextCatalog(scope, { catalog: current }, compilation, updatedAtMs)
+      : current,
+  };
+};
+
 /** Recompiles a scope's catalog from its enabled releases inside `tx`; an unchanged catalog is not rewritten. */
 export const rebuildScope = async (
   tx: CoreTransaction,
@@ -300,15 +394,7 @@ export const rebuildScope = async (
     releases: enabled.map(releaseRowToRelease),
   });
   const current = stored.catalog;
-  if (
-    current !== null &&
-    current.strategy === scope.strategy &&
-    current.channel_id === scope.channelId &&
-    current.channel_key === encodeChannelKey(scope.channelName) &&
-    current.platform === scope.platform &&
-    current.fingerprint_hash === scope.fingerprintHash &&
-    current.catalog_hash === compilation.catalogHash
-  ) {
+  if (current !== null && isCurrent(scope, current, compilation)) {
     return {
       catalog: current,
       current,

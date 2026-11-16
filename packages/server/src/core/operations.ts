@@ -25,10 +25,17 @@ import {
 } from "@hot-updater/protocol";
 
 import { isBuiltInBundle, refuseSandboxPatchBase } from "./nativeBuilds";
-import { toBundleRow, toReleaseRow, type CoreDatabase } from "./reads";
+import {
+  toBundleRow,
+  toCatalogRow,
+  toReleaseRow,
+  type CoreDatabase,
+} from "./reads";
 import {
   changeRelease,
   changeReleases,
+  catalogRowScope,
+  preflightRebuild,
   readCatalog,
   rebuildScope,
   type ReleaseChangeResult,
@@ -201,15 +208,7 @@ const catalogScope = async (tx: CoreTransaction, scopeKey: string) => {
   if (row === null) {
     throw new Error(`Release catalog "${scopeKey}" was not found.`);
   }
-  const scope: ReleaseCatalogScope = {
-    channelId: row.channel_id,
-    channelName: decodeChannelKey(row.channel_key),
-    fingerprintHash: row.fingerprint_hash,
-    platform: row.platform as "ios" | "android",
-    scopeKey: row.scope_key,
-    strategy: row.strategy as "APP_VERSION" | "FINGERPRINT",
-  };
-  return scope;
+  return catalogRowScope(toCatalogRow(row));
 };
 
 /**
@@ -517,22 +516,8 @@ export const createCoreOperations = (
       });
     },
 
-    preflightReleaseCatalogRebuild: (scopeKey) => {
-      const updatedAtMs = now();
-      return dryRun(db, async (tx) => {
-        const rebuilt = await rebuildScope(
-          tx,
-          await catalogScope(tx, scopeKey),
-          updatedAtMs,
-        );
-        return {
-          changed: rebuilt.changed,
-          currentCatalog: rebuilt.current,
-          diagnostics: rebuilt.diagnostics,
-          projectedCatalog: rebuilt.catalog,
-        };
-      });
-    },
+    preflightReleaseCatalogRebuild: (scopeKey) =>
+      preflightRebuild(db, scopeKey, now()),
 
     ensureChannel,
 

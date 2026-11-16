@@ -402,7 +402,7 @@ describe("doctor's catalog check", () => {
     expect(large.queries).toBe(small.queries);
   }, 120_000);
 
-  it("reads 8 rows per scope", async () => {
+  it("reads 4 rows per scope", async () => {
     const [small, large] = await atTwoSizes(
       "doctor, scopes",
       [
@@ -411,8 +411,8 @@ describe("doctor's catalog check", () => {
       ],
       (core) => checkServerData(core),
     );
-    // Each scope: one row for the seek past it, and 7 to compare its
-    // catalog with a rebuild from its enabled release.
-    expect(large.rows - small.rows).toBe(190 * 8);
+    // Each scope: its catalog row in the catalog list, the seek past it,
+    // and the catalog row and its one enabled release to compare them.
+    expect(large.rows - small.rows).toBe(190 * 4);
   }, 120_000);
 });
