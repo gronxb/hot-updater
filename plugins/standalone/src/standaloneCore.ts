@@ -322,14 +322,16 @@ export const createStandaloneCoreApi = (
       // channel by name, so the page is cut here by the same keyset rule;
       // a newer server's page passes through unchanged.
       const desc = input.order === "desc";
-      const { after } = input;
+      const { after, through } = input;
+      // `after` excludes its name and `through` includes its, in the
+      // requested direction.
+      const past = (name: string, bound: string) =>
+        desc ? compareUtf8(name, bound) < 0 : compareUtf8(name, bound) > 0;
       return rows
         .filter(
           ({ name }) =>
-            after === undefined ||
-            (desc
-              ? compareUtf8(name, after) < 0
-              : compareUtf8(name, after) > 0),
+            (after === undefined || past(name, after)) &&
+            (through === undefined || !past(name, through)),
         )
         .sort((left, right) =>
           desc

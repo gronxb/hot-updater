@@ -198,6 +198,34 @@ describe("createStandaloneCoreApi", () => {
       expect(asc.map(({ name }) => name)).toEqual(["beta"]);
       expect(desc.map(({ name }) => name)).toEqual(["beta", "alpha"]);
     });
+
+    it("ends with the channel `through` names, in either order", async () => {
+      server.use(version(2), everyChannel());
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      const asc = await core.listChannels({ limit: 10, through: "beta" });
+      const desc = await core.listChannels({
+        limit: 10,
+        order: "desc",
+        through: "beta",
+      });
+      const between = await core.listChannels({
+        limit: 10,
+        after: "alpha",
+        through: "beta2",
+      });
+      const descBetween = await core.listChannels({
+        limit: 10,
+        order: "desc",
+        after: "gamma",
+        through: "alpha2",
+      });
+
+      expect(asc.map(({ name }) => name)).toEqual(["alpha", "beta"]);
+      expect(desc.map(({ name }) => name)).toEqual(["gamma", "beta"]);
+      expect(between.map(({ name }) => name)).toEqual(["beta"]);
+      expect(descBetween.map(({ name }) => name)).toEqual(["beta"]);
+    });
   });
 
   it("marks iOS devices in a build in requests of 100 IDs", async () => {
