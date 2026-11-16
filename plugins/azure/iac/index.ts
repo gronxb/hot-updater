@@ -3,6 +3,7 @@ import path from "path";
 
 import {
   assembleServer,
+  enablePartitioningAfterDeploy,
   getCwd,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
@@ -10,6 +11,8 @@ import {
   InitError,
   link,
   makeEnv,
+  type ManagedPartitioning,
+  managedPartitioningMessage,
   p,
   printAppSetup,
   provisionClientCredential,
@@ -441,6 +444,7 @@ export const runInit = async ({
   // assembling it neither reads nor writes.
   const server = assembleServer({ database, plugins });
   let credential: ProvisionedClientCredential | undefined;
+  let partitioning: ManagedPartitioning;
   try {
     credential = await provisionClientCredential(server, {
       env: initInputEnv,
@@ -449,6 +453,13 @@ export const runInit = async ({
     if (credential !== undefined) {
       await makeEnv({ [credential.env]: credential.value });
     }
+    // A zip deploy restarts the Function App's instances one by one, and
+    // nothing reports when the last one runs it, so init leaves
+    // partitioning to the command.
+    partitioning = await enablePartitioningAfterDeploy({
+      server,
+      serverUrl: baseURL,
+    });
   } finally {
     await database.dispose?.();
   }
@@ -468,6 +479,10 @@ export const runInit = async ({
     },
   );
 
+  {
+    const { level, text } = managedPartitioningMessage(partitioning);
+    p.log[level](text);
+  }
   printAppSetup({
     baseURL,
     ...(credential === undefined ? {} : { credential }),

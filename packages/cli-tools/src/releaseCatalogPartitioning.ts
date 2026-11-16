@@ -184,46 +184,58 @@ export type ManagedPartitioning =
 
 /**
  * After a managed deploy: turns partitioning on only when the platform has
- * confirmed that the whole deployment is done (`deployed`, the provider's
- * own completion signal for the exact resource apps reach) and every
- * cache-busted `/version` at `serverUrl` answers `expectedVersion`. Without
- * a completion signal, or on any other answer, partitioning stays off and
- * the result carries the command that turns it on later.
+ * confirmed that the whole deployment is done (`deployed.confirm`, the
+ * provider's own completion signal for the exact resource apps reach) and
+ * every cache-busted `/version` at `serverUrl` answers
+ * `deployed.expectedVersion`. A provider without such a signal leaves
+ * `deployed` out. Partitioning then stays off, unless an earlier run turned
+ * it on, and the result carries the command that turns it on.
  */
 export const enablePartitioningAfterDeploy = async ({
   server,
   serverUrl,
-  expectedVersion,
   deployed,
   fetchImpl = fetch,
 }: {
   readonly server: Pick<
     AssembledServer,
-    "database" | "issueReleaseCatalogPartitioningToken"
+    "core" | "database" | "issueReleaseCatalogPartitioningToken"
   >;
-  readonly serverUrl: string;
-  readonly expectedVersion: string;
-  /**
-   * The platform's confirmation that every instance serving `serverUrl`
-   * runs the new deployment, or why it can't say so. Absent: the platform
-   * has no such signal.
-   */
-  readonly deployed?: () => Promise<true | string>;
+  /** The URL apps check for updates at; undefined when init couldn't tell. */
+  readonly serverUrl: string | undefined;
+  readonly deployed?: {
+    /**
+     * The platform's confirmation that every instance serving `serverUrl`
+     * runs the new deployment, or why it can't say so.
+     */
+    readonly confirm: () => Promise<true | string>;
+    /** The `@hot-updater/server` version the deployment runs. */
+    readonly expectedVersion: string;
+  };
   readonly fetchImpl?: Fetch;
 }): Promise<ManagedPartitioning> => {
   const off = (reason: string): ManagedPartitioning => ({
     enabled: false,
     reason,
-    command: partitionCatalogsCommand(trimSlash(serverUrl)),
+    command: partitionCatalogsCommand(
+      serverUrl === undefined ? "<url>" : trimSlash(serverUrl),
+    ),
   });
-  if (deployed === undefined) {
+  // An upgrade replayed on a partitioned database: nothing to wait for.
+  const status = await server.core
+    .getReleaseCatalogPartitioning()
+    .catch(() => null);
+  if (status?.switch === "on") return { enabled: true, changed: false };
+  if (deployed === undefined || serverUrl === undefined) {
     return off(
       "the platform can't confirm that every server instance runs this release.",
     );
   }
-  const confirmed = await deployed().catch((error: unknown) =>
-    error instanceof Error ? error.message : String(error),
-  );
+  const confirmed = await deployed
+    .confirm()
+    .catch((error: unknown) =>
+      error instanceof Error ? error.message : String(error),
+    );
   if (confirmed !== true) return off(confirmed);
   const versions = await readServerVersions({
     baseUrl: serverUrl,
@@ -231,10 +243,10 @@ export const enablePartitioningAfterDeploy = async ({
   }).catch((error: unknown) => [
     error instanceof Error ? error.message : String(error),
   ]);
-  const other = versions.find((version) => version !== expectedVersion);
+  const other = versions.find((version) => version !== deployed.expectedVersion);
   if (other !== undefined) {
     return off(
-      `${trimSlash(serverUrl)}/version answered ${other}, not ${expectedVersion}.`,
+      `${trimSlash(serverUrl)}/version answered ${other}, not ${deployed.expectedVersion}.`,
     );
   }
   try {
@@ -248,3 +260,17 @@ export const enablePartitioningAfterDeploy = async ({
     return off(error instanceof Error ? error.message : String(error));
   }
 };
+
+/**
+ * What a managed init prints about partitioning, and at which level: one
+ * line, and the command when it stayed off.
+ */
+export const managedPartitioningMessage = (
+  result: ManagedPartitioning,
+): { readonly level: "success" | "warn"; readonly text: string } =>
+  result.enabled
+    ? { level: "success", text: "Release catalogs are partitioned." }
+    : {
+        level: "warn",
+        text: `Release catalogs stay single-row: ${result.reason}\nOnce every server runs 1.2.0, partition them:\n${result.command}`,
+      };

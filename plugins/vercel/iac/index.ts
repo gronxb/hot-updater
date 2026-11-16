@@ -5,6 +5,7 @@ import path from "path";
 import {
   assembleServer,
   confirmInitInputPersistence,
+  enablePartitioningAfterDeploy,
   getCwd,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
@@ -12,6 +13,8 @@ import {
   InitError,
   link,
   makeEnv,
+  type ManagedPartitioning,
+  managedPartitioningMessage,
   p,
   printAppSetup,
   provisionClientCredential,
@@ -623,6 +626,7 @@ export const runInit = async ({
   // assembling it neither reads nor writes.
   const server = assembleServer({ database, plugins });
   let credential: ProvisionedClientCredential | undefined;
+  let partitioning: ManagedPartitioning;
   try {
     credential = await provisionClientCredential(server, {
       env: initInputEnv,
@@ -631,6 +635,13 @@ export const runInit = async ({
     if (credential !== undefined) {
       await makeEnv({ [credential.env]: credential.value });
     }
+    // A production alias moves at once, but nothing reports when the
+    // previous deployment's function instances stop serving, so init
+    // leaves partitioning to the command.
+    partitioning = await enablePartitioningAfterDeploy({
+      server,
+      serverUrl: baseURL,
+    });
   } finally {
     await database.dispose?.();
   }
@@ -641,6 +652,10 @@ export const runInit = async ({
     settings: "Vercel",
   });
 
+  {
+    const { level, text } = managedPartitioningMessage(partitioning);
+    p.log[level](text);
+  }
   printAppSetup({
     baseURL,
     ...(credential === undefined ? {} : { credential }),

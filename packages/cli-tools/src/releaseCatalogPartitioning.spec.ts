@@ -140,16 +140,50 @@ describe("enableReleaseCatalogPartitioning", () => {
   });
 });
 
+type AfterDeployOptions = Partial<
+  Parameters<typeof enablePartitioningAfterDeploy>[0]
+>;
+
+const OFF_CASES: [string, AfterDeployOptions][] = [
+    ["no completion signal", { deployed: undefined }],
+    [
+      "a completion signal that refuses",
+      {
+        deployed: {
+          confirm: async (): Promise<true | string> => "the distribution is InProgress.",
+          expectedVersion: HOT_UPDATER_SERVER_VERSION,
+        },
+      },
+    ],
+    [
+      "a completion signal that throws",
+      {
+        deployed: {
+          confirm: async (): Promise<true | string> => {
+            throw new Error("GetDistribution failed");
+          },
+          expectedVersion: HOT_UPDATER_SERVER_VERSION,
+        },
+      },
+    ],
+    [
+      "another expected version",
+      { deployed: { confirm: async (): Promise<true | string> => true, expectedVersion: "9.9.9" } },
+    ],
+  ];
+
 describe("enablePartitioningAfterDeploy", () => {
   const run = async (
     env: Awaited<ReturnType<typeof deployServer>>,
-    options: Partial<Parameters<typeof enablePartitioningAfterDeploy>[0]>,
+    options: AfterDeployOptions,
   ) =>
     enablePartitioningAfterDeploy({
       server: cliOver(env.adapter),
       serverUrl: URL_,
-      expectedVersion: HOT_UPDATER_SERVER_VERSION,
-      deployed: async () => true,
+      deployed: {
+        confirm: async () => true,
+        expectedVersion: HOT_UPDATER_SERVER_VERSION,
+      },
       fetchImpl: env.fetchImpl,
       ...options,
     });
@@ -171,24 +205,20 @@ describe("enablePartitioningAfterDeploy", () => {
     });
   });
 
-  it.each([
-    ["no completion signal", { deployed: undefined }],
-    [
-      "a completion signal that refuses",
-      { deployed: async (): Promise<string> => "the distribution is InProgress." },
-    ],
-    [
-      "a completion signal that throws",
-      {
-        deployed: async (): Promise<string> => {
-          throw new Error("GetDistribution failed");
-        },
-      },
-    ],
-    ["another expected version", { expectedVersion: "9.9.9" }],
-  ] as const)("leaves it off with %s, and prints the command", async (_, options) => {
+  it("reports an already partitioned database as on, without a completion signal or a request", async () => {
     const env = await deployServer();
-    const result = await run(env, options as never);
+    await run(env, {});
+    env.requests.length = 0;
+    await expect(run(env, { deployed: undefined })).resolves.toEqual({
+      enabled: true,
+      changed: false,
+    });
+    expect(env.requests).toEqual([]);
+  });
+
+  it.each(OFF_CASES)("leaves it off with %s, and prints the command", async (_, options) => {
+    const env = await deployServer();
+    const result = await run(env, options);
     expect(result).toMatchObject({
       enabled: false,
       command: `npx hot-updater db partition-catalogs --server-url ${URL_}`,
