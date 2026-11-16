@@ -316,6 +316,31 @@ describe("createStandaloneCoreApi", () => {
     );
   });
 
+  it("reads the partitioning status, and throws a 404 with its status on a server before it", async () => {
+    let answer: unknown = { data: { switch: "on", table: "present" } };
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/release-catalog-partitioning`, () =>
+        answer === 404
+          ? new HttpResponse(null, { status: 404 })
+          : HttpResponse.json(answer),
+      ),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+    await expect(core.getReleaseCatalogPartitioning()).resolves.toEqual({
+      switch: "on",
+      table: "present",
+    });
+    answer = { data: { switch: "maybe", table: "present" } };
+    await expect(core.getReleaseCatalogPartitioning()).rejects.toThrow(
+      "invalid release catalog partitioning status",
+    );
+    answer = 404;
+    await expect(core.getReleaseCatalogPartitioning()).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+
   it("asks for a server upgrade when the server has no native build routes", async () => {
     server.use(
       version(2),

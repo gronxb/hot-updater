@@ -134,6 +134,11 @@ describe("createHotUpdater with plugins", () => {
         path: "/artifacts/v2/:targetBundleId/files",
         access: "client",
       },
+      {
+        method: "POST",
+        path: "/release-catalog-partitioning",
+        access: "public",
+      },
       { method: "GET", path: "/version", access: "admin" },
       { method: "POST", path: "/releases", access: "admin" },
       { method: "POST", path: "/releases/:id/promote", access: "admin" },
@@ -153,6 +158,16 @@ describe("createHotUpdater with plugins", () => {
       {
         method: "POST",
         path: "/release-catalogs/:scopeKey/preflight",
+        access: "admin",
+      },
+      {
+        method: "GET",
+        path: "/release-catalog-partitioning",
+        access: "admin",
+      },
+      {
+        method: "POST",
+        path: "/release-catalog-partitioning",
         access: "admin",
       },
       { method: "GET", path: "/channels", access: "admin" },
