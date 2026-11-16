@@ -426,9 +426,14 @@ export const preflightRebuild = async (
     db.findMany("releases", enabledIn(scopeKey, cursor)),
   );
   const projected = await projectRebuild(db, scope, stored, enabled);
+  // The scope's own row says how it is stored; no partition row does.
+  const layout: "compact" | "partitioned" = mayBeHead(stored)
+    ? "partitioned"
+    : "compact";
   if (projected !== null) {
     return {
       ...projected,
+      layout,
       projectedCatalog: projected.changed
         ? {
             ...projected.currentCatalog,
@@ -449,6 +454,7 @@ export const preflightRebuild = async (
   const changed = !isCurrent(scope, stored, compilation);
   return {
     changed,
+    layout,
     currentCatalog: current,
     diagnostics: compilation.diagnostics,
     projectedCatalog: changed

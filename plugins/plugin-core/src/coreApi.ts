@@ -1,6 +1,7 @@
 import type {
   ReleaseCatalogMutationPreflight,
   ReleaseCatalogMutationResult,
+  ReleaseCatalogPartitioningStatus,
   ReleaseCatalogRebuildPreflight,
   ReleaseCatalogRebuildResult,
 } from "./releaseCatalogMutation";
@@ -299,6 +300,12 @@ export interface HotUpdaterCoreApi {
     readonly after?: string;
     readonly limit: number;
   }): Promise<string[]>;
+  /**
+   * The partitioning switch and whether the partitions table is readable:
+   * a settings read and one limit-1 read, for doctor. Turning partitioning
+   * on is not part of this API: only the server's own routes do it.
+   */
+  getReleaseCatalogPartitioning(): Promise<ReleaseCatalogPartitioningStatus>;
   /**
    * Every channel, by name. With `input`, one keyset page of them, whose
    * cursor is the last channel's name.

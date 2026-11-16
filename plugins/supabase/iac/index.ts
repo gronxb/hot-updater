@@ -6,11 +6,14 @@ import {
   assembleServer,
   confirmInitInputPersistence,
   copyDirToTmp,
+  enablePartitioningAfterDeploy,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
   link,
   makeEnv,
+  type ManagedPartitioning,
+  managedPartitioningMessage,
   MissingInitInputsError,
   moduleSpecifiersOf,
   p,
@@ -18,9 +21,9 @@ import {
   provisionClientCredential,
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
+  resolvePackageVersion,
   type RunInitOptions,
   type RunInitResult,
-  resolvePackageVersion,
   transformEnv,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
@@ -1055,6 +1058,7 @@ const runInitWithoutCliMetadata = async ({
   );
   let credential: ProvisionedClientCredential | undefined;
   let clientPlugins: readonly PluginClientPlugin[] = [];
+  let partitioning: ManagedPartitioning | undefined;
   let resources: SupabaseConfigResources | undefined;
   try {
     // Staged first, so a function that cannot be staged stops init before it
@@ -1151,6 +1155,15 @@ const runInitWithoutCliMetadata = async ({
       if (credential !== undefined) {
         await makeEnv({ [credential.env]: credential.value });
       }
+      // An Edge Function deploy reports no point at which every region
+      // runs it, so init leaves partitioning to the command.
+      partitioning = await enablePartitioningAfterDeploy({
+        server: managedServer,
+        serverUrl: getSupabaseFunctionUrl({
+          functionName,
+          projectId: project.id,
+        }),
+      });
     } finally {
       await database.dispose?.();
     }
@@ -1165,6 +1178,10 @@ const runInitWithoutCliMetadata = async ({
     settings: "Supabase",
   });
 
+  {
+    const { level, text } = managedPartitioningMessage(partitioning!);
+    p.log[level](text);
+  }
   printAppSetup({
     baseURL: getSupabaseFunctionUrl({ functionName, projectId: project.id }),
     ...(credential === undefined ? {} : { credential }),

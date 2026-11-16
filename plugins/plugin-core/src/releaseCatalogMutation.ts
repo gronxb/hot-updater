@@ -60,4 +60,21 @@ export interface ReleaseCatalogRebuildPreflight {
   readonly currentCatalog: ReleaseCatalogRow | null;
   readonly diagnostics: ReleaseCatalogCompilation["diagnostics"];
   readonly projectedCatalog: ReleaseCatalogRow;
+  /**
+   * How the scope's own catalog row stores it: one compact row, or a head
+   * over partitions. Read from that row, never from the partitions table.
+   * Absent from a server before 1.2.0, whose scopes are all compact.
+   */
+  readonly layout?: "compact" | "partitioned";
+}
+
+/**
+ * Whether app-version release catalogs are partitioned on this database:
+ * the persisted `catalog.partitioning` switch, and whether the server's
+ * credentials can read `release_catalog_partitions`. Neither says that any
+ * scope is partitioned; each scope's own row says that.
+ */
+export interface ReleaseCatalogPartitioningStatus {
+  readonly switch: "on" | "off";
+  readonly table: "present" | "missing";
 }

@@ -1026,6 +1026,16 @@ export const ADMIN_ROUTES: readonly {
     path: "/release-catalogs/:scopeKey/preflight",
     handler: "preflightReleaseCatalogRebuild",
   },
+  {
+    method: "GET",
+    path: "/release-catalog-partitioning",
+    handler: "getReleaseCatalogPartitioning",
+  },
+  {
+    method: "POST",
+    path: "/release-catalog-partitioning",
+    handler: "enableReleaseCatalogPartitioning",
+  },
   { method: "GET", path: "/channels", handler: "getChannels" },
   { method: "POST", path: "/channels", handler: "createChannel" },
   { method: "DELETE", path: "/channels/:id", handler: "deleteChannel" },

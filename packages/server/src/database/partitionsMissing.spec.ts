@@ -120,6 +120,7 @@ for (const [name, open] of Object.entries(sqlBackends)) {
   let backend: ReturnType<typeof open> | undefined;
   setupDatabaseTestSuite({
     name: `core without release_catalog_partitions (${name})`,
+    partitioning: false,
     createHttpClient: (options) =>
       startHttpTestServer(
         createHotUpdater({ ...options, clientAccess: "public" }).handlers,
@@ -167,6 +168,7 @@ for (const [name, open] of Object.entries(sqlBackends)) {
 let store: ReturnType<typeof createMemoryKeyValueStore> | undefined;
 setupDatabaseTestSuite({
   name: "core without release_catalog_partitions (key-value store)",
+  partitioning: false,
   createHttpClient: (options) =>
     startHttpTestServer(
       createHotUpdater({ ...options, clientAccess: "public" }).handlers,

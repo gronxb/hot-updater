@@ -99,3 +99,12 @@ export const createDatabaseHarness = () => {
     },
   };
 };
+
+/**
+ * Doctor's warning on a 1.2 database whose release catalogs are not
+ * partitioned yet: the last catalog issue of every run that reads them.
+ */
+export const PARTITIONING_OFF = {
+  type: "warning",
+  code: "RELEASE_CATALOG_PARTITIONING_OFF",
+} as const;

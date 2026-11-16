@@ -137,6 +137,7 @@ describe("buildDistributionConfigOverrides", () => {
       "/events",
       "/artifacts/*",
       "/version",
+      "/release-catalog-partitioning",
     ]);
     expect(catalogBehavior.CachePolicyId).toBe(
       baseOptions.releaseCatalogCachePolicyId,
@@ -342,6 +343,45 @@ describe("buildDistributionConfigOverrides", () => {
     );
   });
 
+  it("never caches a 500, 502, 503 or 504, keeping the distribution's other error responses", () => {
+    const overrides = buildDistributionConfigOverrides(baseOptions);
+    const uncached = [500, 502, 503, 504].map((ErrorCode) => ({
+      ErrorCode,
+      ErrorCachingMinTTL: 0,
+    }));
+    expect(overrides.CustomErrorResponses).toEqual({
+      Quantity: 4,
+      Items: uncached,
+    });
+    // An existing distribution's, on init's replay: its 503 page is
+    // replaced, since a substituted page would hide the server's answer.
+    const updated = applyDistributionConfigOverrides(
+      {
+        ...buildDistributionConfig(baseOptions),
+        CustomErrorResponses: {
+          Quantity: 2,
+          Items: [
+            { ErrorCode: 404, ErrorCachingMinTTL: 300 },
+            {
+              ErrorCode: 503,
+              ErrorCachingMinTTL: 10,
+              ResponseCode: "200",
+              ResponsePagePath: "/maintenance.html",
+            },
+          ],
+        },
+      },
+      overrides,
+    );
+    expect(updated.CustomErrorResponses).toEqual({
+      Quantity: 5,
+      Items: [{ ErrorCode: 404, ErrorCachingMinTTL: 300 }, ...uncached],
+    });
+    expect(buildDistributionConfig(baseOptions).CustomErrorResponses).toEqual(
+      overrides.CustomErrorResponses,
+    );
+  });
+
   it("preserves the existing managed origin id referenced by other behaviors", () => {
     // Given
     const overrides = buildDistributionConfigOverrides(baseOptions);
@@ -406,6 +446,7 @@ describe("buildDistributionConfigOverrides", () => {
       existingOriginId,
       existingOriginId,
       existingOriginId,
+      existingOriginId,
     ]);
   });
 
@@ -452,6 +493,7 @@ describe("buildDistributionConfigOverrides", () => {
       "/events",
       "/artifacts/*",
       "/version",
+      "/release-catalog-partitioning",
     ]);
   });
 
@@ -512,6 +554,7 @@ describe("buildDistributionConfigOverrides", () => {
       "/events",
       "/artifacts/*",
       "/version",
+      "/release-catalog-partitioning",
     ]);
   });
 
@@ -586,6 +629,7 @@ describe("buildDistributionConfigOverrides", () => {
       "/events",
       "/artifacts/*",
       "/version",
+      "/release-catalog-partitioning",
     ]);
   });
 });

@@ -23,7 +23,6 @@ import {
   createReleaseCatalogPartitionFixture,
   createReleaseCatalogTestStorage,
   probeAppVersions,
-  setReleaseCatalogPartitioning,
 } from "@hot-updater/test-utils";
 import { pgliteExecutor, sqliteExecutor } from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -34,8 +33,8 @@ import { createMigrator } from "./tooling.testFixtures";
 /**
  * A released 1.1.16 server and this core, warm, over one database: the
  * processes a supported upgrade can leave behind (design §2.7, §15 item 9).
- * The switch is written by the test, as nothing in the product writes it
- * yet. Every answer either core gives is checked against today's compiler
+ * The switch is set through this server's own routes, as the product sets
+ * it: the admin route, or the client route with a request token. Every answer either core gives is checked against today's compiler
  * over the scope's enabled releases.
  */
 
@@ -215,9 +214,26 @@ const open = async (name: keyof typeof backends) => {
       ])
     )[0]!.release!;
 
+  const PARTITIONING = "http://localhost/release-catalog-partitioning";
+  /** The admin route: the server's framework authenticates it. */
+  const enableByAdmin = () =>
+    current.handlers.admin(new Request(PARTITIONING, { method: "POST" }));
+  /** The client route, with a token stored through the database. */
+  const enableByToken = async () =>
+    current.handlers.client(
+      new Request(PARTITIONING, {
+        method: "POST",
+        body: JSON.stringify({
+          token: await current.core.issueReleaseCatalogPartitioningToken(),
+        }),
+      }),
+    );
+
   return {
     answersMatch,
     backend,
+    enableByAdmin,
+    enableByToken,
     check,
     current,
     deployOn,
@@ -298,7 +314,33 @@ describe.each(Object.keys(backends) as (keyof typeof backends)[])(
       await env.deployOn(env.oldCore, "201", "1.0.0");
       await env.deployOn(env.newCore, "202", ">=1.0.0 <3.0.0");
       const { catalogId } = await record();
-      await setReleaseCatalogPartitioning(env.current.database.adapter, "on");
+      // The released server has no route to turn it on, on either mount.
+      for (const [mount, method] of [
+        ["admin", "GET"],
+        ["admin", "POST"],
+        ["client", "POST"],
+      ] as const) {
+        const response = await env.old.handlers[mount](
+          new Request("http://localhost/release-catalog-partitioning", {
+            method,
+            body: method === "POST" ? "{}" : null,
+          }),
+        );
+        expect(response.status, `${mount} ${method}`).toBe(404);
+      }
+      expect(await env.current.core.getReleaseCatalogPartitioning()).toEqual({
+        switch: "off",
+        table: "present",
+      });
+      const enabled = await env.enableByAdmin();
+      expect(enabled.status).toBe(200);
+      expect(await enabled.json()).toEqual({
+        data: { partitioning: "on", changed: true },
+      });
+      // Setting the switch converts nothing: both servers still answer.
+      expect(await env.partitionRows()).toBe(0);
+      await env.answersMatch(env.old.handlers);
+      await env.answersMatch(env.current.handlers);
 
       // A 1.2 write converts the scope.
       await env.deployOn(env.newCore, "203", "2.0.0");
@@ -415,7 +457,8 @@ describe.each(Object.keys(backends) as (keyof typeof backends)[])(
     });
 
     it("tombstones: the last release disabled by either core leaves a compact tombstone, and a deploy after it converts", async () => {
-      await setReleaseCatalogPartitioning(env.current.database.adapter, "on");
+      const enabled = await env.enableByToken();
+      expect(enabled.status).toBe(200);
       const first = await env.deployOn(env.newCore, "301", "1.0.0");
       expect((await env.headOf()).epoch).not.toBeNull();
       await env.oldCore.updateReleasePolicy({

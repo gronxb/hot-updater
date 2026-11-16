@@ -379,7 +379,13 @@ export async function checkScaffold(infraDir: string): Promise<{
     const file = "cloudfront/distribution.json";
     const distribution = json(file);
     const behaviors = items(object(distribution["CacheBehaviors"])["Items"]);
-    for (const route of ["/version", "/release-catalogs/*", "/artifacts/*"]) {
+    for (const route of [
+      "/version",
+      "/release-catalogs/*",
+      "/artifacts/*",
+      // common.partition's request reaches the function, not the bucket.
+      "/release-catalog-partitioning",
+    ]) {
       const behavior = behaviors.find(
         (entry) => entry["PathPattern"] === route,
       );

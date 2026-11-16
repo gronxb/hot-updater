@@ -175,6 +175,8 @@ response wraps its result in `data`.
 | `POST`   | `/release-catalogs/:scopeKey/rebuild`   |                                                              | `ReleaseCatalogRebuildResult`                           |
 | `POST`   | `/release-catalogs/:scopeKey/preflight` |                                                              | `ReleaseCatalogRebuildPreflight`                        |
 | `GET`    | `/release-scopes`                       | `limit` (1–100), `cursor=<scope key>`                        | The next scope keys that have Releases, ascending, with `next` |
+| `GET`    | `/release-catalog-partitioning`         |                                                              | `ReleaseCatalogPartitioningStatus`: `{ switch, table }`  |
+| `POST`   | `/release-catalog-partitioning`         |                                                              | `{ partitioning: "on", changed }`, or `409` with the reason it refuses. See [Partition Release Catalogs](/docs/guides/partition-release-catalogs) |
 | `GET`    | `/channels`                             | Optional `name`, `ids=<channel id>,...` (1–100), or page     | Every `ChannelRow`, those of `ids`, one page by name with `next`, or the `ChannelRow` for `name` or `404` |
 | `POST`   | `/channels`                             | `{ name }`                                                   | The `ChannelRow` of that name, created when missing     |
 | `DELETE` | `/channels/:id`                         |                                                              | `204`                                                   |
