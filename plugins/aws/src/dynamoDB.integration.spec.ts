@@ -74,7 +74,9 @@ setupKeyOrderTestSuite({
     await store.migrations!.apply();
     return {
       adapter: createKvAdapter({ store, tablePrefix: "p_" }),
-      cleanup: () => local.dropTable(tableName),
+      cleanup: async () => {
+        await local.dropTable(tableName);
+      },
     };
   },
 });

@@ -24,7 +24,7 @@ import { Kysely, MysqlDialect, PostgresDialect } from "kysely";
 import { createPool as createMysqlCallbackPool } from "mysql2";
 import mysql from "mysql2/promise";
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect } from "vitest";
 
 import { drizzleAdapter } from "../../adapters/drizzle";
 import { kyselyAdapter } from "../../adapters/kysely";
@@ -138,7 +138,11 @@ const expectBinaryKeys = async (
       ? `SELECT column_name AS c, data_type AS t, collation_name AS k FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = '${table}' AND column_name IN ('scope_key', 'epoch', 'lower_key') ORDER BY column_name`
       : `SELECT COLUMN_NAME AS c, DATA_TYPE AS t, COLLATION_NAME AS k FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${table}' AND COLUMN_NAME IN ('scope_key', 'epoch', 'lower_key') ORDER BY COLUMN_NAME`,
   );
-  expect(columns.map(({ c }) => c)).toEqual(["epoch", "lower_key", "scope_key"]);
+  expect(columns.map(({ c }) => c)).toEqual([
+    "epoch",
+    "lower_key",
+    "scope_key",
+  ]);
   for (const { t, k } of columns) {
     if (dialect === "postgresql") expect(k).toBe("C");
     else if (t === "varbinary") expect(k).toBeNull();
@@ -248,7 +252,9 @@ describe.each([
       const database_ = kyselyAdapter({ db: kysely, provider });
       await migrated(database_);
       await exec(
-        provider === "mysql" ? `DROP TABLE \`${TABLE}\`` : `DROP TABLE "${TABLE}"`,
+        provider === "mysql"
+          ? `DROP TABLE \`${TABLE}\``
+          : `DROP TABLE "${TABLE}"`,
       );
       await expect(
         database_.createMigrator!().migrateToLatest(),

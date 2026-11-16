@@ -283,7 +283,8 @@ setupDatabaseTestSuite({
   migrate: async () => {
     boundaryClient = await connect("boundary");
     await (
-      await mongoAdapter({ client: boundaryClient }).createMigrator!().migrateToLatest()
+      await mongoAdapter({ client: boundaryClient })
+        .createMigrator!().migrateToLatest()
     ).execute();
     await boundaryClient.db().collection(PARTITIONS).drop();
   },
@@ -346,7 +347,10 @@ describe("mongoAdapter migrations", () => {
     const adapter = createMongoAdapter({ client, tablePrefix: "a_" });
     const describeCollection = async (name: string) => ({
       options: (
-        await client.db().listCollections({ name }).toArray()
+        await client
+          .db()
+          .listCollections({ name }, { nameOnly: false })
+          .toArray()
       )[0]?.options,
       indexes: (await client.db().collection(name).indexes()).map(
         ({ name, key, collation }) => ({ name, key, collation }),
@@ -434,7 +438,10 @@ describe("mongoAdapter migrations", () => {
       options: (
         await db
           .db()
-          .listCollections({ name: "release_catalog_partitions" })
+          .listCollections(
+            { name: "release_catalog_partitions" },
+            { nameOnly: false },
+          )
           .toArray()
       )[0]?.options,
       indexes: (

@@ -20,7 +20,9 @@ const { schema } = toolingTargetOf([]);
 const prismaModel = (code: string, model = "native_builds") =>
   code.match(new RegExp(`model ${model} \\{[^}]*\\}`, "u"))?.[0];
 const drizzleTable = (code: string, table = "native_builds") =>
-  code.match(new RegExp(`export const ${table} = [\\s\\S]*?\\n\\]\\);`, "u"))?.[0];
+  code.match(
+    new RegExp(`export const ${table} = [\\s\\S]*?\\n\\]\\);`, "u"),
+  )?.[0];
 
 describe("release_catalog_partitions in the examples' generated schemas", () => {
   it.each([

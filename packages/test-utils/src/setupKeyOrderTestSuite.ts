@@ -99,7 +99,7 @@ const scopeKeys: readonly (readonly [string, string])[] = [
 const probes = [
   "",
   "!",
-  "\"",
+  '"',
   "0",
   "1.1",
   "1.10!",
@@ -232,13 +232,17 @@ export const setupKeyOrderTestSuite = (
           const page = await read("s", {
             order,
             limit: 2,
-            ...(bound && (order === "asc" ? { lower: bound } : { upper: bound })),
+            ...(bound &&
+              (order === "asc" ? { lower: bound } : { upper: bound })),
           });
           if (page.length === 0) break;
           expect(page.length).toBeLessThanOrEqual(2);
           walked.push(...keysOf(page));
           const last = page.at(-1)!;
-          bound = { values: [last.epoch!, last.lower_key!], inclusive: false };
+          bound = {
+            values: [String(last.epoch), String(last.lower_key)],
+            inclusive: false,
+          };
         }
         expect(walked).toEqual(
           order === "asc" ? expected : expected.toReversed(),
@@ -269,7 +273,9 @@ export const setupKeyOrderTestSuite = (
     it("finds the predecessor of every key, inclusive and exclusive, within and across epochs", async () => {
       const expected = sorted("s");
       const epochs = [...new Set(expected.map(([epoch]) => epoch))];
-      const lowers = [...new Set([...expected.map(([, lower]) => lower), ...probes])];
+      const lowers = [
+        ...new Set([...expected.map(([, lower]) => lower), ...probes]),
+      ];
       for (const epoch of epochs) {
         for (const lower of lowers) {
           for (const inclusive of [true, false]) {
@@ -338,7 +344,9 @@ export const setupKeyOrderTestSuite = (
             lower: { values: [epoch], inclusive: false },
           });
           expect(keysOf(after)).toEqual(
-            expected.filter((key) => compareKeys([key[0]], [epoch]) > 0).slice(0, 1),
+            expected
+              .filter((key) => compareKeys([key[0]], [epoch]) > 0)
+              .slice(0, 1),
           );
         }
       }
@@ -365,7 +373,9 @@ export const setupKeyOrderTestSuite = (
       expect(
         found.map((row) => [row?.scope_key, row?.epoch, row?.lower_key]),
       ).toEqual(cases);
-      const own = cases.filter(([scope]) => scope === "c").toSorted(compareKeys);
+      const own = cases
+        .filter(([scope]) => scope === "c")
+        .toSorted(compareKeys);
       expect(
         (await read("c", { order: "asc", limit: 500 })).map((row) => [
           row.scope_key,
