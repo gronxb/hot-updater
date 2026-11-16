@@ -3,7 +3,7 @@ import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
 import type { SchemaSettings } from "../database/fence";
 import type { ResolvedSchema } from "../database/resolveSchema";
 import { getEmptyMigrationResult } from "./fixedMigratorShared";
-import { migrateSchema } from "./schemaSettings";
+import { fillLateIndexes, migrateSchema } from "./schemaSettings";
 import { refuseV0Database, storedSchemaVersion } from "./settingsMigrator";
 import type { MigrateOptions, MigrationResult, Migrator } from "./types";
 
@@ -39,7 +39,25 @@ export const createEngineMigrator = (
         ([key, value]) => stored.get(key) === value,
       )
     ) {
-      return getEmptyMigrationResult();
+      // Up to date, but for late index items an earlier release's server
+      // wrote rows without.
+      const lacking = await fillLateIndexes(
+        options.adapter,
+        options.schema.tables,
+        { dryRun: true },
+      );
+      if (lacking.length === 0) return getEmptyMigrationResult();
+      return {
+        operations: [
+          {
+            type: "custom",
+            description: `Write the index items rows lack: ${lacking.join(", ")}`,
+          },
+        ],
+        execute: async () => {
+          await fillLateIndexes(options.adapter, options.schema.tables);
+        },
+      };
     }
     return {
       operations: [

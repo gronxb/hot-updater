@@ -9,6 +9,7 @@ import {
   type ReleaseFilter,
   type ReleaseRow,
   type CoreReads,
+  type HotUpdaterCoreApi,
   parseBaseCandidateKey,
 } from "@hot-updater/plugin-core";
 import type {
@@ -151,11 +152,11 @@ export interface CoreStorage {
   ) => Promise<string | null>;
 }
 
-/** Core's reads, each through one declared index or key. */
+/** Core's reads, each through one declared index or key; plugins get `CoreReads`. */
 export const createCoreReads = (
   db: CoreDatabase,
   storage: CoreStorage,
-): CoreReads => {
+): CoreReads & Pick<HotUpdaterCoreApi, "listReleaseScopeKeys"> => {
   /** A bundle row's patches, exactly as many as its reference counter holds. */
   const detail = async (
     row: ReadRow<CoreSchema["bundles"]>,
@@ -440,8 +441,44 @@ export const createCoreReads = (
       return page.rows.map(toCatalogRow);
     },
 
-    /** Every channel, by name. */
-    async listChannels(): Promise<ChannelRow[]> {
+    /**
+     * Up to `limit` scope keys that have releases, ascending after `after`:
+     * one limit-1 seek of the `scopes` index past each scope, so the reads
+     * grow with the scopes, not with their releases.
+     */
+    async listReleaseScopeKeys(input: {
+      readonly after?: string;
+      readonly limit: number;
+    }): Promise<string[]> {
+      const scopeKeys: string[] = [];
+      // No scope key is empty, so the first seek starts past "": a bound
+      // keeps MySQL on the index instead of sorting the table.
+      for (let last = input.after ?? ""; scopeKeys.length < input.limit; ) {
+        const { rows } = await db.findMany("releases", {
+          index: "scopes",
+          where: {},
+          limit: 1,
+          range: { gt: last },
+        });
+        if (rows[0] === undefined) break;
+        last = rows[0].scope_key;
+        scopeKeys.push(last);
+      }
+      return scopeKeys;
+    },
+
+    /** Every channel by name; with `input`, one keyset page of them. */
+    async listChannels(input?: KeysetInput): Promise<ChannelRow[]> {
+      if (input !== undefined) {
+        const page = await db.findMany("channels", {
+          index: "all",
+          where: {},
+          order: input.order ?? "asc",
+          limit: input.limit,
+          ...after(input),
+        });
+        return page.rows.map(toChannelRow);
+      }
       const rows = await drain((page) =>
         db.findMany("channels", {
           index: "all",
@@ -451,6 +488,16 @@ export const createCoreReads = (
         }),
       );
       return rows.map(toChannelRow);
+    },
+
+    async getChannels(ids: readonly string[]): Promise<ChannelRow[]> {
+      const unique = [...new Set(ids)];
+      if (unique.length === 0) return [];
+      const rows = await db.findByKeys(
+        "channels",
+        unique.map((id) => ({ id })),
+      );
+      return rows.flatMap((row) => (row ? [toChannelRow(row)] : []));
     },
 
     async findChannelByName(name: string): Promise<ChannelRow | null> {

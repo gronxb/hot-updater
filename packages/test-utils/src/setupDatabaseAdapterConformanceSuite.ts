@@ -656,6 +656,42 @@ export const setupDatabaseAdapterConformanceSuite = (
       expect(ids(second)).toEqual(["r5", "r6", "r7", "r8"]);
     });
 
+    it("writes the index items of rows written without the index (migrations.fillIndex)", async () => {
+      const adapter = await setup();
+      const fillIndex = adapter.migrations?.fillIndex;
+      // A store whose indexes cover every row itself has nothing to fill.
+      if (fillIndex === undefined) return;
+      // As a server of an earlier release writes them: without `byGroup`.
+      const earlier: PhysicalTable = {
+        ...conformanceItems,
+        indexes: conformanceItems.indexes.filter(
+          ({ name }) => name !== "byGroup",
+        ),
+      };
+      await ok(
+        adapter,
+        ["r0", "r1", "r2"].map((id) => ({
+          type: "insert" as const,
+          table: earlier,
+          row: item(id, { score: Number(id.slice(1)) }),
+        })),
+      );
+      await ok(adapter, [insert(item("r3", { score: 3 }))]);
+      const byGroup = () =>
+        query(adapter, { index: "byGroup", eq: ["g"] }).then(ids);
+      await expect(byGroup()).resolves.toEqual(["r3"]);
+
+      await expect(
+        fillIndex(conformanceItems, "byGroup", { dryRun: true }),
+      ).resolves.toBe(3);
+      await expect(byGroup()).resolves.toEqual(["r3"]);
+      await expect(fillIndex(conformanceItems, "byGroup")).resolves.toBe(3);
+      await expect(byGroup()).resolves.toEqual(["r0", "r1", "r2", "r3"]);
+      await expect(
+        fillIndex(conformanceItems, "byGroup", { dryRun: true }),
+      ).resolves.toBe(0);
+    });
+
     it(`lets exactly one of ${writers} concurrent writers win a contested key`, async () => {
       const adapter = await setup();
       const row = item("a");

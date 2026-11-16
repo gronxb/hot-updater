@@ -18,7 +18,7 @@ export const getSchemaMigrationRpc = createServerFn({ method: "GET" })
     const { prepareConfig } = await import("./server/config.server");
     const { config, core } = await prepareConfig();
     try {
-      await core.listChannels();
+      await core.ready();
       return null;
     } catch (error) {
       return schemaMigrationOf(error, config.plugins);

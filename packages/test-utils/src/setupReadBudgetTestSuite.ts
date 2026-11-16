@@ -686,6 +686,42 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     engine: { calls: 1, rows: 1 },
   }),
   budget({
+    api: "catalog preflight: 1 catalog point read and the scope's enabled releases",
+    // Doctor's check of each scope: it writes nothing, so it reads the
+    // catalog once, without a transaction's guard reads, and no newest
+    // release, which matters only to a scope without a catalog.
+    read: ({ core }) => core.preflightReleaseCatalogRebuild(scopeKey),
+    // Production iOS holds 4 enabled releases.
+    adapter: reads(1, 1, 1, 4),
+    engine: { calls: 2, rows: 5 },
+    check: (preflight) => expect(preflight.changed).toBe(false),
+  }),
+  budget({
+    api: "release scopes: one limit-1 seek per scope, past each scope's releases",
+    // Production Android and staging hold 2 releases each, beta 1, and
+    // production iOS 6: 4 rows, one per scope, not 11.
+    read: ({ core }) => core.listReleaseScopeKeys({ limit: 4 }),
+    adapter: reads(0, 0, 4, 4),
+    engine: { calls: 4, rows: 4 },
+    returned: (scopeKeys) => scopeKeys.length,
+    check: (scopeKeys) =>
+      expect(scopeKeys).toEqual([
+        "v1:app-version:android:cHJvZHVjdGlvbg",
+        "v1:app-version:ios:YmV0YQ",
+        "v1:app-version:ios:c3RhZ2luZw",
+        scopeKey,
+      ]),
+  }),
+  budget({
+    api: "release scopes past the last: 1 empty query",
+    read: ({ core }) =>
+      core.listReleaseScopeKeys({ after: scopeKey, limit: 4 }),
+    adapter: reads(0, 0, 1, 0),
+    engine: { calls: 1, rows: 0 },
+    returned: (scopeKeys) => scopeKeys.length,
+    check: (scopeKeys) => expect(scopeKeys).toEqual([]),
+  }),
+  budget({
     api: "native build by ID: 1 point read",
     read: ({ core }) => core.getNativeBuild(createBundleFixture("8012").id),
     adapter: reads(1, 1, 0, 0),
@@ -875,6 +911,28 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     adapter: reads(0, 0, 1, 1),
     engine: { calls: 1, rows: 1 },
     returned: (channel) => (channel === null ? 0 : 1),
+  }),
+  budget({
+    api: "channels by ID: 1 batch get of their keys",
+    read: ({ core, productionId, nightlyId }) =>
+      core.getChannels([nightlyId, productionId, nightlyId]),
+    adapter: reads(1, 2, 0, 0),
+    engine: { calls: 1, rows: 2 },
+    returned: (channels) => channels.length,
+    check: (channels) =>
+      expect(channels.map(({ name }) => name)).toEqual([
+        "nightly",
+        "production",
+      ]),
+  }),
+  budget({
+    api: "channel page by name: limit rows from one query",
+    read: ({ core }) => core.listChannels({ limit: 2, after: "beta" }),
+    adapter: reads(0, 0, 1, 2),
+    engine: { calls: 1, rows: 2 },
+    returned: (channels) => channels.length,
+    check: (channels) =>
+      expect(channels.map(({ name }) => name)).toEqual(["canary", "nightly"]),
   }),
   budget({
     api: "list events of a dense day: limit rows from one query",

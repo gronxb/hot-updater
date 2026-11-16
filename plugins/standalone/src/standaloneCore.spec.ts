@@ -105,6 +105,150 @@ describe("createStandaloneCoreApi", () => {
     });
   });
 
+  describe("channels on a server that answers every channel to GET /channels, as 1.1.x does", () => {
+    const channels = [
+      { id: "c1", name: "alpha" },
+      { id: "c2", name: "beta" },
+      { id: "c3", name: "gamma" },
+    ];
+    const queries: URLSearchParams[] = [];
+    const everyChannel = () =>
+      http.get(`${BASE_URL}/channels`, ({ request }) => {
+        const query = new URL(request.url).searchParams;
+        queries.push(query);
+        const name = query.get("name");
+        return name === null
+          ? HttpResponse.json({ data: channels })
+          : HttpResponse.json({
+              data: channels.find((channel) => channel.name === name),
+            });
+      });
+
+    afterEach(() => {
+      queries.length = 0;
+    });
+
+    it("keeps only the channels of the IDs asked, in their order", async () => {
+      server.use(version(2), everyChannel());
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      await expect(core.getChannels(["c3", "c1", "c3", "c9"])).resolves.toEqual(
+        [channels[2], channels[0]],
+      );
+      expect(queries.map((query) => query.get("ids"))).toEqual(["c3,c1,c9"]);
+
+      const many = Array.from({ length: 150 }, (_, n) => `x${n}`);
+      await expect(core.getChannels([...many, "c2"])).resolves.toEqual([
+        channels[1],
+      ]);
+      expect(
+        queries.slice(1).map((query) => query.get("ids")!.split(",").length),
+      ).toEqual([100, 51]);
+    });
+
+    it("pages the whole list it answers, and the last page ends the walk", async () => {
+      server.use(version(2), everyChannel());
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      const names: string[] = [];
+      for (let after: string | undefined, pages = 0; pages < 10; pages += 1) {
+        const page = await core.listChannels({
+          limit: 2,
+          order: "asc",
+          ...(after === undefined ? {} : { after }),
+        });
+        names.push(...page.map(({ name }) => name));
+        if (page.length < 2) break;
+        after = page.at(-1)!.name;
+      }
+
+      expect(names).toEqual(["alpha", "beta", "gamma"]);
+      expect(Object.fromEntries(queries[0]!)).toEqual({
+        limit: "2",
+        order: "asc",
+      });
+    });
+
+    it("orders a whole list that fits the page as asked", async () => {
+      server.use(version(2), everyChannel());
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      const page = await core.listChannels({ limit: 10, order: "desc" });
+
+      expect(page.map(({ name }) => name)).toEqual(["gamma", "beta", "alpha"]);
+    });
+
+    it("starts past a cursor that names no channel", async () => {
+      server.use(version(2), everyChannel());
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      // "alpha2" sorts between alpha and beta, and no channel has it, as
+      // when the cursor's channel was deleted between pages.
+      const asc = await core.listChannels({
+        limit: 1,
+        order: "asc",
+        after: "alpha2",
+      });
+      const desc = await core.listChannels({
+        limit: 10,
+        order: "desc",
+        after: "beta2",
+      });
+
+      expect(asc.map(({ name }) => name)).toEqual(["beta"]);
+      expect(desc.map(({ name }) => name)).toEqual(["beta", "alpha"]);
+    });
+
+    it("ends with the channel `through` names, in either order", async () => {
+      server.use(version(2), everyChannel());
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      const asc = await core.listChannels({ limit: 10, through: "beta" });
+      const desc = await core.listChannels({
+        limit: 10,
+        order: "desc",
+        through: "beta",
+      });
+      const between = await core.listChannels({
+        limit: 10,
+        after: "alpha",
+        through: "beta2",
+      });
+      const descBetween = await core.listChannels({
+        limit: 10,
+        order: "desc",
+        after: "gamma",
+        through: "alpha2",
+      });
+
+      expect(asc.map(({ name }) => name)).toEqual(["alpha", "beta"]);
+      expect(desc.map(({ name }) => name)).toEqual(["gamma", "beta"]);
+      expect(between.map(({ name }) => name)).toEqual(["beta"]);
+      expect(descBetween.map(({ name }) => name)).toEqual(["beta"]);
+    });
+  });
+
+  it("marks iOS devices in a build in requests of 100 IDs", async () => {
+    const sent: number[] = [];
+    server.use(
+      version(2),
+      http.post(`${BASE_URL}/ios-devices/in-build`, async ({ request }) => {
+        const body = (await request.json()) as { ids: string[] };
+        sent.push(body.ids.length);
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await core.markIosDevicesInBuild({
+      buildId: "build",
+      ids: Array.from({ length: 250 }, (_, n) => `d${n}`),
+    });
+    await core.markIosDevicesInBuild({ buildId: "build", ids: ["d1"] });
+
+    expect(sent).toEqual([100, 100, 50, 1]);
+  });
+
   it("names migrations when the server's schema fence answers 503", async () => {
     server.use(
       version(2),
@@ -139,6 +283,37 @@ describe("createStandaloneCoreApi", () => {
     });
     await expect(refusal).rejects.toBeInstanceOf(ReleaseManagementError);
     await expect(refusal).rejects.toMatchObject({ code: "VERSION_CONFLICT" });
+  });
+
+  it("lists release scopes by limit and cursor, and asks for an upgrade where the route is missing", async () => {
+    const queries: Record<string, string>[] = [];
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/release-scopes`, ({ request }) => {
+        queries.push(Object.fromEntries(new URL(request.url).searchParams));
+        return HttpResponse.json({ data: ["scope-b"] });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+    await expect(
+      core.listReleaseScopeKeys({ after: "scope-a", limit: 100 }),
+    ).resolves.toEqual(["scope-b"]);
+    await core.listReleaseScopeKeys({ limit: 2 });
+    expect(queries).toEqual([
+      { limit: "100", cursor: "scope-a" },
+      { limit: "2" },
+    ]);
+
+    // A server before the route answers 404, which is no empty list.
+    server.use(
+      http.get(
+        `${BASE_URL}/release-scopes`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    await expect(core.listReleaseScopeKeys({ limit: 100 })).rejects.toThrow(
+      `The server at ${BASE_URL} has no release scope route`,
+    );
   });
 
   it("asks for a server upgrade when the server has no native build routes", async () => {

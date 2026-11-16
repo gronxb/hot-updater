@@ -684,6 +684,33 @@ describe("sql core", () => {
           limit: 10,
         });
       }
+      // A keyset page of an index without eq columns, as channels page by
+      // name: its LIMIT and lower bound bound the walk.
+      await adapter.query(conformanceItems, {
+        index: "all",
+        eq: [],
+        lower: { values: ["f1"], inclusive: false },
+        order: "asc",
+        limit: 10,
+      });
+      // The next group past one, as doctor walks release scopes: an index
+      // over byGroup's columns, which reads through byGroup's index.
+      await adapter.query(
+        {
+          ...conformanceItems,
+          indexes: [
+            ...conformanceItems.indexes,
+            { name: "groups", eq: [], sort: ["grp", "score"] },
+          ],
+        },
+        {
+          index: "groups",
+          eq: [],
+          lower: { values: ["g"], inclusive: false },
+          order: "asc",
+          limit: 1,
+        },
+      );
       expect(await adapter.prune!(conformanceExpiring, 10, 500)).toBe(1);
 
       expect(scans).toEqual([]);

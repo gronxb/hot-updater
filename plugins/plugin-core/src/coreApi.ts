@@ -289,7 +289,26 @@ export interface HotUpdaterCoreApi {
   ): Promise<ReleaseRow[]>;
   getReleaseCatalogRow(scopeKey: string): Promise<ReleaseCatalogRow | null>;
   listReleaseCatalogs(input: KeysetInput): Promise<ReleaseCatalogRow[]>;
-  listChannels(): Promise<ChannelRow[]>;
+  /**
+   * Up to `limit` scope keys that have releases, ascending after `after`,
+   * with or without a catalog row: one limit-1 seek per scope, so the reads
+   * grow with scopes, not with releases. Doctor walks them to find a scope
+   * whose catalog row was lost.
+   */
+  listReleaseScopeKeys(input: {
+    readonly after?: string;
+    readonly limit: number;
+  }): Promise<string[]>;
+  /**
+   * Every channel, by name. With `input`, one keyset page of them, whose
+   * cursor is the last channel's name.
+   */
+  listChannels(input?: KeysetInput): Promise<ChannelRow[]>;
+  /**
+   * The channels of these IDs, in their order, without the IDs no channel
+   * has: one batch read of their keys.
+   */
+  getChannels(ids: readonly string[]): Promise<ChannelRow[]>;
   findChannelByName(name: string): Promise<ChannelRow | null>;
   /** A native build by ID: one read of its key. */
   getNativeBuild(id: string): Promise<NativeBuildRow | null>;

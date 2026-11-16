@@ -99,6 +99,105 @@ export const setupCoreAdminTestSuite = (options: {
       await missing.text();
     });
 
+    it("reads channels by ID and pages them by name", async () => {
+      const [a, b, c] = await Promise.all(
+        ["a", "b", "c"].map((suffix) =>
+          api.ensureChannel(`page-${namespace}-${suffix}`),
+        ),
+      );
+      expect(
+        (await adminJson(`/channels?ids=${c!.id},${a!.id},${namespace}`)).data,
+      ).toEqual([c, a]);
+
+      const first = (await adminJson(
+        `/channels?limit=2&cursor=${encodeURIComponent(`page-${namespace}-`)}`,
+      )) as { data: ChannelRow[]; next?: string };
+      expect(first).toEqual({ data: [a, b], next: b!.name });
+      const second = (await adminJson(
+        `/channels?limit=2&cursor=${encodeURIComponent(first.next!)}`,
+      )) as { data: ChannelRow[] };
+      expect(second.data[0]).toEqual(c);
+
+      for (const channel of [a, b, c]) {
+        const deleted = await admin(
+          `/channels/${channel!.id}`,
+          jsonRequest("DELETE"),
+        );
+        expect(deleted.status).toBe(204);
+        await deleted.text();
+      }
+    });
+
+    it("lists every scope that has releases by keyset pages", async () => {
+      const deployed = [
+        await api.deploy({
+          bundle: toDeployBundle(bundleRow("21")),
+          release: policy("scopes-a"),
+        }),
+        await api.deploy({
+          bundle: toDeployBundle(bundleRow("22")),
+          release: policy("scopes-a"),
+        }),
+        await api.deploy({
+          bundle: toDeployBundle(bundleRow("23")),
+          release: policy("scopes-b"),
+        }),
+      ];
+      const scopeKeys: string[] = [];
+      for (let cursor: string | undefined; ; ) {
+        const page = (await adminJson(
+          `/release-scopes?limit=2${cursor === undefined ? "" : `&cursor=${encodeURIComponent(cursor)}`}`,
+        )) as { data: string[]; next?: string };
+        scopeKeys.push(...page.data);
+        if (page.next === undefined) break;
+        expect(page.next).toBe(page.data.at(-1));
+        cursor = page.next;
+      }
+      expect(scopeKeys).toEqual([...new Set(scopeKeys)].sort());
+      expect(scopeKeys).toEqual(
+        expect.arrayContaining([
+          ...new Set(deployed.map(({ scope_key }) => scope_key)),
+        ]),
+      );
+
+      const refusals = await Promise.all(
+        ["/release-scopes?limit=101", "/release-scopes?order=desc"].map(
+          async (path) => (await admin(path)).status,
+        ),
+      );
+      expect(refusals).toEqual([400, 400]);
+    });
+
+    it("takes at most 100 IDs a request", async () => {
+      const ids = Array.from({ length: 101 }, () => crypto.randomUUID());
+      const refusals = [
+        [
+          await admin(`/channels?ids=${ids.join(",")}`),
+          "Channels by ID take ids=<channel id>,... with 1 to 100 ids.",
+        ],
+        [
+          await admin(
+            "/ios-devices/in-build",
+            jsonRequest("POST", { buildId: crypto.randomUUID(), ids }),
+          ),
+          "Marking iOS devices in a build takes at most 100 ids a request.",
+        ],
+      ] as const;
+      expect(
+        await Promise.all(
+          refusals.map(async ([response]) => ({
+            status: response.status,
+            body: await response.json().catch(() => null),
+          })),
+        ),
+      ).toEqual(
+        refusals.map(([, error]) => ({
+          status: 400,
+          body: expect.objectContaining({ error }),
+        })),
+      );
+    });
+
     it("keeps a release's channel when a delete races the deploy into it", async () => {
       const channel = await api.ensureChannel(`race-${namespace}`);
 

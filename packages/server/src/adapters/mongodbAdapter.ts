@@ -296,10 +296,16 @@ export const createMongoAdapter = (
               if (mongoError(error)?.code !== 48) throw error;
             });
           if (table.retention) await collection(table).createIndexes([TTL]);
-          if (table.indexes.length === 0) continue;
-          await collection(table).createIndexes(
-            table.indexes.map((index) => indexDescription(table, index)),
-          );
+          // MongoDB refuses a second index over the same keys, and a query
+          // reads through the first, as `releases.scopes` through `byScope`.
+          const indexes = new Map<string, IndexDescription>();
+          for (const index of table.indexes) {
+            const description = indexDescription(table, index);
+            const keys = JSON.stringify([description.key, description.unique]);
+            if (!indexes.has(keys)) indexes.set(keys, description);
+          }
+          if (indexes.size === 0) continue;
+          await collection(table).createIndexes([...indexes.values()]);
         }
       },
     },

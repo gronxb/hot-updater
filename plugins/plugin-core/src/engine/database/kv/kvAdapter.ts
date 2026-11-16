@@ -228,10 +228,14 @@ export const createKvAdapter = ({
     return at === undefined ? {} : { expiresAt: at };
   };
 
-  /** Every index and unique item a row has, by address. */
-  const itemsOf = (layout: Layout, row: StoredRow | null) => {
+  /** Every index and unique item a row has, by address: in `indexes`, if given. */
+  const itemsOf = (
+    layout: Layout,
+    row: StoredRow | null,
+    indexes: readonly PhysicalIndex[] = layout.indexed,
+  ) => {
     const items = new Map<string, { key: KvKey; unique: boolean }>();
-    for (const index of row === null ? [] : layout.indexed) {
+    for (const index of row === null ? [] : indexes) {
       for (const eq of indexEntries(layout.table, index, row!)) {
         const pk = partition(layout, index, eq);
         const sk = index.unique
@@ -407,6 +411,128 @@ export const createKvAdapter = ({
     return { gte, lt, lte: lt.endsWith(SEPARATOR) ? lt.slice(0, -1) : lt };
   };
 
+  /** One row's check and its item puts in `index`, copies of the row as it is. */
+  const fillOps = (
+    layout: Layout,
+    index: PhysicalIndex,
+    row: StoredRow,
+  ): KvOp[] => [
+    {
+      type: "check",
+      key: rowItem(layout, rowKey(layout.table, row)),
+      condition: { v: Number(row[V]) },
+    },
+    ...[...itemsOf(layout, row, [index]).values()].map(
+      ({ key }): KvOp => ({
+        type: "put",
+        key,
+        value: copyOf(layout, row),
+        ...stamp(layout.table, row),
+      }),
+    ),
+  ];
+
+  /**
+   * Writes one row's items in `index`, checking the row's `_v` in the same
+   * write: a row that changed is read again, and a deleted one needs none.
+   */
+  const fillRow = async (
+    layout: Layout,
+    index: PhysicalIndex,
+    first: StoredRow,
+  ) => {
+    const key = rowItem(layout, rowKey(layout.table, first));
+    let row: StoredRow | null = first;
+    for (let attempt = 0; row !== null; attempt += 1) {
+      if (attempt === 8) {
+        throw new Error(
+          `${layout.table.name}.${index.name}: a row kept changing while its index items were written; run the migration again.`,
+        );
+      }
+      if ((await store.write(fillOps(layout, index, row))).ok) return;
+      [row] = await store.get([key]);
+    }
+  };
+
+  /**
+   * Finds the rows that lack an item in `index` and, unless `dryRun`, writes
+   * them, as many rows per atomic write as the store takes. It reads every
+   * row and its items, page by page.
+   */
+  const fillIndex = async (
+    table: PhysicalTable,
+    name: string,
+    { dryRun = false }: { readonly dryRun?: boolean } = {},
+  ): Promise<number> => {
+    const layout = layoutOf(table);
+    const index = layout.indexed.find((candidate) => candidate.name === name);
+    // An index in key order reads the row items themselves.
+    if (index === undefined) return 0;
+    if (index.unique) {
+      throw new DatabaseAdapterContractError(
+        `${table.name}.${name} is unique: its items can't be written for rows stored before it, since two of them may hold one value.`,
+      );
+    }
+    const { items: most, bytes } = store.limits;
+    let lacking = 0;
+    for (let after: string | undefined; ; ) {
+      const page = await store.query({
+        pk: layout.rows,
+        order: "asc",
+        limit: 100,
+        after,
+      });
+      const rows = page.items.map(({ value }) => value);
+      const keys = rows.map((row) =>
+        [...itemsOf(layout, row, [index]).values()].map(({ key }) => key),
+      );
+      const wanted = keys.flat();
+      const found = wanted.length === 0 ? [] : await store.get(wanted);
+      let at = 0;
+      const missing = rows.filter((_, position) => {
+        const held = found.slice(at, (at += keys[position]!.length));
+        return held.some((item) => item === null);
+      });
+      lacking += missing.length;
+      if (!dryRun) {
+        let chunk: StoredRow[] = [];
+        let ops: KvOp[] = [];
+        const flush = async () => {
+          if (ops.length > 0 && !(await store.write(ops)).ok) {
+            for (const row of chunk) await fillRow(layout, index, row);
+          }
+          chunk = [];
+          ops = [];
+        };
+        for (const row of missing) {
+          const next = fillOps(layout, index, row);
+          const size = (list: readonly KvOp[]) =>
+            list.reduce(
+              (sum, op) =>
+                sum +
+                encoder.encode(
+                  op.key.pk +
+                    op.key.sk +
+                    JSON.stringify(op.type === "put" ? op.value : null),
+                ).length,
+              0,
+            );
+          if (
+            chunk.length > 0 &&
+            (ops.length + next.length > most || size(ops) + size(next) > bytes)
+          ) {
+            await flush();
+          }
+          chunk.push(row);
+          ops.push(...next);
+        }
+        await flush();
+      }
+      if (!page.more || page.items.length === 0) return lacking;
+      after = page.items.at(-1)!.sk;
+    }
+  };
+
   return {
     id: store.id,
     fits(ops) {
@@ -482,7 +608,7 @@ export const createKvAdapter = ({
           },
         }),
     // Tables need no items of their own; the store prepares itself, if at all.
-    migrations: { apply: async () => store.migrations?.apply() },
+    migrations: { apply: async () => store.migrations?.apply(), fillIndex },
     ...(store.dispose === undefined ? {} : { dispose: () => store.dispose!() }),
   };
 };

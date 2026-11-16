@@ -19,6 +19,7 @@ import { resolveSchema } from "../resolveSchema";
 import {
   createKvAdapter,
   type KeyValueStore,
+  type KvOp,
   type KvRange,
   encodeKvKey,
 } from "./kvAdapter";
@@ -434,6 +435,123 @@ describe("createKvAdapter", () => {
       (await db.findAggregates("hits", { index: "all", where: {}, limit: 10 }))
         .rows,
     ).toEqual([{ day: DAY, hits: 1 }]);
+  });
+});
+
+describe("filling an index declared after rows were written", () => {
+  /** conformanceItems as a server of an earlier release declares it, without `byGroup`. */
+  const earlier: PhysicalTable = {
+    ...conformanceItems,
+    indexes: conformanceItems.indexes.filter(({ name }) => name !== "byGroup"),
+  };
+  const byGroup = (adapter: ReturnType<typeof createKvAdapter>, grp: string) =>
+    adapter
+      .query(conformanceItems, {
+        index: "byGroup",
+        eq: [grp],
+        order: "asc",
+        limit: 10,
+      })
+      .then((rows) => rows.map(({ id }) => id));
+  const insert = (table: PhysicalTable, ...rows: StoredRow[]) =>
+    rows.map((row) => ({ type: "insert" as const, table, row }));
+  const fill = (adapter: ReturnType<typeof createKvAdapter>, dryRun = false) =>
+    adapter.migrations!.fillIndex!(conformanceItems, "byGroup", { dryRun });
+
+  it("writes the items of rows a server without the index wrote, and only theirs", async () => {
+    const store = createMemoryKeyValueStore();
+    const adapter = createKvAdapter({ store });
+    // Rows from before the migration, and one written since by a server
+    // that declares the index.
+    await createKvAdapter({ store }).write(
+      insert(earlier, item("r1"), item("r2")),
+    );
+    await adapter.write(insert(conformanceItems, item("r3")));
+    await expect(byGroup(adapter, "g")).resolves.toEqual(["r3"]);
+
+    await expect(fill(adapter, true)).resolves.toBe(2);
+    await expect(byGroup(adapter, "g")).resolves.toEqual(["r3"]);
+
+    const writes: KvOp[][] = [];
+    const watched = createKvAdapter({
+      store: {
+        ...store,
+        write: (ops) => {
+          writes.push([...ops]);
+          return store.write(ops);
+        },
+      },
+    });
+    await expect(fill(watched)).resolves.toBe(2);
+    expect(writes.flat().filter(({ type }) => type === "put")).toHaveLength(2);
+    await expect(byGroup(adapter, "g")).resolves.toEqual(["r1", "r2", "r3"]);
+    await expect(fill(adapter, true)).resolves.toBe(0);
+  });
+
+  it("finds rows a server without the index writes after a migration that found the table empty", async () => {
+    const store = createMemoryKeyValueStore();
+    const adapter = createKvAdapter({ store });
+    await expect(fill(adapter)).resolves.toBe(0);
+
+    // A server whose schema fence passed before the migration still runs.
+    await createKvAdapter({ store }).write(insert(earlier, item("late")));
+
+    await expect(fill(adapter, true)).resolves.toBe(1);
+    await fill(adapter);
+    await expect(byGroup(adapter, "g")).resolves.toEqual(["late"]);
+  });
+
+  it("reads an empty table with one query and no point read", async () => {
+    const { store, calls } = recorded(createMemoryKeyValueStore());
+
+    await expect(fill(createKvAdapter({ store }))).resolves.toBe(0);
+
+    expect(calls).toEqual([`query ${conformanceItems.name}`]);
+  });
+
+  it("writes a row's current items when it changes during the fill", async () => {
+    const store = createMemoryKeyValueStore();
+    const first = item("r0");
+    await createKvAdapter({ store }).write(
+      insert(earlier, first, item("r1"), item("r2")),
+    );
+    const adapter = createKvAdapter({ store });
+    let changed = false;
+    const racing: KeyValueStore = {
+      ...store,
+      write: async (ops) => {
+        if (!changed && ops.some(({ type }) => type === "check")) {
+          changed = true;
+          // A server already declaring the index moves r0 to group h.
+          await adapter.write([
+            {
+              type: "patch",
+              table: conformanceItems,
+              key: ["r0"],
+              set: { grp: "h" },
+              guard: { v: 0 },
+              previous: first,
+            },
+          ]);
+        }
+        return store.write(ops);
+      },
+    };
+    await createKvAdapter({ store: racing }).migrations!.fillIndex!(
+      conformanceItems,
+      "byGroup",
+    );
+
+    await expect(byGroup(adapter, "g")).resolves.toEqual(["r1", "r2"]);
+    await expect(byGroup(adapter, "h")).resolves.toEqual(["r0"]);
+  });
+
+  it("refuses a unique index, which two earlier rows may share a value of", async () => {
+    const adapter = createKvAdapter({ store: createMemoryKeyValueStore() });
+
+    await expect(
+      adapter.migrations!.fillIndex!(conformanceItems, "byLabel"),
+    ).rejects.toThrow(DatabaseAdapterContractError);
   });
 });
 

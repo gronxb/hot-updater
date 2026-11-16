@@ -250,6 +250,124 @@ describe("doctor's release catalog check", () => {
     ).toHaveLength(2);
   });
 
+  it("finds the newest fingerprint scope of a channel's platform without its catalog row", async () => {
+    await deploy(1);
+    // Release IDs are UUIDv7s: a later millisecond makes this one newest.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const [fingerprinted] = await harness.core.deploy([
+      {
+        bundle: bundle(2),
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: "fingerprint-2",
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: null,
+        },
+      },
+    ]);
+    const scopeKey = fingerprinted!.release!.scope_key;
+    await loseCatalogRow(scopeKey);
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: false,
+      details: {
+        releaseCatalogs: {
+          scopes: expect.arrayContaining([
+            expect.objectContaining({ scopeKey, state: "missing" }),
+          ]),
+          issues: [
+            {
+              type: "error",
+              code: "RELEASE_CATALOG_IDENTITY_MISSING",
+              scopeKey,
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it("finds a channel's app-version scope without its catalog row behind a newer fingerprint release", async () => {
+    const scopeKey = await deploy(1);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await harness.core.deploy([
+      {
+        bundle: bundle(2),
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: "fingerprint-2",
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: null,
+        },
+      },
+    ]);
+    await loseCatalogRow(scopeKey);
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: false,
+      details: {
+        releaseCatalogs: {
+          scopes: expect.arrayContaining([
+            expect.objectContaining({ scopeKey, state: "missing" }),
+          ]),
+          issues: [
+            {
+              type: "error",
+              code: "RELEASE_CATALOG_IDENTITY_MISSING",
+              scopeKey,
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it("finds an older fingerprint scope without its catalog row behind newer releases", async () => {
+    const fingerprint = (index: number, hash: string) =>
+      harness.core.deploy([
+        {
+          bundle: bundle(index),
+          release: {
+            channel: "production",
+            enabled: true,
+            fingerprintHash: hash,
+            message: null,
+            shouldForceUpdate: false,
+            targetAppVersion: null,
+          },
+        },
+      ]);
+    await deploy(1);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const [older] = await fingerprint(2, "fingerprint-a");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await fingerprint(3, "fingerprint-b");
+    const scopeKey = older!.release!.scope_key;
+    await loseCatalogRow(scopeKey);
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: false,
+      details: {
+        releaseCatalogs: {
+          scopes: expect.arrayContaining([
+            expect.objectContaining({ scopeKey, state: "missing" }),
+          ]),
+          issues: [
+            {
+              type: "error",
+              code: "RELEASE_CATALOG_IDENTITY_MISSING",
+              scopeKey,
+            },
+          ],
+        },
+      },
+    });
+  });
+
   it("finds a scope whose releases have no catalog row, and leaves it to a backup restore", async () => {
     const scopeKey = await deploy();
     await loseCatalogRow(scopeKey);

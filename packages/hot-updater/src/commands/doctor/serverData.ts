@@ -5,8 +5,8 @@ import type {
 
 import type { ReleaseCatalogIssue, ReleaseCatalogStatus } from "./issues";
 
-// The admin API serves up to 500 releases or catalogs a page.
-const RELEASE_PAGE = 500;
+// The admin API serves up to 500 catalogs a page.
+const CATALOG_PAGE = 500;
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -29,57 +29,85 @@ export const releaseCatalogsUnchecked = (
   ],
 });
 
-/** Every release's scope. */
-const listReleaseScopeKeys = async (
-  core: HotUpdaterCoreApi,
-): Promise<Set<string>> => {
-  const scopeKeys = new Set<string>();
-  for (let after: string | undefined; ; ) {
-    const page = await core.listReleases({
-      filter: { kind: "all" },
-      limit: RELEASE_PAGE,
-      order: "asc",
-      ...(after === undefined ? {} : { after }),
-    });
-    for (const release of page) scopeKeys.add(release.scope_key);
-    if (page.length < RELEASE_PAGE) return scopeKeys;
-    after = page.at(-1)!.id;
-  }
-};
+// The admin API serves up to 100 scope keys a page, one seek each.
+const SCOPE_PAGE = 100;
 
-/** Every scope with a catalog row, by key. */
-const listCatalogScopeKeys = async (
+/**
+ * Every scope that has releases, with or without a catalog row: one
+ * limit-1 seek per scope, without reading any scope's releases.
+ */
+const listReleaseScopeKeys = async (
   core: HotUpdaterCoreApi,
 ): Promise<string[]> => {
   const scopeKeys: string[] = [];
   for (let after: string | undefined; ; ) {
+    const page = await core.listReleaseScopeKeys({
+      limit: SCOPE_PAGE,
+      ...(after === undefined ? {} : { after }),
+    });
+    scopeKeys.push(...page);
+    if (page.length < SCOPE_PAGE) return scopeKeys;
+    after = page.at(-1)!;
+  }
+};
+
+/** Every catalog row's scope, and whether it is a tombstone. */
+const listCatalogScopes = async (
+  core: HotUpdaterCoreApi,
+): Promise<{ scopeKey: string; tombstone: boolean }[]> => {
+  const scopes: { scopeKey: string; tombstone: boolean }[] = [];
+  for (let after: string | undefined; ; ) {
     const page: ReleaseCatalogRow[] = await core.listReleaseCatalogs({
-      limit: RELEASE_PAGE,
+      limit: CATALOG_PAGE,
       order: "asc",
       ...(after === undefined ? {} : { after }),
     });
-    scopeKeys.push(...page.map(({ scope_key }) => scope_key));
-    if (page.length < RELEASE_PAGE) return scopeKeys;
+    scopes.push(
+      ...page.map(({ scope_key, is_tombstone }) => ({
+        scopeKey: scope_key,
+        tombstone: is_tombstone,
+      })),
+    );
+    if (page.length < CATALOG_PAGE) return scopes;
     after = page.at(-1)!.scope_key;
   }
 };
 
 /**
+ * Catalogued scopes the walk did not list though they hold releases: a
+ * catalog that is not a tombstone has an enabled release, so its scope is
+ * in the walk unless the index lacks that release's item: on a key-value
+ * store, a server of an earlier release writes releases without it.
+ * One limit-1 read for each scope missing from the walk, none otherwise.
+ */
+const listUnindexedScopeKeys = async (
+  core: HotUpdaterCoreApi,
+  catalogs: readonly { scopeKey: string; tombstone: boolean }[],
+  walked: ReadonlySet<string>,
+): Promise<string[]> => {
+  const unindexed: string[] = [];
+  for (const { scopeKey, tombstone } of catalogs) {
+    if (tombstone || walked.has(scopeKey)) continue;
+    const [release] = await core.listReleases({
+      filter: { kind: "scope", scopeKey },
+      limit: 1,
+    });
+    if (release !== undefined) unindexed.push(scopeKey);
+  }
+  return unindexed;
+};
+
+/**
  * Compares each scope's catalog with a rebuild from its releases, without
- * writing: the scopes with a catalog row, and the scopes whose releases have
- * none, which devices get 404 for. A scope core cannot compile is reported
- * by itself, beside what the other scopes found.
+ * writing: the scopes with a catalog row, and the scopes found without one
+ * whose releases devices get 404 for. A scope core cannot compile is
+ * reported by itself, beside what the other scopes found.
  */
 const checkReleaseCatalogs = async (
   core: HotUpdaterCoreApi,
+  catalogScopeKeys: readonly string[],
   releaseScopeKeys: ReadonlySet<string>,
 ): Promise<ReleaseCatalogStatus> => {
-  let catalogScopeKeys: string[];
-  try {
-    catalogScopeKeys = await listCatalogScopeKeys(core);
-  } catch (error) {
-    return releaseCatalogsUnchecked(error);
-  }
   const status: ReleaseCatalogStatus = { scopes: [], issues: [] };
   const withRow = new Set(catalogScopeKeys);
   const scopeKeys = [...new Set([...catalogScopeKeys, ...releaseScopeKeys])];
@@ -89,8 +117,16 @@ const checkReleaseCatalogs = async (
       | undefined;
     let failure: unknown;
     // Core resolves a scope through its catalog row, so a scope without
-    // one is found here, from its releases.
-    if (withRow.has(scopeKey)) {
+    // one is found here, from its releases. A key-value store keeps an
+    // index item a 1.1.x server's delete left behind, so the walk may list
+    // a scope whose releases are gone: one limit-1 read confirms it has one.
+    if (!withRow.has(scopeKey)) {
+      const [release] = await core.listReleases({
+        filter: { kind: "scope", scopeKey },
+        limit: 1,
+      });
+      if (release === undefined) continue;
+    } else {
       try {
         result = await core.preflightReleaseCatalogRebuild(scopeKey);
       } catch (error) {
@@ -162,11 +198,50 @@ const checkReleaseCatalogs = async (
 export const checkServerData = async (
   core: HotUpdaterCoreApi,
 ): Promise<ReleaseCatalogStatus> => {
-  let scopeKeys: Set<string>;
+  let catalogs: { scopeKey: string; tombstone: boolean }[];
   try {
-    scopeKeys = await listReleaseScopeKeys(core);
+    catalogs = await listCatalogScopes(core);
   } catch (error) {
     return releaseCatalogsUnchecked(error);
   }
-  return checkReleaseCatalogs(core, scopeKeys);
+  const catalogScopeKeys = catalogs.map(({ scopeKey }) => scopeKey);
+  let walked: Set<string> | undefined;
+  let walkFailure: unknown;
+  try {
+    walked = new Set(await listReleaseScopeKeys(core));
+  } catch (error) {
+    walkFailure = error;
+  }
+  const status = await checkReleaseCatalogs(
+    core,
+    catalogScopeKeys,
+    walked ?? new Set(),
+  );
+  if (walked === undefined) {
+    // A self-hosted server older than this hot-updater has no scope route.
+    const older =
+      (walkFailure as { readonly status?: unknown } | null)?.status === 404;
+    status.issues.push({
+      type: "warning",
+      code: "RELEASE_SCOPES_UNCHECKED",
+      message: older
+        ? "The server has no release scope route, so doctor checked only the scopes with a catalog row."
+        : `Doctor checked only the scopes with a catalog row: listing the scopes with releases failed: ${errorMessage(walkFailure)}`,
+      resolution: older
+        ? "Upgrade the server's @hot-updater/server, then rerun doctor."
+        : "Fix what the message names, then rerun doctor.",
+    });
+    return status;
+  }
+  const unindexed = await listUnindexedScopeKeys(core, catalogs, walked);
+  if (unindexed.length > 0) {
+    status.issues.push({
+      type: "warning",
+      code: "RELEASE_SCOPES_UNINDEXED",
+      message: `The releases' scope index lacks ${unindexed.length} scope${unindexed.length === 1 ? "" : "s"} that ${unindexed.length === 1 ? "has" : "have"} releases, such as ${unindexed[0]}, so doctor may miss a scope with releases and no catalog row. A server of an earlier release, still running after the migration, writes releases without the index.`,
+      resolution:
+        "Once every server runs this release, migrate the database again, which writes the missing index items: `npx hot-updater init --provider <provider> --from-env-file .env.hotupdater` for a deployment init created, or `npx hot-updater db migrate <server file>` for a server of your own. Then rerun doctor.",
+    });
+  }
+  return status;
 };
