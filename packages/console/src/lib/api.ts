@@ -146,6 +146,13 @@ export function useChannelsQuery() {
   });
 }
 
+/**
+ * How long a list of releases or patches stays fresh, as the native build
+ * list does: a focus within it reads nothing. A change made in this Console
+ * invalidates it at once; a deploy from elsewhere shows within a minute.
+ */
+const LIST_STALE_MS = 60_000;
+
 export function useReleasesQuery(
   filters?: ReleaseFilters,
   { enabled = true }: { readonly enabled?: boolean } = {},
@@ -154,6 +161,7 @@ export function useReleasesQuery(
     queryKey: queryKeys.releases.list(filters),
     queryFn: () => getReleases({ data: filters }),
     placeholderData: (previousData) => previousData,
+    staleTime: LIST_STALE_MS,
     enabled,
   });
 }
@@ -180,6 +188,7 @@ export function useReleaseFoldQuery(
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next,
     enabled,
+    staleTime: LIST_STALE_MS,
   });
 }
 
@@ -295,6 +304,7 @@ export function useNativeBuildPatchesQuery(
     queryFn: () => getNativeBuildPatches({ data: { minBundleId, ...page } }),
     enabled: enabled && minBundleId.length > 0,
     placeholderData: (previousData) => previousData,
+    staleTime: LIST_STALE_MS,
   });
 }
 
@@ -464,6 +474,7 @@ export function useDeleteReleaseMutation() {
         queryClient.invalidateQueries({
           queryKey: queryKeys.bundleChildren.all,
         }),
+        queryClient.invalidateQueries({ queryKey: ["native-build-patches"] }),
       ]);
     },
   });

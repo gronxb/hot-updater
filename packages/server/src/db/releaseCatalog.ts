@@ -62,14 +62,33 @@ export const releaseCatalogScopeKeyOf = (
         strategy: "FINGERPRINT",
       });
 
-/** Projects a stored catalog row for one update check; null when the row is not this scope's. */
-export const projectReleaseCatalogRow = (
-  row: ReleaseCatalogRow | null,
+/**
+ * A stored catalog row with its payload parsed, which projects it for each
+ * update check of its scope: the update-check memo keeps one per scope, so a
+ * scope's app versions share one read and one parse of its row.
+ */
+export interface ParsedReleaseCatalogRow {
+  readonly row: Omit<ReleaseCatalogRow, "payload">;
+  readonly compiled: CompiledReleaseCatalog;
+}
+
+export const parseReleaseCatalogRow = ({
+  payload,
+  ...row
+}: ReleaseCatalogRow): ParsedReleaseCatalogRow => ({
+  row,
+  compiled: parseCompiledCatalog(payload, row.strategy),
+});
+
+/** Projects a parsed catalog row for one update check; null when the row is not this scope's. */
+export const projectParsedReleaseCatalogRow = (
+  parsed: ParsedReleaseCatalogRow | null,
   input: ReleaseCatalogRequest,
   scopeKey = releaseCatalogScopeKeyOf(input),
 ): ReleaseCatalog | null => {
+  if (parsed === null) return null;
+  const { row, compiled } = parsed;
   if (
-    row === null ||
     row.platform !== input.platform ||
     row.strategy !== input.strategy ||
     row.channel_key !== input.channelKey ||
@@ -79,7 +98,6 @@ export const projectReleaseCatalogRow = (
   ) {
     return null;
   }
-  const compiled = parseCompiledCatalog(row.payload, input.strategy);
   const appVersion =
     input.strategy === "APP_VERSION" ? input.appVersion : undefined;
   return {
@@ -93,3 +111,15 @@ export const projectReleaseCatalogRow = (
     scopeKey,
   };
 };
+
+/** Projects a stored catalog row for one update check; null when the row is not this scope's. */
+export const projectReleaseCatalogRow = (
+  row: ReleaseCatalogRow | null,
+  input: ReleaseCatalogRequest,
+  scopeKey = releaseCatalogScopeKeyOf(input),
+): ReleaseCatalog | null =>
+  projectParsedReleaseCatalogRow(
+    row === null ? null : parseReleaseCatalogRow(row),
+    input,
+    scopeKey,
+  );

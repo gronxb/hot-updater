@@ -122,4 +122,18 @@ describe("iOS device server functions", () => {
       udid: PHONE,
     });
   });
+
+  it("serve one page of the registry, after the cursor the page sends", async () => {
+    mocks.principal = { email: "lead@team.dev" };
+    const first = await getIosDevices({ data: { status: "pending" } });
+    expect(first.devices.map(({ id }) => id)).toEqual([deviceId]);
+    expect(first.next).toBeUndefined();
+    expect(first.previous).toBeUndefined();
+    expect(
+      (await getIosDevices({ data: { before: deviceId } })).devices,
+    ).toEqual([]);
+    await expect(
+      (async () => getIosDevices({ data: { before: 42 } as never }))(),
+    ).rejects.toThrow("Invalid before.");
+  });
 });

@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { createMemoryAdapter } from "@hot-updater/plugin-core";
+import { createMemoryAdapter, meterReads } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,8 +12,11 @@ vi.mock("virtual:hot-updater-console/request-guard", () => ({
 }));
 
 import {
+  IOS_DEVICE_PAGE_SIZE,
   issueDeviceProfileLink,
   iosDeviceViewer,
+  listIosDevicePage,
+  listIosDevices,
   removeIosDevice,
   requireDeviceApprover,
 } from "./iosDevices";
@@ -171,5 +174,75 @@ describe("profile links", () => {
         name: "Kim's iPhone",
       }),
     ).toEqual({ status: "no-secret", secretName: "BETTER_AUTH_SECRET" });
+  });
+});
+
+describe("the iOS devices page", () => {
+  const udidOf = (n: number) => `00008110-${String(n).padStart(16, "0")}`;
+  const registryOf = async (devices: number) => {
+    const database = meterReads({
+      name: "memory",
+      adapter: createMemoryAdapter(),
+    });
+    const { core } = createHotUpdater({
+      database,
+      storage: { name: "none", protocol: "none" },
+      plugins: [],
+      clientAccess: "public",
+    });
+    for (let n = 1; n <= devices; n += 1) {
+      await core.requestIosDevice({
+        udid: udidOf(n),
+        name: `iPhone ${n}`,
+        requestedBy: null,
+      });
+    }
+    return { core, database };
+  };
+
+  it("reads one page, however many requests the registry holds", async () => {
+    const reads = [];
+    for (const devices of [10, 1_000]) {
+      const { core, database } = await registryOf(devices);
+      const page = await database.measureReads(() =>
+        listIosDevicePage(core, {}),
+      );
+      reads.push({
+        devices,
+        rows: page.adapter.rows + page.adapter.keys,
+        queries: page.adapter.queries,
+      });
+    }
+    expect(reads).toEqual([
+      { devices: 10, rows: 10, queries: 1 },
+      { devices: 1_000, rows: IOS_DEVICE_PAGE_SIZE, queries: 1 },
+    ]);
+  }, 120_000);
+
+  it("pages the registry newest first, back and forth, within a status", async () => {
+    const { core } = await registryOf(IOS_DEVICE_PAGE_SIZE + 20);
+    const names = (page: { data: readonly { name: string }[] }) =>
+      page.data.map(({ name }) => name);
+    // The whole registry, newest first, as the ad hoc build's device list reads it.
+    const newest = names({ data: await listIosDevices(core) });
+    expect(newest).toHaveLength(IOS_DEVICE_PAGE_SIZE + 20);
+
+    const first = await listIosDevicePage(core, {});
+    expect(names(first)).toEqual(newest.slice(0, IOS_DEVICE_PAGE_SIZE));
+    expect(first.previous).toBeUndefined();
+    const second = await listIosDevicePage(core, { before: first.next });
+    expect(names(second)).toEqual(newest.slice(IOS_DEVICE_PAGE_SIZE));
+    expect(second.next).toBeUndefined();
+    const back = await listIosDevicePage(core, { after: second.previous });
+    expect(names(back)).toEqual(names(first));
+
+    const device = await core.findIosDevice(udidOf(3));
+    await core.approveIosDevice(device!.id, {
+      name: "Approved iPhone",
+      approvedBy: "lead@team.dev",
+    });
+    const approved = await listIosDevicePage(core, { status: "approved" });
+    expect(names(approved)).toEqual(["Approved iPhone"]);
+    expect(approved.next).toBeUndefined();
   });
 });

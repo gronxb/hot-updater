@@ -49,7 +49,12 @@ const registry = async () => {
 };
 
 export interface IosDevicesView {
-  readonly devices: IosDeviceRow[];
+  /** One page of the registry, newest first. */
+  readonly devices: readonly IosDeviceRow[];
+  /** `before` of the next, older page, when there may be one. */
+  readonly next?: string;
+  /** `after` of the previous, newer page, when there may be one. */
+  readonly previous?: string;
   readonly viewer: {
     readonly email: string;
     readonly canApprove: boolean;
@@ -63,16 +68,35 @@ export interface IosDevicesView {
   readonly secretName: string;
 }
 
-/** The registry, or one status of it, with what the viewer may do. */
+/** A device ID, the page cursor. */
+const cursor = (input: unknown, field: "before" | "after") =>
+  record(input)[field] === undefined ? {} : { [field]: text(input, field, 36) };
+
+/** A page of the registry, or of one status of it, with what the viewer may do. */
 export const getIosDevices = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
-  .validator((input: { status?: IosDeviceStatus } | undefined) => {
-    const status = input?.status;
-    if (status !== undefined && !STATUSES.includes(status)) {
-      throw new TypeError("Invalid status.");
-    }
-    return status === undefined ? {} : { status };
-  })
+  .validator(
+    (
+      input:
+        | {
+            status?: IosDeviceStatus;
+            before?: string;
+            after?: string;
+          }
+        | undefined,
+    ) => {
+      const status = input?.status;
+      if (status !== undefined && !STATUSES.includes(status)) {
+        throw new TypeError("Invalid status.");
+      }
+      return {
+        ...(status === undefined ? {} : { status }),
+        ...(input === undefined
+          ? {}
+          : { ...cursor(input, "before"), ...cursor(input, "after") }),
+      };
+    },
+  )
   .handler(async ({ data }): Promise<IosDevicesView> => {
     const [
       { request, core, principal, viewer, devices },
@@ -81,8 +105,11 @@ export const getIosDevices = createServerFn({ method: "GET" })
       registry(),
       import("./server/nativeBuildDownloadLink"),
     ]);
+    const page = await devices.listIosDevicePage(core, data);
     return {
-      devices: await devices.listIosDevices(core, data.status),
+      devices: page.data,
+      ...(page.next === undefined ? {} : { next: page.next }),
+      ...(page.previous === undefined ? {} : { previous: page.previous }),
       viewer,
       defaultName: devices.defaultDeviceName(principal),
       registration: await devices.deviceRegistration(request),
