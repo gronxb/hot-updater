@@ -45,7 +45,11 @@ export interface ReleaseCatalogIssue {
     | "RELEASE_CATALOG_CHECK_FAILED"
     | "RELEASE_CATALOGS_UNCHECKED"
     | "RELEASE_SCOPES_UNCHECKED"
-    | "RELEASE_SCOPES_UNINDEXED";
+    | "RELEASE_SCOPES_UNINDEXED"
+    | "RELEASE_CATALOG_PARTITIONING_OFF"
+    | "RELEASE_CATALOG_PARTITIONING_SWITCH_MISSING"
+    | "RELEASE_CATALOG_PARTITIONING_UNCHECKED"
+    | "RELEASE_CATALOG_PARTITIONS_MISSING";
   /** The scope the issue is about; absent when no catalog could be read. */
   scopeKey?: string;
   message: string;
@@ -66,12 +70,34 @@ export interface ReleaseCatalogScopeStatus {
   /** The catalog its releases compile to; null when core could not compile it. */
   byteSize: number | null;
   descriptorCount: number | null;
+  /**
+   * How the scope's own catalog row stores it, as the server reports it;
+   * absent from a server before 1.2.0 and for a scope without a row.
+   */
+  layout?: "compact" | "partitioned";
+  /** The scope's update strategy, from its catalog row. */
+  strategy?: "APP_VERSION" | "FINGERPRINT";
+}
+
+/**
+ * The server's partitioning switch, and whether it reads the partitions
+ * table. Absent where the server has no such route: before 1.2.0.
+ */
+export interface ReleaseCatalogPartitioning {
+  switch: "on" | "off";
+  table: "present" | "missing";
+  /**
+   * App-version scopes whose own row is still one compact catalog, while
+   * the switch is on: each converts on its next write. Not an issue.
+   */
+  compactScopes: number;
 }
 
 /** Every scope with a release catalog, checked without writing. */
 export interface ReleaseCatalogStatus {
   scopes: ReleaseCatalogScopeStatus[];
   issues: ReleaseCatalogIssue[];
+  partitioning?: ReleaseCatalogPartitioning;
 }
 
 /** A schema setting the server's fence found missing or different. */

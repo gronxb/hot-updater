@@ -3,6 +3,8 @@ import type {
   ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
 
+import { partitionCatalogsCommand } from "@hot-updater/cli-tools";
+
 import type { ReleaseCatalogIssue, ReleaseCatalogStatus } from "./issues";
 
 // The admin API serves up to 500 catalogs a page.
@@ -174,6 +176,10 @@ const checkReleaseCatalogs = async (
       generation: result.currentCatalog?.generation ?? null,
       byteSize: result.diagnostics.byteSize,
       descriptorCount: result.diagnostics.descriptorCount,
+      ...(result.layout === undefined ? {} : { layout: result.layout }),
+      ...(result.currentCatalog === null
+        ? {}
+        : { strategy: result.currentCatalog.strategy }),
     });
     if (state === "stale") {
       const issue: ReleaseCatalogIssue = {
@@ -194,8 +200,118 @@ const checkReleaseCatalogs = async (
   return status;
 };
 
-/** The server's release catalogs, each against a rebuild from its releases. */
+const migrateTable =
+  "Create it with the 1.2.0 migration: `npx hot-updater init --provider <provider> --from-env-file .env.hotupdater` for a deployment init created, or `npx hot-updater db migrate <server file>` for a server of your own.";
+
+/**
+ * The partitioning switch beside what the scopes' own rows say. A row of
+ * the partitions table proves nothing about a scope, so only a scope's
+ * catalog row counts as partitioned. Doctor reports; it never sets the
+ * switch.
+ */
+const checkPartitioning = async (
+  core: HotUpdaterCoreApi,
+  status: ReleaseCatalogStatus,
+  command: string,
+): Promise<void> => {
+  let read: Awaited<ReturnType<HotUpdaterCoreApi["getReleaseCatalogPartitioning"]>>;
+  try {
+    read = await core.getReleaseCatalogPartitioning();
+  } catch (error) {
+    // A server before 1.2.0 has no partitioning: nothing to report.
+    if ((error as { readonly status?: unknown } | null)?.status === 404) return;
+    status.issues.push({
+      type: "warning",
+      code: "RELEASE_CATALOG_PARTITIONING_UNCHECKED",
+      message: `Could not read whether release catalogs are partitioned: ${errorMessage(error)}`,
+      resolution: "Fix what the message names, then rerun doctor.",
+    });
+    return;
+  }
+  const appVersion = status.scopes.filter(
+    ({ strategy }) => strategy === "APP_VERSION",
+  );
+  const partitioned = status.scopes.filter(
+    ({ layout }) => layout === "partitioned",
+  ).length;
+  status.partitioning = {
+    switch: read.switch,
+    table: read.table,
+    compactScopes:
+      read.switch === "on"
+        ? appVersion.filter(({ layout }) => layout === "compact").length
+        : 0,
+  };
+  if (read.table === "missing") {
+    status.issues.push(
+      read.switch === "on"
+        ? {
+            type: "error",
+            code: "RELEASE_CATALOG_PARTITIONS_MISSING",
+            message:
+              "Release catalogs are partitioned, but the server can't read release_catalog_partitions, so a deploy to a single-row app-version scope fails.",
+            resolution: migrateTable,
+          }
+        : {
+            type: "warning",
+            code: "RELEASE_CATALOG_PARTITIONS_MISSING",
+            message:
+              "The server can't read release_catalog_partitions, so release catalogs can't be partitioned.",
+            resolution: migrateTable,
+          },
+    );
+    return;
+  }
+  if (read.switch === "on") return;
+  status.issues.push(
+    partitioned > 0
+      ? {
+          type: "warning",
+          code: "RELEASE_CATALOG_PARTITIONING_SWITCH_MISSING",
+          message: `${partitioned} scope${partitioned === 1 ? " is" : "s are"} partitioned, but partitioning is off, so other scopes stay single-row, each limited to 256 KB.`,
+          resolution: "Turn partitioning on again:",
+          commands: [command],
+        }
+      : {
+          type: "warning",
+          code: "RELEASE_CATALOG_PARTITIONING_OFF",
+          message:
+            "Release catalogs are single-row, so each scope is limited to 256 KB.",
+          resolution:
+            "Once every server runs 1.2.0, partition them. It can't be undone:",
+          commands: [command],
+        },
+  );
+};
+
+/**
+ * The server's release catalogs, each against a rebuild from its releases,
+ * and whether they are partitioned, reported last.
+ */
 export const checkServerData = async (
+  core: HotUpdaterCoreApi,
+  options: {
+    /**
+     * The command that turns partitioning on for this project: bare over
+     * standaloneRepository, with the server's URL over its database.
+     */
+    readonly partitionCommand?: string;
+  } = {},
+): Promise<ReleaseCatalogStatus> => {
+  const status = await checkScopes(core);
+  // The catalogs couldn't be read at all: neither can the switch.
+  if (status.issues.some(({ code }) => code === "RELEASE_CATALOGS_UNCHECKED")) {
+    return status;
+  }
+  await checkPartitioning(
+    core,
+    status,
+    options.partitionCommand ?? partitionCatalogsCommand(),
+  );
+  return status;
+};
+
+const checkScopes = async (
   core: HotUpdaterCoreApi,
 ): Promise<ReleaseCatalogStatus> => {
   let catalogs: { scopeKey: string; tombstone: boolean }[];
@@ -217,6 +333,7 @@ export const checkServerData = async (
     catalogScopeKeys,
     walked ?? new Set(),
   );
+
   if (walked === undefined) {
     // A self-hosted server older than this hot-updater has no scope route.
     const older =

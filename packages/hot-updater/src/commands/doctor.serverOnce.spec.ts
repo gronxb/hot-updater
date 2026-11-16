@@ -17,6 +17,7 @@ import {
   createClosingDatabase,
 } from "./__fixtures__/closingDatabase";
 import { doctor } from "./doctor";
+import { PARTITIONING_OFF } from "./database.testFixtures";
 
 vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
 
@@ -71,7 +72,7 @@ describe("doctor's server", () => {
     expect(result).toMatchObject({
       success: true,
       details: {
-        releaseCatalogs: { scopes: [], issues: [] },
+        releaseCatalogs: { scopes: [], issues: [PARTITIONING_OFF] },
       },
     });
     expect(state.callsAfterClose).toBe(0);
@@ -128,6 +129,7 @@ describe("doctor's server", () => {
                 "npx hot-updater bundle update <id>",
               ],
             },
+            PARTITIONING_OFF,
           ],
         },
       },

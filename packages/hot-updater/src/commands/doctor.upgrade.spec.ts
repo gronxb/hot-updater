@@ -42,6 +42,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiKeys, insights, remoteConfig } from "../plugins";
 import { doctor, handleDoctor } from "./doctor";
+import { PARTITIONING_OFF } from "./database.testFixtures";
 import { INFRASTRUCTURE_UPDATES } from "./infrastructureUpdates";
 import {
   INIT_PROVIDER_PACKAGES,
@@ -296,7 +297,7 @@ const upgrade = async (
     success: true,
     details: {
       infrastructure: { serverVersion: "1.2.0", needsUpdate: false },
-      releaseCatalogs: { issues: [] },
+      releaseCatalogs: { issues: [PARTITIONING_OFF] },
     },
   });
   expect(clean).not.toHaveProperty("details.schema");

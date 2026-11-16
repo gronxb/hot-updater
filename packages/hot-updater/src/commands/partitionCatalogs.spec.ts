@@ -60,7 +60,7 @@ const managed = async ({ serverVersion }: { serverVersion: "1.2" | "1.1" }) => {
   );
   return async () =>
     (await adapter.get(SETTINGS_TABLE, [["catalog.partitioning"]]))[0]
-      ?.value ?? null;
+      ?.["value"] ?? null;
 };
 
 describe("db partition-catalogs", () => {
