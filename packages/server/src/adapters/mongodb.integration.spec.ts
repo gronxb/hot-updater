@@ -284,6 +284,7 @@ setupDatabaseTestSuite({
       createHotUpdater({ ...options, clientAccess: "public" }).handlers,
     ),
   name: "mongoAdapter without release_catalog_partitions",
+  partitioning: false,
   migrate: async () => {
     boundaryClient = await connect("boundary");
     await (
