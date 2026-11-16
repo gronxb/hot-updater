@@ -182,6 +182,22 @@ export interface DatabaseAdapter {
    * deleted. A backend that expires rows natively leaves it out.
    */
   prune?(table: PhysicalTable, before: number, limit: number): Promise<number>;
+  /**
+   * Runs `read` with a `get` and `query` that all observe one committed
+   * state. Core needs it where it reads several rows that must agree, such
+   * as a release catalog's head and the rows it names, or the pages of one
+   * listing: an adapter whose `get` and `query` each see every write
+   * committed before they start leaves it out, and core reads directly.
+   *
+   * - `read` may run more than once, each time on a fresh snapshot, so it
+   *   only reads. Its result is that of the run that completed.
+   * - Having the member does not mean the deployment supports snapshots:
+   *   the call rejects with `DatabaseSnapshotUnsupportedError` where it
+   *   doesn't, and with `DatabaseSnapshotConflictError` when transient
+   *   failures, such as an election, outlast the adapter's retries.
+   * - Nothing outlives the call: the snapshot ends when `read` settles.
+   */
+  readSnapshot?<T>(read: (reader: SnapshotReader) => Promise<T>): Promise<T>;
   /** Called only by migration tooling, such as `hot-updater db migrate`. */
   readonly migrations?: {
     apply(tables: readonly PhysicalTable[]): Promise<void>;
@@ -201,6 +217,34 @@ export interface DatabaseAdapter {
     ): Promise<number>;
   };
   dispose?(): Promise<void>;
+}
+
+/** The reads `DatabaseAdapter.readSnapshot` hands its callback, all at one snapshot. */
+export type SnapshotReader = Pick<DatabaseAdapter, "get" | "query">;
+
+/**
+ * The deployment can't read at a snapshot, such as MongoDB before 5.0 or a
+ * standalone `mongod`. An adapter's `readSnapshot` throws it; core refuses
+ * what needs one, and retrying won't help.
+ */
+export class DatabaseSnapshotUnsupportedError extends Error {
+  readonly name = "DatabaseSnapshotUnsupportedError";
+  constructor(message: string, options?: { readonly cause?: unknown }) {
+    super(message, options);
+  }
+}
+
+/**
+ * A snapshot read failed on every attempt for a transient reason, such as
+ * an election or a snapshot older than the history the server keeps. An
+ * adapter's `readSnapshot` throws it after its retries; core answers it as
+ * retryable.
+ */
+export class DatabaseSnapshotConflictError extends Error {
+  readonly name = "DatabaseSnapshotConflictError";
+  constructor(message: string, options?: { readonly cause?: unknown }) {
+    super(message, options);
+  }
 }
 
 /**

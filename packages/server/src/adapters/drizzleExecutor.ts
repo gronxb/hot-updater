@@ -15,6 +15,8 @@ interface DrizzleRunner {
   transaction?(fn: (tx: DrizzleRunner) => Promise<unknown>): unknown;
   /** SQLite drivers: `sync` for better-sqlite3 and bun:sqlite. */
   readonly resultKind?: "sync" | "async";
+  /** `withReplicas`' primary database. */
+  readonly $primary?: DrizzleRunner;
 }
 
 export const SUPPORTED_DRIZZLE_DRIVERS =
@@ -90,7 +92,8 @@ const changesOf = (result: unknown): number => {
  * The SQL core's executor over a Drizzle database, or a function that
  * returns one. Async drivers run Drizzle's transactions; sync SQLite drivers
  * run one statement at a time, beginning transactions with BEGIN IMMEDIATE.
- * First use checks that the driver can run a transaction at all.
+ * First use checks that the driver can run a transaction at all. Under
+ * `withReplicas`, it runs on `$primary`.
  */
 export const drizzleExecutor = (
   source: unknown,
@@ -101,9 +104,12 @@ export const drizzleExecutor = (
   let ready: Promise<DrizzleRunner> | undefined;
   const resolve = () => {
     ready ??= (async () => {
-      const runner = (await (typeof source === "function"
+      const database = (await (typeof source === "function"
         ? (source as () => unknown)()
         : source)) as DrizzleRunner;
+      // Under `withReplicas`, every statement runs on the primary: the
+      // engine's reads must see every committed write.
+      const runner = database.$primary ?? database;
       if (isSync(runner)) return runner;
       let started = false;
       try {

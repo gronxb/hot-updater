@@ -523,12 +523,14 @@ setupDatabaseAdapterConformanceSuite({
 | `maxOps`        | The most ops one write accepts. The suite then checks that `fits` refuses one more op and that nothing is written. Omit it when the backend has no limit.                                                                                       |
 | `writers`       | Concurrent writers in the contention cases (default 32)                                                                                                                                                                                         |
 | `retention`     | `"prune"` (default) checks the adapter's `prune`. `"ttl"` checks that `prune` is absent and expired rows remain readable until the backend deletes them. Test the provider's TTL settings and expiry fields separately.                         |
+| `snapshots`     | `false` when the adapter has `readSnapshot` but the deployment under test can't take snapshots: the snapshot cases then check that it refuses with `DatabaseSnapshotUnsupportedError`.                                                          |
 
 The cases cover value round-trips, point reads in key order, each op's guard,
 all-or-nothing writes with a failure at every position, unique indexes and the
 op they name, UTF-8 byte order, cursor paging without gaps or repeats,
-multi-valued indexes, full pages under capped native pages, one winner among
-concurrent writers, no lost increments, write-skew rejection, and over-limit
+multi-valued indexes, full pages under capped native pages, reads that see the
+write committed just before them, snapshot reads that writes landing between
+their reads and pages stay out of, one winner among concurrent writers, no lost increments, write-skew rejection, and over-limit
 writes refused before sending. Every call also passes through `verifyAdapter`.
 
 A key-value store takes `nativePageSize` as its page size. Its `maxOps` is the

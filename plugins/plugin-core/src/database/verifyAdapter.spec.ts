@@ -145,4 +145,46 @@ describe("verifyAdapter", () => {
       rows: 0,
     });
   });
+
+  it("verifies and counts the reads of a snapshot, and adds no snapshot to an adapter without one", async () => {
+    const all = [row("a", 1), row("b", 2)];
+    let snapshots = 0;
+    const inner = fake({
+      get: async (_table, keys) =>
+        keys.map(([id]) => all.find((stored) => stored.id === id) ?? null),
+      query: async () => all,
+    });
+    const adapter = verifyAdapter(
+      fake({
+        ...inner,
+        readSnapshot: (read) => {
+          snapshots += 1;
+          return read(inner);
+        },
+      }),
+    );
+    await expect(
+      adapter.readSnapshot!(async (reader) => [
+        await reader.get(table, [["a"], ["z"]]),
+        await reader.query(table, request),
+      ]),
+    ).resolves.toEqual([[all[0], null], all]);
+    expect(snapshots).toBe(1);
+    expect(adapter.reads.total()).toEqual({
+      gets: 1,
+      keys: 2,
+      queries: 1,
+      rows: 2,
+    });
+
+    const wrong = verifyAdapter(
+      fake({
+        readSnapshot: (read) => read(fake({ get: async () => [row("b", 2)] })),
+      }),
+    );
+    await expect(
+      wrong.readSnapshot!((reader) => reader.get(table, [["a"]])),
+    ).rejects.toThrow(DatabaseAdapterContractError);
+    expect(verifyAdapter(fake({}))).not.toHaveProperty("readSnapshot");
+  });
 });

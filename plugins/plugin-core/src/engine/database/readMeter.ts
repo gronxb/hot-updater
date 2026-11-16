@@ -1,4 +1,4 @@
-import type { DatabaseAdapter } from "../../database/adapter";
+import type { DatabaseAdapter, SnapshotReader } from "../../database/adapter";
 import type { DatabaseReadCount } from "../../database/verifyAdapter";
 import type { EngineDatabase } from "../../types/databaseConfig";
 import type { EngineReadCount } from "./engineReads";
@@ -69,22 +69,30 @@ export const meterReads = <TDatabase extends EngineDatabase>(
       rows: adapterReads.rows + (count.rows ?? 0),
     };
   };
+  /** Counted reads through `reader`: the adapter, or one snapshot of it. */
+  const counted = (reader: SnapshotReader): SnapshotReader => ({
+    async get(...args) {
+      const rows = await reader.get(...args);
+      add({ gets: 1, keys: args[1].length });
+      return rows;
+    },
+    async query(...args) {
+      const rows = await reader.query(...args);
+      add({ queries: 1, rows: rows.length });
+      return rows;
+    },
+  });
   const meter: ReadMeter = {
     // Inherits every other member, so it reads the adapter as it is at each
     // call, a proxy's included.
     wrap: (adapter) =>
       Object.assign(Object.create(adapter) as DatabaseAdapter, {
-        async get(...args: Parameters<DatabaseAdapter["get"]>) {
-          const rows = await adapter.get(...args);
-          add({ gets: 1, keys: args[1].length });
-          return rows;
-        },
-        async query(...args: Parameters<DatabaseAdapter["query"]>) {
-          const rows = await adapter.query(...args);
-          add({ queries: 1, rows: rows.length });
-          return rows;
-        },
-      } satisfies Pick<DatabaseAdapter, "get" | "query">),
+        ...counted(adapter),
+        ...(adapter.readSnapshot && {
+          readSnapshot: <T>(read: (reader: SnapshotReader) => Promise<T>) =>
+            adapter.readSnapshot!((reader) => read(counted(reader))),
+        }),
+      }),
     attach: (counter) => {
       engines.add(counter);
     },

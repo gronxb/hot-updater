@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { PhysicalTable } from "../../database/adapter";
 import { createMemoryAdapter } from "../../database/memoryAdapter";
 import { defineTable } from "../../serverPlugin/schema";
 import { createEngine } from "../createEngine";
@@ -16,6 +17,16 @@ const notes = {
     ),
   },
 } as const;
+
+const rows: PhysicalTable = {
+  name: "rows",
+  columns: [
+    { name: "id", type: "string", nullable: false },
+    { name: "_v", type: "integer", nullable: false },
+  ],
+  key: ["id"],
+  indexes: [{ name: "all", eq: [], sort: ["id"] }],
+};
 
 describe("meterReads", () => {
   it("counts what every engine on the database reads at the adapter and returns", async () => {
@@ -74,5 +85,29 @@ describe("meterReads", () => {
     expect(readMeterOf(database)).toBeUndefined();
     expect("measureReads" in database).toBe(false);
     expect(readMeterOf(meterReads(database))).toBeDefined();
+  });
+
+  it("counts the reads a snapshot makes, and adds no snapshot to an adapter without one", async () => {
+    const memory = createMemoryAdapter();
+    const database = meterReads({ name: "memory", adapter: memory });
+    let meter = readMeterOf(database)!;
+    const wrapped = meter.wrap({
+      ...memory,
+      readSnapshot: (read) => read(memory),
+    });
+    const measured = await database.measureReads(() =>
+      wrapped.readSnapshot!(async (reader) => [
+        await reader.get(rows, [["a"], ["b"]]),
+        await reader.query(rows, {
+          index: "all",
+          eq: [],
+          order: "asc",
+          limit: 5,
+        }),
+      ]),
+    );
+    expect(measured.adapter).toMatchObject({ gets: 1, keys: 2, queries: 1 });
+    meter = readMeterOf(database)!;
+    expect("readSnapshot" in meter.wrap(memory)).toBe(false);
   });
 });
