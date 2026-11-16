@@ -154,6 +154,7 @@ for (const [name, open] of Object.entries(sqlBackends)) {
 
   setupReadBudgetTestSuite({
     name: `read budgets without release_catalog_partitions (${name})`,
+    partitions: false,
     createAdapter: async ({ tables }) => {
       const opened = open();
       const adapter = createSqlAdapter({ executor: opened.executor });
@@ -194,6 +195,7 @@ setupDatabaseTestSuite({
 
 setupReadBudgetTestSuite({
   name: "read budgets without release_catalog_partitions (key-value store)",
+  partitions: false,
   createAdapter: async ({ nativePageSize }) => ({
     adapter: refusingPartitions(
       createKvAdapter({

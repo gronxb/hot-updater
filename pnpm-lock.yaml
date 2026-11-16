@@ -167,6 +167,9 @@ importers:
       '@hot-updater/standalone':
         specifier: workspace:*
         version: link:plugins/standalone
+      '@hot-updater/standalone-1.1.16':
+        specifier: npm:@hot-updater/standalone@1.1.16
+        version: '@hot-updater/standalone@1.1.16'
       '@hot-updater/supabase':
         specifier: workspace:*
         version: link:plugins/supabase
@@ -5825,11 +5828,20 @@ packages:
     peerDependencies:
       hono: ^4
 
+  '@hot-updater/plugin-core@1.1.16':
+    resolution: {integrity: sha512-VPkAbhiAF29PZzKifAXnj2y18dCLjZGAujeW3hl6ZBD0u5baQG3m7SqbdX8AQMeGchtJ3rFK0AgZS/CArOjEqQ==}
+
+  '@hot-updater/protocol@1.1.16':
+    resolution: {integrity: sha512-Q1dd/pCMv8vLUPRD3hxAkcInaa0qGsVat6LfN01XVKFYCyBjeBT6gINvsez5LpyKjE9YnlvAhIhPhT12pOHP9A==}
+
   '@hot-updater/react-native@file:packages/react-native':
     resolution: {directory: packages/react-native, type: directory}
     peerDependencies:
       react: '*'
       react-native: '*'
+
+  '@hot-updater/standalone@1.1.16':
+    resolution: {integrity: sha512-eiMe6YXcXNbV6qqw+0S1aNHK1YxQLwW6bgRWty2AN0OQcp+RKdUkX4SONoT6SHig3uCBZ7iOq+Xg3DhF6jfqiw==}
 
   '@humanwhocodes/config-array@0.13.0':
     resolution: {integrity: sha512-DZLEEqFWQFiyK6h5YIeynKx7JlvCYWL0cImfSRXZ9l4Sg2efkFGTuFf6vzXjK1cq6IYkU+Eg/JizXw+TD2vRNw==}
@@ -17132,6 +17144,7 @@ packages:
 
   node-abort-controller@3.1.1:
     resolution: {integrity: sha512-AGK2yQKIjRuqnc6VkX2Xj5d+QW8xZ87pa1UK6yA6ouUyuxfHuMP6umE5QK7UmTeOAymo+Zx1Fxiuw9rVx8taHQ==}
+    deprecated: This package is no longer needed on supported Node.js versions. Node.js 16+ includes AbortController and AbortSignal as built-in globals. All Node.js versions requiring this polyfill are end-of-life. Use the built-in globals instead.
 
   node-dir@0.1.17:
     resolution: {integrity: sha512-tmPX422rYgofd4epzrNoOXiE8XFZYOcCq1vD7MAXCDO+O+zndlA2ztdKKMa+EeuBG5tHETpr4ml4RGgpqDCCAg==}
@@ -25356,6 +25369,15 @@ snapshots:
     dependencies:
       hono: 4.12.34
 
+  '@hot-updater/plugin-core@1.1.16':
+    dependencies:
+      '@hot-updater/protocol': 1.1.16
+      es-toolkit: 1.47.0
+      mime: 4.1.0
+      verkit: 0.4.0
+
+  '@hot-updater/protocol@1.1.16': {}
+
   '@hot-updater/react-native@file:packages/react-native(react-native@0.80.1(@babel/core@7.26.0)(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@19.2.15)(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@hot-updater/plugin-insights': link:plugins/insights
@@ -25364,6 +25386,11 @@ snapshots:
       react: 19.1.0
       react-native: 0.80.1(@babel/core@7.26.0)(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@19.2.15)(react@19.1.0)
       use-sync-external-store: 1.5.0(react@19.1.0)
+
+  '@hot-updater/standalone@1.1.16':
+    dependencies:
+      '@hot-updater/plugin-core': 1.1.16
+      '@hot-updater/protocol': 1.1.16
 
   '@humanwhocodes/config-array@0.13.0':
     dependencies:
@@ -29613,7 +29640,9 @@ snapshots:
       metro-runtime: 0.87.1
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/metro-config@0.88.0(@babel/core@7.26.0)':
     dependencies:
@@ -29623,9 +29652,7 @@ snapshots:
       metro-runtime: 0.87.1
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/new-app-screen@0.85.2(@types/react@19.2.15)(react-native@0.85.2(@babel/core@7.26.0)(@react-native-community/cli@20.1.0(@typescript/typescript6@6.0.2))(@react-native/jest-preset@0.85.2(@babel/core@7.26.0)(react@19.2.3))(@react-native/metro-config@0.85.2(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3)':
     dependencies:
@@ -33133,7 +33160,7 @@ snapshots:
       resolve-from: 5.0.0
     optionalDependencies:
       '@babel/runtime': 7.29.7
-      expo: 55.0.32(@babel/core@7.26.0)(@expo/dom-webview@55.0.6)(@expo/metro-runtime@55.0.12)(@typescript/typescript6@6.0.2)(react-dom@19.2.0(react@19.2.0))(react-native-webview@13.16.0(react-native@0.83.10(@babel/core@7.26.0)(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@react-native/metro-config@0.88.0(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))(react-native@0.83.10(@babel/core@7.26.0)(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@react-native/metro-config@0.88.0(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.0))(react-server-dom-webpack@19.2.6(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.107.2(esbuild@0.28.1)))(react@19.2.0)
+      expo: 55.0.32(@babel/core@7.26.0)(@expo/dom-webview@55.0.6)(@expo/metro-runtime@55.0.12)(react-dom@19.2.6(react@19.3.0))(react-native-webview@13.16.0(react-native@0.88.0(@babel/core@7.26.0)(@react-native-community/cli@20.2.0(typescript@7.0.2))(@react-native/metro-config@0.88.0(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.3.0))(react@19.3.0))(react-native@0.88.0(@babel/core@7.26.0)(@react-native-community/cli@20.2.0(typescript@7.0.2))(@react-native/metro-config@0.88.0(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.3.0))(react-server-dom-webpack@19.2.6(react-dom@19.2.6(react@19.3.0))(react@19.3.0)(webpack@5.107.2(esbuild@0.28.1)))(react@19.3.0)(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/core'
       - supports-color

@@ -18,6 +18,7 @@ import {
 import type { Bundle } from "@hot-updater/protocol";
 
 import type { CoreApi } from "./core/api";
+import { isRetryableCatalogRead } from "./core/catalogReads";
 import { IosDeviceInputError } from "./core/iosDevices";
 import { NATIVE_BUILD_SUBMISSION_DESTINATIONS } from "./core/nativeBuildDestinations";
 import { NativeBuildInputError } from "./core/nativeBuilds";
@@ -77,6 +78,16 @@ export const answer = async (
     }
     if (error instanceof DatabaseBundleNotFoundError) {
       return json({ code: "BUNDLE_NOT_FOUND", error: error.message }, 404);
+    }
+    if (isRetryableCatalogRead(error)) {
+      // A partitioned catalog's rows moved on every read: retryable.
+      return Response.json(
+        { code: "CATALOG_SNAPSHOT_CONFLICT", error: (error as Error).message },
+        {
+          status: 503,
+          headers: { "cache-control": "private, no-store", "retry-after": "1" },
+        },
+      );
     }
     if (error instanceof DatabaseRowReferencedError) {
       return json({ code: "REFERENCED", error: error.message }, 409);

@@ -5,12 +5,20 @@ import {
   DatabaseSnapshotUnsupportedError,
   type DatabaseAdapter,
   type PhysicalTable,
+  type ReleaseCatalogPartition,
+  type SnapshotReader,
   type StoredRow,
+  targetBaseCandidateKey,
   type WriteOp,
 } from "@hot-updater/plugin-core";
 import {
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+} from "@hot-updater/protocol";
+import {
   conformanceItems,
   createBundleFixture,
+  createReleaseCatalogPartitionFixture,
   setupDatabaseAdapterConformanceSuite,
 } from "@hot-updater/test-utils";
 import { assertDockerComposeAvailable } from "@hot-updater/test-utils/node";
@@ -25,6 +33,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createInProcessCoreApi } from "../core/inProcess.testFixtures";
+import { createHotUpdaterHandlers } from "../handler";
 import { mongoAdapter } from "./mongodb";
 import { createMongoAdapter, MONGO_SNAPSHOT_RESTARTS } from "./mongodbAdapter";
 
@@ -234,6 +243,34 @@ const patch = async (
     previous: previous!,
   };
 };
+/** A stored partition without one bundle's release, as a disable rewrites it. */
+const withoutBundle = (
+  partition: ReleaseCatalogPartition,
+  bundleId: string,
+): ReleaseCatalogPartition => {
+  const catalog = JSON.parse(partition.payload);
+  const kept: number[] = [];
+  catalog.releaseDescriptors.forEach(
+    (descriptor: { bundleId: string }, index: number) => {
+      if (descriptor.bundleId !== bundleId) kept.push(index);
+    },
+  );
+  const [segment] = catalog.segments;
+  segment.releaseIndexes = segment.releaseIndexes
+    .filter((index: number) => kept.includes(index))
+    .map((index: number) => kept.indexOf(index));
+  segment.rollbackReleaseIndexes = kept.map((_, index) => index);
+  catalog.releaseDescriptors = kept.map(
+    (index) => catalog.releaseDescriptors[index],
+  );
+  const payload = JSON.stringify(catalog);
+  return {
+    ...partition,
+    byteSize: new TextEncoder().encode(payload).byteLength,
+    payload,
+  };
+};
+
 const ok = async (adapter: DatabaseAdapter, ops: readonly WriteOp[]) =>
   expect(await adapter.write(ops)).toEqual({ ok: true });
 
@@ -586,6 +623,289 @@ describe("MongoDB snapshot reads on a three-member replica set", () => {
     },
   );
 
+  describe("partitioned release catalogs through core", () => {
+    let databases = 0;
+    const scopeKeyOf = (channel: string) =>
+      createReleaseCatalogScopeKey({
+        channelKey: encodeChannelKey(channel),
+        platform: "ios",
+        strategy: "APP_VERSION",
+      });
+    /**
+     * Core over a client set to read secondaries, seeded through today's
+     * writer, with a hook that writes just before a snapshot opens: the
+     * state a snapshot reread finds after the plain read of the head.
+     */
+    const seeded = async () => {
+      databases += 1;
+      const { client, events } = hostile(`catalog${databases}`);
+      const database = mongoAdapter({ client });
+      await (await database.createMigrator!().migrateToLatest()).execute();
+      const hooks: {
+        beforeSnapshot?: () => Promise<void>;
+        /** Runs once, inside a snapshot, after a read of a partition page. */
+        afterPartitionPage?: () => Promise<void>;
+      } = {};
+      const base = database.adapter;
+      const adapter = Object.assign(Object.create(base), {
+        readSnapshot: async <T>(
+          read: (reader: SnapshotReader) => Promise<T>,
+        ) => {
+          const hook = hooks.beforeSnapshot;
+          hooks.beforeSnapshot = undefined;
+          await hook?.();
+          return base.readSnapshot!((reader) =>
+            read({
+              get: (table, keys) => reader.get(table, keys),
+              query: async (table, request) => {
+                const rows = await reader.query(table, request);
+                const during = hooks.afterPartitionPage;
+                if (during && table.name === "release_catalog_partitions") {
+                  hooks.afterPartitionPage = undefined;
+                  await during();
+                }
+                return rows;
+              },
+            }),
+          );
+        },
+      }) as DatabaseAdapter;
+      const core = createInProcessCoreApi(adapter);
+      let suffix = 100;
+      for (const [channel, ranges] of [
+        [
+          "production",
+          ["1.0.0", "1.0.0", ">=1.1.0 <2.0.0", "2.0.0", "3.0.0", ">=2.0.0"],
+        ],
+        ["beta", ["5.0.0", "6.0.0"]],
+      ] as const) {
+        for (const targetAppVersion of ranges) {
+          suffix += 1;
+          await core.deploy([
+            {
+              bundle: createBundleFixture(String(suffix)),
+              release: {
+                channel,
+                enabled: true,
+                fingerprintHash: null,
+                message: null,
+                shouldForceUpdate: false,
+                targetAppVersion,
+              },
+            },
+          ]);
+        }
+      }
+      const fixture = createReleaseCatalogPartitionFixture(base);
+      const check = async (version: string, channel = "production") => {
+        const response = await createHotUpdaterHandlers({
+          api: { core },
+        }).client(
+          new Request(
+            `http://localhost/release-catalogs/app-version/ios/${encodeChannelKey(channel)}/${version}`,
+          ),
+        );
+        return [response.status, await response.text()] as const;
+      };
+      return { check, core, events, fixture, hooks };
+    };
+    const versions = ["0.9.0", "1.0.0", "1.5.0", "2.0.0", "2.5.0", "3.0.0"];
+
+    it("answers as the compact row did, reading the head plainly, then the head and its row in one snapshot, without getMore", async () => {
+      const { check, core, events, fixture } = await seeded();
+      const before = await Promise.all(
+        versions.map((version) => check(version)),
+      );
+      const rowBefore = await core.getReleaseCatalogRow(
+        scopeKeyOf("production"),
+      );
+      // Compact scopes never open a snapshot.
+      expect(events.finds()).toEqual([]);
+      await fixture.partition(scopeKeyOf("production"));
+      events.clear();
+      expect(await check("1.5.0")).toEqual(before[2]);
+      const plain = events
+        .plainFinds()
+        .filter((event) =>
+          String(event.command.find).endsWith("release_catalogs"),
+        );
+      expect(plain).toHaveLength(1);
+      const snapshot = events.finds();
+      expect(snapshot.map((event) => String(event.command.find))).toEqual([
+        expect.stringMatching(/release_catalogs$/),
+        expect.stringMatching(/release_catalog_partitions$/),
+      ]);
+      // The second read carries the first reply's cluster time.
+      expect(
+        atClusterTimeOf(snapshot[1]!)?.equals(
+          events.replyOf(snapshot[0]!)?.cursor?.atClusterTime as Timestamp,
+        ),
+      ).toBe(true);
+      expect(snapshot[1]!.command.collation).toEqual({ locale: "simple" });
+      expect(
+        events.started.filter((event) => event.commandName === "getMore"),
+      ).toEqual([]);
+      expect(
+        await Promise.all(versions.map((version) => check(version))),
+      ).toEqual(before);
+      expect(await core.getReleaseCatalogRow(scopeKeyOf("production"))).toEqual(
+        rowBefore,
+      );
+    });
+
+    it("answers the compact row a snapshot reread finds after a head (head to compact)", async () => {
+      const { check, events, fixture, hooks } = await seeded();
+      const { compact, rows } = await fixture.partition(
+        scopeKeyOf("production"),
+      );
+      hooks.beforeSnapshot = async () => {
+        await fixture.publishCompact(scopeKeyOf("production"), {
+          catalogHash: "sha256:compact-next",
+          generation: compact.generation + 1,
+          payload: compact.payload,
+        });
+        await fixture.deleteRows(scopeKeyOf("production"), rows);
+      };
+      events.clear();
+      const [status, body] = await check("1.0.0");
+      expect(status).toBe(200);
+      expect(JSON.parse(body)).toMatchObject({
+        catalogHash: "sha256:compact-next",
+        generation: compact.generation + 1,
+      });
+      // The snapshot read the compact row, and no partition after it.
+      expect(events.finds().map((event) => String(event.command.find))).toEqual(
+        [expect.stringMatching(/release_catalogs$/)],
+      );
+    });
+
+    it("assembles a scope a writer converted between the page and its snapshot (compact to head), and pages every scope", async () => {
+      const { core, fixture, hooks } = await seeded();
+      const before = await core.listReleaseCatalogs({ limit: 10 });
+      await fixture.partition(scopeKeyOf("production"));
+      hooks.beforeSnapshot = async () => {
+        await fixture.partition(scopeKeyOf("beta"));
+      };
+      expect(await core.listReleaseCatalogs({ limit: 10 })).toEqual(before);
+      expect((await fixture.readRow(scopeKeyOf("beta"))).payload).toContain(
+        '"layout":"partitioned"',
+      );
+      // Pages of one row, both orders, with a write between them.
+      for (const order of ["asc", "desc"] as const) {
+        const pages = [];
+        let after: string | undefined;
+        for (;;) {
+          const page = await core.listReleaseCatalogs({
+            limit: 1,
+            order,
+            ...(after === undefined ? {} : { after }),
+          });
+          if (page.length === 0) break;
+          pages.push(...page);
+          after = page.at(-1)!.scope_key;
+          hooks.beforeSnapshot = async () => {
+            const beta = await fixture.readRow(scopeKeyOf("beta"));
+            const old = await fixture.rows(scopeKeyOf("beta"));
+            const epoch = crypto.randomUUID();
+            await fixture.writeRows(
+              scopeKeyOf("beta"),
+              old.map((row) => ({ ...row, epoch })),
+            );
+            await fixture.publishHead(scopeKeyOf("beta"), {
+              catalogHash: beta.catalog_hash,
+              epoch,
+              generation: beta.generation,
+              remove: old,
+            });
+          };
+        }
+        hooks.beforeSnapshot = undefined;
+        expect(pages).toEqual(order === "asc" ? before : [...before].reverse());
+      }
+    });
+
+    it("unions one snapshot's rows when a write lands between two finds of one patch-base read", async () => {
+      const { core, events, fixture, hooks } = await seeded();
+      const { compact, epoch } = await fixture.partition(
+        scopeKeyOf("production"),
+      );
+      const query = () =>
+        core.findBaseBundleIds(
+          targetBaseCandidateKey({
+            appVersion: "*",
+            channel: "production",
+            fingerprintHash: null,
+            platform: "ios",
+          })!,
+          createBundleFixture("999").id,
+          100,
+        );
+      const before = await query();
+      // ">=2.0.0" (bundle 106) sits in every row from 2.0.0 up. After the
+      // snapshot's first partition page, it is disabled at G+1 in all of
+      // them, committed with the head.
+      const disabled = createBundleFixture("106").id;
+      expect(before).toContain(disabled);
+      hooks.afterPartitionPage = async () => {
+        const holding = (await fixture.rows(scopeKeyOf("production"))).filter(
+          (row) =>
+            row.epoch === epoch && row.partition.payload.includes(disabled),
+        );
+        expect(holding.length).toBeGreaterThan(1);
+        await fixture.publishHead(scopeKeyOf("production"), {
+          catalogHash: "sha256:disabled",
+          epoch,
+          generation: compact.generation + 1,
+          write: holding.map((row) => ({
+            ...row,
+            generation: compact.generation + 1,
+            partition: withoutBundle(row.partition, disabled),
+          })),
+        });
+      };
+      events.clear();
+      // G's union: the snapshot never sees the write.
+      expect(await query()).toEqual(before);
+      expect(hooks.afterPartitionPage).toBeUndefined();
+      const finds = events.finds();
+      expect(
+        finds.filter((event) =>
+          String(event.command.find).endsWith("release_catalog_partitions"),
+        ).length,
+      ).toBeGreaterThan(1);
+      const time = events.replyOf(finds[0]!)?.cursor
+        ?.atClusterTime as Timestamp;
+      for (const event of finds.slice(1)) {
+        expect(atClusterTimeOf(event)?.equals(time)).toBe(true);
+      }
+      expect(
+        events.started.filter((event) => event.commandName === "getMore"),
+      ).toEqual([]);
+      // The next read sees G+1, without the disabled release.
+      expect(await query()).not.toContain(disabled);
+    });
+
+    it("finds the patch bases the compact row did, in one snapshot", async () => {
+      const { core, fixture } = await seeded();
+      const query = (appVersion: string) =>
+        core.findBaseBundleIds(
+          targetBaseCandidateKey({
+            appVersion,
+            channel: "production",
+            fingerprintHash: null,
+            platform: "ios",
+          })!,
+          createBundleFixture("999").id,
+          100,
+        );
+      const ranges = ["1.0.0", "1.5.0", "*", ">=1.0.0 <3.0.0"];
+      const before = await Promise.all(ranges.map(query));
+      expect(before.some((ids) => ids.length > 1)).toBe(true);
+      await fixture.partition(scopeKeyOf("production"));
+      expect(await Promise.all(ranges.map(query))).toEqual(before);
+    });
+  });
+
   it(`fails closed after ${MONGO_SNAPSHOT_RESTARTS} restarts, and never restarts for the read's own error`, async () => {
     const appName = `exhaust-${Math.random().toString(36).slice(2, 8)}`;
     const { client, events } = hostile("exhaust", appName);
@@ -715,6 +1035,33 @@ describe("MongoDB 4.4, which has no snapshot reads", () => {
     ]);
     const release = result!.release!;
     await expect(core.getRelease(release.id)).resolves.toEqual(release);
+    // Every catalog read of a compact scope, as before: no snapshot.
+    const scopeKey = createReleaseCatalogScopeKey({
+      channelKey: encodeChannelKey("production"),
+      platform: "ios",
+      strategy: "APP_VERSION",
+    });
+    const response = await createHotUpdaterHandlers({ api: { core } }).client(
+      new Request(
+        `http://localhost/release-catalogs/app-version/ios/${encodeChannelKey("production")}/1.0.0`,
+      ),
+    );
+    expect(response.status).toBe(200);
+    expect(await core.getReleaseCatalogRow(scopeKey)).not.toBeNull();
+    expect(await core.listReleaseCatalogs({ limit: 10 })).toHaveLength(1);
+    expect(
+      await core.findBaseBundleIds(
+        targetBaseCandidateKey({
+          appVersion: "1.0.0",
+          channel: "production",
+          fingerprintHash: null,
+          platform: "ios",
+        })!,
+        createBundleFixture("9").id,
+        5,
+      ),
+    ).toEqual([createBundleFixture("1").id]);
+    await core.ready();
     expect(events.plainFinds().length).toBeGreaterThan(0);
     expect(events.finds()).toEqual([]);
 

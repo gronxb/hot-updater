@@ -38,6 +38,7 @@ import {
   type MeasuredDatabaseStorage,
 } from "./createMeasuredDatabase";
 import { createBundleFixture } from "./databaseTestFixtures";
+import { createReleaseCatalogPartitionFixture } from "./releaseCatalogPartitionFixture";
 import type { RowsExamined } from "./sqlRowsExamined";
 
 /** Core's API with the client routes' reads, which the public API leaves out. */
@@ -154,6 +155,12 @@ export interface ReadBudgetAdapterContext {
 
 export interface ReadBudgetSuiteOptions {
   readonly name: string;
+  /**
+   * `false` for a database without `release_catalog_partitions`, as a 1.2
+   * prerelease's is until its by-hand step: no scope is partitioned, and the
+   * partitioned scope's budgets are left out.
+   */
+  readonly partitions?: false;
   /** Returns an adapter over freshly created, empty tables. */
   readonly createAdapter: (context: ReadBudgetAdapterContext) => Promise<{
     readonly adapter: DatabaseAdapter;
@@ -504,20 +511,34 @@ type Seeded = Awaited<ReturnType<typeof seed>>;
 interface ReadBudget<T = unknown> {
   readonly api: string;
   read(seeded: Seeded): Promise<T>;
-  /** Point reads (keys asked) and query rows at the adapter; `copies` when index reads return copies. */
+  /**
+   * Point reads (keys asked) and query rows at the adapter; `copies` when
+   * index reads return copies, `snapshots` when the adapter reads a
+   * partitioned catalog's head again in a snapshot (`readSnapshot`).
+   */
   readonly adapter:
     | DatabaseReadCount
-    | ((copies: boolean) => DatabaseReadCount);
+    | ((copies: boolean, snapshots: boolean) => DatabaseReadCount);
   /** Calls and logical rows at the engine, where an aggregate row merges its shard rows. */
-  readonly engine: { readonly calls: number; readonly rows: number };
+  readonly engine:
+    | { readonly calls: number; readonly rows: number }
+    | ((snapshots: boolean) => {
+        readonly calls: number;
+        readonly rows: number;
+      });
   /** The rows the call returns: the engine reads these and no more. */
   returned?(result: T): number;
   /** Committed writes. */
   readonly writes?: number;
+  /** Reads the partitioned scope: left out where the table is missing. */
+  readonly partitioned?: true;
   check?(result: T): void;
 }
 
 const budget = <T>(entry: ReadBudget<T>): ReadBudget => entry;
+
+/** The partitioned scope's compact row before it was partitioned, by scope key. */
+const partitionedCompact = new Map<string, unknown>();
 
 const BUDGET_PENDING_UDID = "00008030-000000000000000a";
 const BUDGET_APPROVED_UDID = "00008030-000000000000000b";
@@ -535,6 +556,26 @@ const updateCheck = {
   channelKey: encodeChannelKey("production"),
   appVersion: "1.0.0",
 } as const;
+
+/**
+ * Staging iOS, partitioned in place after the seed: its two 1.0.0 releases
+ * in three rows, the 1.0.0 row between two gaps.
+ */
+const partitionedScopeKey = createReleaseCatalogScopeKey({
+  channelKey: encodeChannelKey("staging"),
+  platform: "ios",
+  strategy: "APP_VERSION",
+});
+const PARTITION_ROWS = 3;
+/** Catalogs the seed leaves: production iOS and Android, beta and staging iOS. */
+const CATALOGS = 4;
+/** The head, then (with snapshots) the head again and the rest in one snapshot. */
+const headThen = (
+  snapshots: boolean,
+  queries: number,
+  rows: number,
+): DatabaseReadCount =>
+  snapshots ? reads(2, 2, queries, rows) : reads(1, 1, queries, rows);
 
 /** The PRD's read-budget list, each count exact at both boundaries. */
 const READ_BUDGETS: readonly ReadBudget[] = [
@@ -678,6 +719,112 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       expect(ids).toEqual(
         ["106", "105"].map((suffix) => createBundleFixture(suffix).id),
       ),
+  }),
+  budget({
+    api: "update check, partitioned scope: the head and the row covering the version",
+    partitioned: true,
+    read: ({ core }) =>
+      core.getReleaseCatalog({
+        ...updateCheck,
+        channelKey: encodeChannelKey("staging"),
+      }),
+    adapter: (_copies, snapshots) => headThen(snapshots, 1, 1),
+    engine: (snapshots) => ({
+      calls: snapshots ? 3 : 2,
+      rows: snapshots ? 3 : 2,
+    }),
+    check: (catalog) =>
+      expect(
+        (catalog as ReleaseCatalog | null)?.releases.map(
+          ({ bundleId }) => bundleId,
+        ),
+      ).toEqual(["092", "091"].map((suffix) => createBundleFixture(suffix).id)),
+  }),
+  budget({
+    api: "deploy base candidates, partitioned scope: the head and the row covering the range",
+    partitioned: true,
+    read: ({ core }) =>
+      core.findBaseBundleIds(
+        targetBaseCandidateKey({
+          channel: "staging",
+          platform: "ios",
+          fingerprintHash: null,
+          appVersion: "1.0.0",
+        })!,
+        createBundleFixture("107").id,
+        2,
+      ),
+    adapter: (_copies, snapshots) => headThen(snapshots, 1, 1),
+    engine: (snapshots) => ({
+      calls: snapshots ? 3 : 2,
+      rows: snapshots ? 3 : 2,
+    }),
+    check: (ids) =>
+      expect(ids).toEqual(
+        ["092", "091"].map((suffix) => createBundleFixture(suffix).id),
+      ),
+  }),
+  budget({
+    api: "deploy base candidates, partitioned scope, open range: the head, one row, then the page below it",
+    partitioned: true,
+    read: ({ core }) =>
+      core.findBaseBundleIds(
+        targetBaseCandidateKey({
+          channel: "staging",
+          platform: "ios",
+          fingerprintHash: null,
+          appVersion: "*",
+        })!,
+        createBundleFixture("107").id,
+        2,
+      ),
+    adapter: (_copies, snapshots) => headThen(snapshots, 2, PARTITION_ROWS),
+    engine: (snapshots) => ({
+      calls: snapshots ? 4 : 3,
+      rows: (snapshots ? 2 : 1) + PARTITION_ROWS,
+    }),
+    check: (ids) =>
+      expect(ids).toEqual(
+        ["092", "091"].map((suffix) => createBundleFixture(suffix).id),
+      ),
+  }),
+  budget({
+    api: "catalog list page with a partitioned scope: the page, and that scope's rows, assembled",
+    partitioned: true,
+    read: ({ core }) => core.listReleaseCatalogs({ limit: 10 }),
+    // Snapshots read the page again in one snapshot with the head's rows.
+    adapter: (_copies, snapshots) =>
+      snapshots
+        ? reads(0, 0, 3, 2 * CATALOGS + PARTITION_ROWS)
+        : reads(0, 0, 2, CATALOGS + PARTITION_ROWS),
+    engine: (snapshots) =>
+      snapshots
+        ? { calls: 3, rows: 2 * CATALOGS + PARTITION_ROWS }
+        : { calls: 2, rows: CATALOGS + PARTITION_ROWS },
+    check: (rows) =>
+      expect(
+        (rows as { scope_key: string }[]).find(
+          (row) => row.scope_key === partitionedScopeKey,
+        ),
+      ).toEqual(partitionedCompact.get(partitionedScopeKey)),
+  }),
+  budget({
+    api: "catalog row, partitioned scope: the head and its epoch's rows, assembled to the compact row",
+    partitioned: true,
+    read: ({ core }) => core.getReleaseCatalogRow(partitionedScopeKey),
+    adapter: (_copies, snapshots) => headThen(snapshots, 1, PARTITION_ROWS),
+    engine: (snapshots) => ({
+      calls: snapshots ? 3 : 2,
+      rows: (snapshots ? 2 : 1) + PARTITION_ROWS,
+    }),
+    check: (row) =>
+      expect(row).toEqual(partitionedCompact.get(partitionedScopeKey)),
+  }),
+  budget({
+    api: "ready: one raw catalog row, never an assembled scope",
+    read: ({ core }) => (core as unknown as { ready(): Promise<void> }).ready(),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
   }),
   budget({
     api: "deploy latest release id: byScope descending, limit 1",
@@ -1407,6 +1554,17 @@ export const setupReadBudgetTestSuite = (
       // Seeding also passes the schema fence of a fenced adapter, such as
       // D1's, so no budget pays for it.
       seeded = await seed(database);
+      if (options.partitions !== false) {
+        partitionedCompact.set(
+          partitionedScopeKey,
+          await seeded.core.getReleaseCatalogRow(partitionedScopeKey),
+        );
+        const { rows } =
+          await createReleaseCatalogPartitionFixture(adapter).partition(
+            partitionedScopeKey,
+          );
+        expect(rows).toHaveLength(PARTITION_ROWS);
+      }
     }, 300_000);
 
     afterAll(async () => {
@@ -1414,18 +1572,23 @@ export const setupReadBudgetTestSuite = (
     });
 
     for (const budget of READ_BUDGETS) {
+      if (options.partitions === false && budget.partitioned) continue;
       it(budget.api, async () => {
         const { examined, indexCopies = false } = created;
         writes = 0;
         examined?.reset();
         const measured = await database.measureReads(() => budget.read(seeded));
+        const snapshots = created.adapter.readSnapshot !== undefined;
         const adapter =
           typeof budget.adapter === "function"
-            ? budget.adapter(indexCopies)
+            ? budget.adapter(indexCopies, snapshots)
             : budget.adapter;
         expect({ adapter: measured.adapter, engine: measured.engine }).toEqual({
           adapter,
-          engine: budget.engine,
+          engine:
+            typeof budget.engine === "function"
+              ? budget.engine(snapshots)
+              : budget.engine,
         });
         expect(writes, "writes").toBe(budget.writes ?? 0);
         if (budget.returned) {

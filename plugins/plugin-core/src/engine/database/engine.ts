@@ -29,6 +29,8 @@ export const createStorageEngine = ({
   return {
     reads,
     transaction,
+    /** The adapter's snapshot reads, through every wrapper; absent without them. */
+    readSnapshot: adapter.readSnapshot?.bind(adapter),
     /** Runs `read` and reports what it read at both boundaries (verify mode only). */
     async measureReads<T>(read: () => Promise<T>): Promise<ReadMeasurement<T>> {
       if (verified === undefined) {

@@ -3,6 +3,7 @@ import {
   MAX_DISTINCT_TARGET_COHORTS_PER_SCOPE,
   type Release,
 } from "@hot-updater/protocol";
+import { canonicalizeAppVersion } from "@hot-updater/protocol";
 import { compare } from "verkit";
 import { describe, expect, it } from "vitest";
 
@@ -11,6 +12,7 @@ import {
   assembleReleaseCatalog,
   compileReleaseCatalogTiling,
   insertReleaseIntoTiling,
+  parseReleaseCatalogPartition,
   projectReleaseCatalogPartition,
   RELEASE_CATALOG_LOWER_KEY_MAX_BYTES,
   type ReleaseCatalogPartition,
@@ -501,6 +503,57 @@ describe("stored rows", () => {
       expect(() =>
         projectReleaseCatalogPartition({ ...row, payload }, "1.0.0"),
       ).toThrow(expect.objectContaining({ code: "INVALID_PARTITION" }));
+    }
+  });
+
+  it("parse once into the row's span and answers, as projectReleaseCatalogPartition gives them", async () => {
+    const rows = await tiling([
+      release(1, { targetAppVersion: "1.0.0" }),
+      release(2, { targetAppVersion: ">=2.0.0" }),
+    ]);
+    for (const [index, row] of rows.entries()) {
+      const parsed = parseReleaseCatalogPartition(row);
+      // Each row ends where the next begins; the last runs to the end.
+      expect(parsed.endKey).toBe(rows[index + 1]?.lowerKey ?? null);
+      for (const version of ["0.1.0", "1.0.0", "1.5.0", "2.0.0", "9.0.0"]) {
+        expect(parsed.covers(version)).toBe(
+          projectReleaseCatalogPartition(row, version) !== null,
+        );
+        expect(parsed.project(version)).toEqual(
+          projectReleaseCatalogPartition(row, version),
+        );
+      }
+    }
+    // A lower key that isn't its lower bound's is a row of another shape.
+    expect(() =>
+      parseReleaseCatalogPartition({
+        ...rows[1]!,
+        lowerKey: rows[2]!.lowerKey,
+      }),
+    ).toThrow(expect.objectContaining({ code: "INVALID_PARTITION" }));
+  });
+
+  it("give every canonical app version a lookup key, so a partitioned check never lacks one", () => {
+    // Canonical versions are x.y.z with each part a number canonicalize
+    // accepts; the widest it accepts still encodes.
+    const parts = [0, 1, 9, 10, 99, 12345, 2 ** 31, 2 ** 53 - 1];
+    let canonical = 0;
+    for (const major of parts) {
+      for (const minor of parts) {
+        for (const patch of parts) {
+          const version = canonicalizeAppVersion(`${major}.${minor}.${patch}`);
+          if (version === null) continue;
+          canonical += 1;
+          expect(releaseCatalogLookupKey(version), version).not.toBeNull();
+        }
+      }
+    }
+    expect(canonical).toBeGreaterThan(parts.length ** 2);
+    for (const raw of ["1", "1.2", "v1.2.3", "1.2.3-beta.1", "1.2.3+build"]) {
+      const version = canonicalizeAppVersion(raw);
+      if (version !== null) {
+        expect(releaseCatalogLookupKey(version), raw).not.toBeNull();
+      }
     }
   });
 

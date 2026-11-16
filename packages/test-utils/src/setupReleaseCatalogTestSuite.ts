@@ -389,8 +389,17 @@ export const setupReleaseCatalogTestSuite = (options: {
           );
           expect(response.headers.get("x-hot-updater-catalog")).toBe("none");
           await publish("121");
+          // The server remembers the miss for its 5-second memo window, as a
+          // CDN does, then answers the new catalog.
+          const deadline = Date.now() + 8_000;
+          while (
+            (await request(catalogPath())).status === 404 &&
+            Date.now() < deadline
+          ) {
+            await new Promise((resolve) => setTimeout(resolve, 250));
+          }
           expect((await readCatalog()).releases).toHaveLength(1);
-        });
+        }, 30_000);
 
         it("preserves rollout and named cohort policy without server-side cohort selection", async () => {
           const stable = await publish("131");

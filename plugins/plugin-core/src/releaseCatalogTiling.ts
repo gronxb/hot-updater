@@ -588,6 +588,73 @@ export interface ReleaseCatalogPartitionProjection {
 }
 
 /**
+ * A stored row read once, so a reader answers every app version inside it
+ * without parsing it again, and checks which rows meet. Exported for core's
+ * update check, its memo, and its patch-base reads.
+ */
+export interface ParsedReleaseCatalogPartition {
+  readonly partition: ReleaseCatalogPartition;
+  /** The row as a compiled catalog of its one segment. */
+  readonly catalog: CompiledReleaseCatalog;
+  /** The row's one segment, its bounds and its lists. */
+  readonly segment: CompiledCatalogSegment;
+  /** The lower key of the row after this one; null at the end of the line. */
+  readonly endKey: string | null;
+  /** Whether a device on `appVersion` reads this row. */
+  covers(appVersion: string): boolean;
+  /**
+   * The two lists a device on `appVersion` receives; null when the row
+   * doesn't cover it.
+   */
+  project(appVersion: string): ReleaseCatalogPartitionProjection | null;
+}
+
+/**
+ * `partition` read as leniently as today's reader of a compact row, so a
+ * 1.2.x core keeps reading rows another 1.2.x core wrote. Throws
+ * `INVALID_PARTITION` when it isn't one compiled segment whose lower bound
+ * is its lower key. Exported for core's reads.
+ */
+export function parseReleaseCatalogPartition(
+  partition: ReleaseCatalogPartition,
+): ParsedReleaseCatalogPartition {
+  const { catalog, segment } = readPartition(partition);
+  if (lowerKeyOf(segment.lower) !== partition.lowerKey) {
+    throw invalidRow(partition, "its lower key isn't its lower bound's");
+  }
+  const endKey =
+    segment.upper === null ? null : lowerKeyOf(after(segment.upper));
+  if (segment.upper !== null && endKey === null) {
+    throw invalidRow(partition, "its upper bound has no key");
+  }
+  const canonicalOf = (appVersion: string) => {
+    const canonical = canonicalizeAppVersion(appVersion);
+    return canonical !== null && versionInSegment(canonical, segment)
+      ? canonical
+      : null;
+  };
+  return {
+    catalog,
+    covers: (appVersion) => canonicalOf(appVersion) !== null,
+    endKey,
+    partition,
+    project: (appVersion) => {
+      const canonical = canonicalOf(appVersion);
+      return canonical === null
+        ? null
+        : {
+            releases: projectCompiledCatalog(catalog, canonical),
+            rollbackReleases: projectCompiledRollbackCatalog(
+              catalog,
+              canonical,
+            ),
+          };
+    },
+    segment,
+  };
+}
+
+/**
  * The two lists a device on `appVersion` receives from `partition`, as
  * `projectCompiledCatalog` and `projectCompiledRollbackCatalog` give them
  * from the compact catalog. Null when the row doesn't cover that version:

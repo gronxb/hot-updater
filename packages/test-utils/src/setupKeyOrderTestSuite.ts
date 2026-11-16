@@ -352,6 +352,64 @@ export const setupKeyOrderTestSuite = (
       }
     });
 
+    it("pages one epoch as core's catalog reads do: an epoch-prefix bound beside a full-key cursor", async () => {
+      const expected = sorted("s");
+      /** Pages of 2, each past the last key, as the engine's cursor bounds them. */
+      const walk = async (
+        order: "asc" | "desc",
+        bounds: { readonly lower?: QueryBound; readonly upper?: QueryBound },
+      ) => {
+        const walked: (readonly [unknown, unknown])[] = [];
+        let cursor: QueryBound | undefined;
+        for (let pages = 0; pages <= expected.length; pages += 1) {
+          const page = await read("s", {
+            order,
+            limit: 2,
+            ...bounds,
+            ...(cursor &&
+              (order === "asc" ? { lower: cursor } : { upper: cursor })),
+          });
+          walked.push(...keysOf(page));
+          if (page.length < 2) break;
+          const last = page.at(-1)!;
+          cursor = {
+            values: [String(last.epoch), String(last.lower_key)],
+            inclusive: false,
+          };
+        }
+        return walked;
+      };
+      for (const epoch of ["0a", "0b", UUID]) {
+        const own = expected.filter(([rowEpoch]) => rowEpoch === epoch);
+        // A tooling read of the live epoch: `[epoch]` to `[epoch]`, ascending.
+        expect(
+          await walk("asc", {
+            lower: { values: [epoch], inclusive: true },
+            upper: { values: [epoch], inclusive: true },
+          }),
+          `${epoch} asc`,
+        ).toEqual(own);
+        // An open-ended patch-base range: `(epoch, "")` up to `[epoch]`, descending.
+        expect(
+          await walk("desc", {
+            lower: { values: [epoch, ""], inclusive: true },
+            upper: { values: [epoch], inclusive: true },
+          }),
+          `${epoch} desc`,
+        ).toEqual(own.toReversed());
+        // A bounded one: `(epoch, "")` below `(epoch, stop)`, descending.
+        for (const [, stop] of own) {
+          expect(
+            await walk("desc", {
+              lower: { values: [epoch, ""], inclusive: true },
+              upper: { values: [epoch, stop], inclusive: false },
+            }),
+            `${epoch} desc below ${stop.slice(0, 12)}`,
+          ).toEqual(own.filter(([, lower]) => lower < stop).toReversed());
+        }
+      }
+    });
+
     it("keeps keys that differ only in letter case, or by a suffix, as distinct rows in byte order", async () => {
       const cases: Key[] = [
         ["c", "0a", "A"],

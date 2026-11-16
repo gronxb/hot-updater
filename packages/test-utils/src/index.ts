@@ -19,9 +19,14 @@ export * from "./setupReleaseCatalogTestSuite";
 export * from "./httpTestClient";
 export * from "./httpTestServer";
 export * from "./releaseCatalogHttpFixtures";
+export * from "./releaseCatalogPartitionFixture";
 export {
   checkReleaseCatalogTiling,
+  cohortClasses,
   createReleaseCatalogOracleCounters,
+  decide as decideReleaseCatalog,
+  deviceStates,
+  probeAppVersions,
   oracleLayers,
   type ReleaseCatalogDeviceState,
   type ReleaseCatalogOracleCounters,

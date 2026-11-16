@@ -5,6 +5,7 @@ import {
 } from "@hot-updater/protocol";
 import { describe, expect, it, vi } from "vitest";
 
+import { parseReleaseCatalogRow } from "./db/releaseCatalog";
 import { createHotUpdaterHandlers } from "./handler";
 import { createApi, createHandlers } from "./handler.testFixtures";
 import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "./handlerVersionRoutes";
@@ -96,9 +97,12 @@ describe("createHandlers client routes", () => {
       updated_at_ms: 0,
     } satisfies ReleaseCatalogRow;
     const api = createApi();
-    const getReleaseCatalogRow = vi
-      .spyOn(api.core, "getReleaseCatalogRow")
-      .mockResolvedValue(row);
+    const readReleaseCatalogState = vi
+      .spyOn(api.core, "readReleaseCatalogState")
+      .mockResolvedValue({
+        kind: "compact",
+        parsed: parseReleaseCatalogRow(row),
+      });
     const handler = createHandlers(api).client;
     const url =
       "http://localhost/release-catalogs/fingerprint/android/" +
@@ -117,13 +121,17 @@ describe("createHandlers client routes", () => {
       schemaVersion: 1,
       scopeKey,
     } satisfies ReleaseCatalog);
-    expect(getReleaseCatalogRow).toHaveBeenCalledWith(scopeKey);
+    expect(readReleaseCatalogState).toHaveBeenCalledWith(
+      scopeKey,
+      "",
+      undefined,
+    );
 
     const legacyAuthorityPath = await handler(
       new Request(url.replace("/android/", "/project-a/android/")),
     );
     expect(legacyAuthorityPath.status).toBe(404);
-    expect(getReleaseCatalogRow).toHaveBeenCalledOnce();
+    expect(readReleaseCatalogState).toHaveBeenCalledOnce();
   });
 
   it("serves artifact protocol v1 on an explicit route", async () => {
@@ -312,7 +320,10 @@ describe("createHandlers client routes", () => {
     ],
   ])("answers 400 to %s without reading a catalog", async (_, path) => {
     const api = createApi();
-    const getReleaseCatalogRow = vi.spyOn(api.core, "getReleaseCatalogRow");
+    const readReleaseCatalogState = vi.spyOn(
+      api.core,
+      "readReleaseCatalogState",
+    );
     const handler = createHandlers(api).client;
 
     const response = await handler(new Request(`http://localhost${path}`));
@@ -322,12 +333,12 @@ describe("createHandlers client routes", () => {
     await expect(response.json()).resolves.toEqual({
       error: expect.any(String),
     });
-    expect(getReleaseCatalogRow).not.toHaveBeenCalled();
+    expect(readReleaseCatalogState).not.toHaveBeenCalled();
   });
 
   it("does not expose provider errors from the public client handler", async () => {
     const api = createApi();
-    vi.spyOn(api.core, "getReleaseCatalogRow").mockRejectedValue(
+    vi.spyOn(api.core, "readReleaseCatalogState").mockRejectedValue(
       new Error("private database connection details"),
     );
     const consoleError = vi
