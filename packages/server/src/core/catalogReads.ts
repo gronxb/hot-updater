@@ -7,6 +7,7 @@ import {
   type ParsedReleaseCatalogPartition,
   parseReleaseCatalogPartition,
   type ReadRow,
+  type ReleaseCatalogAssembly,
   releaseCatalogKeyRanges,
   releaseCatalogLookupKey,
   type ReleaseCatalogPartition,
@@ -196,6 +197,38 @@ const RETRY = Symbol("retry");
 type Attempt<T> = T | typeof RETRY;
 
 /**
+ * Every row of the head's epoch, verified, when together they tile the
+ * whole version line as `assembleReleaseCatalog` checks it, with that
+ * assembly. A retry for a row of another epoch or a newer generation, a
+ * corrupt row, a hole, an overlap, or no rows at all: rows of two states,
+ * or rows still missing.
+ */
+const epochTiling = async (
+  reader: CatalogReader,
+  head: ReleaseCatalogHead,
+): Promise<
+  Attempt<{
+    readonly rows: readonly ParsedReleaseCatalogPartition[];
+    readonly assembly: ReleaseCatalogAssembly;
+  }>
+> => {
+  const rows: ParsedReleaseCatalogPartition[] = [];
+  for (const row of await epochRows(reader, head)) {
+    const partition = verified(head, row);
+    if (partition === null) return RETRY;
+    rows.push(partition);
+  }
+  try {
+    const assembly = assembleReleaseCatalog(
+      rows.map(({ partition }) => partition),
+    );
+    return { assembly, rows };
+  } catch {
+    return RETRY;
+  }
+};
+
+/**
  * Runs `attempt` until it isn't a retry, at most `1 + REREADS` times, then
  * throws the conflict. A torn read, a missing row or one of a newer
  * generation all retry, and none is ever an answer.
@@ -357,18 +390,10 @@ const assembledRow = async (
   reader: CatalogReader,
   head: ReleaseCatalogHead,
 ): Promise<Attempt<ReleaseCatalogRow>> => {
-  const partitions: ReleaseCatalogPartition[] = [];
-  for (const row of await epochRows(reader, head)) {
-    if (verified(head, row) === null) return RETRY;
-    partitions.push(toPartition(row));
-  }
-  try {
-    const { byteSize, canonicalPayload } = assembleReleaseCatalog(partitions);
-    return { ...head.row, byte_size: byteSize, payload: canonicalPayload };
-  } catch {
-    // A hole or an overlap: rows of two states, or rows still missing.
-    return RETRY;
-  }
+  const tiling = await epochTiling(reader, head);
+  if (tiling === RETRY) return RETRY;
+  const { byteSize, canonicalPayload } = tiling.assembly;
+  return { ...head.row, byte_size: byteSize, payload: canonicalPayload };
 };
 
 const publicRowIn = async (
@@ -490,7 +515,10 @@ const rowsOver = async (
   }
 };
 
-/** Patch bases under a head, from the rows its range covers; all rows when its keys don't fit. */
+/**
+ * Patch bases under a head, from the rows its range covers; when its keys
+ * don't fit, from every row, checked as one tiling.
+ */
 const headBaseBundleIds = async (
   reader: CatalogReader,
   head: ReleaseCatalogHead,
@@ -501,9 +529,10 @@ const headBaseBundleIds = async (
   const ranges = releaseCatalogKeyRanges(range);
   const rows = new Map<string, ParsedReleaseCatalogPartition>();
   if (ranges === null) {
-    for (const row of await epochRows(reader, head)) {
-      const partition = verified(head, row);
-      if (partition === null) return RETRY;
+    // Every row, accepted only as a whole tiling, as the public row is.
+    const tiling = await epochTiling(reader, head);
+    if (tiling === RETRY) return RETRY;
+    for (const partition of tiling.rows) {
       rows.set(partition.partition.lowerKey, partition);
     }
   } else {

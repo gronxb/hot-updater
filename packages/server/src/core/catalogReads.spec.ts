@@ -1019,6 +1019,87 @@ describe.each([
     expect(await core.findBaseBundleIds(key, bundleId, 100)).toEqual(before);
   });
 
+  describe("a patch-base range whose keys don't fit, read through every row", () => {
+    // Its second endpoint compares through Number, so it has no key range.
+    const UNENCODABLE = "<0.1.0 || >=1.0.0-9007199254740993";
+    /** One release only the first row holds, one only a middle row, one only the last. */
+    const EDGES: readonly [string, string][] = [
+      ["301", "<0.0.5"],
+      ["302", "~1.2.0"],
+      ["303", "2.0.0"],
+      ["304", "1.0.0"],
+      ["305", ">=5.0.0"],
+    ];
+    const keyOf = () =>
+      targetBaseCandidateKey({
+        appVersion: UNENCODABLE,
+        channel: CHANNEL,
+        fingerprintHash: null,
+        platform: "ios",
+      })!;
+    const bundleId = createBundleFixture("999").id;
+
+    it.each([
+      { history: MIXED, name: "mixed ranges" },
+      { history: EDGES, name: "rows holding their own releases" },
+    ])(
+      "finds the same patch bases as today's compact row, for $name",
+      async ({ history }) => {
+        const { core, fixture } = await setup(history, { snapshots });
+        const expected = await core.findBaseBundleIds(keyOf(), bundleId, 100);
+        expect(expected.length).toBeGreaterThan(1);
+        await fixture.partition(scopeKeyOf());
+        expect(await core.findBaseBundleIds(keyOf(), bundleId, 100)).toEqual(
+          expected,
+        );
+      },
+    );
+
+    const holding = (suffix: string) => {
+      const id = createBundleFixture(suffix).id;
+      return <T extends { partition: ReleaseCatalogPartition }>(
+        rows: readonly T[],
+      ) => rows.filter((row) => row.partition.payload.includes(id));
+    };
+    it.each([
+      { name: "every row", pick: <T>(rows: readonly T[]) => [...rows] },
+      { name: "a middle row", pick: holding("303") },
+      { name: "the first row", pick: <T>(rows: readonly T[]) => [rows[0]!] },
+      { name: "the last row", pick: <T>(rows: readonly T[]) => [rows.at(-1)!] },
+    ])(
+      "rereads, then refuses as a retryable conflict, when $name is missing",
+      async ({ pick }) => {
+        const { core, fixture, io } = await setup(EDGES, { snapshots });
+        const before = await core.findBaseBundleIds(keyOf(), bundleId, 100);
+        const { rows } = await fixture.partition(scopeKeyOf());
+        const missing = pick(rows);
+        expect(missing.length).toBeGreaterThan(0);
+        // A base only the missing rows hold: a union of the rest omits it.
+        const kept = rows.filter((row) => !missing.includes(row));
+        expect(
+          before.filter(
+            (id) => !kept.some((row) => row.partition.payload.includes(id)),
+          ),
+        ).not.toEqual([]);
+        await fixture.deleteRows(scopeKeyOf(), missing);
+        io.reset();
+        await expect(
+          core.findBaseBundleIds(keyOf(), bundleId, 100),
+        ).rejects.toThrow(ReleaseCatalogReadConflictError);
+        // The first read and three rereads, each reading the head's rows.
+        expect(
+          io.reads.filter(
+            ({ table }) => table === "release_catalog_partitions",
+          ),
+        ).toHaveLength(4);
+        await fixture.writeRows(scopeKeyOf(), missing);
+        expect(await core.findBaseBundleIds(keyOf(), bundleId, 100)).toEqual(
+          before,
+        );
+      },
+    );
+  });
+
   it("reads 2 calls for a check, 2 for an exact-version patch base, none of the table for compact scopes, and ready() one raw row", async () => {
     const { core, fixture, handlers, io } = await setup(MIXED, { snapshots });
     io.reset();
