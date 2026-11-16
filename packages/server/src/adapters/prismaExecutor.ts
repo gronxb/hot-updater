@@ -16,6 +16,8 @@ export interface PrismaTransactionalClient extends PrismaRawClient {
     fn: (tx: PrismaRawClient) => Promise<T>,
     options?: { readonly maxWait?: number; readonly timeout?: number },
   ): Promise<T>;
+  /** A read-replica extension's primary client, such as `@prisma/extension-read-replicas`'. */
+  $primary?(): PrismaTransactionalClient;
 }
 
 /**
@@ -79,28 +81,33 @@ const writeLock = (dialect: SqlDialect) =>
 /**
  * The SQL core's executor over a Prisma client, through raw queries and
  * interactive transactions. A SQLite transaction takes the write lock with
- * its first statement, as BEGIN IMMEDIATE would.
+ * its first statement, as BEGIN IMMEDIATE would. Under a read-replica
+ * extension, every statement runs on `$primary()`: the engine's reads must
+ * see every committed write, which a lagging replica may not have.
  */
 export const prismaExecutor = (
-  client: PrismaTransactionalClient,
+  root: PrismaTransactionalClient,
   dialect: SqlDialect,
-): SqlExecutor => ({
-  dialect,
-  ...over(dialect, client),
-  async transaction(fn) {
-    try {
-      return await client.$transaction(
-        async (tx) => {
-          const connection = over(dialect, tx);
-          if (dialect === "sqlite") {
-            await connection.execute({ sql: writeLock(dialect), params: [] });
-          }
-          return fn(connection);
-        },
-        { maxWait: 10_000, timeout: 30_000 },
-      );
-    } catch (error) {
-      throw withDatabaseCode(dialect, error);
-    }
-  },
-});
+): SqlExecutor => {
+  const client = typeof root.$primary === "function" ? root.$primary() : root;
+  return {
+    dialect,
+    ...over(dialect, client),
+    async transaction(fn) {
+      try {
+        return await client.$transaction(
+          async (tx) => {
+            const connection = over(dialect, tx);
+            if (dialect === "sqlite") {
+              await connection.execute({ sql: writeLock(dialect), params: [] });
+            }
+            return fn(connection);
+          },
+          { maxWait: 10_000, timeout: 30_000 },
+        );
+      } catch (error) {
+        throw withDatabaseCode(dialect, error);
+      }
+    },
+  };
+};

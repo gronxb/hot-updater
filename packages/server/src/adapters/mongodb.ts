@@ -19,7 +19,7 @@ const readSettings = (client: MongoClient) => async () => {
   const rows = await client
     .db()
     .collection(SETTINGS_TABLE.name)
-    .find({ key: { $type: "string" } })
+    .find({ key: { $type: "string" } }, { readPreference: "primary" })
     .toArray();
   return new Map(rows.map((row) => [String(row.key), row.value]));
 };

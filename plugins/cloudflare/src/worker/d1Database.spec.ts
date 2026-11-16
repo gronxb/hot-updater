@@ -10,36 +10,43 @@ import { createD1TestDatabase } from "@hot-updater/test-utils/node";
 import { expect, it } from "vitest";
 
 import { d1SchemaStatements } from "../d1Schema";
-import { d1Database } from "./d1Database";
+import { type D1Like, d1Database } from "./d1Database";
 
-it("reads through the binding's statements and writes each change as one batch", async () => {
+it("reads through the binding's statements on the primary, and writes each change as one batch", async () => {
   const database = createD1TestDatabase(
     new DatabaseSync(":memory:"),
     d1SchemaStatements(),
   );
-  const calls = { all: 0, batch: 0 };
-  const core = createHotUpdater({
-    database: d1Database({
-      prepare: (sql) => ({
-        bind: (...params) => ({
-          sql,
-          params,
-          all: async () => {
-            calls.all += 1;
-            return database.run(sql, params);
-          },
-        }),
+  const calls = { all: 0, batch: 0, withSession: 0 };
+  // D1's Sessions API reads from replicas; the binding is never asked for
+  // a session, so every read runs on the primary and sees every write.
+  const binding: D1Like & { withSession(): never } = {
+    withSession: () => {
+      calls.withSession += 1;
+      throw new Error("withSession reads from read replicas.");
+    },
+    prepare: (sql) => ({
+      bind: (...params) => ({
+        sql,
+        params,
+        all: async () => {
+          calls.all += 1;
+          return database.run(sql, params);
+        },
       }),
-      batch: async (statements) => {
-        calls.batch += 1;
-        return database.batch(
-          statements as unknown as {
-            sql: string;
-            params: readonly unknown[];
-          }[],
-        );
-      },
     }),
+    batch: async (statements) => {
+      calls.batch += 1;
+      return database.batch(
+        statements as unknown as {
+          sql: string;
+          params: readonly unknown[];
+        }[],
+      );
+    },
+  };
+  const core = createHotUpdater({
+    database: d1Database(binding),
     storage: createReleaseCatalogTestStorage(),
     clientAccess: "public",
   }).core;
@@ -65,4 +72,5 @@ it("reads through the binding's statements and writes each change as one batch",
   });
   expect(calls.batch).toBe(2);
   expect(calls.all).toBeGreaterThan(0);
+  expect(calls.withSession).toBe(0);
 });

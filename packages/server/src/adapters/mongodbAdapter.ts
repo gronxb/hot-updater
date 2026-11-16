@@ -3,11 +3,15 @@ import {
   DatabaseSchemaError,
   type DatabaseKey,
   type DatabaseKeyValue,
+  DatabaseSnapshotConflictError,
+  DatabaseSnapshotUnsupportedError,
   indexOrderColumns,
   normalizeStoredRow,
   type PhysicalIndex,
   type PhysicalTable,
   type QueryBound,
+  type QueryRequest,
+  type SnapshotReader,
   type StoredRow,
   type WriteOp,
   DATABASE_VERSION_COLUMN as V,
@@ -20,8 +24,12 @@ import {
   type Document,
   type Filter,
   type IndexDescription,
+  Long,
+  MongoCompatibilityError,
   MongoError,
+  MongoNetworkError,
   type MongoClient,
+  type Timestamp,
 } from "mongodb";
 
 export interface MongoAdapterOptions {
@@ -95,6 +103,37 @@ const compare = (
   return terms.length === 1 ? terms[0]! : { $or: terms };
 };
 
+/**
+ * The rows after `row` in MongoDB's sort order over `columns`. A null
+ * column is missing from the document and sorts below every value, so a
+ * null in an ascending read is followed by every value, and in a
+ * descending read every value is followed by the nulls.
+ */
+const continuation = (
+  columns: readonly string[],
+  row: StoredRow,
+  order: "asc" | "desc",
+): Document => {
+  const terms = columns.flatMap((column, position) => {
+    const value = row[column] ?? null;
+    const after =
+      order === "asc"
+        ? value === null
+          ? { [column]: { $ne: null } }
+          : { [column]: { $gt: value } }
+        : value === null
+          ? undefined
+          : { $or: [{ [column]: { $lt: value } }, { [column]: null }] };
+    if (after === undefined) return [];
+    const equal = columns
+      .slice(0, position)
+      .map((before) => ({ [before]: row[before] ?? null }));
+    return [equal.length === 0 ? after : { $and: [...equal, after] }];
+  });
+  // Key columns close every order, so a row always has a successor term.
+  return { $or: terms };
+};
+
 const indexDescription = (
   table: PhysicalTable,
   index: PhysicalIndex,
@@ -131,6 +170,45 @@ const BYTE_ORDERED = new Set(["release_catalog_partitions"]);
 
 const mongoError = (error: unknown) =>
   error instanceof MongoError ? error : undefined;
+
+/**
+ * Every read goes to the primary, whatever the client's read preference: a
+ * secondary can lag, and `get` and `query` promise every committed write.
+ */
+const PRIMARY = { readPreference: "primary" } as const;
+
+/** How many times a snapshot read starts over after a transient failure. */
+export const MONGO_SNAPSHOT_RESTARTS = 3;
+
+/**
+ * Failures a fresh snapshot can get past: the driver's retryable read codes
+ * (elections, shutdowns, lost hosts) and network errors, plus SnapshotTooOld
+ * (239), SnapshotUnavailable (246) and StaleChunkHistory (341), which a
+ * snapshot older than the history the server keeps answers. A server
+ * selection timeout is not one: the driver already waited out the election
+ * for it, so the read fails rather than waiting again on each restart.
+ */
+const RESTARTABLE_CODES = new Set([
+  6, 7, 89, 91, 134, 189, 239, 246, 262, 341, 9001, 10107, 11600, 11602, 13435,
+  13436,
+]);
+const restartable = (error: unknown) =>
+  error instanceof MongoNetworkError ||
+  (error instanceof MongoError &&
+    typeof error.code === "number" &&
+    RESTARTABLE_CODES.has(error.code));
+
+/**
+ * A deployment that can't read at a snapshot: the driver refuses one before
+ * 5.0 (wire version 13), and a standalone `mongod` answers NotAReplicaSet
+ * (123).
+ */
+const unsupported = (error: unknown) =>
+  error instanceof MongoCompatibilityError ||
+  (error instanceof MongoError && error.code === 123);
+
+/** A cursor id from a command reply: a number, or a Long past 2^53. */
+const cursorOpen = (id: unknown) => String(id) !== "0";
 
 /**
  * The storage engine's adapter over MongoDB: one collection per table, the
@@ -175,6 +253,176 @@ export const createMongoAdapter = (
       }
     }
   };
+
+  /** A query's filter, after an optional exclusive cursor, and its sort. */
+  const rangeOf = (table: PhysicalTable, request: QueryRequest) => {
+    const index = findPhysicalIndex(table, request.index);
+    const columns = indexOrderColumns(table, index);
+    const filter = (after?: StoredRow): Filter<Document> => {
+      const bounds = [
+        ...(request.lower ? [compare(columns, request.lower, "$gt")] : []),
+        ...(request.upper ? [compare(columns, request.upper, "$lt")] : []),
+        ...(after ? [continuation(columns, after, request.order)] : []),
+      ];
+      return {
+        ...Object.fromEntries(
+          index.eq.map((column, at) => [column, request.eq[at]]),
+        ),
+        ...(bounds.length > 0 && { $and: bounds }),
+      };
+    };
+    const direction = request.order === "asc" ? 1 : -1;
+    const sort = Object.fromEntries(
+      columns.map((column) => [column, direction]),
+    ) as Record<string, 1 | -1>;
+    return { filter, sort };
+  };
+
+  /**
+   * One snapshot session's `find` commands. Each is a single bounded
+   * command at the session's cluster time, never a `getMore`, whose
+   * pinning to the snapshot the manual doesn't state. A reply cut short by
+   * the 16 MiB batch limit leaves a cursor open, which is killed outside
+   * the session (a snapshot session can't send `killCursors`) and read on
+   * with a new `find`.
+   */
+  const snapshotRun = (session: ClientSession) => {
+    const state: {
+      failure?: unknown;
+      unsupported?: DatabaseSnapshotUnsupportedError;
+    } = {};
+    // The cluster time the first reply chose. Until it is known, reads wait
+    // for the first, so two concurrent first reads can't pick two snapshots.
+    let chosen: Timestamp | undefined;
+    let opening: Promise<void> | undefined;
+    const find = async (
+      table: PhysicalTable,
+      filter: Document,
+      limit: number,
+      sort?: Document,
+    ): Promise<{ documents: Document[]; more: boolean }> => {
+      while (chosen === undefined && opening !== undefined) {
+        await opening;
+      }
+      let opened: (() => void) | undefined;
+      if (chosen === undefined) {
+        opening = new Promise((resolve) => {
+          opened = resolve;
+        });
+      }
+      const name = tablePrefix + table.name;
+      try {
+        const reply = await client.db().command(
+          {
+            find: name,
+            filter,
+            ...(sort && { sort }),
+            limit,
+            batchSize: Math.min(limit, options.batchSize ?? limit),
+            ...collationOf(table),
+            // Explicit, though a raw command takes no client-level read
+            // concern today: a reply without a cluster time fails anyway.
+            readConcern: { level: "snapshot" },
+          },
+          { session, ...PRIMARY },
+        );
+        const { firstBatch, id, atClusterTime } = reply.cursor as {
+          firstBatch: Document[];
+          id: unknown;
+          atClusterTime?: Timestamp;
+        };
+        if (atClusterTime === undefined) {
+          throw new DatabaseSnapshotUnsupportedError(
+            "MongoDB answered a snapshot read without its cluster time.",
+          );
+        }
+        // The driver sends the session's time on every later read; a reply
+        // at another time would mix two snapshots, so the read fails.
+        chosen ??= atClusterTime;
+        if (!chosen.equals(atClusterTime)) {
+          throw new Error(
+            "MongoDB answered a snapshot session's read at another cluster time.",
+          );
+        }
+        const more = cursorOpen(id);
+        if (more) {
+          await client
+            .db()
+            .command(
+              { killCursors: name, cursors: [Long.fromString(String(id))] },
+              PRIMARY,
+            )
+            .catch(() => undefined);
+          if (firstBatch.length === 0) {
+            throw new Error(
+              "MongoDB returned an empty batch of an open cursor.",
+            );
+          }
+        }
+        return { documents: firstBatch, more };
+      } catch (error) {
+        if (error instanceof DatabaseSnapshotUnsupportedError) {
+          state.unsupported ??= error;
+        } else if (unsupported(error)) {
+          state.unsupported ??= new DatabaseSnapshotUnsupportedError(
+            "This MongoDB deployment can't read at a snapshot, which needs MongoDB 5.0 or later on a replica set or a sharded cluster.",
+            { cause: error },
+          );
+          throw state.unsupported;
+        } else if (restartable(error)) {
+          state.failure ??= error;
+        }
+        throw error;
+      } finally {
+        if (opened) {
+          opening = undefined;
+          opened();
+        }
+      }
+    };
+    return Object.assign(state, { find });
+  };
+
+  const snapshotReader = ({
+    find,
+  }: ReturnType<typeof snapshotRun>): SnapshotReader => ({
+    async get(table, keys) {
+      if (keys.length === 0) return [];
+      const ids = keys.map((key) => idOf(table, key));
+      const found = new Map<string, Document>();
+      let pending = ids;
+      for (;;) {
+        const { documents, more } = await find(
+          table,
+          byId({ $in: pending }),
+          pending.length,
+        );
+        for (const document of documents) {
+          found.set(JSON.stringify(document._id), document);
+        }
+        if (!more) break;
+        pending = pending.filter((id) => !found.has(JSON.stringify(id)));
+      }
+      return ids.map((id) => {
+        const document = found.get(JSON.stringify(id));
+        return document === undefined ? null : normalize(table, document);
+      });
+    },
+    async query(table, request) {
+      const { filter, sort } = rangeOf(table, request);
+      const rows: StoredRow[] = [];
+      for (;;) {
+        const { documents, more } = await find(
+          table,
+          filter(rows.at(-1)),
+          request.limit - rows.length,
+          sort,
+        );
+        rows.push(...documents.map((document) => normalize(table, document)));
+        if (!more || rows.length >= request.limit) return rows;
+      }
+    },
+  });
 
   /** Whether the op applied; a guard that no longer matches changes nothing. */
   const apply = async (op: WriteOp, session: ClientSession) => {
@@ -240,7 +488,7 @@ export const createMongoAdapter = (
       if (keys.length === 0) return [];
       const ids = keys.map((key) => idOf(table, key));
       const documents = await collection(table)
-        .find(byId({ $in: ids }), collationOf(table))
+        .find(byId({ $in: ids }), { ...PRIMARY, ...collationOf(table) })
         .toArray();
       const found = new Map(
         documents.map((document) => [JSON.stringify(document._id), document]),
@@ -252,32 +500,52 @@ export const createMongoAdapter = (
     },
 
     async query(table, request) {
-      const index = findPhysicalIndex(table, request.index);
-      const columns = indexOrderColumns(table, index);
-      const bounds = [
-        ...(request.lower ? [compare(columns, request.lower, "$gt")] : []),
-        ...(request.upper ? [compare(columns, request.upper, "$lt")] : []),
-      ];
-      const direction = request.order === "asc" ? 1 : -1;
+      const { filter, sort } = rangeOf(table, request);
       const documents = await collection(table)
-        .find(
-          {
-            ...Object.fromEntries(
-              index.eq.map((column, at) => [column, request.eq[at]]),
-            ),
-            ...(bounds.length > 0 && { $and: bounds }),
-          },
-          {
-            sort: Object.fromEntries(
-              columns.map((column) => [column, direction]),
-            ),
-            limit: request.limit,
-            ...collationOf(table),
-            ...(options.batchSize && { batchSize: options.batchSize }),
-          },
-        )
+        .find(filter(), {
+          ...PRIMARY,
+          sort,
+          limit: request.limit,
+          ...collationOf(table),
+          ...(options.batchSize && { batchSize: options.batchSize }),
+        })
         .toArray();
       return documents.map((document) => normalize(table, document));
+    },
+
+    /**
+     * Reads in a snapshot session: every `find` carries read concern
+     * `snapshot`, the first reply picks the cluster time, and the driver
+     * sends it as `atClusterTime` on every later read. Nothing is checked
+     * up front, so a deployment without snapshots serves every other call
+     * as before, and only this call fails there.
+     */
+    async readSnapshot<T>(read: (reader: SnapshotReader) => Promise<T>) {
+      for (let attempt = 0; ; attempt += 1) {
+        const session = client.startSession({ snapshot: true });
+        const run = snapshotRun(session);
+        let result: { ok: true; value: T } | { ok: false; error: unknown };
+        try {
+          result = { ok: true, value: await read(snapshotReader(run)) };
+        } catch (error) {
+          result = { ok: false, error };
+        } finally {
+          await session.endSession().catch(() => undefined);
+        }
+        if (run.unsupported) throw run.unsupported;
+        if (run.failure === undefined) {
+          if (result.ok) return result.value;
+          throw result.error;
+        }
+        // A read failed: whatever `read` made of it, the whole call starts
+        // over on a fresh snapshot, so no answer mixes two snapshots.
+        if (attempt === MONGO_SNAPSHOT_RESTARTS) {
+          throw new DatabaseSnapshotConflictError(
+            `MongoDB could not hold one snapshot for the read after ${attempt + 1} attempts.`,
+            { cause: run.failure },
+          );
+        }
+      }
     },
 
     async write(ops) {

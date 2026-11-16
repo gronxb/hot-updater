@@ -177,6 +177,55 @@ describe("prismaAdapter migrations", () => {
   });
 });
 
+describe("prismaAdapter under a read-replica extension", () => {
+  it("runs every statement on $primary(), never on a lagging replica", async () => {
+    const primary = await backends.postgresql();
+    // The replica has the schema but none of the primary's later rows: it lags.
+    const replica = await backends.postgresql();
+    await migrate(
+      prismaAdapter({ prisma: primary.prisma, provider: "postgresql" }),
+    );
+    await migrate(
+      prismaAdapter({ prisma: replica.prisma, provider: "postgresql" }),
+    );
+    const replicaQueries: string[] = [];
+    // A client whose extension sends raw reads to a replica, and its
+    // transactions and `$primary()` to the primary. The official
+    // `@prisma/extension-read-replicas` keeps raw queries on the primary;
+    // the executor must not depend on that.
+    const extended: PrismaTransactionalClient = {
+      $queryRawUnsafe: (sql, ...params) => {
+        replicaQueries.push(sql);
+        return replica.prisma.$queryRawUnsafe(sql, ...params);
+      },
+      $executeRawUnsafe: (sql, ...params) =>
+        primary.prisma.$executeRawUnsafe(sql, ...params),
+      $transaction: (fn, options) => primary.prisma.$transaction(fn, options),
+      $primary: () => primary.prisma,
+    };
+    const core = createInProcessCoreApi(
+      prismaAdapter({ prisma: extended, provider: "postgresql" }).adapter,
+    );
+    const [result] = await core.deploy([
+      {
+        bundle: createBundleFixture("1"),
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: "1.0.0",
+        },
+      },
+    ]);
+    const release = result!.release!;
+    await expect(core.getRelease(release.id)).resolves.toEqual(release);
+    expect(replicaQueries).toEqual([]);
+    await Promise.all([primary.close(), replica.close()]);
+  });
+});
+
 describe("prismaAdapter schema", () => {
   const models = (provider: "mysql" | "postgresql" | "sqlite") =>
     prismaAdapter({ prisma: {}, provider }).generateSchema!("latest").code;
