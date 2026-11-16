@@ -270,7 +270,12 @@ describe("useDeleteReleaseMutation", () => {
       });
     });
 
-    for (const queryKey of [["bundle"], queryKeys.bundleChildren.all]) {
+    for (const queryKey of [
+      ["bundle"],
+      queryKeys.bundleChildren.all,
+      // A build page's older patch pages, which stay fresh for a minute.
+      ["native-build-patches"],
+    ]) {
       expect(invalidateQueries).toHaveBeenCalledWith({ queryKey });
     }
 

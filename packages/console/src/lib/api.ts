@@ -474,6 +474,7 @@ export function useDeleteReleaseMutation() {
         queryClient.invalidateQueries({
           queryKey: queryKeys.bundleChildren.all,
         }),
+        queryClient.invalidateQueries({ queryKey: ["native-build-patches"] }),
       ]);
     },
   });
