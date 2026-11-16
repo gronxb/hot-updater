@@ -31,8 +31,8 @@ const open = async () => {
   });
   await (await createMigrator(server).migrateToLatest()).execute();
   const switchValue = async () =>
-    (await adapter.get(SETTINGS_TABLE, [["catalog.partitioning"]]))[0]
-      ?.value ?? null;
+    (await adapter.get(SETTINGS_TABLE, [["catalog.partitioning"]]))[0]?.value ??
+    null;
   const post = (body: unknown) =>
     server.handlers.client(
       new Request(URL_, {
@@ -87,7 +87,8 @@ describe("POST /release-catalog-partitioning on the client mount", () => {
     await record(await env.post({}));
     await record(await env.post({ token: 42 }));
     await record(await env.post({ token: "wrong" }));
-    const expired = await env.server.core.issueReleaseCatalogPartitioningToken();
+    const expired =
+      await env.server.core.issueReleaseCatalogPartitioningToken();
     vi.setSystemTime(Date.now() + PARTITIONING_REQUEST_TTL_MS);
     await record(await env.post({ token: expired }));
     expect(await env.switchValue()).toBeNull();
@@ -149,9 +150,7 @@ describe("/release-catalog-partitioning on the admin mount", () => {
     });
     expect(await env.switchValue()).toBeNull();
     expect(
-      await (
-        await env.server.handlers.admin(new Request(URL_))
-      ).json(),
+      await (await env.server.handlers.admin(new Request(URL_))).json(),
     ).toEqual({ data: { switch: "off", table: "missing" } });
   });
 });

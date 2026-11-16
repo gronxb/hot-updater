@@ -73,7 +73,13 @@ export const createStorageEngine = ({
         const guard = { v: Number(row._v) };
         ops.push(
           value === null
-            ? { type: "delete", table: SETTINGS_TABLE, key: [key], guard, previous: row }
+            ? {
+                type: "delete",
+                table: SETTINGS_TABLE,
+                key: [key],
+                guard,
+                previous: row,
+              }
             : {
                 type: "patch",
                 table: SETTINGS_TABLE,

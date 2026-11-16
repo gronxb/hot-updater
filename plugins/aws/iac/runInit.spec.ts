@@ -135,7 +135,10 @@ import {
   migrateCoreSchema,
   SETTINGS_TABLE,
 } from "@hot-updater/plugin-core";
-import { createHotUpdater, HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
+import {
+  createHotUpdater,
+  HOT_UPDATER_SERVER_VERSION,
+} from "@hot-updater/server";
 import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 
 import { getAwsV1SsmParameterName } from "./awsInfrastructureNames";
@@ -201,18 +204,23 @@ const deployedFunction = async (version = HOT_UPDATER_SERVER_VERSION) => {
     storage: createReleaseCatalogTestStorage(),
   });
   const requests: string[] = [];
-  vi.stubGlobal("fetch", async (input: string | URL | Request, init?: RequestInit) => {
-    const url = new URL(String(input));
-    requests.push(`${init?.method ?? "GET"} ${url.host}${url.pathname}`);
-    if (url.pathname === "/version") return Response.json({ version });
-    return server.handlers.client(new Request(url, init));
-  });
+  vi.stubGlobal(
+    "fetch",
+    async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(String(input));
+      requests.push(`${init?.method ?? "GET"} ${url.host}${url.pathname}`);
+      if (url.pathname === "/version") return Response.json({ version });
+      return server.handlers.client(new Request(url, init));
+    },
+  );
   return {
     requests,
     switchValue: async () =>
-      (await (adapter as DatabaseAdapter).get(SETTINGS_TABLE, [
-        ["catalog.partitioning"],
-      ]))[0]?.["value"] ?? null,
+      (
+        await (adapter as DatabaseAdapter).get(SETTINGS_TABLE, [
+          ["catalog.partitioning"],
+        ])
+      )[0]?.["value"] ?? null,
   };
 };
 

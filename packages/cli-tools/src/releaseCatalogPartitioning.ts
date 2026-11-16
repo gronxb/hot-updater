@@ -43,8 +43,11 @@ const trimSlash = (url: string) => url.replace(/\/+$/u, "");
 
 const read = async (
   response: Response,
-): Promise<{ readonly code?: unknown; readonly error?: unknown; readonly data?: unknown }> =>
-  ((await response.json().catch(() => null)) as never) ?? {};
+): Promise<{
+  readonly code?: unknown;
+  readonly error?: unknown;
+  readonly data?: unknown;
+}> => ((await response.json().catch(() => null)) as never) ?? {};
 
 /**
  * Turns release catalog partitioning on through the server, which checks
@@ -243,7 +246,9 @@ export const enablePartitioningAfterDeploy = async ({
   }).catch((error: unknown) => [
     error instanceof Error ? error.message : String(error),
   ]);
-  const other = versions.find((version) => version !== deployed.expectedVersion);
+  const other = versions.find(
+    (version) => version !== deployed.expectedVersion,
+  );
   if (other !== undefined) {
     return off(
       `${trimSlash(serverUrl)}/version answered ${other}, not ${deployed.expectedVersion}.`,

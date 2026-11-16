@@ -18,8 +18,13 @@ const { loadConfig, loadServer, log } = vi.hoisted(() => ({
 }));
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@hot-updater/cli-tools")>();
-  return { ...actual, loadConfig, p: { ...actual.p, log: { ...actual.p.log, ...log } } };
+  const actual =
+    await importOriginal<typeof import("@hot-updater/cli-tools")>();
+  return {
+    ...actual,
+    loadConfig,
+    p: { ...actual.p, log: { ...actual.p.log, ...log } },
+  };
 });
 vi.mock("@/utils/loadServer", async () => ({
   ...(await vi.importActual<typeof import("../utils/loadServer")>(
@@ -41,26 +46,30 @@ const managed = async ({ serverVersion }: { serverVersion: "1.2" | "1.1" }) => {
     database,
     storage: createReleaseCatalogTestStorage(),
   });
-  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = new URL(String(input));
-    if (serverVersion === "1.1") {
-      return Response.json({ error: "Not found" }, { status: 404 });
-    }
-    return deployed.handlers.client(
-      new Request(
-        `http://localhost${url.pathname.replace("/functions/v1/hot-updater", "")}`,
-        init,
-      ),
-    );
-  });
+  vi.stubGlobal(
+    "fetch",
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (serverVersion === "1.1") {
+        return Response.json({ error: "Not found" }, { status: 404 });
+      }
+      return deployed.handlers.client(
+        new Request(
+          `http://localhost${url.pathname.replace("/functions/v1/hot-updater", "")}`,
+          init,
+        ),
+      );
+    },
+  );
   // The command closes its database; a memory adapter's close empties it,
   // and the server process keeps the same store open.
   loadServer.mockResolvedValue(
     testServer({ database: { ...database, dispose: async () => {} } }),
   );
   return async () =>
-    (await adapter.get(SETTINGS_TABLE, [["catalog.partitioning"]]))[0]
-      ?.["value"] ?? null;
+    (await adapter.get(SETTINGS_TABLE, [["catalog.partitioning"]]))[0]?.[
+      "value"
+    ] ?? null;
 };
 
 describe("db partition-catalogs", () => {

@@ -15,19 +15,19 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { createHotUpdater } from "../createHotUpdaterCore";
-import { createInProcessCoreApi } from "./inProcess.testFixtures";
-import {
-  appVersionScope,
-  createWriteTestAdapter,
-  releasePolicy,
-  storedScope,
-} from "./catalogWrites.testFixtures";
 import {
   PARTITIONING_REQUEST_SETTING,
   PARTITIONING_REQUEST_TTL_MS,
   ReleaseCatalogPartitioningError,
   ReleaseCatalogPartitioningRequestError,
 } from "./catalogPartitioning";
+import {
+  appVersionScope,
+  createWriteTestAdapter,
+  releasePolicy,
+  storedScope,
+} from "./catalogWrites.testFixtures";
+import { createInProcessCoreApi } from "./inProcess.testFixtures";
 
 const PARTITIONS = "release_catalog_partitions";
 const SWITCH = "catalog.partitioning";
@@ -83,7 +83,8 @@ const recording = (
 const caseInsensitiveOrder = (base: DatabaseAdapter): DatabaseAdapter => {
   const fold = (row: StoredRow) =>
     `${String(row.epoch).toLowerCase()}\u0000${String(row.lower_key).toLowerCase()}`;
-  const wrap = (query: DatabaseAdapter["query"]) =>
+  const wrap =
+    (query: DatabaseAdapter["query"]) =>
     async (table: PhysicalTable, request: QueryRequest) => {
       const rows = await query.call(base, table, request);
       if (table.name !== PARTITIONS) return rows;

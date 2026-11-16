@@ -18,7 +18,9 @@ import { checkServerData } from "./doctor/serverData";
 
 const COMMAND = "npx hot-updater db partition-catalogs --server-url <url>";
 
-const setup = async (wrap: (a: DatabaseAdapter) => DatabaseAdapter = (a) => a) => {
+const setup = async (
+  wrap: (a: DatabaseAdapter) => DatabaseAdapter = (a) => a,
+) => {
   const raw = createMemoryAdapter();
   await migrateCoreSchema(raw, "memory");
   const adapter = wrap(raw);
@@ -177,9 +179,12 @@ describe("doctor's partitioning report", () => {
     const older: HotUpdaterCoreApi = {
       ...env.core,
       getReleaseCatalogPartitioning: async () => {
-        throw Object.assign(new Error("no release catalog partitioning route"), {
-          status: 404,
-        });
+        throw Object.assign(
+          new Error("no release catalog partitioning route"),
+          {
+            status: 404,
+          },
+        );
       },
     };
     const status = await checkServerData(older, { partitionCommand: COMMAND });

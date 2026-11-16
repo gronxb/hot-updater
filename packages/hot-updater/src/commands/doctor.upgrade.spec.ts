@@ -41,8 +41,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiKeys, insights, remoteConfig } from "../plugins";
-import { doctor, handleDoctor } from "./doctor";
 import { PARTITIONING_OFF } from "./database.testFixtures";
+import { doctor, handleDoctor } from "./doctor";
 import { INFRASTRUCTURE_UPDATES } from "./infrastructureUpdates";
 import {
   INIT_PROVIDER_PACKAGES,

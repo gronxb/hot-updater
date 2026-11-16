@@ -844,9 +844,9 @@ describe("MongoDB snapshot reads on a three-member replica set", () => {
         collation: { locale: "en", strength: 2 },
       });
       const core = createInProcessCoreApi(database.adapter);
-      await expect(core.enableReleaseCatalogPartitioning()).rejects.toMatchObject(
-        { code: "PARTITIONS_KEY_ORDER" },
-      );
+      await expect(
+        core.enableReleaseCatalogPartitioning(),
+      ).rejects.toMatchObject({ code: "PARTITIONS_KEY_ORDER" });
       expect(await core.getReleaseCatalogPartitioning()).toMatchObject({
         switch: "off",
       });
@@ -1230,7 +1230,10 @@ describe("MongoDB 4.4, which has no snapshot reads", () => {
       table: "present",
     });
     expect(
-      await legacy.db().collection("release_catalog_partitions").countDocuments(),
+      await legacy
+        .db()
+        .collection("release_catalog_partitions")
+        .countDocuments(),
     ).toBe(0);
     await expect(core.getRelease(release.id)).resolves.toEqual(release);
   });

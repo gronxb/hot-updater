@@ -4,7 +4,10 @@ import type { MountedEndpoint } from "./assembly/assemblePlugins";
 import { HotUpdaterConfigError } from "./assembly/assemblePlugins";
 import { ADMIN_ROUTES, createAdminRouteHandlers } from "./handlerAdminRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
-import { createPartitioningRouteHandlers, PARTITIONING_PATH } from "./handlerPartitioningRoutes";
+import {
+  createPartitioningRouteHandlers,
+  PARTITIONING_PATH,
+} from "./handlerPartitioningRoutes";
 import { createReleaseCatalogRouteHandlers } from "./handlerReleaseCatalogRoutes";
 import type {
   HandlerAPI,

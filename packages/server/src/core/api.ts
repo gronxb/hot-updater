@@ -1,13 +1,13 @@
 import {
-  readReleaseCatalogState,
-  type ReleaseCatalogHead,
-  type ReleaseCatalogState,
-} from "./catalogReads";
-import {
   enableReleaseCatalogPartitioning,
   issueReleaseCatalogPartitioningToken,
   readReleaseCatalogPartitioning,
 } from "./catalogPartitioning";
+import {
+  readReleaseCatalogState,
+  type ReleaseCatalogHead,
+  type ReleaseCatalogState,
+} from "./catalogReads";
 import type { CatalogWriteOptions } from "./catalogWrites";
 import { createIosDeviceApi } from "./iosDevices";
 import { createNativeBuildApi } from "./nativeBuilds";

@@ -80,9 +80,7 @@ const toHex = (bytes: ArrayBuffer | Uint8Array) =>
   ).join("");
 
 const sha256Hex = async (text: string) =>
-  toHex(
-    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)),
-  );
+  toHex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)));
 
 const base64Url = (bytes: Uint8Array) =>
   btoa(String.fromCharCode(...bytes))
@@ -381,9 +379,7 @@ export const enableReleaseCatalogPartitioning = async (
     }
     const [switched, held] = await Promise.all([
       db.readSetting(PARTITIONING_SETTING),
-      request === null
-        ? null
-        : db.readSetting(PARTITIONING_REQUEST_SETTING),
+      request === null ? null : db.readSetting(PARTITIONING_REQUEST_SETTING),
     ]);
     // Another call consumed this token.
     if (request !== null && held !== request) {

@@ -342,8 +342,16 @@ describe.each([
  * leaving the switch unset and no probe row behind.
  */
 describe.each([
-  ["PostgreSQL with ICU 'en' keys", "postgresql", (ddl: string) => ddl.replaceAll(' COLLATE "C"', "")],
-  ["MySQL with ascii_general_ci keys", "mysql", (ddl: string) => ddl.replaceAll("ascii_bin", "ascii_general_ci")],
+  [
+    "PostgreSQL with ICU 'en' keys",
+    "postgresql",
+    (ddl: string) => ddl.replaceAll(' COLLATE "C"', ""),
+  ],
+  [
+    "MySQL with ascii_general_ci keys",
+    "mysql",
+    (ddl: string) => ddl.replaceAll("ascii_bin", "ascii_general_ci"),
+  ],
 ] as const)("the partitioning probe on %s", (_, dialect, handMade) => {
   const open = async () => {
     const provider = dialect;
@@ -409,7 +417,9 @@ describe.each([
     const [statement] = createTableStatements(dialect, [
       releaseCatalogPartitionsTable,
     ]);
-    await env.exec(`DROP TABLE ${dialect === "mysql" ? "`" + TABLE + "`" : `"${TABLE}"`}`);
+    await env.exec(
+      `DROP TABLE ${dialect === "mysql" ? "`" + TABLE + "`" : `"${TABLE}"`}`,
+    );
     await env.exec(handMade(statement!));
     const response = await env.enable();
     expect(response.status).toBe(409);

@@ -84,7 +84,6 @@ import {
 } from "./commands/insights";
 import { keysExportPublic, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
-import { handlePartitionCatalogs } from "./commands/partitionCatalogs";
 import {
   handleNativeBuildDelete,
   handleNativeBuildMark,
@@ -100,6 +99,7 @@ import {
   handleNativeBuildDevicesRename,
 } from "./commands/nativeBuildDevices";
 import { handleNativeBuildImport } from "./commands/nativeBuildImport";
+import { handlePartitionCatalogs } from "./commands/partitionCatalogs";
 import { handlePromote } from "./commands/promote";
 import {
   handleRemoteConfigPreview,

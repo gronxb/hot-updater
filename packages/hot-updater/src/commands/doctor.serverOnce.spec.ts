@@ -16,8 +16,8 @@ import {
   type ClosingDatabaseState,
   createClosingDatabase,
 } from "./__fixtures__/closingDatabase";
-import { doctor } from "./doctor";
 import { PARTITIONING_OFF } from "./database.testFixtures";
+import { doctor } from "./doctor";
 
 vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
 

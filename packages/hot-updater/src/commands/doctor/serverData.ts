@@ -1,9 +1,8 @@
+import { partitionCatalogsCommand } from "@hot-updater/cli-tools";
 import type {
   HotUpdaterCoreApi,
   ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
-
-import { partitionCatalogsCommand } from "@hot-updater/cli-tools";
 
 import type { ReleaseCatalogIssue, ReleaseCatalogStatus } from "./issues";
 
@@ -214,7 +213,9 @@ const checkPartitioning = async (
   status: ReleaseCatalogStatus,
   command: string,
 ): Promise<void> => {
-  let read: Awaited<ReturnType<HotUpdaterCoreApi["getReleaseCatalogPartitioning"]>>;
+  let read: Awaited<
+    ReturnType<HotUpdaterCoreApi["getReleaseCatalogPartitioning"]>
+  >;
   try {
     read = await core.getReleaseCatalogPartitioning();
   } catch (error) {

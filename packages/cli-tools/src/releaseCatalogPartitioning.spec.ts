@@ -6,7 +6,10 @@ import {
   type RemoteDatabase,
   SETTINGS_TABLE,
 } from "@hot-updater/plugin-core";
-import { createHotUpdater, HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
+import {
+  createHotUpdater,
+  HOT_UPDATER_SERVER_VERSION,
+} from "@hot-updater/server";
 import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
@@ -20,7 +23,9 @@ import {
 const URL_ = "https://updates.example.com/api";
 
 /** A deployed server over `adapter`, and a fetch that reaches its client mount. */
-const deployServer = async (adapter: DatabaseAdapter = createMemoryAdapter()) => {
+const deployServer = async (
+  adapter: DatabaseAdapter = createMemoryAdapter(),
+) => {
   await migrateCoreSchema(adapter, "memory");
   const server = createHotUpdater({
     clientAccess: "public",
@@ -28,22 +33,30 @@ const deployServer = async (adapter: DatabaseAdapter = createMemoryAdapter()) =>
     storage: createReleaseCatalogTestStorage(),
   });
   const requests: string[] = [];
-  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+  const fetchImpl = (async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
     const url = new URL(String(input));
     requests.push(`${init?.method ?? "GET"} ${url.pathname}${url.search}`);
     return server.handlers.client(
-      new Request(`http://localhost${url.pathname.replace(/^\/api/u, "")}${url.search}`, init),
+      new Request(
+        `http://localhost${url.pathname.replace(/^\/api/u, "")}${url.search}`,
+        init,
+      ),
     );
   }) as typeof fetch;
   const switchValue = async () =>
-    (await adapter.get(SETTINGS_TABLE, [["catalog.partitioning"]]))[0]
-      ?.value ?? null;
+    (await adapter.get(SETTINGS_TABLE, [["catalog.partitioning"]]))[0]?.value ??
+    null;
   return { adapter, server, fetchImpl, requests, switchValue };
 };
 
 /** The CLI's assembly over the same database the server reads. */
 const cliOver = (adapter: DatabaseAdapter) =>
-  assembleServer({ database: createEngineDatabase({ name: "memory", adapter }) });
+  assembleServer({
+    database: createEngineDatabase({ name: "memory", adapter }),
+  });
 
 describe("enableReleaseCatalogPartitioning", () => {
   it("over the server's database: stores a token, and the server's client route turns it on", async () => {
@@ -145,32 +158,38 @@ type AfterDeployOptions = Partial<
 >;
 
 const OFF_CASES: [string, AfterDeployOptions][] = [
-    ["no completion signal", { deployed: undefined }],
-    [
-      "a completion signal that refuses",
-      {
-        deployed: {
-          confirm: async (): Promise<true | string> => "the distribution is InProgress.",
-          expectedVersion: HOT_UPDATER_SERVER_VERSION,
-        },
+  ["no completion signal", { deployed: undefined }],
+  [
+    "a completion signal that refuses",
+    {
+      deployed: {
+        confirm: async (): Promise<true | string> =>
+          "the distribution is InProgress.",
+        expectedVersion: HOT_UPDATER_SERVER_VERSION,
       },
-    ],
-    [
-      "a completion signal that throws",
-      {
-        deployed: {
-          confirm: async (): Promise<true | string> => {
-            throw new Error("GetDistribution failed");
-          },
-          expectedVersion: HOT_UPDATER_SERVER_VERSION,
+    },
+  ],
+  [
+    "a completion signal that throws",
+    {
+      deployed: {
+        confirm: async (): Promise<true | string> => {
+          throw new Error("GetDistribution failed");
         },
+        expectedVersion: HOT_UPDATER_SERVER_VERSION,
       },
-    ],
-    [
-      "another expected version",
-      { deployed: { confirm: async (): Promise<true | string> => true, expectedVersion: "9.9.9" } },
-    ],
-  ];
+    },
+  ],
+  [
+    "another expected version",
+    {
+      deployed: {
+        confirm: async (): Promise<true | string> => true,
+        expectedVersion: "9.9.9",
+      },
+    },
+  ],
+];
 
 describe("enablePartitioningAfterDeploy", () => {
   const run = async (
@@ -194,7 +213,9 @@ describe("enablePartitioningAfterDeploy", () => {
       enabled: true,
       changed: true,
     });
-    const versions = env.requests.filter((r) => r.startsWith("GET /api/version?"));
+    const versions = env.requests.filter((r) =>
+      r.startsWith("GET /api/version?"),
+    );
     expect(versions).toHaveLength(5);
     expect(new Set(versions).size).toBe(5);
     expect(env.requests.at(-1)).toBe("POST /api/release-catalog-partitioning");
@@ -216,16 +237,21 @@ describe("enablePartitioningAfterDeploy", () => {
     expect(env.requests).toEqual([]);
   });
 
-  it.each(OFF_CASES)("leaves it off with %s, and prints the command", async (_, options) => {
-    const env = await deployServer();
-    const result = await run(env, options);
-    expect(result).toMatchObject({
-      enabled: false,
-      command: `npx hot-updater db partition-catalogs --server-url ${URL_}`,
-    });
-    expect(env.requests).not.toContain("POST /api/release-catalog-partitioning");
-    expect(await env.switchValue()).toBeNull();
-  });
+  it.each(OFF_CASES)(
+    "leaves it off with %s, and prints the command",
+    async (_, options) => {
+      const env = await deployServer();
+      const result = await run(env, options);
+      expect(result).toMatchObject({
+        enabled: false,
+        command: `npx hot-updater db partition-catalogs --server-url ${URL_}`,
+      });
+      expect(env.requests).not.toContain(
+        "POST /api/release-catalog-partitioning",
+      );
+      expect(await env.switchValue()).toBeNull();
+    },
+  );
 
   it("leaves it off when old and new servers answer side by side, or a cache answers a stale /version", async () => {
     const env = await deployServer();
