@@ -10,6 +10,8 @@ import {
   useDeleteChannelMutation,
   useDeleteReleaseMutation,
   useNativeBuildInstallEligibilityQuery,
+  useNativeBuildPatchesQuery,
+  useReleaseFoldQuery,
   useReleasesQuery,
   useUpdateReleaseMutation,
 } from "./api";
@@ -18,6 +20,8 @@ import {
   deleteChannel as deleteChannelApi,
   deleteRelease as deleteReleaseApi,
   getNativeBuildInstallEligibility,
+  getNativeBuildPatches,
+  getReleaseFold,
   getReleases as getReleasesApi,
   updateRelease as updateReleaseApi,
 } from "./api-rpc";
@@ -32,8 +36,10 @@ vi.mock("./api-rpc", () => ({
   getChannels: vi.fn(),
   getConfig: vi.fn(),
   getNativeBuildInstallEligibility: vi.fn(),
+  getNativeBuildPatches: vi.fn(),
   getRelease: vi.fn(),
   getReleaseCatalogDiagnostics: vi.fn(),
+  getReleaseFold: vi.fn(),
   getReleases: vi.fn(),
   preflightRelease: vi.fn(),
   updateRelease: vi.fn(),
@@ -321,5 +327,55 @@ describe("useNativeBuildInstallEligibilityQuery", () => {
     await act(() => vi.advanceTimersByTimeAsync(3 * LINK_LIFETIME));
 
     expect(calls).toHaveLength(before);
+  });
+});
+
+describe("a window focus", () => {
+  // What React Query hears when the person comes back to the tab.
+  const focus = () =>
+    act(async () => {
+      window.dispatchEvent(new Event("visibilitychange"));
+    });
+
+  it("reads no release or patch list again", async () => {
+    vi.mocked(getReleasesApi).mockReset().mockResolvedValue({
+      data: [],
+    } as never);
+    vi.mocked(getReleaseFold).mockReset().mockResolvedValue({
+      data: [],
+    } as never);
+    vi.mocked(getNativeBuildPatches).mockReset().mockResolvedValue({
+      data: [],
+    } as never);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderHook(
+      () => [
+        useReleasesQuery(),
+        useReleaseFoldQuery(undefined, { to: "release-9" }, true),
+        useNativeBuildPatchesQuery("bundle-1", {}, true),
+      ],
+      {
+        wrapper: ({ children }: PropsWithChildren) => (
+          <QueryClientProvider client={queryClient}>
+            {children}
+          </QueryClientProvider>
+        ),
+      },
+    );
+    const reads = () => ({
+      releases: vi.mocked(getReleasesApi).mock.calls.length,
+      folds: vi.mocked(getReleaseFold).mock.calls.length,
+      patches: vi.mocked(getNativeBuildPatches).mock.calls.length,
+    });
+    await waitFor(() =>
+      expect(reads()).toEqual({ releases: 1, folds: 1, patches: 1 }),
+    );
+
+    await focus();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+    expect(reads()).toEqual({ releases: 1, folds: 1, patches: 1 });
   });
 });

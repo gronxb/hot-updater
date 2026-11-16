@@ -7,13 +7,16 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-const { createLink } = vi.hoisted(() => ({
+const { createLink, getIosDevices, getIosDevice } = vi.hoisted(() => ({
   createLink: vi.fn(),
+  getIosDevices: vi.fn(),
+  getIosDevice: vi.fn(),
 }));
 vi.mock("./ios-devices-rpc", () => ({
   approveIosDevice: vi.fn(),
   createIosDeviceProfileLink: createLink,
-  getIosDevices: vi.fn(),
+  getIosDevice,
+  getIosDevices,
   getNativeBuildIpaDevices: vi.fn(),
   removeIosDevice: vi.fn(),
   renameIosDevice: vi.fn(),
@@ -21,6 +24,8 @@ vi.mock("./ios-devices-rpc", () => ({
 
 import {
   useIosDeviceProfileLinkQuery,
+  useIosDeviceQuery,
+  useIosDevicesQuery,
   useRequestThisIphoneMutation,
 } from "./ios-devices-api";
 
@@ -140,5 +145,34 @@ describe("useRequestThisIphoneMutation", () => {
       receipt: "r",
     });
     vi.unstubAllGlobals();
+  });
+});
+
+describe("a window focus", () => {
+  // An iPhone back from Settings, or an approver back at the tab, reads the
+  // registry again: the iPhone sees its request approved without a reload.
+  it("reads the devices page and this iPhone's row again", async () => {
+    getIosDevices.mockResolvedValue({ devices: [] });
+    getIosDevice.mockResolvedValue(null);
+    renderHook(
+      () => [
+        useIosDevicesQuery({}),
+        useIosDeviceQuery("00008030-001c2d3e4f5a6b7c"),
+      ],
+      { wrapper: clientWrapper() },
+    );
+    await waitFor(() => {
+      expect(getIosDevices).toHaveBeenCalledTimes(1);
+      expect(getIosDevice).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await waitFor(() => {
+      expect(getIosDevices).toHaveBeenCalledTimes(2);
+      expect(getIosDevice).toHaveBeenCalledTimes(2);
+    });
   });
 });
