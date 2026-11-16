@@ -67,4 +67,20 @@ describe("IpaDevicesCard", () => {
     );
     expect(writeText).toHaveBeenCalledWith(UNKNOWN);
   });
+
+  it("says on a tap why a device has no name, and what to do", async () => {
+    ipaDevicesQuery.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: { status: "listed", devices: [{ udid: UNKNOWN, name: null }] },
+    });
+    render(<IpaDevicesCard build={build} />);
+
+    const reason = screen.getByRole("button", { name: /^Unknown device: / });
+    expect(reason.textContent).toBe("Unknown device");
+    fireEvent.click(reason);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "It's in your Apple account but isn't registered in Hot Updater, so it has no name here. To name it, open iOS devices on that device and register it. To leave it out of builds, disable it in your Apple account.",
+    );
+  });
 });
