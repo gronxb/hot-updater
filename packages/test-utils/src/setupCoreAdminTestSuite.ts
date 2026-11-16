@@ -136,10 +136,6 @@ export const setupCoreAdminTestSuite = (options: {
           "Channels by ID take ids=<channel id>,... with 1 to 100 ids.",
         ],
         [
-          await admin("/bundles/delete", jsonRequest("POST", { ids })),
-          "Bundle deletion takes at most 100 ids a request.",
-        ],
-        [
           await admin(
             "/ios-devices/in-build",
             jsonRequest("POST", { buildId: crypto.randomUUID(), ids }),

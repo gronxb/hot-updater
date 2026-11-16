@@ -946,11 +946,8 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     ) {
       throw new HandlerBadRequestError("Bundle deletion needs ids");
     }
-    if (ids.length > MAX_IDS) {
-      throw new HandlerBadRequestError(
-        `Bundle deletion takes at most ${MAX_IDS} ids a request.`,
-      );
-    }
+    // Uncapped: a released 1.1.x `doctor --fix` sends every unreferenced
+    // artifact in one request.
     await core.deleteBundles(ids);
     return noContent();
   }),
