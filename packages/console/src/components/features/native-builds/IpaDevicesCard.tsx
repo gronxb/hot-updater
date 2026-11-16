@@ -1,7 +1,8 @@
 import type { NativeBuildRow } from "@hot-updater/plugin-core";
 import { Link } from "@tanstack/react-router";
-import { RefreshCw, Smartphone } from "lucide-react";
+import { CircleHelp, RefreshCw, Smartphone } from "lucide-react";
 
+import { RowReason } from "@/components/RowReason";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,6 +10,14 @@ import { useNativeBuildIpaDevicesQuery } from "@/lib/ios-devices-api";
 import { maskIosUdid } from "@/lib/native-builds";
 
 import { ShortHash } from "./ShortHash";
+
+/**
+ * Why the Console can't name a device the IPA lists, and how to name it:
+ * Apple's ad hoc profile lists every enabled device in the account, the
+ * registry only those registered through Hot Updater.
+ */
+const UNKNOWN_DEVICE_REASON =
+  "In your Apple account, but not in Hot Updater. Open iOS devices on that iPhone to register it.";
 
 /**
  * The devices an ad hoc IPA installs on, read from its signing profile: each
@@ -84,15 +93,18 @@ export function IpaDevicesCard({ build }: { readonly build: NativeBuildRow }) {
                   className="size-4 shrink-0 text-muted-foreground"
                 />
                 <span className="flex min-w-0 flex-col items-start">
-                  <span
-                    className={
-                      device.name === null
-                        ? "truncate text-muted-foreground"
-                        : "truncate"
-                    }
-                  >
-                    {device.name ?? "Unknown device"}
-                  </span>
+                  {device.name === null ? (
+                    <RowReason
+                      className="text-sm"
+                      icon={CircleHelp}
+                      label={`Unknown device: ${UNKNOWN_DEVICE_REASON}`}
+                      reason={UNKNOWN_DEVICE_REASON}
+                    >
+                      Unknown device
+                    </RowReason>
+                  ) : (
+                    <span className="truncate">{device.name}</span>
+                  )}
                   <span className="text-muted-foreground">
                     <ShortHash
                       label="UDID"

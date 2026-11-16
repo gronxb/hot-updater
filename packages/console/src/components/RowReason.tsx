@@ -6,6 +6,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 /**
  * A quiet word on a row a list shades, such as "Older" or "Unreachable",
@@ -16,12 +17,15 @@ import {
 export function RowReason({
   icon: Icon,
   children,
+  className,
   label,
   reason,
 }: {
   readonly icon: LucideIcon;
   /** The word the row shows. */
   readonly children: string;
+  /** Classes for the word, such as the size of the text it stands in. */
+  readonly className?: string;
   /** The word and its reason, as a screen reader names the control. */
   readonly label: string;
   /** The reason, as its tooltip says it. */
@@ -34,7 +38,10 @@ export function RowReason({
       <TooltipTrigger
         aria-describedby={open ? `${id}-reason` : undefined}
         aria-label={label}
-        className="relative inline-flex shrink-0 items-center gap-1 rounded-sm text-xs text-muted-foreground transition-colors after:absolute after:-inset-x-2 after:-inset-y-3.5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none sm:after:hidden"
+        className={cn(
+          "relative inline-flex shrink-0 items-center gap-1 rounded-sm text-xs text-muted-foreground transition-colors after:absolute after:-inset-x-2 after:-inset-y-3.5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none sm:after:hidden",
+          className,
+        )}
         closeOnClick={false}
         id={id}
         onClick={() => setOpen((value) => !value)}

@@ -67,4 +67,20 @@ describe("IpaDevicesCard", () => {
     );
     expect(writeText).toHaveBeenCalledWith(UNKNOWN);
   });
+
+  it("says on a tap why a device has no name, and to register it", async () => {
+    ipaDevicesQuery.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: { status: "listed", devices: [{ udid: UNKNOWN, name: null }] },
+    });
+    render(<IpaDevicesCard build={build} />);
+
+    const reason = screen.getByRole("button", { name: /^Unknown device: / });
+    expect(reason.textContent).toBe("Unknown device");
+    fireEvent.click(reason);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "In your Apple account, but not in Hot Updater. Open iOS devices on that iPhone to register it.",
+    );
+  });
 });
