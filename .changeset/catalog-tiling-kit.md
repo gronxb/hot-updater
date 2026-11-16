@@ -1,5 +1,5 @@
 ---
-"@hot-updater/plugin-core": patch
+"@hot-updater/plugin-core": minor
 "@hot-updater/test-utils": patch
 ---
 

@@ -2,6 +2,8 @@ import {
   type CompiledReleaseCatalog,
   createMemoryAdapter,
   type HotUpdaterCoreApi,
+  projectCompiledCatalog,
+  projectCompiledRollbackCatalog,
   type ReleaseCatalogPartition,
   releaseRowToRelease,
 } from "@hot-updater/plugin-core";
@@ -60,6 +62,7 @@ const persisted = (
 interface SequenceCounters {
   inserts: number;
   dips: number;
+  promotes: number;
   edits: number;
   disables: number;
   enables: number;
@@ -93,6 +96,7 @@ const createSequence = async (options: {
     cutInserts: 0,
     deletes: 0,
     dips: 0,
+    promotes: 0,
     disables: 0,
     edits: 0,
     enables: 0,
@@ -170,6 +174,7 @@ const createSequence = async (options: {
   };
 
   const policy = (input: {
+    readonly channel?: string;
     readonly range?: string;
     readonly enabled?: boolean;
     readonly rollout?: number;
@@ -177,7 +182,7 @@ const createSequence = async (options: {
     readonly force?: boolean;
     readonly message?: string | null;
   }) => ({
-    channel,
+    channel: input.channel ?? channel,
     enabled: input.enabled ?? true,
     fingerprintHash: strategy === "FINGERPRINT" ? "fingerprint-a" : null,
     message: input.message ?? null,
@@ -210,13 +215,35 @@ const createSequence = async (options: {
       await insert(release);
       return release;
     },
-    /** Deploys a stored bundle again: a dip when a newer one exists. */
+    /** Deploys a stored bundle again: a dip when a newer one is enabled. */
     async redeploy(bundleId: string, input: Parameters<typeof policy>[0] = {}) {
+      const dip = (await releases()).some(
+        (release) => release.enabled && release.bundleId! > bundleId,
+      );
       const [result] = await core.deploy([
         { bundleId, release: policy(input) },
       ]);
       const release = releaseRowToRelease(result!.release!);
-      counters.dips += 1;
+      if (dip) counters.dips += 1;
+      await insert(release);
+      return release;
+    },
+    /** Deploys a new bundle to staging and promotes a copy into this scope. */
+    async promote(input: Parameters<typeof policy>[0] = {}) {
+      await core.ensureChannel("staging");
+      bundleSequence += 1;
+      const bundle = createBundleFixture(String(bundleSequence));
+      bundles.push(bundle.id);
+      const [staged] = await core.deploy([
+        { bundle, release: policy({ ...input, channel: "staging" }) },
+      ]);
+      const { target } = await core.promoteRelease({
+        releaseId: staged!.release!.id,
+        targetChannel: channel,
+      });
+      expect(target.release!.scope_key).toBe(scopeKey);
+      const release = releaseRowToRelease(target.release!);
+      counters.promotes += 1;
       await insert(release);
       return release;
     },
@@ -251,6 +278,10 @@ const createSequence = async (options: {
       const row = await core.getReleaseCatalogRow(scopeKey);
       return row!.payload;
     },
+    async storedHash(): Promise<string> {
+      const row = await core.getReleaseCatalogRow(scopeKey);
+      return row!.catalog_hash;
+    },
   };
 };
 
@@ -276,6 +307,7 @@ const check = async (
     releases: await sequence.releases(),
     seed: options.seed,
     stored: await sequence.stored(),
+    storedHash: await sequence.storedHash(),
     tiling: sequence.tiling,
   });
 
@@ -327,15 +359,11 @@ const runSequence = async (input: {
   readonly steps: number;
   readonly versions: number;
   readonly counters: ReleaseCatalogOracleCounters;
-  readonly strategy?: Strategy;
 }) => {
   const random = createRandom(input.seed);
   const pick = <T>(items: readonly T[]): T =>
     items[Math.floor(random() * items.length)]!;
-  const sequence = await createSequence({
-    kit: input.kit,
-    ...(input.strategy ? { strategy: input.strategy } : {}),
-  });
+  const sequence = await createSequence({ kit: input.kit });
   const failures: {
     step: number;
     op: string;
@@ -361,7 +389,13 @@ const runSequence = async (input: {
         range: rangeOf(random, input.versions),
         rollout: rollout(),
       });
-    } else if (roll < 0.55) {
+    } else if (roll < 0.5) {
+      op = "promote";
+      await sequence.promote({
+        range: rangeOf(random, input.versions),
+        rollout: rollout(),
+      });
+    } else if (roll < 0.58) {
       op = "dip";
       await sequence.redeploy(pick(stored), {
         range: rangeOf(random, input.versions),
@@ -374,9 +408,7 @@ const runSequence = async (input: {
         { targetCohorts: cohorts() },
         { shouldForceUpdate: random() < 0.5 },
         { message: `message ${step}` },
-        ...(input.strategy === "FINGERPRINT"
-          ? []
-          : [{ targetAppVersion: rangeOf(random, input.versions) }]),
+        { targetAppVersion: rangeOf(random, input.versions) },
       ]);
       op = `edit ${Object.keys(patch)[0]}`;
       await sequence.edit(target, patch);
@@ -615,7 +647,7 @@ const ablations: Record<
       tileCompiledReleaseCatalog: async (input) =>
         mapRows(await kit.tileCompiledReleaseCatalog(input), boundRollback),
     },
-    layers: ["answers", "assembly", "decisions"],
+    layers: ["answers", "assembly", "decisions", "hashes"],
   },
   "no cut at an exclusive upper endpoint on insert": {
     kit: {
@@ -635,7 +667,7 @@ const ablations: Record<
         );
       },
     },
-    layers: ["answers", "assembly", "decisions", "incremental"],
+    layers: ["answers", "assembly", "decisions", "hashes", "incremental"],
   },
   "a merge on insert of rows with equal frontiers": {
     kit: {
@@ -651,7 +683,7 @@ const ablations: Record<
         });
       },
     },
-    layers: ["answers", "assembly", "decisions", "incremental"],
+    layers: ["answers", "assembly", "decisions", "hashes", "incremental"],
   },
   "a frontier not computed again on insert": {
     kit: {
@@ -694,7 +726,23 @@ const ablations: Record<
     },
     // Frontiers keep only releases some device can select, so a longer
     // frontier changes the lists but no decision.
-    layers: ["answers", "assembly", "incremental"],
+    layers: ["answers", "assembly", "hashes", "incremental"],
+  },
+  "a stale partition hash on insert": {
+    kit: {
+      ...kit,
+      insertReleaseIntoTiling: async (input) => {
+        const written = await kit.insertReleaseIntoTiling(input);
+        return (
+          written?.map((row) =>
+            input.partitions.includes(row)
+              ? row
+              : { ...row, partitionHash: `sha256:${"0".repeat(64)}` },
+          ) ?? null
+        );
+      },
+    },
+    layers: ["hashes", "incremental"],
   },
   "a lookup by the plain dotted version": {
     kit: {
@@ -755,7 +803,7 @@ const ablations: Record<
         };
       },
     },
-    layers: ["assembly"],
+    layers: ["assembly", "hashes"],
   },
 };
 
@@ -796,6 +844,7 @@ describe("release catalog tiling: differential oracle against today's compiler",
     for (const key of [
       "inserts",
       "dips",
+      "promotes",
       "edits",
       "disables",
       "enables",
@@ -856,8 +905,8 @@ describe("release catalog tiling: differential oracle against today's compiler",
           await sequence.stored(),
         ) as CompiledReleaseCatalog;
         const full = catalogFromLists(
-          projectFromStored(stored, "1.0.0", false),
-          projectFromStored(stored, "1.0.0", true),
+          projectCompiledCatalog(stored, "1.0.0"),
+          projectCompiledRollbackCatalog(stored, "1.0.0"),
         );
         const b = sequence.bundles;
         const devices = [
@@ -913,27 +962,6 @@ describe("release catalog tiling: differential oracle against today's compiler",
     }
   }
 });
-
-const projectFromStored = (
-  stored: CompiledReleaseCatalog,
-  version: string,
-  rollback: boolean,
-): readonly ReleaseCatalogDescriptor[] => {
-  if (stored.strategy === "FINGERPRINT") {
-    const indexes = rollback
-      ? stored.rollbackReleaseIndexes
-      : stored.releaseIndexes;
-    return indexes.map((index) => stored.releaseDescriptors[index]!);
-  }
-  const segment = stored.segments.find(
-    (candidate) =>
-      candidate.lower?.version === version ||
-      candidate.upper?.version === version,
-  )!;
-  return (
-    rollback ? segment.rollbackReleaseIndexes : segment.releaseIndexes
-  ).map((index) => stored.releaseDescriptors[index]!);
-};
 
 const lookupRow = (
   rows: readonly ReleaseCatalogPartition[],

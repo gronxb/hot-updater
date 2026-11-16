@@ -19,5 +19,15 @@ export * from "./setupReleaseCatalogTestSuite";
 export * from "./httpTestClient";
 export * from "./httpTestServer";
 export * from "./releaseCatalogHttpFixtures";
-export * from "./releaseCatalogTilingOracle";
+export {
+  checkReleaseCatalogTiling,
+  createReleaseCatalogOracleCounters,
+  oracleLayers,
+  type ReleaseCatalogDeviceState,
+  type ReleaseCatalogOracleCounters,
+  type ReleaseCatalogOracleLayer,
+  type ReleaseCatalogOracleMismatch,
+  type ReleaseCatalogTilingKit,
+  releaseCatalogTilingKit,
+} from "./releaseCatalogTilingOracle";
 export * from "./releaseSelectionV100";

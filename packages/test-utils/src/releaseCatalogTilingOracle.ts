@@ -55,6 +55,9 @@ export const releaseCatalogTilingKit: ReleaseCatalogTilingKit = {
  * - `conversion`: the tiling of the stored compact catalog;
  * - `incremental`: the tiling kept up by inserts, against a full compile;
  * - `assembly`: the compact catalog the tiling assembles to, byte for byte;
+ * - `hashes`: each row's hash is its payload's, and the assembled bytes hash
+ *   to the stored row's content hash (a partitioned head's chain hash is the
+ *   write path's, not the kit's);
  * - `answers`: what a device on each probed app version receives;
  * - `decisions`: what both selectors decide from those answers.
  */
@@ -62,6 +65,7 @@ export type ReleaseCatalogOracleLayer =
   | "conversion"
   | "incremental"
   | "assembly"
+  | "hashes"
   | "answers"
   | "decisions";
 
@@ -89,6 +93,16 @@ export const createReleaseCatalogOracleCounters =
     rollbackToBundle: 0,
     truncatedFrontiers: 0,
   });
+
+const sha256 = async (value: string): Promise<string> => {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return `sha256:${[...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")}`;
+};
 
 const sameRows = (
   left: readonly ReleaseCatalogPartition[] | null,
@@ -277,7 +291,7 @@ export const cohortClasses = (
   return [null, ...numeric.values(), ...[...targets].sort(), "zz-not-targeted"];
 };
 
-/** Every subset of `items` when there are at most 6, else samples, all ≤ 10. */
+/** Every subset of `items` when there are at most 6, else uniform samples, all ≤ 10. */
 const crashedSets = (
   items: readonly string[],
   random: () => number,
@@ -290,8 +304,14 @@ const crashedSets = (
   }
   const sets: string[][] = [[], items.slice(-MAX_CRASHED_BUNDLES)];
   while (sets.length < samples) {
-    // Uniform over subsets, then cut to the device's cap.
-    sets.push(items.filter(() => random() < 0.5).slice(0, MAX_CRASHED_BUNDLES));
+    // Uniform over subsets; one over the device's cap keeps a uniform draw
+    // of its members, never the oldest ones.
+    const subset = items.filter(() => random() < 0.5);
+    for (let index = subset.length - 1; index > 0; index -= 1) {
+      const other = Math.floor(random() * (index + 1));
+      [subset[index], subset[other]] = [subset[other]!, subset[index]!];
+    }
+    sets.push(subset.slice(0, MAX_CRASHED_BUNDLES).sort());
   }
   return sets;
 };
@@ -302,8 +322,10 @@ const crashedSets = (
  * running release equal to it, null, or an older staged one with its
  * bundle; no active release on each bundle or the built-in; each floor
  * position; each cohort class; and crashed sets. `exhaustive` takes the
- * whole product, otherwise `limit` states drawn from it with every active
- * release and cohort class kept.
+ * whole product of starts, cohort classes and floors, with every crashed
+ * set up to 6 bundles and 8 uniform ones beyond; otherwise `limit` states
+ * drawn from it, over 5 floor positions, with every start and cohort class
+ * kept.
  */
 export const deviceStates = (input: {
   readonly history: readonly Pick<Release, "id" | "bundleId">[];
@@ -327,6 +349,8 @@ export const deviceStates = (input: {
       input.builtInBundleId,
       ...bundles.filter(
         (_, index) =>
+          // Every floor position in an exhaustive pass.
+          input.exhaustive ||
           index === 0 ||
           index === bundles.length - 1 ||
           index === Math.floor(bundles.length / 2),
@@ -440,6 +464,8 @@ export const decide = (
 export const checkReleaseCatalogTiling = async (input: {
   readonly kit: ReleaseCatalogTilingKit;
   readonly stored: string;
+  /** The stored row's `catalog_hash`: today's content hash of `stored`. */
+  readonly storedHash: string;
   readonly releases: readonly Release[];
   readonly tiling: readonly ReleaseCatalogPartition[] | null;
   readonly history: readonly Release[];
@@ -501,6 +527,17 @@ export const checkReleaseCatalogTiling = async (input: {
   );
   if (assembled !== null && assembled.value.canonicalPayload !== input.stored) {
     fail("assembly", "the assembled catalog differs from the stored one");
+  }
+  for (const row of [...tiling, ...full]) {
+    if (row.partitionHash !== (await sha256(row.payload))) {
+      fail("hashes", `row ${JSON.stringify(row.lowerKey)} has another hash`);
+    }
+  }
+  if (
+    assembled !== null &&
+    (await sha256(assembled.value.canonicalPayload)) !== input.storedHash
+  ) {
+    fail("hashes", "the assembled bytes don't hash to the stored hash");
   }
 
   if (stored.strategy === "APP_VERSION") {

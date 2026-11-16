@@ -480,20 +480,53 @@ describe("stored rows", () => {
     expect(projectReleaseCatalogPartition(exact, "garbage")).toBeNull();
   });
 
-  it("refuse a row that isn't what the kit writes", async () => {
+  it("are read for the update check as leniently as a compact row", async () => {
     const rows = await tiling([release(1, { targetAppVersion: "1.0.0" })]);
     const row = rows[1]!;
+    // A field another 1.2.x core might add doesn't stop this one reading.
+    const extended = JSON.parse(row.payload);
+    extended.segments[0].note = "added later";
+    extended.releaseDescriptors[0].note = "added later";
+    expect(
+      projectReleaseCatalogPartition(
+        { ...row, payload: JSON.stringify(extended) },
+        "1.0.0",
+      )?.releases,
+    ).toHaveLength(1);
+    for (const payload of [
+      "{",
+      row.payload.replace('"APP_VERSION"', '"FINGERPRINT"'),
+      row.payload.replace('"releaseIndexes":[0]', '"releaseIndexes":[1]'),
+    ]) {
+      expect(() =>
+        projectReleaseCatalogPartition({ ...row, payload }, "1.0.0"),
+      ).toThrow(expect.objectContaining({ code: "INVALID_PARTITION" }));
+    }
+  });
+
+  it("refuse, for a write, any row that isn't exactly what the kit writes", async () => {
+    const rows = await tiling([release(1, { targetAppVersion: "1.0.0" })]);
+    const row = rows[1]!;
+    const extended = JSON.parse(row.payload);
+    extended.segments[0].note = "added later";
     const tampered: ReleaseCatalogPartition[] = [
       { ...row, payload: row.payload.replace("1.0.0", "1.0.1") },
-      { ...row, lowerKey: rows[2]!.lowerKey },
+      { ...row, lowerKey: `${row.lowerKey}0` },
       { ...row, payload: ` ${row.payload}`, byteSize: row.byteSize + 1 },
       { ...row, byteSize: row.byteSize + 1 },
       { ...row, payload: "{" },
+      { ...row, payload: JSON.stringify(extended) },
     ];
     for (const partition of tampered) {
-      expect(() => projectReleaseCatalogPartition(partition, "1.0.0")).toThrow(
-        expect.objectContaining({ code: "INVALID_PARTITION" }),
-      );
+      expect(() =>
+        assembleReleaseCatalog([rows[0]!, partition, rows[2]!]),
+      ).toThrow(expect.objectContaining({ code: "INVALID_PARTITION" }));
+      await expect(
+        insertReleaseIntoTiling({
+          partitions: [rows[0]!, partition, rows[2]!],
+          release: release(2, { targetAppVersion: "*" }),
+        }),
+      ).rejects.toMatchObject({ code: "INVALID_PARTITION" });
     }
   });
 

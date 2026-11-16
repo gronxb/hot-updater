@@ -63,6 +63,11 @@ export interface ReleaseCatalogPartition {
   readonly byteSize: number;
 }
 
+/**
+ * Why a tiling call refused its rows, so core can tell a torn read
+ * (`INCOMPLETE_COVER`, `INVALID_TILING`) from a corrupt row
+ * (`INVALID_PARTITION`) or a caller's mistake.
+ */
 export type ReleaseCatalogTilingErrorCode =
   | "DUPLICATE_RELEASE"
   | "FINGERPRINT_NOT_PARTITIONED"
@@ -167,7 +172,7 @@ export function releaseCatalogLookupKey(appVersion: string): string | null {
 /**
  * The rows of a range's interval: the row with the greatest lower key at or
  * below `start`, then every row whose lower key is above `start` and below
- * `stop` (null: no end).
+ * `stop` (null: no end). Exported because core's insert reads these ranges.
  */
 export interface ReleaseCatalogKeyRange {
   readonly start: string;
@@ -404,7 +409,6 @@ interface ParsedPartition {
 const isBound = (value: unknown): value is CatalogVersionBound | null =>
   value === null ||
   (typeof value === "object" &&
-    Object.keys(value).length === 2 &&
     typeof (value as CatalogVersionBound).inclusive === "boolean" &&
     typeof (value as CatalogVersionBound).version === "string");
 
@@ -444,45 +448,83 @@ const invalidRow = (row: ReleaseCatalogPartition, reason: string) =>
  * in canonical JSON, every descriptor in its rollback list, newest first,
  * and a lower key that is its lower bound's.
  */
-const parsePartition = (row: ReleaseCatalogPartition): ParsedPartition => {
-  let catalog: unknown;
+/**
+ * A stored row as the update check reads it: as leniently as today's reader
+ * of a compact row, so a 1.2.x core keeps reading rows another 1.2.x core
+ * wrote. It checks the envelope, one segment with its bounds, and indexes
+ * inside the descriptor list.
+ */
+const readPartition = (
+  row: ReleaseCatalogPartition,
+): {
+  readonly catalog: AppVersionCatalog;
+  readonly segment: CompiledCatalogSegment;
+} => {
+  let parsed: unknown;
   try {
-    catalog = JSON.parse(row.payload);
+    parsed = JSON.parse(row.payload);
   } catch {
     throw invalidRow(row, "the payload isn't JSON");
   }
-  const candidate = catalog as AppVersionCatalog;
-  const segment = Array.isArray(candidate?.segments)
-    ? candidate.segments[0]
-    : undefined;
+  const catalog = parsed as AppVersionCatalog;
+  const segment =
+    Array.isArray(catalog?.segments) && catalog.segments.length === 1
+      ? catalog.segments[0]
+      : undefined;
+  const inside = (indexes: unknown) =>
+    Array.isArray(indexes) &&
+    indexes.every(
+      (index) =>
+        Number.isSafeInteger(index) &&
+        index >= 0 &&
+        index < catalog.releaseDescriptors.length,
+    );
   if (
-    typeof catalog !== "object" ||
-    catalog === null ||
-    Object.keys(catalog).length !== 5 ||
-    candidate.schemaVersion !== RELEASE_CATALOG_SCHEMA_VERSION ||
-    candidate.fallbackPolicy !== RELEASE_CATALOG_FALLBACK_POLICY ||
-    candidate.strategy !== "APP_VERSION" ||
-    !Array.isArray(candidate.releaseDescriptors) ||
-    !candidate.releaseDescriptors.every(isDescriptor) ||
-    candidate.segments.length !== 1 ||
+    typeof parsed !== "object" ||
+    parsed === null ||
+    catalog.schemaVersion !== RELEASE_CATALOG_SCHEMA_VERSION ||
+    catalog.fallbackPolicy !== RELEASE_CATALOG_FALLBACK_POLICY ||
+    catalog.strategy !== "APP_VERSION" ||
+    !Array.isArray(catalog.releaseDescriptors) ||
     typeof segment !== "object" ||
     segment === null ||
-    Object.keys(segment).length !== 4 ||
     !isBound(segment.lower) ||
     !isBound(segment.upper) ||
+    !inside(segment.releaseIndexes) ||
+    !inside(segment.rollbackReleaseIndexes)
+  ) {
+    throw invalidRow(row, "the payload isn't one compiled segment");
+  }
+  return { catalog, segment };
+};
+
+const hasKeys = (value: object | null, count: number) =>
+  value === null || Object.keys(value).length === count;
+
+/**
+ * A stored row a write builds on, checked against exactly what `tile` and
+ * `insert` write: one segment in canonical JSON, every descriptor in its
+ * rollback list, newest first, and a lower key that is its lower bound's.
+ * A write that rewrites rows never carries a shape it doesn't know.
+ */
+const parsePartition = (row: ReleaseCatalogPartition): ParsedPartition => {
+  const { catalog, segment } = readPartition(row);
+  if (
+    !hasKeys(catalog, 5) ||
+    !catalog.releaseDescriptors.every(isDescriptor) ||
+    !hasKeys(segment, 4) ||
+    !hasKeys(segment.lower, 2) ||
+    !hasKeys(segment.upper, 2) ||
     !isIndexList(segment.releaseIndexes) ||
     !isIndexList(segment.rollbackReleaseIndexes)
   ) {
     throw invalidRow(row, "the payload isn't one compiled segment");
   }
-  const descriptors = candidate.releaseDescriptors;
+  const descriptors = catalog.releaseDescriptors;
   if (
     segment.rollbackReleaseIndexes.length !== descriptors.length ||
     segment.rollbackReleaseIndexes.some(
       (index: number, at: number) => index !== at,
-    ) ||
-    segment.releaseIndexes.some(
-      (index: number) => index >= descriptors.length,
     ) ||
     descriptors.some(
       (descriptor, at) =>
@@ -505,7 +547,7 @@ const parsePartition = (row: ReleaseCatalogPartition): ParsedPartition => {
   if (segment.upper !== null && endKey === null) {
     throw invalidRow(row, "its upper bound has no key");
   }
-  return { catalog: candidate, endKey, row, segment };
+  return { catalog, endKey, row, segment };
 };
 
 /** Rows in key order, none overlapping another. */
@@ -536,7 +578,10 @@ const parseRows = (
   return rows;
 };
 
-/** What a device on one app version receives from its row. */
+/**
+ * What a device on one app version receives from its row. Exported because
+ * core's update check answers with these two lists.
+ */
 export interface ReleaseCatalogPartitionProjection {
   readonly releases: readonly ReleaseCatalogDescriptor[];
   readonly rollbackReleases: readonly ReleaseCatalogDescriptor[];
@@ -553,7 +598,7 @@ export function projectReleaseCatalogPartition(
   partition: ReleaseCatalogPartition,
   appVersion: string,
 ): ReleaseCatalogPartitionProjection | null {
-  const { catalog, segment } = parsePartition(partition);
+  const { catalog, segment } = readPartition(partition);
   const canonical = canonicalizeAppVersion(appVersion);
   if (canonical === null || !versionInSegment(canonical, segment)) return null;
   return {
@@ -689,7 +734,10 @@ export async function insertReleaseIntoTiling(input: {
 
 // --- Assembly -----------------------------------------------------------
 
-/** A partitioned scope's rows as the one compact catalog they tile. */
+/**
+ * A partitioned scope's rows as the one compact catalog they tile. Exported
+ * because core serves public catalog rows in this compact form.
+ */
 export interface ReleaseCatalogAssembly {
   readonly payload: CompiledReleaseCatalog;
   /** Byte for byte `compileReleaseCatalog`'s `canonicalPayload`. */
