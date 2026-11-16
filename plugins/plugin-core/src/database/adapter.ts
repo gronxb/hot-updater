@@ -186,13 +186,19 @@ export interface DatabaseAdapter {
   readonly migrations?: {
     apply(tables: readonly PhysicalTable[]): Promise<void>;
     /**
-     * What `apply` would still change in tables a migration already
-     * created, such as the items of an index declared after its rows, each
-     * as `<table>.<index>`; empty when nothing. Without it, `db migrate`
-     * applies only when the schema settings differ. The key-value kit
-     * implements it.
+     * For a store that keeps index items of its own: writes the items of
+     * `index` that rows of `table` lack, or with `dryRun` only counts them,
+     * and returns how many rows lacked one. Migrations call it for an index
+     * declared on a table rows of a released schema were written to, such
+     * as core's `releases.scopes`, whose server may still write rows
+     * without the index's items. A store whose indexes cover every row
+     * itself, such as SQL or MongoDB, leaves it out.
      */
-    pending?(tables: readonly PhysicalTable[]): Promise<readonly string[]>;
+    fillIndex?(
+      table: PhysicalTable,
+      index: string,
+      options?: { readonly dryRun?: boolean },
+    ): Promise<number>;
   };
   dispose?(): Promise<void>;
 }

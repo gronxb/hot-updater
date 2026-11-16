@@ -3,7 +3,7 @@ import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
 import type { SchemaSettings } from "../database/fence";
 import type { ResolvedSchema } from "../database/resolveSchema";
 import { getEmptyMigrationResult } from "./fixedMigratorShared";
-import { migrateSchema } from "./schemaSettings";
+import { fillLateIndexes, migrateSchema } from "./schemaSettings";
 import { refuseV0Database, storedSchemaVersion } from "./settingsMigrator";
 import type { MigrateOptions, MigrationResult, Migrator } from "./types";
 
@@ -39,26 +39,24 @@ export const createEngineMigrator = (
         ([key, value]) => stored.get(key) === value,
       )
     ) {
-      // Up to date, but for index items a store keeps itself, such as an
-      // index declared after rows a prerelease of this version wrote.
-      const pending =
-        (await options.adapter.migrations?.pending?.(options.schema.tables)) ??
-        [];
-      if (pending.length === 0) return getEmptyMigrationResult();
+      // Up to date, but for late index items an earlier release's server
+      // wrote rows without.
+      const lacking = await fillLateIndexes(
+        options.adapter,
+        options.schema.tables,
+        { dryRun: true },
+      );
+      if (lacking.length === 0) return getEmptyMigrationResult();
       return {
         operations: [
           {
             type: "custom",
-            description: `Write the index items of rows stored before their index: ${pending.join(", ")}`,
+            description: `Write the index items rows lack: ${lacking.join(", ")}`,
           },
         ],
-        execute: () =>
-          migrateSchema(
-            options.adapter,
-            options.adapterName,
-            options.schema.tables,
-            options.settings,
-          ),
+        execute: async () => {
+          await fillLateIndexes(options.adapter, options.schema.tables);
+        },
       };
     }
     return {

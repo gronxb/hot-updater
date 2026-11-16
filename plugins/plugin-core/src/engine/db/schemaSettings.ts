@@ -3,6 +3,7 @@ import type {
   PhysicalTable,
   WriteOp,
 } from "../../database/adapter";
+import { LATE_INDEXES } from "../core/schema";
 import {
   readSettings,
   SETTINGS_TABLE,
@@ -52,7 +53,32 @@ export const writeSchemaSettings = async (
   }
 };
 
-/** Creates or updates every table, then writes the settings rows last. */
+/**
+ * The `LATE_INDEXES` among `tables` whose items some rows lack, as
+ * `<table>.<index>`, written unless `dryRun`: none on a store without
+ * `migrations.fillIndex`.
+ */
+export const fillLateIndexes = async (
+  adapter: DatabaseAdapter,
+  tables: readonly PhysicalTable[],
+  { dryRun = false }: { readonly dryRun?: boolean } = {},
+): Promise<string[]> => {
+  const fillIndex = adapter.migrations?.fillIndex;
+  if (fillIndex === undefined) return [];
+  const lacking: string[] = [];
+  for (const { table: name, index } of LATE_INDEXES) {
+    const table = tables.find((candidate) => candidate.name === name);
+    if (table === undefined) continue;
+    const rows = await fillIndex(table, index, { dryRun });
+    if (rows > 0) lacking.push(`${name}.${index}`);
+  }
+  return lacking;
+};
+
+/**
+ * Creates or updates every table, writes the late indexes' missing items,
+ * then writes the settings rows last.
+ */
 export const migrateSchema = async (
   adapter: DatabaseAdapter,
   adapterName: string,
@@ -65,5 +91,6 @@ export const migrateSchema = async (
     );
   }
   await adapter.migrations.apply([...tables, SETTINGS_TABLE]);
+  await fillLateIndexes(adapter, tables);
   await writeSchemaSettings(adapter, adapterName, settings);
 };

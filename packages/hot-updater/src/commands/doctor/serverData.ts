@@ -76,7 +76,8 @@ const listCatalogScopes = async (
 /**
  * Catalogued scopes the walk did not list though they hold releases: a
  * catalog that is not a tombstone has an enabled release, so its scope is
- * in the walk unless the index lacks items for releases stored before it.
+ * in the walk unless the index lacks that release's item: on a key-value
+ * store, a server of an earlier release writes releases without it.
  * One limit-1 read for each scope missing from the walk, none otherwise.
  */
 const listUnindexedScopeKeys = async (
@@ -209,12 +210,18 @@ export const checkServerData = async (
     walked ?? new Set(),
   );
   if (walked === undefined) {
+    // A self-hosted server older than this hot-updater has no scope route.
+    const older =
+      (walkFailure as { readonly status?: unknown } | null)?.status === 404;
     status.issues.push({
       type: "warning",
       code: "RELEASE_SCOPES_UNCHECKED",
-      message: `Checked the scopes with a catalog row, but could not look for scopes with releases and no catalog row: ${errorMessage(walkFailure)}`,
-      resolution:
-        "Fix what the message names, such as a self-hosted server older than this hot-updater, then rerun doctor.",
+      message: older
+        ? "The server has no release scope route, so doctor checked only the scopes with a catalog row."
+        : `Doctor checked only the scopes with a catalog row: listing the scopes with releases failed: ${errorMessage(walkFailure)}`,
+      resolution: older
+        ? "Upgrade the server's @hot-updater/server, then rerun doctor."
+        : "Fix what the message names, then rerun doctor.",
     });
     return status;
   }
@@ -223,9 +230,9 @@ export const checkServerData = async (
     status.issues.push({
       type: "warning",
       code: "RELEASE_SCOPES_UNINDEXED",
-      message: `The releases' scope index lacks ${unindexed.length} scope${unindexed.length === 1 ? "" : "s"} that ${unindexed.length === 1 ? "has" : "have"} releases, such as ${unindexed[0]}, so doctor may miss a scope with releases and no catalog row.`,
+      message: `The releases' scope index lacks ${unindexed.length} scope${unindexed.length === 1 ? "" : "s"} that ${unindexed.length === 1 ? "has" : "have"} releases, such as ${unindexed[0]}, so doctor may miss a scope with releases and no catalog row. A server of an earlier release, still running after the migration, writes releases without the index.`,
       resolution:
-        "Migrate the database, which writes the index items of releases stored before the index: `npx hot-updater init --provider <provider> --from-env-file .env.hotupdater` for a deployment init created, or `npx hot-updater db migrate <server file>` for a server of your own. Then rerun doctor.",
+        "Once every server runs this release, migrate the database again, which writes the missing index items: `npx hot-updater init --provider <provider> --from-env-file .env.hotupdater` for a deployment init created, or `npx hot-updater db migrate <server file>` for a server of your own. Then rerun doctor.",
     });
   }
   return status;

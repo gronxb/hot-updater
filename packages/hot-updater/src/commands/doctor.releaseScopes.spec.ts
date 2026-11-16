@@ -77,23 +77,22 @@ const loseCatalogRow = async (
 };
 
 describe("doctor's walk of the releases' scopes", () => {
-  it("names an index a prerelease left unfilled, and finds every scope once db migrate fills it", async () => {
+  it("names releases an earlier release's server wrote without the scope index, and finds every scope once db migrate writes it", async () => {
     const { store, database, core } = await setup();
     const [appVersion, fingerprintA] = await deployThreeScopes(core);
-    // As a 1.2.0 prerelease wrote them: releases without `scopes` items,
-    // and no record of the key-value kit's index fills.
+    // As a 1.1.x server whose schema fence passed before the migration
+    // writes them: releases without `scopes` items.
     const { items } = await store.query({
       pk: "releases#scopes#",
       order: "asc",
       limit: 100,
     });
-    await store.write([
-      ...items.map(({ sk }) => ({
+    await store.write(
+      items.map(({ sk }) => ({
         type: "delete" as const,
         key: { pk: "releases#scopes#", sk },
       })),
-      { type: "delete", key: { pk: "releases#", sk: "#" } },
-    ]);
+    );
     await loseCatalogRow(database, fingerprintA!);
 
     const before = await checkServerData(core);
@@ -105,13 +104,12 @@ describe("doctor's walk of the releases' scopes", () => {
       }),
     ]);
 
-    // The settings already match, and db migrate still offers the fill.
+    // The settings already match, and db migrate still writes the items.
     const migration = await database.createMigrator!().migrateToLatest();
     expect(migration.operations).toEqual([
       {
         type: "custom",
-        description:
-          "Write the index items of rows stored before their index: releases.scopes",
+        description: "Write the index items rows lack: releases.scopes",
       },
     ]);
     await migration.execute();
@@ -134,8 +132,11 @@ describe("doctor's walk of the releases' scopes", () => {
     const older: HotUpdaterCoreApi = {
       ...core,
       listReleaseScopeKeys: async () => {
-        throw new Error(
-          "The server at https://example.com/admin has no release scope route (GET /release-scopes answered 404).",
+        throw Object.assign(
+          new Error(
+            "The server at https://example.com/admin has no release scope route (GET /release-scopes answered 404).",
+          ),
+          { status: 404 },
         );
       },
     };
@@ -148,10 +149,34 @@ describe("doctor's walk of the releases' scopes", () => {
       "verified",
     ]);
     expect(status.issues).toEqual([
-      expect.objectContaining({
+      {
         type: "warning",
         code: "RELEASE_SCOPES_UNCHECKED",
-        message: expect.stringContaining("no release scope route"),
+        message:
+          "The server has no release scope route, so doctor checked only the scopes with a catalog row.",
+        resolution:
+          "Upgrade the server's @hot-updater/server, then rerun doctor.",
+      },
+    ]);
+  });
+
+  it("names a walk that failed otherwise by its error, not as an older server", async () => {
+    const { core } = await setup();
+    await deployThreeScopes(core);
+    const failing: HotUpdaterCoreApi = {
+      ...core,
+      listReleaseScopeKeys: async () => {
+        throw Object.assign(new Error("socket hang up"), { status: 502 });
+      },
+    };
+
+    const status = await checkServerData(failing);
+
+    expect(status.issues).toEqual([
+      expect.objectContaining({
+        code: "RELEASE_SCOPES_UNCHECKED",
+        message: expect.stringContaining("socket hang up"),
+        resolution: "Fix what the message names, then rerun doctor.",
       }),
     ]);
   });
