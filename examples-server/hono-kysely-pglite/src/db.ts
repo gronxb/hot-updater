@@ -79,6 +79,7 @@ export async function resetDecisionFixtures() {
     TRUNCATE TABLE
       bundle_patches,
       release_catalogs,
+      release_catalog_partitions,
       releases,
       bundles,
       channels,

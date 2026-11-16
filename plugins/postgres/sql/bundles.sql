@@ -26,6 +26,8 @@ CREATE INDEX IF NOT EXISTS "releases_byBundle" ON "releases" ("bundle_id", "id")
 
 CREATE TABLE IF NOT EXISTS "release_catalogs" ("scope_key" varchar(2048) COLLATE "C" NOT NULL, "catalog_id" varchar(255) COLLATE "C" NOT NULL, "strategy" varchar(16) COLLATE "C" NOT NULL, "channel_id" varchar(1408) COLLATE "C" NOT NULL, "channel_key" varchar(1400) COLLATE "C" NOT NULL, "platform" varchar(16) COLLATE "C" NOT NULL, "fingerprint_hash" varchar(255) COLLATE "C", "generation" bigint NOT NULL, "payload" text COLLATE "C" NOT NULL, "catalog_hash" varchar(71) COLLATE "C" NOT NULL, "byte_size" bigint NOT NULL, "is_tombstone" boolean NOT NULL, "updated_at_ms" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("scope_key"));
 
+CREATE TABLE IF NOT EXISTS "release_catalog_partitions" ("scope_key" varchar(2048) COLLATE "C" NOT NULL, "epoch" varchar(36) COLLATE "C" NOT NULL, "lower_key" varchar(256) COLLATE "C" NOT NULL, "generation" bigint NOT NULL, "payload" text COLLATE "C" NOT NULL, "partition_hash" varchar(71) COLLATE "C" NOT NULL, "byte_size" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("scope_key", "epoch", "lower_key"));
+
 CREATE TABLE IF NOT EXISTS "channels" ("id" varchar(1408) COLLATE "C" NOT NULL, "name" varchar(255) COLLATE "C" NOT NULL, "_refs_releases_channel_id" bigint NOT NULL DEFAULT 0, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
 CREATE INDEX IF NOT EXISTS "channels_all" ON "channels" ("name", "id");

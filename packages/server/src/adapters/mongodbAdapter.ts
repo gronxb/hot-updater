@@ -1,5 +1,6 @@
 import {
   type DatabaseAdapter,
+  DatabaseSchemaError,
   type DatabaseKey,
   type DatabaseKeyValue,
   indexOrderColumns,
@@ -98,6 +99,7 @@ const indexDescription = (
   table: PhysicalTable,
   index: PhysicalIndex,
 ): IndexDescription => {
+  const ordered = BYTE_ORDERED.has(table.name);
   const columns = index.unique
     ? index.eq
     : [...index.eq, ...indexOrderColumns(table, index)];
@@ -107,6 +109,7 @@ const indexDescription = (
   return {
     name: index.name,
     key: Object.fromEntries(columns.map((column) => [column, 1])),
+    ...(ordered && { collation: SIMPLE }),
     ...(index.unique && { unique: true }),
     ...(index.unique &&
       exists.length > 0 && {
@@ -114,6 +117,17 @@ const indexDescription = (
       }),
   };
 };
+
+/** Simple collation: strings compare and sort by their bytes. */
+const SIMPLE = { locale: "simple" } as const;
+
+/**
+ * Core's tables whose reads walk string keys in byte order: their collection
+ * and indexes are created with simple collation, every read names it, and
+ * `db migrate` refuses an existing collection or index of another collation,
+ * whose order and equality would differ from the keys' bytes.
+ */
+const BYTE_ORDERED = new Set(["release_catalog_partitions"]);
 
 const mongoError = (error: unknown) =>
   error instanceof MongoError ? error : undefined;
@@ -133,6 +147,34 @@ export const createMongoAdapter = (
     client.db().collection(tablePrefix + table.name);
   const normalize = (table: PhysicalTable, document: Document) =>
     normalizeStoredRow(table, document, { jsonText: false });
+  /** A read's collation: simple on a byte-ordered table, the collection's default elsewhere. */
+  const collationOf = (table: PhysicalTable) =>
+    BYTE_ORDERED.has(table.name) ? { collation: SIMPLE } : {};
+
+  /** Refuses a byte-ordered table's collection or index with a collation other than simple. */
+  const checkSimpleCollation = async (table: PhysicalTable) => {
+    const name = tablePrefix + table.name;
+    const [info] = await client
+      .db()
+      .listCollections({ name }, { nameOnly: false })
+      .toArray();
+    const options = (info as { options?: Document } | undefined)?.options;
+    const differs = (collation: unknown) =>
+      collation !== undefined &&
+      (collation as { locale?: unknown }).locale !== "simple";
+    if (differs(options?.collation)) {
+      throw new DatabaseSchemaError(
+        `MongoDB collection ${name} has collation ${JSON.stringify(options!.collation)}; Hot Updater reads its keys in byte order, which needs simple collation. Drop the collection and run db migrate again.`,
+      );
+    }
+    for (const index of await collection(table).indexes()) {
+      if (differs(index.collation)) {
+        throw new DatabaseSchemaError(
+          `MongoDB index ${index.name} on ${name} has collation ${JSON.stringify(index.collation)}; Hot Updater reads its keys in byte order, which needs simple collation. Drop the index and run db migrate again.`,
+        );
+      }
+    }
+  };
 
   /** Whether the op applied; a guard that no longer matches changes nothing. */
   const apply = async (op: WriteOp, session: ClientSession) => {
@@ -198,7 +240,7 @@ export const createMongoAdapter = (
       if (keys.length === 0) return [];
       const ids = keys.map((key) => idOf(table, key));
       const documents = await collection(table)
-        .find(byId({ $in: ids }))
+        .find(byId({ $in: ids }), collationOf(table))
         .toArray();
       const found = new Map(
         documents.map((document) => [JSON.stringify(document._id), document]),
@@ -230,6 +272,7 @@ export const createMongoAdapter = (
               columns.map((column) => [column, direction]),
             ),
             limit: request.limit,
+            ...collationOf(table),
             ...(options.batchSize && { batchSize: options.batchSize }),
           },
         )
@@ -289,12 +332,17 @@ export const createMongoAdapter = (
       async apply(tables) {
         for (const table of tables) {
           // An existing collection keeps its documents; its indexes are ensured.
+          const ordered = BYTE_ORDERED.has(table.name);
           await client
             .db()
-            .createCollection(tablePrefix + table.name)
+            .createCollection(
+              tablePrefix + table.name,
+              ordered ? { collation: SIMPLE } : {},
+            )
             .catch((error: unknown) => {
               if (mongoError(error)?.code !== 48) throw error;
             });
+          if (ordered) await checkSimpleCollation(table);
           if (table.retention) await collection(table).createIndexes([TTL]);
           // MongoDB refuses a second index over the same keys, and a query
           // reads through the first, as `releases.scopes` through `byScope`.

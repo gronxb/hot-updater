@@ -179,6 +179,31 @@ const releaseCatalogs = defineTable(
   { key: ["scope_key"], indexes: { all: { eq: [], sort: ["scope_key"] } } },
 );
 
+/**
+ * Core's internal table for a release catalog split into app-version
+ * partitions: no public API returns its rows, and nothing reads or writes it
+ * until a database turns partitioning on. A scope's rows are keyed by its
+ * scope key, an epoch and a partition's lower key, and every read of them
+ * walks that key in byte order, which each store keeps: binary collations on
+ * SQL, simple collation on MongoDB, and UTF-8 sort keys on key-value stores.
+ * `byScope` is the key's own order, so no store keeps a second copy of it.
+ */
+const releaseCatalogPartitions = defineTable(
+  {
+    scope_key: { type: "string", maxLength: 2048, ascii: true },
+    epoch: { type: "string", maxLength: 36, ascii: true },
+    lower_key: { type: "string", maxLength: 256, ascii: true },
+    generation: { type: "integer" },
+    payload: { type: "string" },
+    partition_hash: { type: "string", maxLength: 71 },
+    byte_size: { type: "integer" },
+  },
+  {
+    key: ["scope_key", "epoch", "lower_key"],
+    indexes: { byScope: { eq: ["scope_key"], sort: ["epoch", "lower_key"] } },
+  },
+);
+
 const channels = defineTable(
   {
     id: CHANNEL_ID,
@@ -372,6 +397,7 @@ export const coreSchema = {
   bundle_patches: bundlePatches,
   releases,
   release_catalogs: releaseCatalogs,
+  release_catalog_partitions: releaseCatalogPartitions,
   channels,
   bundle_totals: bundleTotals,
   native_builds: nativeBuilds,

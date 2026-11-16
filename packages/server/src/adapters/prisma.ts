@@ -12,7 +12,8 @@ import type {
 
 import {
   generatePrismaEngineSchema,
-  prismaCollationStatements,
+  pendingPrismaCollationFixups,
+  prismaCollationFixups,
   type PrismaProvider,
 } from "../db/enginePrismaSchema";
 import {
@@ -57,7 +58,7 @@ export const prismaAdapter = (config: PrismaConfig): ToolingDatabase => {
       };
     }) satisfies SchemaGenerator,
     createMigrator: ({ schema, settings } = coreTarget) => {
-      const collations = prismaCollationStatements(provider, schema);
+      const collations = prismaCollationFixups(provider, schema);
       return createSettingsMigrator({
         adapterName: "prisma",
         executor,
@@ -69,7 +70,14 @@ export const prismaAdapter = (config: PrismaConfig): ToolingDatabase => {
               fixups: {
                 description:
                   "Set the collations Prisma cannot declare, so strings compare by their bytes",
-                statements: collations,
+                statements: collations.map(({ statement }) => statement),
+                pending: () =>
+                  pendingPrismaCollationFixups(
+                    provider,
+                    collations,
+                    async (sql) =>
+                      (await executor.execute({ sql, params: [] })).rows,
+                  ),
               },
             }),
       });

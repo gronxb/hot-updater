@@ -88,6 +88,19 @@ export const release_catalogs = sqliteTable("release_catalogs", {
   primaryKey({ columns: [table["scope_key"]] }),
 ]);
 
+export const release_catalog_partitions = sqliteTable("release_catalog_partitions", {
+  "scope_key": column("TEXT")("scope_key").notNull(),
+  "epoch": column("TEXT")("epoch").notNull(),
+  "lower_key": column("TEXT")("lower_key").notNull(),
+  "generation": column("INTEGER")("generation").notNull(),
+  "payload": column("TEXT")("payload").notNull(),
+  "partition_hash": column("TEXT")("partition_hash").notNull(),
+  "byte_size": column("INTEGER")("byte_size").notNull(),
+  "_v": column("INTEGER")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["scope_key"], table["epoch"], table["lower_key"]] }),
+]);
+
 export const channels = sqliteTable("channels", {
   "id": column("TEXT")("id").notNull(),
   "name": column("TEXT")("name").notNull(),

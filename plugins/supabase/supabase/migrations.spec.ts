@@ -104,6 +104,31 @@ const createDatabase = async (before = "") => {
   return db;
 };
 
+/**
+ * A database a 1.2 prerelease migrated: the shipped migrations, then its
+ * 0002, which created everything the latest one does but
+ * `release_catalog_partitions`, and left it out of the apply RPC.
+ */
+const createPrereleaseDatabase = async () => {
+  const prerelease = (await readMigration(LATEST))
+    .replace("'hot_updater_v1_release_catalog_partitions', ", "")
+    .split("\n")
+    .filter(
+      (line) => !line.includes('"hot_updater_v1_release_catalog_partitions"'),
+    )
+    .join("\n");
+  expect(prerelease).not.toContain("release_catalog_partitions");
+  const db = new PGlite();
+  await db.exec(
+    "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;",
+  );
+  for (const name of Object.keys(SHIPPED)) {
+    await db.exec(await readMigration(name));
+  }
+  await db.exec(prerelease);
+  return db;
+};
+
 const apply = (db: PGlite, sql: string) =>
   db.query(`SELECT public.${SUPABASE_APPLY_FUNCTION}($1::jsonb)`, [
     JSON.stringify([{ sql, params: [] }]),
@@ -229,6 +254,68 @@ describe("Supabase schema", () => {
       "schema.insights",
       "schema.remoteConfig",
     ]);
+    await db.close();
+  });
+
+  it("gives a database a prerelease migrated the partition table by running the latest migration again, twice", async () => {
+    const latest = await readMigration(LATEST);
+    const partitions = '"hot_updater_v1_release_catalog_partitions"';
+    const db = await createPrereleaseDatabase();
+    const select = `SELECT * FROM ${partitions} WHERE ("scope_key" = $1)`;
+    const run = (sql: string, params: unknown[]) =>
+      db.query(`SELECT public.${SUPABASE_APPLY_FUNCTION}($1::jsonb) AS r`, [
+        JSON.stringify([toApplyStatement({ sql, params })]),
+      ]);
+    await expect(run(select, ["s"])).rejects.toMatchObject({ code: "42501" });
+    const settings = async () =>
+      (
+        await db.query(
+          `SELECT key, value FROM public."${SUPABASE_SETTINGS_TABLE}" ORDER BY key`,
+        )
+      ).rows;
+    const before = await settings();
+
+    // The release notes' step: the file again, by psql or the SQL editor.
+    await db.exec(latest);
+    await db.exec(latest);
+
+    expect(await settings()).toEqual(before);
+    const secured = await db.query<{ rowsecurity: boolean }>(
+      "SELECT rowsecurity FROM pg_tables WHERE schemaname = 'public' AND tablename = 'hot_updater_v1_release_catalog_partitions'",
+    );
+    expect(secured.rows).toEqual([{ rowsecurity: true }]);
+    // The same schema a database the release's migrations created has.
+    const fresh = await createDatabase();
+    const shape = async (database: PGlite) => ({
+      columns: (
+        await database.query(
+          "SELECT column_name, data_type, collation_name, is_nullable FROM information_schema.columns WHERE table_name = 'hot_updater_v1_release_catalog_partitions' ORDER BY ordinal_position",
+        )
+      ).rows,
+      indexes: (
+        await database.query(
+          "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'hot_updater_v1_release_catalog_partitions' ORDER BY indexname",
+        )
+      ).rows,
+      apply: (
+        await database.query(
+          `SELECT prosrc FROM pg_proc WHERE proname = '${SUPABASE_APPLY_FUNCTION}'`,
+        )
+      ).rows,
+    });
+    expect(await shape(db)).toEqual(await shape(fresh));
+    await fresh.close();
+    // The service role writes and reads it through the RPC; the others can't call it.
+    await db.exec(
+      "GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; SET ROLE service_role;",
+    );
+    await run(
+      `INSERT INTO ${partitions} ("scope_key", "epoch", "lower_key", "generation", "payload", "partition_hash", "byte_size", "_v") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      ["s", "0a", "A", 1, "{}", "sha256:0", 2, 0],
+    );
+    await expect(run(select, ["s"])).resolves.toMatchObject({
+      rows: [{ r: [{ rows: [expect.objectContaining({ lower_key: "A" })] }] }],
+    });
     await db.close();
   });
 
@@ -397,6 +484,49 @@ describe("supabaseDatabase over the apply RPC", () => {
     reset: async () => {
       const tables = supabaseTableNames(managed.schema)
         .filter((table) => table !== SUPABASE_SETTINGS_TABLE)
+        .map((table) => `public."${table}"`);
+      await state.db!.exec(`TRUNCATE ${tables.join(", ")} CASCADE`);
+    },
+    dispose: () => undefined,
+  });
+});
+
+/**
+ * A prerelease's database before the release notes' step, with partitioning
+ * off: core's suites run as before, and nothing names
+ * `release_catalog_partitions`, which the apply RPC would refuse (42501).
+ */
+describe("supabaseDatabase on a prerelease's database, without release_catalog_partitions", () => {
+  beforeAll(async () => {
+    const db = await createPrereleaseDatabase();
+    await db.exec(
+      "GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; SET ROLE service_role;",
+    );
+    state.db = db;
+  });
+  afterAll(async () => {
+    await state.db?.close();
+  });
+
+  setupDatabaseTestSuite({
+    createHttpClient: (options) =>
+      startHttpTestServer(
+        createHotUpdater({ ...options, clientAccess: "public" }).handlers,
+      ),
+    name: "supabaseDatabase (PGlite, apply RPC) without release_catalog_partitions",
+    migrate: () => undefined,
+    createDatabase: () =>
+      supabaseDatabase({
+        supabaseUrl: "https://project.supabase.co",
+        supabaseServiceRoleKey: "service-role-key",
+      }),
+    reset: async () => {
+      const tables = supabaseTableNames(managed.schema)
+        .filter(
+          (table) =>
+            table !== SUPABASE_SETTINGS_TABLE &&
+            table !== "hot_updater_v1_release_catalog_partitions",
+        )
         .map((table) => `public."${table}"`);
       await state.db!.exec(`TRUNCATE ${tables.join(", ")} CASCADE`);
     },

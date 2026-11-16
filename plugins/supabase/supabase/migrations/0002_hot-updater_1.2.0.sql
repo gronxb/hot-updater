@@ -1,5 +1,7 @@
 -- HotUpdater.schema
 
+CREATE TABLE IF NOT EXISTS "hot_updater_v1_release_catalog_partitions" ("scope_key" varchar(2048) COLLATE "C" NOT NULL, "epoch" varchar(36) COLLATE "C" NOT NULL, "lower_key" varchar(256) COLLATE "C" NOT NULL, "generation" bigint NOT NULL, "payload" text COLLATE "C" NOT NULL, "partition_hash" varchar(71) COLLATE "C" NOT NULL, "byte_size" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("scope_key", "epoch", "lower_key"));
+
 CREATE TABLE IF NOT EXISTS "hot_updater_v1_native_builds" ("id" varchar(36) COLLATE "C" NOT NULL, "scope_key" varchar(2048) COLLATE "C" NOT NULL, "platform" varchar(16) COLLATE "C" NOT NULL, "channel_id" varchar(1408) COLLATE "C" NOT NULL, "fingerprint_hash" varchar(255) COLLATE "C", "app_version" text COLLATE "C", "min_bundle_id" varchar(36) COLLATE "C" NOT NULL, "artifact_kind" varchar(16) COLLATE "C" NOT NULL, "artifact_storage_uri" text COLLATE "C" NOT NULL, "byte_size" bigint NOT NULL, "git_commit_hash" varchar(255) COLLATE "C", "created_at_ms" bigint NOT NULL, "build_key" varchar(69) COLLATE "C", "build_number" varchar(64) COLLATE "C", "submitted_to" varchar(16) COLLATE "C", "submitted_at_ms" bigint, "submitted_version" varchar(255) COLLATE "C", "is_store_build" boolean NOT NULL, "is_sandbox" boolean NOT NULL, "sandbox_url_scheme" varchar(255) COLLATE "C", "export_method" varchar(16) COLLATE "C", "native_app_version" text COLLATE "C", "store_build_scope_key" varchar(2048) COLLATE "C", "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byScope" ON "hot_updater_v1_native_builds" ("scope_key", "id");
@@ -26,6 +28,8 @@ CREATE TABLE IF NOT EXISTS "hot_updater_v1_ios_device_account" ("id" varchar(16)
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_bundle_events__byBundle__key" ON "hot_updater_v1_bundle_events__byBundle" ("id");
 
+ALTER TABLE "hot_updater_v1_release_catalog_partitions" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "hot_updater_v1_native_builds" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "hot_updater_v1_ios_devices" ENABLE ROW LEVEL SECURITY;
@@ -51,7 +55,7 @@ BEGIN
   FOR item IN SELECT value FROM jsonb_array_elements(p_statements) LOOP
     statement := item->>'sql';
     FOR target IN SELECT (regexp_matches(statement, '(?:FROM|INTO|UPDATE|JOIN) "([^"]+)"', 'g'))[1] LOOP
-      IF NOT target = ANY (ARRAY['hot_updater_v1_bundles', 'hot_updater_v1_bundle_patches', 'hot_updater_v1_releases', 'hot_updater_v1_release_catalogs', 'hot_updater_v1_channels', 'hot_updater_v1_bundle_totals', 'hot_updater_v1_native_builds', 'hot_updater_v1_ios_devices', 'hot_updater_v1_ios_device_account', 'hot_updater_v1_bundle_events', 'hot_updater_v1_bundle_events__byBundle', 'hot_updater_v1_bundle_event_heads', 'hot_updater_v1_insights_overview', 'hot_updater_v1_insights_sketches', 'hot_updater_v1_insights_overview_daily', 'hot_updater_v1_insights_sketches_daily', 'hot_updater_v1_insights_overview_lifetime', 'hot_updater_v1_insights_sketches_lifetime', 'hot_updater_v1_insights_distribution', 'hot_updater_v1_insights_builtin_distribution', 'hot_updater_v1_insights_latest_by_bundle', 'hot_updater_v1_insights_outcomes', 'hot_updater_v1_insights_failures', 'hot_updater_v1_api_keys', 'hot_updater_v1_remote_config_active', 'hot_updater_v1_remote_config_versions', 'hot_updater_v1_private_hot_updater_settings', 'hot_updater_v1__hu_write']) THEN
+      IF NOT target = ANY (ARRAY['hot_updater_v1_bundles', 'hot_updater_v1_bundle_patches', 'hot_updater_v1_releases', 'hot_updater_v1_release_catalogs', 'hot_updater_v1_release_catalog_partitions', 'hot_updater_v1_channels', 'hot_updater_v1_bundle_totals', 'hot_updater_v1_native_builds', 'hot_updater_v1_ios_devices', 'hot_updater_v1_ios_device_account', 'hot_updater_v1_bundle_events', 'hot_updater_v1_bundle_events__byBundle', 'hot_updater_v1_bundle_event_heads', 'hot_updater_v1_insights_overview', 'hot_updater_v1_insights_sketches', 'hot_updater_v1_insights_overview_daily', 'hot_updater_v1_insights_sketches_daily', 'hot_updater_v1_insights_overview_lifetime', 'hot_updater_v1_insights_sketches_lifetime', 'hot_updater_v1_insights_distribution', 'hot_updater_v1_insights_builtin_distribution', 'hot_updater_v1_insights_latest_by_bundle', 'hot_updater_v1_insights_outcomes', 'hot_updater_v1_insights_failures', 'hot_updater_v1_api_keys', 'hot_updater_v1_remote_config_active', 'hot_updater_v1_remote_config_versions', 'hot_updater_v1_private_hot_updater_settings', 'hot_updater_v1__hu_write']) THEN
         RAISE EXCEPTION 'hot_updater_v1_apply: % is not a Hot Updater table', target USING ERRCODE = '42501';
       END IF;
     END LOOP;

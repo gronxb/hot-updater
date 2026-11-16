@@ -110,6 +110,14 @@ const COMPUTED_IMPORTS = new Map([
     "packages/server/src/adapters/drizzle.spec.ts",
     "loads the schema file it generated",
   ],
+  [
+    "packages/server/src/adapters/keyOrder.spec.ts",
+    "loads the Drizzle schema file it generated",
+  ],
+  [
+    "packages/server/src/database/sql/keyOrder.integration.spec.ts",
+    "loads the Drizzle schema file it generated",
+  ],
 ]);
 
 /**

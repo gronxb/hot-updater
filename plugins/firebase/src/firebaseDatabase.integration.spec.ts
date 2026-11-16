@@ -7,6 +7,7 @@ import { createHotUpdater } from "@hot-updater/server";
 import { createInsightsModel, insights } from "@hot-updater/server/plugins";
 import {
   setupDatabaseAdapterConformanceSuite,
+  setupKeyOrderTestSuite,
   setupDatabaseTestSuite,
   startHttpTestServer,
   insightsTestSuite,
@@ -40,6 +41,23 @@ setupDatabaseAdapterConformanceSuite({
     return {
       adapter: createKvAdapter({
         store: createFirestoreStore({ firestore, collection, nativePageSize }),
+      }),
+      cleanup: () => clearCollection(collection),
+    };
+  },
+});
+
+setupKeyOrderTestSuite({
+  name: "key-value (Firestore emulator)",
+  // The 1,500-byte sort key holds the scope key, the epoch (36), the lower
+  // key (256) and three separators.
+  maxScopeKeyBytes: 1500 - 36 - 256 - 3,
+  createAdapter: async () => {
+    const collection = `key_order_${process.pid}`;
+    return {
+      adapter: createKvAdapter({
+        store: createFirestoreStore({ firestore, collection }),
+        tablePrefix: "p_",
       }),
       cleanup: () => clearCollection(collection),
     };
