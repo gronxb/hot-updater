@@ -37,7 +37,37 @@ export {
 export * from "./databaseRows";
 export * from "./generateMinBundleId";
 export * from "./parseStorageUri";
-export * from "./releaseCatalogCompiler";
+export {
+  canonicalizeAppVersion,
+  type CatalogVersionBound,
+  type CompiledCatalogSegment,
+  type CompiledReleaseCatalog,
+  compileReleaseCatalog,
+  projectCompiledCatalog,
+  projectCompiledRollbackCatalog,
+  referenceCompatibleReleases,
+  type ReleaseCatalogCompilation,
+  ReleaseCatalogCompilationError,
+  type ReleaseCatalogCompilerDiagnostics,
+} from "./releaseCatalogCompiler";
+// The app-version tiling a partitioned release catalog stores: core's
+// writers and readers of `release_catalog_partitions` use it.
+export {
+  assembleReleaseCatalog,
+  compileReleaseCatalogTiling,
+  insertReleaseIntoTiling,
+  projectReleaseCatalogPartition,
+  RELEASE_CATALOG_LOWER_KEY_MAX_BYTES,
+  type ReleaseCatalogAssembly,
+  type ReleaseCatalogKeyRange,
+  releaseCatalogKeyRanges,
+  releaseCatalogLookupKey,
+  type ReleaseCatalogPartition,
+  type ReleaseCatalogPartitionProjection,
+  ReleaseCatalogTilingError,
+  type ReleaseCatalogTilingErrorCode,
+  tileCompiledReleaseCatalog,
+} from "./releaseCatalogTiling";
 export * from "./releaseManagement";
 export * from "./releaseCatalogMutation";
 export * from "./semverSatisfies";
