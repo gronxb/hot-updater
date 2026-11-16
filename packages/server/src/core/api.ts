@@ -3,6 +3,7 @@ import {
   type ReleaseCatalogHead,
   type ReleaseCatalogState,
 } from "./catalogReads";
+import type { CatalogWriteOptions } from "./catalogWrites";
 import { createIosDeviceApi } from "./iosDevices";
 import { createNativeBuildApi } from "./nativeBuilds";
 import { createCoreOperations } from "./operations";
@@ -10,6 +11,8 @@ import { createCoreReads, type CoreDatabase, type CoreStorage } from "./reads";
 
 export interface CoreApiOptions {
   readonly now?: () => number;
+  /** How a staged release catalog publication waits before it restarts. */
+  readonly catalogWrites?: CatalogWriteOptions;
   /** The database's CDN purge, called after a write that changes a Release Catalog. */
   readonly onCachedRoutesChange?: () => Promise<void>;
 }

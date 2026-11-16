@@ -212,8 +212,10 @@ export {
   type EngineOptions,
   createEngine,
 } from "./engine/createEngine";
-// `Engine.core`'s snapshot reads, which core's release catalog reads take.
+// `Engine.core`'s snapshot reads, which core's release catalog reads take,
+// and the setting read and fit check its catalog writes take.
 export type {
+  CatalogWriteSupport,
   SnapshotDatabase,
   SnapshotReads,
 } from "./engine/database/database";

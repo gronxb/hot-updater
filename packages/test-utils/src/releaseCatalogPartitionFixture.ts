@@ -4,8 +4,58 @@ import {
   type DatabaseAdapter,
   type ReleaseCatalogPartition,
   type ReleaseCatalogRow,
+  SETTINGS_TABLE,
   tileCompiledReleaseCatalog,
 } from "@hot-updater/plugin-core";
+
+/** The persisted switch core's writers read: `on` partitions app-version scopes. */
+export const RELEASE_CATALOG_PARTITIONING_SETTING = "catalog.partitioning";
+
+/**
+ * Turns partitioning on by inserting the settings row through the adapter,
+ * as nothing in the product can yet: test-only, for specs of the write
+ * path and of released cores sharing a database. `off` deletes the row,
+ * which the product never does either.
+ */
+export const setReleaseCatalogPartitioning = async (
+  adapter: DatabaseAdapter,
+  state: "on" | "off",
+): Promise<void> => {
+  const key = RELEASE_CATALOG_PARTITIONING_SETTING;
+  const [current] = await adapter.get(SETTINGS_TABLE, [[key]]);
+  if (state === "on") {
+    if (current?.value === "on") return;
+    const result = await adapter.write([
+      current
+        ? {
+            type: "patch",
+            table: SETTINGS_TABLE,
+            key: [key],
+            set: { value: "on" },
+            guard: { v: Number(current._v) },
+            previous: current,
+          }
+        : {
+            type: "insert",
+            table: SETTINGS_TABLE,
+            row: { key, value: "on", _v: 0 },
+          },
+    ]);
+    if (!result.ok) throw new Error("The partitioning setting changed");
+    return;
+  }
+  if (current === null || current === undefined) return;
+  const result = await adapter.write([
+    {
+      type: "delete",
+      table: SETTINGS_TABLE,
+      key: [key],
+      guard: { v: Number(current._v) },
+      previous: current,
+    },
+  ]);
+  if (!result.ok) throw new Error("The partitioning setting changed");
+};
 
 /** A partition row as `release_catalog_partitions` stores it. */
 export interface ReleaseCatalogPartitionRowFixture {

@@ -45,11 +45,22 @@ const withSqliteCode = (error: unknown): unknown => {
 };
 
 /**
- * The most ops one write sends. Each statement of a batch is one query, a
- * Worker invocation allows 1,000 queries on the paid plan, and an op takes at
- * most two statements besides the batch's three.
+ * The most ops one atomic write sends: one `batch` of at most two statements
+ * an op besides its three own, so at most 903 statements. A Worker counts a
+ * batch as one query against its invocation's queries, whatever statements
+ * it holds (D1's limits), so this bounds one batch, not an invocation: a
+ * partitioned release catalog too big for it stages its rows in several
+ * writes.
  */
 export const D1_MAX_OPS = 450;
+
+/**
+ * The queries one Worker invocation may send through a D1 binding on the
+ * Free plan, the lower of Cloudflare's two (50 Free, 1,000 Paid; a batch is
+ * one query: https://developers.cloudflare.com/d1/platform/limits/). A
+ * Worker can't tell its plan, so the binding declares this one.
+ */
+export const D1_BINDING_QUERIES_PER_REQUEST = 50;
 
 /**
  * Hot Updater's database on D1: the storage engine through the shared SQL
@@ -57,10 +68,18 @@ export const D1_MAX_OPS = 450;
  * so each write is one atomic batch that evaluates its guards first
  * (`_hu_write`).
  */
-export const createD1Database = (runner: {
-  query(statement: SqlStatement): Promise<SqlResult>;
-  batch(statements: readonly SqlStatement[]): Promise<readonly SqlResult[]>;
-}): ToolingDatabase => {
+export const createD1Database = (
+  runner: {
+    query(statement: SqlStatement): Promise<SqlResult>;
+    batch(statements: readonly SqlStatement[]): Promise<readonly SqlResult[]>;
+  },
+  {
+    maxQueriesPerRequest,
+  }: {
+    /** A Worker binding's per-invocation query cap; REST has none. */
+    readonly maxQueriesPerRequest?: number;
+  } = {},
+): ToolingDatabase => {
   const executor: SqlExecutor = {
     dialect: "sqlite",
     execute: (statement) =>
@@ -79,6 +98,9 @@ export const createD1Database = (runner: {
   };
   return createEngineDatabase({
     name: "d1Database",
-    adapter: createSqlAdapter({ executor, maxOps: D1_MAX_OPS, maxParams: 100 }),
+    adapter: Object.assign(
+      createSqlAdapter({ executor, maxOps: D1_MAX_OPS, maxParams: 100 }),
+      maxQueriesPerRequest === undefined ? {} : { maxQueriesPerRequest },
+    ),
   });
 };

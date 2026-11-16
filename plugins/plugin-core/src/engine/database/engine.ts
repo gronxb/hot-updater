@@ -2,6 +2,7 @@ import { type DatabaseAdapter } from "../../database/adapter";
 import { verifyAdapter } from "../../database/verifyAdapter";
 import { createEngineReads } from "./engineReads";
 import { createTransactions, type RetryOptions } from "./engineTransaction";
+import { SETTINGS_TABLE } from "./fence";
 import type { ReadMeasurement } from "./readMeter";
 import type { ResolvedSchema } from "./resolveSchema";
 
@@ -31,6 +32,13 @@ export const createStorageEngine = ({
     transaction,
     /** The adapter's snapshot reads, through every wrapper; absent without them. */
     readSnapshot: adapter.readSnapshot?.bind(adapter),
+    /** The adapter's declared per-request query cap, through every wrapper. */
+    maxQueriesPerRequest: adapter.maxQueriesPerRequest,
+    /** One settings row's value, null when absent: a point read the meter counts. */
+    async readSetting(key: string): Promise<string | null> {
+      const [row] = await adapter.get(SETTINGS_TABLE, [[key]]);
+      return typeof row?.value === "string" ? row.value : null;
+    },
     /** Runs `read` and reports what it read at both boundaries (verify mode only). */
     async measureReads<T>(read: () => Promise<T>): Promise<ReadMeasurement<T>> {
       if (verified === undefined) {

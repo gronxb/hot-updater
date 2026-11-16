@@ -10,7 +10,10 @@ import type { AggregateBatching } from "../../types/databaseConfig";
 import type { AggregateShape } from "./definitions";
 import type { StorageEngine } from "./engine";
 import { type AggregateChange, recordAggregate } from "./engineAggregates";
-import type { TransactionEngine } from "./engineTransaction";
+import type {
+  TransactionEngine,
+  TransactionOptions,
+} from "./engineTransaction";
 import { DatabaseTransactionError } from "./errors";
 import type {
   ResolvedModel,
@@ -324,7 +327,10 @@ interface LogRow {
 /** Changes to aggregates declared `batched`, as an engine runs them. */
 export interface AggregateBatches {
   /** `engine.transaction`, with batched aggregate changes written as one log row. */
-  transaction<R>(fn: (tx: TransactionEngine) => Promise<R>): Promise<R>;
+  transaction<R>(
+    fn: (tx: TransactionEngine) => Promise<R>,
+    options?: TransactionOptions,
+  ): Promise<R>;
   /** Applies what a read of `table` would miss; never throws. */
   beforeRead(table: string): Promise<void>;
   /** Applies the pending log rows now. */
@@ -681,7 +687,7 @@ export const createAggregateBatches = ({
       }));
 
   return {
-    async transaction(fn) {
+    async transaction(fn, options) {
       let changes: Changes = new Map();
       const result = await engine.transaction(async (tx) => {
         const attempt: Changes = new Map();
@@ -725,7 +731,8 @@ export const createAggregateBatches = ({
         } finally {
           open = false;
         }
-      });
+      }, options);
+      if (options?.fitsOnly) return result;
       if (changes.size > 0 && now() >= nextDue) {
         await compact(false, GROUPS.commit);
       }

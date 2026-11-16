@@ -198,6 +198,19 @@ export interface DatabaseAdapter {
    * - Nothing outlives the call: the snapshot ends when `read` settles.
    */
   readSnapshot?<T>(read: (reader: SnapshotReader) => Promise<T>): Promise<T>;
+  /**
+   * The most queries one request may send to this store, when its runtime
+   * caps them. A Cloudflare Worker's D1 binding allows 50 queries per
+   * invocation on the Free plan and 1,000 on Paid, where one `batch` counts
+   * as one query (https://developers.cloudflare.com/d1/platform/limits/).
+   * A Worker can't tell its plan, so the binding declares 50. Measured in
+   * workerd: a staged release catalog publication with the drain of the
+   * epoch it retires takes 265 queries for a 603-row scope, a steady deploy
+   * 8. Core's catalog writer counts a staged publication's queries against
+   * this before it stages anything, and writes today's compact row when they
+   * wouldn't fit. Absent: no cap, as for D1 over REST and every other store.
+   */
+  readonly maxQueriesPerRequest?: number;
   /** Called only by migration tooling, such as `hot-updater db migrate`. */
   readonly migrations?: {
     apply(tables: readonly PhysicalTable[]): Promise<void>;

@@ -164,6 +164,12 @@ importers:
       '@hot-updater/neon':
         specifier: workspace:*
         version: link:plugins/neon
+      '@hot-updater/plugin-core-1.1.16':
+        specifier: npm:@hot-updater/plugin-core@1.1.16
+        version: '@hot-updater/plugin-core@1.1.16'
+      '@hot-updater/server-1.1.16':
+        specifier: npm:@hot-updater/server@1.1.16
+        version: '@hot-updater/server@1.1.16(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(kysely@0.28.17)(mongodb@6.20.0(@aws-sdk/credential-providers@3.1066.0)(socks@2.8.9))'
       '@hot-updater/standalone':
         specifier: workspace:*
         version: link:plugins/standalone
@@ -5828,8 +5834,29 @@ packages:
     peerDependencies:
       hono: ^4
 
+  '@hot-updater/plugin-api-keys@1.1.16':
+    resolution: {integrity: sha512-AASoOOPJ0fP8ZTaY4Y5u05c0Lgpv+ekRPwoZ/jMkZ6KeOL5e6/BYt/9jNygOovt4b53BW4Z7PhQEY4unD9hG2A==}
+    peerDependencies:
+      '@hot-updater/plugin-core': ^1.1.16
+
   '@hot-updater/plugin-core@1.1.16':
     resolution: {integrity: sha512-VPkAbhiAF29PZzKifAXnj2y18dCLjZGAujeW3hl6ZBD0u5baQG3m7SqbdX8AQMeGchtJ3rFK0AgZS/CArOjEqQ==}
+
+  '@hot-updater/plugin-insights@1.1.16':
+    resolution: {integrity: sha512-nFpMDjfXMrUOrGNgS1tbARa/5fK55/ND4Gd6Aon40ohIuQkyi9fgWFtqTZqwHS/MNrgWz6mzgjYmKrEDuEWcVw==}
+    peerDependencies:
+      '@hot-updater/plugin-core': ^1.1.16
+    peerDependenciesMeta:
+      '@hot-updater/plugin-core':
+        optional: true
+
+  '@hot-updater/plugin-remote-config@1.1.16':
+    resolution: {integrity: sha512-QxvCXLzKI2oYdBV0Hr59bDBh/gLQfb/ix/F5SdbzhdA1tnUfuKYxoeHSUCA3jnNum9RrLtSDHWuemr6HSNTpDw==}
+    peerDependencies:
+      '@hot-updater/plugin-core': ^1.1.16
+    peerDependenciesMeta:
+      '@hot-updater/plugin-core':
+        optional: true
 
   '@hot-updater/protocol@1.1.16':
     resolution: {integrity: sha512-Q1dd/pCMv8vLUPRD3hxAkcInaa0qGsVat6LfN01XVKFYCyBjeBT6gINvsez5LpyKjE9YnlvAhIhPhT12pOHP9A==}
@@ -5839,6 +5866,23 @@ packages:
     peerDependencies:
       react: '*'
       react-native: '*'
+
+  '@hot-updater/server@1.1.16':
+    resolution: {integrity: sha512-zKFWBCqiEzsH1lPcCDKRvfsBLInyERZQT9J9UOW4rIjx0lXTqeGlLpadaV9bpDD8idZOMZSerXZGz66hf9M2pg==}
+    peerDependencies:
+      '@prisma/client': '*'
+      drizzle-orm: '*'
+      kysely: '*'
+      mongodb: '*'
+    peerDependenciesMeta:
+      '@prisma/client':
+        optional: true
+      drizzle-orm:
+        optional: true
+      kysely:
+        optional: true
+      mongodb:
+        optional: true
 
   '@hot-updater/standalone@1.1.16':
     resolution: {integrity: sha512-eiMe6YXcXNbV6qqw+0S1aNHK1YxQLwW6bgRWty2AN0OQcp+RKdUkX4SONoT6SHig3uCBZ7iOq+Xg3DhF6jfqiw==}
@@ -25369,12 +25413,29 @@ snapshots:
     dependencies:
       hono: 4.12.34
 
+  '@hot-updater/plugin-api-keys@1.1.16(@hot-updater/plugin-core@1.1.16)':
+    dependencies:
+      '@hot-updater/plugin-core': 1.1.16
+
   '@hot-updater/plugin-core@1.1.16':
     dependencies:
       '@hot-updater/protocol': 1.1.16
       es-toolkit: 1.47.0
       mime: 4.1.0
       verkit: 0.4.0
+
+  '@hot-updater/plugin-insights@1.1.16(@hot-updater/plugin-core@1.1.16)':
+    dependencies:
+      '@hot-updater/protocol': 1.1.16
+    optionalDependencies:
+      '@hot-updater/plugin-core': 1.1.16
+
+  '@hot-updater/plugin-remote-config@1.1.16(@hot-updater/plugin-core@1.1.16)':
+    dependencies:
+      '@hot-updater/protocol': 1.1.16
+      verkit: 0.4.0
+    optionalDependencies:
+      '@hot-updater/plugin-core': 1.1.16
 
   '@hot-updater/protocol@1.1.16': {}
 
@@ -25386,6 +25447,21 @@ snapshots:
       react: 19.1.0
       react-native: 0.80.1(@babel/core@7.26.0)(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@19.2.15)(react@19.1.0)
       use-sync-external-store: 1.5.0(react@19.1.0)
+
+  '@hot-updater/server@1.1.16(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(kysely@0.28.17)(mongodb@6.20.0(@aws-sdk/credential-providers@3.1066.0)(socks@2.8.9))':
+    dependencies:
+      '@hot-updater/plugin-api-keys': 1.1.16(@hot-updater/plugin-core@1.1.16)
+      '@hot-updater/plugin-core': 1.1.16
+      '@hot-updater/plugin-insights': 1.1.16(@hot-updater/plugin-core@1.1.16)
+      '@hot-updater/plugin-remote-config': 1.1.16(@hot-updater/plugin-core@1.1.16)
+      '@hot-updater/protocol': 1.1.16
+      rou3: 0.7.9
+      verkit: 0.4.0
+    optionalDependencies:
+      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2))
+      drizzle-orm: 0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2))
+      kysely: 0.28.17
+      mongodb: 6.20.0(@aws-sdk/credential-providers@3.1066.0)(socks@2.8.9)
 
   '@hot-updater/standalone@1.1.16':
     dependencies:
@@ -29640,9 +29716,7 @@ snapshots:
       metro-runtime: 0.87.1
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/metro-config@0.88.0(@babel/core@7.26.0)':
     dependencies:
@@ -29652,7 +29726,9 @@ snapshots:
       metro-runtime: 0.87.1
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/new-app-screen@0.85.2(@types/react@19.2.15)(react-native@0.85.2(@babel/core@7.26.0)(@react-native-community/cli@20.1.0(@typescript/typescript6@6.0.2))(@react-native/jest-preset@0.85.2(@babel/core@7.26.0)(react@19.2.3))(@react-native/metro-config@0.85.2(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3)':
     dependencies:
@@ -33160,7 +33236,7 @@ snapshots:
       resolve-from: 5.0.0
     optionalDependencies:
       '@babel/runtime': 7.29.7
-      expo: 55.0.32(@babel/core@7.26.0)(@expo/dom-webview@55.0.6)(@expo/metro-runtime@55.0.12)(react-dom@19.2.6(react@19.3.0))(react-native-webview@13.16.0(react-native@0.88.0(@babel/core@7.26.0)(@react-native-community/cli@20.2.0(typescript@7.0.2))(@react-native/metro-config@0.88.0(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.3.0))(react@19.3.0))(react-native@0.88.0(@babel/core@7.26.0)(@react-native-community/cli@20.2.0(typescript@7.0.2))(@react-native/metro-config@0.88.0(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.3.0))(react-server-dom-webpack@19.2.6(react-dom@19.2.6(react@19.3.0))(react@19.3.0)(webpack@5.107.2(esbuild@0.28.1)))(react@19.3.0)(typescript@7.0.2)
+      expo: 55.0.32(@babel/core@7.26.0)(@expo/dom-webview@55.0.6)(@expo/metro-runtime@55.0.12)(@typescript/typescript6@6.0.2)(react-dom@19.2.0(react@19.2.0))(react-native-webview@13.16.0(react-native@0.83.10(@babel/core@7.26.0)(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@react-native/metro-config@0.88.0(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.0))(react@19.2.0))(react-native@0.83.10(@babel/core@7.26.0)(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@react-native/metro-config@0.88.0(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.0))(react-server-dom-webpack@19.2.6(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(webpack@5.107.2(esbuild@0.28.1)))(react@19.2.0)
     transitivePeerDependencies:
       - '@babel/core'
       - supports-color

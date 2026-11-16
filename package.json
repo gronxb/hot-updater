@@ -43,6 +43,8 @@
     "@hot-updater/firebase": "workspace:*",
     "@hot-updater/neon": "workspace:*",
     "@hot-updater/standalone": "workspace:*",
+    "@hot-updater/plugin-core-1.1.16": "npm:@hot-updater/plugin-core@1.1.16",
+    "@hot-updater/server-1.1.16": "npm:@hot-updater/server@1.1.16",
     "@hot-updater/standalone-1.1.16": "npm:@hot-updater/standalone@1.1.16",
     "@hot-updater/supabase": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
