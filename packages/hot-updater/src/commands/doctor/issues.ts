@@ -43,7 +43,9 @@ export interface ReleaseCatalogIssue {
     | "RELEASE_CATALOG_STALE"
     | "RELEASE_CATALOG_IDENTITY_MISSING"
     | "RELEASE_CATALOG_CHECK_FAILED"
-    | "RELEASE_CATALOGS_UNCHECKED";
+    | "RELEASE_CATALOGS_UNCHECKED"
+    | "RELEASE_SCOPES_UNCHECKED"
+    | "RELEASE_SCOPES_UNINDEXED";
   /** The scope the issue is about; absent when no catalog could be read. */
   scopeKey?: string;
   message: string;

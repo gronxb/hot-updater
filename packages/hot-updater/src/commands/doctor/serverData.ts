@@ -51,21 +51,49 @@ const listReleaseScopeKeys = async (
   }
 };
 
-/** Every scope with a catalog row, by key. */
-const listCatalogScopeKeys = async (
+/** Every catalog row's scope, and whether it is a tombstone. */
+const listCatalogScopes = async (
   core: HotUpdaterCoreApi,
-): Promise<string[]> => {
-  const scopeKeys: string[] = [];
+): Promise<{ scopeKey: string; tombstone: boolean }[]> => {
+  const scopes: { scopeKey: string; tombstone: boolean }[] = [];
   for (let after: string | undefined; ; ) {
     const page: ReleaseCatalogRow[] = await core.listReleaseCatalogs({
       limit: CATALOG_PAGE,
       order: "asc",
       ...(after === undefined ? {} : { after }),
     });
-    scopeKeys.push(...page.map(({ scope_key }) => scope_key));
-    if (page.length < CATALOG_PAGE) return scopeKeys;
+    scopes.push(
+      ...page.map(({ scope_key, is_tombstone }) => ({
+        scopeKey: scope_key,
+        tombstone: is_tombstone,
+      })),
+    );
+    if (page.length < CATALOG_PAGE) return scopes;
     after = page.at(-1)!.scope_key;
   }
+};
+
+/**
+ * Catalogued scopes the walk did not list though they hold releases: a
+ * catalog that is not a tombstone has an enabled release, so its scope is
+ * in the walk unless the index lacks items for releases stored before it.
+ * One limit-1 read for each scope missing from the walk, none otherwise.
+ */
+const listUnindexedScopeKeys = async (
+  core: HotUpdaterCoreApi,
+  catalogs: readonly { scopeKey: string; tombstone: boolean }[],
+  walked: ReadonlySet<string>,
+): Promise<string[]> => {
+  const unindexed: string[] = [];
+  for (const { scopeKey, tombstone } of catalogs) {
+    if (tombstone || walked.has(scopeKey)) continue;
+    const [release] = await core.listReleases({
+      filter: { kind: "scope", scopeKey },
+      limit: 1,
+    });
+    if (release !== undefined) unindexed.push(scopeKey);
+  }
+  return unindexed;
 };
 
 /**
@@ -161,13 +189,44 @@ const checkReleaseCatalogs = async (
 export const checkServerData = async (
   core: HotUpdaterCoreApi,
 ): Promise<ReleaseCatalogStatus> => {
-  let catalogScopeKeys: string[];
-  let releaseScopeKeys: Set<string>;
+  let catalogs: { scopeKey: string; tombstone: boolean }[];
   try {
-    catalogScopeKeys = await listCatalogScopeKeys(core);
-    releaseScopeKeys = new Set(await listReleaseScopeKeys(core));
+    catalogs = await listCatalogScopes(core);
   } catch (error) {
     return releaseCatalogsUnchecked(error);
   }
-  return checkReleaseCatalogs(core, catalogScopeKeys, releaseScopeKeys);
+  const catalogScopeKeys = catalogs.map(({ scopeKey }) => scopeKey);
+  let walked: Set<string> | undefined;
+  let walkFailure: unknown;
+  try {
+    walked = new Set(await listReleaseScopeKeys(core));
+  } catch (error) {
+    walkFailure = error;
+  }
+  const status = await checkReleaseCatalogs(
+    core,
+    catalogScopeKeys,
+    walked ?? new Set(),
+  );
+  if (walked === undefined) {
+    status.issues.push({
+      type: "warning",
+      code: "RELEASE_SCOPES_UNCHECKED",
+      message: `Checked the scopes with a catalog row, but could not look for scopes with releases and no catalog row: ${errorMessage(walkFailure)}`,
+      resolution:
+        "Fix what the message names, such as a self-hosted server older than this hot-updater, then rerun doctor.",
+    });
+    return status;
+  }
+  const unindexed = await listUnindexedScopeKeys(core, catalogs, walked);
+  if (unindexed.length > 0) {
+    status.issues.push({
+      type: "warning",
+      code: "RELEASE_SCOPES_UNINDEXED",
+      message: `The releases' scope index lacks ${unindexed.length} scope${unindexed.length === 1 ? "" : "s"} that ${unindexed.length === 1 ? "has" : "have"} releases, such as ${unindexed[0]}, so doctor may miss a scope with releases and no catalog row.`,
+      resolution:
+        "Migrate the database, which writes the index items of releases stored before the index: `npx hot-updater init --provider <provider> --from-env-file .env.hotupdater` for a deployment init created, or `npx hot-updater db migrate <server file>` for a server of your own. Then rerun doctor.",
+    });
+  }
+  return status;
 };

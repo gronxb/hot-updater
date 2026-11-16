@@ -1,5 +1,6 @@
 import {
   conformanceCounters,
+  conformanceExpiring,
   conformanceItems,
   createMemoryKeyValueStore,
 } from "@hot-updater/test-utils";
@@ -19,6 +20,7 @@ import { resolveSchema } from "../resolveSchema";
 import {
   createKvAdapter,
   type KeyValueStore,
+  type KvOp,
   type KvRange,
   encodeKvKey,
 } from "./kvAdapter";
@@ -511,6 +513,44 @@ describe("filling an index declared after its rows", () => {
     }).migrations!.apply([conformanceItems]);
     // One write: the record, with every index filled.
     expect(writes).toEqual([1]);
+  });
+
+  it("judges a table with retention by its live rows, not one a native TTL is taking apart", async () => {
+    const store = createMemoryKeyValueStore();
+    const adapter = createKvAdapter({ store });
+    const now = Date.now();
+    const rows = [
+      { id: "e1", grp: "g", at: 1, tags: null, _v: 0 },
+      { id: "e2", grp: "g", at: now, tags: null, _v: 0 },
+    ];
+    await adapter.write(
+      rows.map((row) => ({ type: "insert", table: conformanceExpiring, row })),
+    );
+    // The TTL took e1's byGroup item and left its row for now.
+    await store.write([
+      {
+        type: "delete",
+        key: {
+          pk: `${conformanceExpiring.name}#byGroup#${encodeKvKey(["g"])}`,
+          sk: encodeKvKey(["e1"]),
+        },
+      },
+    ]);
+    const writes: KvOp[][] = [];
+    await createKvAdapter({
+      store: {
+        ...store,
+        write: (ops) => {
+          writes.push([...ops]);
+          return store.write(ops);
+        },
+      },
+    }).migrations!.apply([conformanceExpiring]);
+    // Only the record: no fill of a table whose live rows have their items.
+    expect(writes).toHaveLength(1);
+    expect(writes[0]!.map(({ key }) => key.pk)).toEqual([
+      `${conformanceExpiring.name}#`,
+    ]);
   });
 
   it("fills again after a fill that stopped part way", async () => {

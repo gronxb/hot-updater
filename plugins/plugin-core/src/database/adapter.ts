@@ -185,6 +185,14 @@ export interface DatabaseAdapter {
   /** Called only by migration tooling, such as `hot-updater db migrate`. */
   readonly migrations?: {
     apply(tables: readonly PhysicalTable[]): Promise<void>;
+    /**
+     * What `apply` would still change in tables a migration already
+     * created, such as the items of an index declared after its rows, each
+     * as `<table>.<index>`; empty when nothing. Without it, `db migrate`
+     * applies only when the schema settings differ. The key-value kit
+     * implements it.
+     */
+    pending?(tables: readonly PhysicalTable[]): Promise<readonly string[]>;
   };
   dispose?(): Promise<void>;
 }

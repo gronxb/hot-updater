@@ -11,8 +11,11 @@ const CHANNEL_ID = { type: "string", maxLength: 1408, ascii: true } as const;
  * applies it to managed databases an earlier release created. The official
  * plugins' `schemaVersion`s follow the same rule. A bump only adds tables:
  * every database's migrator creates missing tables and then records the
- * version, and none of them changes an existing table, so changing one
- * needs a migration step of its own first. The schema fence answers 503 on
+ * version, and none of them changes an existing table's columns, so changing
+ * one needs a migration step of its own first. An index added to an existing
+ * table needs none where it covers an existing index's columns (SQL,
+ * MongoDB); the key-value kit writes its items for earlier rows when it
+ * migrates, also on a database whose settings already match. The schema fence answers 503 on
  * a database whose row differs, until it runs. Before a version is released,
  * its tables change in place in its own migration, and a database one of its
  * prereleases migrated takes the same change by hand: the fence compares this

@@ -420,18 +420,37 @@ export const createKvAdapter = ({
     sk: ONLY,
   });
 
-  /** Whether the table's first and last rows have their items in `index`: true for an empty table. */
+  /**
+   * A row past its expiry: a native TTL deletes its items one at a time,
+   * so some may be gone already, and it needs no new ones.
+   */
+  const expired = (table: PhysicalTable, row: StoredRow) => {
+    const at = expiresAt(table, row);
+    return at !== undefined && at <= Date.now();
+  };
+
+  /**
+   * Whether the table's first and last live rows have their items in
+   * `index`: true for a table without one.
+   */
   const holdsItems = async (layout: Layout, index: PhysicalIndex) => {
     const ends = await Promise.all(
       (["asc", "desc"] as const).map((order) =>
-        store.query({ pk: layout.rows, order, limit: 1 }),
+        store.query({
+          pk: layout.rows,
+          order,
+          limit: layout.table.retention ? 25 : 1,
+        }),
       ),
     );
-    const keys = ends.flatMap(({ items }) =>
-      items.flatMap(({ value }) =>
-        [...itemsOf(layout, value, [index]).values()].map(({ key }) => key),
-      ),
-    );
+    const keys = ends.flatMap(({ items }) => {
+      const live = items.find(({ value }) => !expired(layout.table, value));
+      return live === undefined
+        ? []
+        : [...itemsOf(layout, live.value, [index]).values()].map(
+            ({ key }) => key,
+          );
+    });
     if (keys.length === 0) return true;
     return (await store.get(keys)).every((item) => item !== null);
   };
@@ -484,7 +503,7 @@ export const createKvAdapter = ({
     row: StoredRow,
   ): KvOp[] => {
     const entries = [...itemsOf(layout, row, [index]).values()];
-    if (entries.length === 0) return [];
+    if (entries.length === 0 || expired(layout.table, row)) return [];
     return [
       {
         type: "check",
@@ -561,13 +580,30 @@ export const createKvAdapter = ({
    * items, or which has no rows, is recorded without a fill. A fill that
    * stops is recorded as started, so the next migration fills it again.
    */
+  const fillStates = async (layout: Layout) => {
+    const [stored] = await store.get([fillStateOf(layout)]);
+    return { ...((stored?.indexes ?? {}) as Record<string, string>) };
+  };
+
+  /** The indexes of the table whose rows may lack their items, read only. */
+  const unfilled = async (layout: Layout) => {
+    if (layout.indexed.length === 0) return [];
+    const states = await fillStates(layout);
+    const found: string[] = [];
+    for (const index of layout.indexed) {
+      const state = states[index.name];
+      if (state === "filled") continue;
+      if (state === "filling" || !(await holdsItems(layout, index))) {
+        found.push(`${layout.table.name}.${index.name}`);
+      }
+    }
+    return found;
+  };
+
   const fillIndexes = async (layout: Layout) => {
     if (layout.indexed.length === 0) return;
     const at = fillStateOf(layout);
-    const [stored] = await store.get([at]);
-    const states: Record<string, string> = {
-      ...((stored?.indexes ?? {}) as Record<string, string>),
-    };
+    const states = await fillStates(layout);
     const record = () =>
       store.write([
         { type: "put", key: at, value: { indexes: { ...states } } },
@@ -672,6 +708,13 @@ export const createKvAdapter = ({
       apply: async (tables) => {
         await store.migrations?.apply();
         for (const table of tables) await fillIndexes(layoutOf(table));
+      },
+      pending: async (tables) => {
+        const found: string[] = [];
+        for (const table of tables) {
+          found.push(...(await unfilled(layoutOf(table))));
+        }
+        return found;
       },
     },
     ...(store.dispose === undefined ? {} : { dispose: () => store.dispose!() }),

@@ -39,7 +39,27 @@ export const createEngineMigrator = (
         ([key, value]) => stored.get(key) === value,
       )
     ) {
-      return getEmptyMigrationResult();
+      // Up to date, but for index items a store keeps itself, such as an
+      // index declared after rows a prerelease of this version wrote.
+      const pending =
+        (await options.adapter.migrations?.pending?.(options.schema.tables)) ??
+        [];
+      if (pending.length === 0) return getEmptyMigrationResult();
+      return {
+        operations: [
+          {
+            type: "custom",
+            description: `Write the index items of rows stored before their index: ${pending.join(", ")}`,
+          },
+        ],
+        execute: () =>
+          migrateSchema(
+            options.adapter,
+            options.adapterName,
+            options.schema.tables,
+            options.settings,
+          ),
+      };
     }
     return {
       operations: [

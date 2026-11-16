@@ -454,7 +454,15 @@ reports it as the error `RELEASE_CATALOG_IDENTITY_MISSING`. Hot Updater never
 creates the row: restore it from a backup before deploying,
 since a new identity would not match the history devices already hold. A scope
 core cannot compile is the error `RELEASE_CATALOG_CHECK_FAILED` with the
-reason, beside what the other scopes report. These checks compare projections;
+reason, beside what the other scopes report.
+
+Doctor finds scopes without a catalog row by stepping through the Releases'
+scope index, one read per scope. A self-hosted server older than the CLI has no
+route for it: doctor still checks the scopes with a catalog row and warns
+`RELEASE_SCOPES_UNCHECKED`. When a scope with a catalog row and Releases is
+missing from that index, its items for earlier Releases were never written, and
+doctor warns `RELEASE_SCOPES_UNINDEXED`: migrate the database as for
+`SCHEMA_MIGRATION_PENDING`, which writes them. These checks compare projections;
 they do not recover missing source policy or replace a native OTA delivery
 test.
 
