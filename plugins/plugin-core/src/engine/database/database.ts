@@ -82,6 +82,12 @@ type BatchKeys = (
  */
 export interface CatalogWriteSupport<S extends ModuleSchema> {
   /**
+   * The adapter's `maxQueriesPerRequest`: the most queries one request may
+   * send, which a staged publication is counted against before it stages.
+   * Undefined: no cap.
+   */
+  readonly queryBudget: number | undefined;
+  /**
    * One settings row's value, or null when it is absent: one point read.
    * It may run inside a transaction's callback, and is never guarded.
    */
@@ -237,6 +243,7 @@ export const createDatabaseEngine = ({
         }),
         transaction: (fn) => transaction(typed(fn)),
         readSetting: engine.readSetting,
+        queryBudget: engine.maxQueriesPerRequest,
         unguardedSnapshot,
         findByKeysIn: (tx, model, keys) => {
           const batch = (tx as { [BATCH_KEYS]?: BatchKeys })[BATCH_KEYS];

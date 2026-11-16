@@ -55,15 +55,31 @@ const withSqliteCode = (error: unknown): unknown => {
 export const D1_MAX_OPS = 450;
 
 /**
+ * The queries one Worker invocation may send through a D1 binding on the
+ * Free plan, the lower of Cloudflare's two (50 Free, 1,000 Paid; a batch is
+ * one query: https://developers.cloudflare.com/d1/platform/limits/). A
+ * Worker can't tell its plan, so the binding declares this one.
+ */
+export const D1_BINDING_QUERIES_PER_REQUEST = 50;
+
+/**
  * Hot Updater's database on D1: the storage engine through the shared SQL
  * core, fenced by the schema settings. D1 has no interactive transactions,
  * so each write is one atomic batch that evaluates its guards first
  * (`_hu_write`).
  */
-export const createD1Database = (runner: {
-  query(statement: SqlStatement): Promise<SqlResult>;
-  batch(statements: readonly SqlStatement[]): Promise<readonly SqlResult[]>;
-}): ToolingDatabase => {
+export const createD1Database = (
+  runner: {
+    query(statement: SqlStatement): Promise<SqlResult>;
+    batch(statements: readonly SqlStatement[]): Promise<readonly SqlResult[]>;
+  },
+  {
+    maxQueriesPerRequest,
+  }: {
+    /** A Worker binding's per-invocation query cap; REST has none. */
+    readonly maxQueriesPerRequest?: number;
+  } = {},
+): ToolingDatabase => {
   const executor: SqlExecutor = {
     dialect: "sqlite",
     execute: (statement) =>
@@ -82,6 +98,9 @@ export const createD1Database = (runner: {
   };
   return createEngineDatabase({
     name: "d1Database",
-    adapter: createSqlAdapter({ executor, maxOps: D1_MAX_OPS, maxParams: 100 }),
+    adapter: Object.assign(
+      createSqlAdapter({ executor, maxOps: D1_MAX_OPS, maxParams: 100 }),
+      maxQueriesPerRequest === undefined ? {} : { maxQueriesPerRequest },
+    ),
   });
 };

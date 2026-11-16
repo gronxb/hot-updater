@@ -32,6 +32,8 @@ export const createStorageEngine = ({
     transaction,
     /** The adapter's snapshot reads, through every wrapper; absent without them. */
     readSnapshot: adapter.readSnapshot?.bind(adapter),
+    /** The adapter's declared per-request query cap, through every wrapper. */
+    maxQueriesPerRequest: adapter.maxQueriesPerRequest,
     /** One settings row's value, null when absent: a point read the meter counts. */
     async readSetting(key: string): Promise<string | null> {
       const [row] = await adapter.get(SETTINGS_TABLE, [[key]]);

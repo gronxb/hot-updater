@@ -946,3 +946,101 @@ describe("staged results carry every field the atomic path returns", () => {
     );
   });
 });
+
+describe("a store's per-request query cap (maxQueriesPerRequest)", () => {
+  /** The setup's scope on an adapter declaring `budget`, with every staged count reported. */
+  const capped = async (budget: number) => {
+    const io = createWriteTestAdapter({ maxOps: 9 });
+    const memory = io.memory;
+    const adapter = Object.assign(Object.create(io.adapter), {
+      maxQueriesPerRequest: budget,
+    });
+    const counts: { needed: number; budget: number }[] = [];
+    const core = createWriteTestCore(adapter, {
+      catalogWrites: {
+        onStagingBudget: (count) => counts.push(count),
+        restartDelay: async () => {},
+      },
+    });
+    const other = createWriteTestCore(memory);
+    await setReleaseCatalogPartitioning(memory, "on");
+    for (let index = 0; index < 5; index += 1) {
+      await deploy(other, `${4000 + index}`, `${index + 1}.0.0`);
+    }
+    let flips = 0;
+    io.hooks.beforeWrite = (pending) => {
+      if (kindOf(pending) === "flip") flips += 1;
+    };
+    return { core, counts, flips: () => flips, io };
+  };
+
+  it("stages a publication counted at the cap, and writes today's compact row one query over it", async () => {
+    // The count of one staged broad insert, with room to spare.
+    const probe = await capped(10_000);
+    await deploy(probe.core, "4100", "*");
+    expect(probe.flips()).toBe(1);
+    const needed = probe.counts.at(-1)!.needed;
+
+    for (const [budget, stages] of [
+      [needed + 1, true],
+      [needed, true],
+      [needed - 1, false],
+    ] as const) {
+      const run = await capped(budget);
+      const before = (await storedScope(run.io.memory, SCOPE)).liveEpoch;
+      await deploy(run.core, "4100", "*");
+      expect(run.counts.at(-1)).toEqual({ budget, needed });
+      const stored = await storedScope(run.io.memory, SCOPE);
+      // At the cap a staged flip names a new epoch; over it the scope is a
+      // compact row, as today. Both answer every device the same.
+      if (stages) {
+        expect(stored.liveEpoch).not.toBeNull();
+        expect(stored.liveEpoch).not.toBe(before);
+      } else {
+        expect(stored.liveEpoch).toBeNull();
+      }
+      await expectConsistent(run.core, run.io);
+    }
+  });
+
+  it("refuses exactly as today when the compact row wouldn't fit 256 KB", async () => {
+    const run = await capped(30);
+    const message = "m".repeat(6_000);
+    // Partitioned past 256 KB through an uncapped writer.
+    const other = createWriteTestCore(run.io.memory);
+    for (let index = 0; index < 50; index += 1) {
+      await other.deploy([
+        {
+          bundle: createBundleFixture(`${4200 + index}`),
+          release: releasePolicy("production", `${(index % 12) + 1}.0.0`, {
+            message: `${index}:${message}`,
+          }),
+        },
+      ]);
+    }
+    const before = await storedScope(run.io.memory, SCOPE);
+    const error = await deploy(run.core, "4300", "*").catch(
+      (caught: unknown) => caught,
+    );
+    expect(error).toMatchObject({ code: "CATALOG_OVERSIZE" });
+    const after = await storedScope(run.io.memory, SCOPE);
+    expect(after.row!.generation).toBe(before.row!.generation);
+    expect(after.liveEpoch).toBe(before.liveEpoch);
+  });
+
+  it("a store with no cap stages as before, whatever the count", async () => {
+    const io = createWriteTestAdapter({ maxOps: 9 });
+    const counts: unknown[] = [];
+    const core = createWriteTestCore(io.adapter, {
+      catalogWrites: { onStagingBudget: (count) => counts.push(count) },
+    });
+    const other = createWriteTestCore(io.memory);
+    await setReleaseCatalogPartitioning(io.memory, "on");
+    for (let index = 0; index < 5; index += 1) {
+      await deploy(other, `${4400 + index}`, `${index + 1}.0.0`);
+    }
+    await deploy(core, "4500", "*");
+    expect(counts).toEqual([]);
+    expect((await storedScope(io.memory, SCOPE)).liveEpoch).not.toBeNull();
+  });
+});

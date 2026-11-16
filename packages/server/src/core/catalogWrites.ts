@@ -355,6 +355,12 @@ export interface StagedPlan {
   readonly release: ReleaseRow | null;
   /** The compile's diagnostics, which the flip answers as an atomic write would. */
   readonly diagnostics: Diagnostics;
+  /** Live rows the flip retires, which the drain after it deletes. */
+  readonly retiredRows: number;
+  /** The live epoch the plan was computed over; null for a compact or absent scope. */
+  readonly liveEpoch: string | null;
+  /** R and the first markers, when the plan read them; null when it didn't. */
+  readonly discovery: Discovery | null;
   /** Assigned at registration. */
   epoch?: string;
 }
@@ -366,6 +372,75 @@ interface Written {
   readonly liveEpoch: string | null;
   readonly generation: number;
 }
+
+/**
+ * Queries one call has sent so far, counted where they are sent: each
+ * transaction read and each read the writer makes. A store with a
+ * per-request query cap (`maxQueriesPerRequest`) is held to it with this.
+ */
+export interface QueryTally {
+  queries: number;
+  /**
+   * Under a store's per-request cap: the most this call may spend deciding
+   * how to write, which leaves room for today's compact write. Past it,
+   * `spend` throws, and the call writes compact.
+   */
+  readonly limit?: number;
+}
+
+/** Deciding how to write would spend more than a capped request has left. */
+class OverQueryBudget extends Error {}
+
+/** Counts `count` queries against `tally`, throwing past its limit. */
+const spend = (tally: QueryTally | undefined, count: number) => {
+  if (tally === undefined) return;
+  tally.queries += count;
+  if (tally.limit !== undefined && tally.queries > tally.limit) {
+    throw new OverQueryBudget();
+  }
+};
+
+/** Rows one batch read takes in one statement on the tightest store (D1: 100 parameters, 3 per key). */
+const KEYS_PER_QUERY = 25;
+
+/** A reader whose every call counts one query. */
+const countedReader = <R extends Pick<CatalogReader, "findOne" | "findMany">>(
+  reader: R,
+  tally: QueryTally | undefined,
+): R =>
+  tally === undefined
+    ? reader
+    : ({
+        ...reader,
+        findOne: ((...args: Parameters<R["findOne"]>) => {
+          spend(tally, 1);
+          return (reader.findOne as (...a: unknown[]) => unknown)(...args);
+        }) as R["findOne"],
+        findMany: ((...args: Parameters<R["findMany"]>) => {
+          spend(tally, 1);
+          return (reader.findMany as (...a: unknown[]) => unknown)(...args);
+        }) as R["findMany"],
+      } as R);
+
+/**
+ * A transaction handle whose reads count: one query a key read, two a
+ * rooted range (its root, then the range). Its symbol-keyed members, such
+ * as the batch key read, carry over.
+ */
+const countedTransaction = (
+  tx: CoreTransaction,
+  tally: QueryTally,
+): CoreTransaction => ({
+  ...tx,
+  findOne: ((...args: Parameters<CoreTransaction["findOne"]>) => {
+    spend(tally, 1);
+    return tx.findOne(...args);
+  }) as CoreTransaction["findOne"],
+  findMany: ((...args: Parameters<CoreTransaction["findMany"]>) => {
+    spend(tally, 2);
+    return tx.findMany(...args);
+  }) as CoreTransaction["findMany"],
+});
 
 /** A head moved between the transaction's read of it and the rows read after: run again. */
 class CatalogWriteRace extends Error {
@@ -452,8 +527,10 @@ const readLive = async (
   db: CoreDatabase,
   head: ReleaseCatalogHead,
   ranges: ReturnType<typeof releaseCatalogKeyRanges> | "all",
+  tally?: QueryTally,
 ) =>
-  db.unguardedSnapshot(async (reader) => {
+  db.unguardedSnapshot(async (snapshotReader) => {
+    const reader = countedReader(snapshotReader, tally);
     const again = db.snapshots
       ? await reader.findOne("release_catalogs", {
           scope_key: head.row.scope_key,
@@ -515,6 +592,7 @@ const writeDiff = async (
   generation: number,
   live: readonly ReleaseCatalogPartition[],
   next: readonly ReleaseCatalogPartition[],
+  tally?: QueryTally,
 ) => {
   const before = new Map(live.map((row) => [row.lowerKey, row]));
   const after = new Map(next.map((row) => [row.lowerKey, row]));
@@ -528,6 +606,9 @@ const writeDiff = async (
     ...rewritten.filter((row) => before.has(row.lowerKey)),
     ...removed,
   ].map(({ lowerKey }) => lowerKey);
+  if (tally !== undefined && replaced.length > 0) {
+    spend(tally, Math.ceil(replaced.length / KEYS_PER_QUERY));
+  }
   const stored = await db.findByKeysIn(
     tx,
     PARTITIONS,
@@ -605,6 +686,7 @@ export const createCatalogWriter = (
   db: CoreDatabase,
   mode: CatalogWriteMode,
   plans: Map<string, StagedPlan> = new Map(),
+  tally?: QueryTally,
 ): CatalogWriter & {
   readonly plans: Map<string, StagedPlan>;
   /** Scopes the last attempt wrote partitioned or retired: each gets a cleanup step. */
@@ -616,9 +698,12 @@ export const createCatalogWriter = (
   const partitioned = new Set<string>();
   /** The switch, read once per call: it only ever goes from absent to on. */
   let switchOn: Promise<boolean> | undefined;
+  const readSwitch = () => {
+    spend(tally, 1);
+    return db.readSetting(PARTITIONING_SETTING);
+  };
   const partitioning = () =>
-    (switchOn ??= db
-      .readSetting(PARTITIONING_SETTING)
+    (switchOn ??= readSwitch()
       .then((value) => value === "on")
       .catch((error: unknown) => {
         switchOn = undefined;
@@ -655,7 +740,7 @@ export const createCatalogWriter = (
           ? releaseCatalogKeyRanges(change.release.target_app_version ?? "")
           : "all";
       if (ranges === null) return { kind: "compact" };
-      const read = await readLive(db, head, ranges);
+      const read = await readLive(db, head, ranges, tally);
       if (read === RETRY) throw new CatalogWriteRace(scope.scopeKey);
       if (change.kind === "insert") {
         const rows = await insertReleaseIntoTiling({
@@ -899,7 +984,10 @@ export const createCatalogWriter = (
           baseGeneration: base.generation,
           baseVersion: base.row === null ? null : base.row._v,
           diagnostics,
+          discovery: computed.discovery,
           release,
+          liveEpoch: base.head?.epoch ?? null,
+          retiredRows: base.head === null ? 0 : computed.live.length,
           rows: computed.rows,
           scope,
         });
@@ -946,6 +1034,7 @@ export const createCatalogWriter = (
           generation,
           computed.live,
           computed.rows,
+          tally,
         );
         changes = diff.changes;
         const known = computed.discovery?.markers.find(
@@ -1379,9 +1468,14 @@ const chunkWrites = async (
  * A chunk halves when it doesn't fit; one whose outcome is unknown is
  * checked by reading its rows back.
  */
-const stageRows = async (db: CoreDatabase, plan: StagedPlan) => {
+const stageRows = async (
+  db: CoreDatabase,
+  plan: StagedPlan,
+  sizes: readonly number[] = [],
+) => {
   const epoch = plan.epoch!;
-  let size = plan.rows.length;
+  let size = sizes[0] ?? plan.rows.length;
+  let chunk = 0;
   let unknown = 0;
   for (let at = 0; at < plan.rows.length; ) {
     const rows = plan.rows.slice(at, at + size);
@@ -1399,6 +1493,8 @@ const stageRows = async (db: CoreDatabase, plan: StagedPlan) => {
       ) {
         if (await chunkLanded(db, plan, rows)) {
           at += rows.length;
+          chunk += 1;
+          size = sizes[chunk] ?? size;
           continue;
         }
         if (error instanceof DatabaseAmbiguousCommitError && unknown < 3) {
@@ -1412,8 +1508,126 @@ const stageRows = async (db: CoreDatabase, plan: StagedPlan) => {
       throw error;
     }
     at += rows.length;
+    chunk += 1;
+    size = sizes[chunk] ?? size;
   }
 };
+
+/**
+ * The chunk sizes `stageRows` will commit, found with `fits` on writes that
+ * read nothing: each chunk's rows and two inserts standing in for its two
+ * guards, which no store sizes smaller than a check. No query is sent.
+ */
+const chunkSizes = async (db: CoreDatabase, plan: StagedPlan) => {
+  const epoch = crypto.randomUUID();
+  const sizes: number[] = [];
+  let size = plan.rows.length;
+  for (let at = 0; at < plan.rows.length; ) {
+    size = Math.min(size, plan.rows.length - at);
+    const rows = plan.rows.slice(at, at + size);
+    const fits = await db.fits(async (tx) => {
+      for (const lowerKey of ["~r", "~s"]) {
+        tx.create(PARTITIONS, {
+          ...(await controlRow(
+            canonical({ base: plan.baseGeneration, epoch }),
+            plan.baseGeneration,
+          )),
+          epoch: STAGING_EPOCH,
+          lower_key: lowerKey,
+          scope_key: plan.scope.scopeKey,
+        });
+      }
+      for (const row of rows) {
+        tx.create(PARTITIONS, {
+          byte_size: row.byteSize,
+          epoch,
+          generation: plan.baseGeneration + 1,
+          lower_key: row.lowerKey,
+          partition_hash: row.partitionHash,
+          payload: row.payload,
+          scope_key: plan.scope.scopeKey,
+        });
+      }
+    });
+    if (!fits) {
+      if (size === 1) return null;
+      size = Math.max(1, Math.floor(size / 2));
+      continue;
+    }
+    sizes.push(size);
+    at += size;
+  }
+  return sizes;
+};
+
+/**
+ * Queries one cleanup step sends at most: discovery, the scope's row, a
+ * page; then its transaction's head, R, the rows (or rule E's read and the
+ * marker), and the write.
+ */
+const STEP_QUERIES = 8;
+/**
+ * Today's compact write, at most: the scope's row, a page of its enabled
+ * releases, its latest release (root and page), and the write.
+ */
+const COMPACT_QUERIES = 8;
+/** A drain's last step, which finds nothing: discovery, and the scope's row. */
+const DRAIN_END_QUERIES = 2;
+/**
+ * Queries the request may have sent before core's write began: its
+ * authentication, the schema fence, the channel it ensured and the bundles
+ * it checked. A capped store's budget keeps this much in reserve.
+ */
+const REQUEST_RESERVE = 10;
+
+/**
+ * What a staged publication of `plans` will send, from what the call sent
+ * so far: each scope's registration, its drain before staging (a few steps
+ * when its discovery showed something to delete), its chunks, the drain of
+ * the epoch it retires, and the flip, which runs the operation again.
+ */
+const stagingQueries = (
+  spent: number,
+  flipReads: number,
+  plans: readonly {
+    readonly plan: StagedPlan;
+    readonly chunks: number;
+    readonly clean: boolean;
+  }[],
+) =>
+  REQUEST_RESERVE +
+  spent +
+  flipReads +
+  1 +
+  plans.reduce(
+    (total, { plan, chunks, clean }) =>
+      total +
+      3 +
+      (clean ? DRAIN_END_QUERIES : PRE_STAGING_STEPS * STEP_QUERIES + 2) +
+      chunks * (plan.baseGeneration > 0 ? 3 : 2) +
+      (plan.retiredRows === 0 && clean
+        ? DRAIN_END_QUERIES
+        : postFlipSteps(plan) * STEP_QUERIES + DRAIN_END_QUERIES),
+    0,
+  );
+
+/** Steps the drain after a flip takes: the retired rows' pages, and the marker. */
+const postFlipSteps = (plan: StagedPlan) =>
+  Math.ceil(plan.retiredRows / PAGE_ROWS) + 1;
+
+/** Whether nothing in a scope's discovery is deletable. */
+const cleanIn = (plan: StagedPlan, discovery: Discovery) =>
+  discovery.markers.every(
+    (marker) =>
+      !deletable(
+        marker.epoch,
+        {
+          generation: plan.baseGeneration,
+          liveEpoch: plan.liveEpoch,
+        },
+        discovery.staging,
+      ),
+  );
 
 /** Whether the plan's largest row fits one chunk on this adapter. */
 const largestRowFits = (db: CoreDatabase, plan: StagedPlan) => {
@@ -1431,6 +1645,14 @@ const largestRowFits = (db: CoreDatabase, plan: StagedPlan) => {
 // --- The driver -----------------------------------------------------------------
 
 export interface CatalogWriteOptions {
+  /**
+   * Called with a staged publication's counted queries and the store's
+   * per-request cap, before it stages or falls back to a compact row.
+   */
+  readonly onStagingBudget?: (budget: {
+    readonly needed: number;
+    readonly budget: number;
+  }) => void;
   /** The wait before a staged publication restarts; 0.5–2 s, for liveness only. */
   readonly restartDelay?: () => Promise<void>;
 }
@@ -1476,51 +1698,121 @@ const attempt = async <T>(run: () => Promise<T>): Promise<T> => {
 export const writeReleaseCatalogs = async <T>(
   db: CoreDatabase,
   operation: (tx: CoreTransaction, writer: CatalogWriter) => Promise<T>,
-  { restartDelay = defaultRestartDelay }: CatalogWriteOptions = {},
+  {
+    restartDelay = defaultRestartDelay,
+    onStagingBudget,
+  }: CatalogWriteOptions = {},
 ): Promise<T> => {
+  const budget = db.queryBudget;
+  /**
+   * Every query this call sends. Under a store's per-request cap, deciding
+   * how to write may spend all of it but the request's reserve and today's
+   * compact write, which is always valid: past that, the call writes compact.
+   */
+  const tally: QueryTally =
+    budget === undefined
+      ? { queries: 0 }
+      : { limit: budget - REQUEST_RESERVE - COMPACT_QUERIES, queries: 0 };
+  /** Whether one more cleanup step fits what the request has left. */
+  const roomForCleanup = (spent: number) =>
+    budget === undefined || spent + REQUEST_RESERVE + STEP_QUERIES <= budget;
+  /** Today's single rows, with today's limits and refusals. */
+  const writeCompact = async () => {
+    const counted: QueryTally = { queries: tally.queries };
+    const compact = createCatalogWriter(db, "compact");
+    const result = await db.transaction((tx) => {
+      compact.written.clear();
+      return operation(countedTransaction(tx, counted), compact);
+    });
+    if (roomForCleanup(counted.queries)) {
+      await cleanUpAfter(db, compact.written);
+    }
+    return result;
+  };
   for (let restart = 0; ; restart += 1) {
     if (restart > 0) await restartDelay();
-    const atomic = createCatalogWriter(db, "atomic");
+    const atomic = createCatalogWriter(db, "atomic", new Map(), tally);
     try {
       const result = await attempt(() =>
         db.transaction((tx) => {
           atomic.written.clear();
           atomic.partitioned.clear();
-          return operation(tx, atomic);
+          return operation(countedTransaction(tx, tally), atomic);
         }),
       );
-      await cleanUpAfter(db, atomic.written);
+      if (roomForCleanup(tally.queries)) {
+        await cleanUpAfter(db, atomic.written);
+      }
       return result;
     } catch (error) {
+      if (error instanceof OverQueryBudget) return writeCompact();
       if (!isConstraint(error, "too_large") || atomic.partitioned.size === 0) {
         throw error;
       }
     }
 
     // Too big for one atomic write: plan, check the final fit, stage, flip.
-    const planner = createCatalogWriter(db, "plan");
-    const fits = await attempt(() =>
-      db.fits((tx) => {
-        planner.plans.clear();
-        return operation(tx, planner);
-      }),
-    );
+    const planner = createCatalogWriter(db, "plan", new Map(), tally);
+    const beforePlan = tally.queries;
+    let fits: boolean;
+    try {
+      fits = await attempt(() =>
+        db.fits((tx) => {
+          planner.plans.clear();
+          return operation(countedTransaction(tx, tally), planner);
+        }),
+      );
+    } catch (error) {
+      if (error instanceof OverQueryBudget) return writeCompact();
+      throw error;
+    }
+    // The flip runs the operation again, with no more reads than the plan.
+    const flipReads = tally.queries - beforePlan;
     const plans = [...planner.plans.values()];
     let staged = fits && plans.length > 0;
-    for (const plan of plans) {
-      if (!staged) break;
-      staged = await largestRowFits(db, plan);
+    try {
+      for (const plan of plans) {
+        if (!staged) break;
+        spend(tally, 2);
+        staged = await largestRowFits(db, plan);
+      }
+    } catch (error) {
+      if (error instanceof OverQueryBudget) return writeCompact();
+      throw error;
     }
-    if (!staged) {
-      // Today's single rows, with today's limits and refusals.
-      const compact = createCatalogWriter(db, "compact");
-      const result = await db.transaction((tx) => {
-        compact.written.clear();
-        return operation(tx, compact);
-      });
-      await cleanUpAfter(db, compact.written);
-      return result;
+    // A store that caps one request's queries, as a Worker's D1 binding
+    // does: count the whole staged publication first, and keep today's
+    // compact row when it wouldn't fit. No query is sent to count it but
+    // one discovery read for a scope whose plan didn't read one.
+    const sizes = new Map<string, readonly number[]>();
+    if (staged && budget !== undefined) {
+      const counted = [];
+      for (const plan of plans) {
+        let discovery = plan.discovery;
+        if (discovery === null) {
+          // Counted, but checked with the rest below, not thrown.
+          tally.queries += 1;
+          discovery = await readDiscovery(db, plan.scope.scopeKey);
+        }
+        const chunks = await chunkSizes(db, plan);
+        if (chunks === null) {
+          staged = false;
+          break;
+        }
+        sizes.set(plan.scope.scopeKey, chunks);
+        counted.push({
+          chunks: chunks.length,
+          clean: cleanIn(plan, discovery),
+          plan,
+        });
+      }
+      if (staged) {
+        const needed = stagingQueries(tally.queries, flipReads, counted);
+        onStagingBudget?.({ budget, needed });
+        staged = needed <= budget;
+      }
     }
+    if (!staged) return writeCompact();
 
     try {
       for (const plan of plans) {
@@ -1530,7 +1822,7 @@ export const writeReleaseCatalogs = async <T>(
         await quietly(() =>
           drainScope(db, plan.scope.scopeKey, PRE_STAGING_STEPS),
         );
-        await stageRows(db, plan);
+        await stageRows(db, plan, sizes.get(plan.scope.scopeKey));
       }
       const flipper = createCatalogWriter(db, "flip", planner.plans);
       let result: T | undefined;
@@ -1574,7 +1866,15 @@ export const writeReleaseCatalogs = async <T>(
         }
       }
       for (const plan of plans) {
-        await quietly(() => drainScope(db, plan.scope.scopeKey));
+        // Under a cap, only the steps the budget counted; later writes
+        // reclaim the rest, one step each.
+        await quietly(() =>
+          drainScope(
+            db,
+            plan.scope.scopeKey,
+            budget === undefined ? undefined : postFlipSteps(plan),
+          ),
+        );
       }
       return result as T;
     } catch (error) {
