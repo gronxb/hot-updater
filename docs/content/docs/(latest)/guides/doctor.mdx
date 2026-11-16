@@ -459,10 +459,12 @@ reason, beside what the other scopes report.
 Doctor finds scopes without a catalog row by stepping through the Releases'
 scope index, one read per scope. A self-hosted server older than the CLI has no
 route for it: doctor still checks the scopes with a catalog row and warns
-`RELEASE_SCOPES_UNCHECKED`. When a scope with a catalog row and Releases is
-missing from that index, its items for earlier Releases were never written, and
-doctor warns `RELEASE_SCOPES_UNINDEXED`: migrate the database as for
-`SCHEMA_MIGRATION_PENDING`, which writes them. These checks compare projections;
+`RELEASE_SCOPES_UNCHECKED`. On DynamoDB, Firestore, and Cosmos DB, a server of
+an earlier release that keeps running after the migration writes Releases
+without their item in that index. When a scope with a catalog row and Releases
+is missing from it, doctor warns `RELEASE_SCOPES_UNINDEXED`: once every server
+runs the new release, migrate the database again as for
+`SCHEMA_MIGRATION_PENDING`, which writes the missing items. These checks compare projections;
 they do not recover missing source policy or replace a native OTA delivery
 test.
 

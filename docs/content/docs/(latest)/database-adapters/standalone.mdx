@@ -174,6 +174,7 @@ response wraps its result in `data`.
 | `GET`    | `/release-catalogs/:scopeKey`           |                                                              | `ReleaseCatalogRow`, or `404`                           |
 | `POST`   | `/release-catalogs/:scopeKey/rebuild`   |                                                              | `ReleaseCatalogRebuildResult`                           |
 | `POST`   | `/release-catalogs/:scopeKey/preflight` |                                                              | `ReleaseCatalogRebuildPreflight`                        |
+| `GET`    | `/release-scopes`                       | `limit` (1–100), `cursor=<scope key>`                        | The next scope keys that have Releases, ascending, with `next` |
 | `GET`    | `/channels`                             | Optional `name`, `ids=<channel id>,...` (1–100), or page     | Every `ChannelRow`, those of `ids`, one page by name with `next`, or the `ChannelRow` for `name` or `404` |
 | `POST`   | `/channels`                             | `{ name }`                                                   | The `ChannelRow` of that name, created when missing     |
 | `DELETE` | `/channels/:id`                         |                                                              | `204`                                                   |
