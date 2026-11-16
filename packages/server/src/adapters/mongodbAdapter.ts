@@ -28,7 +28,6 @@ import {
   MongoCompatibilityError,
   MongoError,
   MongoNetworkError,
-  MongoServerSelectionError,
   type MongoClient,
   type Timestamp,
 } from "mongodb";
@@ -104,6 +103,37 @@ const compare = (
   return terms.length === 1 ? terms[0]! : { $or: terms };
 };
 
+/**
+ * The rows after `row` in MongoDB's sort order over `columns`. A null
+ * column is missing from the document and sorts below every value, so a
+ * null in an ascending read is followed by every value, and in a
+ * descending read every value is followed by the nulls.
+ */
+const continuation = (
+  columns: readonly string[],
+  row: StoredRow,
+  order: "asc" | "desc",
+): Document => {
+  const terms = columns.flatMap((column, position) => {
+    const value = row[column] ?? null;
+    const after =
+      order === "asc"
+        ? value === null
+          ? { [column]: { $ne: null } }
+          : { [column]: { $gt: value } }
+        : value === null
+          ? undefined
+          : { $or: [{ [column]: { $lt: value } }, { [column]: null }] };
+    if (after === undefined) return [];
+    const equal = columns
+      .slice(0, position)
+      .map((before) => ({ [before]: row[before] ?? null }));
+    return [equal.length === 0 ? after : { $and: [...equal, after] }];
+  });
+  // Key columns close every order, so a row always has a successor term.
+  return { $or: terms };
+};
+
 const indexDescription = (
   table: PhysicalTable,
   index: PhysicalIndex,
@@ -152,9 +182,11 @@ export const MONGO_SNAPSHOT_RESTARTS = 3;
 
 /**
  * Failures a fresh snapshot can get past: the driver's retryable read codes
- * (elections, shutdowns, lost hosts), plus SnapshotTooOld (239),
- * SnapshotUnavailable (246) and StaleChunkHistory (341), which a snapshot
- * older than the history the server keeps answers.
+ * (elections, shutdowns, lost hosts) and network errors, plus SnapshotTooOld
+ * (239), SnapshotUnavailable (246) and StaleChunkHistory (341), which a
+ * snapshot older than the history the server keeps answers. A server
+ * selection timeout is not one: the driver already waited out the election
+ * for it, so the read fails rather than waiting again on each restart.
  */
 const RESTARTABLE_CODES = new Set([
   6, 7, 89, 91, 134, 189, 239, 246, 262, 341, 9001, 10107, 11600, 11602, 13435,
@@ -162,7 +194,6 @@ const RESTARTABLE_CODES = new Set([
 ]);
 const restartable = (error: unknown) =>
   error instanceof MongoNetworkError ||
-  error instanceof MongoServerSelectionError ||
   (error instanceof MongoError &&
     typeof error.code === "number" &&
     RESTARTABLE_CODES.has(error.code));
@@ -227,25 +258,11 @@ export const createMongoAdapter = (
   const rangeOf = (table: PhysicalTable, request: QueryRequest) => {
     const index = findPhysicalIndex(table, request.index);
     const columns = indexOrderColumns(table, index);
-    const op = request.order === "asc" ? "$gt" : "$lt";
     const filter = (after?: StoredRow): Filter<Document> => {
       const bounds = [
         ...(request.lower ? [compare(columns, request.lower, "$gt")] : []),
         ...(request.upper ? [compare(columns, request.upper, "$lt")] : []),
-        ...(after
-          ? [
-              compare(
-                columns,
-                {
-                  values: columns.map(
-                    (column) => after[column] as DatabaseKeyValue,
-                  ),
-                  inclusive: false,
-                },
-                op,
-              ),
-            ]
-          : []),
+        ...(after ? [continuation(columns, after, request.order)] : []),
       ];
       return {
         ...Object.fromEntries(
@@ -303,7 +320,8 @@ export const createMongoAdapter = (
             limit,
             batchSize: Math.min(limit, options.batchSize ?? limit),
             ...collationOf(table),
-            // Explicit, so a client-level read concern can't replace it.
+            // Explicit, though a raw command takes no client-level read
+            // concern today: a reply without a cluster time fails anyway.
             readConcern: { level: "snapshot" },
           },
           { session, ...PRIMARY },

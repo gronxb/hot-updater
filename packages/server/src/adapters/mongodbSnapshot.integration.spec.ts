@@ -4,6 +4,7 @@ import {
   DatabaseSnapshotConflictError,
   DatabaseSnapshotUnsupportedError,
   type DatabaseAdapter,
+  type PhysicalTable,
   type StoredRow,
   type WriteOp,
 } from "@hot-updater/plugin-core";
@@ -260,6 +261,7 @@ describe("MongoDB snapshot reads on a three-member replica set", () => {
   const adapterOn = async (
     client: MongoClient,
     options: { readonly batchSize?: number } = {},
+    table: PhysicalTable = conformanceItems,
   ) => {
     tables += 1;
     const adapter = createMongoAdapter({
@@ -267,7 +269,7 @@ describe("MongoDB snapshot reads on a three-member replica set", () => {
       tablePrefix: `s${tables}_`,
       ...options,
     });
-    await adapter.migrations!.apply([conformanceItems]);
+    await adapter.migrations!.apply([table]);
     return adapter;
   };
   /** Enables `failCommand` on the primary for the commands of `appName`. */
@@ -349,8 +351,11 @@ describe("MongoDB snapshot reads on a three-member replica set", () => {
           ).map((row) => row.score),
         ).toEqual([2]);
       }
-      // The schema fence's settings read too.
+      // The schema fence's settings read, and the migrator's own.
       await createInProcessCoreApi(database.adapter).listChannels();
+      await expect(
+        database.createMigrator!().migrateToLatest(),
+      ).resolves.toMatchObject({ operations: [] });
       expect(events.plainFinds().length).toBeGreaterThan(20);
       expect(
         new Set(events.plainFinds().map((event) => event.address)),
@@ -455,6 +460,41 @@ describe("MongoDB snapshot reads on a three-member replica set", () => {
       ?.atClusterTime as Timestamp;
     for (const event of finds.slice(1)) {
       expect(atClusterTimeOf(event)?.equals(chosen)).toBe(true);
+    }
+  });
+
+  it("continues a snapshot page past rows whose sort column is null, in both orders", async () => {
+    // As core's ios_devices.byRegistration sorts by a nullable time.
+    const sorted: PhysicalTable = {
+      name: "nullable_sorted",
+      columns: [
+        { name: "id", type: "string", nullable: false },
+        { name: "grp", type: "string", nullable: false },
+        { name: "at", type: "integer", nullable: true },
+        { name: "_v", type: "integer", nullable: false },
+      ],
+      key: ["id"],
+      indexes: [{ name: "byAt", eq: ["grp"], sort: ["at"] }],
+    };
+    const { client } = hostile("nullable");
+    // One document a batch: every row after the first is a continuation.
+    const adapter = await adapterOn(client, { batchSize: 1 }, sorted);
+    const times = [null, 3, null, 1, 2, null, 2];
+    await ok(
+      adapter,
+      times.map((at, position) => ({
+        type: "insert",
+        table: sorted,
+        row: { id: `n${position}`, grp: "g", at, _v: 0 },
+      })),
+    );
+    for (const order of ["asc", "desc"] as const) {
+      const request = { index: "byAt", eq: ["g"], order, limit: 20 };
+      const plain = await adapter.query(sorted, request);
+      expect(plain).toHaveLength(times.length);
+      await expect(
+        adapter.readSnapshot!((reader) => reader.query(sorted, request)),
+      ).resolves.toEqual(plain);
     }
   });
 
@@ -685,5 +725,62 @@ describe("MongoDB 4.4, which has no snapshot reads", () => {
     ).rejects.toBeInstanceOf(DatabaseSnapshotUnsupportedError);
     // Still serving afterwards.
     await expect(core.getRelease(release.id)).resolves.toEqual(release);
+  });
+});
+
+describe("a standalone mongod, which has no snapshot reads", () => {
+  let client: MongoClient;
+
+  beforeAll(async () => {
+    const port = await availablePort();
+    const container = `hot-updater-standalone-${process.pid}`;
+    await execa("docker", [
+      "run",
+      "-d",
+      "--rm",
+      "--name",
+      container,
+      "-p",
+      `127.0.0.1:${port}:27017`,
+      "mongo:7-jammy",
+    ]);
+    containers.push(container);
+    client = track(new MongoClient(`mongodb://127.0.0.1:${port}/standalone`));
+    await until(() => client.db("admin").command({ ping: 1 }), "standalone");
+  }, 300_000);
+
+  it("reads as before, and refuses only a snapshot", async () => {
+    const adapter = createMongoAdapter({ client, tablePrefix: "a_" });
+    await adapter.migrations!.apply([conformanceItems]);
+    // Standalone takes no transaction, so the rows go in directly.
+    await client
+      .db()
+      .collection(`a_${conformanceItems.name}`)
+      .insertMany(
+        [item("a", { score: 1 }), item("b", { score: 2 })].map((row) => ({
+          _id: row.id as never,
+          ...Object.fromEntries(
+            Object.entries(row).filter(([, value]) => value !== null),
+          ),
+        })),
+      );
+    expect(
+      (await adapter.get(conformanceItems, [["b"], ["a"]])).map(
+        (row) => row?.score,
+      ),
+    ).toEqual([2, 1]);
+    expect(
+      (
+        await adapter.query(conformanceItems, {
+          index: "byGroup",
+          eq: ["g"],
+          order: "desc",
+          limit: 5,
+        })
+      ).map((row) => row.id),
+    ).toEqual(["b", "a"]);
+    await expect(
+      adapter.readSnapshot!((reader) => reader.get(conformanceItems, [["a"]])),
+    ).rejects.toBeInstanceOf(DatabaseSnapshotUnsupportedError);
   });
 });

@@ -210,9 +210,9 @@ How each built-in adapter meets this:
 | Drizzle            | Every statement runs on `$primary` under `withReplicas`                                                                                                         |
 | Kysely, `postgres` | Your dialect or connection string decides: point it at the primary                                                                                              |
 | Cloudflare D1      | The adapter never opens a D1 session, so every query runs on the primary                                                                                        |
-| Supabase           | Every statement is a POST to the apply RPC, which Supabase's API load balancer sends to the primary                                                             |
-| DynamoDB           | `GetItem` and `Query` with `ConsistentRead`                                                                                                                     |
-| Firestore          | The Admin SDK reads committed data from the server                                                                                                              |
+| Supabase           | Every statement is a POST to the apply RPC, and Supabase's API load balancer sends every request but a GET to the primary                                       |
+| DynamoDB           | Every `BatchGetItem` and `Query` sets `ConsistentRead`, on the base table                                                                                       |
+| Firestore          | The Admin SDK's `getAll` and queries read committed data from the server                                                                                        |
 | Cosmos DB          | The account's Strong consistency; the adapter refuses any other level                                                                                           |
 
 The conformance suite checks that a read sees the write committed just
