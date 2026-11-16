@@ -7,9 +7,12 @@ import {
 } from "./httpTestClient";
 
 /** Serve Web handlers over loopback TCP; contract tests use real fetch requests. */
-export async function startHttpTestServer(
-  handlers: HttpTestHandlers,
-): Promise<HttpTestServer> {
+export async function startHttpTestServer(handlers: HttpTestHandlers): Promise<
+  HttpTestServer & {
+    /** The server's origin: `/client` and `/admin` mount the handlers below it. */
+    readonly baseUrl: string;
+  }
+> {
   const server = createServer(async (incoming, outgoing) => {
     try {
       const url = new URL(incoming.url!, "http://127.0.0.1");
@@ -49,6 +52,7 @@ export async function startHttpTestServer(
       clientBaseUrl: `${baseUrl}/client`,
       adminBaseUrl: `${baseUrl}/admin`,
     }),
+    baseUrl,
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));

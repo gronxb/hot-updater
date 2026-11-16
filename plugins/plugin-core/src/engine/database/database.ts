@@ -1,5 +1,6 @@
 import {
   DATABASE_VERSION_COLUMN,
+  type SnapshotReader,
   type StoredRow,
 } from "../../database/adapter";
 import type {
@@ -35,6 +36,30 @@ import {
 } from "./engineTransaction";
 import type { ReadMeter } from "./readMeter";
 import type { SchemaModule } from "./resolveSchema";
+
+/** A database handle's key and index reads, all of one committed state. */
+export type SnapshotDatabase<S extends ModuleSchema> = Pick<
+  HotUpdaterDatabase<S>,
+  "findOne" | "findByKeys" | "findMany"
+>;
+
+/**
+ * Reads that must agree, such as a release catalog's head and the rows it
+ * names: the adapter's `readSnapshot`, or direct reads on an adapter whose
+ * reads each see every write committed before they start.
+ */
+export interface SnapshotReads<S extends ModuleSchema> {
+  /**
+   * Whether `snapshot` reads one committed state. False: it reads directly,
+   * so a reader checks what it read against the rows' generations instead.
+   */
+  readonly snapshots: boolean;
+  /**
+   * Runs `read` on one snapshot. It may run more than once, each time on a
+   * fresh snapshot, so it only reads; nothing outlives the call.
+   */
+  snapshot<T>(read: (db: SnapshotDatabase<S>) => Promise<T>): Promise<T>;
+}
 
 /** The engine plus `database(module)`, which hands a module its typed handle. */
 export const createDatabaseEngine = ({
@@ -93,23 +118,38 @@ export const createDatabaseEngine = ({
     },
     database<S extends ModuleSchema>(
       module: SchemaModule & { readonly schema: S },
-    ): HotUpdaterDatabase<S> {
+    ): HotUpdaterDatabase<S> & SnapshotReads<S> {
       const name = (model: string) =>
         module.namespace ? `${module.namespace}_${model}` : model;
-      return {
+      const readsOf = (
+        source: Pick<typeof reads, "findOne" | "findByKeys" | "findMany">,
+      ): SnapshotDatabase<S> => ({
         findOne: outside(
           async (model, lookup) =>
-            bare(await reads.findOne(name(model), lookup as never)) as never,
+            bare(await source.findOne(name(model), lookup as never)) as never,
         ),
         findByKeys: outside(
           async (model, keys) =>
-            (await reads.findByKeys(name(model), keys as never)).map(
+            (await source.findByKeys(name(model), keys as never)).map(
               bare,
             ) as never,
         ),
         findMany: outside(
           (model, input) =>
-            barePage(reads.findMany(name(model), input as ReadInput)) as never,
+            barePage(source.findMany(name(model), input as ReadInput)) as never,
+        ),
+      });
+      const direct = readsOf(reads);
+      const { readSnapshot } = engine;
+      return {
+        ...direct,
+        snapshots: readSnapshot !== undefined,
+        snapshot: outside(<T>(read: (db: SnapshotDatabase<S>) => Promise<T>) =>
+          readSnapshot === undefined
+            ? read(direct)
+            : readSnapshot((reader: SnapshotReader) =>
+                read(readsOf(reads.over(reader))),
+              ),
         ),
         findAggregates: outside(async (model, input) => {
           await batches?.beforeRead(name(model));

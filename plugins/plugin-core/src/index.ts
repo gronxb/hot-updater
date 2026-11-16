@@ -56,6 +56,8 @@ export {
   assembleReleaseCatalog,
   compileReleaseCatalogTiling,
   insertReleaseIntoTiling,
+  type ParsedReleaseCatalogPartition,
+  parseReleaseCatalogPartition,
   projectReleaseCatalogPartition,
   RELEASE_CATALOG_LOWER_KEY_MAX_BYTES,
   type ReleaseCatalogAssembly,
@@ -210,6 +212,11 @@ export {
   type EngineOptions,
   createEngine,
 } from "./engine/createEngine";
+// `Engine.core`'s snapshot reads, which core's release catalog reads take.
+export type {
+  SnapshotDatabase,
+  SnapshotReads,
+} from "./engine/database/database";
 export type { EngineReadCount } from "./engine/database/engineReads";
 export type { RetryOptions } from "./engine/database/engineTransaction";
 export {

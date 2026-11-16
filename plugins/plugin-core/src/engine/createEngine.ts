@@ -4,7 +4,7 @@ import type { ModuleSchema } from "../serverPlugin/schema";
 import type { EngineDatabase } from "../types/databaseConfig";
 import { coreModule, type CoreSchema } from "./core/schema";
 import { aggregateBatchingModule } from "./database/aggregateBatching";
-import { createDatabaseEngine } from "./database/database";
+import { createDatabaseEngine, type SnapshotReads } from "./database/database";
 import { fencedName, SETTINGS_TABLE, withSchemaFence } from "./database/fence";
 import { readMeterOf } from "./database/readMeter";
 import {
@@ -33,8 +33,12 @@ export interface EngineOptions {
 
 /** Core's tables and the plugins' on one storage engine. */
 export interface Engine {
-  /** Core's tables: bundles, Releases, Release Catalogs, and channels. */
-  readonly core: HotUpdaterDatabase<CoreSchema>;
+  /**
+   * Core's tables: bundles, Releases, Release Catalogs, and channels, with
+   * the snapshot reads core takes a partitioned release catalog's head and
+   * rows in.
+   */
+  readonly core: HotUpdaterDatabase<CoreSchema> & SnapshotReads<CoreSchema>;
   /** A plugin's tables, by the plugin `createEngine` was given. */
   database<TSchema extends ModuleSchema>(plugin: {
     readonly id: string;

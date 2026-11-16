@@ -1,3 +1,8 @@
+import {
+  readReleaseCatalogState,
+  type ReleaseCatalogHead,
+  type ReleaseCatalogState,
+} from "./catalogReads";
 import { createIosDeviceApi } from "./iosDevices";
 import { createNativeBuildApi } from "./nativeBuilds";
 import { createCoreOperations } from "./operations";
@@ -62,11 +67,33 @@ export const createCoreApi = (
     ),
     ...createNativeBuildApi(db, options),
     ...createIosDeviceApi(db, options),
-    /** One read, which checks the schema settings first. */
+    /**
+     * The update check's read, for the client routes' memo only: a scope's
+     * row, and the row covering `appVersion` when it is a head; with
+     * `cached`, under the head the memo holds. Not on the public `CoreApi`.
+     */
+    readReleaseCatalogState: (
+      scopeKey: string,
+      appVersion: string,
+      cached?: ReleaseCatalogHead,
+    ): Promise<ReleaseCatalogState> =>
+      readReleaseCatalogState(db, scopeKey, appVersion, cached),
+    /**
+     * One raw limit-1 read of the catalog table, which checks the schema
+     * settings first and never assembles a partitioned scope.
+     */
     ready: async (): Promise<void> => {
-      await reads.listReleaseCatalogs({ limit: 1 });
+      await db.findMany("release_catalogs", {
+        index: "all",
+        where: {},
+        limit: 1,
+      });
     },
   };
 };
 
-export type CoreApi = ReturnType<typeof createCoreApi>;
+/** Core's API as the server and its handlers hold it, internal reads included. */
+export type ServerCoreApi = ReturnType<typeof createCoreApi>;
+
+/** Core's API as `createHotUpdater` exposes it. */
+export type CoreApi = Omit<ServerCoreApi, "readReleaseCatalogState">;
