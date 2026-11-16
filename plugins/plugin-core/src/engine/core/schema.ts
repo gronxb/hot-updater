@@ -131,7 +131,12 @@ const releases = defineTable(
       // Every release by scope, so the scopes that have releases are
       // listed one limit-1 seek per scope, past the last one. SQL and
       // MongoDB read it through `byScope`'s columns; a key-value store
-      // keeps items of its own (see `LATE_INDEXES`).
+      // keeps items of its own (see `LATE_INDEXES`), whose sort key is the
+      // scope key and the ID, 38 bytes past the catalog row's. The scope's
+      // channel bounds it: `channels.all`'s sort key holds the name and the
+      // ID `channel:<base64url of the name>`, so the longest channel a store
+      // holds still leaves room for the longest fingerprint (DynamoDB: 896
+      // of 1,024 bytes; `scopesIndexKeys.spec.ts` in @hot-updater/server).
       scopes: { eq: [], sort: ["scope_key"] },
     },
   },
