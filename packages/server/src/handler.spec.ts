@@ -1,3 +1,4 @@
+import type { ReleaseCatalogRow } from "@hot-updater/plugin-core";
 import {
   ARTIFACT_FILES_REQUEST_LIMIT,
   type ReleaseCatalog,
@@ -71,20 +72,33 @@ describe("createHandlers client routes", () => {
   });
 
   it("returns the stored Catalog identity without accepting identity parameters", async () => {
-    const catalog = {
-      catalogId: "project-a",
-      catalogHash: "sha256:catalog",
-      fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
+    const scopeKey = "v1:fingerprint:android:cHJvZHVjdGlvbg:fingerprint-123";
+    const row = {
+      scope_key: scopeKey,
+      catalog_id: "project-a",
+      strategy: "FINGERPRINT",
+      channel_id: "channel-production",
+      channel_key: "cHJvZHVjdGlvbg",
+      platform: "android",
+      fingerprint_hash: "fingerprint-123",
       generation: 1,
-      releases: [],
-      rollbackReleases: [],
-      schemaVersion: 1,
-      scopeKey: "v1:fingerprint:android:cHJvZHVjdGlvbg:fingerprint-123",
-    } satisfies ReleaseCatalog;
+      payload: JSON.stringify({
+        schemaVersion: 1,
+        strategy: "FINGERPRINT",
+        fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
+        releaseDescriptors: [],
+        releaseIndexes: [],
+        rollbackReleaseIndexes: [],
+      }),
+      catalog_hash: "sha256:catalog",
+      byte_size: 0,
+      is_tombstone: false,
+      updated_at_ms: 0,
+    } satisfies ReleaseCatalogRow;
     const api = createApi();
-    const getReleaseCatalog = vi
-      .spyOn(api.core, "getReleaseCatalog")
-      .mockResolvedValue(catalog);
+    const getReleaseCatalogRow = vi
+      .spyOn(api.core, "getReleaseCatalogRow")
+      .mockResolvedValue(row);
     const handler = createHandlers(api).client;
     const url =
       "http://localhost/release-catalogs/fingerprint/android/" +
@@ -93,21 +107,23 @@ describe("createHandlers client routes", () => {
     const response = await handler(new Request(url));
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(response.json()).resolves.toEqual({
       catalogId: "project-a",
-    });
-    expect(getReleaseCatalog).toHaveBeenCalledWith({
-      channelKey: "cHJvZHVjdGlvbg",
-      fingerprintHash: "fingerprint-123",
-      platform: "android",
-      strategy: "FINGERPRINT",
-    });
+      catalogHash: "sha256:catalog",
+      fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      generation: 1,
+      releases: [],
+      rollbackReleases: [],
+      schemaVersion: 1,
+      scopeKey,
+    } satisfies ReleaseCatalog);
+    expect(getReleaseCatalogRow).toHaveBeenCalledWith(scopeKey);
 
     const legacyAuthorityPath = await handler(
       new Request(url.replace("/android/", "/project-a/android/")),
     );
     expect(legacyAuthorityPath.status).toBe(404);
-    expect(getReleaseCatalog).toHaveBeenCalledOnce();
+    expect(getReleaseCatalogRow).toHaveBeenCalledOnce();
   });
 
   it("serves artifact protocol v1 on an explicit route", async () => {
@@ -296,7 +312,7 @@ describe("createHandlers client routes", () => {
     ],
   ])("answers 400 to %s without reading a catalog", async (_, path) => {
     const api = createApi();
-    const getReleaseCatalog = vi.spyOn(api.core, "getReleaseCatalog");
+    const getReleaseCatalogRow = vi.spyOn(api.core, "getReleaseCatalogRow");
     const handler = createHandlers(api).client;
 
     const response = await handler(new Request(`http://localhost${path}`));
@@ -306,12 +322,12 @@ describe("createHandlers client routes", () => {
     await expect(response.json()).resolves.toEqual({
       error: expect.any(String),
     });
-    expect(getReleaseCatalog).not.toHaveBeenCalled();
+    expect(getReleaseCatalogRow).not.toHaveBeenCalled();
   });
 
   it("does not expose provider errors from the public client handler", async () => {
     const api = createApi();
-    vi.spyOn(api.core, "getReleaseCatalog").mockRejectedValue(
+    vi.spyOn(api.core, "getReleaseCatalogRow").mockRejectedValue(
       new Error("private database connection details"),
     );
     const consoleError = vi
