@@ -9,6 +9,7 @@ import { execa } from "execa";
 import { MongoClient } from "mongodb";
 import { afterAll, beforeAll } from "vitest";
 
+import { composeUp } from "../docker.testFixtures";
 import { createMongoAdapter } from "./mongodbAdapter";
 
 assertDockerComposeAvailable(
@@ -33,7 +34,10 @@ beforeAll(async () => {
     COMPOSE_PROJECT_NAME: `hot-updater-mongo-budgets-${process.pid}`,
     HOT_UPDATER_E2E_MONGODB_PORT: String(port),
   };
-  await compose(["up", "-d", "--wait"]);
+  await composeUp({
+    compose: ["compose", "-f", composeFile],
+    env: environment,
+  });
   client = new MongoClient(
     `mongodb://127.0.0.1:${port}/budgets?replicaSet=rs0&directConnection=true`,
   );

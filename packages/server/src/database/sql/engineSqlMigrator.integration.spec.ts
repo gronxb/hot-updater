@@ -17,6 +17,7 @@ import { execa } from "execa";
 import mysql from "mysql2/promise";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { composeUp } from "../../docker.testFixtures";
 import { insights } from "../../plugins";
 
 assertDockerComposeAvailable(
@@ -36,7 +37,7 @@ const MYSQL_URI = "mysql://root:hot_updater@127.0.0.1:53306/hot_updater";
 let pool: mysql.Pool;
 
 beforeAll(async () => {
-  await execa("docker", [...compose, "up", "-d", "--wait", "mysql"]);
+  await composeUp({ compose, services: ["mysql"] });
   pool = mysql.createPool({ uri: MYSQL_URI, connectionLimit: 4 });
   for (let attempt = 0; ; attempt += 1) {
     try {

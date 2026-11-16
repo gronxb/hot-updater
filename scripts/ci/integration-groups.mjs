@@ -29,6 +29,17 @@ export const REST_GROUP = "rest";
  *   Without them the group runs its whole project.
  * @property {boolean} [firebase] Starts the Firestore and Storage emulators,
  *   which need Java 21. Specs that use them belong to a group that sets it.
+ * @property {DockerImages} [docker] The images CI pulls before the group's
+ *   tests (pull-integration-images.mjs). Its specs then run Docker with
+ *   `--pull never`, so a pull never spends a hook's budget, and an image
+ *   missing here fails by name.
+ */
+
+/**
+ * @typedef {object} DockerImages
+ * @property {readonly string[]} [compose] Compose files from the repository
+ *   root, whose every service image is pulled.
+ * @property {readonly string[]} [images] Images the specs `docker run`.
  */
 
 /** @type {readonly IntegrationGroup[]} */
@@ -43,6 +54,9 @@ export const integrationGroups = [
       "packages/server/src/adapters/prisma.integration.spec.ts",
       "packages/server/src/plugins/insights/insightsRollout.integration.spec.ts",
     ],
+    docker: {
+      compose: ["packages/server/src/database/sql/docker-compose.yml"],
+    },
   },
   {
     // A MongoDB replica set in Docker Compose
@@ -50,6 +64,11 @@ export const integrationGroups = [
     name: "mongodb",
     project: "integration:default",
     include: ["packages/server/src/adapters/mongodb*.integration.spec.ts"],
+    // mongodbSnapshot runs replica sets on 7 and 4.4, and a standalone 7.
+    docker: {
+      compose: ["examples-server/hono-mongodb/docker-compose.yml"],
+      images: ["mongo:7-jammy", "mongo:4.4"],
+    },
   },
   {
     // DynamoDB Local, LocalStack, and the Lambda Node.js image in Docker.

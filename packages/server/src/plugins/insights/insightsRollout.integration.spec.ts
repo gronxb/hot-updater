@@ -20,6 +20,7 @@ import { execa } from "execa";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { composeUp } from "../../docker.testFixtures";
 import type { CoreReader } from "../definePlugin";
 import { insights, type BundleEventRow } from "./index";
 
@@ -83,7 +84,7 @@ const move = (
 let pool: pg.Pool;
 
 beforeAll(async () => {
-  await execa("docker", [...compose, "up", "-d", "--wait", "postgres"]);
+  await composeUp({ compose, services: ["postgres"] });
   pool = new pg.Pool({
     connectionString:
       "postgres://postgres:hot_updater@127.0.0.1:55432/hot_updater",

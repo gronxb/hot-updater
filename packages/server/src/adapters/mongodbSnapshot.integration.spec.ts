@@ -19,6 +19,7 @@ import {
   conformanceItems,
   createBundleFixture,
   createReleaseCatalogPartitionFixture,
+  releaseCatalogPartitionsTable,
   setupDatabaseAdapterConformanceSuite,
 } from "@hot-updater/test-utils";
 import { assertDockerComposeAvailable } from "@hot-updater/test-utils/node";
@@ -33,6 +34,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createInProcessCoreApi } from "../core/inProcess.testFixtures";
+import { dockerPullFlags, failWithDocker } from "../docker.testFixtures";
 import { createHotUpdaterHandlers } from "../handler";
 import { mongoAdapter } from "./mongodb";
 import { createMongoAdapter, MONGO_SNAPSHOT_RESTARTS } from "./mongodbAdapter";
@@ -56,17 +58,28 @@ const availablePort = () =>
   });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const until = async <T>(attempt: () => Promise<T>, what: string) => {
-  let last: unknown;
-  for (let tries = 0; tries < 120; tries += 1) {
+/**
+ * Retries `attempt` each second until `deadline`, a `Date.now()` time, then
+ * fails naming `what` and the last error.
+ */
+const until = async <T>(
+  attempt: () => Promise<T>,
+  what: string,
+  deadline = Date.now() + 120_000,
+) => {
+  for (;;) {
     try {
       return await attempt();
     } catch (error) {
-      last = error;
+      if (Date.now() >= deadline) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(`Timed out waiting for ${what}: ${reason}`, {
+          cause: error,
+        });
+      }
       await sleep(1000);
     }
   }
-  throw new Error(`Timed out waiting for ${what}`, { cause: last });
 };
 
 const containers: string[] = [];
@@ -77,82 +90,138 @@ const track = (client: MongoClient) => {
 };
 
 /**
+ * Starts `docker run` arguments as `container`, kept after it exits so its
+ * logs explain a failed setup; `afterAll` removes it.
+ */
+const run = async (
+  container: string,
+  args: readonly string[],
+  deadline: number,
+) => {
+  containers.push(container);
+  await execa(
+    "docker",
+    ["run", "-d", ...dockerPullFlags(), "--name", container, ...args],
+    { timeout: Math.max(deadline - Date.now(), 1000) },
+  );
+};
+
+/**
  * Members listen on the same port inside the container and on the host, and
  * advertise 127.0.0.1, so the driver on the host dials every member as the
- * members dial each other. One container holds them all.
+ * members dial each other. One container holds them all. Every wait ends by
+ * `deadline`, which stays under the calling hook's timeout, so a stuck start
+ * fails with the container's state and the members' logs.
  */
 const startReplicaSet = async (
   image: string,
   name: string,
   ports: readonly number[],
+  deadline = Date.now() + 240_000,
 ) => {
   const container = `hot-updater-${name}-${process.pid}`;
   const mongods = ports.map(
     (port, at) =>
       `mkdir -p /data/m${at} && mongod --replSet ${name} --port ${port} --bind_ip_all --dbpath /data/m${at} --logpath /data/m${at}.log --fork --setParameter enableTestCommands=1`,
   );
-  await execa("docker", [
-    "run",
-    "-d",
-    "--rm",
-    "--name",
-    container,
-    ...ports.flatMap((port) => ["-p", `127.0.0.1:${port}:${port}`]),
-    image,
-    "bash",
-    "-c",
-    `${mongods.join(" && ")} && tail -f /dev/null`,
-  ]);
-  containers.push(container);
-  const nodes = await Promise.all(
-    ports.map((port) =>
-      until(async () => {
-        const client = new MongoClient(
-          `mongodb://127.0.0.1:${port}/?directConnection=true&serverSelectionTimeoutMS=2000`,
-        );
-        try {
-          await client.db("admin").command({ ping: 1 });
-          return client;
-        } catch (error) {
-          await client.close();
-          throw error;
-        }
-      }, `${name} member on ${port}`),
-    ),
-  );
-  await nodes[0]!.db("admin").command({
-    replSetInitiate: {
-      _id: name,
-      members: ports.map((port, at) => ({
-        _id: at,
-        host: `127.0.0.1:${port}`,
-        // The first member is the primary whenever it can be.
-        priority: at === 0 ? 2 : 1,
-        tags: { node: `n${at}` },
-      })),
-    },
-  });
-  await Promise.all(nodes.map((node) => node.close()));
   const url = (database: string, query = "") =>
     `mongodb://${ports.map((port) => `127.0.0.1:${port}`).join(",")}/${database}?replicaSet=${name}${query}`;
-  const probe = track(new MongoClient(url("admin")));
-  await until(async () => {
-    const hello = await probe.db("admin").command({ hello: 1 });
-    if (!hello.isWritablePrimary || hello.hosts.length !== ports.length) {
-      throw new Error("no primary yet");
-    }
-    // Every secondary is up, so a majority write never waits on a member
-    // still starting.
-    const status = await probe.db("admin").command({ replSetGetStatus: 1 });
-    if (
-      !(status.members as { stateStr: string }[]).every((member) =>
-        ["PRIMARY", "SECONDARY"].includes(member.stateStr),
-      )
-    ) {
-      throw new Error("members still starting");
-    }
-  }, `${name} primary`);
-  return { url, probe };
+  try {
+    await run(
+      container,
+      [
+        ...ports.flatMap((port) => ["-p", `127.0.0.1:${port}:${port}`]),
+        image,
+        "bash",
+        "-c",
+        `${mongods.join(" && ")} && tail -f /dev/null`,
+      ],
+      deadline,
+    );
+    const nodes = await Promise.all(
+      ports.map((port) =>
+        until(
+          async () => {
+            const client = new MongoClient(
+              `mongodb://127.0.0.1:${port}/?directConnection=true&serverSelectionTimeoutMS=2000`,
+            );
+            try {
+              await client.db("admin").command({ ping: 1 });
+              return track(client);
+            } catch (error) {
+              await client.close();
+              throw error;
+            }
+          },
+          `${name} member on ${port}`,
+          deadline,
+        ),
+      ),
+    );
+    await nodes[0]!.db("admin").command({
+      replSetInitiate: {
+        _id: name,
+        members: ports.map((port, at) => ({
+          _id: at,
+          host: `127.0.0.1:${port}`,
+          // The first member is the primary whenever it can be.
+          priority: at === 0 ? 2 : 1,
+          tags: { node: `n${at}` },
+        })),
+      },
+    });
+    await Promise.all(nodes.map((node) => node.close()));
+    // Each attempt dials anew and gives up after 2 seconds without a
+    // primary, not the driver's 30, so the deadline holds: a client whose
+    // first connect failed stays closed.
+    await until(
+      async () => {
+        const setup = new MongoClient(
+          url("admin", "&serverSelectionTimeoutMS=2000"),
+        );
+        try {
+          const hello = await setup.db("admin").command({ hello: 1 });
+          if (!hello.isWritablePrimary || hello.hosts.length !== ports.length) {
+            throw new Error("no primary yet");
+          }
+          // Every secondary is up, so a majority write never waits on a
+          // member still starting.
+          const status = await setup
+            .db("admin")
+            .command({ replSetGetStatus: 1 });
+          const starting = (
+            status.members as { name: string; stateStr: string }[]
+          ).filter(
+            (member) => !["PRIMARY", "SECONDARY"].includes(member.stateStr),
+          );
+          if (starting.length > 0) {
+            throw new Error(
+              `members still starting: ${starting.map((member) => `${member.name} ${member.stateStr}`).join(", ")}`,
+            );
+          }
+          // And every member applies writes: one acknowledged by all.
+          await setup
+            .db("setup")
+            .collection("ready")
+            .insertOne(
+              { at: new Date() },
+              { writeConcern: { w: ports.length, wtimeoutMS: 10_000 } },
+            );
+        } finally {
+          await setup.close();
+        }
+      },
+      `${name} primary`,
+      deadline,
+    );
+  } catch (error) {
+    await failWithDocker(`Starting the ${name} replica set`, error, [
+      ["ps", "-a", "--filter", `name=^${container}$`],
+      ["logs", "--tail", "20", container],
+      ["exec", container, "bash", "-c", "tail -n 20 /data/m*.log"],
+    ]);
+  }
+  return { url, probe: track(new MongoClient(url("admin"))) };
 };
 
 afterAll(async () => {
@@ -397,6 +466,37 @@ describe("MongoDB snapshot reads on a three-member replica set", () => {
       expect(
         new Set(events.plainFinds().map((event) => event.address)),
       ).toEqual(new Set([primary]));
+    } finally {
+      await lagging.db("admin").command({ fsyncUnlock: 1 });
+    }
+  });
+
+  it("migrates a byte-ordered table through a client set to read a secondary that has not replicated it", async () => {
+    // The collation check reads the collection and its indexes; on a
+    // secondary still behind the create, they don't exist yet.
+    const primary = await primaryAddress();
+    const { config } = await set.probe
+      .db("admin")
+      .command({ replSetGetConfig: 1 });
+    const behind = (
+      config.members as { host: string; tags: { node: string } }[]
+    ).find((member) => member.host !== primary)!;
+    const client = track(
+      new MongoClient(
+        set.url(
+          "behind",
+          `&readPreference=secondary&readPreferenceTags=node:${behind.tags.node}`,
+        ),
+      ),
+    );
+    const lagging = track(
+      new MongoClient(`mongodb://${behind.host}/?directConnection=true`),
+    );
+    await lagging.db("admin").command({ fsync: 1, lock: true });
+    try {
+      const adapter = createMongoAdapter({ client });
+      await adapter.migrations!.apply([releaseCatalogPartitionsTable]);
+      await adapter.migrations!.apply([releaseCatalogPartitionsTable]);
     } finally {
       await lagging.db("admin").command({ fsyncUnlock: 1 });
     }
@@ -1081,19 +1181,34 @@ describe("a standalone mongod, which has no snapshot reads", () => {
   beforeAll(async () => {
     const port = await availablePort();
     const container = `hot-updater-standalone-${process.pid}`;
-    await execa("docker", [
-      "run",
-      "-d",
-      "--rm",
-      "--name",
-      container,
-      "-p",
-      `127.0.0.1:${port}:27017`,
-      "mongo:7-jammy",
-    ]);
-    containers.push(container);
+    const deadline = Date.now() + 240_000;
     client = track(new MongoClient(`mongodb://127.0.0.1:${port}/standalone`));
-    await until(() => client.db("admin").command({ ping: 1 }), "standalone");
+    try {
+      await run(
+        container,
+        ["-p", `127.0.0.1:${port}:27017`, "mongo:7-jammy"],
+        deadline,
+      );
+      await until(
+        async () => {
+          const setup = new MongoClient(
+            `mongodb://127.0.0.1:${port}/?serverSelectionTimeoutMS=2000`,
+          );
+          try {
+            await setup.db("admin").command({ ping: 1 });
+          } finally {
+            await setup.close();
+          }
+        },
+        "standalone",
+        deadline,
+      );
+    } catch (error) {
+      await failWithDocker("Starting the standalone mongod", error, [
+        ["ps", "-a", "--filter", `name=^${container}$`],
+        ["logs", "--tail", "40", container],
+      ]);
+    }
   }, 300_000);
 
   it("reads as before, and refuses only a snapshot", async () => {

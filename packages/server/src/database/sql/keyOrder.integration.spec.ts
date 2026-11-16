@@ -34,6 +34,7 @@ import {
   pgPrisma,
   prismaPushSql,
 } from "../../adapters/prismaTestClients";
+import { composeUp } from "../../docker.testFixtures";
 
 assertDockerComposeAvailable(
   "The key order integration tests need Docker Compose and a running Docker daemon.",
@@ -69,7 +70,7 @@ const directory = mkdtemp(
 );
 
 beforeAll(async () => {
-  await execa("docker", [...compose, "up", "-d", "--wait"]);
+  await composeUp({ compose });
   pgAdmin = new pg.Pool({ connectionString: `${PG}/hot_updater`, max: 2 });
   mysqlAdmin = mysql.createPool({ uri: MYSQL, connectionLimit: 2 });
   await ready(() => pgAdmin.query("SELECT 1"));

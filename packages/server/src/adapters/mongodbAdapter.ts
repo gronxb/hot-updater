@@ -229,12 +229,16 @@ export const createMongoAdapter = (
   const collationOf = (table: PhysicalTable) =>
     BYTE_ORDERED.has(table.name) ? { collation: SIMPLE } : {};
 
-  /** Refuses a byte-ordered table's collection or index with a collation other than simple. */
+  /**
+   * Refuses a byte-ordered table's collection or index with a collation
+   * other than simple. It reads the primary: a secondary may not have the
+   * collection the migration just created.
+   */
   const checkSimpleCollation = async (table: PhysicalTable) => {
     const name = tablePrefix + table.name;
     const [info] = await client
       .db()
-      .listCollections({ name }, { nameOnly: false })
+      .listCollections({ name }, { nameOnly: false, ...PRIMARY })
       .toArray();
     const options = (info as { options?: Document } | undefined)?.options;
     const differs = (collation: unknown) =>
@@ -245,7 +249,7 @@ export const createMongoAdapter = (
         `MongoDB collection ${name} has collation ${JSON.stringify(options!.collation)}; Hot Updater reads its keys in byte order, which needs simple collation. Drop the collection and run db migrate again.`,
       );
     }
-    for (const index of await collection(table).indexes()) {
+    for (const index of await collection(table).indexes(PRIMARY)) {
       if (differs(index.collation)) {
         throw new DatabaseSchemaError(
           `MongoDB index ${index.name} on ${name} has collation ${JSON.stringify(index.collation)}; Hot Updater reads its keys in byte order, which needs simple collation. Drop the index and run db migrate again.`,

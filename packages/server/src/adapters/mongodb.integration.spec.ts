@@ -25,6 +25,7 @@ import { MongoClient } from "mongodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createInProcessCoreApi } from "../core/inProcess.testFixtures";
+import { composeUp } from "../docker.testFixtures";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
 import { mongoAdapter } from "./mongodb";
@@ -88,7 +89,10 @@ beforeAll(async () => {
     COMPOSE_PROJECT_NAME: `hot-updater-mongo-engine-${process.pid}`,
     HOT_UPDATER_E2E_MONGODB_PORT: String(port),
   };
-  await compose(["up", "-d", "--wait"]);
+  await composeUp({
+    compose: ["compose", "-f", composeFile],
+    env: environment,
+  });
   engine = await connect("engine");
   suiteClient = await connect("suite");
   await stopTtlMonitor(engine);
