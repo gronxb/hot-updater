@@ -463,7 +463,8 @@ describe("filling an index declared after its rows", () => {
   };
 
   it("gives earlier rows their items at migration, and only once", async () => {
-    const { store, calls } = recorded(createMemoryKeyValueStore());
+    const memory = createMemoryKeyValueStore();
+    const { store, calls } = recorded(memory);
     await seed(store);
     const adapter = createKvAdapter({ store });
     // Without the fill, the index has nothing for rows written before it.
@@ -486,10 +487,10 @@ describe("filling an index declared after its rows", () => {
     ).resolves.toMatchObject([{ id: "r001" }]);
     // Recorded: the next migration reads one item and writes nothing.
     calls.length = 0;
-    const items = store.items();
+    const items = memory.items();
     await adapter.migrations!.apply([conformanceItems]);
     expect(calls).toEqual(["get 1"]);
-    expect(store.items()).toBe(items);
+    expect(memory.items()).toBe(items);
   });
 
   it("records an index whose rows already have their items without a fill", async () => {
