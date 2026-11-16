@@ -302,7 +302,9 @@ tablePrefix })` when Hot Updater creates the tables: it applies the
 - `createSettingsMigrator({ executor, adapterName, settings, applyTables,
 fixups })` when the ORM applies the DDL itself, as Drizzle's and Prisma's
   do: `fixups` sets what the ORM cannot declare, then it writes the settings
-  rows. `applyTables` says how the ORM creates the tables, for the error when
+  rows. Its optional `pending` returns the fixup statements tables still
+  need once the settings match, such as for a table the ORM created after an
+  earlier migration, and the migrator runs those. `applyTables` says how the ORM creates the tables, for the error when
   they are missing.
 
 Both refuse a v0 database. The ORM's own schema generator renders each
