@@ -20,7 +20,12 @@ import { releasePendingReceipt } from "./native-builds";
 
 export const iosDeviceKeys = {
   all: ["ios-devices"] as const,
-  list: (status?: IosDeviceStatus) => ["ios-devices", status ?? "all"] as const,
+  list: (page: IosDevicesPage) =>
+    [
+      "ios-devices",
+      page.status ?? "all",
+      { before: page.before, after: page.after },
+    ] as const,
   device: (udid: string) => ["ios-devices", "device", udid] as const,
   // What the cookie names doesn't depend on the ID this page kept: one read
   // serves the page whether it knew its iPhone or learns it from the answer.
@@ -35,15 +40,24 @@ export const iosDeviceKeys = {
  */
 export const PROFILE_LINK_REFRESH_MS = 10 * 60 * 1000;
 
+/** A page of the iOS devices page: one status or all, and a keyset cursor. */
+export interface IosDevicesPage {
+  readonly status?: IosDeviceStatus;
+  /** Devices older than this ID: the next page. */
+  readonly before?: string;
+  /** Devices newer than this ID: the previous page. */
+  readonly after?: string;
+}
+
 /**
- * The registry, one status or all, kept on screen while it reloads, so a
- * filter change never blanks the table.
+ * One page of the registry, one status or all, kept on screen while it
+ * reloads, so a filter or page change never blanks the table. It reads
+ * again on focus: an approver sees a new request without reloading.
  */
-export function useIosDevicesQuery(status?: IosDeviceStatus) {
+export function useIosDevicesQuery(page: IosDevicesPage) {
   return useQuery({
-    queryKey: iosDeviceKeys.list(status),
-    queryFn: () =>
-      getIosDevices({ data: status === undefined ? {} : { status } }),
+    queryKey: iosDeviceKeys.list(page),
+    queryFn: () => getIosDevices({ data: page }),
     placeholderData: keepPreviousData,
   });
 }

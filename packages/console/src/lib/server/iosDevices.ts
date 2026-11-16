@@ -5,6 +5,7 @@ import type {
 } from "@hot-updater/plugin-core";
 
 import type { ConsolePrincipal } from "../../index";
+import { type KeysetPage, keysetPage } from "./nativeBuilds";
 import {
   createDeviceProfileToken,
   DEVICE_PROFILE_TOKEN_TTL_MS,
@@ -71,7 +72,11 @@ export const requireDeviceApprover = (viewer: IosDeviceViewer) => {
   }
 };
 
-/** Every registry row, newest first, or one status's. */
+/**
+ * Every registry row, newest first, or one status's: for the statuses Apple
+ * caps, which an ad hoc build's device list names. The devices page reads
+ * `listIosDevicePage`.
+ */
 export const listIosDevices = async (
   core: Pick<HotUpdaterCoreApi, "listIosDevices">,
   status?: IosDeviceStatus,
@@ -89,6 +94,40 @@ export const listIosDevices = async (
     after = page.at(-1)!.id;
   }
 };
+
+/** How many devices one page of the iOS devices page lists. */
+export const IOS_DEVICE_PAGE_SIZE = 50;
+
+/** A page of the iOS devices page: one status or all, and a keyset cursor. */
+export interface IosDevicePageInput {
+  readonly status?: IosDeviceStatus;
+  /** Devices older than this ID: the next page. */
+  readonly before?: string;
+  /** Devices newer than this ID: the previous page. */
+  readonly after?: string;
+}
+
+/**
+ * One page of the registry, newest first, or of one status: one keyset read,
+ * however many requests the registry holds.
+ */
+export const listIosDevicePage = (
+  core: Pick<HotUpdaterCoreApi, "listIosDevices">,
+  { status, before, after }: IosDevicePageInput,
+): Promise<KeysetPage<IosDeviceRow>> =>
+  keysetPage(
+    (input) =>
+      core.listIosDevices({
+        ...input,
+        ...(status === undefined ? {} : { status }),
+      }),
+    ({ id }) => id,
+    {
+      limit: IOS_DEVICE_PAGE_SIZE,
+      ...(before === undefined ? {} : { before }),
+      ...(after === undefined ? {} : { after }),
+    },
+  );
 
 /** A device name as the registry stores it, or a refusal. */
 export const deviceName = (name: unknown): string => {

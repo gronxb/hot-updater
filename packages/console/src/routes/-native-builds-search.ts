@@ -3,6 +3,7 @@ import { assertCanonicalChannelName } from "@hot-updater/protocol";
 
 import type { NativeBuildDetailSearch } from "@/components/features/native-builds/NativeBuildDetailPage";
 import type { NativeBuildPage } from "@/lib/api";
+import type { IosDevicesPage } from "@/lib/ios-devices-api";
 import { ALL_CHANNELS, DEFAULT_CHANNEL } from "@/lib/constants";
 
 const text = (value: unknown) =>
@@ -85,15 +86,23 @@ const IOS_DEVICE_STATUSES: readonly IosDeviceStatus[] = [
   "registered",
 ];
 
-/** The iOS devices page's URL: the status the list shows, all without one. */
-export interface IosDevicesSearch {
-  readonly status?: IosDeviceStatus;
-}
+/**
+ * The iOS devices page's URL: the status the list shows, all without one, and
+ * one keyset page. A page has one direction, so `before` wins over `after`.
+ */
+export type IosDevicesSearch = IosDevicesPage;
 
 export const validateIosDevicesSearch = (
   search: Record<string, unknown>,
-): IosDevicesSearch =>
-  typeof search.status === "string" &&
-  IOS_DEVICE_STATUSES.includes(search.status as IosDeviceStatus)
-    ? { status: search.status as IosDeviceStatus }
-    : {};
+): IosDevicesSearch => {
+  const before = text(search.before);
+  return defined({
+    status:
+      typeof search.status === "string" &&
+      IOS_DEVICE_STATUSES.includes(search.status as IosDeviceStatus)
+        ? (search.status as IosDeviceStatus)
+        : undefined,
+    before,
+    after: before === undefined ? text(search.after) : undefined,
+  });
+};

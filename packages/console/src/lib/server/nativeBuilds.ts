@@ -45,7 +45,7 @@ export interface KeysetPage<T> {
  * page, oldest first (then reversed) for the previous one. `next` is set
  * for a full page, so the last page may lead to an empty one.
  */
-async function keysetPage<T>(
+export async function keysetPage<T>(
   read: (input: KeysetInput) => Promise<readonly T[]>,
   keyOf: (row: T) => string,
   { before, after, limit }: KeysetPageInput,

@@ -27,6 +27,7 @@ import {
   DataTableEmpty,
   DataTableFrame,
   DataTableFullRow,
+  DataTablePagination,
   DataTableSkeletonRows,
 } from "@/components/DataTable";
 import { QrCode } from "@/components/QrCode";
@@ -880,9 +881,13 @@ export function IosDevicesPage({
   readonly onSearchChange: (search: IosDevicesSearch) => void;
 }) {
   const isMobile = useIsMobile();
-  const query = useIosDevicesQuery(search.status);
+  const query = useIosDevicesQuery(search);
   const view = query.data;
   const rows = view?.devices;
+  // A page other than the newest, whose status the page links keep.
+  const paged = search.before !== undefined || search.after !== undefined;
+  const statusSearch: IosDevicesSearch =
+    search.status === undefined ? {} : { status: search.status };
   const queryClient = useQueryClient();
   // Refresh and Retry read every registry query the page shows: the list,
   // and this iPhone's own row on a phone. A disabled read, such as the row
@@ -896,7 +901,20 @@ export function IosDevicesPage({
     phone?.ios === true ? (phone.udid?.toLowerCase() ?? null) : null;
   const close = () => setDialog(null);
 
-  const empty = (
+  const empty = paged ? (
+    <DataTableEmpty icon={Smartphone} title="No more iPhones">
+      <Link
+        className={buttonVariants({
+          className: "mt-1 min-h-11 sm:min-h-8",
+          variant: "outline",
+        })}
+        search={statusSearch}
+        to={IOS_DEVICES_PATH}
+      >
+        Show the newest iPhones
+      </Link>
+    </DataTableEmpty>
+  ) : (
     <DataTableEmpty
       icon={Smartphone}
       title={
@@ -1082,6 +1100,33 @@ export function IosDevicesPage({
               </DataTable>
             )}
           </DataTableFrame>
+        )}
+        {query.isError || rows === undefined ? null : (
+          <DataTablePagination
+            count={rows.length}
+            label="iOS device pages"
+            newest={
+              paged ? { search: statusSearch, to: IOS_DEVICES_PATH } : undefined
+            }
+            next={
+              view?.next === undefined
+                ? undefined
+                : {
+                    search: { ...statusSearch, before: view.next },
+                    to: IOS_DEVICES_PATH,
+                  }
+            }
+            noun={["device", "devices"]}
+            pending={query.isPlaceholderData}
+            previous={
+              view?.previous === undefined
+                ? undefined
+                : {
+                    search: { ...statusSearch, after: view.previous },
+                    to: IOS_DEVICES_PATH,
+                  }
+            }
+          />
         )}
       </div>
       {dialog !== null && dialog.kind !== "remove" ? (

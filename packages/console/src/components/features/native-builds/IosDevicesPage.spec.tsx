@@ -61,17 +61,23 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({
     to,
     params,
+    search,
     children,
     ...props
   }: {
     to: string;
     params?: { buildId: string };
+    search?: Record<string, string>;
     children: unknown;
-  }) => (
-    <a href={params ? to.replace("$buildId", params.buildId) : to} {...props}>
-      {children as never}
-    </a>
-  ),
+  }) => {
+    const query = new URLSearchParams(search).toString();
+    const path = params ? to.replace("$buildId", params.buildId) : to;
+    return (
+      <a href={query === "" ? path : `${path}?${query}`} {...props}>
+        {children as never}
+      </a>
+    );
+  },
 }));
 
 import { IosDevicesPage } from "./IosDevicesPage";
@@ -402,10 +408,47 @@ describe("IosDevicesPage", () => {
 
   it("filters by status in the URL, and an empty filter offers Show all", () => {
     const { onSearchChange } = show(viewAs({}, []), { status: "approved" });
-    expect(devicesQuery).toHaveBeenCalledWith("approved");
+    expect(devicesQuery).toHaveBeenCalledWith({ status: "approved" });
     expect(screen.getByText("No approved iPhones")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Show all" }));
     expect(onSearchChange).toHaveBeenCalledWith({});
+  });
+
+  it("reads one page and links the older and newer pages, keeping the status", () => {
+    show(
+      {
+        ...viewAs({}, [device({ status: "approved" })]),
+        next: "older-id",
+        previous: "newer-id",
+      },
+      { status: "approved", before: "cursor-id" },
+    );
+    expect(devicesQuery).toHaveBeenCalledWith({
+      status: "approved",
+      before: "cursor-id",
+    });
+    const pages = screen.getByRole("navigation", { name: "iOS device pages" });
+    const href = (name: string) =>
+      within(pages).getByRole("link", { name }).getAttribute("href");
+    expect(href("Next")).toBe(
+      "/native-builds/devices?status=approved&before=older-id",
+    );
+    expect(href("Previous")).toBe(
+      "/native-builds/devices?status=approved&after=newer-id",
+    );
+    expect(href("Newest")).toBe("/native-builds/devices?status=approved");
+  });
+
+  it("offers the newest page from an empty older one", () => {
+    show(viewAs({}, []), { before: "cursor-id" });
+    expect(screen.getByText("No more iPhones")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: "Show the newest iPhones" })
+        .getAttribute("href"),
+    ).toBe("/native-builds/devices");
+    const pages = screen.getByRole("navigation", { name: "iOS device pages" });
+    expect(within(pages).queryByRole("link", { name: "Next" })).toBeNull();
   });
 
   describe("this iPhone, back from its profile", () => {
