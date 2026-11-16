@@ -126,6 +126,55 @@ describe("doctor's walk of the releases' scopes", () => {
     ]);
   });
 
+  it("reports no lost catalog for a scope item whose release a 1.1.x server deleted", async () => {
+    const { store, database, core } = await setup();
+    const [, , fingerprintB] = await deployThreeScopes(core);
+    const [release] = await core.listReleases({
+      filter: { kind: "scope", scopeKey: fingerprintB! },
+      limit: 1,
+    });
+    const { items } = await store.query({
+      pk: "releases#scopes#",
+      order: "asc",
+      limit: 100,
+    });
+    const orphan = items.find(({ value }) => value.id === release!.id)!;
+    // A 1.1.x server deletes the release and leaves its `scopes` item.
+    const { release: disabled } = await core.updateReleasePolicy({
+      releaseId: release!.id,
+      patch: { enabled: false },
+    });
+    await core.deleteRelease({
+      releaseId: release!.id,
+      expectedRevision: disabled!.revision,
+    });
+    await store.write([
+      {
+        type: "put",
+        key: { pk: "releases#scopes#", sk: orphan.sk },
+        value: orphan.value,
+      },
+    ]);
+    await expect(core.listReleaseScopeKeys({ limit: 100 })).resolves.toContain(
+      fingerprintB,
+    );
+
+    // With its tombstone catalog, the scope is checked as any other.
+    const kept = await checkServerData(core);
+    expect(kept.issues).toEqual([]);
+    expect(
+      kept.scopes.find(({ scopeKey }) => scopeKey === fingerprintB)?.state,
+    ).toBe("verified");
+
+    // Without it, the scope has no releases, so nothing is missing.
+    await loseCatalogRow(database, fingerprintB!);
+    const lost = await checkServerData(core);
+    expect(lost.issues).toEqual([]);
+    expect(lost.scopes.map(({ scopeKey }) => scopeKey)).not.toContain(
+      fingerprintB,
+    );
+  });
+
   it("checks the catalogued scopes on a server without the walk, and says what it could not look for", async () => {
     const { core } = await setup();
     await deployThreeScopes(core);

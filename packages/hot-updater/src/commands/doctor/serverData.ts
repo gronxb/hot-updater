@@ -117,8 +117,16 @@ const checkReleaseCatalogs = async (
       | undefined;
     let failure: unknown;
     // Core resolves a scope through its catalog row, so a scope without
-    // one is found here, from its releases.
-    if (withRow.has(scopeKey)) {
+    // one is found here, from its releases. A key-value store keeps an
+    // index item a 1.1.x server's delete left behind, so the walk may list
+    // a scope whose releases are gone: one limit-1 read confirms it has one.
+    if (!withRow.has(scopeKey)) {
+      const [release] = await core.listReleases({
+        filter: { kind: "scope", scopeKey },
+        limit: 1,
+      });
+      if (release === undefined) continue;
+    } else {
       try {
         result = await core.preflightReleaseCatalogRebuild(scopeKey);
       } catch (error) {

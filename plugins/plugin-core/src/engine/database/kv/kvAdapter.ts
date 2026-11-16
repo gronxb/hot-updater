@@ -486,7 +486,8 @@ export const createKvAdapter = ({
       const keys = rows.map((row) =>
         [...itemsOf(layout, row, [index]).values()].map(({ key }) => key),
       );
-      const found = await store.get(keys.flat());
+      const wanted = keys.flat();
+      const found = wanted.length === 0 ? [] : await store.get(wanted);
       let at = 0;
       const missing = rows.filter((_, position) => {
         const held = found.slice(at, (at += keys[position]!.length));

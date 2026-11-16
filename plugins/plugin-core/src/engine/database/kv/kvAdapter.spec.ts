@@ -501,6 +501,14 @@ describe("filling an index declared after rows were written", () => {
     await expect(byGroup(adapter, "g")).resolves.toEqual(["late"]);
   });
 
+  it("reads an empty table with one query and no point read", async () => {
+    const { store, calls } = recorded(createMemoryKeyValueStore());
+
+    await expect(fill(createKvAdapter({ store }))).resolves.toBe(0);
+
+    expect(calls).toEqual([`query ${conformanceItems.name}`]);
+  });
+
   it("writes a row's current items when it changes during the fill", async () => {
     const store = createMemoryKeyValueStore();
     const first = item("r0");

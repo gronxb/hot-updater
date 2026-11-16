@@ -48,6 +48,15 @@ interface DatabaseAdapter {
   /** Creates tables; only the migration helpers call it. */
   readonly migrations?: {
     apply(tables: readonly PhysicalTable[]): Promise<void>;
+    /**
+     * Writes the items of `index` that rows of `table` lack, or with
+     * `dryRun` only counts them; for a store that keeps index items itself.
+     */
+    fillIndex?(
+      table: PhysicalTable,
+      index: string,
+      options?: { readonly dryRun?: boolean },
+    ): Promise<number>;
   };
   dispose?(): Promise<void>;
 }
@@ -223,6 +232,15 @@ exists keeps its rows, so running it twice changes nothing. Only the migration
 tooling calls it: `migrateCoreSchema` and `hot-updater db migrate`. Leave it
 out when other tooling creates the tables, as Supabase's migrations do for its
 RPC, which runs no DDL.
+
+`migrations.fillIndex(table, index, { dryRun })` is for a store that keeps an
+item per row for each index, as the key-value kit does. Core declares
+`releases.scopes` on a table that servers of an earlier release still write
+after the migration, without that index's items. Each migration calls
+`fillIndex` for it: the method writes the items rows lack and returns how many
+rows lacked one, and with `dryRun` it only counts them. `hot-updater db migrate`
+uses the dry run on a database whose settings already match. A store whose
+indexes cover every row by themselves, as SQL and MongoDB do, leaves it out.
 
 ## Check an adapter
 
