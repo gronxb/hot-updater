@@ -138,7 +138,7 @@ describe("doctor's walk of the releases' scopes", () => {
       order: "asc",
       limit: 100,
     });
-    const orphan = items.find(({ value }) => value.id === release!.id)!;
+    const orphan = items.find(({ value }) => value["id"] === release!.id)!;
     // A 1.1.x server deletes the release and leaves its `scopes` item.
     const { release: disabled } = await core.updateReleasePolicy({
       releaseId: release!.id,
