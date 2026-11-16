@@ -1,0 +1,16 @@
+---
+"@hot-updater/plugin-core": patch
+"@hot-updater/server": patch
+"@hot-updater/test-utils": patch
+"@hot-updater/cloudflare": patch
+---
+
+feat(server): write partitioned release catalogs: atomic inserts, guarded staging, bounded cleanup. Nothing in the product turns partitioning on yet; with the persisted `catalog.partitioning` setting absent, every write is exactly today's compact write, and no write touches `release_catalog_partitions`.
+
+- **The switch, per write.** A write to a compact or absent app-version scope reads the `catalog.partitioning` settings row (one point read; nothing caches it). With it `on`, the scope converts on that write. A partitioned scope's own row says it is partitioned, so its writes don't read the switch, and a missing switch never turns one back into a compact row. FINGERPRINT scopes, an empty catalog, and a version whose partition key doesn't fit stay compact, as today.
+- **Atomic writes.** A deploy or promotion into a partitioned scope reads only the rows its range lands in, never the scope's releases: an exact-version deploy reads one row. Edits, deletes and rebuilds compile the scope's releases and rewrite only the rows that differ; a rebuild whose rows are already live writes nothing. Rewritten rows are read through the transaction in one batch, and each head carries a chain hash, so one generation never has two hashes.
+- **Staged writes.** A publication too big for one atomic write first compiles its final transaction, with stand-ins for its staging row and epoch, against the store's own `fits`, and checks its largest row fits alone. If either doesn't, the write keeps today's compact behaviour, limits and refusals. Otherwise each scope registers a fresh epoch under the exact row its rows were computed from (a publication in between restarts the computation), drains what earlier attempts left, inserts its rows in chunks that each require the staging row and the base, and one transaction flips every head. A lost race restarts at most 5 times, then fails with the retryable `CATALOG_PUBLICATION_CONFLICT` (HTTP 503); nothing is published.
+- **Cleanup.** After each write, one step deletes at most one page (25 rows, 512 KiB, halved when the store can't take it) of an epoch that can never be live or flip again, or one empty epoch's marker. A marker the staging row still names is kept, and the step moves on to the next one, so cleanup always progresses. Cleanup never fails the write that ran it.
+- **plugin-core.** `Engine.core` gains `CatalogWriteSupport`: `readSetting`, `fits` (compile a transaction against the adapter's `fits` without writing), `unguardedSnapshot`, and `findByKeysIn` (rows by key through a transaction in one batch, each guarded). `ReleaseCatalogMutationError` gains `CATALOG_PUBLICATION_CONFLICT`.
+- **Cloudflare.** A D1 batch counts as one query against a Worker's invocation limit; the `D1_MAX_OPS` comment now says so. It still bounds one batch at 450 ops.
+- **test-utils.** `setReleaseCatalogPartitioning(adapter, "on" | "off")` inserts or deletes the switch, test-only. The read-budget suite pins partitioned deploys, their cleanup steps, and the switch read of compact app-version writes on every backend.

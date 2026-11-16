@@ -1,5 +1,6 @@
 import {
   assembleReleaseCatalog,
+  type CatalogWriteSupport,
   canonicalizeAppVersion,
   type CoreSchema,
   DatabaseSnapshotConflictError,
@@ -25,15 +26,19 @@ import {
 } from "../db/releaseCatalog";
 import { baseBundleIdsFrom, baseBundleIdsOfCompiled } from "./baseCandidates";
 
-/** Core's tables, with the snapshot reads a partitioned scope is read in. */
+/**
+ * Core's tables, with the snapshot reads a partitioned scope is read in, and
+ * what its catalog writer reads and checks besides.
+ */
 export type CoreDatabase = HotUpdaterDatabase<CoreSchema> &
-  SnapshotReads<CoreSchema>;
+  SnapshotReads<CoreSchema> &
+  CatalogWriteSupport<CoreSchema>;
 
-type CatalogReader = Pick<CoreDatabase, "findOne" | "findMany">;
+export type CatalogReader = Pick<CoreDatabase, "findOne" | "findMany">;
 
-const PARTITIONS = "release_catalog_partitions";
+export const PARTITIONS = "release_catalog_partitions";
 /** Partition rows per page: 50 rows of at most 256 KB fit one 16 MiB MongoDB batch. */
-const PARTITION_PAGE = 50;
+export const PARTITION_PAGE = 50;
 /** Reads of a head and its rows after the first, before a read gives up. */
 const REREADS = 3;
 
@@ -143,14 +148,14 @@ export const readStoredCatalog = (
  * catalog has a `layout` key, and inside a JSON string its quotes are
  * escaped.
  */
-const mayBeHead = (row: { readonly payload: string }) =>
+export const mayBeHead = (row: { readonly payload: string }) =>
   row.payload.includes('"layout":');
 
 // --- Rows ---------------------------------------------------------------
 
-type PartitionRow = ReadRow<CoreSchema["release_catalog_partitions"]>;
+export type PartitionRow = ReadRow<CoreSchema["release_catalog_partitions"]>;
 
-const toPartition = (row: PartitionRow): ReleaseCatalogPartition => ({
+export const toPartition = (row: PartitionRow): ReleaseCatalogPartition => ({
   byteSize: row.byte_size,
   lowerKey: row.lower_key,
   partitionHash: row.partition_hash,
@@ -158,7 +163,7 @@ const toPartition = (row: PartitionRow): ReleaseCatalogPartition => ({
 });
 
 /** A row read under `head`, or null when it can't be the head's content. */
-const verified = (
+export const verified = (
   head: ReleaseCatalogHead,
   row: PartitionRow,
 ): ParsedReleaseCatalogPartition | null => {
@@ -173,7 +178,7 @@ const verified = (
 };
 
 /** Every row of the head's epoch, in key order, a page at a time. */
-const epochRows = async (
+export const epochRows = async (
   reader: CatalogReader,
   head: ReleaseCatalogHead,
 ): Promise<PartitionRow[]> => {
@@ -193,8 +198,8 @@ const epochRows = async (
   return rows;
 };
 
-const RETRY = Symbol("retry");
-type Attempt<T> = T | typeof RETRY;
+export const RETRY = Symbol("retry");
+export type Attempt<T> = T | typeof RETRY;
 
 /**
  * Every row of the head's epoch, verified, when together they tile the
@@ -203,7 +208,7 @@ type Attempt<T> = T | typeof RETRY;
  * corrupt row, a hole, an overlap, or no rows at all: rows of two states,
  * or rows still missing.
  */
-const epochTiling = async (
+export const epochTiling = async (
   reader: CatalogReader,
   head: ReleaseCatalogHead,
 ): Promise<
@@ -473,7 +478,7 @@ export const assemblePublicPage = async (
  * pages. They are the head's content when every row is stamped at or below
  * its generation and they chain from `start` to `stop` with no hole.
  */
-const rowsOver = async (
+export const rowsOver = async (
   reader: CatalogReader,
   head: ReleaseCatalogHead,
   { start, stop }: { readonly start: string; readonly stop: string | null },

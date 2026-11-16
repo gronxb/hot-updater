@@ -125,7 +125,12 @@ const COMPUTED_IMPORTS = new Map([
  * no public API serves it. A new one needs a deliberate entry.
  * @type {Map<string, string>}
  */
-const PRIVATE_SOURCE_SPECS = new Map();
+const PRIVATE_SOURCE_SPECS = new Map([
+  [
+    "packages/server/src/catalogWrites.fits.spec.ts",
+    "pins release catalog conversions against each store's own atomic-write limits (DYNAMODB_LIMITS, COSMOS_LIMITS, FIRESTORE_LIMITS, D1_MAX_OPS), which the provider packages keep internal",
+  ],
+]);
 
 const TEST_UTILS = "@hot-updater/test-utils";
 

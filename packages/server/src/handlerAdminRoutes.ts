@@ -65,6 +65,19 @@ export const answer = async (
     return await operation();
   } catch (error) {
     if (
+      error instanceof ReleaseCatalogMutationError &&
+      error.code === "CATALOG_PUBLICATION_CONFLICT"
+    ) {
+      // A staged publication lost to other writers every time: retryable.
+      return Response.json(
+        { code: error.code, error: error.message },
+        {
+          status: 503,
+          headers: { "cache-control": "private, no-store", "retry-after": "1" },
+        },
+      );
+    }
+    if (
       error instanceof ReleaseManagementError ||
       error instanceof ReleaseCatalogMutationError
     ) {

@@ -24,6 +24,11 @@ export class ReleaseCatalogMutationError extends Error {
     readonly code:
       | "CATALOG_GENERATION_EXHAUSTED"
       | "CATALOG_IDENTITY_MISSING"
+      /**
+       * Retryable: a partitioned scope's staged publication lost its staging
+       * row or base to other writers on every attempt. Nothing was published.
+       */
+      | "CATALOG_PUBLICATION_CONFLICT"
       | "INVALID_SCOPE"
       | "NON_MONOTONIC_RELEASE_ID"
       | "RELEASE_NOT_FOUND"

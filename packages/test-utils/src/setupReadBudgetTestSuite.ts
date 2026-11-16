@@ -567,6 +567,8 @@ const partitionedScopeKey = createReleaseCatalogScopeKey({
   strategy: "APP_VERSION",
 });
 const PARTITION_ROWS = 3;
+/** An epoch no head names, which the first deploy into the scope reclaims. */
+const RETIRED_EPOCH = "0a0a0a0a-0000-4000-8000-000000000000";
 /** Catalogs the seed leaves: production iOS and Android, beta and staging iOS. */
 const CATALOGS = 4;
 /** The head, then (with snapshots) the head again and the rest in one snapshot. */
@@ -836,7 +838,8 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     api: "catalog preflight: 1 catalog point read and the scope's enabled releases",
     // Doctor's check of each scope: it writes nothing, so it reads the
     // catalog once, without a transaction's guard reads, and no newest
-    // release, which matters only to a scope without a catalog.
+    // release, which matters only to a scope without a catalog. A compact
+    // scope is checked on its content, so it reads no switch.
     read: ({ core }) => core.preflightReleaseCatalogRebuild(scopeKey),
     // Production iOS holds 4 enabled releases.
     adapter: reads(1, 1, 1, 4),
@@ -1300,13 +1303,14 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       }),
   }),
   budget({
-    api: "catalog compile: the scope's enabled releases, all used",
+    api: "catalog compile: the scope's enabled releases, all used, and the partitioning switch",
     // A deploy reads the channel, the scope's catalog (once, then as the root
     // of each range), its 4 enabled releases, and its latest release; with
-    // copies, it reads those 5 releases whole.
+    // copies, it reads those 5 releases whole. A compact app-version scope
+    // also reads the persisted switch: one point read.
     read: ({ core }) =>
       core.deploy([{ bundle: bundleOf("107"), release: production }]),
-    adapter: (copies) => reads(copies ? 5 : 3, copies ? 8 : 3, 3, 6),
+    adapter: (copies) => reads(copies ? 6 : 4, copies ? 9 : 4, 3, 6),
     engine: { calls: 6, rows: 9 },
     writes: 1,
   }),
@@ -1509,6 +1513,87 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     engine: { calls: 2, rows: 1 },
     writes: 1,
   }),
+  // Writes into the partitioned scope run last: they change its rows.
+  budget({
+    api: "deploy into a partitioned scope with a retired epoch: no enabled-release page; one cleanup page and transaction",
+    partitioned: true,
+    // The channel; the head through the transaction (and again in the
+    // snapshot, with snapshots); discovery; the row the range lands in, then
+    // again through the transaction for its guard; the latest release (the
+    // head as root, then the page). Then one cleanup step: the retired
+    // epoch's page, and its transaction's head, R and rows in one batch.
+    read: ({ core }) =>
+      core.deploy([
+        {
+          bundle: bundleOf("093"),
+          release: { ...production, channel: "staging" },
+        },
+      ]),
+    adapter: (copies, snapshots) =>
+      reads(
+        7 + (snapshots ? 1 : 0) + (copies ? 1 : 0),
+        7 + (snapshots ? 1 : 0) + (copies ? 1 : 0),
+        5,
+        5,
+      ),
+    engine: (snapshots) => ({
+      calls: snapshots ? 13 : 12,
+      rows: snapshots ? 11 : 10,
+    }),
+    writes: 2,
+  }),
+  budget({
+    api: "deploy into a partitioned scope, the retired epoch drained: one empty page, then the marker's transaction",
+    partitioned: true,
+    // As above, then the marker: its empty page, and a transaction that
+    // reads the head, R, X's rows once more after them (rule E), and the
+    // marker.
+    read: ({ core }) =>
+      core.deploy([
+        {
+          bundle: bundleOf("094"),
+          release: { ...production, channel: "staging" },
+        },
+      ]),
+    adapter: (copies, snapshots) =>
+      reads(
+        7 + (snapshots ? 1 : 0) + (copies ? 1 : 0),
+        7 + (snapshots ? 1 : 0) + (copies ? 1 : 0),
+        6,
+        5,
+      ),
+    engine: (snapshots) => ({
+      calls: snapshots ? 14 : 13,
+      rows: snapshots ? 12 : 11,
+    }),
+    writes: 2,
+  }),
+  budget({
+    api: "deploy into a partitioned scope, nothing to reclaim: no enabled-release page, and no cleanup read",
+    partitioned: true,
+    // The channel, the head, discovery, the covering row (read, then guarded
+    // through the transaction), and the latest release; the cleanup step
+    // reuses the discovery and reads nothing.
+    read: ({ core }) =>
+      core.deploy([
+        {
+          bundle: bundleOf("095"),
+          release: { ...production, channel: "staging" },
+        },
+      ]),
+    adapter: (copies, snapshots) =>
+      reads(
+        4 + (snapshots ? 1 : 0) + (copies ? 1 : 0),
+        4 + (snapshots ? 1 : 0) + (copies ? 1 : 0),
+        4,
+        4,
+      ),
+    engine: (snapshots) => ({
+      calls: snapshots ? 9 : 8,
+      rows: snapshots ? 9 : 8,
+    }),
+    writes: 1,
+  }),
 ];
 
 /**
@@ -1559,11 +1644,24 @@ export const setupReadBudgetTestSuite = (
           partitionedScopeKey,
           await seeded.core.getReleaseCatalogRow(partitionedScopeKey),
         );
-        const { rows } =
-          await createReleaseCatalogPartitionFixture(adapter).partition(
-            partitionedScopeKey,
-          );
+        const fixture = createReleaseCatalogPartitionFixture(adapter);
+        const { rows } = await fixture.partition(partitionedScopeKey);
         expect(rows).toHaveLength(PARTITION_ROWS);
+        // A retired epoch, as a staged flip leaves it: one row and its marker.
+        await fixture.writeRows(partitionedScopeKey, [
+          { ...rows[0]!, epoch: RETIRED_EPOCH },
+          {
+            epoch: "#",
+            generation: rows[0]!.generation,
+            lowerKey: RETIRED_EPOCH,
+            partition: {
+              byteSize: 18,
+              lowerKey: RETIRED_EPOCH,
+              partitionHash: rows[0]!.partition.partitionHash,
+              payload: JSON.stringify({ maxRowBytes: 600 }),
+            },
+          },
+        ]);
       }
     }, 300_000);
 

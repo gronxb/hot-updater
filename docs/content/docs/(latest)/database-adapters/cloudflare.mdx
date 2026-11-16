@@ -76,8 +76,8 @@ batch first records each operation's guard in `_hu_write`, against the rows as
 they were before any change, then applies the changes only when no guard
 failed, and finally reads and removes the result. A read that binds many
 values is split to stay within D1's 100 parameters per statement, and one
-write sends at most 450 operations, within a Worker invocation's 1,000 queries
-on the paid plan.
+write sends at most 450 operations in its batch. A Worker counts each batch as
+one query against its invocation's limit, whatever statements it holds.
 
 The root export reaches D1 through the Cloudflare REST API, for
 `hot-updater.config.ts` and the Console. It sends each value as JSON text and
