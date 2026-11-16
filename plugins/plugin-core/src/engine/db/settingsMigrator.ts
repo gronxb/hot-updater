@@ -70,6 +70,12 @@ export const createSettingsMigrator = (options: {
   readonly fixups?: {
     readonly description: string;
     readonly statements: readonly string[];
+    /**
+     * The statements tables still need once the settings match, such as a
+     * table the ORM created after an earlier migration: a release's table
+     * that a prerelease of it never had.
+     */
+    readonly pending?: () => Promise<readonly string[]>;
   };
 }): Migrator => {
   const read = () => readStoredSettings(options.executor);
@@ -91,7 +97,19 @@ export const createSettingsMigrator = (options: {
         ([key, value]) => stored.get(key) === value,
       )
     ) {
-      return getEmptyMigrationResult();
+      const pending = (await options.fixups?.pending?.()) ?? [];
+      if (pending.length === 0) return getEmptyMigrationResult();
+      return {
+        operations: [
+          { type: "custom", description: options.fixups!.description },
+        ],
+        getSQL: () => pending.map((statement) => `${statement};`).join("\n\n"),
+        execute: async () => {
+          for (const sql of pending) {
+            await options.executor.execute({ sql, params: [] });
+          }
+        },
+      };
     }
     const fixups = options.fixups?.statements ?? [];
     const statements = [

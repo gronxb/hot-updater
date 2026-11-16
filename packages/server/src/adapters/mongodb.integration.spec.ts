@@ -2,13 +2,17 @@ import net from "node:net";
 import path from "node:path";
 
 import {
+  createEngineDatabase,
+  type DatabaseAdapter,
   HotUpdaterSchemaMigrationRequiredError,
   toolingTargetOf,
 } from "@hot-updater/plugin-core";
 import type { PhysicalTable } from "@hot-updater/plugin-core";
 import {
   conformanceExpiring,
+  releaseCatalogPartitionsTable,
   setupDatabaseAdapterConformanceSuite,
+  setupKeyOrderTestSuite,
   setupDatabaseTestSuite,
   startHttpTestServer,
   insightsTestSuite,
@@ -109,6 +113,18 @@ setupDatabaseAdapterConformanceSuite({
       ...(nativePageSize === undefined ? {} : { batchSize: nativePageSize }),
     });
     await adapter.migrations!.apply(tables);
+    return { adapter };
+  },
+});
+
+setupKeyOrderTestSuite({
+  name: "mongodb (replica set)",
+  createAdapter: async ({ table }) => {
+    const adapter = createMongoAdapter({
+      client: await connect("key_order"),
+      tablePrefix: "p_",
+    });
+    await adapter.migrations!.apply([table]);
     return { adapter };
   },
 });
@@ -232,6 +248,66 @@ describe("mongoAdapter retention", () => {
   });
 });
 
+/**
+ * A database a 1.2 prerelease migrated, without the partition collection,
+ * with partitioning off: core's suites run as before, no call names the
+ * collection, and MongoDB, which would create it on a first insert, still
+ * has none afterwards.
+ */
+const PARTITIONS = "release_catalog_partitions";
+const touches: string[] = [];
+const refusingPartitions = (adapter: DatabaseAdapter): DatabaseAdapter =>
+  new Proxy(adapter, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (typeof value !== "function") return value;
+      return (...args: unknown[]) => {
+        const named = JSON.stringify(args, (_, item: unknown) =>
+          typeof item === "bigint" ? String(item) : item,
+        ).includes(`"name":"${PARTITIONS}"`);
+        if (named) {
+          touches.push(String(property));
+          throw new Error(`${String(property)} touched ${PARTITIONS}`);
+        }
+        return value.apply(target, args);
+      };
+    },
+  });
+let boundaryClient: MongoClient;
+setupDatabaseTestSuite({
+  createHttpClient: (options) =>
+    startHttpTestServer(
+      createHotUpdater({ ...options, clientAccess: "public" }).handlers,
+    ),
+  name: "mongoAdapter without release_catalog_partitions",
+  migrate: async () => {
+    boundaryClient = await connect("boundary");
+    await (
+      await mongoAdapter({ client: boundaryClient }).createMigrator!().migrateToLatest()
+    ).execute();
+    await boundaryClient.db().collection(PARTITIONS).drop();
+  },
+  createDatabase: () =>
+    createEngineDatabase({
+      name: "mongodb",
+      adapter: refusingPartitions(
+        createMongoAdapter({ client: boundaryClient }),
+      ),
+    }),
+  reset: async () => {
+    for (const table of toolingTargetOf([]).schema.tables) {
+      if (table.name === PARTITIONS) continue;
+      await boundaryClient.db().collection(table.name).deleteMany({});
+    }
+  },
+  dispose: async () => {
+    expect(touches).toEqual([]);
+    expect(
+      await boundaryClient.db().listCollections({ name: PARTITIONS }).toArray(),
+    ).toEqual([]);
+  },
+});
+
 describe("mongoAdapter migrations", () => {
   it("serves behind the fence only after db migrate, then has nothing to migrate", async () => {
     const client = await connect("fenced");
@@ -262,6 +338,114 @@ describe("mongoAdapter migrations", () => {
     ]);
     const release = result!.release!;
     await expect(core.getRelease(release.id)).resolves.toEqual(release);
+  });
+
+  it("creates release_catalog_partitions with simple collation, refuses another, and migrates twice to the same collection", async () => {
+    const client = await connect("partitions");
+    const table = releaseCatalogPartitionsTable;
+    const adapter = createMongoAdapter({ client, tablePrefix: "a_" });
+    const describeCollection = async (name: string) => ({
+      options: (
+        await client.db().listCollections({ name }).toArray()
+      )[0]?.options,
+      indexes: (await client.db().collection(name).indexes()).map(
+        ({ name, key, collation }) => ({ name, key, collation }),
+      ),
+    });
+    await adapter.migrations!.apply([table]);
+    const created = await describeCollection("a_release_catalog_partitions");
+    expect(created).toEqual({
+      options: {},
+      indexes: [
+        { name: "_id_", key: { _id: 1 }, collation: undefined },
+        {
+          name: "byScope",
+          key: { scope_key: 1, epoch: 1, lower_key: 1 },
+          collation: undefined,
+        },
+      ],
+    });
+    await adapter.migrations!.apply([table]);
+    expect(await describeCollection("a_release_catalog_partitions")).toEqual(
+      created,
+    );
+
+    // A collection made by hand with a locale collation, whose order and
+    // equality are not the keys' bytes.
+    await client.db().createCollection("b_release_catalog_partitions", {
+      collation: { locale: "en", strength: 2 },
+    });
+    await expect(
+      createMongoAdapter({ client, tablePrefix: "b_" }).migrations!.apply([
+        table,
+      ]),
+    ).rejects.toThrow(
+      'MongoDB collection b_release_catalog_partitions has collation {"locale":"en"',
+    );
+    // A simple collection with a locale index over the keys.
+    await client.db().createCollection("c_release_catalog_partitions");
+    await client
+      .db()
+      .collection("c_release_catalog_partitions")
+      .createIndex(
+        { scope_key: 1, epoch: 1, lower_key: 1 },
+        { name: "byScope", collation: { locale: "en", strength: 2 } },
+      );
+    await expect(
+      createMongoAdapter({ client, tablePrefix: "c_" }).migrations!.apply([
+        table,
+      ]),
+    ).rejects.toThrow(
+      "MongoDB index byScope on c_release_catalog_partitions has collation",
+    );
+  });
+
+  it("gives a database a prerelease migrated the partition table by the release notes' mongosh step, run twice", async () => {
+    const client = await connect("prerelease");
+    const database = mongoAdapter({ client });
+    await (await database.createMigrator!().migrateToLatest()).execute();
+    // A 1.2 prerelease created every table but this one.
+    await client.db().collection("release_catalog_partitions").drop();
+    await expect(
+      database.createMigrator!().migrateToLatest(),
+    ).resolves.toMatchObject({ operations: [] });
+    // The release notes' step, as mongosh runs it on the database.
+    const step = async () => {
+      const db = client.db();
+      const name = "release_catalog_partitions";
+      if ((await db.listCollections({ name }).toArray()).length === 0) {
+        await db.createCollection(name, { collation: { locale: "simple" } });
+      }
+      await db
+        .collection(name)
+        .createIndex(
+          { scope_key: 1, epoch: 1, lower_key: 1 },
+          { name: "byScope", collation: { locale: "simple" } },
+        );
+    };
+    await step();
+    await step();
+    // The same collection `db migrate` creates on a fresh database.
+    const fresh = await connect("prerelease_fresh");
+    await (
+      await mongoAdapter({ client: fresh }).createMigrator!().migrateToLatest()
+    ).execute();
+    const shape = async (db: MongoClient) => ({
+      options: (
+        await db
+          .db()
+          .listCollections({ name: "release_catalog_partitions" })
+          .toArray()
+      )[0]?.options,
+      indexes: (
+        await db.db().collection("release_catalog_partitions").indexes()
+      ).map(({ name, key, collation }) => ({ name, key, collation })),
+    });
+    expect(await shape(client)).toEqual(await shape(fresh));
+    // And migrate accepts it.
+    await createMongoAdapter({ client }).migrations!.apply([
+      releaseCatalogPartitionsTable,
+    ]);
   });
 
   it("refuses a v0 database", async () => {

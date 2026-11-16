@@ -17,10 +17,38 @@ const read = (file: string) =>
 /** Core's tables alone: `native_builds` reads the same in every example. */
 const { schema } = toolingTargetOf([]);
 
-const prismaModel = (code: string) =>
-  code.match(/model native_builds \{[^}]*\}/u)?.[0];
-const drizzleTable = (code: string) =>
-  code.match(/export const native_builds = [\s\S]*?\n\]\);/u)?.[0];
+const prismaModel = (code: string, model = "native_builds") =>
+  code.match(new RegExp(`model ${model} \\{[^}]*\\}`, "u"))?.[0];
+const drizzleTable = (code: string, table = "native_builds") =>
+  code.match(new RegExp(`export const ${table} = [\\s\\S]*?\\n\\]\\);`, "u"))?.[0];
+
+describe("release_catalog_partitions in the examples' generated schemas", () => {
+  it.each([
+    ["sqlite", "express-prisma-sqlite/prisma/schema.prisma"],
+    ["postgresql", "hono-prisma-postgres/prisma/schema.prisma"],
+  ] as const)("matches Prisma on %s (%s)", (provider, file) => {
+    const model = "release_catalog_partitions";
+    const generated = prismaModel(
+      generatePrismaEngineSchema(provider, schema),
+      model,
+    );
+    expect(generated).toBeDefined();
+    expect(prismaModel(read(file), model)).toBe(generated);
+  });
+
+  it.each([
+    ["sqlite", "elysia-drizzle-libsql/hot-updater-schema.ts"],
+    ["postgresql", "hono-drizzle-pglite/hot-updater-schema.ts"],
+  ] as const)("matches Drizzle on %s (%s)", (dialect, file) => {
+    const table = "release_catalog_partitions";
+    const generated = drizzleTable(
+      generateDrizzleEngineSchema(dialect, schema),
+      table,
+    );
+    expect(generated).toBeDefined();
+    expect(drizzleTable(read(file), table)).toBe(generated);
+  });
+});
 
 describe("native_builds in the examples' generated schemas", () => {
   it.each([

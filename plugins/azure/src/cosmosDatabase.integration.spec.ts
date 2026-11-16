@@ -11,6 +11,7 @@ import { createInsightsModel, insights } from "@hot-updater/server/plugins";
 import {
   setupAggregateBatchingTestSuite,
   setupDatabaseAdapterConformanceSuite,
+  setupKeyOrderTestSuite,
   setupDatabaseTestSuite,
   setupReadBudgetTestSuite,
   startHttpTestServer,
@@ -71,6 +72,14 @@ setupDatabaseAdapterConformanceSuite({
   createAdapter: async ({ nativePageSize }) => {
     const { store, cleanup } = await createStore(nativePageSize);
     return { adapter: createKvAdapter({ store }), cleanup };
+  },
+});
+
+setupKeyOrderTestSuite({
+  name: "key-value (Cosmos DB emulator)",
+  createAdapter: async () => {
+    const { store, cleanup } = await createStore();
+    return { adapter: createKvAdapter({ store, tablePrefix: "p_" }), cleanup };
   },
 });
 

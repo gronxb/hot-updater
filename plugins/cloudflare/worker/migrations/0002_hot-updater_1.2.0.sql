@@ -1,5 +1,7 @@
 -- HotUpdater.schema
 
+CREATE TABLE IF NOT EXISTS "release_catalog_partitions" ("scope_key" TEXT NOT NULL, "epoch" TEXT NOT NULL, "lower_key" TEXT NOT NULL, "generation" INTEGER NOT NULL, "payload" TEXT NOT NULL, "partition_hash" TEXT NOT NULL, "byte_size" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("scope_key", "epoch", "lower_key"));
+
 CREATE TABLE IF NOT EXISTS "native_builds" ("id" TEXT NOT NULL, "scope_key" TEXT NOT NULL, "platform" TEXT NOT NULL, "channel_id" TEXT NOT NULL, "fingerprint_hash" TEXT, "app_version" TEXT, "min_bundle_id" TEXT NOT NULL, "artifact_kind" TEXT NOT NULL, "artifact_storage_uri" TEXT NOT NULL, "byte_size" INTEGER NOT NULL, "git_commit_hash" TEXT, "created_at_ms" INTEGER NOT NULL, "build_key" TEXT, "build_number" TEXT, "submitted_to" TEXT, "submitted_at_ms" INTEGER, "submitted_version" TEXT, "is_store_build" INTEGER NOT NULL, "is_sandbox" INTEGER NOT NULL, "sandbox_url_scheme" TEXT, "export_method" TEXT, "native_app_version" TEXT, "store_build_scope_key" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
 CREATE INDEX IF NOT EXISTS "native_builds_byScope" ON "native_builds" ("scope_key", "id");

@@ -31,3 +31,4 @@ export {
   releaseCatalogTilingKit,
 } from "./releaseCatalogTilingOracle";
 export * from "./releaseSelectionV100";
+export * from "./setupKeyOrderTestSuite";

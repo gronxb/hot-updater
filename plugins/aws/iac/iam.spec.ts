@@ -96,6 +96,8 @@ describe("IAMManager DynamoDB access", () => {
               "releases#*",
               "release_catalogs",
               "release_catalogs#*",
+              "release_catalog_partitions",
+              "release_catalog_partitions#*",
               "channels",
               "channels#*",
               "bundle_totals",

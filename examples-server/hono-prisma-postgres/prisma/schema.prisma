@@ -89,6 +89,17 @@ model release_catalogs {
   hu_v BigInt @default(0) @map("_v")
   @@id([scope_key])
 }
+model release_catalog_partitions {
+  scope_key String @db.VarChar(2048)
+  epoch String @db.VarChar(36)
+  lower_key String @db.VarChar(256)
+  generation BigInt
+  payload String
+  partition_hash String @db.VarChar(71)
+  byte_size BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([scope_key, epoch, lower_key])
+}
 model channels {
   id String @db.VarChar(1408)
   name String @db.VarChar(255)

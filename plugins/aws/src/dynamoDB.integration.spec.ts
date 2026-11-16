@@ -17,6 +17,7 @@ import { createHotUpdater } from "@hot-updater/server";
 import { createInsightsModel, insights } from "@hot-updater/server/plugins";
 import {
   setupDatabaseAdapterConformanceSuite,
+  setupKeyOrderTestSuite,
   setupDatabaseTestSuite,
   startHttpTestServer,
   insightsTestSuite,
@@ -58,6 +59,22 @@ setupDatabaseAdapterConformanceSuite({
       cleanup: async () => {
         await local.dropTable(tableName);
       },
+    };
+  },
+});
+
+setupKeyOrderTestSuite({
+  name: "key-value (DynamoDB Local)",
+  // The 1,024-byte sort key holds the scope key, the epoch (36), the lower
+  // key (256) and three separators.
+  maxScopeKeyBytes: 1024 - 36 - 256 - 3,
+  createAdapter: async () => {
+    const tableName = local.tableName();
+    const store = createDynamoDBStore({ client: local.client, tableName });
+    await store.migrations!.apply();
+    return {
+      adapter: createKvAdapter({ store, tablePrefix: "p_" }),
+      cleanup: () => local.dropTable(tableName),
     };
   },
 });
