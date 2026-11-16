@@ -672,9 +672,8 @@ export const handleNativeBuildDelete = async (
       const core = server.core;
       const build = await core.getNativeBuild(id);
       if (build === null) return notFound();
-      const channel =
-        (await core.listChannels()).find(({ id }) => id === build.channel_id)
-          ?.name ?? build.channel_id;
+      const [channelRow] = await core.getChannels([build.channel_id]);
+      const channel = channelRow?.name ?? build.channel_id;
 
       if (!options.json) {
         p.log.step(

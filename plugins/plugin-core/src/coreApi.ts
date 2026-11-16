@@ -289,7 +289,16 @@ export interface HotUpdaterCoreApi {
   ): Promise<ReleaseRow[]>;
   getReleaseCatalogRow(scopeKey: string): Promise<ReleaseCatalogRow | null>;
   listReleaseCatalogs(input: KeysetInput): Promise<ReleaseCatalogRow[]>;
-  listChannels(): Promise<ChannelRow[]>;
+  /**
+   * Every channel, by name. With `input`, one keyset page of them, whose
+   * cursor is the last channel's name.
+   */
+  listChannels(input?: KeysetInput): Promise<ChannelRow[]>;
+  /**
+   * The channels of these IDs, in their order, without the IDs no channel
+   * has: one batch read of their keys.
+   */
+  getChannels(ids: readonly string[]): Promise<ChannelRow[]>;
   findChannelByName(name: string): Promise<ChannelRow | null>;
   /** A native build by ID: one read of its key. */
   getNativeBuild(id: string): Promise<NativeBuildRow | null>;

@@ -877,6 +877,28 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     returned: (channel) => (channel === null ? 0 : 1),
   }),
   budget({
+    api: "channels by ID: 1 batch get of their keys",
+    read: ({ core, productionId, nightlyId }) =>
+      core.getChannels([nightlyId, productionId, nightlyId]),
+    adapter: reads(1, 2, 0, 0),
+    engine: { calls: 1, rows: 2 },
+    returned: (channels) => channels.length,
+    check: (channels) =>
+      expect(channels.map(({ name }) => name)).toEqual([
+        "nightly",
+        "production",
+      ]),
+  }),
+  budget({
+    api: "channel page by name: limit rows from one query",
+    read: ({ core }) => core.listChannels({ limit: 2, after: "beta" }),
+    adapter: reads(0, 0, 1, 2),
+    engine: { calls: 1, rows: 2 },
+    returned: (channels) => channels.length,
+    check: (channels) =>
+      expect(channels.map(({ name }) => name)).toEqual(["canary", "nightly"]),
+  }),
+  budget({
     api: "list events of a dense day: limit rows from one query",
     // The history day holds 72 events: the page reads 5 of them, and no hint.
     read: ({ insights }) =>

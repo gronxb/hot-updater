@@ -123,9 +123,8 @@ const resolveScope = async (
     if (release === null) {
       throw new Error(`Bundle "${options.bundle}" was not found.`);
     }
-    const channel =
-      (await core.listChannels()).find(({ id }) => id === release.channel_id)
-        ?.name ?? release.channel_id;
+    const [row] = await core.getChannels([release.channel_id]);
+    const channel = row?.name ?? release.channel_id;
     return {
       platform: release.platform,
       channel,

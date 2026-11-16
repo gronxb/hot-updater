@@ -61,10 +61,7 @@ export const handlePromote = async (
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
-    const [source, channels] = await Promise.all([
-      core.getRelease(sourceReleaseId),
-      core.listChannels(),
-    ]);
+    const source = await core.getRelease(sourceReleaseId);
     if (source === null) {
       return await failBundleCommand(
         core,
@@ -73,9 +70,8 @@ export const handlePromote = async (
         { outcome: "promoted" },
       );
     }
-    const sourceChannel =
-      channels.find(({ id }) => id === source.channel_id)?.name ??
-      source.channel_id;
+    const [channel] = await core.getChannels([source.channel_id]);
+    const sourceChannel = channel?.name ?? source.channel_id;
     p.log.message(summarizePlan(source, sourceChannel, targetChannel, action));
     if (!options.yes) {
       if (nonInteractiveReason() !== undefined) {

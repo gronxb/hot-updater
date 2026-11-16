@@ -100,9 +100,16 @@ export const answer = async (
 
 const LIMITS = { defaultValue: 50, maxValue: 500 } as const;
 
+/** The most IDs one request names: a lookup's, or a write's. */
+const MAX_IDS = 100;
+
 /** `order`, `cursor`, and `limit`: one keyset page. */
-const keyset = (url: URL, maxValue: number = LIMITS.maxValue): KeysetInput => {
-  const order = url.searchParams.get("order") ?? "desc";
+const keyset = (
+  url: URL,
+  maxValue: number = LIMITS.maxValue,
+  defaultOrder: "asc" | "desc" = "desc",
+): KeysetInput => {
+  const order = url.searchParams.get("order") ?? defaultOrder;
   if (order !== "asc" && order !== "desc") {
     throw new HandlerBadRequestError("order must be 'asc' or 'desc'.");
   }
@@ -428,12 +435,34 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     return page(rows, input, (row) => row.scope_key);
   }),
 
-  /** With `name`, the one channel of that name: 1 read. */
+  /**
+   * With `name`, the one channel of that name: 1 read. With `ids`, the
+   * channels of up to 100 IDs: 1 batch read. With `limit` or `cursor`, one
+   * page by name. With none, every channel, as servers before pages answered.
+   */
   getChannels: onCore(async (core, request) => {
-    const name = new URL(request.url).searchParams.get("name");
-    if (name === null) return json({ data: await core.listChannels() });
-    const channel = await core.findChannelByName(name);
-    return channel === null ? notFound() : json({ data: channel });
+    const url = new URL(request.url);
+    const name = url.searchParams.get("name");
+    if (name !== null) {
+      const channel = await core.findChannelByName(name);
+      return channel === null ? notFound() : json({ data: channel });
+    }
+    const ids = url.searchParams.get("ids");
+    if (ids !== null) {
+      const list = ids.split(",").filter((id) => id.length > 0);
+      if (list.length === 0 || list.length > MAX_IDS) {
+        throw new HandlerBadRequestError(
+          `Channels by ID take ids=<channel id>,... with 1 to ${MAX_IDS} ids.`,
+        );
+      }
+      return json({ data: await core.getChannels(list) });
+    }
+    if (url.searchParams.has("limit") || url.searchParams.has("cursor")) {
+      const input = keyset(url, LIMITS.maxValue, "asc");
+      const rows = await core.listChannels(input);
+      return page(rows, input, (row) => row.name);
+    }
+    return json({ data: await core.listChannels() });
   }),
 
   /** The channel named in the body, created when missing. */
@@ -521,9 +550,9 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     const ids = (new URL(request.url).searchParams.get("ids") ?? "")
       .split(",")
       .filter((id) => id.length > 0);
-    if (ids.length === 0 || ids.length > 100) {
+    if (ids.length === 0 || ids.length > MAX_IDS) {
       throw new HandlerBadRequestError(
-        "Bundle child counts take ids=<bundle id>,... with 1 to 100 ids.",
+        `Bundle child counts take ids=<bundle id>,... with 1 to ${MAX_IDS} ids.`,
       );
     }
     return json({ data: await core.countBundleChildren(ids) });
@@ -882,6 +911,11 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
         "Marking iOS devices in a build needs buildId and ids.",
       );
     }
+    if (ids.length > MAX_IDS) {
+      throw new HandlerBadRequestError(
+        `Marking iOS devices in a build takes at most ${MAX_IDS} ids a request.`,
+      );
+    }
     await core.markIosDevicesInBuild({ buildId, ids });
     return noContent();
   }),
@@ -911,6 +945,11 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
       !ids.every((id): id is string => typeof id === "string" && id.length > 0)
     ) {
       throw new HandlerBadRequestError("Bundle deletion needs ids");
+    }
+    if (ids.length > MAX_IDS) {
+      throw new HandlerBadRequestError(
+        `Bundle deletion takes at most ${MAX_IDS} ids a request.`,
+      );
     }
     await core.deleteBundles(ids);
     return noContent();

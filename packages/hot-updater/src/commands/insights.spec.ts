@@ -6,6 +6,7 @@ import {
   type Bundle,
   createMemoryAdapter,
   type EngineDatabase,
+  meterReads,
   type RemoteDatabase,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
@@ -194,6 +195,27 @@ describe("hot-updater insights over hot-updater.config.ts", () => {
       reportingInstallations: { count: 2 },
     });
   });
+
+  it("--bundle reads the bundle's channel, not every channel", async () => {
+    const readsWith = async (channels: number) => {
+      const metered = meterReads({
+        name: "memory",
+        adapter: createMemoryAdapter(),
+      });
+      const release = await seed(metered);
+      for (let n = 1; n <= channels; n += 1) {
+        await serverOver(metered).core.ensureChannel(`pr-${n}`);
+      }
+      configure({ database: metered, plugins: [insights()] });
+      const { adapter } = await metered.measureReads(() =>
+        handleInsightsOverview({ bundle: release.id, json: true }),
+      );
+      expect(jsonOutput()).toMatchObject({ channel: "production" });
+      return adapter.rows + adapter.keys;
+    };
+
+    expect(await readsWith(1_000)).toBe(await readsWith(10));
+  }, 60_000);
 
   it("shows a bundle's update failures, their rate, and their breakdown", async () => {
     const release = await seed(database);

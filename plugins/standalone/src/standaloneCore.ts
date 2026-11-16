@@ -95,6 +95,9 @@ const nativeBuildScopeParams = ({
       }),
 });
 
+/** The most IDs the admin API takes in one request. */
+const MAX_IDS = 100;
+
 const keysetParams = ({ order, after, through, limit }: KeysetInput) => ({
   limit: String(limit),
   ...(order === undefined ? {} : { order }),
@@ -303,7 +306,40 @@ export const createStandaloneCoreApi = (
       call<ReleaseCatalogRow>("GET", `/release-catalogs/${encode(scopeKey)}`),
     listReleaseCatalogs: (input) =>
       list<ReleaseCatalogRow>("/release-catalogs", keysetParams(input)),
-    listChannels: () => list<ChannelRow>("/channels", {}),
+    listChannels: async (input) => {
+      if (input === undefined) return list<ChannelRow>("/channels", {});
+      const rows = await list<ChannelRow>("/channels", keysetParams(input));
+      // A server before channel pages ignores the page and answers every
+      // channel by name, the cursor's among them: page that list here.
+      if (
+        rows.length <= input.limit &&
+        !rows.some(({ name }) => name === input.after)
+      ) {
+        return rows;
+      }
+      const ordered = input.order === "desc" ? [...rows].reverse() : rows;
+      const start = ordered.findIndex(({ name }) => name === input.after) + 1;
+      return ordered.slice(start, start + input.limit);
+    },
+    getChannels: async (ids) => {
+      const unique = [...new Set(ids)];
+      const found = new Map<string, ChannelRow>();
+      for (let start = 0; start < unique.length; start += MAX_IDS) {
+        const chunk = unique.slice(start, start + MAX_IDS);
+        // A server before channel lookups by ID ignores `ids` and answers
+        // every channel, so only the asked IDs are kept.
+        const asked = new Set(chunk);
+        for (const row of await list<ChannelRow>("/channels", {
+          ids: chunk.join(","),
+        })) {
+          if (asked.has(row.id)) found.set(row.id, row);
+        }
+      }
+      return unique.flatMap((id) => {
+        const row = found.get(id);
+        return row === undefined ? [] : [row];
+      });
+    },
     findChannelByName: (name) =>
       call<ChannelRow>("GET", "/channels", { query: { name } }),
     getNativeBuild: (id) =>
@@ -494,11 +530,16 @@ export const createStandaloneCoreApi = (
         body: input,
         requiredRoute: "iOS device registry",
       }),
-    markIosDevicesInBuild: async (input) => {
-      await request("POST", "/ios-devices/in-build", {
-        body: input,
-        requiredRoute: "iOS device registry",
-      });
+    // Each device is marked by itself, so the IDs go in requests of 100.
+    markIosDevicesInBuild: async ({ buildId, ids }) => {
+      let start = 0;
+      do {
+        await request("POST", "/ios-devices/in-build", {
+          body: { buildId, ids: ids.slice(start, start + MAX_IDS) },
+          requiredRoute: "iOS device registry",
+        });
+        start += MAX_IDS;
+      } while (start < ids.length);
     },
     findIosDeviceAccount: () =>
       call<IosDeviceAccount>("GET", "/ios-devices/account", {

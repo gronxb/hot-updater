@@ -105,6 +105,92 @@ describe("createStandaloneCoreApi", () => {
     });
   });
 
+  describe("channels on a server that answers every channel to GET /channels, as 1.1.x does", () => {
+    const channels = [
+      { id: "c1", name: "alpha" },
+      { id: "c2", name: "beta" },
+      { id: "c3", name: "gamma" },
+    ];
+    const queries: URLSearchParams[] = [];
+    const everyChannel = () =>
+      http.get(`${BASE_URL}/channels`, ({ request }) => {
+        const query = new URL(request.url).searchParams;
+        queries.push(query);
+        const name = query.get("name");
+        return name === null
+          ? HttpResponse.json({ data: channels })
+          : HttpResponse.json({
+              data: channels.find((channel) => channel.name === name),
+            });
+      });
+
+    afterEach(() => {
+      queries.length = 0;
+    });
+
+    it("keeps only the channels of the IDs asked, in their order", async () => {
+      server.use(version(2), everyChannel());
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      await expect(core.getChannels(["c3", "c1", "c3", "c9"])).resolves.toEqual(
+        [channels[2], channels[0]],
+      );
+      expect(queries.map((query) => query.get("ids"))).toEqual(["c3,c1,c9"]);
+
+      const many = Array.from({ length: 150 }, (_, n) => `x${n}`);
+      await expect(core.getChannels([...many, "c2"])).resolves.toEqual([
+        channels[1],
+      ]);
+      expect(
+        queries.slice(1).map((query) => query.get("ids")!.split(",").length),
+      ).toEqual([100, 51]);
+    });
+
+    it("pages the whole list it answers, and the last page ends the walk", async () => {
+      server.use(version(2), everyChannel());
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      const names: string[] = [];
+      for (let after: string | undefined, pages = 0; pages < 10; pages += 1) {
+        const page = await core.listChannels({
+          limit: 2,
+          order: "asc",
+          ...(after === undefined ? {} : { after }),
+        });
+        names.push(...page.map(({ name }) => name));
+        if (page.length < 2) break;
+        after = page.at(-1)!.name;
+      }
+
+      expect(names).toEqual(["alpha", "beta", "gamma"]);
+      expect(Object.fromEntries(queries[0]!)).toEqual({
+        limit: "2",
+        order: "asc",
+      });
+    });
+  });
+
+  it("marks iOS devices in a build in requests of 100 IDs", async () => {
+    const sent: number[] = [];
+    server.use(
+      version(2),
+      http.post(`${BASE_URL}/ios-devices/in-build`, async ({ request }) => {
+        const body = (await request.json()) as { ids: string[] };
+        sent.push(body.ids.length);
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await core.markIosDevicesInBuild({
+      buildId: "build",
+      ids: Array.from({ length: 250 }, (_, n) => `d${n}`),
+    });
+    await core.markIosDevicesInBuild({ buildId: "build", ids: ["d1"] });
+
+    expect(sent).toEqual([100, 100, 50, 1]);
+  });
+
   it("names migrations when the server's schema fence answers 503", async () => {
     server.use(
       version(2),

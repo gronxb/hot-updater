@@ -99,6 +99,48 @@ export const setupCoreAdminTestSuite = (options: {
       await missing.text();
     });
 
+    it("reads channels by ID and pages them by name, and takes at most 100 IDs a request", async () => {
+      const [a, b, c] = await Promise.all(
+        ["a", "b", "c"].map((suffix) =>
+          api.ensureChannel(`page-${namespace}-${suffix}`),
+        ),
+      );
+      expect(
+        (await adminJson(`/channels?ids=${c!.id},${a!.id},${namespace}`)).data,
+      ).toEqual([c, a]);
+
+      const first = (await adminJson(
+        `/channels?limit=2&cursor=${encodeURIComponent(`page-${namespace}-`)}`,
+      )) as { data: ChannelRow[]; next?: string };
+      expect(first).toEqual({ data: [a, b], next: b!.name });
+      const second = (await adminJson(
+        `/channels?limit=2&cursor=${encodeURIComponent(first.next!)}`,
+      )) as { data: ChannelRow[] };
+      expect(second.data[0]).toEqual(c);
+
+      const ids = Array.from({ length: 101 }, () => crypto.randomUUID());
+      for (const response of [
+        await admin(`/channels?ids=${ids.join(",")}`),
+        await admin("/bundles/delete", jsonRequest("POST", { ids })),
+        await admin(
+          "/ios-devices/in-build",
+          jsonRequest("POST", { buildId: crypto.randomUUID(), ids }),
+        ),
+      ]) {
+        expect(response.status).toBe(400);
+        await response.text();
+      }
+
+      for (const channel of [a, b, c]) {
+        const deleted = await admin(
+          `/channels/${channel!.id}`,
+          jsonRequest("DELETE"),
+        );
+        expect(deleted.status).toBe(204);
+        await deleted.text();
+      }
+    });
+
     it("keeps a release's channel when a delete races the deploy into it", async () => {
       const channel = await api.ensureChannel(`race-${namespace}`);
 

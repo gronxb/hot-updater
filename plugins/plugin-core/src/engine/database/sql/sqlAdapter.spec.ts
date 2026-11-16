@@ -684,6 +684,15 @@ describe("sql core", () => {
           limit: 10,
         });
       }
+      // A keyset page of an index without eq columns, as channels page by
+      // name: its LIMIT and lower bound bound the walk.
+      await adapter.query(conformanceItems, {
+        index: "all",
+        eq: [],
+        lower: { values: ["f1"], inclusive: false },
+        order: "asc",
+        limit: 10,
+      });
       expect(await adapter.prune!(conformanceExpiring, 10, 500)).toBe(1);
 
       expect(scans).toEqual([]);

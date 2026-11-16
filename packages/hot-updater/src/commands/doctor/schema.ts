@@ -167,7 +167,7 @@ export const checkSchema = async (
   // A self-hosted server's admin API checks its own fence.
   if (server === null || isRemoteDatabase(server.database)) return undefined;
   try {
-    await server.core.listChannels();
+    await server.core.ready();
     return undefined;
   } catch (error) {
     if (!isSchemaMigrationRequired(error)) return undefined;

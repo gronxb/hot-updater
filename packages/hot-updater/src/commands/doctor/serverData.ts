@@ -5,8 +5,8 @@ import type {
 
 import type { ReleaseCatalogIssue, ReleaseCatalogStatus } from "./issues";
 
-// The admin API serves up to 500 releases or catalogs a page.
-const RELEASE_PAGE = 500;
+// The admin API serves up to 500 catalogs a page.
+const CATALOG_PAGE = 500;
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -29,22 +29,37 @@ export const releaseCatalogsUnchecked = (
   ],
 });
 
-/** Every release's scope. */
-const listReleaseScopeKeys = async (
+/** Channels read at once while looking for scopes without a catalog. */
+const CHANNEL_BATCH = 10;
+
+/**
+ * The scope each channel's platform deployed to last: its newest release,
+ * one read of limit 1 per channel and platform, so doctor never reads a
+ * scope's release history. A scope that lost its catalog row is found here
+ * while it holds that channel and platform's newest release.
+ */
+const listNewestReleaseScopeKeys = async (
   core: HotUpdaterCoreApi,
 ): Promise<Set<string>> => {
   const scopeKeys = new Set<string>();
-  for (let after: string | undefined; ; ) {
-    const page = await core.listReleases({
-      filter: { kind: "all" },
-      limit: RELEASE_PAGE,
-      order: "asc",
-      ...(after === undefined ? {} : { after }),
-    });
-    for (const release of page) scopeKeys.add(release.scope_key);
-    if (page.length < RELEASE_PAGE) return scopeKeys;
-    after = page.at(-1)!.id;
+  const channels = await core.listChannels();
+  for (let start = 0; start < channels.length; start += CHANNEL_BATCH) {
+    const newest = await Promise.all(
+      channels.slice(start, start + CHANNEL_BATCH).flatMap(({ id }) =>
+        (["ios", "android"] as const).map((platform) =>
+          core.listReleases({
+            filter: { kind: "channelPlatform", channelId: id, platform },
+            limit: 1,
+            order: "desc",
+          }),
+        ),
+      ),
+    );
+    for (const [release] of newest) {
+      if (release !== undefined) scopeKeys.add(release.scope_key);
+    }
   }
+  return scopeKeys;
 };
 
 /** Every scope with a catalog row, by key. */
@@ -54,20 +69,20 @@ const listCatalogScopeKeys = async (
   const scopeKeys: string[] = [];
   for (let after: string | undefined; ; ) {
     const page: ReleaseCatalogRow[] = await core.listReleaseCatalogs({
-      limit: RELEASE_PAGE,
+      limit: CATALOG_PAGE,
       order: "asc",
       ...(after === undefined ? {} : { after }),
     });
     scopeKeys.push(...page.map(({ scope_key }) => scope_key));
-    if (page.length < RELEASE_PAGE) return scopeKeys;
+    if (page.length < CATALOG_PAGE) return scopeKeys;
     after = page.at(-1)!.scope_key;
   }
 };
 
 /**
  * Compares each scope's catalog with a rebuild from its releases, without
- * writing: the scopes with a catalog row, and the scopes whose releases have
- * none, which devices get 404 for. A scope core cannot compile is reported
+ * writing: the scopes with a catalog row, and the newest scope of each
+ * channel's platform whose releases have none, which devices get 404 for. A scope core cannot compile is reported
  * by itself, beside what the other scopes found.
  */
 const checkReleaseCatalogs = async (
@@ -164,7 +179,7 @@ export const checkServerData = async (
 ): Promise<ReleaseCatalogStatus> => {
   let scopeKeys: Set<string>;
   try {
-    scopeKeys = await listReleaseScopeKeys(core);
+    scopeKeys = await listNewestReleaseScopeKeys(core);
   } catch (error) {
     return releaseCatalogsUnchecked(error);
   }

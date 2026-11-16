@@ -63,14 +63,14 @@ describe("getSchemaMigrationRpc", () => {
   it("is null when the read passes or fails for another reason", async () => {
     mocks.prepare.mockResolvedValue({
       config: { plugins: [] },
-      core: { listChannels: async () => [] },
+      core: { ready: async () => {} },
     });
     await expect(getSchemaMigrationRpc()).resolves.toBeNull();
 
     mocks.prepare.mockResolvedValue({
       config: { plugins: [] },
       core: {
-        listChannels: async () => {
+        ready: async () => {
           throw new Error("connect ECONNREFUSED");
         },
       },

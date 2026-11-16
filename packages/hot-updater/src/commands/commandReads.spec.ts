@@ -156,7 +156,7 @@ const atTwoSizes = async (
         return undefined;
       }
     });
-    results.push({ ...size, rows: rows(measured), ...measured.adapter });
+    results.push({ ...size, ...measured.adapter, rows: rows(measured) });
   }
   process.stderr.write(`${label} ${JSON.stringify(results)}\n`);
   return results as [(typeof results)[0], (typeof results)[0]];
@@ -271,8 +271,49 @@ describe("filters no index serves stop after a few pages", () => {
     );
     expect(small.rows).toBe(50);
     expect(large.rows).toBe(500);
-    expect(scanned()).toContain("Scanned 500 bundles");
-    expect(scanned()).toContain(`--cursor ${id(1_501)}`);
+    expect(scanned()).toMatch(
+      /^Scanned 500 bundles\. Narrow with --channel, or continue with --cursor [0-9a-f-]{36}$/m,
+    );
+  }, 120_000);
+
+  it("continues with --cursor where a stopped scan ended", async () => {
+    const { handleBundleList } = await import("./bundle");
+    const { core } = createMeasured();
+    // The oldest of 600 bundles is the one 9.9.9 bundle.
+    for (let n = 1; n <= 600; n += 1) {
+      await core.deploy([
+        {
+          bundle: bundleOf(n),
+          release: {
+            channel: "production",
+            enabled: false,
+            fingerprintHash: null,
+            message: null,
+            shouldForceUpdate: false,
+            targetAppVersion: n === 1 ? "9.9.9" : "1.0.0",
+          },
+        },
+      ]);
+    }
+    const listed = () =>
+      JSON.parse(String(vi.mocked(console.log).mock.calls.at(-1)?.[0]));
+
+    await handleBundleList({ targetAppVersion: "9.9.9", json: true });
+    expect(listed()).toEqual([]);
+    const cursor = /--cursor (\S+)$/m.exec(scanned())![1]!;
+    const newest = await core.listReleases({
+      filter: { kind: "all" },
+      limit: 500,
+      order: "desc",
+    });
+    expect(cursor).toBe(newest.at(-1)!.id);
+
+    vi.mocked(console.error).mockClear();
+    await handleBundleList({ targetAppVersion: "9.9.9", json: true, cursor });
+    expect(listed()).toMatchObject([
+      { bundle_id: id(1), target_app_version: "9.9.9" },
+    ]);
+    expect(scanned()).toBe("");
   }, 120_000);
 
   it("bundle list --platform android, with only iOS bundles", async () => {
@@ -284,7 +325,7 @@ describe("filters no index serves stop after a few pages", () => {
     );
     expect(small.rows).toBe(50);
     expect(large.rows).toBe(500);
-    expect(scanned()).toContain("Scanned 500 bundles");
+    expect(scanned()).toMatch(/^Scanned 500 bundles\./m);
   }, 120_000);
 });
 
@@ -307,7 +348,8 @@ describe("doctor's catalog check", () => {
       ],
       (core) => checkServerData(core),
     );
-    // The channel, then the newest release of each platform's index.
-    expect(large.rows - small.rows).toBeLessThanOrEqual(990 * 3);
+    // Each channel, then the newest release of each platform's index.
+    expect(large.rows - small.rows).toBeLessThanOrEqual(990);
+    expect(large.queries - small.queries).toBeLessThanOrEqual(990 * 2 + 5);
   }, 120_000);
 });

@@ -1094,6 +1094,10 @@ bundleCommand
     },
     20,
   )
+  .option(
+    "--cursor <id>",
+    "continue after this bundle, as a stopped list printed it",
+  )
   .action(handleBundleList);
 
 bundleCommand

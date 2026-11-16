@@ -250,6 +250,45 @@ describe("doctor's release catalog check", () => {
     ).toHaveLength(2);
   });
 
+  it("finds the newest fingerprint scope of a channel's platform without its catalog row", async () => {
+    await deploy(1);
+    // Release IDs are UUIDv7s: a later millisecond makes this one newest.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const [fingerprinted] = await harness.core.deploy([
+      {
+        bundle: bundle(2),
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: "fingerprint-2",
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: null,
+        },
+      },
+    ]);
+    const scopeKey = fingerprinted!.release!.scope_key;
+    await loseCatalogRow(scopeKey);
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: false,
+      details: {
+        releaseCatalogs: {
+          scopes: expect.arrayContaining([
+            expect.objectContaining({ scopeKey, state: "missing" }),
+          ]),
+          issues: [
+            {
+              type: "error",
+              code: "RELEASE_CATALOG_IDENTITY_MISSING",
+              scopeKey,
+            },
+          ],
+        },
+      },
+    });
+  });
+
   it("finds a scope whose releases have no catalog row, and leaves it to a backup restore", async () => {
     const scopeKey = await deploy();
     await loseCatalogRow(scopeKey);

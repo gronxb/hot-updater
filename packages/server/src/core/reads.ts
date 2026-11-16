@@ -440,8 +440,18 @@ export const createCoreReads = (
       return page.rows.map(toCatalogRow);
     },
 
-    /** Every channel, by name. */
-    async listChannels(): Promise<ChannelRow[]> {
+    /** Every channel by name; with `input`, one keyset page of them. */
+    async listChannels(input?: KeysetInput): Promise<ChannelRow[]> {
+      if (input !== undefined) {
+        const page = await db.findMany("channels", {
+          index: "all",
+          where: {},
+          order: input.order ?? "asc",
+          limit: input.limit,
+          ...after(input),
+        });
+        return page.rows.map(toChannelRow);
+      }
       const rows = await drain((page) =>
         db.findMany("channels", {
           index: "all",
@@ -451,6 +461,16 @@ export const createCoreReads = (
         }),
       );
       return rows.map(toChannelRow);
+    },
+
+    async getChannels(ids: readonly string[]): Promise<ChannelRow[]> {
+      const unique = [...new Set(ids)];
+      if (unique.length === 0) return [];
+      const rows = await db.findByKeys(
+        "channels",
+        unique.map((id) => ({ id })),
+      );
+      return rows.flatMap((row) => (row ? [toChannelRow(row)] : []));
     },
 
     async findChannelByName(name: string): Promise<ChannelRow | null> {

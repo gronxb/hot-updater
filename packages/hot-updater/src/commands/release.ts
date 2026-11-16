@@ -22,6 +22,8 @@ export interface ReleaseListOptions {
   readonly limit?: number;
   readonly platform?: "ios" | "android";
   readonly targetAppVersion?: string;
+  /** Continues a list after this bundle ID, as a stopped scan printed it. */
+  readonly cursor?: string;
 }
 
 export interface ReleaseUpdateOptions {
@@ -170,30 +172,53 @@ export const confirmMutation = async (
   if (p.isCancel(confirmed) || !confirmed) process.exit(2);
 };
 
-const channelNames = async (core: HotUpdaterCoreApi) =>
+/** The names of the channels these IDs name: one batch read of their keys. */
+const channelNamesOf = async (
+  core: HotUpdaterCoreApi,
+  ids: readonly string[],
+): Promise<Map<string, string>> =>
   new Map(
-    (await core.listChannels()).map((channel) => [channel.id, channel.name]),
+    (await core.getChannels(ids)).map((channel) => [channel.id, channel.name]),
   );
 
 const PAGE = 100;
+
+/** Pages a list reads for filters no index serves, before it stops. */
+const SCAN_PAGES = 5;
+
+interface ReleaseList {
+  readonly releases: ReleaseRow[];
+  /** Set when the scan stopped before `limit` releases matched. */
+  readonly stopped?: { readonly scanned: number; readonly cursor: string };
+}
 
 /**
  * Newest releases first. Each read goes through the index the narrowest
  * filters name: a bundle, a channel with its platforms, or every release.
  * Filters no index serves (a platform alone, a target app version) are
- * checked here while reading pages, until `limit` releases match.
+ * checked here while reading pages, until `limit` releases match or a few
+ * pages are read, so a filter that matches nothing doesn't read the table.
  */
 const listReleases = async (
   core: HotUpdaterCoreApi,
   options: ReleaseListOptions,
   channelId: string | undefined,
-): Promise<ReleaseRow[]> => {
+): Promise<ReleaseList> => {
   const limit = options.limit ?? DEFAULT_LIMIT;
   const matches = (release: ReleaseRow) =>
     (options.platform === undefined || release.platform === options.platform) &&
     (channelId === undefined || release.channel_id === channelId) &&
     (options.targetAppVersion === undefined ||
       release.target_app_version === options.targetAppVersion);
+  const scanning =
+    options.targetAppVersion !== undefined ||
+    (options.platform !== undefined &&
+      channelId === undefined &&
+      options.bundleId === undefined);
+  const pageSize = scanning ? PAGE : Math.min(PAGE, limit);
+  const maxPages = scanning
+    ? Math.max(SCAN_PAGES, Math.ceil(limit / PAGE))
+    : Number.POSITIVE_INFINITY;
   const filters: ReleaseFilter[] =
     options.bundleId !== undefined
       ? [{ kind: "bundle", bundleId: options.bundleId }]
@@ -207,27 +232,47 @@ const listReleases = async (
             channelId,
             platform,
           }));
-  const found = await Promise.all(
+  const walks = await Promise.all(
     filters.map(async (filter) => {
       const rows: ReleaseRow[] = [];
-      for (let after: string | undefined; rows.length < limit; ) {
+      let scanned = 0;
+      let after = options.cursor;
+      for (let pages = 0; rows.length < limit; pages += 1) {
+        if (pages === maxPages) return { rows, scanned, cut: after };
         const page = await core.listReleases({
           filter,
-          limit: PAGE,
+          limit: pageSize,
           order: "desc",
           ...(after === undefined ? {} : { after }),
         });
+        scanned += page.length;
         rows.push(...page.filter(matches));
-        if (page.length < PAGE) break;
+        if (page.length < pageSize) break;
         after = page.at(-1)!.id;
       }
-      return rows;
+      return { rows, scanned, cut: undefined };
     }),
   );
-  return found
-    .flat()
+  // A walk that stopped has read only the releases newer than where it
+  // stopped, so the list ends at the newest such point.
+  const cursor = walks
+    .flatMap(({ cut }) => (cut === undefined ? [] : [cut]))
+    .sort()
+    .at(-1);
+  const releases = walks
+    .flatMap(({ rows }) => rows)
+    .filter((release) => cursor === undefined || release.id > cursor)
     .sort((left, right) => (left.id < right.id ? 1 : -1))
     .slice(0, limit);
+  return cursor === undefined || releases.length === limit
+    ? { releases }
+    : {
+        releases,
+        stopped: {
+          scanned: walks.reduce((sum, { scanned }) => sum + scanned, 0),
+          cursor,
+        },
+      };
 };
 
 export const handleReleaseList = async (options: ReleaseListOptions = {}) => {
@@ -235,20 +280,36 @@ export const handleReleaseList = async (options: ReleaseListOptions = {}) => {
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
-    const channels = await channelNames(core);
-    const channelId = options.channel
-      ? [...channels].find(([, name]) => name === options.channel)?.[0]
-      : undefined;
-    if (options.channel && channelId === undefined) {
+    const channel = options.channel
+      ? await core.findChannelByName(options.channel)
+      : null;
+    if (options.channel && channel === null) {
       p.log.error(`No channel named ${options.channel}.`);
       process.exit(1);
     }
-    const releases = await listReleases(core, options, channelId);
-    console.log(
-      options.json
-        ? JSON.stringify(releases, null, 2)
-        : fitText(releaseTable(releases, channels)),
+    const { releases, stopped } = await listReleases(
+      core,
+      options,
+      channel?.id,
     );
+    if (options.json) {
+      console.log(JSON.stringify(releases, null, 2));
+    } else {
+      const channels =
+        channel === null
+          ? await channelNamesOf(
+              core,
+              releases.map(({ channel_id }) => channel_id),
+            )
+          : new Map([[channel.id, channel.name]]);
+      console.log(fitText(releaseTable(releases, channels)));
+    }
+    if (stopped !== undefined) {
+      const line = `Scanned ${stopped.scanned} bundles. Narrow with --channel, or continue with --cursor ${stopped.cursor}`;
+      // --json keeps stdout to the list.
+      if (options.json) console.error(line);
+      else p.log.message(ui.muted(line));
+    }
   } finally {
     await safeDispose(server);
   }
@@ -262,24 +323,24 @@ export const handleReleaseShow = async (
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
-    const [release, channels] = await Promise.all([
-      core.getRelease(releaseId),
-      channelNames(core),
-    ]);
+    const release = await core.getRelease(releaseId);
     if (release === null) {
       p.log.error(`No bundle with ID ${releaseId}.`);
       process.exit(1);
     }
-    console.log(
-      options.json
-        ? JSON.stringify(release, null, 2)
-        : fitText(
-            releaseSummary(
-              release,
-              channels.get(release.channel_id) ?? release.channel_id,
-            ),
+    if (options.json) {
+      console.log(JSON.stringify(release, null, 2));
+    } else {
+      const channels = await channelNamesOf(core, [release.channel_id]);
+      console.log(
+        fitText(
+          releaseSummary(
+            release,
+            channels.get(release.channel_id) ?? release.channel_id,
           ),
-    );
+        ),
+      );
+    }
   } finally {
     await safeDispose(server);
   }
@@ -400,7 +461,7 @@ export const handleReleaseEnablement = async (
             },
             limit: 2,
           }),
-          channelNames(core),
+          channelNamesOf(core, [release.channel_id]),
         ]);
         p.log.message(
           releaseDisablePreview(

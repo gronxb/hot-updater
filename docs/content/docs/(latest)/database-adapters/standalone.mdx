@@ -158,7 +158,7 @@ response wraps its result in `data`.
 | `GET`    | `/bundles`                              | Page, `platform`, `total=true`                               | `BundleDetail[]`, with `next` and `total`               |
 | `GET`    | `/bundles/:id`                          |                                                              | `BundleDetail`, or `404`                                |
 | `PATCH`  | `/bundles/:id`                          | The Bundle fields to change                                  | `204`                                                   |
-| `POST`   | `/bundles/delete`                       | `{ ids: string[] }`                                          | `204`                                                   |
+| `POST`   | `/bundles/delete`                       | `{ ids: string[] }` (1–100)                                  | `204`                                                   |
 | `GET`    | `/bundles/:id/children`                 | Page                                                         | `BundlePatchRow[]` whose base is the Bundle             |
 | `GET`    | `/bundles/count`                        | `platform`                                                   | How many Bundles: all, or one platform's                |
 | `GET`    | `/bundles/child-counts`                 | `ids=<bundle id>,...` (1–100)                                | Each base Bundle's child count, by ID                   |
@@ -174,7 +174,7 @@ response wraps its result in `data`.
 | `GET`    | `/release-catalogs/:scopeKey`           |                                                              | `ReleaseCatalogRow`, or `404`                           |
 | `POST`   | `/release-catalogs/:scopeKey/rebuild`   |                                                              | `ReleaseCatalogRebuildResult`                           |
 | `POST`   | `/release-catalogs/:scopeKey/preflight` |                                                              | `ReleaseCatalogRebuildPreflight`                        |
-| `GET`    | `/channels`                             | Optional `name`                                              | `ChannelRow[]`, or the `ChannelRow` for `name` or `404` |
+| `GET`    | `/channels`                             | Optional `name`, `ids=<channel id>,...` (1–100), or page     | Every `ChannelRow`, those of `ids`, one page by name with `next`, or the `ChannelRow` for `name` or `404` |
 | `POST`   | `/channels`                             | `{ name }`                                                   | The `ChannelRow` of that name, created when missing     |
 | `DELETE` | `/channels/:id`                         |                                                              | `204`                                                   |
 | `POST`   | `/native-builds`                        | `NativeBuildRegistration`                                    | `201`, `NativeBuildRow`                                 |
@@ -190,7 +190,7 @@ response wraps its result in `data`.
 | `POST`   | `/ios-devices/:id/approval`             | `{ approvedBy, name? }`                                      | `IosDeviceRow`, or `null`                               |
 | `PATCH`  | `/ios-devices/:id`                      | `{ name }`                                                   | `IosDeviceRow`, or `null`                               |
 | `POST`   | `/ios-devices/:id/outcome`              | `{ seen, issuerId, outcome, reason? }`                       | `IosDeviceRow`, or `null`                               |
-| `POST`   | `/ios-devices/in-build`                 | `{ buildId, ids }`                                           | `204`                                                   |
+| `POST`   | `/ios-devices/in-build`                 | `{ buildId, ids }` (up to 100 `ids`)                         | `204`                                                   |
 | `GET`    | `/ios-devices/account`                  |                                                              | `{ issuerId }`, or `null`                               |
 | `POST`   | `/ios-devices/account`                  | `{ issuerId }`                                               | `{ issuerId, claimed }`                                 |
 | `DELETE` | `/ios-devices/:id`                      | Optional `status`, `requestedBy`: only a row that has them   | `IosDeviceRow`, or `null`                               |
