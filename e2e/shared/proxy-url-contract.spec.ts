@@ -964,11 +964,22 @@ describe("E2E remote asset proxy URLs", () => {
       path.join(os.tmpdir(), "hot-updater-catalog-proxy-"),
     );
     let generation = 1;
+    // The controller closes its provider connections; the app's connection
+    // to the controller keeps its own headers.
+    const providerConnectionHeaders = {
+      connection: "close",
+      "keep-alive": "timeout=5",
+    };
+    const expectNoProviderConnectionHeaders = (response: Response) => {
+      expect(response.headers.has("connection")).toBe(false);
+      expect(response.headers.has("keep-alive")).toBe(false);
+    };
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, init?: RequestInit) => {
         if (new Headers(init?.headers).has("if-none-match")) {
           return new Response(null, {
             headers: {
+              ...providerConnectionHeaders,
               "content-type":
                 "application/vnd.hot-updater.release-catalog+json;version=1",
               etag: '"catalog-generation-2"',
@@ -988,6 +999,7 @@ describe("E2E remote asset proxy URLs", () => {
           }),
           {
             headers: {
+              ...providerConnectionHeaders,
               "content-type":
                 "application/vnd.hot-updater.release-catalog+json;version=1",
             },
@@ -1013,11 +1025,11 @@ describe("E2E remote asset proxy URLs", () => {
       const controller = await import("./control-server/controller.ts");
       const url =
         "http://localhost:3107/hot-updater/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0";
-      expect(
-        await (
-          await controller.handleProxyUpdateRequest(new Request(url))
-        ).json(),
-      ).toMatchObject({
+      const liveResponse = await controller.handleProxyUpdateRequest(
+        new Request(url),
+      );
+      expectNoProviderConnectionHeaders(liveResponse);
+      expect(await liveResponse.json()).toMatchObject({
         generation: 1,
         scopeKey: "v1:app-version:ios:cHJvZHVjdGlvbg",
       });
@@ -1036,17 +1048,18 @@ describe("E2E remote asset proxy URLs", () => {
         }),
       );
       expect(notModifiedResponse.status).toBe(304);
+      expectNoProviderConnectionHeaders(notModifiedResponse);
       expect(await notModifiedResponse.text()).toBe("");
 
       controller.handleConfigureProxy({
         catalogMode: "replay",
         replayGeneration: 1,
       });
-      expect(
-        await (
-          await controller.handleProxyUpdateRequest(new Request(url))
-        ).json(),
-      ).toMatchObject({
+      const replayedResponse = await controller.handleProxyUpdateRequest(
+        new Request(url),
+      );
+      expectNoProviderConnectionHeaders(replayedResponse);
+      expect(await replayedResponse.json()).toMatchObject({
         generation: 1,
         scopeKey: "v1:app-version:ios:cHJvZHVjdGlvbg",
       });

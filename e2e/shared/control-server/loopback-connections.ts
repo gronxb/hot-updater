@@ -7,8 +7,8 @@
  * `keepAliveTimeoutBuffer`, 6 s on Node 24), the server runs the expired
  * timer before it reads the request already waiting on that socket, and
  * destroys the socket with the request unread. The client gets
- * `read ECONNRESET` ("fetch failed"). The local provider stalls for seconds
- * while PGlite writes, and the socket fetch picks may have been left by any
+ * `read ECONNRESET` ("fetch failed"). The local provider has stalled that
+ * long in E2E runs, and the socket fetch picks may have been left by any
  * caller, such as the proxied `POST /hot-updater/events`, so every request to
  * that origin must close its connection. A new connection has no idle timer
  * and waits in the accept queue until the server reads it.

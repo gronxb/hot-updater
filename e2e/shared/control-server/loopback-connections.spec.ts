@@ -11,8 +11,7 @@ import {
   headersForApp,
 } from "./loopback-connections.ts";
 
-// A provider whose event loop can stall, as PGlite does while it writes. It
-// advertises `Keep-Alive: timeout=4`, so fetch keeps an idle socket about 2 s
+// A provider whose event loop can stall for seconds. It advertises `Keep-Alive: timeout=4`, so fetch keeps an idle socket about 2 s
 // and the server closes it 4 s after its last response.
 const PROVIDER = `
 const http = require("node:http");
@@ -110,6 +109,22 @@ describe("loopback connections under a provider stall", () => {
       readInsightsDuringStall(closeLoopbackConnections(globalThis.fetch)),
     ).resolves.toEqual({ beforeReceivedAtMs: 0, data: [], nextCursor: null });
   }, 20_000);
+
+  it("the controller's fetch opens a connection per request", async () => {
+    const original = globalThis.fetch;
+    const connections = async () =>
+      ((await (await fetch(`${baseUrl}/`)).json()) as { connections: number })
+        .connections;
+    try {
+      closeLoopbackConnectionsInProcess();
+      // A pooled fetch reuses a socket by the third request.
+      const first = await connections();
+      await connections();
+      expect(await connections()).toBe(first + 2);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
 });
 
 describe("closeLoopbackConnections", () => {
