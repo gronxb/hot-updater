@@ -333,6 +333,39 @@ describe("filters no index serves stop after a few pages", () => {
     expect(scanned()).toBe("");
   }, 120_000);
 
+  it("lists a match that is the last bundle a stopped scan read", async () => {
+    const { handleBundleList } = await import("./bundle");
+    const { core } = createMeasured();
+    // Of 600 bundles, only the 500th newest is 9.9.9: the scan's last row.
+    for (let n = 1; n <= 600; n += 1) {
+      await core.deploy([
+        {
+          bundle: bundleOf(n),
+          release: {
+            channel: "production",
+            enabled: false,
+            fingerprintHash: null,
+            message: null,
+            shouldForceUpdate: false,
+            targetAppVersion: n === 101 ? "9.9.9" : "1.0.0",
+          },
+        },
+      ]);
+    }
+    const listed = () =>
+      JSON.parse(String(vi.mocked(console.log).mock.calls.at(-1)?.[0]));
+
+    await handleBundleList({ targetAppVersion: "9.9.9", json: true });
+    expect(listed()).toMatchObject([
+      { bundle_id: id(101), target_app_version: "9.9.9" },
+    ]);
+    const cursor = /--cursor (\S+)$/m.exec(scanned())![1]!;
+
+    vi.mocked(console.error).mockClear();
+    await handleBundleList({ targetAppVersion: "9.9.9", json: true, cursor });
+    expect(listed()).toEqual([]);
+  }, 120_000);
+
   it("bundle list --platform android, with only iOS bundles", async () => {
     const { handleBundleList } = await import("./bundle");
     const [small, large] = await atTwoSizes(

@@ -253,15 +253,16 @@ const listReleases = async (
       return { rows, scanned, cut: undefined };
     }),
   );
-  // A walk that stopped has read only the releases newer than where it
-  // stopped, so the list ends at the newest such point.
+  // A walk that stopped has read only the releases from where it stopped
+  // up, so the list ends at the newest such point, which it includes: the
+  // `--cursor` continuation reads past it.
   const cursor = walks
     .flatMap(({ cut }) => (cut === undefined ? [] : [cut]))
     .sort()
     .at(-1);
   const releases = walks
     .flatMap(({ rows }) => rows)
-    .filter((release) => cursor === undefined || release.id > cursor)
+    .filter((release) => cursor === undefined || release.id >= cursor)
     .sort((left, right) => (left.id < right.id ? 1 : -1))
     .slice(0, limit);
   return cursor === undefined || releases.length === limit

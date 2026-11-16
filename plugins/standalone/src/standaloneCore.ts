@@ -1,4 +1,5 @@
 import {
+  compareUtf8,
   DatabaseBundleNotFoundError,
   ReleaseCatalogMutationError,
   ReleaseManagementError,
@@ -318,16 +319,24 @@ export const createStandaloneCoreApi = (
       if (input === undefined) return list<ChannelRow>("/channels", {});
       const rows = await list<ChannelRow>("/channels", keysetParams(input));
       // A server before channel pages ignores the page and answers every
-      // channel by name, the cursor's among them: page that list here.
-      if (
-        rows.length <= input.limit &&
-        !rows.some(({ name }) => name === input.after)
-      ) {
-        return rows;
-      }
-      const ordered = input.order === "desc" ? [...rows].reverse() : rows;
-      const start = ordered.findIndex(({ name }) => name === input.after) + 1;
-      return ordered.slice(start, start + input.limit);
+      // channel by name, so the page is cut here by the same keyset rule;
+      // a newer server's page passes through unchanged.
+      const desc = input.order === "desc";
+      const { after } = input;
+      return rows
+        .filter(
+          ({ name }) =>
+            after === undefined ||
+            (desc
+              ? compareUtf8(name, after) < 0
+              : compareUtf8(name, after) > 0),
+        )
+        .sort((left, right) =>
+          desc
+            ? compareUtf8(right.name, left.name)
+            : compareUtf8(left.name, right.name),
+        )
+        .slice(0, input.limit);
     },
     getChannels: async (ids) => {
       const unique = [...new Set(ids)];

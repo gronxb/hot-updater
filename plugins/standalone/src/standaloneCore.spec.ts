@@ -168,6 +168,36 @@ describe("createStandaloneCoreApi", () => {
         order: "asc",
       });
     });
+
+    it("orders a whole list that fits the page as asked", async () => {
+      server.use(version(2), everyChannel());
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      const page = await core.listChannels({ limit: 10, order: "desc" });
+
+      expect(page.map(({ name }) => name)).toEqual(["gamma", "beta", "alpha"]);
+    });
+
+    it("starts past a cursor that names no channel", async () => {
+      server.use(version(2), everyChannel());
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      // "alpha2" sorts between alpha and beta, and no channel has it, as
+      // when the cursor's channel was deleted between pages.
+      const asc = await core.listChannels({
+        limit: 1,
+        order: "asc",
+        after: "alpha2",
+      });
+      const desc = await core.listChannels({
+        limit: 10,
+        order: "desc",
+        after: "beta2",
+      });
+
+      expect(asc.map(({ name }) => name)).toEqual(["beta"]);
+      expect(desc.map(({ name }) => name)).toEqual(["beta", "alpha"]);
+    });
   });
 
   it("marks iOS devices in a build in requests of 100 IDs", async () => {
