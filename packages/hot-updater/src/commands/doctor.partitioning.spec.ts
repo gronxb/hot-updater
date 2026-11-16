@@ -75,7 +75,7 @@ describe("doctor's partitioning report", () => {
         message:
           "Release catalogs are single-row, so each scope is limited to 256 KB.",
         resolution:
-          "Once every server runs 1.2.0, partition them. It can't be undone:",
+          "Once every server runs 1.2.0, partition them:",
         commands: [COMMAND],
       },
     ]);

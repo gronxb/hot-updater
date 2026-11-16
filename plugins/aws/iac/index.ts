@@ -438,7 +438,12 @@ export const runInit = async ({
         server: assembleServer({ database: partitionDatabase }),
         serverUrl: `https://${distributionDomain}`,
         deployed: {
-          confirm: () => cloudFrontManager.waitForDeployed(distributionId),
+          confirm: () => {
+            p.log.info(
+              "Waiting for CloudFront to deploy the function to every edge location.",
+            );
+            return cloudFrontManager.waitForDeployed(distributionId);
+          },
           expectedVersion: HOT_UPDATER_SERVER_VERSION,
         },
       }),

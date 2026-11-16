@@ -26,7 +26,7 @@ export const handlePartitionCatalogs = async (options: {
   const server = await loadServer(await loadConfig(null));
   try {
     await confirmMutation(
-      "Every server must run Hot Updater 1.2.0 first, and this can't be undone. Partition release catalogs?",
+      "Every server must run Hot Updater 1.2.0 first. Partition release catalogs?",
       options.yes,
     );
     const { changed } = await enableReleaseCatalogPartitioning({
