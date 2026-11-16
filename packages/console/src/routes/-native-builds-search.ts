@@ -3,8 +3,8 @@ import { assertCanonicalChannelName } from "@hot-updater/protocol";
 
 import type { NativeBuildDetailSearch } from "@/components/features/native-builds/NativeBuildDetailPage";
 import type { NativeBuildPage } from "@/lib/api";
-import type { IosDevicesPage } from "@/lib/ios-devices-api";
 import { ALL_CHANNELS, DEFAULT_CHANNEL } from "@/lib/constants";
+import type { IosDevicesPage } from "@/lib/ios-devices-api";
 
 const text = (value: unknown) =>
   typeof value === "string" && value.length > 0 ? value : undefined;

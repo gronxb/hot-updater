@@ -5,7 +5,6 @@ import type {
 } from "@hot-updater/plugin-core";
 
 import type { ConsolePrincipal } from "../../index";
-import { type KeysetPage, keysetPage } from "./nativeBuilds";
 import {
   createDeviceProfileToken,
   DEVICE_PROFILE_TOKEN_TTL_MS,
@@ -14,6 +13,7 @@ import {
   CONSOLE_SECRET_ENV,
   readConsoleSecret,
 } from "./nativeBuildDownloadLink";
+import { type KeysetPage, keysetPage } from "./nativeBuilds";
 
 /** A registry page: past an Apple account's yearly limit of devices. */
 const PAGE = 200;

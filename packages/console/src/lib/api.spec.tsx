@@ -338,15 +338,21 @@ describe("a window focus", () => {
     });
 
   it("reads no release or patch list again", async () => {
-    vi.mocked(getReleasesApi).mockReset().mockResolvedValue({
-      data: [],
-    } as never);
-    vi.mocked(getReleaseFold).mockReset().mockResolvedValue({
-      data: [],
-    } as never);
-    vi.mocked(getNativeBuildPatches).mockReset().mockResolvedValue({
-      data: [],
-    } as never);
+    vi.mocked(getReleasesApi)
+      .mockReset()
+      .mockResolvedValue({
+        data: [],
+      } as never);
+    vi.mocked(getReleaseFold)
+      .mockReset()
+      .mockResolvedValue({
+        data: [],
+      } as never);
+    vi.mocked(getNativeBuildPatches)
+      .mockReset()
+      .mockResolvedValue({
+        data: [],
+      } as never);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
