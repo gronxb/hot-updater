@@ -490,6 +490,35 @@ describe("engine aggregates", () => {
     }
   });
 
+  it("stops at its attempts on transient failures while other writers commit its aggregate rows", async () => {
+    const { db, faults } = await setup({ retry: { attempts: 3 } });
+    const add = () =>
+      db.transaction(async (tx) => {
+        tx.aggregate(
+          "distribution",
+          { release: "A", bucket: 1 },
+          { installations: 1 },
+          { shardBy: "hot" },
+        );
+      });
+    const transient = () => ({ ok: false, retry: true }) as const;
+    // Before each write, another writer commits the same shard row; then the
+    // write itself fails transiently, naming no row.
+    let commits = 0;
+    faults.before = async () => {
+      const before = faults.before;
+      faults.before = undefined;
+      faults.inject = undefined;
+      await add();
+      commits += 1;
+      faults.inject = transient;
+      faults.before = before;
+    };
+    faults.inject = transient;
+    await expect(add()).rejects.toThrow(DatabaseConflictError);
+    expect(commits).toBe(3);
+  });
+
   it("rejects unknown aggregates, identities, metrics, and fractional deltas", async () => {
     const { db } = await setup();
     await expect(

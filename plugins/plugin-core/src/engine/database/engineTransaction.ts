@@ -601,9 +601,16 @@ export const createTransactions = ({
         const failed = "failedOp" in outcome ? outcome.failedOp : undefined;
         if (failed === undefined || failed >= run.ops.length) {
           onRetry?.("resend", round + 1);
-          // Settled when the next round reads the aggregate rows again.
+          // Only a write that failed on one of its aggregate rows can be
+          // refunded, when the next round reads that row again. A transient
+          // failure names no row and keeps its attempt.
           failures += 1;
-          lost = versions;
+          if (failed !== undefined) {
+            // Settled when the next round reads the aggregate rows again.
+            lost = versions;
+          } else if (failures >= attempts) {
+            break;
+          }
           continue;
         }
         const reason = await classify(ops[failed]!, run.read);
