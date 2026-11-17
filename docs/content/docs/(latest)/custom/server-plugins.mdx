@@ -541,7 +541,10 @@ returns what `fn` returned. The handle has these methods:
 When `fn` returns, the engine sends every change, and a version check of every
 other row the transaction read, as one atomic write. If a row it read changed
 in the meantime, nothing is written and `fn` runs again with jittered backoff,
-up to 8 attempts. Rules for `fn`:
+up to 8 attempts. When only aggregate rows changed, the engine reads them again
+and resends the write without running `fn`. That resend spends no attempt while
+another writer has committed those rows, so a busy aggregate never fails a
+transaction. Rules for `fn`:
 
 - Keep side effects other than `tx` calls out of it: it may run more than once.
 - Write each key once. Creating a key again, or changing a row the transaction

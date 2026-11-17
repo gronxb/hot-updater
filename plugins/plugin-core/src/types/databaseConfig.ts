@@ -36,7 +36,8 @@ export interface EngineDatabase {
   /**
    * How a transaction that conflicts with another write runs again. A store
    * many writers contend on, such as DynamoDB under a burst of events, can
-   * take more attempts; `onRetry` observes each rerun.
+   * take more attempts; `onRetry` observes each rerun. An aggregate write
+   * that lost to another writer's commit is resent without spending one.
    */
   readonly retry?: RetryOptions;
   dispose?(): Promise<void>;
