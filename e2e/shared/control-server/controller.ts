@@ -95,6 +95,7 @@ import {
   withForeignSigning,
   withSecretSigning,
 } from "./foreign-signing.ts";
+import { headersForApp } from "./loopback-connections.ts";
 import {
   assertDependenciesInCheckout,
   NATIVE_BUILD_CHANNEL_PREFIX,
@@ -3985,7 +3986,7 @@ function captureCatalogResponse(
     new Map<number, CapturedProxyResponse>();
   generations.set(generation, {
     body,
-    headers: [...response.headers.entries()],
+    headers: [...headersForApp(response.headers).entries()],
     status: response.status,
     statusText: response.statusText,
   });
@@ -4646,7 +4647,7 @@ export async function handleProxyUpdateRequest(request: Request) {
     target: targetUrl.toString(),
   });
 
-  const headersToApp = new Headers(response.headers);
+  const headersToApp = headersForApp(response.headers);
   if (
     request.method === "HEAD" ||
     response.status === 204 ||
@@ -4824,7 +4825,7 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
     target: targetUrl.toString(),
   });
 
-  const headersToApp = new Headers(response.headers);
+  const headersToApp = headersForApp(response.headers);
   headersToApp.delete("content-encoding");
   headersToApp.delete("content-length");
 
