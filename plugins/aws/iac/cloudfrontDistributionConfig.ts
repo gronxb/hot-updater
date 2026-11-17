@@ -122,11 +122,28 @@ export type DistributionConfigOverrides = {
  */
 export const HOT_UPDATER_UNCACHED_ERROR_CODES = [500, 502, 503, 504] as const;
 
+type CustomErrorResponse = NonNullable<
+  NonNullable<DistributionConfig["CustomErrorResponses"]>["Items"]
+>[number];
+
+/**
+ * CloudFront rejects an error response without both `ResponsePagePath` and
+ * `ResponseCode` (IllegalUpdate: "The specified list of custom error
+ * responses does not exist or is not valid"); an empty element means the
+ * origin's own answer passes through.
+ */
+const withResponseElements = (
+  response: CustomErrorResponse,
+): CustomErrorResponse => ({
+  ...response,
+  ResponsePagePath: response.ResponsePagePath ?? "",
+  ResponseCode: response.ResponseCode ?? "",
+});
+
 const uncachedErrorResponses = () =>
-  HOT_UPDATER_UNCACHED_ERROR_CODES.map((ErrorCode) => ({
-    ErrorCode,
-    ErrorCachingMinTTL: 0,
-  }));
+  HOT_UPDATER_UNCACHED_ERROR_CODES.map((ErrorCode) =>
+    withResponseElements({ ErrorCode, ErrorCachingMinTTL: 0 }),
+  );
 
 type DefaultBehavior = NonNullable<DistributionConfig["DefaultCacheBehavior"]>;
 type CacheBehavior = NonNullable<
@@ -233,6 +250,15 @@ const sanitizeDistributionConfig = (
         ),
       }
     : distributionConfig.CacheBehaviors,
+  CustomErrorResponses: distributionConfig.CustomErrorResponses
+    ? {
+        Quantity: distributionConfig.CustomErrorResponses.Quantity,
+        Items:
+          distributionConfig.CustomErrorResponses.Items?.map(
+            withResponseElements,
+          ),
+      }
+    : distributionConfig.CustomErrorResponses,
 });
 
 const buildOriginRequestLambdaAssociations = (functionArn: string) => ({
