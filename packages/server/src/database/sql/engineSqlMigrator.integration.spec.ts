@@ -32,7 +32,7 @@ const compose = [
   "hot-updater-sql-migrator",
 ];
 
-const MYSQL_URI = "mysql://root:hot_updater@127.0.0.1:53306/hot_updater";
+const MYSQL_URI = "mysql://root:hot_updater@127.0.0.1:13306/hot_updater";
 
 let pool: mysql.Pool;
 
