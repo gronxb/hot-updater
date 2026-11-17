@@ -12,7 +12,6 @@ import {
   loadConfig,
   LOCAL_SECRETS_NAME,
   p,
-  partitionCatalogsCommand,
   PUT_SIGNING_KEY_COMMAND,
   readBundleSigningState,
   readPackageUp,
@@ -20,10 +19,7 @@ import {
   UNSIGNED_BUNDLES_NEXT_STEP,
   UNSIGNED_BUNDLES_WARNING,
 } from "@hot-updater/cli-tools";
-import {
-  isRemoteDatabase,
-  type PluginClientPlugin,
-} from "@hot-updater/plugin-core";
+import type { PluginClientPlugin } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import {
@@ -817,7 +813,6 @@ async function checkNativeStatus({
 /** The server's release catalogs, when hot-updater.config.ts names a database. */
 async function checkServer(
   context: DoctorContext,
-  serverUrl: string | undefined,
 ): Promise<ReleaseCatalogStatus | undefined> {
   let server: Awaited<ReturnType<DoctorContext["server"]>>;
   try {
@@ -825,13 +820,7 @@ async function checkServer(
   } catch (error) {
     return releaseCatalogsUnchecked(error);
   }
-  if (server === null) return undefined;
-  // Over standaloneRepository the command finds the server itself; over the
-  // server's database it needs the URL apps check for updates at.
-  const partitionCommand = isRemoteDatabase(server.database)
-    ? partitionCatalogsCommand()
-    : partitionCatalogsCommand(serverUrl ?? "<url>");
-  return await checkServerData(server.core, { partitionCommand });
+  return server === null ? undefined : await checkServerData(server.core);
 }
 
 /**
@@ -1055,7 +1044,7 @@ async function checkProject(
     if (schema) {
       details.schema = schema;
     } else {
-      const releaseCatalogs = await checkServer(context, baseUrl);
+      const releaseCatalogs = await checkServer(context);
       if (releaseCatalogs) details.releaseCatalogs = releaseCatalogs;
     }
 
@@ -1606,7 +1595,6 @@ export const handleDoctor = async ({
 
   if (details?.releaseCatalogs) {
     const { scopes, issues } = details.releaseCatalogs;
-    const { partitioning } = details.releaseCatalogs;
     p.log.step(
       ui.block("Release catalogs", [
         ui.kv("Scopes", String(scopes.length)),
@@ -1614,13 +1602,6 @@ export const handleDoctor = async ({
           "Verified",
           String(scopes.filter(({ state }) => state === "verified").length),
         ),
-        partitioning && ui.kv("Partitioning", partitioning.switch),
-        partitioning?.switch === "on" &&
-          partitioning.compactScopes > 0 &&
-          ui.kv(
-            "Single-row",
-            `${count(partitioning.compactScopes, "app-version scope")}; each converts on its next write`,
-          ),
       ]),
     );
     reportIssues(log, issues);

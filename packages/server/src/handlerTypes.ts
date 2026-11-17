@@ -1,8 +1,8 @@
-import type { ServerCoreApi } from "./core/api";
+import type { CoreApi } from "./core/api";
 
 /** What the handlers run on: core's reads and typed writes. */
 export interface HandlerAPI {
-  readonly core: ServerCoreApi;
+  readonly core: CoreApi;
 }
 
 export type HotUpdaterHandler = (request: Request) => Promise<Response>;

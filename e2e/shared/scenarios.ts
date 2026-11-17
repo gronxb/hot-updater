@@ -28,7 +28,6 @@ import { otaAfterGoingBackToABuildScenario } from "./scenarios/ota-after-going-b
 import { postContentCrashNativeRecoveryScenario } from "./scenarios/post-content-crash-native-recovery.ts";
 import { postContentCrashNativeRollbackScenario } from "./scenarios/post-content-crash-native-rollback.ts";
 import { releaseOtaRecoveryScenario } from "./scenarios/release-ota-recovery.ts";
-import { partitionedCatalogUpdateScenario } from "./scenarios/partitioned-catalog-update.ts";
 import { remoteConfigFetchActivateScenario } from "./scenarios/remote-config-fetch-activate.ts";
 import { republishedCrashedBundleSkippedScenario } from "./scenarios/republished-crashed-bundle-skipped.ts";
 import { resumedBackgroundArchiveDownloadScenario } from "./scenarios/resumed-background-archive-download.ts";
@@ -95,7 +94,6 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   tenCrashHistorySafeBundleScenario,
   remoteConfigFetchActivateScenario,
   foreignSigningKeyRefusedScenario,
-  partitionedCatalogUpdateScenario,
   brownfieldNativeRequiredUpdateScenario,
   brownfieldNativeMinorUpdateScenario,
   brownfieldInstancesUpdateIndependentlyScenario,

@@ -11,7 +11,6 @@ import {
 } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
-import { PARTITIONING_OFF } from "./database.testFixtures";
 import { checkServerData } from "./doctor/serverData";
 
 const id = (n: number) =>
@@ -103,7 +102,6 @@ describe("doctor's walk of the releases' scopes", () => {
         code: "RELEASE_SCOPES_UNINDEXED",
         message: expect.stringContaining(appVersion!),
       }),
-      expect.objectContaining(PARTITIONING_OFF),
     ]);
 
     // The settings already match, and db migrate still writes the items.
@@ -125,7 +123,6 @@ describe("doctor's walk of the releases' scopes", () => {
         code: "RELEASE_CATALOG_IDENTITY_MISSING",
         scopeKey: fingerprintA,
       }),
-      expect.objectContaining(PARTITIONING_OFF),
     ]);
   });
 
@@ -164,7 +161,7 @@ describe("doctor's walk of the releases' scopes", () => {
 
     // With its tombstone catalog, the scope is checked as any other.
     const kept = await checkServerData(core);
-    expect(kept.issues).toEqual([expect.objectContaining(PARTITIONING_OFF)]);
+    expect(kept.issues).toEqual([]);
     expect(
       kept.scopes.find(({ scopeKey }) => scopeKey === fingerprintB)?.state,
     ).toBe("verified");
@@ -172,7 +169,7 @@ describe("doctor's walk of the releases' scopes", () => {
     // Without it, the scope has no releases, so nothing is missing.
     await loseCatalogRow(database, fingerprintB!);
     const lost = await checkServerData(core);
-    expect(lost.issues).toEqual([expect.objectContaining(PARTITIONING_OFF)]);
+    expect(lost.issues).toEqual([]);
     expect(lost.scopes.map(({ scopeKey }) => scopeKey)).not.toContain(
       fingerprintB,
     );
@@ -209,7 +206,6 @@ describe("doctor's walk of the releases' scopes", () => {
         resolution:
           "Upgrade the server's @hot-updater/server, then rerun doctor.",
       },
-      expect.objectContaining(PARTITIONING_OFF),
     ]);
   });
 
@@ -231,7 +227,6 @@ describe("doctor's walk of the releases' scopes", () => {
         message: expect.stringContaining("socket hang up"),
         resolution: "Fix what the message names, then rerun doctor.",
       }),
-      expect.objectContaining(PARTITIONING_OFF),
     ]);
   });
 });

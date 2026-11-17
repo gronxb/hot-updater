@@ -2,7 +2,6 @@ import {
   type DatabaseAdapter,
   DatabaseAdapterContractError,
   type DatabaseKey,
-  DatabaseSnapshotUnsupportedError,
   type DatabaseKeyValue,
   findPhysicalIndex,
   indexOrderColumns,
@@ -41,12 +40,6 @@ export interface DatabaseAdapterConformanceOptions {
    * `prune` on the adapter.
    */
   readonly retention?: "prune" | "ttl";
-  /**
-   * `false` when the adapter has `readSnapshot` but the deployment under
-   * test can't take snapshots, such as MongoDB 4.4: the snapshot cases then
-   * check that it refuses with `DatabaseSnapshotUnsupportedError`.
-   */
-  readonly snapshots?: false;
 }
 
 export const conformanceItems: PhysicalTable = {
@@ -685,120 +678,6 @@ export const setupDatabaseAdapterConformanceSuite = (
           ),
         ).toEqual([score]);
       }
-    });
-
-    /** Patches `id` to `score` and inserts `added`, in one write. */
-    const moveOn = async (
-      adapter: DatabaseAdapter,
-      changes: readonly { id: string; score: number }[],
-      added: readonly string[],
-    ) => {
-      const ops: WriteOp[] = [];
-      for (const { id, score } of changes) {
-        const previous = (await one(adapter, id))!;
-        ops.push({
-          type: "patch",
-          table: conformanceItems,
-          key: [id],
-          set: { score },
-          guard: { v: previous._v as number },
-          previous,
-        });
-      }
-      await ok(adapter, [...ops, ...added.map((id) => insert(item(id)))]);
-    };
-
-    /** Whether a snapshot case runs: false once it checked the refusal. */
-    const snapshots = async (adapter: DatabaseAdapter) => {
-      if (options.snapshots !== false) return true;
-      await expect(
-        adapter.readSnapshot!((reader) =>
-          reader.get(conformanceItems, [["a"]]),
-        ),
-      ).rejects.toBeInstanceOf(DatabaseSnapshotUnsupportedError);
-      return false;
-    };
-
-    it("reads one committed state across a snapshot's gets and queries (readSnapshot)", async (context) => {
-      const adapter = await setup();
-      if (!adapter.readSnapshot) return context.skip();
-      if (!(await snapshots(adapter))) return;
-      await ok(adapter, [
-        insert(item("a", { score: 1 })),
-        insert(item("b", { score: 2 })),
-      ]);
-
-      let wrote = false;
-      const read = await adapter.readSnapshot(async (reader) => {
-        const first = await reader.get(conformanceItems, [["a"]]);
-        // A write commits between the snapshot's reads, once.
-        if (!wrote) {
-          wrote = true;
-          await moveOn(
-            adapter,
-            [
-              { id: "a", score: 10 },
-              { id: "b", score: 20 },
-            ],
-            ["c"],
-          );
-        }
-        const later = await reader.get(conformanceItems, [["b"], ["c"]]);
-        const page = await reader.query(conformanceItems, {
-          index: "byGroup",
-          eq: ["g"],
-          order: "asc",
-          limit: 500,
-        });
-        return { first, later, page };
-      });
-
-      expect(read.first.map((row) => row?.score)).toEqual([1]);
-      expect(read.later.map((row) => row?.score ?? null)).toEqual([2, null]);
-      expect(read.page.map((row) => [row.id, row.score])).toEqual([
-        ["a", 1],
-        ["b", 2],
-      ]);
-      // Outside the snapshot, the write is there.
-      expect(
-        (await query(adapter, { index: "byGroup", eq: ["g"] })).map(
-          (row) => row.score,
-        ),
-      ).toEqual([0, 10, 20]);
-    });
-
-    it("pages a capped range in one snapshot while writes land between pages (readSnapshot)", async (context) => {
-      const adapter = await setup({ nativePageSize: 2 });
-      if (!adapter.readSnapshot) return context.skip();
-      if (!(await snapshots(adapter))) return;
-      await ok(
-        adapter,
-        Array.from({ length: 9 }, (_, index) => insert(item(`r${index}`))),
-      );
-
-      let wrote = false;
-      const pages = await adapter.readSnapshot(async (reader) => {
-        const page = (lower?: string) =>
-          reader.query(conformanceItems, {
-            index: "all",
-            eq: [],
-            order: "asc",
-            limit: 5,
-            ...(lower && { lower: { values: [lower], inclusive: false } }),
-          });
-        const first = await page();
-        if (!wrote) {
-          wrote = true;
-          await moveOn(adapter, [{ id: "r6", score: 6 }], ["r55", "r9"]);
-        }
-        return [first, await page(String(first.at(-1)!.id))];
-      });
-
-      expect(pages.map((rows) => rows.map((row) => row.id))).toEqual([
-        ["r0", "r1", "r2", "r3", "r4"],
-        ["r5", "r6", "r7", "r8"],
-      ]);
-      expect(pages[1]!.map((row) => row.score)).toEqual([0, 0, 0, 0]);
     });
 
     it("writes the index items of rows written without the index (migrations.fillIndex)", async () => {

@@ -38,7 +38,6 @@ export async function resetDecisionFixtures() {
   await prisma.$transaction([
     prisma.bundle_patches.deleteMany(),
     prisma.release_catalogs.deleteMany(),
-    prisma.release_catalog_partitions.deleteMany(),
     prisma.releases.deleteMany(),
     prisma.bundles.deleteMany(),
     prisma.channels.deleteMany(),

@@ -37,39 +37,7 @@ export {
 export * from "./databaseRows";
 export * from "./generateMinBundleId";
 export * from "./parseStorageUri";
-export {
-  canonicalizeAppVersion,
-  type CatalogVersionBound,
-  type CompiledCatalogSegment,
-  type CompiledReleaseCatalog,
-  compileReleaseCatalog,
-  projectCompiledCatalog,
-  projectCompiledRollbackCatalog,
-  referenceCompatibleReleases,
-  type ReleaseCatalogCompilation,
-  ReleaseCatalogCompilationError,
-  type ReleaseCatalogCompilerDiagnostics,
-} from "./releaseCatalogCompiler";
-// The app-version tiling a partitioned release catalog stores: core's
-// writers and readers of `release_catalog_partitions` use it.
-export {
-  assembleReleaseCatalog,
-  compileReleaseCatalogTiling,
-  insertReleaseIntoTiling,
-  type ParsedReleaseCatalogPartition,
-  parseReleaseCatalogPartition,
-  projectReleaseCatalogPartition,
-  RELEASE_CATALOG_LOWER_KEY_MAX_BYTES,
-  type ReleaseCatalogAssembly,
-  type ReleaseCatalogKeyRange,
-  releaseCatalogKeyRanges,
-  releaseCatalogLookupKey,
-  type ReleaseCatalogPartition,
-  type ReleaseCatalogPartitionProjection,
-  ReleaseCatalogTilingError,
-  type ReleaseCatalogTilingErrorCode,
-  tileCompiledReleaseCatalog,
-} from "./releaseCatalogTiling";
+export * from "./releaseCatalogCompiler";
 export * from "./releaseManagement";
 export * from "./releaseCatalogMutation";
 export * from "./semverSatisfies";
@@ -168,8 +136,6 @@ export {
   type DatabaseKeyValue,
   DATABASE_VERSION_COLUMN,
   DatabaseSchemaError,
-  DatabaseSnapshotConflictError,
-  DatabaseSnapshotUnsupportedError,
   type DatabaseValue,
   type PhysicalColumn,
   type PhysicalColumnType,
@@ -178,7 +144,6 @@ export {
   type PhysicalTable,
   type QueryBound,
   type QueryRequest,
-  type SnapshotReader,
   type StoredRow,
   type WriteGuard,
   type WriteOp,
@@ -212,15 +177,6 @@ export {
   type EngineOptions,
   createEngine,
 } from "./engine/createEngine";
-// `Engine.core`'s snapshot reads, which core's release catalog reads take,
-// the setting read and fit check its catalog writes take, and the settings
-// swap its partitioning enable takes.
-export type {
-  CatalogWriteSupport,
-  SnapshotDatabase,
-  SnapshotReads,
-} from "./engine/database/database";
-export type { SettingSwap } from "./engine/database/engine";
 export type { EngineReadCount } from "./engine/database/engineReads";
 export type { RetryOptions } from "./engine/database/engineTransaction";
 export {

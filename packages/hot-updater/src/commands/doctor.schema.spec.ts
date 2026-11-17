@@ -19,7 +19,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiKeys, insights, remoteConfig } from "../plugins";
 import { loadServer } from "../utils/loadServer";
 import { testServer } from "../utils/testServer";
-import { PARTITIONING_OFF } from "./database.testFixtures";
 import { doctor } from "./doctor";
 
 vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
@@ -117,7 +116,7 @@ describe("doctor's schema check", () => {
 
     await expect(doctor()).resolves.toMatchObject({
       success: true,
-      details: { releaseCatalogs: { issues: [PARTITIONING_OFF] } },
+      details: { releaseCatalogs: { issues: [] } },
     });
   });
 

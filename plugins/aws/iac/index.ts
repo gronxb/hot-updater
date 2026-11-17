@@ -2,7 +2,6 @@ import {
   assembleServer,
   colors,
   confirmInitInputPersistence,
-  enablePartitioningAfterDeploy,
   ensureInstallPackages,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
@@ -14,12 +13,10 @@ import {
   provisionClientCredential,
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
-  managedPartitioningMessage,
   type RunInitOptions,
   type RunInitResult,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
-import { HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { execa } from "execa";
 
@@ -423,35 +420,6 @@ export const runInit = async ({
   await makeEnv({
     [AWS_INIT_PROVIDER.inputs.distributionId.envKey]: distributionId,
   });
-
-  // Release catalogs partition once CloudFront says the new function runs
-  // at every edge, and /version agrees on every probe: the server turns it
-  // on, over the table, with its own role.
-  const partitionDatabase = dynamoDB({
-    credentials,
-    region: bucketRegion,
-    tableName: resolvedDynamoDBTableName,
-  });
-  try {
-    const { level, text } = managedPartitioningMessage(
-      await enablePartitioningAfterDeploy({
-        server: assembleServer({ database: partitionDatabase }),
-        serverUrl: `https://${distributionDomain}`,
-        deployed: {
-          confirm: () => {
-            p.log.info(
-              "Waiting for CloudFront to deploy the function to every edge location.",
-            );
-            return cloudFrontManager.waitForDeployed(distributionId);
-          },
-          expectedVersion: HOT_UPDATER_SERVER_VERSION,
-        },
-      }),
-    );
-    p.log[level](text);
-  } finally {
-    await partitionDatabase.dispose?.();
-  }
 
   // Install @aws-sdk/credential-provider-sso if SSO mode is selected
   if (mode === "sso") {

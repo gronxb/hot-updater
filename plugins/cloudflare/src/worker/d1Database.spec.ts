@@ -74,23 +74,3 @@ it("reads through the binding's statements on the primary, and writes each chang
   expect(calls.all).toBeGreaterThan(0);
   expect(calls.withSession).toBe(0);
 });
-
-it("declares the Free plan's 50 queries per request on the binding, and no cap over REST", async () => {
-  const { d1Database: restDatabase } = await import("../d1Database");
-  // No statement runs: the cap is declared, not measured.
-  const unused = (): never => {
-    throw new Error("not called");
-  };
-  const binding = d1Database({ batch: unused, prepare: unused });
-  expect(binding.adapter.maxQueriesPerRequest).toBe(50);
-  const rest = restDatabase({
-    accountId: "account",
-    cloudflareApiToken: "token",
-    databaseId: "database",
-  });
-  expect(rest.adapter.maxQueriesPerRequest).toBeUndefined();
-  // The cap reaches core's writer through the engine's fence and wrappers.
-  const { createEngine } = await import("@hot-updater/plugin-core");
-  expect(createEngine(binding).core.queryBudget).toBe(50);
-  expect(createEngine(rest).core.queryBudget).toBeUndefined();
-});

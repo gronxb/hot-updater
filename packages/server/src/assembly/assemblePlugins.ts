@@ -4,7 +4,7 @@ import {
   type ModuleSchema,
 } from "@hot-updater/plugin-core";
 
-import { createCoreApi, type ServerCoreApi } from "../core/api";
+import { createCoreApi, type CoreApi } from "../core/api";
 import { createCoreReads, type CoreStorage } from "../core/reads";
 import type {
   ClientAuth,
@@ -23,7 +23,7 @@ export interface MountedEndpoint extends PluginEndpoint {
 
 export interface AssembledPlugins {
   /** Core's reads and typed writes, on the same engine as the plugins, which get only the reads. */
-  readonly core: ServerCoreApi;
+  readonly core: CoreApi;
   readonly api: Readonly<Record<string, unknown>>;
   readonly endpoints: readonly MountedEndpoint[];
   readonly clientAuth?: ClientAuth & { readonly plugin: string };

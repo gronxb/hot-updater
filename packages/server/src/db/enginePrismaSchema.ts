@@ -116,17 +116,6 @@ export const generatePrismaEngineSchema = (
     })
     .join("\n\n");
 
-/** A table's columns whose collation Prisma cannot declare, and the statement that sets them. */
-export interface PrismaCollationFixup {
-  readonly table: string;
-  /** Each column and the collation `statement` gives it. */
-  readonly columns: readonly {
-    readonly name: string;
-    readonly collation: string;
-  }[];
-  readonly statement: string;
-}
-
 /**
  * The collations Prisma cannot declare, which `hot-updater db migrate` sets
  * after Prisma created the tables: `COLLATE "C"` on PostgreSQL and binary
@@ -134,67 +123,25 @@ export interface PrismaCollationFixup {
  * The settings table is only read by key, and the migrator has already read
  * it: altering it would invalidate PostgreSQL's cached plan for that read.
  */
-export const prismaCollationFixups = (
+export const prismaCollationStatements = (
   provider: PrismaProvider,
   schema: ResolvedSchema,
-): PrismaCollationFixup[] => {
+): string[] => {
   if (provider !== "postgresql" && provider !== "mysql") return [];
   const quote = (name: string) => quoteSql(provider, name);
   const tables = shapesOf(provider, schema).filter(
     (shape) => shape.name !== SETTINGS_TABLE.name,
   );
   return tables.flatMap((shape) => {
-    const columns = shape.columns.filter(
-      (column) => prismaColumn(provider, column).collate,
-    );
-    if (columns.length === 0) return [];
-    const changes = columns.map((column) =>
-      provider === "postgresql"
-        ? `ALTER COLUMN ${quote(column.name)} TYPE ${column.type}`
-        : `MODIFY ${quote(column.name)} ${column.type}${column.notNull ? " NOT NULL" : " NULL"}`,
-    );
-    return [
-      {
-        table: shape.name,
-        columns: columns.map((column) => ({
-          name: column.name,
-          collation: /COLLATE "?([\w-]+)"?/u.exec(column.type)![1]!,
-        })),
-        statement: `ALTER TABLE ${quote(shape.name)} ${changes.join(", ")}`,
-      },
-    ];
+    const changes = shape.columns
+      .filter((column) => prismaColumn(provider, column).collate)
+      .map((column) =>
+        provider === "postgresql"
+          ? `ALTER COLUMN ${quote(column.name)} TYPE ${column.type}`
+          : `MODIFY ${quote(column.name)} ${column.type}${column.notNull ? " NOT NULL" : " NULL"}`,
+      );
+    return changes.length === 0
+      ? []
+      : [`ALTER TABLE ${quote(shape.name)} ${changes.join(", ")}`];
   });
-};
-
-/**
- * The fixups whose tables exist with a column of another collation: a table
- * Prisma created after `db migrate` last ran, such as one a release adds that
- * its prerelease lacked, so `db migrate` sets it although the settings match.
- * A missing table needs none until Prisma creates it.
- */
-export const pendingPrismaCollationFixups = async (
-  provider: PrismaProvider,
-  fixups: readonly PrismaCollationFixup[],
-  read: (sql: string) => Promise<readonly Record<string, unknown>[]>,
-): Promise<string[]> => {
-  if (fixups.length === 0) return [];
-  const rows = await read(
-    provider === "postgresql"
-      ? "SELECT table_name AS t, column_name AS c, collation_name AS k FROM information_schema.columns WHERE table_schema = current_schema()"
-      : "SELECT TABLE_NAME AS t, COLUMN_NAME AS c, COLLATION_NAME AS k FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()",
-  );
-  // MySQL folds table names with lower_case_table_names.
-  const fold = (name: unknown) =>
-    provider === "mysql" ? String(name).toLowerCase() : String(name);
-  const found = new Map(
-    rows.map((row) => [JSON.stringify([fold(row.t), String(row.c)]), row.k]),
-  );
-  return fixups
-    .filter(({ table, columns }) =>
-      columns.some(({ name, collation }) => {
-        const key = JSON.stringify([fold(table), name]);
-        return found.has(key) && found.get(key) !== collation;
-      }),
-    )
-    .map(({ statement }) => statement);
 };

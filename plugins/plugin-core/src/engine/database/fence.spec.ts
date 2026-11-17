@@ -267,35 +267,4 @@ describe("schema fence", () => {
       isMissingSchemaError(Object.assign(new Error("x"), { code: "28P01" })),
     ).toBe(false);
   });
-
-  it("checks the settings before a snapshot read, and keeps an adapter without one without", async () => {
-    const memory = createMemoryAdapter();
-    const { adapter, calls } = counted(memory);
-    let snapshots = 0;
-    const fenced = withSchemaFence(
-      {
-        ...adapter,
-        readSnapshot: (read) => {
-          snapshots += 1;
-          return read(adapter);
-        },
-      },
-      "memory",
-      settings,
-    );
-    await expect(
-      fenced.readSnapshot!((reader) => reader.get(SETTINGS_TABLE, [["x"]])),
-    ).rejects.toBeInstanceOf(HotUpdaterSchemaMigrationRequiredError);
-    expect(snapshots).toBe(0);
-
-    await migrateSchema(memory, "memory", [], settings);
-    await expect(
-      fenced.readSnapshot!((reader) => reader.get(SETTINGS_TABLE, [["x"]])),
-    ).resolves.toEqual([null]);
-    expect(snapshots).toBe(1);
-    expect(calls.gets).toBeGreaterThan(0);
-    expect(withSchemaFence(memory, "memory", settings)).not.toHaveProperty(
-      "readSnapshot",
-    );
-  });
 });

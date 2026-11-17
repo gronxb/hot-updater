@@ -24,11 +24,6 @@ import {
   encodeChannelKey,
 } from "@hot-updater/protocol";
 
-import {
-  type CatalogWriteOptions,
-  createCatalogWriter,
-  writeReleaseCatalogs,
-} from "./catalogWrites";
 import { isBuiltInBundle, refuseSandboxPatchBase } from "./nativeBuilds";
 import {
   toBundleRow,
@@ -223,19 +218,8 @@ const catalogScope = async (tx: CoreTransaction, scopeKey: string) => {
  */
 export const createCoreOperations = (
   db: CoreDatabase,
-  {
-    now = Date.now,
-    catalogWrites,
-  }: {
-    readonly now?: () => number;
-    /** How a staged catalog publication waits before it restarts; tests make it instant. */
-    readonly catalogWrites?: CatalogWriteOptions;
-  } = {},
+  { now = Date.now }: { readonly now?: () => number } = {},
 ): CoreOperations => {
-  /** A transaction that changes release catalogs, partitioned ones included. */
-  const publish = <T>(
-    operation: Parameters<typeof writeReleaseCatalogs<T>>[1],
-  ): Promise<T> => writeReleaseCatalogs(db, operation, catalogWrites);
   const ensureChannel = async (name: string): Promise<ChannelRow> =>
     (
       await insertChannel(db, {
@@ -352,7 +336,6 @@ export const createCoreOperations = (
           updatedAtMs,
         };
       }),
-      catalogWrites,
     );
     return results.map(mutationResult);
   };
@@ -362,22 +345,18 @@ export const createCoreOperations = (
 
     updateReleasePolicy: (input) => {
       const updatedAtMs = now();
-      return publish(async (tx, writer) => {
+      return db.transaction(async (tx) => {
         const { release, scope } = await loadTarget(tx, input);
         return mutationResult(
-          await changeRelease(
-            tx,
-            {
-              scope,
-              change: {
-                operation: "update",
-                id: release.id,
-                update: policyUpdate(release, input.patch, updatedAtMs),
-              },
-              updatedAtMs,
+          await changeRelease(tx, {
+            scope,
+            change: {
+              operation: "update",
+              id: release.id,
+              update: policyUpdate(release, input.patch, updatedAtMs),
             },
-            writer,
-          ),
+            updatedAtMs,
+          }),
         );
       });
     },
@@ -387,24 +366,18 @@ export const createCoreOperations = (
       return dryRun(db, async (tx) => {
         const { release, scope } = await loadTarget(tx, input);
         const stored = await readCatalog(tx, scope.scopeKey);
-        const changed = await changeRelease(
-          tx,
-          {
-            scope,
-            change: {
-              operation: "update",
-              id: release.id,
-              update: policyUpdate(release, input.patch, updatedAtMs),
-            },
-            updatedAtMs,
+        const changed = await changeRelease(tx, {
+          scope,
+          change: {
+            operation: "update",
+            id: release.id,
+            update: policyUpdate(release, input.patch, updatedAtMs),
           },
-          // Public rows only: a partitioned scope answers compact-format catalogs.
-          createCatalogWriter(db, "preflight"),
-        );
+          updatedAtMs,
+        });
         return {
           catalog: changed.catalog,
-          currentCatalog:
-            changed.current === undefined ? stored.catalog : changed.current,
+          currentCatalog: stored.catalog,
           diagnostics: changed.diagnostics,
           expectedReleaseRevision: release.revision,
           release: changed.release,
@@ -412,9 +385,8 @@ export const createCoreOperations = (
       });
     },
 
-    deleteRelease: (input) => {
-      const updatedAtMs = now();
-      return publish(async (tx, writer) => {
+    deleteRelease: (input) =>
+      db.transaction(async (tx) => {
         const { release, scope } = await loadTarget(tx, input);
         if (release.enabled) {
           throw new ReleaseManagementError(
@@ -428,15 +400,11 @@ export const createCoreOperations = (
             ? null
             : await tx.findOne("bundles", { id: release.bundle_id });
         const result = mutationResult(
-          await changeRelease(
-            tx,
-            {
-              scope,
-              change: { operation: "delete", id: release.id },
-              updatedAtMs,
-            },
-            writer,
-          ),
+          await changeRelease(tx, {
+            scope,
+            change: { operation: "delete", id: release.id },
+            updatedAtMs: now(),
+          }),
         );
         // The artifact goes with the last release on it, and the patches built
         // on it go with it. Its stored files stay until `storage prune`.
@@ -444,8 +412,7 @@ export const createCoreOperations = (
           await deleteBundle(tx, bundle);
         }
         return result;
-      });
-    },
+      }),
 
     promoteRelease: (input) =>
       withChannels(async () => {
@@ -470,7 +437,7 @@ export const createCoreOperations = (
         }
         const channel = await ensureChannel(targetChannel);
         const updatedAtMs = now();
-        return publish(async (tx, writer) => {
+        return db.transaction(async (tx) => {
           const { release: source, scope: sourceScope } = await loadTarget(
             tx,
             input,
@@ -499,45 +466,37 @@ export const createCoreOperations = (
             .at(-1);
           const moved =
             input.action === "move"
-              ? await changeRelease(
-                  tx,
-                  {
-                    scope: sourceScope,
-                    change: {
-                      operation: "update",
-                      id: source.id,
-                      update: { enabled: false, updated_at_ms: updatedAtMs },
-                    },
-                    updatedAtMs,
+              ? await changeRelease(tx, {
+                  scope: sourceScope,
+                  change: {
+                    operation: "update",
+                    id: source.id,
+                    update: { enabled: false, updated_at_ms: updatedAtMs },
                   },
-                  writer,
-                )
+                  updatedAtMs,
+                })
               : null;
-          const target = await changeRelease(
-            tx,
-            {
-              scope: targetScope,
-              change: {
-                operation: "insert",
-                row: {
-                  ...source,
-                  id: createUUIDv7After(floor ?? null, updatedAtMs),
-                  revision: 1,
-                  scope_key: targetScope.scopeKey,
-                  channel_id: targetScope.channelId,
-                  enabled: true,
-                  rollout_cohort_count: 1_000,
-                  target_cohorts: [],
-                  operation: "PROMOTE",
-                  source_release_id: source.id,
-                  created_at_ms: updatedAtMs,
-                  updated_at_ms: updatedAtMs,
-                },
+          const target = await changeRelease(tx, {
+            scope: targetScope,
+            change: {
+              operation: "insert",
+              row: {
+                ...source,
+                id: createUUIDv7After(floor ?? null, updatedAtMs),
+                revision: 1,
+                scope_key: targetScope.scopeKey,
+                channel_id: targetScope.channelId,
+                enabled: true,
+                rollout_cohort_count: 1_000,
+                target_cohorts: [],
+                operation: "PROMOTE",
+                source_release_id: source.id,
+                created_at_ms: updatedAtMs,
+                updated_at_ms: updatedAtMs,
               },
-              updatedAtMs,
             },
-            writer,
-          );
+            updatedAtMs,
+          });
           return {
             source: moved === null ? null : mutationResult(moved),
             target: mutationResult(target),
@@ -547,12 +506,11 @@ export const createCoreOperations = (
 
     rebuildReleaseCatalog: (scopeKey) => {
       const updatedAtMs = now();
-      return publish(async (tx, writer) => {
+      return db.transaction(async (tx) => {
         const { current: _current, ...rebuilt } = await rebuildScope(
           tx,
           await catalogScope(tx, scopeKey),
           updatedAtMs,
-          writer,
         );
         return { attempts: 1, ...rebuilt };
       });

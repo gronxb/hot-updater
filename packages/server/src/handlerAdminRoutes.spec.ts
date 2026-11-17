@@ -1,5 +1,4 @@
 import {
-  ReleaseCatalogMutationError,
   ReleaseManagementError,
   type Deployment,
 } from "@hot-updater/plugin-core";
@@ -158,29 +157,6 @@ describe("admin API protocol 2 routes", () => {
     await expect(response.json()).resolves.toEqual({
       code: "VERSION_CONFLICT",
       error: "changed",
-    });
-  });
-
-  it("answers a staged publication that lost every race 503, retryable and uncached", async () => {
-    const deploy = vi.fn(async () => {
-      throw new ReleaseCatalogMutationError(
-        "CATALOG_PUBLICATION_CONFLICT",
-        "try again",
-      );
-    });
-
-    const response = await routes.deployReleases!(
-      {},
-      post("/releases", { deployments: [deployment] }),
-      apiWith({ deploy }),
-    );
-
-    expect(response.status).toBe(503);
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(response.headers.get("retry-after")).toBe("1");
-    await expect(response.json()).resolves.toEqual({
-      code: "CATALOG_PUBLICATION_CONFLICT",
-      error: "try again",
     });
   });
 

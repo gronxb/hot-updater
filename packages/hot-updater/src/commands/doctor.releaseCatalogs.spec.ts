@@ -4,10 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadServer } from "../utils/loadServer";
 import { testServer } from "../utils/testServer";
-import {
-  createDatabaseHarness,
-  PARTITIONING_OFF,
-} from "./database.testFixtures";
+import { createDatabaseHarness } from "./database.testFixtures";
 import { doctor, handleDoctor } from "./doctor";
 
 vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
@@ -141,7 +138,7 @@ describe("doctor's release catalog check", () => {
       details: {
         releaseCatalogs: {
           scopes: [{ scopeKey, state: "verified", generation: 1 }],
-          issues: [PARTITIONING_OFF],
+          issues: [],
         },
       },
     });
@@ -176,7 +173,6 @@ describe("doctor's release catalog check", () => {
                 "npx hot-updater bundle update <id>",
               ],
             },
-            PARTITIONING_OFF,
           ],
         },
       },
@@ -195,7 +191,7 @@ describe("doctor's release catalog check", () => {
       details: {
         releaseCatalogs: {
           scopes: [{ scopeKey, state: "verified", generation: 2 }],
-          issues: [PARTITIONING_OFF],
+          issues: [],
         },
       },
     });
@@ -251,7 +247,7 @@ describe("doctor's release catalog check", () => {
     expect(
       (result as { details: { releaseCatalogs: { issues: unknown[] } } })
         .details.releaseCatalogs.issues,
-    ).toHaveLength(3);
+    ).toHaveLength(2);
   });
 
   it("finds the newest fingerprint scope of a channel's platform without its catalog row", async () => {
@@ -287,7 +283,6 @@ describe("doctor's release catalog check", () => {
               code: "RELEASE_CATALOG_IDENTITY_MISSING",
               scopeKey,
             },
-            PARTITIONING_OFF,
           ],
         },
       },
@@ -325,7 +320,6 @@ describe("doctor's release catalog check", () => {
               code: "RELEASE_CATALOG_IDENTITY_MISSING",
               scopeKey,
             },
-            PARTITIONING_OFF,
           ],
         },
       },
@@ -368,7 +362,6 @@ describe("doctor's release catalog check", () => {
               code: "RELEASE_CATALOG_IDENTITY_MISSING",
               scopeKey,
             },
-            PARTITIONING_OFF,
           ],
         },
       },
@@ -390,7 +383,6 @@ describe("doctor's release catalog check", () => {
               code: "RELEASE_CATALOG_IDENTITY_MISSING",
               scopeKey,
             },
-            PARTITIONING_OFF,
           ],
         },
       },

@@ -64,10 +64,10 @@ export const integrationGroups = [
     name: "mongodb",
     project: "integration:default",
     include: ["packages/server/src/adapters/mongodb*.integration.spec.ts"],
-    // mongodbSnapshot runs replica sets on 7 and 4.4, and a standalone 7.
+    // mongodbPrimary runs a replica set on 7.
     docker: {
       compose: ["examples-server/hono-mongodb/docker-compose.yml"],
-      images: ["mongo:7-jammy", "mongo:4.4"],
+      images: ["mongo:7-jammy"],
     },
   },
   {

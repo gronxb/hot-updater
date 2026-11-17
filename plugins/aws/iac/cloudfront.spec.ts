@@ -137,7 +137,6 @@ describe("buildDistributionConfigOverrides", () => {
       "/events",
       "/artifacts/*",
       "/version",
-      "/release-catalog-partitioning",
     ]);
     expect(catalogBehavior.CachePolicyId).toBe(
       baseOptions.releaseCatalogCachePolicyId,
@@ -446,7 +445,6 @@ describe("buildDistributionConfigOverrides", () => {
       existingOriginId,
       existingOriginId,
       existingOriginId,
-      existingOriginId,
     ]);
   });
 
@@ -493,7 +491,6 @@ describe("buildDistributionConfigOverrides", () => {
       "/events",
       "/artifacts/*",
       "/version",
-      "/release-catalog-partitioning",
     ]);
   });
 
@@ -554,7 +551,6 @@ describe("buildDistributionConfigOverrides", () => {
       "/events",
       "/artifacts/*",
       "/version",
-      "/release-catalog-partitioning",
     ]);
   });
 
@@ -629,7 +625,6 @@ describe("buildDistributionConfigOverrides", () => {
       "/events",
       "/artifacts/*",
       "/version",
-      "/release-catalog-partitioning",
     ]);
   });
 });

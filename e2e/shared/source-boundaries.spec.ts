@@ -47,7 +47,6 @@ const expectedScenarioModuleFiles = [
   "fingerprint-initial-install.ts",
   "force-update-auto-reload.ts",
   "foreign-signing-key-refused.ts",
-  "partitioned-catalog-update.ts",
   "headless-launch-keeps-staged-bundle.ts",
   "interrupted-launch-retries-bundle.ts",
   "launch-status-after-session-install.ts",

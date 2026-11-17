@@ -60,8 +60,6 @@ import {
   startMarkNativeBuildJob,
   startRegisterNativeBuildJob,
   startResetNativeBuildChannelJob,
-  startPartitionCatalogsJob,
-  handleAssertReleaseCatalogLayout,
   startResetRemoteBundlesJob,
   startSeedCrashedBundleFrontierJob,
   startWaitForAndroidRestartJob,
@@ -108,32 +106,6 @@ app.post("/e2e/jobs/bootstrap", async (c) => {
 
 app.post("/e2e/jobs/reset-remote-bundles", async (c) => {
   return c.json({ jobId: startResetRemoteBundlesJob() });
-});
-
-app.post("/e2e/jobs/partition-catalogs", (c) =>
-  c.json({ jobId: startPartitionCatalogsJob() }),
-);
-
-app.post("/e2e/assert-release-catalog-layout", async (c) => {
-  const payload = (await c.req.json()) as {
-    releaseId?: unknown;
-    layout?: unknown;
-  };
-  if (
-    typeof payload.releaseId !== "string" ||
-    (payload.layout !== "compact" && payload.layout !== "partitioned")
-  ) {
-    return c.json(
-      { error: "releaseId and layout (compact or partitioned) are required" },
-      400,
-    );
-  }
-  return c.json(
-    await handleAssertReleaseCatalogLayout({
-      releaseId: payload.releaseId,
-      layout: payload.layout,
-    }),
-  );
 });
 
 app.post("/e2e/jobs/read-native-builds", (c) =>

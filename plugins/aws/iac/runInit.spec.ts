@@ -23,10 +23,7 @@ const mocks = vi.hoisted(() => ({
   provisionClientCredential: vi.fn(),
   selectDistribution: vi.fn(),
   updateBucketPolicy: vi.fn(),
-  waitForDeployed: vi.fn(),
   writeHotUpdaterFiles: vi.fn(),
-  /** The table every dynamoDB(...) of a run opens: one store, as on AWS. */
-  table: { adapter: undefined as unknown },
 }));
 
 vi.mock("execa", () => ({
@@ -66,7 +63,7 @@ vi.mock("../src/dynamoDB", async () => {
   return {
     dynamoDB: vi.fn(() => ({
       name: "dynamoDB",
-      adapter: (mocks.table.adapter ??= createMemoryAdapter()),
+      adapter: createMemoryAdapter(),
       dispose: mocks.dispose,
     })),
     migrateDynamoDB: mocks.migrateDynamoDB,
@@ -92,7 +89,6 @@ vi.mock("./cloudfront", () => ({
       createOrUpdateDistribution: mocks.createOrUpdateDistribution,
       getOrCreateKeyGroup: mocks.getOrCreateKeyGroup,
       selectDistribution: mocks.selectDistribution,
-      waitForDeployed: mocks.waitForDeployed,
     };
   }),
 }));
@@ -127,19 +123,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     writeHotUpdaterFiles: mocks.writeHotUpdaterFiles,
   };
 });
-
-import {
-  createEngineDatabase,
-  createMemoryAdapter,
-  type DatabaseAdapter,
-  migrateCoreSchema,
-  SETTINGS_TABLE,
-} from "@hot-updater/plugin-core";
-import {
-  createHotUpdater,
-  HOT_UPDATER_SERVER_VERSION,
-} from "@hot-updater/server";
-import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 
 import { getAwsV1SsmParameterName } from "./awsInfrastructureNames";
 import { runInit } from "./index";
@@ -185,44 +168,7 @@ beforeEach(() => {
     distributionId: "dist-id",
   });
   mocks.provisionClientCredential.mockResolvedValue(undefined);
-  mocks.table.adapter = undefined;
-  mocks.waitForDeployed.mockResolvedValue(true);
-  vi.unstubAllGlobals();
 });
-
-/**
- * The deployed function over the run's table, behind the CloudFront domain:
- * `/version` answers `version`, and the partitioning route is the server's.
- */
-const deployedFunction = async (version = HOT_UPDATER_SERVER_VERSION) => {
-  const adapter = createMemoryAdapter();
-  await migrateCoreSchema(adapter, "dynamoDB");
-  mocks.table.adapter = adapter;
-  const server = createHotUpdater({
-    clientAccess: "public",
-    database: createEngineDatabase({ name: "dynamoDB", adapter }),
-    storage: createReleaseCatalogTestStorage(),
-  });
-  const requests: string[] = [];
-  vi.stubGlobal(
-    "fetch",
-    async (input: string | URL | Request, init?: RequestInit) => {
-      const url = new URL(String(input));
-      requests.push(`${init?.method ?? "GET"} ${url.host}${url.pathname}`);
-      if (url.pathname === "/version") return Response.json({ version });
-      return server.handlers.client(new Request(url, init));
-    },
-  );
-  return {
-    requests,
-    switchValue: async () =>
-      (
-        await (adapter as DatabaseAdapter).get(SETTINGS_TABLE, [
-          ["catalog.partitioning"],
-        ])
-      )[0]?.["value"] ?? null,
-  };
-};
 
 describe("AWS init", () => {
   it("deploys the prebuilt function, with its plugins' tables, the app's credential, and CloudFront's client headers", async () => {
@@ -326,8 +272,7 @@ describe("AWS init", () => {
     expect(mocks.makeEnv).toHaveBeenCalledWith({
       HOT_UPDATER_API_KEY: "app-api-key",
     });
-    // The credential's client, then the partitioning step's.
-    expect(mocks.dispose).toHaveBeenCalledTimes(2);
+    expect(mocks.dispose).toHaveBeenCalledTimes(1);
     expect(mocks.dispose.mock.invocationCallOrder[0]).toBeGreaterThan(
       mocks.provisionClientCredential.mock.invocationCallOrder[0]!,
     );
@@ -335,59 +280,4 @@ describe("AWS init", () => {
       expect.objectContaining({ credential }),
     );
   });
-
-  it("partitions release catalogs once CloudFront is Deployed and every /version is this release", async () => {
-    const fn = await deployedFunction();
-    await runInit({ build: "bare", envFile: ".env.hotupdater" });
-    expect(mocks.waitForDeployed).toHaveBeenCalledWith("dist-id");
-    expect(mocks.waitForDeployed.mock.invocationCallOrder[0]).toBeGreaterThan(
-      mocks.createOrUpdateDistribution.mock.invocationCallOrder[0]!,
-    );
-    expect(fn.requests.filter((r) => r.endsWith("/version"))).toHaveLength(5);
-    expect(fn.requests.at(-1)).toBe(
-      "POST d111111abcdef8.cloudfront.net/release-catalog-partitioning",
-    );
-    expect(await fn.switchValue()).toBe("on");
-    expect(mocks.log.success).toHaveBeenCalledWith(
-      "Release catalogs are partitioned.",
-    );
-
-    // Replayed after the migration, on the partitioned table: on, unchanged,
-    // with nothing to wait for.
-    mocks.waitForDeployed.mockClear();
-    fn.requests.length = 0;
-    await runInit({ build: "bare", envFile: ".env.hotupdater" });
-    expect(mocks.waitForDeployed).not.toHaveBeenCalled();
-    expect(fn.requests).toEqual([]);
-  });
-
-  it.each([
-    [
-      "CloudFront is not Deployed in time",
-      () => {
-        mocks.waitForDeployed.mockResolvedValue(
-          "CloudFront distribution dist-id is still InProgress after 30 minutes.",
-        );
-      },
-      "CloudFront distribution dist-id is still InProgress after 30 minutes.",
-    ],
-    [
-      "an edge still answers the old /version",
-      () => {},
-      `https://d111111abcdef8.cloudfront.net/version answered 1.1.16, not ${HOT_UPDATER_SERVER_VERSION}.`,
-    ],
-  ] as const)(
-    "leaves partitioning off when %s, and prints the command",
-    async (name, arrange, reason) => {
-      const fn = await deployedFunction(
-        name.includes("old") ? "1.1.16" : HOT_UPDATER_SERVER_VERSION,
-      );
-      arrange();
-      await runInit({ build: "bare", envFile: ".env.hotupdater" });
-      expect(await fn.switchValue()).toBeNull();
-      expect(mocks.log.warn).toHaveBeenCalledWith(
-        `Release catalogs stay single-row: ${reason}\nOnce every server runs 1.2.0, partition them:\nnpx hot-updater db partition-catalogs --server-url https://d111111abcdef8.cloudfront.net`,
-      );
-    },
-  );
 });

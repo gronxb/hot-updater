@@ -117,9 +117,8 @@ export type DistributionConfigOverrides = {
 
 /**
  * Server errors CloudFront never caches: by default it keeps a 5xx for ten
- * seconds, so one 503 of a retryable read, or a 500 an old server answers
- * for a partitioned catalog, would reach every device behind that edge.
- * No response page replaces the server's own answer.
+ * seconds, so one 503 of a retryable read would reach every device behind
+ * that edge. No response page replaces the server's own answer.
  */
 export const HOT_UPDATER_UNCACHED_ERROR_CODES = [500, 502, 503, 504] as const;
 
@@ -170,9 +169,6 @@ export const HOT_UPDATER_CACHE_BEHAVIOR_PATHS = [
   "/events",
   "/artifacts/*",
   "/version",
-  // Init's request to turn release catalog partitioning on: a POST no
-  // cache keeps, which must reach the function, not the bucket.
-  "/release-catalog-partitioning",
 ] as const;
 
 export const HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS = [

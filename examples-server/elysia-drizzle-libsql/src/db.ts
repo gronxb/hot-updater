@@ -37,7 +37,6 @@ export async function resetDecisionFixtures() {
     [
       "DELETE FROM bundle_patches",
       "DELETE FROM release_catalogs",
-      "DELETE FROM release_catalog_partitions",
       "DELETE FROM releases",
       "DELETE FROM bundles",
       "DELETE FROM channels",

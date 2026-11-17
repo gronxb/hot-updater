@@ -5,7 +5,6 @@ import {
   DATABASE_MAX_QUERY_LIMIT,
   indexOrderColumns,
   type QueryBound,
-  type SnapshotReader,
   type StoredRow,
 } from "../../database/adapter";
 import { mergeDistinct } from "../../database/distinct";
@@ -157,80 +156,26 @@ export const createEngineReads = ({
     };
   };
 
-  /**
-   * The key and index reads over `source`: the adapter, or one snapshot of
-   * it. Every one counts in the engine's reads.
-   */
-  const readsOver = (source: SnapshotReader) => {
-    /** Reads rows by key in one batch; the results follow the keys' order. */
-    const findByKeys = async (
-      name: string,
-      lookups: readonly Lookup[],
-    ): Promise<(StoredRow | null)[]> => {
-      const { table } = modelOf(name, "table");
-      const keys = lookups.map((lookup) => {
-        if (!sameFields(Object.keys(lookup), table.key)) {
-          throw new DatabaseQueryError(
-            `findByKeys on ${name} takes its key: ${table.key.join(", ")}.`,
-          );
-        }
-        return table.key.map((field) =>
-          keyValue(lookup[field], `${name}.${field}`),
+  /** Reads rows by key in one batch; the results follow the keys' order. */
+  const findByKeys = async (
+    name: string,
+    lookups: readonly Lookup[],
+  ): Promise<(StoredRow | null)[]> => {
+    const { table } = modelOf(name, "table");
+    const keys = lookups.map((lookup) => {
+      if (!sameFields(Object.keys(lookup), table.key)) {
+        throw new DatabaseQueryError(
+          `findByKeys on ${name} takes its key: ${table.key.join(", ")}.`,
         );
-      });
-      const rows = keys.length === 0 ? [] : await source.get(table, keys);
-      returned(rows.filter((row) => row !== null));
-      return rows.map((row) => row ?? null);
-    };
-
-    return {
-      findByKeys,
-
-      /** Reads one row by its key or by the eq fields of a unique index. */
-      async findOne(name: string, lookup: Lookup): Promise<StoredRow | null> {
-        const { table } = modelOf(name, "table");
-        const fields = Object.keys(lookup);
-        if (sameFields(fields, table.key)) {
-          return (await findByKeys(name, [lookup]))[0]!;
-        }
-        const index = table.indexes.find(
-          ({ unique, eq }) => unique && sameFields(fields, eq),
-        );
-        if (index === undefined) {
-          throw new DatabaseQueryError(
-            `findOne on ${name} needs its key or a unique field, not ${fields.join(", ")}.`,
-          );
-        }
-        const [row] = await source.query(table, {
-          index: index.name,
-          eq: index.eq.map((field) =>
-            keyValue(lookup[field], `${name}.${field}`),
-          ),
-          order: "asc",
-          limit: 1,
-        });
-        return returned(row ?? null);
-      },
-
-      /** Reads one page of an index range; `next` resumes right after it. */
-      async findMany(name: string, input: ReadInput): Promise<Page<StoredRow>> {
-        const model = modelOf(name, "table");
-        const { request, index, scope } = plan(model, input);
-        const rows = returned(await source.query(model.table, request));
-        const last = rows.at(-1);
-        return rows.length === input.limit && last !== undefined
-          ? {
-              rows,
-              next: encodeCursor(
-                scope,
-                indexOrderTuple(model.table, index, last),
-              ),
-            }
-          : { rows };
-      },
-    };
+      }
+      return table.key.map((field) =>
+        keyValue(lookup[field], `${name}.${field}`),
+      );
+    });
+    const rows = keys.length === 0 ? [] : await adapter.get(table, keys);
+    returned(rows.filter((row) => row !== null));
+    return rows.map((row) => row ?? null);
   };
-  const direct = readsOver(adapter);
 
   return {
     maxPageSize,
@@ -241,9 +186,50 @@ export const createEngineReads = ({
         count = { calls: 0, rows: 0 };
       },
     },
-    ...direct,
-    /** The same reads over one snapshot's reader. */
-    over: readsOver,
+    findByKeys,
+
+    /** Reads one row by its key or by the eq fields of a unique index. */
+    async findOne(name: string, lookup: Lookup): Promise<StoredRow | null> {
+      const { table } = modelOf(name, "table");
+      const fields = Object.keys(lookup);
+      if (sameFields(fields, table.key)) {
+        return (await findByKeys(name, [lookup]))[0]!;
+      }
+      const index = table.indexes.find(
+        ({ unique, eq }) => unique && sameFields(fields, eq),
+      );
+      if (index === undefined) {
+        throw new DatabaseQueryError(
+          `findOne on ${name} needs its key or a unique field, not ${fields.join(", ")}.`,
+        );
+      }
+      const [row] = await adapter.query(table, {
+        index: index.name,
+        eq: index.eq.map((field) =>
+          keyValue(lookup[field], `${name}.${field}`),
+        ),
+        order: "asc",
+        limit: 1,
+      });
+      return returned(row ?? null);
+    },
+
+    /** Reads one page of an index range; `next` resumes right after it. */
+    async findMany(name: string, input: ReadInput): Promise<Page<StoredRow>> {
+      const model = modelOf(name, "table");
+      const { request, index, scope } = plan(model, input);
+      const rows = returned(await adapter.query(model.table, request));
+      const last = rows.at(-1);
+      return rows.length === input.limit && last !== undefined
+        ? {
+            rows,
+            next: encodeCursor(
+              scope,
+              indexOrderTuple(model.table, index, last),
+            ),
+          }
+        : { rows };
+    },
 
     /**
      * Reads one page of logical aggregate rows, summing counters and gauges
