@@ -1,4 +1,7 @@
-import { ReleaseManagementError } from "@hot-updater/plugin-core";
+import {
+  ReleaseCatalogCompilationError,
+  ReleaseManagementError,
+} from "@hot-updater/plugin-core";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -283,6 +286,49 @@ describe("createStandaloneCoreApi", () => {
     });
     await expect(refusal).rejects.toBeInstanceOf(ReleaseManagementError);
     await expect(refusal).rejects.toMatchObject({ code: "VERSION_CONFLICT" });
+  });
+
+  it("throws a catalog over the size limit as core does in process, with its message", async () => {
+    const message =
+      'The ios release catalog of channel "production" would be over its 256 KiB limit.\nDisable or delete old bundles on that channel, then try again.';
+    server.use(
+      version(2),
+      http.post(`${BASE_URL}/releases`, () =>
+        HttpResponse.json(
+          { code: "CATALOG_OVERSIZE", error: message },
+          { status: 400 },
+        ),
+      ),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    const refusal = core.deploy([
+      {
+        bundle: {
+          id: "01900000-0000-7000-8000-000000000001",
+          platform: "ios",
+          gitCommitHash: null,
+          manifestStorageUri: "s3://bucket/manifest.json",
+          manifestFileHash: "hash",
+          assetBaseStorageUri: "s3://bucket/assets",
+        },
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: "1.0.x",
+        },
+      },
+    ]);
+    await expect(refusal).rejects.toBeInstanceOf(
+      ReleaseCatalogCompilationError,
+    );
+    await expect(refusal).rejects.toMatchObject({
+      code: "CATALOG_OVERSIZE",
+      message,
+    });
   });
 
   it("lists release scopes by limit and cursor, and asks for an upgrade where the route is missing", async () => {

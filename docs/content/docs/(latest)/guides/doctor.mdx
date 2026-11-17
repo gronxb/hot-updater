@@ -456,6 +456,11 @@ since a new identity would not match the history devices already hold. A scope
 core cannot compile is the error `RELEASE_CATALOG_CHECK_FAILED` with the
 reason, beside what the other scopes report.
 
+A scope's catalog holds at most 256 KiB, and a release change that would grow
+it past that is refused. Doctor warns `RELEASE_CATALOG_NEAR_LIMIT` once a
+catalog reaches 80% of the limit: disable or delete old bundles on that
+channel before a deploy to it fails.
+
 Doctor finds scopes without a catalog row by stepping through the Releases'
 scope index, one read per scope. A self-hosted server older than the CLI has no
 route for it: doctor still checks the scopes with a catalog row and warns

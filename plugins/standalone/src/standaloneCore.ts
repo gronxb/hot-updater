@@ -1,6 +1,7 @@
 import {
   compareUtf8,
   DatabaseBundleNotFoundError,
+  ReleaseCatalogCompilationError,
   ReleaseCatalogMutationError,
   ReleaseManagementError,
 } from "@hot-updater/plugin-core";
@@ -68,6 +69,9 @@ const refusal = (status: number, value: unknown, fallback: string): Error => {
   }
   if (typeof code === "string" && CATALOG_CODES.has(code)) {
     return new ReleaseCatalogMutationError(code as CatalogCode, message);
+  }
+  if (code === "CATALOG_OVERSIZE") {
+    return new ReleaseCatalogCompilationError(code, message);
   }
   if (code === "BUNDLE_NOT_FOUND" && isRecord(value)) {
     const id = /"([^"]+)"/u.exec(message)?.[1] ?? "";

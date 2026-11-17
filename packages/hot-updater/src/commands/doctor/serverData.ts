@@ -2,6 +2,11 @@ import type {
   HotUpdaterCoreApi,
   ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
+import {
+  decodeChannelKey,
+  MAX_COMPILED_CATALOG_BYTES,
+  parseReleaseCatalogScopeKey,
+} from "@hot-updater/protocol";
 
 import type { ReleaseCatalogIssue, ReleaseCatalogStatus } from "./issues";
 
@@ -13,6 +18,27 @@ const errorMessage = (error: unknown): string =>
 
 const unreachable =
   "Check that database in hot-updater.config.ts is reachable from here, then rerun doctor.";
+
+/** The share of the size limit at which doctor warns before deploys fail. */
+const NEAR_LIMIT = 0.8;
+
+/** A scope's catalog at or past NEAR_LIMIT, named by its channel and platform. */
+const nearLimit = (
+  scopeKey: string,
+  byteSize: number,
+): ReleaseCatalogIssue | null => {
+  if (byteSize < NEAR_LIMIT * MAX_COMPILED_CATALOG_BYTES) return null;
+  const { channelKey, platform } = parseReleaseCatalogScopeKey(scopeKey);
+  const percent = Math.floor((byteSize / MAX_COMPILED_CATALOG_BYTES) * 100);
+  return {
+    type: "warning",
+    code: "RELEASE_CATALOG_NEAR_LIMIT",
+    scopeKey,
+    message: `The ${platform} release catalog of channel "${decodeChannelKey(channelKey)}" is ${percent}% of its ${MAX_COMPILED_CATALOG_BYTES / 1024} KiB limit.`,
+    resolution:
+      "Disable or delete old bundles on that channel before a deploy to it fails.",
+  };
+};
 
 /** The status when the catalogs could not be read at all, such as when the server does not load. */
 export const releaseCatalogsUnchecked = (
@@ -190,6 +216,8 @@ const checkReleaseCatalogs = async (
       };
       status.issues.push(issue);
     }
+    const near = nearLimit(scopeKey, result.diagnostics.byteSize);
+    if (near !== null) status.issues.push(near);
   }
   return status;
 };

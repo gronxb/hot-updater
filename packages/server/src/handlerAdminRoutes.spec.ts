@@ -1,4 +1,5 @@
 import {
+  ReleaseCatalogCompilationError,
   ReleaseManagementError,
   type Deployment,
 } from "@hot-updater/plugin-core";
@@ -157,6 +158,26 @@ describe("admin API protocol 2 routes", () => {
     await expect(response.json()).resolves.toEqual({
       code: "VERSION_CONFLICT",
       error: "changed",
+    });
+  });
+
+  it("answers a deploy over the catalog size limit with 400 and core's message", async () => {
+    const message =
+      'The ios release catalog of channel "production" would be over its 256 KiB limit.\nDisable or delete old bundles on that channel, then try again.';
+    const deploy = vi.fn(async () => {
+      throw new ReleaseCatalogCompilationError("CATALOG_OVERSIZE", message);
+    });
+
+    const response = await routes.deployReleases!(
+      {},
+      post("/releases", { deployments: [deployment] }),
+      apiWith({ deploy }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: "CATALOG_OVERSIZE",
+      error: message,
     });
   });
 

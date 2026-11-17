@@ -4,6 +4,7 @@ import {
   createUUIDv7After,
   isUUIDv7,
   releaseRowToRelease,
+  ReleaseCatalogCompilationError,
   ReleaseCatalogMutationError,
   type BundlePatchRow,
   type BundleRow,
@@ -17,6 +18,7 @@ import {
   createReleaseCatalogScopeKey,
   decodeChannelKey,
   encodeChannelKey,
+  MAX_COMPILED_CATALOG_BYTES,
 } from "@hot-updater/protocol";
 
 import { toCatalogRow, toReleaseRow, type CoreDatabase } from "./reads";
@@ -160,6 +162,33 @@ const nextCatalog = (
   };
 };
 
+/**
+ * Compiles a scope's enabled releases. A catalog over the size limit is
+ * refused naming its channel and platform, and what frees room in it.
+ */
+const compileScope = async (
+  scope: Pick<ReleaseCatalogScope, "channelName" | "platform" | "strategy">,
+  enabled: readonly ReleaseRow[],
+) => {
+  try {
+    return await compileReleaseCatalog({
+      strategy: scope.strategy,
+      releases: enabled.map(releaseRowToRelease),
+    });
+  } catch (error) {
+    if (
+      !(error instanceof ReleaseCatalogCompilationError) ||
+      error.code !== "CATALOG_OVERSIZE"
+    ) {
+      throw error;
+    }
+    throw new ReleaseCatalogCompilationError(
+      "CATALOG_OVERSIZE",
+      `The ${scope.platform} release catalog of channel "${scope.channelName}" would be over its ${MAX_COMPILED_CATALOG_BYTES / 1024} KiB limit.\nDisable or delete old bundles on that channel, then try again.`,
+    );
+  }
+};
+
 /** Compiles `enabled` and writes it as the scope's next catalog generation. */
 const writeCatalog = async (
   tx: CoreTransaction,
@@ -168,10 +197,7 @@ const writeCatalog = async (
   enabled: readonly ReleaseRow[],
   updatedAtMs: number,
 ) => {
-  const compilation = await compileReleaseCatalog({
-    strategy: scope.strategy,
-    releases: enabled.map(releaseRowToRelease),
-  });
+  const compilation = await compileScope(scope, enabled);
   const catalog = nextCatalog(scope, stored, compilation, updatedAtMs);
   const { scope_key: _scopeKey, ...set } = catalog;
   if (stored.row === null) tx.create("release_catalogs", catalog);
@@ -359,10 +385,7 @@ export const preflightRebuild = async (
   const enabled = await drainReleases((cursor) =>
     db.findMany("releases", enabledIn(scopeKey, cursor)),
   );
-  const compilation = await compileReleaseCatalog({
-    strategy: scope.strategy,
-    releases: enabled.map(releaseRowToRelease),
-  });
+  const compilation = await compileScope(scope, enabled);
   const changed = !isCurrent(scope, current, compilation);
   return {
     changed,
@@ -389,10 +412,7 @@ export const rebuildScope = async (
   const stored = await readCatalog(tx, scope.scopeKey);
   assertHistory(stored, (await latestReleaseId(tx, scope.scopeKey)) !== null);
   const enabled = await enabledReleases(tx, scope.scopeKey);
-  const compilation = await compileReleaseCatalog({
-    strategy: scope.strategy,
-    releases: enabled.map(releaseRowToRelease),
-  });
+  const compilation = await compileScope(scope, enabled);
   const current = stored.catalog;
   if (current !== null && isCurrent(scope, current, compilation)) {
     return {

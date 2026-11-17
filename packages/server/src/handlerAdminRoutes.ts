@@ -2,6 +2,7 @@ import {
   DatabaseBundleNotFoundError,
   type NativeBuildSubmissionDestination,
   DatabaseConstraintError,
+  ReleaseCatalogCompilationError,
   ReleaseCatalogMutationError,
   ReleaseManagementError,
   type Deployment,
@@ -74,6 +75,12 @@ export const answer = async (
             ? 409
             : 400;
       return json({ code: error.code, error: error.message }, status);
+    }
+    if (
+      error instanceof ReleaseCatalogCompilationError &&
+      error.code === "CATALOG_OVERSIZE"
+    ) {
+      return json({ code: error.code, error: error.message }, 400);
     }
     if (error instanceof DatabaseBundleNotFoundError) {
       return json({ code: "BUNDLE_NOT_FOUND", error: error.message }, 404);
