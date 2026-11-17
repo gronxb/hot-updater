@@ -1,6 +1,7 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
 import http from "node:http";
 import { setTimeout as sleep } from "node:timers/promises";
+import { promisify } from "node:util";
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -104,7 +105,7 @@ describe("loopback connections under a provider stall", () => {
     await sleep(500);
   }, 20_000);
 
-  it("a closed connection is answered after the stall", async () => {
+  it("a new connection is answered after the stall", async () => {
     await expect(
       readInsightsDuringStall(closeLoopbackConnections(globalThis.fetch)),
     ).resolves.toEqual({ beforeReceivedAtMs: 0, data: [], nextCursor: null });
@@ -127,15 +128,85 @@ describe("loopback connections under a provider stall", () => {
   });
 });
 
-describe("closeLoopbackConnections", () => {
-  const recordCall = () => {
-    const fetchImplementation = vi.fn<typeof fetch>(
-      async () => new Response(null),
+// Reads a 64 KiB body, undici's body high-water mark, from a Node server
+// three times. The body stays unread while the server finishes the response,
+// as when the asset proxy streams a bundle to an app that reads slower than
+// the local storage writes. Prints the server's connection counts.
+const SLOW_READER = `
+import http from "node:http";
+const { closeLoopbackConnections } = await import(process.env.LOOPBACK_MODULE);
+const BODY_BYTES = 64 * 1024;
+let opened = 0;
+let closed = 0;
+const server = http.createServer((request, response) => {
+  request.resume();
+  response.end(Buffer.alloc(BODY_BYTES));
+});
+server.on("connection", (socket) => {
+  opened += 1;
+  socket.on("close", () => { closed += 1; });
+});
+await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+const url = "http://127.0.0.1:" + server.address().port + "/";
+const fetchBody = process.env.CLOSE_HEADER === "1"
+  ? () => fetch(url, { headers: { connection: "close" } })
+  : () => closeLoopbackConnections(fetch)(url);
+for (let read = 0; read < 3; read += 1) {
+  const response = await fetchBody();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const bytes = (await response.arrayBuffer()).byteLength;
+  if (bytes !== BODY_BYTES) throw new Error("short body " + bytes);
+}
+await new Promise((resolve) => setTimeout(resolve, 100));
+process.stdout.write(JSON.stringify({ closed, opened }));
+server.close();
+`;
+
+const readSlowly = (closeHeader: boolean) =>
+  promisify(execFile)(
+    process.execPath,
+    ["--input-type=module", "-e", SLOW_READER],
+    {
+      env: {
+        ...process.env,
+        CLOSE_HEADER: closeHeader ? "1" : "0",
+        LOOPBACK_MODULE: new URL("./loopback-connections.ts", import.meta.url)
+          .href,
+      },
+    },
+  );
+
+describe("loopback connections under a slow reader", () => {
+  it("a `connection: close` response crashes Node's fetch", async () => {
+    const error = await readSlowly(true).then(
+      () => null,
+      (reason: unknown) => reason,
     );
+    expect(error).toMatchObject({
+      code: 1,
+      stderr: expect.stringContaining("assert(!this.paused)"),
+    });
+  }, 20_000);
+
+  it("the controller's fetch reads it and closes each connection", async () => {
+    const { stdout } = await readSlowly(false);
+    expect(JSON.parse(stdout)).toEqual({ closed: 3, opened: 3 });
+  }, 20_000);
+});
+
+describe("closeLoopbackConnections", () => {
+  const recordCall = (
+    fetchImplementation = vi.fn<typeof fetch>(async () => new Response(null)),
+  ) => {
+    const dispatcher = {
+      close: vi.fn(async () => {}),
+      destroy: vi.fn(async () => {}),
+    };
     return {
+      dispatcher,
+      fetch: closeLoopbackConnections(fetchImplementation, () => dispatcher),
       fetchImplementation,
-      headers: () =>
-        new Headers(fetchImplementation.mock.calls[0]?.[1]?.headers),
+      init: () => fetchImplementation.mock.calls[0]?.[1],
     };
   };
 
@@ -144,28 +215,44 @@ describe("closeLoopbackConnections", () => {
     "http://localhost:3108/hot-updater/events",
     "http://127.1.2.3/",
     "http://[::1]:3007/",
-  ])("closes the connection to %s", async (url) => {
+  ])("gives the request to %s its own connection", async (url) => {
     const call = recordCall();
-    await closeLoopbackConnections(call.fetchImplementation)(url, {
+    await call.fetch(url, { headers: { accept: "application/json" } });
+    expect(call.init()).toEqual({
+      dispatcher: call.dispatcher,
       headers: { accept: "application/json" },
     });
-    expect(call.headers().get("connection")).toBe("close");
-    expect(call.headers().get("accept")).toBe("application/json");
+    expect(call.dispatcher.close).toHaveBeenCalledOnce();
+    expect(call.dispatcher.destroy).not.toHaveBeenCalled();
   });
 
   it("keeps a Request's own headers", async () => {
     const call = recordCall();
-    await closeLoopbackConnections(call.fetchImplementation)(
-      new Request("http://127.0.0.1:3007/", { headers: { "x-api-key": "k" } }),
+    const request = new Request("http://127.0.0.1:3007/", {
+      headers: { "x-api-key": "k" },
+    });
+    await call.fetch(request);
+    expect(call.fetchImplementation).toHaveBeenCalledWith(request, {
+      dispatcher: call.dispatcher,
+    });
+  });
+
+  it("destroys the connection of a failed request", async () => {
+    const failure = new TypeError("fetch failed");
+    const call = recordCall(
+      vi.fn<typeof fetch>(async () => {
+        throw failure;
+      }),
     );
-    expect(call.headers().get("connection")).toBe("close");
-    expect(call.headers().get("x-api-key")).toBe("k");
+    await expect(call.fetch("http://127.0.0.1:3007/")).rejects.toBe(failure);
+    expect(call.dispatcher.destroy).toHaveBeenCalledOnce();
+    expect(call.dispatcher.close).not.toHaveBeenCalled();
   });
 
   it("leaves other hosts' requests unchanged", async () => {
     const call = recordCall();
     const init = { headers: { accept: "application/json" } };
-    await closeLoopbackConnections(call.fetchImplementation)(
+    await call.fetch(
       "https://example.supabase.co/functions/v1/update-server",
       init,
     );
@@ -173,6 +260,7 @@ describe("closeLoopbackConnections", () => {
       "https://example.supabase.co/functions/v1/update-server",
       init,
     );
+    expect(call.dispatcher.close).not.toHaveBeenCalled();
   });
 
   it("wraps the process's fetch once", () => {
