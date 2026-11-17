@@ -163,18 +163,6 @@ describe("published agent infrastructure commands", () => {
           );
           expect(sql).toContain("schema.insights");
           expect(sql).toContain("schema.apiKeys");
-          // The release's migration, as the package ships it: 1.2.0's
-          // tables, the catalog partitions among them.
-          const latest = await readFile(
-            path.join(result.data.output, migrations.at(-1)!),
-            "utf8",
-          );
-          expect(path.basename(migrations.at(-1)!)).toBe(
-            "0002_hot-updater_1.2.0.sql",
-          );
-          expect(latest).toMatch(
-            /CREATE TABLE IF NOT EXISTS "(hot_updater_v1_)?release_catalog_partitions"/u,
-          );
         } else {
           expect(migrations).toEqual([]);
         }

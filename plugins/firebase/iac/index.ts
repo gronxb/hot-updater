@@ -4,17 +4,13 @@ import path from "path";
 import {
   assembleServer,
   confirmInitInputPersistence,
-  enablePartitioningAfterDeploy,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
   InitError,
   link,
   makeEnv,
-  type ManagedPartitioning,
-  managedPartitioningMessage,
   p,
-  partitionCatalogsCommand,
   printAppSetup,
   provisionClientCredential,
   type ProvisionedClientCredential,
@@ -405,7 +401,6 @@ const printTemplate = async (
   region: string,
   /** The client plugins the app adds for the plugins the function runs. */
   clientPlugins: readonly PluginClientPlugin[],
-  partitioning: ManagedPartitioning,
   cliEnv?: FirebaseCliEnv,
 ) => {
   try {
@@ -435,15 +430,6 @@ const printTemplate = async (
       );
     }
 
-    const { level, text } = managedPartitioningMessage(
-      partitioning.enabled
-        ? partitioning
-        : {
-            ...partitioning,
-            command: partitionCatalogsCommand(functionUrl),
-          },
-    );
-    p.log[level](text);
     printAppSetup({
       baseURL: functionUrl,
       ...(credential === undefined ? {} : { credential }),
@@ -654,7 +640,6 @@ export const runInit = async ({
     plugins: [insights(), apiKeys(), remoteConfig()],
   });
   let clientCredential: ProvisionedClientCredential | undefined;
-  let partitioning: ManagedPartitioning | undefined;
   try {
     // The database reads nothing until the schema settings exist.
     await migrateFirebaseDatabase(databaseConfig, server.plugins);
@@ -666,13 +651,6 @@ export const runInit = async ({
     if (clientCredential !== undefined) {
       await makeEnv({ [clientCredential.env]: clientCredential.value });
     }
-    // A Cloud Functions deploy reports when the new revision takes traffic,
-    // not when the previous one stops serving, so init leaves partitioning
-    // to the command, whose URL printTemplate fills in.
-    partitioning = await enablePartitioningAfterDeploy({
-      server,
-      serverUrl: undefined,
-    });
   } finally {
     await database.dispose?.();
     await Promise.all(getApps().map((app) => deleteApp(app)));
@@ -768,7 +746,6 @@ export const runInit = async ({
     initializeVariable.projectId,
     currentRegion,
     server.clientPlugins,
-    partitioning!,
     cliEnv,
   );
   await removeTmpDir();

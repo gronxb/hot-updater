@@ -60,7 +60,9 @@ plus every compatible enabled Release, so a rollback can find the predecessor
 of any active Release. Rollback candidates ignore rollout and target cohorts.
 The catalog is never truncated: a change whose compiled catalog exceeds
 256 KiB fails before anything is written, and the previous Releases and
-catalog stay.
+catalog stay. The refusal names the channel and platform: disable or delete
+old bundles on that channel to make room. `hot-updater doctor` warns
+`RELEASE_CATALOG_NEAR_LIMIT` once a scope's catalog reaches 80% of the limit.
 
 Rebuilding a catalog recompiles it from the scope's enabled Releases and writes
 it only when the result changed. Back up catalog rows together with Releases: a

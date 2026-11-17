@@ -126,7 +126,6 @@ const defaultScenarioNames = [
   "ten-crash-history-safe-bundle",
   "remote-config-fetch-activate",
   "foreign-signing-key-refused",
-  "partitioned-catalog-update",
 ] as const;
 const standaloneDatabaseProfileSources = [
   "examples-server/elysia-drizzle-libsql/src/db.ts",
@@ -462,7 +461,7 @@ describe("E2E scenario contract", () => {
 
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
-    expect(new Set(listScenarioNames()).size).toBe(41);
+    expect(new Set(listScenarioNames()).size).toBe(40);
   });
 
   it("runs every default scenario a native app shell can host in the brownfield suite", () => {

@@ -1,5 +1,5 @@
 import {
-  ReleaseCatalogMutationError,
+  ReleaseCatalogCompilationError,
   ReleaseManagementError,
   type Deployment,
 } from "@hot-updater/plugin-core";
@@ -161,12 +161,11 @@ describe("admin API protocol 2 routes", () => {
     });
   });
 
-  it("answers a staged publication that lost every race 503, retryable and uncached", async () => {
+  it("answers a deploy over the catalog size limit with 400 and core's message", async () => {
+    const message =
+      'The ios release catalog of channel "production" would be over its 256 KiB limit.\nDisable or delete old bundles on that channel, then try again.';
     const deploy = vi.fn(async () => {
-      throw new ReleaseCatalogMutationError(
-        "CATALOG_PUBLICATION_CONFLICT",
-        "try again",
-      );
+      throw new ReleaseCatalogCompilationError("CATALOG_OVERSIZE", message);
     });
 
     const response = await routes.deployReleases!(
@@ -175,12 +174,10 @@ describe("admin API protocol 2 routes", () => {
       apiWith({ deploy }),
     );
 
-    expect(response.status).toBe(503);
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(response.headers.get("retry-after")).toBe("1");
+    expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      code: "CATALOG_PUBLICATION_CONFLICT",
-      error: "try again",
+      code: "CATALOG_OVERSIZE",
+      error: message,
     });
   });
 

@@ -7,7 +7,6 @@ import {
   type PhysicalTable,
   type QueryRequest,
   rowKey,
-  type SnapshotReader,
   type StoredRow,
   type WriteOp,
 } from "./adapter";
@@ -169,10 +168,13 @@ export const verifyAdapter = (
   options: VerifyAdapterOptions = {},
 ): VerifiedDatabaseAdapter => {
   const { add, meter } = createReadMeter();
-  /** Verified, counted reads through `reader`: the adapter, or one snapshot of it. */
-  const verifiedReads = (reader: SnapshotReader): SnapshotReader => ({
+  return {
+    ...adapter,
+    id: adapter.id,
+    reads: meter,
+    fits: (ops) => adapter.fits(ops),
     async get(table, keys) {
-      const rows = await reader.get(table, keys);
+      const rows = await adapter.get(table, keys);
       add(table.name, { gets: 1, keys: keys.length });
       if (rows.length !== keys.length) {
         fail(
@@ -188,7 +190,7 @@ export const verifyAdapter = (
     },
     async query(table, request) {
       const index = verifyRequest(table, request);
-      const rows = await reader.query(table, request);
+      const rows = await adapter.query(table, request);
       add(table.name, { queries: 1, rows: rows.length });
       const last = verifyRows(table, request, rows);
       if (
@@ -197,7 +199,7 @@ export const verifyAdapter = (
         rows.length < request.limit
       ) {
         const bound = { values: last, inclusive: false };
-        const probe = await reader.query(table, {
+        const probe = await adapter.query(table, {
           ...request,
           limit: 1,
           ...(request.order === "asc" ? { lower: bound } : { upper: bound }),
@@ -210,19 +212,6 @@ export const verifyAdapter = (
       }
       return rows;
     },
-  });
-  const { get, query } = verifiedReads(adapter);
-  return {
-    ...adapter,
-    id: adapter.id,
-    reads: meter,
-    fits: (ops) => adapter.fits(ops),
-    get,
-    query,
-    ...(adapter.readSnapshot && {
-      readSnapshot: <T>(read: (reader: SnapshotReader) => Promise<T>) =>
-        adapter.readSnapshot!((reader) => read(verifiedReads(reader))),
-    }),
     ...(adapter.prune && {
       async prune(table: PhysicalTable, before: number, limit: number) {
         if (table.retention === undefined) {

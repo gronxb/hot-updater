@@ -71,7 +71,7 @@ ingestion and plugin client routes, or explicitly set `clientAccess: "public"`.
 
 | Handler           | Routes and access                                                                                                                                                                                                 |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `handlers.client` | Public `/version`, and public `POST /release-catalog-partitioning`, which turns [partitioning](/docs/guides/partition-release-catalogs) on only for a request token stored through the server's database; Release Catalogs, artifacts, `POST /events` and plugin client routes follow the client policy. Devices download artifacts from the URLs the storage adapter returns, not through this handler. |
+| `handlers.client` | Public `/version`; Release Catalogs, artifacts, `POST /events` and plugin client routes follow the client policy. Devices download artifacts from the URLs the storage adapter returns, not through this handler. |
 | `handlers.admin`  | Bundle, Release, catalog and Channel routes, Insights queries and plugin admin routes. Your framework authenticates every request before mounting this handler.                                                   |
 
 Insights runs as the `insights()` plugin. React Native apps report to it when

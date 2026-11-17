@@ -55,44 +55,6 @@ export class CloudFrontManager {
     this.credentials = credentials;
   }
 
-  /**
-   * Waits until the distribution's `Status` is `Deployed`: CloudFront's own
-   * statement that its last configuration change, the Lambda@Edge version
-   * association included, has propagated to every edge location, so every
-   * request through it runs that function version. True, or why not once
-   * `timeoutMs` has passed.
-   */
-  async waitForDeployed(
-    distributionId: string,
-    {
-      timeoutMs = 30 * 60 * 1000,
-      intervalMs = 10_000,
-      now = Date.now,
-      sleep = delay,
-    }: {
-      readonly timeoutMs?: number;
-      readonly intervalMs?: number;
-      readonly now?: () => number;
-      readonly sleep?: (ms: number) => Promise<unknown>;
-    } = {},
-  ): Promise<true | string> {
-    const cloudfrontClient = new CloudFront({
-      region: this.region,
-      credentials: this.credentials,
-    });
-    const deadline = now() + timeoutMs;
-    for (;;) {
-      const { Distribution } = await cloudfrontClient.getDistribution({
-        Id: distributionId,
-      });
-      if (Distribution?.Status === "Deployed") return true;
-      if (now() >= deadline) {
-        return `CloudFront distribution ${distributionId} is still ${Distribution?.Status ?? "deploying"} after ${Math.round(timeoutMs / 60_000)} minutes.`;
-      }
-      await sleep(intervalMs);
-    }
-  }
-
   private async getOrCreateCachePolicy(
     cloudfrontClient: CloudFront,
     config: CachePolicyConfig,

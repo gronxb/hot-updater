@@ -13,7 +13,7 @@ import {
   HotUpdaterConfigError,
 } from "./assembly/assemblePlugins";
 import { clientPluginsOf } from "./assembly/clientPlugins";
-import { type CoreApi, publicCoreApi } from "./core/api";
+import type { CoreApi } from "./core/api";
 import {
   type ClientRoutePolicy,
   createHotUpdaterHandlers,
@@ -264,7 +264,6 @@ export function createHotUpdater<
     plugins: Object.keys(plugins.api),
   });
   let serving = false;
-  const core = publicCoreApi(plugins.core);
 
   return {
     adapterName: database.name,
@@ -275,7 +274,7 @@ export function createHotUpdater<
       }
       return handlers;
     },
-    core,
+    core: plugins.core,
     api: plugins.api as PluginApis<TPlugins>,
     flush: plugins.flush,
     database,

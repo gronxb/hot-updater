@@ -4,15 +4,12 @@ import {
   assembleServer,
   confirmInitInputPersistence,
   copyDirToTmp,
-  enablePartitioningAfterDeploy,
-  getCwd,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
+  getCwd,
   link,
   makeEnv,
-  type ManagedPartitioning,
-  managedPartitioningMessage,
   p,
   printAppSetup,
   provisionClientCredential,
@@ -681,7 +678,6 @@ export const runInit = async ({
   });
   // The app's credential, through the managed server's plugins, on the tables they read.
   let credential: ProvisionedClientCredential | undefined;
-  let partitioning: ManagedPartitioning;
   try {
     credential = await provisionClientCredential(server, {
       env: initInputEnv,
@@ -690,14 +686,6 @@ export const runInit = async ({
     if (credential !== undefined) {
       await makeEnv({ [credential.env]: credential.value });
     }
-    // A Workers deployment reports which versions take traffic, not when
-    // every location runs them, so init leaves partitioning to the command.
-    partitioning = await enablePartitioningAfterDeploy({
-      server,
-      serverUrl: subdomains.subdomain
-        ? `https://${workerName}.${subdomains.subdomain}.workers.dev`
-        : undefined,
-    });
   } finally {
     await database.dispose?.();
   }
@@ -715,10 +703,6 @@ export const runInit = async ({
     },
   );
 
-  {
-    const { level, text } = managedPartitioningMessage(partitioning);
-    p.log[level](text);
-  }
   printAppSetup({
     ...(subdomains.subdomain
       ? {

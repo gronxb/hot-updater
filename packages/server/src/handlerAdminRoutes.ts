@@ -2,6 +2,7 @@ import {
   DatabaseBundleNotFoundError,
   type NativeBuildSubmissionDestination,
   DatabaseConstraintError,
+  ReleaseCatalogCompilationError,
   ReleaseCatalogMutationError,
   ReleaseManagementError,
   type Deployment,
@@ -18,7 +19,6 @@ import {
 import type { Bundle } from "@hot-updater/protocol";
 
 import type { CoreApi } from "./core/api";
-import { isRetryableCatalogRead } from "./core/catalogReads";
 import { IosDeviceInputError } from "./core/iosDevices";
 import { NATIVE_BUILD_SUBMISSION_DESTINATIONS } from "./core/nativeBuildDestinations";
 import { NativeBuildInputError } from "./core/nativeBuilds";
@@ -65,19 +65,6 @@ export const answer = async (
     return await operation();
   } catch (error) {
     if (
-      error instanceof ReleaseCatalogMutationError &&
-      error.code === "CATALOG_PUBLICATION_CONFLICT"
-    ) {
-      // A staged publication lost to other writers every time: retryable.
-      return Response.json(
-        { code: error.code, error: error.message },
-        {
-          status: 503,
-          headers: { "cache-control": "private, no-store", "retry-after": "1" },
-        },
-      );
-    }
-    if (
       error instanceof ReleaseManagementError ||
       error instanceof ReleaseCatalogMutationError
     ) {
@@ -89,18 +76,14 @@ export const answer = async (
             : 400;
       return json({ code: error.code, error: error.message }, status);
     }
+    if (
+      error instanceof ReleaseCatalogCompilationError &&
+      error.code === "CATALOG_OVERSIZE"
+    ) {
+      return json({ code: error.code, error: error.message }, 400);
+    }
     if (error instanceof DatabaseBundleNotFoundError) {
       return json({ code: "BUNDLE_NOT_FOUND", error: error.message }, 404);
-    }
-    if (isRetryableCatalogRead(error)) {
-      // A partitioned catalog's rows moved on every read: retryable.
-      return Response.json(
-        { code: "CATALOG_SNAPSHOT_CONFLICT", error: (error as Error).message },
-        {
-          status: 503,
-          headers: { "cache-control": "private, no-store", "retry-after": "1" },
-        },
-      );
     }
     if (error instanceof DatabaseRowReferencedError) {
       return json({ code: "REFERENCED", error: error.message }, 409);
@@ -1025,16 +1008,6 @@ export const ADMIN_ROUTES: readonly {
     method: "POST",
     path: "/release-catalogs/:scopeKey/preflight",
     handler: "preflightReleaseCatalogRebuild",
-  },
-  {
-    method: "GET",
-    path: "/release-catalog-partitioning",
-    handler: "getReleaseCatalogPartitioning",
-  },
-  {
-    method: "POST",
-    path: "/release-catalog-partitioning",
-    handler: "enableReleaseCatalogPartitioning",
   },
   { method: "GET", path: "/channels", handler: "getChannels" },
   { method: "POST", path: "/channels", handler: "createChannel" },

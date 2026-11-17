@@ -291,9 +291,6 @@ export const withSchemaFence = (
     query: (table, request) =>
       fence().then(() => adapter.query(table, request)),
     write: (ops) => fence().then(() => adapter.write(ops)),
-    ...(adapter.readSnapshot && {
-      readSnapshot: (read) => fence().then(() => adapter.readSnapshot!(read)),
-    }),
     ...(adapter.prune && {
       prune: (table, before, limit) =>
         fence().then(() => adapter.prune!(table, before, limit)),

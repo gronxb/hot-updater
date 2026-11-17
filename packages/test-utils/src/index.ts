@@ -1,7 +1,6 @@
 export * from "./adminApiTestClient";
 export * from "./setupBundleMethodsTestSuite";
 export * from "./setupCoreAdminTestSuite";
-export * from "./setupPartitioningEnableTestSuite";
 export * from "./setupSemverSatisfiesTestSuite";
 export * from "./setupDatabaseTestSuite";
 export * from "./setupDatabaseAdapterConformanceSuite";
@@ -20,21 +19,3 @@ export * from "./setupReleaseCatalogTestSuite";
 export * from "./httpTestClient";
 export * from "./httpTestServer";
 export * from "./releaseCatalogHttpFixtures";
-export * from "./releaseCatalogPartitionFixture";
-export {
-  checkReleaseCatalogTiling,
-  cohortClasses,
-  createReleaseCatalogOracleCounters,
-  decide as decideReleaseCatalog,
-  deviceStates,
-  probeAppVersions,
-  oracleLayers,
-  type ReleaseCatalogDeviceState,
-  type ReleaseCatalogOracleCounters,
-  type ReleaseCatalogOracleLayer,
-  type ReleaseCatalogOracleMismatch,
-  type ReleaseCatalogTilingKit,
-  releaseCatalogTilingKit,
-} from "./releaseCatalogTilingOracle";
-export * from "./releaseSelectionV100";
-export * from "./setupKeyOrderTestSuite";

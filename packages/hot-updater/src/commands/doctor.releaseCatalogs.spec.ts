@@ -4,10 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadServer } from "../utils/loadServer";
 import { testServer } from "../utils/testServer";
-import {
-  createDatabaseHarness,
-  PARTITIONING_OFF,
-} from "./database.testFixtures";
+import { createDatabaseHarness } from "./database.testFixtures";
 import { doctor, handleDoctor } from "./doctor";
 
 vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
@@ -51,7 +48,13 @@ const bundle = (index: number, platform: "ios" | "android" = "ios") => ({
 /** Deploys one release, whose scope gets a catalog. */
 const deploy = async (
   index = 1,
-  { platform = "ios" }: { readonly platform?: "ios" | "android" } = {},
+  {
+    platform = "ios",
+    message = null,
+  }: {
+    readonly platform?: "ios" | "android";
+    readonly message?: string | null;
+  } = {},
 ) => {
   const [result] = await harness.core.deploy([
     {
@@ -60,7 +63,7 @@ const deploy = async (
         channel: "production",
         enabled: true,
         fingerprintHash: null,
-        message: null,
+        message,
         shouldForceUpdate: false,
         targetAppVersion: "1.0.x",
       },
@@ -141,7 +144,49 @@ describe("doctor's release catalog check", () => {
       details: {
         releaseCatalogs: {
           scopes: [{ scopeKey, state: "verified", generation: 1 }],
-          issues: [PARTITIONING_OFF],
+          issues: [],
+        },
+      },
+    });
+  });
+
+  it("warns once a scope's catalog reaches 80% of its size limit, and not before", async () => {
+    // 60 KB messages: three compile to under 80% of 256 KiB, four to over it.
+    const message = "m".repeat(60_000);
+    for (let index = 1; index <= 3; index += 1) {
+      await deploy(index, { message });
+    }
+    const under = await doctor();
+    expect(under).toMatchObject({
+      success: true,
+      details: { releaseCatalogs: { issues: [] } },
+    });
+    expect(
+      (
+        under as {
+          details: { releaseCatalogs: { scopes: { byteSize: number }[] } };
+        }
+      ).details.releaseCatalogs.scopes[0]!.byteSize,
+    ).toBeLessThan(0.8 * 256 * 1024);
+
+    const scopeKey = await deploy(4, { message });
+    await expect(doctor()).resolves.toMatchObject({
+      success: true,
+      details: {
+        releaseCatalogs: {
+          scopes: [{ scopeKey, state: "verified" }],
+          issues: [
+            {
+              type: "warning",
+              code: "RELEASE_CATALOG_NEAR_LIMIT",
+              scopeKey,
+              message: expect.stringMatching(
+                /^The ios release catalog of channel "production" is \d+% of its 256 KiB limit\.$/u,
+              ),
+              resolution:
+                "Disable or delete old bundles on that channel before a deploy to it fails.",
+            },
+          ],
         },
       },
     });
@@ -176,7 +221,6 @@ describe("doctor's release catalog check", () => {
                 "npx hot-updater bundle update <id>",
               ],
             },
-            PARTITIONING_OFF,
           ],
         },
       },
@@ -195,7 +239,7 @@ describe("doctor's release catalog check", () => {
       details: {
         releaseCatalogs: {
           scopes: [{ scopeKey, state: "verified", generation: 2 }],
-          issues: [PARTITIONING_OFF],
+          issues: [],
         },
       },
     });
@@ -251,7 +295,7 @@ describe("doctor's release catalog check", () => {
     expect(
       (result as { details: { releaseCatalogs: { issues: unknown[] } } })
         .details.releaseCatalogs.issues,
-    ).toHaveLength(3);
+    ).toHaveLength(2);
   });
 
   it("finds the newest fingerprint scope of a channel's platform without its catalog row", async () => {
@@ -287,7 +331,6 @@ describe("doctor's release catalog check", () => {
               code: "RELEASE_CATALOG_IDENTITY_MISSING",
               scopeKey,
             },
-            PARTITIONING_OFF,
           ],
         },
       },
@@ -325,7 +368,6 @@ describe("doctor's release catalog check", () => {
               code: "RELEASE_CATALOG_IDENTITY_MISSING",
               scopeKey,
             },
-            PARTITIONING_OFF,
           ],
         },
       },
@@ -368,7 +410,6 @@ describe("doctor's release catalog check", () => {
               code: "RELEASE_CATALOG_IDENTITY_MISSING",
               scopeKey,
             },
-            PARTITIONING_OFF,
           ],
         },
       },
@@ -390,7 +431,6 @@ describe("doctor's release catalog check", () => {
               code: "RELEASE_CATALOG_IDENTITY_MISSING",
               scopeKey,
             },
-            PARTITIONING_OFF,
           ],
         },
       },

@@ -88,19 +88,6 @@ export const release_catalogs = pgTable("release_catalogs", {
   primaryKey({ columns: [table["scope_key"]] }),
 ]);
 
-export const release_catalog_partitions = pgTable("release_catalog_partitions", {
-  "scope_key": column("varchar(2048) COLLATE \"C\"")("scope_key").notNull(),
-  "epoch": column("varchar(36) COLLATE \"C\"")("epoch").notNull(),
-  "lower_key": column("varchar(256) COLLATE \"C\"")("lower_key").notNull(),
-  "generation": column("bigint")("generation").notNull(),
-  "payload": column("text COLLATE \"C\"")("payload").notNull(),
-  "partition_hash": column("varchar(71) COLLATE \"C\"")("partition_hash").notNull(),
-  "byte_size": column("bigint")("byte_size").notNull(),
-  "_v": column("bigint")("_v").notNull().default(0),
-}, (table) => [
-  primaryKey({ columns: [table["scope_key"], table["epoch"], table["lower_key"]] }),
-]);
-
 export const channels = pgTable("channels", {
   "id": column("varchar(1408) COLLATE \"C\"")("id").notNull(),
   "name": column("varchar(255) COLLATE \"C\"")("name").notNull(),

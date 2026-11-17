@@ -139,9 +139,6 @@ it("runs the complete contract from the published test-utils package", async () 
       { cwd: directory },
     );
 
-    // The suite waits out the server's 5-second catalog memo in real time:
-    // 103 s locally (93 s before the two 404-memo cases), and about 1.15x
-    // that in CI beside testUtilsMutation; this allows twice that.
     await exec(
       process.execPath,
       [
@@ -150,7 +147,7 @@ it("runs the complete contract from the published test-utils package", async () 
         "--reporter=json",
         "--outputFile=results.json",
       ],
-      { cwd: directory, timeout: 240_000 },
+      { cwd: directory, timeout: 120000 },
     );
     const result = JSON.parse(
       await readFile(path.join(directory, "results.json"), "utf8"),
@@ -183,4 +180,4 @@ it("runs the complete contract from the published test-utils package", async () 
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
-}, 300_000);
+}, 180000);

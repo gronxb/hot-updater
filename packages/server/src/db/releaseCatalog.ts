@@ -18,14 +18,8 @@ export type { ReleaseCatalogRequest };
 export const parseCompiledCatalog = (
   payload: string,
   strategy: ReleaseCatalogRequest["strategy"],
-): CompiledReleaseCatalog =>
-  parseCompiledPayload(JSON.parse(payload), strategy);
-
-/** A stored catalog payload already parsed from JSON, checked as `parseCompiledCatalog` checks it. */
-export const parseCompiledPayload = (
-  parsed: unknown,
-  strategy: ReleaseCatalogRequest["strategy"],
 ): CompiledReleaseCatalog => {
+  const parsed: unknown = JSON.parse(payload);
   if (
     typeof parsed !== "object" ||
     parsed === null ||
@@ -86,16 +80,14 @@ export const parseReleaseCatalogRow = ({
   compiled: parseCompiledCatalog(payload, row.strategy),
 });
 
-/**
- * The update check's answer from a stored row's identity and the two lists
- * for the device's version; null when the row is not this scope's.
- */
-export const releaseCatalogAnswer = (
-  row: Omit<ReleaseCatalogRow, "payload">,
+/** Projects a parsed catalog row for one update check; null when the row is not this scope's. */
+export const projectParsedReleaseCatalogRow = (
+  parsed: ParsedReleaseCatalogRow | null,
   input: ReleaseCatalogRequest,
-  scopeKey: string,
-  lists: () => Pick<ReleaseCatalog, "releases" | "rollbackReleases">,
+  scopeKey = releaseCatalogScopeKeyOf(input),
 ): ReleaseCatalog | null => {
+  if (parsed === null) return null;
+  const { row, compiled } = parsed;
   if (
     row.platform !== input.platform ||
     row.strategy !== input.strategy ||
@@ -106,33 +98,18 @@ export const releaseCatalogAnswer = (
   ) {
     return null;
   }
-  const { releases, rollbackReleases } = lists();
+  const appVersion =
+    input.strategy === "APP_VERSION" ? input.appVersion : undefined;
   return {
     catalogId: row.catalog_id,
     catalogHash: row.catalog_hash,
     fallbackPolicy: RELEASE_CATALOG_FALLBACK_POLICY,
     generation: row.generation,
-    releases,
-    rollbackReleases,
+    releases: projectCompiledCatalog(compiled, appVersion),
+    rollbackReleases: projectCompiledRollbackCatalog(compiled, appVersion),
     schemaVersion: RELEASE_CATALOG_SCHEMA_VERSION,
     scopeKey,
   };
-};
-
-/** Projects a parsed catalog row for one update check; null when the row is not this scope's. */
-export const projectParsedReleaseCatalogRow = (
-  parsed: ParsedReleaseCatalogRow | null,
-  input: ReleaseCatalogRequest,
-  scopeKey = releaseCatalogScopeKeyOf(input),
-): ReleaseCatalog | null => {
-  if (parsed === null) return null;
-  const { row, compiled } = parsed;
-  const appVersion =
-    input.strategy === "APP_VERSION" ? input.appVersion : undefined;
-  return releaseCatalogAnswer(row, input, scopeKey, () => ({
-    releases: projectCompiledCatalog(compiled, appVersion),
-    rollbackReleases: projectCompiledRollbackCatalog(compiled, appVersion),
-  }));
 };
 
 /** Projects a stored catalog row for one update check; null when the row is not this scope's. */

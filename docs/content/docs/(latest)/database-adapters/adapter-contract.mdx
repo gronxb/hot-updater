@@ -45,17 +45,6 @@ interface DatabaseAdapter {
    * first; left out where the backend expires rows natively.
    */
   prune?(table: PhysicalTable, before: number, limit: number): Promise<number>;
-  /**
-   * Runs `read` with a `get` and `query` that all observe one committed
-   * state; left out where every `get` and `query` already sees every
-   * committed write.
-   */
-  readSnapshot?<T>(read: (reader: SnapshotReader) => Promise<T>): Promise<T>;
-  /**
-   * The most queries one request may send, where the runtime caps them;
-   * left out where it doesn't.
-   */
-  readonly maxQueriesPerRequest?: number;
   /** Creates tables; only the migration helpers call it. */
   readonly migrations?: {
     apply(tables: readonly PhysicalTable[]): Promise<void>;
@@ -183,46 +172,28 @@ interface QueryBound {
   factory to cap native pages at two rows and check that every page still
   fills.
 
-## Strong reads and snapshots
+## Strong reads
 
 Each `get` and `query` must see every write committed before it starts. An
 adapter that can read from a replica routes Hot Updater's reads to the
 primary, whatever read preference its client was given.
 
-Some of core's answers read several rows that must agree, such as a release
-catalog's head and the rows it names, or the pages of one listing. Strong
-reads one after another are enough for that: a later read observes a state
-at least as new as an earlier one. A backend that can't promise strong reads
-instead implements `readSnapshot`.
-
-- `readSnapshot(read)` hands `read` a `get` and a `query` that all observe
-  one committed state, and resolves to what `read` returns.
-- `read` only reads, and may run more than once: after a transient failure,
-  such as an election, the adapter starts the whole call over on a fresh
-  snapshot, so no answer mixes two states.
-- Reject with `DatabaseSnapshotConflictError` when transient failures
-  outlast your retries, and with `DatabaseSnapshotUnsupportedError` when
-  the deployment can't take snapshots. Detect support when the call runs,
-  not up front, so a deployment without snapshots serves every other call.
-- Keep nothing past the call: the snapshot ends when `read` settles.
-
 How each built-in adapter meets this:
 
-| Adapter            | How its reads are strong                                                                                                                                        |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MongoDB            | Reads go to the primary. `readSnapshot` reads in a snapshot session (MongoDB 5.0 or later, on a replica set or a sharded cluster), one bounded `find` at a time |
-| Prisma             | Every statement runs on `$primary()` when a read-replica extension adds it                                                                                      |
-| Drizzle            | Every statement runs on `$primary` under `withReplicas`                                                                                                         |
-| Kysely, `postgres` | Your dialect or connection string decides: point it at the primary                                                                                              |
-| Cloudflare D1      | The adapter never opens a D1 session, so every query runs on the primary                                                                                        |
-| Supabase           | Every statement is a POST to the apply RPC, and Supabase's API load balancer sends every request but a GET to the primary                                       |
-| DynamoDB           | Every `BatchGetItem` and `Query` sets `ConsistentRead`, on the base table                                                                                       |
-| Firestore          | The Admin SDK's `getAll` and queries read committed data from the server                                                                                        |
-| Cosmos DB          | The account's Strong consistency; the adapter refuses any other level                                                                                           |
+| Adapter            | How its reads are strong                                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| MongoDB            | Every read goes to the primary                                                                                            |
+| Prisma             | Every statement runs on `$primary()` when a read-replica extension adds it                                                |
+| Drizzle            | Every statement runs on `$primary` under `withReplicas`                                                                   |
+| Kysely, `postgres` | Your dialect or connection string decides: point it at the primary                                                        |
+| Cloudflare D1      | The adapter never opens a D1 session, so every query runs on the primary                                                  |
+| Supabase           | Every statement is a POST to the apply RPC, and Supabase's API load balancer sends every request but a GET to the primary |
+| DynamoDB           | Every `BatchGetItem` and `Query` sets `ConsistentRead`, on the base table                                                 |
+| Firestore          | The Admin SDK's `getAll` and queries read committed data from the server                                                  |
+| Cosmos DB          | The account's Strong consistency; the adapter refuses any other level                                                     |
 
 The conformance suite checks that a read sees the write committed just
-before it, and, for an adapter with `readSnapshot`, that writes landing
-between a snapshot's reads and pages stay out of it.
+before it.
 
 ## Writes and guards
 
@@ -265,14 +236,6 @@ transaction on it conflicts.
 limits on ops, items or bytes. The engine asks before every write and refuses
 a transaction that does not fit with `DatabaseConstraintError` `too_large`,
 before anything is sent. Return `true` when the backend has no limit.
-
-`maxQueriesPerRequest` declares a cap the runtime puts on one request's
-queries, counted as the backend counts them: a Worker's D1 binding declares
-50, the Free plan's limit, where one batch is one query. Core counts a
-release catalog publication too large for one write against it before it
-stages any row, and writes the catalog as one compact row when it wouldn't
-fit, as it does on a store without partitioning. Leave it out when nothing
-caps a request.
 
 ## Consumed rows
 

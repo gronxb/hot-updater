@@ -10,13 +10,13 @@ import {
 } from "@hot-updater/protocol";
 
 import {
-  isRetryableCatalogRead,
-  projectReleaseCatalogState,
-} from "./core/catalogReads";
-import { releaseCatalogScopeKeyOf } from "./db/releaseCatalog";
+  type ParsedReleaseCatalogRow,
+  parseReleaseCatalogRow,
+  projectParsedReleaseCatalogRow,
+  releaseCatalogScopeKeyOf,
+} from "./db/releaseCatalog";
 import { requirePlatformParam, requireRouteParam } from "./handlerParameters";
 import type { HandlerAPI, RouteHandler } from "./handlerTypes";
-import { createReleaseCatalogMemo } from "./releaseCatalogMemo";
 
 const CATALOG_CONTENT_TYPE =
   "application/vnd.hot-updater.release-catalog+json; version=1";
@@ -24,6 +24,8 @@ const ARTIFACT_CONTENT_TYPE =
   "application/vnd.hot-updater.artifact+json; version=1";
 const ARTIFACT_V2_CONTENT_TYPE =
   "application/vnd.hot-updater.artifact+json; version=2";
+const ORIGIN_CACHE_TTL_MS = 5_000;
+const ORIGIN_CACHE_MAX_ENTRIES = 128;
 /** Marks the 404 of a scope that has no catalog. */
 const NO_CATALOG_HEADER = "x-hot-updater-catalog";
 /** A shared cache keeps a catalog, or a scope's lack of one, five seconds. */
@@ -133,20 +135,6 @@ const responseHash = async (body: string): Promise<string> => {
     .join("");
 };
 
-/**
- * A partitioned scope whose rows didn't agree with its head on any read:
- * retryable, and cached nowhere. It is never the marked no-catalog 404, and
- * never a catalog with empty lists.
- */
-const catalogUnavailable = (): Response =>
-  Response.json(
-    { code: "CATALOG_SNAPSHOT_CONFLICT", error: "Service unavailable" },
-    {
-      status: 503,
-      headers: { "cache-control": "private, no-store", "retry-after": "1" },
-    },
-  );
-
 const catalogResponse = async (
   catalog: ReleaseCatalog | null,
   request: Request,
@@ -172,27 +160,58 @@ export const createReleaseCatalogRouteHandlers = (): Record<
   RouteHandler
 > => {
   // Keyed by the scope's catalog key, the row an update check reads: every
-  // app version of a scope shares one read and one parse of a compact row,
-  // and every version inside one partition shares that row.
-  const memo = createReleaseCatalogMemo();
-  const answerCatalog = async (
+  // app version of a scope shares one read and one parse, and each check
+  // projects its own version from the parsed row.
+  const cache = new Map<
+    string,
+    { readonly row: ParsedReleaseCatalogRow; readonly expiresAt: number }
+  >();
+  const inFlight = new Map<string, Promise<ParsedReleaseCatalogRow | null>>();
+  const loadRow = async (
+    scopeKey: string,
+    load: () => Promise<ParsedReleaseCatalogRow | null>,
+  ): Promise<ParsedReleaseCatalogRow | null> => {
+    const cached = cache.get(scopeKey);
+    if (cached !== undefined && cached.expiresAt > Date.now()) {
+      cache.delete(scopeKey);
+      cache.set(scopeKey, cached);
+      return cached.row;
+    }
+    if (cached !== undefined) cache.delete(scopeKey);
+    const pending = inFlight.get(scopeKey);
+    if (pending !== undefined) return pending;
+
+    const next = load().then((row) => {
+      if (row !== null) {
+        cache.set(scopeKey, {
+          row,
+          expiresAt: Date.now() + ORIGIN_CACHE_TTL_MS,
+        });
+        while (cache.size > ORIGIN_CACHE_MAX_ENTRIES) {
+          const oldestKey = cache.keys().next().value as string | undefined;
+          if (oldestKey === undefined) break;
+          cache.delete(oldestKey);
+        }
+      }
+      return row;
+    });
+    inFlight.set(scopeKey, next);
+    try {
+      return await next;
+    } finally {
+      inFlight.delete(scopeKey);
+    }
+  };
+  const loadCatalog = async (
     core: HandlerAPI["core"],
     input: ReleaseCatalogRequest,
-    request: Request,
-  ): Promise<Response> => {
+  ): Promise<ReleaseCatalog | null> => {
     const scopeKey = releaseCatalogScopeKeyOf(input);
-    const appVersion = input.strategy === "APP_VERSION" ? input.appVersion : "";
-    let catalog: ReleaseCatalog | null;
-    try {
-      const state = await memo.load(scopeKey, appVersion, (cached) =>
-        core.readReleaseCatalogState(scopeKey, appVersion, cached),
-      );
-      catalog = projectReleaseCatalogState(state, input, scopeKey);
-    } catch (error) {
-      if (isRetryableCatalogRead(error)) return catalogUnavailable();
-      throw error;
-    }
-    return catalogResponse(catalog, request);
+    const parsed = await loadRow(scopeKey, async () => {
+      const row = await core.getReleaseCatalogRow(scopeKey);
+      return row === null ? null : parseReleaseCatalogRow(row);
+    });
+    return projectParsedReleaseCatalogRow(parsed, input, scopeKey);
   };
 
   return {
@@ -210,7 +229,7 @@ export const createReleaseCatalogRouteHandlers = (): Record<
       } as const;
       const invalid = invalidScope(input);
       if (invalid) return invalid;
-      return answerCatalog(core, input, request);
+      return catalogResponse(await loadCatalog(core, input), request);
     },
 
     fingerprintReleaseCatalog: async (params, request, { core }) => {
@@ -222,7 +241,7 @@ export const createReleaseCatalogRouteHandlers = (): Record<
       } as const;
       const invalid = invalidScope(input);
       if (invalid) return invalid;
-      return answerCatalog(core, input, request);
+      return catalogResponse(await loadCatalog(core, input), request);
     },
 
     artifactV2: async (params, _request, { core }) => {

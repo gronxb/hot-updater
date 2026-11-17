@@ -53,23 +53,12 @@ export interface RetryOptions {
   readonly onRetry?: (kind: "rerun" | "resend", attempt: number) => void;
 }
 
-/** How one `transaction` call commits. */
-export interface TransactionOptions {
-  /** Compile and check the writes against the adapter's `fits`, but never send them. */
-  readonly fitsOnly?: boolean;
-}
-
 type Row = Record<string, unknown>;
 type Lookup = Readonly<Record<string, DatabaseKeyValue>>;
 
 /** The handle `fn` receives, by physical table name; `database()` types it per module. */
 export interface TransactionEngine {
   findOne(table: string, lookup: Lookup): Promise<StoredRow | null>;
-  /** Rows by key in one batch read, each guarded at commit as `findOne` guards it. */
-  findByKeys(
-    table: string,
-    lookups: readonly Lookup[],
-  ): Promise<(StoredRow | null)[]>;
   findMany(table: string, input: ReadInput): Promise<Page<StoredRow>>;
   create(table: string, row: Readonly<Row>): void;
   update(table: string, row: StoredRow, set: Readonly<Row>): void;
@@ -347,23 +336,6 @@ export const createTransactions = ({
           : table.key.map((field) => lookup[field]!);
         return remember(model, key, row);
       }),
-      findByKeys: step(async (name, lookups) => {
-        const model = modelOf(name);
-        const { table } = model;
-        const found = await reads.findByKeys(name, lookups);
-        const whole = await complete(
-          model,
-          found.filter((row): row is StoredRow => row !== null),
-        );
-        let next = 0;
-        return found.map((row, at) => {
-          const current = row === null ? null : whole[next++]!;
-          const key = current
-            ? rowKey(table, current)
-            : table.key.map((field) => lookups[at]![field]!);
-          return remember(model, key, current);
-        });
-      }),
       findMany: step(async (name, input) => {
         const model = modelOf(name);
         const root = model.roots.get(input.index);
@@ -546,15 +518,8 @@ export const createTransactions = ({
   };
 
   return {
-    /**
-     * Runs `fn` and commits its writes as one atomic write, rerunning it on
-     * a conflict. With `fitsOnly`, it compiles the writes and checks them
-     * against the adapter's `fits` but never sends them: it throws
-     * `too_large` as a real commit would, and otherwise returns.
-     */
     async transaction<R>(
       fn: (tx: TransactionEngine) => Promise<R>,
-      { fitsOnly = false }: TransactionOptions = {},
     ): Promise<R> {
       assertOutsideTransaction();
       let run: Awaited<ReturnType<typeof attempt<R>>> | undefined;
@@ -593,7 +558,6 @@ export const createTransactions = ({
         if (!adapter.fits(ops)) {
           throw new DatabaseConstraintError("too_large", ops[0]!.table.name);
         }
-        if (fitsOnly) return run.result;
         let outcome: WriteResult;
         try {
           outcome = await adapter.write(ops);

@@ -1,4 +1,7 @@
-import { ReleaseManagementError } from "@hot-updater/plugin-core";
+import {
+  ReleaseCatalogCompilationError,
+  ReleaseManagementError,
+} from "@hot-updater/plugin-core";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -285,6 +288,49 @@ describe("createStandaloneCoreApi", () => {
     await expect(refusal).rejects.toMatchObject({ code: "VERSION_CONFLICT" });
   });
 
+  it("throws a catalog over the size limit as core does in process, with its message", async () => {
+    const message =
+      'The ios release catalog of channel "production" would be over its 256 KiB limit.\nDisable or delete old bundles on that channel, then try again.';
+    server.use(
+      version(2),
+      http.post(`${BASE_URL}/releases`, () =>
+        HttpResponse.json(
+          { code: "CATALOG_OVERSIZE", error: message },
+          { status: 400 },
+        ),
+      ),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    const refusal = core.deploy([
+      {
+        bundle: {
+          id: "01900000-0000-7000-8000-000000000001",
+          platform: "ios",
+          gitCommitHash: null,
+          manifestStorageUri: "s3://bucket/manifest.json",
+          manifestFileHash: "hash",
+          assetBaseStorageUri: "s3://bucket/assets",
+        },
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: "1.0.x",
+        },
+      },
+    ]);
+    await expect(refusal).rejects.toBeInstanceOf(
+      ReleaseCatalogCompilationError,
+    );
+    await expect(refusal).rejects.toMatchObject({
+      code: "CATALOG_OVERSIZE",
+      message,
+    });
+  });
+
   it("lists release scopes by limit and cursor, and asks for an upgrade where the route is missing", async () => {
     const queries: Record<string, string>[] = [];
     server.use(
@@ -314,33 +360,6 @@ describe("createStandaloneCoreApi", () => {
     await expect(core.listReleaseScopeKeys({ limit: 100 })).rejects.toThrow(
       `The server at ${BASE_URL} has no release scope route`,
     );
-  });
-
-  it("reads the partitioning status, and throws a 404 with its status on a server before it", async () => {
-    let answer: Record<string, unknown> | 404 = {
-      data: { switch: "on", table: "present" },
-    };
-    server.use(
-      version(2),
-      http.get(`${BASE_URL}/release-catalog-partitioning`, () =>
-        answer === 404
-          ? new HttpResponse(null, { status: 404 })
-          : HttpResponse.json(answer),
-      ),
-    );
-    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
-    await expect(core.getReleaseCatalogPartitioning()).resolves.toEqual({
-      switch: "on",
-      table: "present",
-    });
-    answer = { data: { switch: "maybe", table: "present" } };
-    await expect(core.getReleaseCatalogPartitioning()).rejects.toThrow(
-      "invalid release catalog partitioning status",
-    );
-    answer = 404;
-    await expect(core.getReleaseCatalogPartitioning()).rejects.toMatchObject({
-      status: 404,
-    });
   });
 
   it("asks for a server upgrade when the server has no native build routes", async () => {

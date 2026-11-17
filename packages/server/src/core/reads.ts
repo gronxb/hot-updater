@@ -12,7 +12,12 @@ import {
   type HotUpdaterCoreApi,
   parseBaseCandidateKey,
 } from "@hot-updater/plugin-core";
-import type { ReadRow, Page, CoreSchema } from "@hot-updater/plugin-core";
+import type {
+  HotUpdaterDatabase,
+  ReadRow,
+  Page,
+  CoreSchema,
+} from "@hot-updater/plugin-core";
 import {
   ARTIFACT_FILES_PROTOCOL_VERSION,
   ARTIFACT_PROTOCOL_VERSION,
@@ -24,6 +29,7 @@ import {
 } from "@hot-updater/protocol";
 
 import {
+  projectReleaseCatalogRow,
   releaseCatalogScopeKeyOf,
   type ReleaseCatalogRequest,
 } from "../db/releaseCatalog";
@@ -32,18 +38,9 @@ import {
   resolveManifestArtifacts,
   resolveManifestArtifactsV2,
 } from "../db/updateArtifacts";
-import {
-  assemblePublicPage,
-  type CoreDatabase,
-  projectReleaseCatalogState,
-  readBaseBundleIds,
-  readPublicCatalogRow,
-  readReleaseCatalogState,
-  toCatalogRow,
-} from "./catalogReads";
+import { baseBundleIdsOf } from "./baseCandidates";
 
-export type { CoreDatabase };
-export { toCatalogRow };
+export type CoreDatabase = HotUpdaterDatabase<CoreSchema>;
 export type { CoreReads };
 export type { BundleDetail, KeysetInput, ReleaseFilter };
 
@@ -94,6 +91,22 @@ export const toReleaseRow = pick<ReleaseRow>([
   "operation",
   "source_release_id",
   "created_at_ms",
+  "updated_at_ms",
+]);
+
+export const toCatalogRow = pick<ReleaseCatalogRow>([
+  "scope_key",
+  "catalog_id",
+  "strategy",
+  "channel_id",
+  "channel_key",
+  "platform",
+  "fingerprint_hash",
+  "generation",
+  "payload",
+  "catalog_hash",
+  "byte_size",
+  "is_tombstone",
   "updated_at_ms",
 ]);
 
@@ -171,20 +184,17 @@ export const createCoreReads = (
   };
 
   return {
-    /**
-     * The update check: one point read of its scope's catalog, and for a
-     * partitioned scope one read of the row covering the version.
-     */
+    /** The update check: one point read of its scope's catalog. */
     async getReleaseCatalog(
       input: ReleaseCatalogRequest,
     ): Promise<ReleaseCatalog | null> {
       const scopeKey = releaseCatalogScopeKeyOf(input);
-      const state = await readReleaseCatalogState(
-        db,
+      const row = await db.findOne("release_catalogs", { scope_key: scopeKey });
+      return projectReleaseCatalogRow(
+        row === null ? null : toCatalogRow(row),
+        input,
         scopeKey,
-        input.strategy === "APP_VERSION" ? input.appVersion : "",
       );
-      return projectReleaseCatalogState(state, input, scopeKey);
     },
 
     /** Artifact resolution: one batch read of both bundles and one unique read of their patch. */
@@ -320,10 +330,7 @@ export const createCoreReads = (
       return rows[0]?.bundles ?? 0;
     },
 
-    /**
-     * Auto-patch bases for a new bundle: one point read of its scope's
-     * catalog, and for a partitioned scope the rows its range covers.
-     */
+    /** Auto-patch bases for a new bundle: one point read of its scope's catalog. */
     async findBaseBundleIds(
       candidateKey: string,
       bundleId: string,
@@ -331,13 +338,12 @@ export const createCoreReads = (
     ): Promise<string[]> {
       const query = parseBaseCandidateKey(candidateKey);
       if (query === null) return [];
-      return readBaseBundleIds(
-        db,
-        query.scopeKey,
-        query.range,
-        bundleId,
-        limit,
-      );
+      const row = await db.findOne("release_catalogs", {
+        scope_key: query.scopeKey,
+      });
+      return row === null
+        ? []
+        : baseBundleIdsOf(toCatalogRow(row), query.range, bundleId, limit);
     },
 
     async getRelease(id: string): Promise<ReleaseRow | null> {
@@ -415,26 +421,24 @@ export const createCoreReads = (
       return rows[0]?.id ?? null;
     },
 
-    /** A scope's catalog row; a partitioned scope's assembled to today's compact payload. */
-    getReleaseCatalogRow: (
+    async getReleaseCatalogRow(
       scopeKey: string,
-    ): Promise<ReleaseCatalogRow | null> => readPublicCatalogRow(db, scopeKey),
+    ): Promise<ReleaseCatalogRow | null> {
+      const row = await db.findOne("release_catalogs", { scope_key: scopeKey });
+      return row === null ? null : toCatalogRow(row);
+    },
 
-    /** One keyset page of catalog rows; partitioned scopes' assembled. */
     async listReleaseCatalogs(
       input: KeysetInput,
     ): Promise<ReleaseCatalogRow[]> {
-      const readPage = async (reader: Pick<CoreDatabase, "findMany">) =>
-        (
-          await reader.findMany("release_catalogs", {
-            index: "all",
-            where: {},
-            order: input.order ?? "asc",
-            limit: input.limit,
-            ...after(input),
-          })
-        ).rows.map(toCatalogRow);
-      return assemblePublicPage(db, await readPage(db), readPage);
+      const page = await db.findMany("release_catalogs", {
+        index: "all",
+        where: {},
+        order: input.order ?? "asc",
+        limit: input.limit,
+        ...after(input),
+      });
+      return page.rows.map(toCatalogRow);
     },
 
     /**

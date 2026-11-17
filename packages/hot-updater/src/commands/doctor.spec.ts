@@ -87,9 +87,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   nonInteractiveReason: (
     await importOriginal<typeof import("@hot-updater/cli-tools")>()
   ).nonInteractiveReason,
-  partitionCatalogsCommand: (
-    await importOriginal<typeof import("@hot-updater/cli-tools")>()
-  ).partitionCatalogsCommand,
   getBundleSigningPublicKey: (
     await importOriginal<typeof import("@hot-updater/cli-tools")>()
   ).getBundleSigningPublicKey,

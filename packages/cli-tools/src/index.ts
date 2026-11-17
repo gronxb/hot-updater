@@ -20,7 +20,6 @@ export * from "./hotUpdaterConfig";
 export * from "./hotUpdaterEnv";
 export * from "./HotUpdateDirUtil";
 export * from "./infrastructureGeneration";
-export * from "./releaseCatalogPartitioning";
 export * from "./initProvider";
 export * from "./initOptions";
 export * from "./interactive";

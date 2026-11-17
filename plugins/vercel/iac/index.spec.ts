@@ -31,7 +31,6 @@ const mocks = vi.hoisted(() => ({
   makeEnv: vi.fn(),
   migratePostgres: vi.fn(),
   password: vi.fn(),
-  partitioningStatus: vi.fn(),
   postgres: vi.fn(),
   printAppSetup: vi.fn(),
   provisionClientCredential: vi.fn(),
@@ -134,14 +133,7 @@ beforeEach(() => {
   mocks.readHotUpdaterTables.mockResolvedValue([]);
   mocks.migratePostgres.mockResolvedValue("1.0.0");
   mocks.postgres.mockReturnValue({ dispose: mocks.dispose });
-  mocks.assembleServer.mockReturnValue({
-    clientPlugins: [],
-    core: { getReleaseCatalogPartitioning: mocks.partitioningStatus },
-  });
-  mocks.partitioningStatus.mockResolvedValue({
-    switch: "off",
-    table: "present",
-  });
+  mocks.assembleServer.mockReturnValue({ clientPlugins: [] });
   mocks.provisionClientCredential.mockResolvedValue({
     env: "HOT_UPDATER_API_KEY",
     header: "x-api-key",
@@ -162,21 +154,6 @@ beforeEach(() => {
 });
 
 describe("Vercel init", () => {
-  it("reports a database an earlier run partitioned as partitioned", async () => {
-    mocks.partitioningStatus.mockResolvedValue({
-      switch: "on",
-      table: "present",
-    });
-    givenInitEnv(replayEnv);
-    await runInit({ build: "bare", envFile: ".env.hotupdater" });
-    expect(mocks.log.success).toHaveBeenCalledWith(
-      "Release catalogs are partitioned.",
-    );
-    expect(mocks.log.warn).not.toHaveBeenCalledWith(
-      expect.stringContaining("single-row"),
-    );
-  });
-
   it("replays saved inputs: creates the project and Blob store, migrates, deploys, and writes the config", async () => {
     givenInitEnv(replayEnv);
 
@@ -251,11 +228,6 @@ describe("Vercel init", () => {
     );
     expect(mocks.printAppSetup).toHaveBeenCalledWith(
       expect.objectContaining({ baseURL: "https://hot-updater.vercel.app" }),
-    );
-    // Vercel reports no point at which the previous deployment stops
-    // serving: partitioning stays off, with the command to run.
-    expect(mocks.log.warn).toHaveBeenCalledWith(
-      "Release catalogs stay single-row: the platform can't confirm that every server instance runs this release.\nOnce every server runs 1.2.0, partition them:\nnpx hot-updater db partition-catalogs --server-url https://hot-updater.vercel.app",
     );
     // Deploys after migrating: the Function answers 503 until the settings exist.
     expect(mocks.migratePostgres.mock.invocationCallOrder[0]).toBeLessThan(

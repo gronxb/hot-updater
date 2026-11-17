@@ -28,8 +28,6 @@ CREATE INDEX IF NOT EXISTS "releases_byBundle" ON "releases" ("bundle_id", "id")
 
 CREATE TABLE IF NOT EXISTS "release_catalogs" ("scope_key" TEXT NOT NULL, "catalog_id" TEXT NOT NULL, "strategy" TEXT NOT NULL, "channel_id" TEXT NOT NULL, "channel_key" TEXT NOT NULL, "platform" TEXT NOT NULL, "fingerprint_hash" TEXT, "generation" INTEGER NOT NULL, "payload" TEXT NOT NULL, "catalog_hash" TEXT NOT NULL, "byte_size" INTEGER NOT NULL, "is_tombstone" INTEGER NOT NULL, "updated_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("scope_key"));
 
-CREATE TABLE IF NOT EXISTS "release_catalog_partitions" ("scope_key" TEXT NOT NULL, "epoch" TEXT NOT NULL, "lower_key" TEXT NOT NULL, "generation" INTEGER NOT NULL, "payload" TEXT NOT NULL, "partition_hash" TEXT NOT NULL, "byte_size" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("scope_key", "epoch", "lower_key"));
-
 CREATE TABLE IF NOT EXISTS "channels" ("id" TEXT NOT NULL, "name" TEXT NOT NULL, "_refs_releases_channel_id" INTEGER NOT NULL DEFAULT 0, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
 CREATE INDEX IF NOT EXISTS "channels_all" ON "channels" ("name", "id");

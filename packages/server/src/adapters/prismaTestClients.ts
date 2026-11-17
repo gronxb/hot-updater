@@ -9,7 +9,6 @@ import { promisify } from "node:util";
 import type { PGlite, Transaction } from "@electric-sql/pglite";
 import type { ToolingTarget } from "@hot-updater/plugin-core";
 import type { Pool as MysqlPool, PoolConnection } from "mysql2/promise";
-import type { Pool as PgPool, PoolClient } from "pg";
 
 import { prismaAdapter, type PrismaProvider } from "./prisma";
 import type {
@@ -94,32 +93,6 @@ export const sqlitePrisma = (db: DatabaseSync): PrismaTransactionalClient => {
           throw error;
         }
       }),
-  };
-};
-
-/** Prisma's raw query API over a node-postgres pool. */
-export const pgPrisma = (pool: PgPool): PrismaTransactionalClient => {
-  const over = (runner: PgPool | PoolClient) =>
-    raw(
-      async (sql, params) => (await runner.query(sql, params)).rows,
-      async (sql, params) => (await runner.query(sql, params)).rowCount ?? 0,
-    );
-  return {
-    ...over(pool),
-    async $transaction(fn) {
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        const result = await fn(over(client));
-        await client.query("COMMIT");
-        return result;
-      } catch (error) {
-        await client.query("ROLLBACK").catch(() => undefined);
-        throw error;
-      } finally {
-        client.release();
-      }
-    },
   };
 };
 

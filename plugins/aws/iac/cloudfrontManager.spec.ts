@@ -13,7 +13,6 @@ const mockCloudFront = vi.hoisted(() => ({
   createOriginRequestPolicy: vi.fn(),
   listDistributions: vi.fn(),
   getDistributionConfig: vi.fn(),
-  getDistribution: vi.fn(),
   updateDistribution: vi.fn(),
   createInvalidation: vi.fn(),
 }));
@@ -286,12 +285,11 @@ describe("CloudFrontManager", () => {
       InvalidationBatch: {
         CallerReference: expect.any(String),
         Paths: {
-          Quantity: 6,
+          Quantity: 5,
           Items: [
             "/events",
             "/artifacts/*",
             "/version",
-            "/release-catalog-partitioning",
             "/release-catalogs/*",
             "/remote-config",
           ],
@@ -759,40 +757,6 @@ describe("CloudFrontManager", () => {
       expect.objectContaining({
         initialValue: "saved-dist-id",
       }),
-    );
-  });
-
-  it("waits for the distribution to be Deployed everywhere, or says why not", async () => {
-    const manager = new CloudFrontManager("ap-northeast-2", {
-      accessKeyId: "test-access-key",
-      secretAccessKey: "test-secret-key",
-    });
-    let clock = 0;
-    const timing = {
-      now: () => clock,
-      sleep: async (ms: number) => {
-        clock += ms;
-      },
-      intervalMs: 1000,
-      timeoutMs: 3000,
-    };
-    mockCloudFront.getDistribution
-      .mockResolvedValueOnce({ Distribution: { Status: "InProgress" } })
-      .mockResolvedValueOnce({ Distribution: { Status: "InProgress" } })
-      .mockResolvedValueOnce({ Distribution: { Status: "Deployed" } });
-    await expect(manager.waitForDeployed("dist-id", timing)).resolves.toBe(
-      true,
-    );
-    expect(mockCloudFront.getDistribution).toHaveBeenCalledWith({
-      Id: "dist-id",
-    });
-
-    clock = 0;
-    mockCloudFront.getDistribution.mockResolvedValue({
-      Distribution: { Status: "InProgress" },
-    });
-    await expect(manager.waitForDeployed("dist-id", timing)).resolves.toBe(
-      "CloudFront distribution dist-id is still InProgress after 0 minutes.",
     );
   });
 });

@@ -267,22 +267,6 @@ separate validation result.
   - Retry: repair the specific failed prerequisite. Pause only for missing access,
     unresolved choices or unsafe/unknown remote state.
 
-- [ ] **common.partition — Partition release catalogs**
-  - Requires: common.verify, and the platform's own confirmation that every
-    server instance serving this database runs 1.2.0. On AWS that is
-    `GetDistribution` reporting `Status: Deployed` after the last distribution
-    update. Other platforms report no such point: confirm with the operator
-    that no older server still serves this database.
-  - Run from the app: `hot-updater db partition-catalogs --server-url <base-url> -y`.
-    The server checks its partitions table with its own credentials, then turns
-    partitioning on. Nothing turns it off.
-  - Verify/record: the command says release catalogs are partitioned, and
-    `hot-updater doctor --json --server-base-url <base-url>` reports
-    `details.releaseCatalogs.partitioning.switch: "on"`. Record partitionedAt.
-  - Retry: a refusal changes nothing and names its cause, such as a server
-    before 1.2.0 (404), a partitions table the server can't read, or MongoDB
-    without snapshot reads. Fix it, then run the same command.
-
 - [ ] **common.report — Report completion within the requested scope**
   - Requires: common.verify and common.local.
   - Run: resolve and download an existing artifact when available; the server

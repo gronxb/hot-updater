@@ -99,7 +99,6 @@ import {
   handleNativeBuildDevicesRename,
 } from "./commands/nativeBuildDevices";
 import { handleNativeBuildImport } from "./commands/nativeBuildImport";
-import { handlePartitionCatalogs } from "./commands/partitionCatalogs";
 import { handlePromote } from "./commands/promote";
 import {
   handleRemoteConfigPreview,
@@ -1449,21 +1448,6 @@ dbCommand
   .option("-y, --yes", "skip confirmation prompt", false)
   .action(async (configPath: string | undefined, options: { yes: boolean }) => {
     await migrate({ configPath: configPath || "", skipConfirm: options.yes });
-  });
-
-// db partition-catalogs - asks the server to turn partitioning on
-dbCommand
-  .command("partition-catalogs")
-  .description(
-    "Partition release catalogs, once every server runs 1.2.0: the server checks its database and turns it on. It can't be turned off.",
-  )
-  .option(
-    "--server-url <url>",
-    "the URL apps check for updates at, when hot-updater.config.ts names the server's database instead of standaloneRepository",
-  )
-  .option("-y, --yes", "skip confirmation prompt", false)
-  .action(async (options: { serverUrl?: string; yes: boolean }) => {
-    await handlePartitionCatalogs(options);
   });
 
 // db generate - SQL generation command

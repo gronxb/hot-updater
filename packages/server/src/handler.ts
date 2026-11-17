@@ -4,10 +4,6 @@ import type { MountedEndpoint } from "./assembly/assemblePlugins";
 import { HotUpdaterConfigError } from "./assembly/assemblePlugins";
 import { ADMIN_ROUTES, createAdminRouteHandlers } from "./handlerAdminRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
-import {
-  createPartitioningRouteHandlers,
-  PARTITIONING_PATH,
-} from "./handlerPartitioningRoutes";
 import { createReleaseCatalogRouteHandlers } from "./handlerReleaseCatalogRoutes";
 import type {
   HandlerAPI,
@@ -51,12 +47,7 @@ export interface ClientRoutePolicy {
 }
 
 /** `/version` never passes through the client policy. */
-const PUBLIC_CLIENT_ROUTES = new Set([
-  "version",
-  // Its request token, which only the database's credentials can store, is
-  // its authentication; a client credential is not.
-  "requestReleaseCatalogPartitioning",
-]);
+const PUBLIC_CLIENT_ROUTES = new Set(["version"]);
 
 export type RouteAccess = "public" | "client" | "admin";
 
@@ -182,7 +173,6 @@ export function createHotUpdaterHandlers({
     ...createVersionRouteHandlers(plugins),
     ...createReleaseCatalogRouteHandlers(),
     ...createAdminRouteHandlers(),
-    ...createPartitioningRouteHandlers(),
   };
 
   const routes: HotUpdaterRoute[] = [];
@@ -237,11 +227,6 @@ export function createHotUpdaterHandlers({
     "POST",
     "/artifacts/v2/:targetBundleId/files",
     "artifactFilesV2",
-  );
-  addClientRoute(
-    "POST",
-    PARTITIONING_PATH,
-    "requestReleaseCatalogPartitioning",
   );
 
   const adminRouter = createRouter<string>();

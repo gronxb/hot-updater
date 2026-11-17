@@ -38,7 +38,6 @@ import {
   type MeasuredDatabaseStorage,
 } from "./createMeasuredDatabase";
 import { createBundleFixture } from "./databaseTestFixtures";
-import { createReleaseCatalogPartitionFixture } from "./releaseCatalogPartitionFixture";
 import type { RowsExamined } from "./sqlRowsExamined";
 
 /** Core's API with the client routes' reads, which the public API leaves out. */
@@ -155,12 +154,6 @@ export interface ReadBudgetAdapterContext {
 
 export interface ReadBudgetSuiteOptions {
   readonly name: string;
-  /**
-   * `false` for a database without `release_catalog_partitions`, as a 1.2
-   * prerelease's is until its by-hand step: no scope is partitioned, and the
-   * partitioned scope's budgets are left out.
-   */
-  readonly partitions?: false;
   /** Returns an adapter over freshly created, empty tables. */
   readonly createAdapter: (context: ReadBudgetAdapterContext) => Promise<{
     readonly adapter: DatabaseAdapter;
@@ -511,34 +504,20 @@ type Seeded = Awaited<ReturnType<typeof seed>>;
 interface ReadBudget<T = unknown> {
   readonly api: string;
   read(seeded: Seeded): Promise<T>;
-  /**
-   * Point reads (keys asked) and query rows at the adapter; `copies` when
-   * index reads return copies, `snapshots` when the adapter reads a
-   * partitioned catalog's head again in a snapshot (`readSnapshot`).
-   */
+  /** Point reads (keys asked) and query rows at the adapter; `copies` when index reads return copies. */
   readonly adapter:
     | DatabaseReadCount
-    | ((copies: boolean, snapshots: boolean) => DatabaseReadCount);
+    | ((copies: boolean) => DatabaseReadCount);
   /** Calls and logical rows at the engine, where an aggregate row merges its shard rows. */
-  readonly engine:
-    | { readonly calls: number; readonly rows: number }
-    | ((snapshots: boolean) => {
-        readonly calls: number;
-        readonly rows: number;
-      });
+  readonly engine: { readonly calls: number; readonly rows: number };
   /** The rows the call returns: the engine reads these and no more. */
   returned?(result: T): number;
   /** Committed writes. */
   readonly writes?: number;
-  /** Reads the partitioned scope: left out where the table is missing. */
-  readonly partitioned?: true;
   check?(result: T): void;
 }
 
 const budget = <T>(entry: ReadBudget<T>): ReadBudget => entry;
-
-/** The partitioned scope's compact row before it was partitioned, by scope key. */
-const partitionedCompact = new Map<string, unknown>();
 
 const BUDGET_PENDING_UDID = "00008030-000000000000000a";
 const BUDGET_APPROVED_UDID = "00008030-000000000000000b";
@@ -556,28 +535,6 @@ const updateCheck = {
   channelKey: encodeChannelKey("production"),
   appVersion: "1.0.0",
 } as const;
-
-/**
- * Staging iOS, partitioned in place after the seed: its two 1.0.0 releases
- * in three rows, the 1.0.0 row between two gaps.
- */
-const partitionedScopeKey = createReleaseCatalogScopeKey({
-  channelKey: encodeChannelKey("staging"),
-  platform: "ios",
-  strategy: "APP_VERSION",
-});
-const PARTITION_ROWS = 3;
-/** An epoch no head names, which the first deploy into the scope reclaims. */
-const RETIRED_EPOCH = "0a0a0a0a-0000-4000-8000-000000000000";
-/** Catalogs the seed leaves: production iOS and Android, beta and staging iOS. */
-const CATALOGS = 4;
-/** The head, then (with snapshots) the head again and the rest in one snapshot. */
-const headThen = (
-  snapshots: boolean,
-  queries: number,
-  rows: number,
-): DatabaseReadCount =>
-  snapshots ? reads(2, 2, queries, rows) : reads(1, 1, queries, rows);
 
 /** The PRD's read-budget list, each count exact at both boundaries. */
 const READ_BUDGETS: readonly ReadBudget[] = [
@@ -723,112 +680,6 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       ),
   }),
   budget({
-    api: "update check, partitioned scope: the head and the row covering the version",
-    partitioned: true,
-    read: ({ core }) =>
-      core.getReleaseCatalog({
-        ...updateCheck,
-        channelKey: encodeChannelKey("staging"),
-      }),
-    adapter: (_copies, snapshots) => headThen(snapshots, 1, 1),
-    engine: (snapshots) => ({
-      calls: snapshots ? 3 : 2,
-      rows: snapshots ? 3 : 2,
-    }),
-    check: (catalog) =>
-      expect(
-        (catalog as ReleaseCatalog | null)?.releases.map(
-          ({ bundleId }) => bundleId,
-        ),
-      ).toEqual(["092", "091"].map((suffix) => createBundleFixture(suffix).id)),
-  }),
-  budget({
-    api: "deploy base candidates, partitioned scope: the head and the row covering the range",
-    partitioned: true,
-    read: ({ core }) =>
-      core.findBaseBundleIds(
-        targetBaseCandidateKey({
-          channel: "staging",
-          platform: "ios",
-          fingerprintHash: null,
-          appVersion: "1.0.0",
-        })!,
-        createBundleFixture("107").id,
-        2,
-      ),
-    adapter: (_copies, snapshots) => headThen(snapshots, 1, 1),
-    engine: (snapshots) => ({
-      calls: snapshots ? 3 : 2,
-      rows: snapshots ? 3 : 2,
-    }),
-    check: (ids) =>
-      expect(ids).toEqual(
-        ["092", "091"].map((suffix) => createBundleFixture(suffix).id),
-      ),
-  }),
-  budget({
-    api: "deploy base candidates, partitioned scope, open range: the head, one row, then the page below it",
-    partitioned: true,
-    read: ({ core }) =>
-      core.findBaseBundleIds(
-        targetBaseCandidateKey({
-          channel: "staging",
-          platform: "ios",
-          fingerprintHash: null,
-          appVersion: "*",
-        })!,
-        createBundleFixture("107").id,
-        2,
-      ),
-    adapter: (_copies, snapshots) => headThen(snapshots, 2, PARTITION_ROWS),
-    engine: (snapshots) => ({
-      calls: snapshots ? 4 : 3,
-      rows: (snapshots ? 2 : 1) + PARTITION_ROWS,
-    }),
-    check: (ids) =>
-      expect(ids).toEqual(
-        ["092", "091"].map((suffix) => createBundleFixture(suffix).id),
-      ),
-  }),
-  budget({
-    api: "catalog list page with a partitioned scope: the page, and that scope's rows, assembled",
-    partitioned: true,
-    read: ({ core }) => core.listReleaseCatalogs({ limit: 10 }),
-    // Snapshots read the page again in one snapshot with the head's rows.
-    adapter: (_copies, snapshots) =>
-      snapshots
-        ? reads(0, 0, 3, 2 * CATALOGS + PARTITION_ROWS)
-        : reads(0, 0, 2, CATALOGS + PARTITION_ROWS),
-    engine: (snapshots) =>
-      snapshots
-        ? { calls: 3, rows: 2 * CATALOGS + PARTITION_ROWS }
-        : { calls: 2, rows: CATALOGS + PARTITION_ROWS },
-    check: (rows) =>
-      expect(
-        (rows as { scope_key: string }[]).find(
-          (row) => row.scope_key === partitionedScopeKey,
-        ),
-      ).toEqual(partitionedCompact.get(partitionedScopeKey)),
-  }),
-  budget({
-    api: "catalog row, partitioned scope: the head and its epoch's rows, assembled to the compact row",
-    partitioned: true,
-    read: ({ core }) => core.getReleaseCatalogRow(partitionedScopeKey),
-    adapter: (_copies, snapshots) => headThen(snapshots, 1, PARTITION_ROWS),
-    engine: (snapshots) => ({
-      calls: snapshots ? 3 : 2,
-      rows: (snapshots ? 2 : 1) + PARTITION_ROWS,
-    }),
-    check: (row) =>
-      expect(row).toEqual(partitionedCompact.get(partitionedScopeKey)),
-  }),
-  budget({
-    api: "ready: one raw catalog row, never an assembled scope",
-    read: ({ core }) => (core as unknown as { ready(): Promise<void> }).ready(),
-    adapter: reads(0, 0, 1, 1),
-    engine: { calls: 1, rows: 1 },
-  }),
-  budget({
     api: "deploy latest release id: byScope descending, limit 1",
     read: ({ core }) => core.latestReleaseId(scopeKey),
     adapter: reads(0, 0, 1, 1),
@@ -838,8 +689,7 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     api: "catalog preflight: 1 catalog point read and the scope's enabled releases",
     // Doctor's check of each scope: it writes nothing, so it reads the
     // catalog once, without a transaction's guard reads, and no newest
-    // release, which matters only to a scope without a catalog. A compact
-    // scope is checked on its content, so it reads no switch.
+    // release, which matters only to a scope without a catalog.
     read: ({ core }) => core.preflightReleaseCatalogRebuild(scopeKey),
     // Production iOS holds 4 enabled releases.
     adapter: reads(1, 1, 1, 4),
@@ -1303,14 +1153,13 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       }),
   }),
   budget({
-    api: "catalog compile: the scope's enabled releases, all used, and the partitioning switch",
+    api: "catalog compile: the scope's enabled releases, all used",
     // A deploy reads the channel, the scope's catalog (once, then as the root
     // of each range), its 4 enabled releases, and its latest release; with
-    // copies, it reads those 5 releases whole. A compact app-version scope
-    // also reads the persisted switch: one point read.
+    // copies, it reads those 5 releases whole.
     read: ({ core }) =>
       core.deploy([{ bundle: bundleOf("107"), release: production }]),
-    adapter: (copies) => reads(copies ? 6 : 4, copies ? 9 : 4, 3, 6),
+    adapter: (copies) => reads(copies ? 5 : 3, copies ? 8 : 3, 3, 6),
     engine: { calls: 6, rows: 9 },
     writes: 1,
   }),
@@ -1513,87 +1362,6 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     engine: { calls: 2, rows: 1 },
     writes: 1,
   }),
-  // Writes into the partitioned scope run last: they change its rows.
-  budget({
-    api: "deploy into a partitioned scope with a retired epoch: no enabled-release page; one cleanup page and transaction",
-    partitioned: true,
-    // The channel; the head through the transaction (and again in the
-    // snapshot, with snapshots); discovery; the row the range lands in, then
-    // again through the transaction for its guard; the latest release (the
-    // head as root, then the page). Then one cleanup step: the retired
-    // epoch's page, and its transaction's head, R and rows in one batch.
-    read: ({ core }) =>
-      core.deploy([
-        {
-          bundle: bundleOf("093"),
-          release: { ...production, channel: "staging" },
-        },
-      ]),
-    adapter: (copies, snapshots) =>
-      reads(
-        7 + (snapshots ? 1 : 0) + (copies ? 1 : 0),
-        7 + (snapshots ? 1 : 0) + (copies ? 1 : 0),
-        5,
-        5,
-      ),
-    engine: (snapshots) => ({
-      calls: snapshots ? 13 : 12,
-      rows: snapshots ? 11 : 10,
-    }),
-    writes: 2,
-  }),
-  budget({
-    api: "deploy into a partitioned scope, the retired epoch drained: one empty page, then the marker's transaction",
-    partitioned: true,
-    // As above, then the marker: its empty page, and a transaction that
-    // reads the head, R, X's rows once more after them (rule E), and the
-    // marker.
-    read: ({ core }) =>
-      core.deploy([
-        {
-          bundle: bundleOf("094"),
-          release: { ...production, channel: "staging" },
-        },
-      ]),
-    adapter: (copies, snapshots) =>
-      reads(
-        7 + (snapshots ? 1 : 0) + (copies ? 1 : 0),
-        7 + (snapshots ? 1 : 0) + (copies ? 1 : 0),
-        6,
-        5,
-      ),
-    engine: (snapshots) => ({
-      calls: snapshots ? 14 : 13,
-      rows: snapshots ? 12 : 11,
-    }),
-    writes: 2,
-  }),
-  budget({
-    api: "deploy into a partitioned scope, nothing to reclaim: no enabled-release page, and no cleanup read",
-    partitioned: true,
-    // The channel, the head, discovery, the covering row (read, then guarded
-    // through the transaction), and the latest release; the cleanup step
-    // reuses the discovery and reads nothing.
-    read: ({ core }) =>
-      core.deploy([
-        {
-          bundle: bundleOf("095"),
-          release: { ...production, channel: "staging" },
-        },
-      ]),
-    adapter: (copies, snapshots) =>
-      reads(
-        4 + (snapshots ? 1 : 0) + (copies ? 1 : 0),
-        4 + (snapshots ? 1 : 0) + (copies ? 1 : 0),
-        4,
-        4,
-      ),
-    engine: (snapshots) => ({
-      calls: snapshots ? 9 : 8,
-      rows: snapshots ? 9 : 8,
-    }),
-    writes: 1,
-  }),
 ];
 
 /**
@@ -1639,30 +1407,6 @@ export const setupReadBudgetTestSuite = (
       // Seeding also passes the schema fence of a fenced adapter, such as
       // D1's, so no budget pays for it.
       seeded = await seed(database);
-      if (options.partitions !== false) {
-        partitionedCompact.set(
-          partitionedScopeKey,
-          await seeded.core.getReleaseCatalogRow(partitionedScopeKey),
-        );
-        const fixture = createReleaseCatalogPartitionFixture(adapter);
-        const { rows } = await fixture.partition(partitionedScopeKey);
-        expect(rows).toHaveLength(PARTITION_ROWS);
-        // A retired epoch, as a staged flip leaves it: one row and its marker.
-        await fixture.writeRows(partitionedScopeKey, [
-          { ...rows[0]!, epoch: RETIRED_EPOCH },
-          {
-            epoch: "#",
-            generation: rows[0]!.generation,
-            lowerKey: RETIRED_EPOCH,
-            partition: {
-              byteSize: 18,
-              lowerKey: RETIRED_EPOCH,
-              partitionHash: rows[0]!.partition.partitionHash,
-              payload: JSON.stringify({ maxRowBytes: 600 }),
-            },
-          },
-        ]);
-      }
     }, 300_000);
 
     afterAll(async () => {
@@ -1670,23 +1414,18 @@ export const setupReadBudgetTestSuite = (
     });
 
     for (const budget of READ_BUDGETS) {
-      if (options.partitions === false && budget.partitioned) continue;
       it(budget.api, async () => {
         const { examined, indexCopies = false } = created;
         writes = 0;
         examined?.reset();
         const measured = await database.measureReads(() => budget.read(seeded));
-        const snapshots = created.adapter.readSnapshot !== undefined;
         const adapter =
           typeof budget.adapter === "function"
-            ? budget.adapter(indexCopies, snapshots)
+            ? budget.adapter(indexCopies)
             : budget.adapter;
         expect({ adapter: measured.adapter, engine: measured.engine }).toEqual({
           adapter,
-          engine:
-            typeof budget.engine === "function"
-              ? budget.engine(snapshots)
-              : budget.engine,
+          engine: budget.engine,
         });
         expect(writes, "writes").toBe(budget.writes ?? 0);
         if (budget.returned) {

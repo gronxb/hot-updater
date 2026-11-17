@@ -37,13 +37,6 @@ export interface AssembledServer {
     /** The request headers its decision reads, lowercase. */
     readonly varyHeaders: readonly string[];
   };
-  /**
-   * Over the server's database: stores a single-use, ten-minute request
-   * token for the server's `POST /release-catalog-partitioning` client
-   * route, and returns it. Undefined over `standaloneRepository`, whose
-   * admin route the server's framework authenticates instead.
-   */
-  readonly issueReleaseCatalogPartitioningToken?: () => Promise<string>;
 }
 
 /** What `assembleServer` runs: hot-updater.config.ts's `database`, `storage`, and `plugins`. */
@@ -117,8 +110,6 @@ export function assembleServer({
   return {
     database,
     core: server.core,
-    issueReleaseCatalogPartitioningToken:
-      server.core.issueReleaseCatalogPartitioningToken,
     plugins: server.plugins,
     api: server.api,
     clientPlugins: server.clientPlugins,

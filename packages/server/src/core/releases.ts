@@ -4,6 +4,7 @@ import {
   createUUIDv7After,
   isUUIDv7,
   releaseRowToRelease,
+  ReleaseCatalogCompilationError,
   ReleaseCatalogMutationError,
   type BundlePatchRow,
   type BundleRow,
@@ -17,15 +18,9 @@ import {
   createReleaseCatalogScopeKey,
   decodeChannelKey,
   encodeChannelKey,
+  MAX_COMPILED_CATALOG_BYTES,
 } from "@hot-updater/protocol";
 
-import { mayBeHead, readPublicCatalogRow } from "./catalogReads";
-import {
-  type CatalogWriteOptions,
-  type CatalogWriter,
-  projectRebuild,
-  writeReleaseCatalogs,
-} from "./catalogWrites";
 import { toCatalogRow, toReleaseRow, type CoreDatabase } from "./reads";
 import { insertBundle, type CoreTransaction } from "./writes";
 
@@ -60,8 +55,6 @@ export interface ReleaseChangeResult {
   readonly catalog: ReleaseCatalogRow;
   readonly release: ReleaseRow | null;
   readonly diagnostics: ReleaseCatalogCompilation["diagnostics"];
-  /** A preflight's current public row of a partitioned scope. */
-  readonly current?: ReleaseCatalogRow | null;
 }
 
 const fail = (
@@ -169,6 +162,33 @@ const nextCatalog = (
   };
 };
 
+/**
+ * Compiles a scope's enabled releases. A catalog over the size limit is
+ * refused naming its channel and platform, and what frees room in it.
+ */
+const compileScope = async (
+  scope: Pick<ReleaseCatalogScope, "channelName" | "platform" | "strategy">,
+  enabled: readonly ReleaseRow[],
+) => {
+  try {
+    return await compileReleaseCatalog({
+      strategy: scope.strategy,
+      releases: enabled.map(releaseRowToRelease),
+    });
+  } catch (error) {
+    if (
+      !(error instanceof ReleaseCatalogCompilationError) ||
+      error.code !== "CATALOG_OVERSIZE"
+    ) {
+      throw error;
+    }
+    throw new ReleaseCatalogCompilationError(
+      "CATALOG_OVERSIZE",
+      `The ${scope.platform} release catalog of channel "${scope.channelName}" would be over its ${MAX_COMPILED_CATALOG_BYTES / 1024} KiB limit.\nDisable or delete old bundles on that channel, then try again.`,
+    );
+  }
+};
+
 /** Compiles `enabled` and writes it as the scope's next catalog generation. */
 const writeCatalog = async (
   tx: CoreTransaction,
@@ -177,10 +197,7 @@ const writeCatalog = async (
   enabled: readonly ReleaseRow[],
   updatedAtMs: number,
 ) => {
-  const compilation = await compileReleaseCatalog({
-    strategy: scope.strategy,
-    releases: enabled.map(releaseRowToRelease),
-  });
+  const compilation = await compileScope(scope, enabled);
   const catalog = nextCatalog(scope, stored, compilation, updatedAtMs);
   const { scope_key: _scopeKey, ...set } = catalog;
   if (stored.row === null) tx.create("release_catalogs", catalog);
@@ -188,7 +205,7 @@ const writeCatalog = async (
   return { catalog, compilation };
 };
 
-/** The scope's catalog row, as stored, and its generation if it has one. */
+/** The scope's catalog row, and its compiled catalog and generation if it has one. */
 export const readCatalog = async (tx: CoreTransaction, scopeKey: string) => {
   const row = await tx.findOne("release_catalogs", { scope_key: scopeKey });
   return {
@@ -211,23 +228,14 @@ const assertHistory = (
   }
 };
 
-/**
- * One release change and its scope's next catalog, inside `tx`, written as
- * `writer` writes catalogs: today's compact row, or a partitioned scope's
- * head and rows. An insert into a partitioned scope reads only the rows its
- * range lands in, never the scope's releases.
- */
+/** One release change and its scope's next catalog, inside `tx`. */
 export const changeRelease = async (
   tx: CoreTransaction,
   { scope, change, bundle, updatedAtMs }: ReleaseChangeInput,
-  writer: CatalogWriter,
 ): Promise<ReleaseChangeResult> => {
   checkScope(scope);
   const stored = await readCatalog(tx, scope.scopeKey);
-  const layout = await writer.layout(tx, scope, stored.row);
-  let enabledRead: Promise<ReleaseRow[]> | undefined;
-  const enabled = () => (enabledRead ??= enabledReleases(tx, scope.scopeKey));
-  if (layout === "compact" || change.operation !== "insert") await enabled();
+  const enabled = await enabledReleases(tx, scope.scopeKey);
   if (bundle !== undefined) {
     insertBundle(tx, bundle.row);
     for (const patch of bundle.patches) tx.create("bundle_patches", patch);
@@ -244,14 +252,8 @@ export const changeRelease = async (
       .filter((id): id is string => id !== null)
       .sort()
       .at(-1);
-    // A staged publication's flip writes the release its rows were staged with.
-    const id =
-      writer.plannedReleaseId(scope.scopeKey) ??
-      change.row.id ??
-      createUUIDv7After(floor ?? null);
+    const id = change.row.id ?? createUUIDv7After(floor ?? null);
     if (latest !== null && id <= latest) {
-      // A staged release overtaken by another write: its base moved, so it restarts.
-      writer.checkPlannedRelease(scope.scopeKey, id);
       fail(
         "NON_MONOTONIC_RELEASE_ID",
         `Release "${id}" must sort after "${latest}"`,
@@ -292,49 +294,18 @@ export const changeRelease = async (
     }
   }
   const changedId = before?.id ?? release?.id;
-  const nextOf = async () =>
-    [
-      ...(await enabled()).filter(({ id }) => id !== changedId),
-      ...(release?.enabled ? [release] : []),
-    ].sort((left, right) => (left.id < right.id ? -1 : 1));
-  let current: ReleaseCatalogRow | null | undefined;
-  if (layout === "partitioned") {
-    const published = await writer.publish(tx, {
-      change:
-        change.operation === "insert"
-          ? { kind: "insert", next: nextOf, release: release! }
-          : { kind: "recompute", next: await nextOf() },
-      release,
-      row: stored.row,
-      scope,
-      updatedAtMs,
-    });
-    if (published.catalog !== null) {
-      return {
-        catalog: published.catalog,
-        diagnostics: published.diagnostics!,
-        release,
-        ...(published.current === undefined
-          ? {}
-          : { current: published.current }),
-      };
-    }
-    current = published.current;
-  }
+  const next = [
+    ...enabled.filter(({ id }) => id !== changedId),
+    ...(release?.enabled ? [release] : []),
+  ].sort((left, right) => (left.id < right.id ? -1 : 1));
   const { catalog, compilation } = await writeCatalog(
     tx,
     scope,
     stored,
-    await nextOf(),
+    next,
     updatedAtMs,
   );
-  await writer.wroteCompact(tx, scope, stored.row);
-  return {
-    catalog,
-    release,
-    diagnostics: compilation.diagnostics,
-    ...(current === undefined ? {} : { current }),
-  };
+  return { catalog, release, diagnostics: compilation.diagnostics };
 };
 
 /**
@@ -342,29 +313,21 @@ export const changeRelease = async (
  * and enabled releases, applies the change, and writes the next catalog
  * generation, all in one transaction. A concurrent change in a scope bumps
  * its catalog row, so this transaction reruns instead of publishing a stale
- * catalog. A partitioned scope too big for one transaction stages its rows
- * first (`writeReleaseCatalogs`).
+ * catalog.
  */
 export const changeReleases = (
   db: CoreDatabase,
   inputs: readonly ReleaseChangeInput[],
-  options?: CatalogWriteOptions,
 ): Promise<ReleaseChangeResult[]> => {
   const scopes = new Set(inputs.map(({ scope }) => scope.scopeKey));
   if (scopes.size !== inputs.length) {
     fail("INVALID_SCOPE", "A batch cannot change one catalog scope twice");
   }
-  return writeReleaseCatalogs(
-    db,
-    async (tx, writer) => {
-      const results: ReleaseChangeResult[] = [];
-      for (const input of inputs) {
-        results.push(await changeRelease(tx, input, writer));
-      }
-      return results;
-    },
-    options,
-  );
+  return db.transaction(async (tx) => {
+    const results: ReleaseChangeResult[] = [];
+    for (const input of inputs) results.push(await changeRelease(tx, input));
+    return results;
+  });
 };
 
 /** Whether `current` is what the scope's enabled releases compile to. */
@@ -405,10 +368,7 @@ export const catalogRowScope = (
  * read of the catalog row and one of the scope's enabled releases. It needs
  * no transaction, whose guards would read the catalog again for each read
  * beneath it, nor the scope's newest release, which matters only to a scope
- * without a catalog row; that one is not found. A partitioned scope, or an
- * app-version scope with the switch on, also reads its live rows, and
- * compares their layout with the tiling a rebuild would write. Its rows are
- * public rows: compact-format catalogs.
+ * without a catalog row; that one is not found.
  */
 export const preflightRebuild = async (
   db: CoreDatabase,
@@ -419,60 +379,29 @@ export const preflightRebuild = async (
   if (row === null) {
     throw new Error(`Release catalog "${scopeKey}" was not found.`);
   }
-  const stored = toCatalogRow(row);
-  const scope = catalogRowScope(stored);
+  const current = toCatalogRow(row);
+  const scope = catalogRowScope(current);
   checkScope(scope);
   const enabled = await drainReleases((cursor) =>
     db.findMany("releases", enabledIn(scopeKey, cursor)),
   );
-  const projected = await projectRebuild(db, scope, stored, enabled);
-  // The scope's own row says how it is stored; no partition row does.
-  const layout: "compact" | "partitioned" = mayBeHead(stored)
-    ? "partitioned"
-    : "compact";
-  if (projected !== null) {
-    return {
-      ...projected,
-      layout,
-      projectedCatalog: projected.changed
-        ? {
-            ...projected.currentCatalog,
-            ...projected.projectedCatalog,
-            generation: stored.generation + 1,
-            updated_at_ms: updatedAtMs,
-          }
-        : projected.currentCatalog,
-    };
-  }
-  const current = mayBeHead(stored)
-    ? ((await readPublicCatalogRow(db, scopeKey)) ?? stored)
-    : stored;
-  const compilation = await compileReleaseCatalog({
-    strategy: scope.strategy,
-    releases: enabled.map(releaseRowToRelease),
-  });
-  const changed = !isCurrent(scope, stored, compilation);
+  const compilation = await compileScope(scope, enabled);
+  const changed = !isCurrent(scope, current, compilation);
   return {
     changed,
-    layout,
     currentCatalog: current,
     diagnostics: compilation.diagnostics,
     projectedCatalog: changed
-      ? nextCatalog(scope, { catalog: stored }, compilation, updatedAtMs)
+      ? nextCatalog(scope, { catalog: current }, compilation, updatedAtMs)
       : current,
   };
 };
 
-/**
- * Recompiles a scope's catalog from its enabled releases inside `tx`; an
- * unchanged catalog is not rewritten. A partitioned scope whose live rows
- * are the tiling it computes is unchanged.
- */
+/** Recompiles a scope's catalog from its enabled releases inside `tx`; an unchanged catalog is not rewritten. */
 export const rebuildScope = async (
   tx: CoreTransaction,
   scope: ReleaseCatalogScope,
   updatedAtMs: number,
-  writer: CatalogWriter,
 ): Promise<{
   readonly catalog: ReleaseCatalogRow;
   readonly current: ReleaseCatalogRow | null;
@@ -483,28 +412,8 @@ export const rebuildScope = async (
   const stored = await readCatalog(tx, scope.scopeKey);
   assertHistory(stored, (await latestReleaseId(tx, scope.scopeKey)) !== null);
   const enabled = await enabledReleases(tx, scope.scopeKey);
+  const compilation = await compileScope(scope, enabled);
   const current = stored.catalog;
-  if ((await writer.layout(tx, scope, stored.row)) === "partitioned") {
-    const published = await writer.publish(tx, {
-      change: { kind: "recompute", next: enabled, rebuild: true },
-      release: null,
-      row: stored.row,
-      scope,
-      updatedAtMs,
-    });
-    if (published.catalog !== null) {
-      return {
-        catalog: published.catalog,
-        changed: published.changed ?? true,
-        current,
-        diagnostics: published.diagnostics!,
-      };
-    }
-  }
-  const compilation = await compileReleaseCatalog({
-    strategy: scope.strategy,
-    releases: enabled.map(releaseRowToRelease),
-  });
   if (current !== null && isCurrent(scope, current, compilation)) {
     return {
       catalog: current,
@@ -514,7 +423,6 @@ export const rebuildScope = async (
     };
   }
   const written = await writeCatalog(tx, scope, stored, enabled, updatedAtMs);
-  await writer.wroteCompact(tx, scope, stored.row);
   return {
     catalog: written.catalog,
     current,
@@ -528,22 +436,16 @@ export const rebuildCatalog = (
   db: CoreDatabase,
   scope: ReleaseCatalogScope,
   updatedAtMs: number,
-  options?: CatalogWriteOptions,
 ): Promise<{
   readonly catalog: ReleaseCatalogRow;
   readonly changed: boolean;
   readonly diagnostics: ReleaseCatalogCompilation["diagnostics"];
 }> =>
-  writeReleaseCatalogs(
-    db,
-    async (tx, writer) => {
-      const { current: _current, ...rebuilt } = await rebuildScope(
-        tx,
-        scope,
-        updatedAtMs,
-        writer,
-      );
-      return rebuilt;
-    },
-    options,
-  );
+  db.transaction(async (tx) => {
+    const { current: _current, ...rebuilt } = await rebuildScope(
+      tx,
+      scope,
+      updatedAtMs,
+    );
+    return rebuilt;
+  });
