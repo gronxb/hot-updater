@@ -127,10 +127,11 @@ type CustomErrorResponse = NonNullable<
 >[number];
 
 /**
- * CloudFront rejects an error response without both `ResponsePagePath` and
- * `ResponseCode` (IllegalUpdate: "The specified list of custom error
- * responses does not exist or is not valid"); an empty element means the
- * origin's own answer passes through.
+ * The API reference lists `ResponsePagePath` and `ResponseCode` as optional,
+ * but CloudFront rejects an error response without both elements
+ * (IllegalUpdate: "The specified list of custom error responses does not
+ * exist or is not valid"). Empty elements mean no page replaces the origin's
+ * answer.
  */
 const withResponseElements = (
   response: CustomErrorResponse,
