@@ -12,6 +12,7 @@ import {
 import { addDistinct, countDistinct } from "../../database/distinct";
 import { createMemoryAdapter } from "../../database/memoryAdapter";
 import {
+  DatabaseConflictError,
   DatabaseQueryError,
   DatabaseTransactionError,
 } from "../../serverPlugin/errors";
@@ -81,13 +82,18 @@ const setup = async (
 ) => {
   const memory = createMemoryAdapter();
   await memory.migrations?.apply(schema.tables);
-  const faults: { inject?: () => WriteResult | undefined } = {};
+  const faults: {
+    inject?: () => WriteResult | undefined;
+    /** Runs before each write reaches the store, as another writer would. */
+    before?: () => Promise<void>;
+  } = {};
   const writes: (readonly WriteOp[])[] = [];
   const retries = { rerun: 0, resend: 0 };
   const faulty: DatabaseAdapter = {
     ...memory,
     async write(ops) {
       writes.push(ops);
+      await faults.before?.();
       return faults.inject?.() ?? memory.write(ops);
     },
   };
@@ -415,6 +421,102 @@ describe("engine aggregates", () => {
     ).resolves.toEqual({
       rows: [{ release: "A", bucket: 1, installations: 32 }],
     });
+  });
+
+  it("resends past its attempts while other writers keep committing its aggregate rows", async () => {
+    const { db, faults, retries } = await setup({ retry: { attempts: 3 } });
+    const add = () =>
+      db.transaction(async (tx) => {
+        tx.aggregate(
+          "distribution",
+          { release: "A", bucket: 1 },
+          { installations: 1 },
+          { shardBy: "hot" },
+        );
+      });
+    // Another writer commits the same shard row before each of 10 writes.
+    let commits = 10;
+    faults.before = async () => {
+      if (commits === 0) return;
+      commits -= 1;
+      const before = faults.before;
+      faults.before = undefined;
+      await add();
+      faults.before = before;
+    };
+    let runs = 0;
+    await db.transaction(async (tx) => {
+      runs += 1;
+      tx.aggregate(
+        "distribution",
+        { release: "A", bucket: 1 },
+        { installations: 1 },
+        { shardBy: "hot" },
+      );
+    });
+    expect(runs).toBe(1);
+    expect(retries).toEqual({ rerun: 0, resend: 10 });
+    await expect(
+      db.findAggregates("distribution", {
+        index: "byRelease",
+        where: { release: "A" },
+        limit: 64,
+      }),
+    ).resolves.toEqual({
+      rows: [{ release: "A", bucket: 1, installations: 11 }],
+    });
+  });
+
+  it("stops at its attempts when a resend finds its aggregate rows unchanged", async () => {
+    const add = (db: Awaited<ReturnType<typeof setup>>["db"]) =>
+      db.transaction(async (tx) => {
+        tx.aggregate(
+          "distribution",
+          { release: "A", bucket: 1 },
+          { installations: 1 },
+          { shardBy: "hot" },
+        );
+      });
+    for (const fault of [
+      { ok: false, retry: true },
+      { ok: false, failedOp: 0 },
+    ] as const) {
+      const { db, faults, writes } = await setup({ retry: { attempts: 3 } });
+      faults.inject = () => fault;
+      await expect(add(db), JSON.stringify(fault)).rejects.toThrow(
+        DatabaseConflictError,
+      );
+      expect(writes, JSON.stringify(fault)).toHaveLength(3);
+    }
+  });
+
+  it("stops at its attempts on transient failures while other writers commit its aggregate rows", async () => {
+    const { db, faults } = await setup({ retry: { attempts: 3 } });
+    const add = () =>
+      db.transaction(async (tx) => {
+        tx.aggregate(
+          "distribution",
+          { release: "A", bucket: 1 },
+          { installations: 1 },
+          { shardBy: "hot" },
+        );
+      });
+    const transient = () => ({ ok: false, retry: true }) as const;
+    // Before each write, another writer commits the same shard row; then the
+    // write itself fails transiently, naming no row.
+    let commits = 0;
+    faults.before = async () => {
+      const before = faults.before;
+      faults.before = undefined;
+      faults.inject = undefined;
+      await add();
+      commits += 1;
+      faults.inject = transient;
+      faults.before = before;
+    };
+    faults.inject = transient;
+    await expect(add()).rejects.toThrow(DatabaseConflictError);
+    expect(commits).toBe(3);
   });
 
   it("rejects unknown aggregates, identities, metrics, and fractional deltas", async () => {
