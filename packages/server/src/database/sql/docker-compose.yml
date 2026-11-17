@@ -1,4 +1,6 @@
 # Pooled PostgreSQL and MySQL for the SQL core's integration conformance run.
+# The host ports sit below Linux's ephemeral range (32768-60999), so no
+# outgoing connection of an earlier spec can hold one when a container binds.
 services:
   postgres:
     image: postgres:17-alpine
@@ -7,7 +9,7 @@ services:
       POSTGRES_DB: hot_updater
       POSTGRES_INITDB_ARGS: --encoding=UTF8
     ports:
-      - "55432:5432"
+      - "15432:5432"
     healthcheck:
       # Over TCP: the image's first-start init runs a server on the socket
       # alone, which a socket check reports ready before the restart.
@@ -22,7 +24,7 @@ services:
       MYSQL_ROOT_PASSWORD: hot_updater
       MYSQL_DATABASE: hot_updater
     ports:
-      - "53306:3306"
+      - "13306:3306"
     healthcheck:
       test:
         [

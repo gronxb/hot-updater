@@ -56,11 +56,11 @@ beforeAll(async () => {
   await composeUp({ compose });
   postgres = new pg.Pool({
     connectionString:
-      "postgres://postgres:hot_updater@127.0.0.1:55432/hot_updater",
+      "postgres://postgres:hot_updater@127.0.0.1:15432/hot_updater",
     max: 16,
   });
   mariadb = mysql.createPool({
-    uri: "mysql://root:hot_updater@127.0.0.1:53306/hot_updater",
+    uri: "mysql://root:hot_updater@127.0.0.1:13306/hot_updater",
     connectionLimit: 16,
   });
   await ready(() => postgres.query("SELECT 1"));

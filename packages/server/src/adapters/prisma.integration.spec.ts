@@ -37,7 +37,7 @@ const compose = [
   "-p",
   "hot-updater-sql-core",
 ];
-const server = "mysql://root:hot_updater@127.0.0.1:53306";
+const server = "mysql://root:hot_updater@127.0.0.1:13306";
 const database = `prisma_${process.pid}`;
 
 /** What the suite runs: core and the Insights plugin. */

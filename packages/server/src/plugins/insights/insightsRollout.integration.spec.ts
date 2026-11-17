@@ -87,7 +87,7 @@ beforeAll(async () => {
   await composeUp({ compose, services: ["postgres"] });
   pool = new pg.Pool({
     connectionString:
-      "postgres://postgres:hot_updater@127.0.0.1:55432/hot_updater",
+      "postgres://postgres:hot_updater@127.0.0.1:15432/hot_updater",
     max: CONNECTIONS,
   });
   for (let attempt = 0; ; attempt += 1) {
