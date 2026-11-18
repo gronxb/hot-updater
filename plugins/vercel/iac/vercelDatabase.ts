@@ -123,20 +123,31 @@ export const countBlobStoreReferences = async (
 
 /**
  * Points every storage URI that names store `from` at store `to`, with the
- * same key, in one transaction; returns how many it moved. A row's `_v`
- * advances, so a write that read it before conflicts. Running it again
- * moves nothing.
+ * same key, in one transaction; returns how many it moved. The tables stay
+ * locked against writes from before `whileLocked` until the commit, so a
+ * bundle written meanwhile can't be moved without its objects:
+ * `whileLocked` copies what `to` still lacks. A row's `_v` advances, so a
+ * write that read it before conflicts. Running it again moves nothing.
  */
 export const moveBlobStoreReferences = async (
   client: PostgresQueryable,
   from: string,
   to: string,
+  whileLocked: () => Promise<void> = async () => {},
 ): Promise<number> => {
   const [fromPrefix, toPrefix] = [storeUriPrefix(from), storeUriPrefix(to)];
   const columns = await existingUriColumns(client);
+  const tables = [...new Set(columns.map(([table]) => table))];
   let moved = 0;
   await client.query("BEGIN");
   try {
+    if (tables.length > 0) {
+      // Reads go on; writes wait for the commit.
+      await client.query(
+        `LOCK TABLE ${tables.map((table) => `"${table}"`).join(", ")} IN EXCLUSIVE MODE`,
+      );
+    }
+    await whileLocked();
     for (const [table, column] of columns) {
       const { rows } = await client.query<{ id: string }>(
         `UPDATE "${table}"

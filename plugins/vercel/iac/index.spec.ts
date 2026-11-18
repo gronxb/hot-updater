@@ -88,7 +88,15 @@ vi.mock("./vercelDatabase", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./vercelDatabase")>()),
   countBlobStoreReferences: mocks.countBlobStoreReferences,
   migratePostgres: mocks.migratePostgres,
-  moveBlobStoreReferences: mocks.moveBlobStoreReferences,
+  moveBlobStoreReferences: async (
+    client: object,
+    from: string,
+    to: string,
+    whileLocked: () => Promise<void>,
+  ) => {
+    await whileLocked();
+    return mocks.moveBlobStoreReferences(client, from, to);
+  },
   readHotUpdaterTables: mocks.readHotUpdaterTables,
   withPostgresClient: async (
     _url: string,
@@ -808,13 +816,17 @@ describe("Vercel init on a public Blob store an earlier release created", () => 
     expect(mocks.makeEnv).toHaveBeenCalledWith({}, undefined, {
       removeKeys: ["HOT_UPDATER_VERCEL_BLOB_ACCESS"],
     });
-    // Copy, then point the database, then free the token variable for the
-    // Function's, then deploy.
+    // Copy, then migrate, whose fence stops earlier CLIs' writes, then copy
+    // what was written since with the tables locked and point the database,
+    // then free the token variable for the Function's, then deploy.
     const order = (mock: { mock: { invocationCallOrder: number[] } }) =>
       mock.mock.invocationCallOrder[0]!;
-    expect(order(mocks.copyBlobStore)).toBeLessThan(
-      order(mocks.moveBlobStoreReferences),
-    );
+    const [firstCopy, lockedCopy] =
+      mocks.copyBlobStore.mock.invocationCallOrder;
+    expect(mocks.copyBlobStore).toHaveBeenCalledTimes(2);
+    expect(firstCopy).toBeLessThan(order(mocks.migratePostgres));
+    expect(order(mocks.migratePostgres)).toBeLessThan(lockedCopy!);
+    expect(lockedCopy).toBeLessThan(order(mocks.moveBlobStoreReferences));
     expect(order(mocks.moveBlobStoreReferences)).toBeLessThan(
       order(mocks.api.disconnectBlobStore),
     );

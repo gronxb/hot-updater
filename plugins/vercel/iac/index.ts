@@ -24,6 +24,7 @@ import {
   shouldAutoSelectOnlyInitResource,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
+import type { AnyHotUpdaterPlugin } from "@hot-updater/plugin-core";
 import { postgres } from "@hot-updater/postgres";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { execa } from "execa";
@@ -369,17 +370,20 @@ const readPublicStoreToken = async (
 
 /**
  * Moves the bundles of the saved public store `from` to the private store
- * `to`: copies every object under the same pathname, then points the
- * database's storage URIs at `to`, then disconnects `from` from the project,
- * whose token variable the Function's now takes. `from` keeps its objects.
- * Each step is safe to run again, and a rerun after the URIs moved copies
- * nothing.
+ * `to`: copies every object under the same pathname, migrates the database,
+ * whose schema fence then stops a CLI of an earlier release from writing a
+ * bundle to `from`, then points the database's storage URIs at `to` with the
+ * tables locked, copying first what was written since. Last, it disconnects
+ * `from` from the project, whose token variable the Function's now takes.
+ * `from` keeps its objects. Each step is safe to run again, and a rerun
+ * after the URIs moved copies nothing.
  */
 const moveBlobStore = async ({
   api,
   databaseUrl,
   from,
   fromToken,
+  plugins,
   project,
   to,
   toToken,
@@ -388,27 +392,39 @@ const moveBlobStore = async ({
   readonly databaseUrl: string;
   readonly from: VercelBlobStore;
   readonly fromToken: string | undefined;
+  readonly plugins: readonly AnyHotUpdaterPlugin[];
   readonly project: VercelProject;
   readonly to: VercelBlobStore;
   readonly toToken: string;
 }) => {
   if (fromToken !== undefined) {
+    const copy = () =>
+      copyBlobStore({
+        from: { name: from.name, token: fromToken },
+        to: { token: toToken },
+      });
     await p.tasks([
       {
         title: `Copying the bundles of ${from.name} to ${to.name}...`,
         task: async () => {
-          const { copied, total } = await copyBlobStore({
-            from: { name: from.name, token: fromToken },
-            to: { token: toToken },
-          });
+          const { copied, total } = await copy();
           return `Copied ${copied} of ${total} objects from ${from.name} to ${to.name}`;
+        },
+      },
+      {
+        title: "Migrating the PostgreSQL database...",
+        task: async () => {
+          const version = await migratePostgres(databaseUrl, plugins);
+          return `Migrated the PostgreSQL database to ${version}`;
         },
       },
       {
         title: `Pointing the database's bundles at ${to.name}...`,
         task: async () => {
           const moved = await withPostgresClient(databaseUrl, (client) =>
-            moveBlobStoreReferences(client, from.id, to.id),
+            moveBlobStoreReferences(client, from.id, to.id, async () => {
+              await copy();
+            }),
           );
           return `Pointed ${moved} storage URIs at ${to.name}`;
         },
@@ -756,12 +772,14 @@ export const runInit = async ({
     nonInteractive,
     provider: VERCEL_INIT_PROVIDER,
   });
+  const plugins = [insights(), apiKeys(), remoteConfig()];
   if (replaces !== undefined) {
     await moveBlobStore({
       api,
       databaseUrl,
       from: replaces,
       fromToken: replacedToken,
+      plugins,
       project,
       to: store,
       toToken: blobToken,
@@ -791,7 +809,6 @@ export const runInit = async ({
     await makeEnv({}, undefined, { removeKeys: retiredKeys });
   }
 
-  const plugins = [insights(), apiKeys(), remoteConfig()];
   await p.tasks([
     {
       title: "Migrating the PostgreSQL database...",

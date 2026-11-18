@@ -110,6 +110,51 @@ describe("moving a Blob store's storage URIs", () => {
     expect(await moveBlobStoreReferences(earlier, PUBLIC, PRIVATE)).toBe(5);
   });
 
+  it("copies what a bundle written before the lock needs, then moves it too, while writes wait", async () => {
+    const db = await databaseWith(PUBLIC);
+    const locks: string[] = [];
+
+    const moved = await moveBlobStoreReferences(
+      db,
+      PUBLIC,
+      PRIVATE,
+      async () => {
+        locks.push(
+          ...(
+            await db.query<{ relname: string }>(
+              `SELECT c.relname FROM pg_locks l JOIN pg_class c ON c.oid = l.relation
+              WHERE l.mode = 'ExclusiveLock' AND c.relname IN ('bundles', 'bundle_patches', 'native_builds')
+              ORDER BY c.relname`,
+            )
+          ).rows.map(({ relname }) => relname),
+        );
+        // A deploy's row that committed before the lock: the copy made while
+        // locked brings its objects, and the move then takes it.
+        await db.query(
+          `INSERT INTO "bundles" ("id", "platform", "metadata", "manifest_storage_uri", "manifest_file_hash", "asset_base_storage_uri")
+         VALUES ('b3', 'ios', '{}', $1, 'hash', $2)`,
+          [uri(PUBLIC, "b3/manifest.json"), uri(PUBLIC, "b3/files")],
+        );
+      },
+    );
+
+    expect(locks).toEqual(["bundle_patches", "bundles", "native_builds"]);
+    expect(moved).toBe(7);
+    expect(await countBlobStoreReferences(db, PUBLIC)).toBe(0);
+  });
+
+  it("moves nothing when the copy made while locked fails", async () => {
+    const db = await databaseWith(PUBLIC);
+
+    await expect(
+      moveBlobStoreReferences(db, PUBLIC, PRIVATE, async () => {
+        throw new Error("copy failed");
+      }),
+    ).rejects.toThrow("copy failed");
+
+    expect(await countBlobStoreReferences(db, PUBLIC)).toBe(5);
+  });
+
   it("counts nothing on an empty database", async () => {
     expect(await countBlobStoreReferences(new PGlite(), PUBLIC)).toBe(0);
   });
