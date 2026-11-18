@@ -20,6 +20,10 @@ final class IOSBuiltInAssetResolver: BuiltInAssetResolver {
     /// (`HotUpdaterConfig.bundle`), so an update staged before React Native
     /// starts still finds the embedded files.
     private var bundle: Bundle { launchBundle ?? defaultBundle() }
+    // The identity of the last bundle asked, and the index as last read or
+    // written: one OTA's copies share one lookup and one read of the index.
+    private var cachedPackageIdentity: (bundlePath: String, identity: String)?
+    private var cachedIndex: CachedIndex?
 
     init(cacheURL: URL, defaultBundle: @escaping () -> Bundle = { HotUpdaterConfig.shared.bundle }) {
         self.cacheURL = cacheURL
@@ -150,6 +154,16 @@ final class IOSBuiltInAssetResolver: BuiltInAssetResolver {
     }
 
     private func packageIdentity(for bundle: Bundle) -> String {
+        let key = bundle.bundleURL.path
+        if let cachedPackageIdentity, cachedPackageIdentity.bundlePath == key {
+            return cachedPackageIdentity.identity
+        }
+        let identity = readPackageIdentity(for: bundle)
+        cachedPackageIdentity = (key, identity)
+        return identity
+    }
+
+    private func readPackageIdentity(for bundle: Bundle) -> String {
         let values = try? bundle.bundleURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
         let bundleIdentifier = bundle.bundleIdentifier ?? ""
         let shortVersion = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
@@ -169,6 +183,15 @@ final class IOSBuiltInAssetResolver: BuiltInAssetResolver {
     }
 
     private func readIndex(packageIdentity: String) -> CachedIndex {
+        if let cachedIndex, cachedIndex.packageIdentity == packageIdentity {
+            return cachedIndex
+        }
+        let index = readIndexFile(packageIdentity: packageIdentity)
+        cachedIndex = index
+        return index
+    }
+
+    private func readIndexFile(packageIdentity: String) -> CachedIndex {
         if let data = try? Data(contentsOf: cacheURL),
            let index = try? JSONDecoder().decode(CachedIndex.self, from: data),
            index.schemaVersion == Self.schemaVersion,
@@ -183,6 +206,7 @@ final class IOSBuiltInAssetResolver: BuiltInAssetResolver {
     }
 
     private func writeIndex(_ index: CachedIndex) {
+        cachedIndex = index
         do {
             try FileManager.default.createDirectory(
                 at: cacheURL.deletingLastPathComponent(),
