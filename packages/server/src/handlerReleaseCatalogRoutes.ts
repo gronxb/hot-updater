@@ -163,9 +163,10 @@ export const createReleaseCatalogRouteHandlers = (): Record<
   // app version of a scope shares one read and one parse, and each check
   // projects its own version from the parsed row. A scope without a catalog
   // is remembered as null for the same five seconds, since a store without a
-  // CDN in front would otherwise read it on every check. Misses never evict
-  // a catalog: past the limit, the oldest miss goes first, and a new miss
-  // with only catalogs ahead of it goes itself.
+  // CDN in front would otherwise read it on every check. Past the limit,
+  // expired entries go first, then the oldest miss; a miss never evicts a
+  // live catalog, so a new miss with only live catalogs ahead of it goes
+  // itself.
   const cache = new Map<
     string,
     {
@@ -173,16 +174,20 @@ export const createReleaseCatalogRouteHandlers = (): Record<
       readonly expiresAt: number;
     }
   >();
-  const evictOne = (insertedHit: boolean) => {
+  const evict = (insertedHit: boolean) => {
+    const now = Date.now();
+    let oldestMiss: string | undefined;
     let oldest: string | undefined;
     for (const [key, entry] of cache) {
-      if (entry.row === null) {
-        cache.delete(key);
-        return;
+      if (entry.expiresAt <= now) cache.delete(key);
+      else {
+        if (entry.row === null) oldestMiss ??= key;
+        oldest ??= key;
       }
-      oldest ??= key;
     }
-    if (insertedHit && oldest !== undefined) cache.delete(oldest);
+    if (cache.size <= ORIGIN_CACHE_MAX_ENTRIES) return;
+    const victim = oldestMiss ?? (insertedHit ? oldest : undefined);
+    if (victim !== undefined) cache.delete(victim);
   };
   const inFlight = new Map<string, Promise<ParsedReleaseCatalogRow | null>>();
   const loadRow = async (
@@ -204,7 +209,7 @@ export const createReleaseCatalogRouteHandlers = (): Record<
         row,
         expiresAt: Date.now() + ORIGIN_CACHE_TTL_MS,
       });
-      if (cache.size > ORIGIN_CACHE_MAX_ENTRIES) evictOne(row !== null);
+      if (cache.size > ORIGIN_CACHE_MAX_ENTRIES) evict(row !== null);
       return row;
     });
     inFlight.set(scopeKey, next);

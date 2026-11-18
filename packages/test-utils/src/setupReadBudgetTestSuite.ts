@@ -1179,20 +1179,22 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     // download in hour 1. The read takes hour 1's row and 239 of hour 0's,
     // then one more row, which shows hour 0 holds more, so it leaves hour 0
     // out whole; the full page also gets the 7 other shards of its last row.
-    // The failure and check sketches are hour 0's and 1's, on 1 shard each.
+    // The counters and sketches then cover hour 1 only: its failure sketch
+    // on 1 shard, and no counters, check, or usage rows.
     read: ({ insights }) =>
       insights.getUpdateFailures({
         platform: FLOOD.platform,
         channel: FLOOD.channel,
         timeRange: { start: FLOOD.start, end: FLOOD.start + 2 * HOUR },
       }),
-    adapter: reads(1, 7, 5, 258),
-    engine: { calls: 5, rows: 243 },
+    adapter: reads(1, 7, 5, 242),
+    engine: { calls: 5, rows: 242 },
     check: (failures) =>
       expect(failures).toMatchObject({
         coverage: { kind: "partial", sinceMs: FLOOD.start + HOUR },
         failedUpdates: 1,
-        checks: { failures: 0 },
+        failedInstallations: 1,
+        checks: { failures: 0, failedInstallations: 0 },
       }),
   }),
   budget({

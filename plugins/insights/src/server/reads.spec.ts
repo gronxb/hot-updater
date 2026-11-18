@@ -589,10 +589,17 @@ describe("insights update failures", () => {
     // reached: the flooded hour is cut whole, and the hours after it count
     // every failure they hold.
     expect(failures.rows.insights_failures).toBe(241);
+    // Every count covers the same hours: no installation of the cut hour.
     expect(failures.result).toMatchObject({
       coverage: { kind: "partial", sinceMs: T0 + HOUR },
       failedUpdates: 4,
-      checks: { failures: 1 },
+      failedInstallations: distinct([
+        "install-1",
+        "install-2",
+        "install-3",
+        "install-4",
+      ]),
+      checks: { failures: 1, failedInstallations: distinct(["install-8"]) },
     });
     expect(
       failures.result.breakdown!.map(({ stage, reason, events }) => [

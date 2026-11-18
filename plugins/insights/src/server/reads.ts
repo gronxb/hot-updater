@@ -888,7 +888,8 @@ const FAILURE_ROWS_MIN = 24 * FAILURE_ROWS_PER_HOUR;
  * any number of details, so the read stops at the bound instead of growing
  * with them. Past it, the oldest hour read may be cut short, so it is left
  * out whole and `cutBeforeMs` is the hour after it: the hours from there
- * count every failure they hold, and the read's coverage starts there.
+ * count every failure they hold, and the report's counts and coverage start
+ * there.
  */
 const newestFailureRows = async (
   db: Db,
@@ -995,17 +996,30 @@ export const getUpdateFailures = async (
     };
   }
   const days = releaseId === undefined;
-  const window = [timeRange, days, kept.hour] as const;
-  const [counters, failures, checks, active, { rows, cutBeforeMs }] =
-    await Promise.all([
-      counterRows(db, parts, ...window),
-      sketchRows(db, failure, ...window),
-      days
-        ? sketchRows(db, { ...channelParts, scopeKind: "check" }, ...window)
-        : [],
-      days ? sketchRows(db, usageParts(channel, platform), ...window) : [],
-      newestFailureRows(db, platform, channel, timeRange),
-    ]);
+  // The breakdown first: when it reaches its bound, every other count covers
+  // the same hours it does, so no rate mixes two ranges.
+  const { rows, cutBeforeMs } = await newestFailureRows(
+    db,
+    platform,
+    channel,
+    timeRange,
+  );
+  const range =
+    cutBeforeMs === undefined
+      ? timeRange
+      : { start: cutBeforeMs, end: timeRange.end };
+  const window = [range, days, kept.hour] as const;
+  const [counters, failures, checks, active] =
+    range.start < range.end
+      ? await Promise.all([
+          counterRows(db, parts, ...window),
+          sketchRows(db, failure, ...window),
+          days
+            ? sketchRows(db, { ...channelParts, scopeKind: "check" }, ...window)
+            : [],
+          days ? sketchRows(db, usageParts(channel, platform), ...window) : [],
+        ])
+      : [[], [], [], []];
   const total = (field: Exclude<keyof CounterRow, "bucket_start_ms">) =>
     counters.reduce((sum, row) => sum + row[field], 0);
   // Only the stages a failure records count: other rows are no failure.
