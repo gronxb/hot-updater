@@ -3,6 +3,7 @@ import { getPatchBaseFileHash, getPatchFileHash } from "@hot-updater/protocol";
 import { ExternalLink } from "lucide-react";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";
+import { InfoTooltip } from "@/components/InfoTooltip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConfigQuery } from "@/lib/api";
 import { CONSOLE_GIT_URL_GUIDE_URL } from "@/lib/constants";
@@ -70,27 +71,25 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
             <Row
               label="Git commit"
               value={
-                <div className="flex flex-col items-start gap-1.5 sm:items-end">
-                  <div className="flex items-center justify-start gap-1 sm:justify-end">
-                    <HashValueDisplay
-                      className={gitCommitUrl ? "text-primary" : undefined}
-                      maxLength={12}
-                      value={bundle.gitCommitHash}
-                    />
-                    {gitCommitUrl ? (
-                      <a
-                        aria-label="Open git commit"
-                        className="shrink-0 text-primary hover:underline"
-                        href={gitCommitUrl}
-                        rel="noopener noreferrer"
-                        target="_blank"
-                      >
-                        <ExternalLink aria-hidden="true" />
-                      </a>
-                    ) : null}
-                  </div>
+                <div className="flex items-center justify-start gap-1 sm:justify-end">
+                  <HashValueDisplay
+                    className={gitCommitUrl ? "text-primary" : undefined}
+                    maxLength={12}
+                    value={bundle.gitCommitHash}
+                  />
+                  {gitCommitUrl ? (
+                    <a
+                      aria-label="Open git commit"
+                      className="shrink-0 text-primary hover:underline"
+                      href={gitCommitUrl}
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      <ExternalLink aria-hidden="true" />
+                    </a>
+                  ) : null}
                   {showGitUrlHint ? (
-                    <p className="text-muted-foreground max-w-sm text-left text-xs sm:text-right">
+                    <InfoTooltip label="Link commits">
                       Set{" "}
                       <code className="font-mono text-foreground">
                         console.gitUrl
@@ -104,7 +103,7 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
                       >
                         Learn more
                       </a>
-                    </p>
+                    </InfoTooltip>
                   ) : null}
                 </div>
               }

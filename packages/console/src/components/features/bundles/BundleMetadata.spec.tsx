@@ -1,5 +1,5 @@
 import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CONSOLE_GIT_URL_GUIDE_URL } from "@/lib/constants";
@@ -65,10 +65,10 @@ describe("BundleMetadata", () => {
     expect(link.getAttribute("href")).toBe(
       "https://github.com/acme/app/commit/abc123def4567890",
     );
-    expect(screen.queryByText(/Learn more/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Link commits" })).toBeNull();
   });
 
-  it("hints when a commit hash exists but console.gitUrl is missing", () => {
+  it("shows a tooltip trigger when console.gitUrl is missing", () => {
     mockUseConfigQuery.mockReturnValue({
       data: { console: {} },
       isFetched: true,
@@ -77,12 +77,16 @@ describe("BundleMetadata", () => {
     render(<BundleMetadata bundle={bundle} release={release} />);
 
     expect(screen.queryByRole("link", { name: "Open git commit" })).toBeNull();
+
+    const trigger = screen.getByRole("button", { name: "Link commits" });
+    fireEvent.click(trigger);
+
     expect(screen.getByText(/console\.gitUrl/)).toBeDefined();
     const guide = screen.getByRole("link", { name: "Learn more" });
     expect(guide.getAttribute("href")).toBe(CONSOLE_GIT_URL_GUIDE_URL);
   });
 
-  it("waits for config before showing the gitUrl hint", () => {
+  it("waits for config before showing the link-commits tooltip", () => {
     mockUseConfigQuery.mockReturnValue({
       data: undefined,
       isFetched: false,
@@ -90,7 +94,7 @@ describe("BundleMetadata", () => {
 
     render(<BundleMetadata bundle={bundle} release={release} />);
 
-    expect(screen.queryByText(/console\.gitUrl/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Link commits" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Open git commit" })).toBeNull();
   });
 });
