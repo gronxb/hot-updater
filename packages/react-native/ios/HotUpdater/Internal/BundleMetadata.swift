@@ -232,17 +232,20 @@ public struct CrashedBundleEntry: Codable {
 
 // MARK: - RejectedBundleEntry
 
-/// A bundle whose download was refused because its files are bad: a hash or
-/// signature that fails, or a manifest or file that can't be decoded. A bundle
-/// ID's files never change, so the build that refused it never downloads it
-/// again. `nativeBuildId` is that build's MIN_BUNDLE_ID: another build, with
+/// A bundle whose download was refused because its files failed verification:
+/// a hash or signature that fails, or a manifest or file that can't be decoded.
+/// Update checks skip it for `CrashedHistory.rejectionWindowMs` after
+/// `rejectedAt`, then may select it again: the bytes failed here, but nothing
+/// proves they arrived as stored (a proxy, a block page, or a body cut short
+/// without a length), so a bad release costs at most one download a day.
+/// `nativeBuildId` is the refusing build's MIN_BUNDLE_ID: another build, with
 /// its own key and checks, decides again.
 public struct RejectedBundleEntry: Codable {
     let bundleId: String
     var rejectedAt: Double
     let nativeBuildId: String
 
-    init(bundleId: String, nativeBuildId: String, rejectedAt: Double = Date().timeIntervalSince1970 * 1000) {
+    init(bundleId: String, nativeBuildId: String, rejectedAt: Double) {
         self.bundleId = bundleId
         self.nativeBuildId = nativeBuildId
         self.rejectedAt = rejectedAt
@@ -286,6 +289,8 @@ public struct InterruptedLaunch: Codable {
 public struct CrashedHistory: Codable {
     static let defaultMaxHistorySize = 10
     static let maxRejectedBundles = 10
+    /// How long a refused download keeps its bundle out of update checks.
+    static let rejectionWindowMs: Double = 24 * 60 * 60 * 1000
     static let crashedHistoryFilename = "crashed-history.json"
 
     var bundles: [CrashedBundleEntry]
@@ -362,7 +367,8 @@ public struct CrashedHistory: Codable {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             }
 
-            try data.write(to: file)
+            // Replaced whole: a process killed mid-write keeps the previous history.
+            try data.write(to: file, options: .atomic)
             print("[CrashedHistory] Saved crashed history to file: \(file.path)")
             return true
         } catch {
@@ -392,15 +398,26 @@ public struct CrashedHistory: Codable {
         }
     }
 
-    func isRejected(_ bundleId: String, nativeBuildId: String) -> Bool {
-        rejectedBundles.contains { $0.bundleId == bundleId && $0.nativeBuildId == nativeBuildId }
+    /// The refusals `nativeBuildId` made within `rejectionWindowMs` of `now`
+    /// (milliseconds). One dated after `now`, as after the clock was set back,
+    /// has expired.
+    func activeRejections(nativeBuildId: String, now: Double) -> [RejectedBundleEntry] {
+        rejectedBundles.filter {
+            let age = now - $0.rejectedAt
+            return $0.nativeBuildId == nativeBuildId && age >= 0 && age < Self.rejectionWindowMs
+        }
     }
 
-    /// Records that `nativeBuildId` refused `bundleId`'s download. Another
-    /// build's records are dropped, and the oldest past the cap.
-    mutating func addRejectedBundle(_ bundleId: String, nativeBuildId: String) {
+    func isRejected(_ bundleId: String, nativeBuildId: String, now: Double) -> Bool {
+        activeRejections(nativeBuildId: nativeBuildId, now: now).contains { $0.bundleId == bundleId }
+    }
+
+    /// Records that `nativeBuildId` refused `bundleId`'s download at `now`
+    /// (milliseconds). Another build's records are dropped, and the oldest
+    /// past the cap.
+    mutating func addRejectedBundle(_ bundleId: String, nativeBuildId: String, now: Double) {
         rejectedBundles.removeAll { $0.bundleId == bundleId || $0.nativeBuildId != nativeBuildId }
-        rejectedBundles.append(RejectedBundleEntry(bundleId: bundleId, nativeBuildId: nativeBuildId))
+        rejectedBundles.append(RejectedBundleEntry(bundleId: bundleId, nativeBuildId: nativeBuildId, rejectedAt: now))
         if rejectedBundles.count > Self.maxRejectedBundles {
             rejectedBundles.removeFirst(rejectedBundles.count - Self.maxRejectedBundles)
         }

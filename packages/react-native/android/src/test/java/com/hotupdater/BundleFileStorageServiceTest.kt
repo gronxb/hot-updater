@@ -3577,11 +3577,11 @@ class BundleFileStorageServiceTest {
     fun `rejected bundles are capped without evicting crashes`() {
         val history = CrashedHistory()
         history.addEntry("crashed")
-        repeat(CrashedHistory.MAX_REJECTED_BUNDLES + 3) { history.addRejectedBundle("rejected-$it", "build") }
+        repeat(CrashedHistory.MAX_REJECTED_BUNDLES + 3) { history.addRejectedBundle("rejected-$it", "build", 1_000) }
         assertTrue(history.contains("crashed"))
         assertEquals(CrashedHistory.MAX_REJECTED_BUNDLES, history.rejectedBundles.size)
-        assertFalse(history.isRejected("rejected-0", "build"))
-        assertTrue(history.isRejected("rejected-${CrashedHistory.MAX_REJECTED_BUNDLES + 2}", "build"))
+        assertFalse(history.isRejected("rejected-0", "build", 1_000))
+        assertTrue(history.isRejected("rejected-${CrashedHistory.MAX_REJECTED_BUNDLES + 2}", "build", 1_000))
 
         val file = File(temporaryFolder.newFolder(), CrashedHistory.CRASHED_HISTORY_FILENAME)
         assertTrue(history.saveToFile(file))
@@ -3600,11 +3600,74 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `a refusal lasts a day, then the bundle is offered again`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder()
+            var now = 1_800_000_000_000L
+            val hash = sha256(root, BUNDLE_CONTENT)
+            val manifest = manifestJson("target", mapOf("index.android.bundle" to hash))
+            val served =
+                BinaryMappingDownloadService(mapOf(MANIFEST_URL to manifest.toByteArray(), BUNDLE_URL to "tampered".toByteArray()))
+            val service =
+                createService(
+                    root,
+                    downloadService = served,
+                    builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()),
+                    currentTimeMillis = { now },
+                )
+            val assets = mapOf("index.android.bundle" to ChangedAssetDescriptor(BUNDLE_URL, hash))
+
+            suspend fun attempt(): Throwable? =
+                runCatching { service.updateBundle("target", MANIFEST_URL, sha256(root, manifest), assets) {} }.exceptionOrNull()
+            assertNotNull(attempt())
+            assertTrue(service.getCrashHistory().contains("target"))
+            val requests = served.calls.size
+
+            // Still refused just before a day, with no request.
+            now += 24L * 60 * 60 * 1000 - 1
+            assertTrue(service.getCrashHistory().contains("target"))
+            assertUpdateFailure(attempt(), "BUNDLE_IN_CRASHED_HISTORY", null)
+            assertEquals(requests, served.calls.size)
+
+            // A day after, it is offered and downloaded again.
+            now += 1
+            assertFalse(service.getCrashHistory().contains("target"))
+            assertUpdateFailure(
+                attempt(),
+                "SIGNATURE_VERIFICATION_FAILED",
+                UpdateFailure.download(UpdateFailureReason.HASH_MISMATCH).copy(resource = UpdateFailureResource.FILE),
+            )
+            assertTrue(served.calls.size > requests)
+            // The new refusal starts a new day.
+            assertTrue(service.getCrashHistory().contains("target"))
+
+            // A refusal dated after now, as after the clock was set back, has expired.
+            now -= 60_000
+            assertFalse(service.getCrashHistory().contains("target"))
+        }
+
+    @Test
+    fun `crash history is replaced whole, never left half written`() {
+        val file = File(temporaryFolder.newFolder(), CrashedHistory.CRASHED_HISTORY_FILENAME)
+        val history = CrashedHistory()
+        history.addEntry("crashed")
+        assertTrue(history.saveToFile(file))
+        // A write killed before it finishes leaves only AtomicFile's .new file,
+        // which the next read ignores.
+        File(file.path + ".new").writeText("{\"bundles\":[{\"bundleId\":")
+        assertTrue(CrashedHistory.loadFromFile(file).contains("crashed"))
+        history.addRejectedBundle("rejected", "build", 1_000)
+        assertTrue(history.saveToFile(file))
+        assertTrue(CrashedHistory.loadFromFile(file).contains("crashed"))
+        assertFalse(File(file.path + ".new").exists())
+    }
+
+    @Test
     fun `another build forgets rejected bundles but keeps crashes`() {
         val rootDir = temporaryFolder.newFolder()
         val history = CrashedHistory()
         history.addEntry("crashed")
-        history.addRejectedBundle("rejected", "this-build")
+        history.addRejectedBundle("rejected", "this-build", System.currentTimeMillis())
         assertTrue(history.saveToFile(crashedHistoryFile(rootDir)))
 
         // The same isolation key, as an appVersion build of the same version has.
@@ -3928,6 +3991,7 @@ class BundleFileStorageServiceTest {
         publicKey: String? = null,
         fallbackBundleURL: String = "assets://index.android.bundle",
         minBundleId: String = HotUpdaterImpl.getMinBundleId(),
+        currentTimeMillis: () -> Long = { System.currentTimeMillis() },
     ): BundleFileStorageService =
         BundleFileStorageService(
             context = ContextWrapper(null),
@@ -3944,6 +4008,7 @@ class BundleFileStorageServiceTest {
             builtInAssetResolver = builtInAssetResolver,
             metadataWriter = metadataWriter,
             directoryRenamer = directoryRenamer,
+            currentTimeMillis = currentTimeMillis,
         )
 
     private fun releaseSelection(

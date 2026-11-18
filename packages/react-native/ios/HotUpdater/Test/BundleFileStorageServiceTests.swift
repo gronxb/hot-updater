@@ -3647,12 +3647,12 @@ struct BundleFileStorageServiceTests {
         var history = CrashedHistory()
         history.addEntry("crashed")
         for index in 0..<(CrashedHistory.maxRejectedBundles + 3) {
-            history.addRejectedBundle("rejected-\(index)", nativeBuildId: "build")
+            history.addRejectedBundle("rejected-\(index)", nativeBuildId: "build", now: 1_000)
         }
         #expect(history.contains("crashed"))
         #expect(history.rejectedBundles.count == CrashedHistory.maxRejectedBundles)
-        #expect(!history.isRejected("rejected-0", nativeBuildId: "build"))
-        #expect(history.isRejected("rejected-\(CrashedHistory.maxRejectedBundles + 2)", nativeBuildId: "build"))
+        #expect(!history.isRejected("rejected-0", nativeBuildId: "build", now: 1_000))
+        #expect(history.isRejected("rejected-\(CrashedHistory.maxRejectedBundles + 2)", nativeBuildId: "build", now: 1_000))
 
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
@@ -3694,12 +3694,65 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func aRefusalLastsADayThenTheBundleIsOfferedAgain() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        var clock = Date(timeIntervalSince1970: 1_800_000_000)
+        let downloads = MappingDownloadService(contents: [manifestURL: Data("bad".utf8)])
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads, now: { clock })
+        _ = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: String(repeating: "0", count: 64), assets: [:])
+        #expect(service.getCrashHistory().contains("target"))
+
+        // Still refused just before a day, with no request.
+        clock = clock.addingTimeInterval(24 * 60 * 60 - 1)
+        #expect(service.getCrashHistory().contains("target"))
+        let refused = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: String(repeating: "0", count: 64), assets: [:])
+        #expect(baseErrorCode(of: refused) == "BUNDLE_IN_CRASHED_HISTORY")
+        #expect(downloads.requestedURLs.count == 1)
+
+        // A day after, it is offered and downloaded again.
+        clock = clock.addingTimeInterval(1)
+        #expect(!service.getCrashHistory().contains("target"))
+        let retried = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: String(repeating: "0", count: 64), assets: [:])
+        #expect(updateFailure(of: retried) == UpdateFailure.hashMismatch.with(resource: .manifest))
+        #expect(downloads.requestedURLs.count == 2)
+        // The new refusal starts a new day.
+        #expect(service.getCrashHistory().contains("target"))
+
+        // A refusal dated after now, as after the clock was set back, has expired.
+        clock = clock.addingTimeInterval(-60)
+        #expect(!service.getCrashHistory().contains("target"))
+    }
+
+    @Test
+    func aKilledWriteKeepsThePreviousCrashHistory() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let file = root.appendingPathComponent(CrashedHistory.crashedHistoryFilename)
+        var history = CrashedHistory()
+        history.addEntry("crashed")
+        #expect(history.save(to: file))
+        // The write goes to a temporary file and replaces the history whole, so
+        // no reader ever sees a partial file.
+        let before = try FileManager.default.attributesOfItem(atPath: file.path)[.systemFileNumber] as? Int
+        history.addRejectedBundle("rejected", nativeBuildId: "build", now: 1_000)
+        #expect(history.save(to: file))
+        let after = try FileManager.default.attributesOfItem(atPath: file.path)[.systemFileNumber] as? Int
+        #expect(before != after)
+        #expect(CrashedHistory.load(from: file).contains("crashed"))
+    }
+
+    @Test
     func anotherBuildForgetsRejectedBundlesButKeepsCrashes() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
         var history = CrashedHistory()
         history.addEntry("crashed")
-        history.addRejectedBundle("rejected", nativeBuildId: "builtin-bundle")
+        history.addRejectedBundle("rejected", nativeBuildId: "builtin-bundle", now: Date().timeIntervalSince1970 * 1000)
         #expect(history.save(to: root
             .appendingPathComponent("bundle-store", isDirectory: true)
             .appendingPathComponent(CrashedHistory.crashedHistoryFilename)))
@@ -4528,7 +4581,8 @@ private func makeStorageService(
     downloadService: DownloadService = UnusedDownloadService(),
     builtInAssetResolver: BuiltInAssetResolver? = nil,
     builtInBundleId: String = "builtin-bundle",
-    metadataWriter: @escaping (BundleMetadata, URL) -> Bool = { metadata, file in metadata.save(to: file) }
+    metadataWriter: @escaping (BundleMetadata, URL) -> Bool = { metadata, file in metadata.save(to: file) },
+    now: @escaping () -> Date = Date.init
 ) -> BundleFileStorageService {
     BundleFileStorageService(
         fileSystem: fileSystem ?? TestFileSystemService(
@@ -4540,7 +4594,8 @@ private func makeStorageService(
         builtInBundleIdProvider: { builtInBundleId },
         builtInAssetResolver: builtInAssetResolver,
         downloadRetryDelay: 0,
-        metadataWriter: metadataWriter
+        metadataWriter: metadataWriter,
+        now: now
     )
 }
 

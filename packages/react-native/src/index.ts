@@ -287,8 +287,8 @@ const nativeMethods = {
 
   /**
    * Gets the list of bundle IDs this device refuses to install: bundles that
-   * crashed, and bundles whose download failed verification (a hash or
-   * signature that fails, or files that can't be decoded).
+   * crashed, and bundles whose download failed verification in the last
+   * day (a hash or signature that fails, or files that can't be decoded).
    * These bundles will be rejected if attempted to install again.
    *
    * @returns {string[]} Array of crashed bundle IDs

@@ -335,10 +335,13 @@ data class InterruptedLaunch(
 }
 
 /**
- * A bundle whose download was refused because its files are bad: a hash or
- * signature that fails, or a manifest or file that can't be decoded. A bundle
- * ID's files never change, so the build that refused it never downloads it
- * again. [nativeBuildId] is that build's MIN_BUNDLE_ID: another build, with
+ * A bundle whose download was refused because its files failed verification:
+ * a hash or signature that fails, or a manifest or file that can't be decoded.
+ * Update checks skip it for [CrashedHistory.REJECTION_WINDOW_MS] after
+ * [rejectedAt], then may select it again: the bytes failed here, but nothing
+ * proves they arrived as stored (a proxy, a block page, or a body cut short
+ * without a length), so a bad release costs at most one download a day.
+ * [nativeBuildId] is the refusing build's MIN_BUNDLE_ID: another build, with
  * its own key and checks, decides again.
  */
 data class RejectedBundleEntry(
@@ -376,6 +379,9 @@ data class CrashedHistory(
         private const val TAG = "CrashedHistory"
         const val DEFAULT_MAX_HISTORY_SIZE = 10
         const val MAX_REJECTED_BUNDLES = 10
+
+        /** How long a refused download keeps its bundle out of update checks. */
+        const val REJECTION_WINDOW_MS = 24L * 60 * 60 * 1000
         const val CRASHED_HISTORY_FILENAME = "crashed-history.json"
 
         fun fromJson(json: JSONObject): CrashedHistory {
@@ -430,15 +436,22 @@ data class CrashedHistory(
             }
         }
 
+    // Replaced whole: a process killed mid-write keeps the previous history.
     fun saveToFile(file: File): Boolean =
-        try {
-            file.parentFile?.mkdirs()
-            file.writeText(toJson().toString(2))
-            Log.d(TAG, "Saved crashed history to file: ${file.absolutePath}")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to save crashed history to file", e)
-            false
+        AtomicFile(file).let { atomicFile ->
+            var output: FileOutputStream? = null
+            try {
+                file.parentFile?.mkdirs()
+                output = atomicFile.startWrite()
+                output.write(toJson().toString(2).toByteArray())
+                atomicFile.finishWrite(output)
+                Log.d(TAG, "Saved crashed history to file: ${file.absolutePath}")
+                true
+            } catch (e: Exception) {
+                output?.let(atomicFile::failWrite)
+                Log.e(TAG, "Failed to save crashed history to file", e)
+                false
+            }
         }
 
     fun contains(bundleId: String): Boolean = bundles.any { it.bundleId == bundleId }
@@ -473,21 +486,35 @@ data class CrashedHistory(
         }
     }
 
+    /**
+     * The refusals [nativeBuildId] made within [REJECTION_WINDOW_MS] of [now].
+     * One dated after [now], as after the clock was set back, has expired.
+     */
+    fun activeRejections(
+        nativeBuildId: String,
+        now: Long,
+    ): List<RejectedBundleEntry> =
+        rejectedBundles.filter {
+            it.nativeBuildId == nativeBuildId && now - it.rejectedAt in 0 until REJECTION_WINDOW_MS
+        }
+
     fun isRejected(
         bundleId: String,
         nativeBuildId: String,
-    ): Boolean = rejectedBundles.any { it.bundleId == bundleId && it.nativeBuildId == nativeBuildId }
+        now: Long,
+    ): Boolean = activeRejections(nativeBuildId, now).any { it.bundleId == bundleId }
 
     /**
-     * Records that [nativeBuildId] refused [bundleId]'s download. Another
-     * build's records are dropped, and the oldest past the cap.
+     * Records that [nativeBuildId] refused [bundleId]'s download at [now].
+     * Another build's records are dropped, and the oldest past the cap.
      */
     fun addRejectedBundle(
         bundleId: String,
         nativeBuildId: String,
+        now: Long,
     ) {
         rejectedBundles.removeAll { it.bundleId == bundleId || it.nativeBuildId != nativeBuildId }
-        rejectedBundles.add(RejectedBundleEntry(bundleId, System.currentTimeMillis(), nativeBuildId))
+        rejectedBundles.add(RejectedBundleEntry(bundleId, now, nativeBuildId))
         while (rejectedBundles.size > MAX_REJECTED_BUNDLES) {
             rejectedBundles.removeAt(0)
         }

@@ -283,6 +283,8 @@ class BundleFileStorageService(
     private val directoryRenamer: (File, File) -> Boolean = { source, destination ->
         source.renameTo(destination)
     },
+    // Wall-clock milliseconds, which date a refused download.
+    private val currentTimeMillis: () -> Long = { System.currentTimeMillis() },
 ) : BundleStorageService {
     companion object {
         private const val TAG = "BundleStorage"
@@ -1627,7 +1629,7 @@ class BundleFileStorageService(
     private fun isBundleRejected(bundleId: String): Boolean =
         synchronized(crashedHistoryLock) {
             val history = loadCrashedHistory()
-            history.isRejected(bundleId, minBundleIdProvider()) && !history.contains(bundleId)
+            history.isRejected(bundleId, minBundleIdProvider(), currentTimeMillis()) && !history.contains(bundleId)
         }
 
     /**
@@ -1647,8 +1649,9 @@ class BundleFileStorageService(
             }
             // Only this build's verification refused them: another build,
             // with its own key and checks, decides again.
-            val nativeBuildId = minBundleIdProvider()
-            history.rejectedBundles.filter { it.nativeBuildId == nativeBuildId }.forEach { rejected ->
+            // A refusal lasts a day: a release refused for bytes that didn't
+            // arrive as stored is offered again.
+            history.activeRejections(minBundleIdProvider(), currentTimeMillis()).forEach { rejected ->
                 if (!history.contains(rejected.bundleId)) {
                     history.bundles.add(CrashedBundleEntry(rejected.bundleId, crashedAt = rejected.rejectedAt))
                 }
@@ -1672,7 +1675,7 @@ class BundleFileStorageService(
         }
         synchronized(crashedHistoryLock) {
             val history = loadCrashedHistory()
-            history.addRejectedBundle(bundleId, minBundleIdProvider())
+            history.addRejectedBundle(bundleId, minBundleIdProvider(), currentTimeMillis())
             saveCrashedHistory(history)
         }
         Log.w(TAG, "Bundle $bundleId failed verification; it will not be downloaded again")

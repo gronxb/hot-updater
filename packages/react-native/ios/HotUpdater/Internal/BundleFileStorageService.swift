@@ -442,6 +442,12 @@ class BundleFileStorageService: BundleStorageService {
     private let activeBundleMetadataLock = NSLock()
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot?
     private let builtInBundleIdProvider: () -> String
+    /// The wall clock, which dates a refused download.
+    private let now: () -> Date
+
+    private func nowMs() -> Double {
+        now().timeIntervalSince1970 * 1000
+    }
     private let builtInAssetResolver: BuiltInAssetResolver
     private let updateStrategyProvider: () -> UpdateStrategy
     private let metadataWriter: (BundleMetadata, URL) -> Bool
@@ -917,7 +923,9 @@ class BundleFileStorageService: BundleStorageService {
                 downloadRetryDelay: TimeInterval = 1,
                 metadataWriter: @escaping (BundleMetadata, URL) -> Bool = { metadata, file in
                     metadata.save(to: file)
-                }) {
+                },
+                now: @escaping () -> Date = Date.init) {
+        self.now = now
 
         self.fileSystem = fileSystem
         self.downloadRetryDelay = downloadRetryDelay
@@ -3391,9 +3399,10 @@ class BundleFileStorageService: BundleStorageService {
         }
         // Only this build's verification refused them: another build, with its
         // own key and checks, decides again.
-        let nativeBuildId = builtInBundleIdProvider()
-        for rejected in history.rejectedBundles
-        where rejected.nativeBuildId == nativeBuildId && !history.contains(rejected.bundleId) {
+        // A refusal lasts a day: a release refused for bytes that didn't arrive
+        // as stored is offered again.
+        for rejected in history.activeRejections(nativeBuildId: builtInBundleIdProvider(), now: nowMs())
+        where !history.contains(rejected.bundleId) {
             history.bundles.append(CrashedBundleEntry(bundleId: rejected.bundleId, crashedAt: rejected.rejectedAt))
         }
         return history
@@ -3403,7 +3412,7 @@ class BundleFileStorageService: BundleStorageService {
         crashedHistoryLock.lock()
         defer { crashedHistoryLock.unlock() }
         let history = loadCrashedHistory()
-        return history.isRejected(bundleId, nativeBuildId: builtInBundleIdProvider()) && !history.contains(bundleId)
+        return history.isRejected(bundleId, nativeBuildId: builtInBundleIdProvider(), now: nowMs()) && !history.contains(bundleId)
     }
 
     /// Remembers that `bundleId`'s files proved bad, so no update check
@@ -3420,7 +3429,7 @@ class BundleFileStorageService: BundleStorageService {
         crashedHistoryLock.lock()
         defer { crashedHistoryLock.unlock() }
         var history = loadCrashedHistory()
-        history.addRejectedBundle(bundleId, nativeBuildId: builtInBundleIdProvider())
+        history.addRejectedBundle(bundleId, nativeBuildId: builtInBundleIdProvider(), now: nowMs())
         _ = saveCrashedHistory(history)
         NSLog("[BundleStorage] Bundle '\(bundleId)' failed verification; it will not be downloaded again")
     }

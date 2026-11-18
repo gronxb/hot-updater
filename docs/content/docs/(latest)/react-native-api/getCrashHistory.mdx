@@ -35,12 +35,13 @@ The list also holds an artifact whose launch ended before the first render,
 until a later session retries it once. See
 [automatic rollback](/docs/concepts/automatic-rollback#what-counts-as-a-failed-launch).
 
-It also holds up to 10 artifacts whose download failed verification: a file or
-manifest whose hash or signature fails, or that can't be decoded. An artifact's
-files never change, so the device doesn't download it again. A deploy that
-fixes it is a new artifact. Network and HTTP errors are retried as usual. These
-artifacts never count as crashes, and installing another native build clears
-them.
+It also holds up to 10 artifacts whose download failed verification in the
+last 24 hours: a file or manifest whose hash or signature fails, or that can't
+be decoded. The device doesn't download such an artifact again during those 24
+hours. After that, it can be selected again, since a proxy or a cut-off
+download can make good files fail. Network and HTTP errors are retried as
+usual. These artifacts never count as crashes, and installing another native
+build clears them.
 
 Native bundle loading starts crash detection. Configure
 [`init`](/docs/react-native-api/init) to observe the completed launch through
