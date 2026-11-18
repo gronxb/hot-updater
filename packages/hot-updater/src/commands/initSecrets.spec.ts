@@ -201,8 +201,14 @@ describe("init with a team secrets store", () => {
     await replaceInitTeamSecrets(
       team!,
       {
-        HOT_UPDATER_CLOUDFLARE_API_TOKEN: "new-token",
-        HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: "new-access-key",
+        HOT_UPDATER_CLOUDFLARE_API_TOKEN: {
+          value: "new-token",
+          replaces: ["old-token"],
+        },
+        HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: {
+          value: "new-access-key",
+          replaces: ["old-access-key"],
+        },
       },
       directory,
     );
@@ -218,6 +224,34 @@ describe("init with a team secrets store", () => {
       ].join("\n"),
     );
     await expect(envFile()).rejects.toThrow();
+  });
+
+  it("leaves another value the store holds, such as another deployment's token", async () => {
+    const { adapter, values } = teamStore({
+      HOT_UPDATER_CLOUDFLARE_API_TOKEN: "other-deployment-token",
+    });
+    mocks.loadTeamSecrets.mockResolvedValue(adapter);
+    const team = await openInitTeamSecrets({
+      provider: PROVIDER,
+      env: {},
+      cwd: directory,
+    });
+
+    await replaceInitTeamSecrets(
+      team!,
+      {
+        HOT_UPDATER_CLOUDFLARE_API_TOKEN: {
+          value: "new-token",
+          replaces: ["old-token"],
+        },
+      },
+      directory,
+    );
+
+    expect(adapter.set).not.toHaveBeenCalled();
+    expect(values.get("HOT_UPDATER_CLOUDFLARE_API_TOKEN")).toBe(
+      "other-deployment-token",
+    );
   });
 
   it("says what it stored apart from what the store already held", async () => {

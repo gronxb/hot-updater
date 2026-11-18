@@ -6,6 +6,7 @@ import {
   MANAGED_CLIENT_CREDENTIAL_ENV,
   p,
   readMissingFromTeamSecrets,
+  type RunInitResult,
   StoredSecretsConflictError,
   storeEnvFileSecrets,
 } from "@hot-updater/cli-tools";
@@ -80,22 +81,31 @@ export const openInitTeamSecrets = async ({
 
 /**
  * Writes the credentials init replaced (`RunInitResult.replacedSecrets`)
- * through the team adapter, over the old value it holds, and reads them
- * back. A name the adapter doesn't hold stays out of it: init stores those
- * from `.env.hotupdater`, as for every other credential.
+ * through the team adapter, over an old value it holds, and reads them
+ * back. Another value the adapter holds, such as another deployment's, and
+ * a name it doesn't hold stay as they are: init stores from
+ * `.env.hotupdater` as for every other credential, and names a conflict.
  */
 export const replaceInitTeamSecrets = async (
   team: InitTeamSecrets,
-  replaced: Readonly<Record<string, string>>,
+  replacedSecrets: NonNullable<NonNullable<RunInitResult>["replacedSecrets"]>,
   cwd: string,
 ): Promise<void> => {
+  const replaced = Object.fromEntries(
+    Object.entries(replacedSecrets).map(([name, { value }]) => [name, value]),
+  );
   const names = team.names.filter((name) => Object.hasOwn(replaced, name));
   if (names.length === 0) return;
   try {
     const held = await team.adapter.get(names, { cwd });
-    const changed = names.filter(
-      (name) => typeof held[name] === "string" && held[name] !== replaced[name],
-    );
+    const changed = names.filter((name) => {
+      const value = held[name];
+      return (
+        typeof value === "string" &&
+        value !== replaced[name] &&
+        replacedSecrets[name]!.replaces.includes(value)
+      );
+    });
     for (const name of changed) {
       await team.adapter.set(name, replaced[name]!, { cwd });
     }

@@ -878,6 +878,25 @@ export const runInit = async ({
   const baseURL = productionBaseUrl(deployedProject);
   await verifyFunction(baseURL);
   p.log.success(`Deployed the Hot Updater Function: ${baseURL}`);
+  // The tokens of the stores init moved off: those it read, and one a team
+  // secrets store holds for a public store no other project uses.
+  const heldToken = secretsEnv?.[BLOB_TOKEN_ENV];
+  const heldStore =
+    heldToken === undefined
+      ? undefined
+      : stores.find((candidate) => candidate.id === storeIdOfToken(heldToken));
+  const retiredTokens = [
+    ...new Set([
+      ...sourceTokens.values(),
+      ...(heldToken !== undefined &&
+      heldStore?.access === "public" &&
+      heldStore.connections.every(
+        (connection) => connection.projectId === project.id,
+      )
+        ? [heldToken]
+        : []),
+    ]),
+  ];
   // A deploy that passed the schema fence before the migration may have
   // written a bundle to a moved store since: move it too. One later still
   // is moved by init's next run.
@@ -922,10 +941,15 @@ export const runInit = async ({
   });
 
   return {
-    // A team secrets store that held the moved store's token takes the new one.
-    ...(sources.length === 0
+    // A team secrets store that holds a moved store's token takes the new
+    // one, also on a run after an interrupted one moved the bundles.
+    ...(retiredTokens.length === 0
       ? {}
-      : { replacedSecrets: { [BLOB_TOKEN_ENV]: blobToken } }),
+      : {
+          replacedSecrets: {
+            [BLOB_TOKEN_ENV]: { value: blobToken, replaces: retiredTokens },
+          },
+        }),
     nextSteps: [
       ...(sources.length === 0
         ? []
