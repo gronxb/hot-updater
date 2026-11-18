@@ -1,19 +1,23 @@
 import type { Credential } from "firebase-admin/app";
 
+const CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
+
 /**
- * Resolves application default credentials the way Firestore will, from
- * GOOGLE_APPLICATION_CREDENTIALS's file or the environment, without an
- * OAuth exchange Firestore itself may not make: firebase-admin's
- * `applicationDefault()` holds a `GoogleAuth` as `googleAuth`. A service
- * account's or refresh token's credential was read from its file already.
+ * Resolves application default credentials as Firestore will, from
+ * GOOGLE_APPLICATION_CREDENTIALS's file or the environment, for the app's
+ * `projectId`, so it neither exchanges a token nor discovers a project
+ * Firestore itself wouldn't. firebase-admin's `applicationDefault()` is the
+ * credential with a `googleAuth`; a service account's or refresh token's
+ * was read from its file already.
  */
 export const resolveApplicationDefault = async (
   credential: Credential,
+  projectId: string | undefined,
 ): Promise<void> => {
-  const googleAuth: unknown = Reflect.get(credential, "googleAuth");
-  const getClient =
-    typeof googleAuth === "object" && googleAuth !== null
-      ? Reflect.get(googleAuth, "getClient")
-      : undefined;
-  if (typeof getClient === "function") await getClient.call(googleAuth);
+  if (!Reflect.has(credential, "googleAuth")) return;
+  const { GoogleAuth } = await import("google-auth-library");
+  await new GoogleAuth({
+    scopes: [CLOUD_PLATFORM_SCOPE],
+    ...(projectId === undefined ? {} : { projectId }),
+  }).getClient();
 };

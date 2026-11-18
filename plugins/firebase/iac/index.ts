@@ -613,7 +613,10 @@ export const runInit = async ({
     nonInteractive,
     cliEnv,
   );
-  const credential = await loadGoogleCredential(applicationCredentials);
+  const credential = await loadGoogleCredential(
+    applicationCredentials,
+    initializeVariable.projectId,
+  );
   // Loading hot-updater.config.ts for its secrets adapter ran the config's
   // adapters, which bound the default app to the config's project and
   // credential, in an environment init has restored since. The database

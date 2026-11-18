@@ -43,10 +43,11 @@ export type FirebaseDatabaseConfig = AppOptions & {
 const withLoadedCredential = (
   store: KeyValueStore,
   credential: Credential,
+  projectId: string | undefined,
 ): KeyValueStore => {
   let loaded: Promise<void> | undefined;
   const load = () =>
-    (loaded ??= resolveApplicationDefault(credential).then(
+    (loaded ??= resolveApplicationDefault(credential, projectId).then(
       () => undefined,
       (error: unknown) => {
         loaded = undefined;
@@ -91,14 +92,17 @@ const adapterOf = ({
     ? getFirestore(app, databaseId)
     : getFirestore(app);
   const store = createFirestoreStore({ firestore, collection });
+  // The credential of the app Firestore uses, which an app that already
+  // exists keeps. The Cloud Function passes none to the database: its
+  // default app has one. Firestore's emulator takes none.
+  const credential = app.options.credential;
   return createKvAdapter({
-    // The Cloud Function passes no credential: its default app has one.
-    // Firestore's emulator takes none.
     store:
       appOptions.credential === undefined ||
+      credential === undefined ||
       process.env["FIRESTORE_EMULATOR_HOST"]
         ? store
-        : withLoadedCredential(store, appOptions.credential),
+        : withLoadedCredential(store, credential, app.options.projectId),
   });
 };
 

@@ -59,7 +59,8 @@ export const firebaseEngineSettingDocumentId = () =>
  * end init with a stack trace.
  */
 export const loadGoogleCredential = async (
-  applicationCredentials?: string,
+  applicationCredentials: string | undefined,
+  projectId: string,
 ): Promise<Credential> => {
   const next =
     "Set GOOGLE_APPLICATION_CREDENTIALS to a service account key file, then rerun init.";
@@ -76,7 +77,7 @@ export const loadGoogleCredential = async (
   // Firestore's emulator takes no credential.
   if (process.env["FIRESTORE_EMULATOR_HOST"]) return credential;
   try {
-    await resolveApplicationDefault(credential);
+    await resolveApplicationDefault(credential, projectId);
   } catch (error) {
     const reason = (error instanceof Error ? error.message : String(error))
       .split(/(?<=\.)\s/u)[0]!
@@ -97,7 +98,10 @@ export const assertFirebaseInfrastructureCanInitialize = async ({
   readonly databaseId: string;
   readonly projectId: string;
 }): Promise<void> => {
-  const credential = await loadGoogleCredential(applicationCredentials);
+  const credential = await loadGoogleCredential(
+    applicationCredentials,
+    projectId,
+  );
   const app = initializeApp(
     { credential, projectId },
     `hot-updater-init-${projectId}-${Date.now()}`,

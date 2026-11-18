@@ -13,7 +13,7 @@ afterEach(() => {
 
 describe("Google credentials for init", () => {
   it("says a key file the input names is unreadable, before any change", async () => {
-    const loaded = loadGoogleCredential("missing-credentials.json");
+    const loaded = loadGoogleCredential("missing-credentials.json", "app");
 
     await expect(loaded).rejects.toBeInstanceOf(InitError);
     await expect(loaded).rejects.toThrow(
@@ -24,7 +24,7 @@ describe("Google credentials for init", () => {
   it("says the 1.0.0 placeholder the environment sets cannot load, without a stack trace", async () => {
     vi.stubEnv("GOOGLE_APPLICATION_CREDENTIALS", "your-credentials.json");
 
-    const loaded = loadGoogleCredential();
+    const loaded = loadGoogleCredential(undefined, "app");
 
     await expect(loaded).rejects.toBeInstanceOf(InitError);
     await expect(loaded).rejects.toThrow(
