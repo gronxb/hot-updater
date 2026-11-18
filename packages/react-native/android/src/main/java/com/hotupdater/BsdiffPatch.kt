@@ -1,6 +1,8 @@
 package com.hotupdater
 
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.EOFException
@@ -36,8 +38,9 @@ object BsdiffPatch {
 
         try {
             RandomAccessFileBaseReader(RandomAccessFile(baseFile, "r")).use { baseReader ->
-                FileInputStream(patchFile).use { patchStream ->
-                    FileOutputStream(tempOutputFile).use { outputStream ->
+                // The bzip2 decoder reads its input a byte at a time.
+                BufferedInputStream(FileInputStream(patchFile), STREAM_BUFFER_SIZE).use { patchStream ->
+                    BufferedOutputStream(FileOutputStream(tempOutputFile), STREAM_BUFFER_SIZE).use { outputStream ->
                         apply(baseReader, patchStream, outputStream)
                     }
                 }
