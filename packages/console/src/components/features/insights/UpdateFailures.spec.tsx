@@ -149,6 +149,30 @@ describe("UpdateFailures", () => {
     expect(within(card).getByText("Partial")).toBeDefined();
   });
 
+  it("doesn't call a capped period's empty breakdown free of failures", () => {
+    render(
+      <UpdateFailures
+        query={query({
+          ...report,
+          coverage: { kind: "partial", sinceMs: 0 },
+          cappedHours: [0],
+          failedUpdates: 0,
+          breakdown: [],
+        })}
+        onRefresh={() => {}}
+      />,
+    );
+    const card = screen.getByRole("region", { name: "Update failures" });
+    expect(
+      within(card).queryByText("No update failures in this period."),
+    ).toBeNull();
+    expect(
+      within(card).getByText(
+        "None among the failures read: some hours held more failure kinds than are read.",
+      ),
+    ).toBeDefined();
+  });
+
   it("shows a rising failure rate in percentage points and keeps investigation immediately below it", () => {
     render(
       <UpdateFailures

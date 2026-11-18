@@ -166,6 +166,11 @@ A device reports each kind of failure at most once per UTC day, so the counts
 are not every retry or exception thrown. A failure doesn't change what
 an installation runs, so it never counts as a launch.
 
+A period reads at most 20 kinds of failure from each hour: a release, stage,
+reason, and detail that failed in it. When an hour holds more, its failures
+count only in part, so the failure counts and rate show as at least (≥) and
+the card shows **Partial**. Downloads and installations still count in full.
+
 ### App usage and Distribution
 
 **App usage** shows **DAU**, **WAU**, **MAU**, or **YAU** for the period:

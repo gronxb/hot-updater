@@ -248,6 +248,14 @@ export const handleInsightsFailures = (
     const attempts = failures.failedUpdates + failures.downloads;
     const breakdown = failures.breakdown ?? [];
     const coverage = failures.coverage;
+    // Hours read only in part: their failures, and so the attempts and the
+    // rate, are at least what they say.
+    const capped = failures.cappedHours?.length ?? 0;
+    const atLeast = capped > 0 ? "≥" : "";
+    // Coverage that starts after the period does is retention's.
+    const pastRetention =
+      coverage.kind === "partial" &&
+      (coverage.sinceMs === null || coverage.sinceMs > timeRange.start);
     p.log.message(
       [
         ui.title(
@@ -270,8 +278,8 @@ export const handleInsightsFailures = (
           ],
           [
             {
-              rate: rateText(failures.failedUpdates, attempts),
-              failed: `${count(failures.failedUpdates)} of ${count(attempts)}`,
+              rate: `${atLeast}${rateText(failures.failedUpdates, attempts)}`,
+              failed: `${atLeast}${count(failures.failedUpdates)} of ${atLeast}${count(attempts)}`,
               devices: count(failures.failedInstallations),
               downloads: count(failures.downloads),
               patches: count(failures.patchDownloads),
@@ -284,12 +292,19 @@ export const handleInsightsFailures = (
           : [
               `Update checks: ${rateText(failures.checks.failedInstallations, failures.checks.activeInstallations)} of ${count(failures.checks.activeInstallations)} active installations had a failed check.`,
             ]),
-        ...(coverage.kind === "partial"
+        ...(pastRetention
           ? [
               ui.warning(
                 coverage.sinceMs === null
                   ? "Partial: part of the period is past retention."
                   : `Partial: covers only since ${dateText(coverage.sinceMs)}, as older reports are past retention.`,
+              ),
+            ]
+          : []),
+        ...(capped > 0
+          ? [
+              ui.warning(
+                `Partial: ${capped} ${capped === 1 ? "hour" : "hours"} held more failure kinds than are read, so failures are at least the counts shown.`,
               ),
             ]
           : []),

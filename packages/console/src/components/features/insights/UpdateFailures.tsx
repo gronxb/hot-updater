@@ -298,7 +298,9 @@ function FailuresReport({
         ) : null}
         {breakdown.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No update failures in this period.
+            {capped
+              ? "None among the failures read: some hours held more failure kinds than are read."
+              : "No update failures in this period."}
           </p>
         ) : (
           <Table aria-label="Failures by stage and reason">
