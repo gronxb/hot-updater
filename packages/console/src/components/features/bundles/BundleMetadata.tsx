@@ -3,7 +3,6 @@ import { getPatchBaseFileHash, getPatchFileHash } from "@hot-updater/protocol";
 import { ExternalLink } from "lucide-react";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";
-import { InfoTooltip } from "@/components/InfoTooltip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConfigQuery } from "@/lib/api";
 import { CONSOLE_GIT_URL_GUIDE_URL } from "@/lib/constants";
@@ -74,6 +73,22 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
                 <div className="flex items-center justify-start gap-1 sm:justify-end">
                   <HashValueDisplay
                     className={gitCommitUrl ? "text-primary" : undefined}
+                    hint={
+                      showGitUrlHint ? (
+                        <>
+                          Set <code className="font-mono">console.gitUrl</code>{" "}
+                          in your config to open commits in your repository.{" "}
+                          <a
+                            className="font-medium underline underline-offset-2"
+                            href={CONSOLE_GIT_URL_GUIDE_URL}
+                            rel="noopener noreferrer"
+                            target="_blank"
+                          >
+                            Learn more
+                          </a>
+                        </>
+                      ) : undefined
+                    }
                     maxLength={12}
                     value={bundle.gitCommitHash}
                   />
@@ -87,23 +102,6 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
                     >
                       <ExternalLink aria-hidden="true" />
                     </a>
-                  ) : null}
-                  {showGitUrlHint ? (
-                    <InfoTooltip label="Link commits">
-                      Set{" "}
-                      <code className="font-mono text-foreground">
-                        console.gitUrl
-                      </code>{" "}
-                      in your config to link commits.{" "}
-                      <a
-                        className="text-primary hover:underline"
-                        href={CONSOLE_GIT_URL_GUIDE_URL}
-                        rel="noopener noreferrer"
-                        target="_blank"
-                      >
-                        Learn more
-                      </a>
-                    </InfoTooltip>
                   ) : null}
                 </div>
               }
