@@ -117,6 +117,7 @@ const defaultScenarioNames = [
   "stale-catalog-after-newer-generation",
   "slow-old-artifact-after-newer-install",
   "failed-download-same-generation-retry",
+  "failed-verification-not-redownloaded",
   "resumed-background-archive-download",
   "republished-crashed-bundle-skipped",
   "crash-then-next-safe-update",
@@ -461,7 +462,7 @@ describe("E2E scenario contract", () => {
 
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
-    expect(new Set(listScenarioNames()).size).toBe(40);
+    expect(new Set(listScenarioNames()).size).toBe(41);
   });
 
   it("runs every default scenario a native app shell can host in the brownfield suite", () => {

@@ -16,6 +16,7 @@ import { crashThenNextSafeUpdateScenario } from "./scenarios/crash-then-next-saf
 import { disabledBundleRollbackToBuiltinScenario } from "./scenarios/disabled-bundle-rollback-to-builtin.ts";
 import { disabledBundleRollbackToPreviousOtaScenario } from "./scenarios/disabled-bundle-rollback-to-previous-ota.ts";
 import { failedDownloadSameGenerationRetryScenario } from "./scenarios/failed-download-same-generation-retry.ts";
+import { failedVerificationNotRedownloadedScenario } from "./scenarios/failed-verification-not-redownloaded.ts";
 import { fingerprintInitialInstallScenario } from "./scenarios/fingerprint-initial-install.ts";
 import { forceUpdateAutoReloadScenario } from "./scenarios/force-update-auto-reload.ts";
 import { foreignSigningKeyRefusedScenario } from "./scenarios/foreign-signing-key-refused.ts";
@@ -85,6 +86,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   staleCatalogAfterNewerGenerationScenario,
   slowOldArtifactAfterNewerInstallScenario,
   failedDownloadSameGenerationRetryScenario,
+  failedVerificationNotRedownloadedScenario,
   resumedBackgroundArchiveDownloadScenario,
   republishedCrashedBundleSkippedScenario,
   crashThenNextSafeUpdateScenario,

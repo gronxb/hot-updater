@@ -70,6 +70,7 @@ describe("proxy assertion HTTP completion", () => {
           artifactFailuresRemaining: 0,
           downloadedBytes: 0,
           pathCardinality: 2,
+          platformBundleRequests: 0,
           requestCounts: { artifact: 2, catalog: 3, files: 0, other: 0 },
           requestPaths: {
             "/hot-updater/artifacts/fixture": 2,

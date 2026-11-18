@@ -3417,6 +3417,266 @@ class BundleFileStorageServiceTest {
         }
     }
 
+    /**
+     * Updates "target" twice and says whether the first failure was remembered:
+     * a remembered bundle is refused before the second makes any request.
+     */
+    private suspend fun rejectsAgainWithoutDownloading(
+        root: File,
+        assetPath: String = "index.android.bundle",
+        manifest: String = manifestJson("target", mapOf(assetPath to sha256(root, BUNDLE_CONTENT))),
+        manifestFileHash: String = sha256(root, manifest),
+        descriptor: ChangedAssetDescriptor = ChangedAssetDescriptor(BUNDLE_URL, sha256(root, BUNDLE_CONTENT)),
+        servedFile: ByteArray = BUNDLE_CONTENT.toByteArray(),
+        failures: Map<String, Exception> = emptyMap(),
+        publicKey: String? = null,
+    ): Boolean {
+        val downloads = BinaryMappingDownloadService(mapOf(MANIFEST_URL to manifest.toByteArray(), BUNDLE_URL to servedFile), failures)
+        val service =
+            createService(
+                root,
+                downloadService = downloads,
+                builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()),
+                publicKey = publicKey,
+            )
+        val assets = mapOf(assetPath to descriptor)
+        assertNotNull(runCatching { service.updateBundle("target", MANIFEST_URL, manifestFileHash, assets) {} }.exceptionOrNull())
+        // Crash history itself stays crash-only.
+        assertTrue(loadCrashedHistory(root).bundles.isEmpty())
+        val rejected = service.getCrashHistory().contains("target")
+        val requests = downloads.calls.size
+        val second = runCatching { service.updateBundle("target", MANIFEST_URL, manifestFileHash, assets) {} }.exceptionOrNull()
+        if (rejected) {
+            assertEquals(requests, downloads.calls.size)
+            assertUpdateFailure(second, "BUNDLE_IN_CRASHED_HISTORY", null)
+            assertTrue(second?.message.orEmpty().contains("failed verification"))
+        } else {
+            assertTrue(downloads.calls.size > requests)
+        }
+        return rejected
+    }
+
+    @Test
+    fun `a download whose files prove bad is never requested again`() =
+        runBlocking {
+            val manifestHash = temporaryFolder.newFolder("manifest-hash")
+            assertTrue(rejectsAgainWithoutDownloading(manifestHash, manifestFileHash = sha256(manifestHash, "another manifest")))
+            assertTrue(rejectsAgainWithoutDownloading(temporaryFolder.newFolder("file-hash"), servedFile = "tampered".toByteArray()))
+            assertTrue(rejectsAgainWithoutDownloading(temporaryFolder.newFolder("unsigned"), publicKey = "configured-public-key"))
+            val otherBundle = temporaryFolder.newFolder("other-bundle")
+            assertTrue(
+                rejectsAgainWithoutDownloading(
+                    otherBundle,
+                    manifest = manifestJson("other-bundle", mapOf("index.android.bundle" to sha256(otherBundle, BUNDLE_CONTENT))),
+                ),
+            )
+            assertTrue(rejectsAgainWithoutDownloading(temporaryFolder.newFolder("unparsable"), manifest = "not json"))
+            assertTrue(rejectsAgainWithoutDownloading(temporaryFolder.newFolder("unsafe-path"), assetPath = "../index.android.bundle"))
+            // Every file verified against the manifest, yet none is the platform bundle.
+            assertTrue(rejectsAgainWithoutDownloading(temporaryFolder.newFolder("missing-platform-bundle"), assetPath = "assets/image.png"))
+            val brotli = temporaryFolder.newFolder("brotli")
+            assertTrue(
+                rejectsAgainWithoutDownloading(
+                    brotli,
+                    descriptor = ChangedAssetDescriptor(BUNDLE_URL, sha256(brotli, BUNDLE_CONTENT), fileCompression = "br"),
+                    servedFile = Base64.getDecoder().decode(TarBrArchiveExtractorTest.VALID).let { it.copyOf(it.size / 2) },
+                ),
+            )
+        }
+
+    @Test
+    fun `failures that say nothing about the files keep retrying`() =
+        runBlocking {
+            for ((name, failure) in listOf(
+                "network" to IOException("Connection reset"),
+                "http" to HttpStatusException(503, "Service Unavailable"),
+                "incomplete" to IncompleteDownloadException(expectedSize = 100, actualSize = 40),
+            )) {
+                assertFalse(name, rejectsAgainWithoutDownloading(temporaryFolder.newFolder(name), failures = mapOf(BUNDLE_URL to failure)))
+            }
+            // The manifest is signed, but this build has no key to check it with.
+            assertFalse(rejectsAgainWithoutDownloading(temporaryFolder.newFolder("no-public-key"), manifestFileHash = "sig:c2lnbmF0dXJl"))
+            val descriptorRoot = temporaryFolder.newFolder("descriptor-hash")
+            // The artifact response, not the signed manifest, names another hash.
+            assertFalse(
+                rejectsAgainWithoutDownloading(
+                    descriptorRoot,
+                    descriptor = ChangedAssetDescriptor(BUNDLE_URL, sha256(descriptorRoot, "other")),
+                ),
+            )
+        }
+
+    @Test
+    fun `a file proven bad is remembered when another file fails first`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder()
+            val imageUrl = "https://example.com/assets/image.png"
+            val bundleHash = sha256(root, BUNDLE_CONTENT)
+            val imageHash = sha256(root, "image")
+            val manifest = manifestJson("target", mapOf("index.android.bundle" to bundleHash, "assets/image.png" to imageHash))
+            val imageFailed = CountDownLatch(1)
+            val served =
+                BinaryMappingDownloadService(
+                    mapOf(MANIFEST_URL to manifest.toByteArray(), BUNDLE_URL to "tampered".toByteArray()),
+                    mapOf(imageUrl to HttpStatusException(404, "Not Found")),
+                )
+            // Both downloads run; the image fails first, the tampered bundle after.
+            val downloads =
+                object : DownloadService {
+                    override suspend fun downloadFile(
+                        fileUrl: URL,
+                        destination: File,
+                        fileSizeCallback: ((Long) -> Unit)?,
+                        progressCallback: (DownloadProgress) -> Unit,
+                    ): DownloadResult {
+                        if (fileUrl.toString() == BUNDLE_URL) {
+                            imageFailed.await(5, TimeUnit.SECONDS)
+                            Thread.sleep(200)
+                        }
+                        return served.downloadFile(fileUrl, destination, fileSizeCallback, progressCallback).also {
+                            if (fileUrl.toString() == imageUrl) imageFailed.countDown()
+                        }
+                    }
+                }
+            val service = createService(root, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
+            val assets =
+                mapOf(
+                    "index.android.bundle" to ChangedAssetDescriptor(BUNDLE_URL, bundleHash),
+                    "assets/image.png" to ChangedAssetDescriptor(imageUrl, imageHash),
+                )
+            assertNotNull(runCatching { service.updateBundle("target", MANIFEST_URL, sha256(root, manifest), assets) {} }.exceptionOrNull())
+            assertTrue(service.getCrashHistory().contains("target"))
+        }
+
+    @Test
+    fun `clearing crash history allows a rejected bundle again`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder()
+            assertTrue(rejectsAgainWithoutDownloading(root, servedFile = "tampered".toByteArray()))
+            val service = createService(root)
+            assertTrue(service.clearCrashHistory())
+            assertFalse(service.getCrashHistory().contains("target"))
+            assertTrue(loadCrashedHistory(root).rejectedBundles.isEmpty())
+        }
+
+    @Test
+    fun `the bundle the device keeps is never rejected`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder()
+            writeMetadata(root, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "target"))
+            val error = runOneFileUpdate(root, servedFile = "tampered".toByteArray())
+            assertUpdateFailure(
+                error,
+                "SIGNATURE_VERIFICATION_FAILED",
+                UpdateFailure.download(UpdateFailureReason.HASH_MISMATCH).copy(resource = UpdateFailureResource.FILE),
+            )
+            assertFalse(createService(root).getCrashHistory().contains("target"))
+        }
+
+    @Test
+    fun `rejected bundles are capped without evicting crashes`() {
+        val history = CrashedHistory()
+        history.addEntry("crashed")
+        repeat(CrashedHistory.MAX_REJECTED_BUNDLES + 3) { history.addRejectedBundle("rejected-$it", "build", 1_000) }
+        assertTrue(history.contains("crashed"))
+        assertEquals(CrashedHistory.MAX_REJECTED_BUNDLES, history.rejectedBundles.size)
+        assertFalse(history.isRejected("rejected-0", "build", 1_000))
+        assertTrue(history.isRejected("rejected-${CrashedHistory.MAX_REJECTED_BUNDLES + 2}", "build", 1_000))
+
+        val file = File(temporaryFolder.newFolder(), CrashedHistory.CRASHED_HISTORY_FILENAME)
+        assertTrue(history.saveToFile(file))
+        val loaded = CrashedHistory.loadFromFile(file)
+        assertEquals(listOf("crashed"), loaded.bundles.map { it.bundleId })
+        assertEquals(history.rejectedBundles.map { it.bundleId }, loaded.rejectedBundles.map { it.bundleId })
+    }
+
+    @Test
+    fun `malformed rejected record keeps crash history`() {
+        val file = File(temporaryFolder.newFolder(), CrashedHistory.CRASHED_HISTORY_FILENAME)
+        file.writeText("""{"bundles":[{"bundleId":"crashed","crashedAt":1}],"maxHistorySize":10,"rejectedBundles":"bad"}""")
+        val loaded = CrashedHistory.loadFromFile(file)
+        assertTrue(loaded.contains("crashed"))
+        assertTrue(loaded.rejectedBundles.isEmpty())
+    }
+
+    @Test
+    fun `a refusal lasts a day, then the bundle is offered again`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder()
+            var now = 1_800_000_000_000L
+            val hash = sha256(root, BUNDLE_CONTENT)
+            val manifest = manifestJson("target", mapOf("index.android.bundle" to hash))
+            val served =
+                BinaryMappingDownloadService(mapOf(MANIFEST_URL to manifest.toByteArray(), BUNDLE_URL to "tampered".toByteArray()))
+            val service =
+                createService(
+                    root,
+                    downloadService = served,
+                    builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()),
+                    currentTimeMillis = { now },
+                )
+            val assets = mapOf("index.android.bundle" to ChangedAssetDescriptor(BUNDLE_URL, hash))
+
+            suspend fun attempt(): Throwable? =
+                runCatching { service.updateBundle("target", MANIFEST_URL, sha256(root, manifest), assets) {} }.exceptionOrNull()
+            assertNotNull(attempt())
+            assertTrue(service.getCrashHistory().contains("target"))
+            val requests = served.calls.size
+
+            // Still refused just before a day, with no request.
+            now += 24L * 60 * 60 * 1000 - 1
+            assertTrue(service.getCrashHistory().contains("target"))
+            assertUpdateFailure(attempt(), "BUNDLE_IN_CRASHED_HISTORY", null)
+            assertEquals(requests, served.calls.size)
+
+            // A day after, it is offered and downloaded again.
+            now += 1
+            assertFalse(service.getCrashHistory().contains("target"))
+            assertUpdateFailure(
+                attempt(),
+                "SIGNATURE_VERIFICATION_FAILED",
+                UpdateFailure.download(UpdateFailureReason.HASH_MISMATCH).copy(resource = UpdateFailureResource.FILE),
+            )
+            assertTrue(served.calls.size > requests)
+            // The new refusal starts a new day.
+            assertTrue(service.getCrashHistory().contains("target"))
+
+            // A refusal dated after now, as after the clock was set back, has expired.
+            now -= 60_000
+            assertFalse(service.getCrashHistory().contains("target"))
+        }
+
+    @Test
+    fun `crash history is replaced whole, never left half written`() {
+        val file = File(temporaryFolder.newFolder(), CrashedHistory.CRASHED_HISTORY_FILENAME)
+        val history = CrashedHistory()
+        history.addEntry("crashed")
+        assertTrue(history.saveToFile(file))
+        // A write killed before it finishes leaves only AtomicFile's .new file,
+        // which the next read ignores.
+        File(file.path + ".new").writeText("{\"bundles\":[{\"bundleId\":")
+        assertTrue(CrashedHistory.loadFromFile(file).contains("crashed"))
+        history.addRejectedBundle("rejected", "build", 1_000)
+        assertTrue(history.saveToFile(file))
+        assertTrue(CrashedHistory.loadFromFile(file).contains("crashed"))
+        assertFalse(File(file.path + ".new").exists())
+    }
+
+    @Test
+    fun `another build forgets rejected bundles but keeps crashes`() {
+        val rootDir = temporaryFolder.newFolder()
+        val history = CrashedHistory()
+        history.addEntry("crashed")
+        history.addRejectedBundle("rejected", "this-build", System.currentTimeMillis())
+        assertTrue(history.saveToFile(crashedHistoryFile(rootDir)))
+
+        // The same isolation key, as an appVersion build of the same version has.
+        assertTrue(createService(rootDir, minBundleId = "this-build").getCrashHistory().contains("rejected"))
+        val otherBuild = createService(rootDir, minBundleId = "other-build")
+        assertTrue(otherBuild.getCrashHistory().contains("crashed"))
+        assertFalse(otherBuild.getCrashHistory().contains("rejected"))
+    }
+
     @Test
     fun `rejections that are not update failures carry no classification`() =
         runBlocking {
@@ -3731,6 +3991,7 @@ class BundleFileStorageServiceTest {
         publicKey: String? = null,
         fallbackBundleURL: String = "assets://index.android.bundle",
         minBundleId: String = HotUpdaterImpl.getMinBundleId(),
+        currentTimeMillis: () -> Long = { System.currentTimeMillis() },
     ): BundleFileStorageService =
         BundleFileStorageService(
             context = ContextWrapper(null),
@@ -3747,6 +4008,7 @@ class BundleFileStorageServiceTest {
             builtInAssetResolver = builtInAssetResolver,
             metadataWriter = metadataWriter,
             directoryRenamer = directoryRenamer,
+            currentTimeMillis = currentTimeMillis,
         )
 
     private fun releaseSelection(
