@@ -3264,6 +3264,8 @@ struct BundleFileStorageServiceTests {
         #expect(updateFailure(of: result) == UpdateFailure.patch.with(resource: .patch))
         #expect(baseErrorCode(of: result) == "SIGNATURE_VERIFICATION_FAILED")
         #expect(downloads.requestedURLs == [manifestURL, patchURL])
+        // The bytes match the hash, so the manifest's size is at fault.
+        #expect(service.getCrashHistory().contains("target"))
     }
 
     @Test

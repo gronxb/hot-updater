@@ -2170,11 +2170,18 @@ class BundleFileStorageService(
                 progressCallback = progressCallback,
             )
         if (patchOutcome == PatchOutcome.APPLIED) {
-            verifyManifestAssetFileOrThrow(
-                targetFile,
-                expectedAsset,
-                hashMismatch = PATCH_FAILURE,
-            )
+            // The patched bytes already match the manifest's hash, so a
+            // signature that still fails is the manifest's own.
+            try {
+                verifyManifestAssetFileOrThrow(
+                    targetFile,
+                    expectedAsset,
+                    hashMismatch = PATCH_FAILURE,
+                )
+            } catch (e: HotUpdaterException) {
+                val cause = e.cause
+                throw if (cause is SignatureVerificationException && cause.provesFileBad) e.rejectingArtifact() else e
+            }
             updateDiffProgressFile(
                 files = diffFiles,
                 assetPath = assetPath,

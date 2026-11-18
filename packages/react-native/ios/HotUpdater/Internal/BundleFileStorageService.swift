@@ -2471,8 +2471,14 @@ class BundleFileStorageService: BundleStorageService {
         )
         if patched {
             // The patch produced these bytes, so a mismatch is a patch failure.
-            try UpdateFailureError.during(.patch, resource: .patch) {
+            // They already match the manifest's hash, so a size or signature
+            // that still fails is the manifest's own.
+            do {
                 try verifyManifestAssetFile(atPath: destinationPath, asset: expectedAsset)
+            } catch {
+                throw Self.provesFileBad(error)
+                    ? UpdateFailureError.rejectingArtifact(error, during: .patch, resource: .patch)
+                    : UpdateFailureError.classifying(error, during: .patch, resource: .patch)
             }
             updateDiffProgressFile(
                 files: &diffFiles,
