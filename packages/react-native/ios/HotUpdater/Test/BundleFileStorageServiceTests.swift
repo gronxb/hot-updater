@@ -3645,12 +3645,12 @@ struct BundleFileStorageServiceTests {
         var history = CrashedHistory()
         history.addEntry("crashed")
         for index in 0..<(CrashedHistory.maxRejectedBundles + 3) {
-            history.addRejectedBundle("rejected-\(index)")
+            history.addRejectedBundle("rejected-\(index)", nativeBuildId: "build")
         }
         #expect(history.contains("crashed"))
         #expect(history.rejectedBundles.count == CrashedHistory.maxRejectedBundles)
-        #expect(!history.isRejected("rejected-0"))
-        #expect(history.isRejected("rejected-\(CrashedHistory.maxRejectedBundles + 2)"))
+        #expect(!history.isRejected("rejected-0", nativeBuildId: "build"))
+        #expect(history.isRejected("rejected-\(CrashedHistory.maxRejectedBundles + 2)", nativeBuildId: "build"))
 
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
@@ -3695,17 +3695,39 @@ struct BundleFileStorageServiceTests {
     func anotherBuildForgetsRejectedBundlesButKeepsCrashes() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
-        _ = try stageBundleUnderOriginalKey(root)
         var history = CrashedHistory()
         history.addEntry("crashed")
-        history.addRejectedBundle("rejected")
+        history.addRejectedBundle("rejected", nativeBuildId: "builtin-bundle")
         #expect(history.save(to: root
             .appendingPathComponent("bundle-store", isDirectory: true)
             .appendingPathComponent(CrashedHistory.crashedHistoryFilename)))
 
-        let service = makeStorageService(documentsDirectory: root)
-        #expect(service.getCrashHistory().contains("crashed"))
-        #expect(!service.getCrashHistory().contains("rejected"))
+        // The same isolation key, as an appVersion build of the same version has.
+        #expect(makeStorageService(documentsDirectory: root).getCrashHistory().contains("rejected"))
+        let otherBuild = makeStorageService(documentsDirectory: root, builtInBundleId: "other-build")
+        #expect(otherBuild.getCrashHistory().contains("crashed"))
+        #expect(!otherBuild.getCrashHistory().contains("rejected"))
+    }
+
+    @Test
+    func aLocalReadFailureIsNotRemembered() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("target hermes".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": hash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        // The verified manifest names the platform bundle, but staging can't stat it.
+        let service = makeStorageService(documentsDirectory: root,
+            fileSystem: FailingStagedBundleStatFileSystem(documentsDirectory: root),
+            downloadService: MappingDownloadService(contents: [manifestURL: manifest, fileURL: bytes]),
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
+        #expect(baseErrorCode(of: result) == "INVALID_BUNDLE")
+        #expect(!service.getCrashHistory().contains("target"))
     }
 
     @Test
@@ -5367,6 +5389,15 @@ private final class DelayedAuditDownloadService: DownloadService {
             completion(result)
         }
         return nil
+    }
+}
+
+private final class FailingStagedBundleStatFileSystem: TestFileSystemService {
+    override func attributesOfItem(atPath path: String) throws -> [FileAttributeKey: Any] {
+        if path.hasSuffix("/target.tmp/index.ios.bundle") {
+            throw CocoaError(.fileReadUnknown)
+        }
+        return try super.attributesOfItem(atPath: path)
     }
 }
 

@@ -1405,7 +1405,6 @@ class BundleFileStorageService: BundleStorageService {
             NSLog("[BundleStorage] Failed to clear metadata; keeping bundles until the next start")
             return
         }
-        clearRejectedBundles()
 
         do {
             let contents = try fileSystem.contentsOfDirectory(atPath: storeDir)
@@ -3215,13 +3214,17 @@ class BundleFileStorageService: BundleStorageService {
             switch self.findBundleFile(in: tmpDir, expectedBundleId: bundleId) {
             case .success(let maybeBundlePath):
                 guard let bundlePathInTmp = maybeBundlePath else {
-                    // The manifest does not name exactly one platform bundle
-                    // file. Every file was verified against it, so the
-                    // manifest itself is at fault.
+                    // No single platform bundle file. When the verified
+                    // manifest itself names none, or several, it is at fault;
+                    // otherwise a local read failed.
+                    let platformBundles = targetManifest.assets.keys.filter {
+                        let fileName = ($0 as NSString).lastPathComponent
+                        return fileName.hasSuffix(".bundle") || fileName == "main.jsbundle"
+                    }
                     throw UpdateFailureError(
                         underlying: BundleStorageError.invalidBundle,
                         failure: UpdateFailure.invalidResponse.with(resource: .manifest),
-                        rejectsArtifact: true
+                        rejectsArtifact: platformBundles.count != 1
                     )
                 }
 
@@ -3374,7 +3377,11 @@ class BundleFileStorageService: BundleStorageService {
            !history.contains(interrupted.bundleId) {
             history.bundles.append(CrashedBundleEntry(bundleId: interrupted.bundleId))
         }
-        for rejected in history.rejectedBundles where !history.contains(rejected.bundleId) {
+        // Only this build's verification refused them: another build, with its
+        // own key and checks, decides again.
+        let nativeBuildId = builtInBundleIdProvider()
+        for rejected in history.rejectedBundles
+        where rejected.nativeBuildId == nativeBuildId && !history.contains(rejected.bundleId) {
             history.bundles.append(CrashedBundleEntry(bundleId: rejected.bundleId, crashedAt: rejected.rejectedAt))
         }
         return history
@@ -3384,7 +3391,7 @@ class BundleFileStorageService: BundleStorageService {
         crashedHistoryLock.lock()
         defer { crashedHistoryLock.unlock() }
         let history = loadCrashedHistory()
-        return history.isRejected(bundleId) && !history.contains(bundleId)
+        return history.isRejected(bundleId, nativeBuildId: builtInBundleIdProvider()) && !history.contains(bundleId)
     }
 
     /// Remembers that `bundleId`'s files proved bad, so no update check
@@ -3401,19 +3408,9 @@ class BundleFileStorageService: BundleStorageService {
         crashedHistoryLock.lock()
         defer { crashedHistoryLock.unlock() }
         var history = loadCrashedHistory()
-        history.addRejectedBundle(bundleId)
+        history.addRejectedBundle(bundleId, nativeBuildId: builtInBundleIdProvider())
         _ = saveCrashedHistory(history)
         NSLog("[BundleStorage] Bundle '\(bundleId)' failed verification; it will not be downloaded again")
-    }
-
-    /// Another build is installed: its own verification decides again.
-    private func clearRejectedBundles() {
-        crashedHistoryLock.lock()
-        defer { crashedHistoryLock.unlock() }
-        var history = loadCrashedHistory()
-        guard !history.rejectedBundles.isEmpty else { return }
-        history.rejectedBundles.removeAll()
-        _ = saveCrashedHistory(history)
     }
 
     /**

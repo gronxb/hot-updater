@@ -14,6 +14,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
+import java.io.IOException
 import java.net.URL
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -518,8 +519,18 @@ class BundleFileStorageService(
             tempOutputFile.delete()
         }
 
+        // The decoder reports a failed read of its input like corrupt data,
+        // so a local read failure is tracked here.
+        var inputFailed = false
         try {
-            FileInputStream(sourceFile).use { fileInputStream ->
+            val input =
+                try {
+                    FileInputStream(sourceFile)
+                } catch (e: IOException) {
+                    inputFailed = true
+                    throw e
+                }
+            ReadFailureTrackingInputStream(input) { inputFailed = true }.use { fileInputStream ->
                 BrotliInputStream(fileInputStream).use { brotliInputStream ->
                     LocalStorageOutputStream.open(tempOutputFile).use { outputStream ->
                         brotliInputStream.copyTo(outputStream)
@@ -538,7 +549,7 @@ class BundleFileStorageService(
             tempOutputFile.delete()
             throw HotUpdaterException.downloadFailed(
                 error,
-                if (error is LocalStorageException) {
+                if (error is LocalStorageException || inputFailed) {
                     UpdateFailure.install(UpdateFailureReason.STORAGE)
                 } else {
                     UpdateFailure.install(UpdateFailureReason.EXTRACT)
@@ -1082,6 +1093,14 @@ class BundleFileStorageService(
         )
     }
 
+    private fun parseBundleManifestFromText(manifestText: String): ParsedBundleManifest? =
+        try {
+            parseBundleManifestFromMap(JSONObject(manifestText).let(::jsonObjectToMap))
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse manifest: ${e.message}")
+            null
+        }
+
     private fun parseBundleManifestFromFile(manifestFile: File): ParsedBundleManifest? {
         if (!manifestFile.exists()) {
             return null
@@ -1203,8 +1222,6 @@ class BundleFileStorageService(
             Log.e(TAG, "Failed to clear metadata; keeping bundles until the next start")
             return
         }
-
-        clearRejectedBundles()
 
         try {
             var cleanedCount = 0
@@ -1590,7 +1607,7 @@ class BundleFileStorageService(
     private fun isBundleRejected(bundleId: String): Boolean =
         synchronized(crashedHistoryLock) {
             val history = loadCrashedHistory()
-            history.isRejected(bundleId) && !history.contains(bundleId)
+            history.isRejected(bundleId, minBundleIdProvider()) && !history.contains(bundleId)
         }
 
     /**
@@ -1608,7 +1625,10 @@ class BundleFileStorageService(
             ) {
                 history.bundles.add(CrashedBundleEntry(interrupted.bundleId, crashedAt = System.currentTimeMillis()))
             }
-            history.rejectedBundles.forEach { rejected ->
+            // Only this build's verification refused them: another build,
+            // with its own key and checks, decides again.
+            val nativeBuildId = minBundleIdProvider()
+            history.rejectedBundles.filter { it.nativeBuildId == nativeBuildId }.forEach { rejected ->
                 if (!history.contains(rejected.bundleId)) {
                     history.bundles.add(CrashedBundleEntry(rejected.bundleId, crashedAt = rejected.rejectedAt))
                 }
@@ -1632,23 +1652,12 @@ class BundleFileStorageService(
         }
         synchronized(crashedHistoryLock) {
             val history = loadCrashedHistory()
-            history.addRejectedBundle(bundleId)
+            history.addRejectedBundle(bundleId, minBundleIdProvider())
             saveCrashedHistory(history)
         }
         Log.w(TAG, "Bundle $bundleId failed verification; it will not be downloaded again")
     }
 
-    /**
-     * Another build is installed: its own verification decides again. Runs
-     * from the constructor, before any other thread can reach this instance
-     * and before [crashedHistoryLock] is initialized.
-     */
-    private fun clearRejectedBundles() {
-        val history = loadCrashedHistory()
-        if (history.rejectedBundles.isEmpty()) return
-        history.rejectedBundles.clear()
-        saveCrashedHistory(history)
-    }
 
     override fun clearCrashHistory(): Boolean {
         synchronized(crashedHistoryLock) {
@@ -2581,8 +2590,15 @@ class BundleFileStorageService(
 
                     // The manifest passed its hash and signature, so what it
                     // says is the bundle's own and fails the same way again.
+                    // Reading it back is local, so a failed read is not.
+                    val manifestText =
+                        try {
+                            manifestFile.readText()
+                        } catch (e: IOException) {
+                            throw HotUpdaterException.unexpected(e, UpdateFailure.install(UpdateFailureReason.STORAGE))
+                        }
                     val manifest =
-                        parseBundleManifestFromFile(manifestFile)
+                        parseBundleManifestFromText(manifestText)
                             ?: throw HotUpdaterException.invalidBundle().rejectingArtifact()
                     if (manifest.bundleId != bundleId) {
                         throw HotUpdaterException.invalidBundle().rejectingArtifact()
@@ -2765,9 +2781,14 @@ class BundleFileStorageService(
 
                 val extractedIndex = tmpDir.walk().find { it.name == "index.android.bundle" }
                 if (extractedIndex == null) {
-                    // The manifest lists no platform bundle. Every file was
-                    // verified against it, so the manifest itself is at fault.
-                    throw HotUpdaterException.invalidBundle().withResource(UpdateFailureResource.MANIFEST).rejectingArtifact()
+                    // When the verified manifest lists no platform bundle, it
+                    // is at fault; otherwise a local read failed.
+                    val failure = HotUpdaterException.invalidBundle().withResource(UpdateFailureResource.MANIFEST)
+                    throw if (targetManifest.assets.keys.none { File(it).name == "index.android.bundle" }) {
+                        failure.rejectingArtifact()
+                    } else {
+                        failure
+                    }
                 }
 
                 val backupDir = installBackupDir(bundleId)
@@ -3063,4 +3084,30 @@ class BundleFileStorageService(
             if (!file.deleteRecursively()) Log.w(TAG, "Failed to remove bundle: ${file.name}")
         }
     }
+}
+
+/** Passes reads through, calling [onFailure] when the underlying read fails. */
+private class ReadFailureTrackingInputStream(
+    private val input: java.io.InputStream,
+    private val onFailure: () -> Unit,
+) : java.io.InputStream() {
+    private inline fun <T> tracked(block: () -> T): T =
+        try {
+            block()
+        } catch (e: IOException) {
+            onFailure()
+            throw e
+        }
+
+    override fun read(): Int = tracked { input.read() }
+
+    override fun read(
+        buffer: ByteArray,
+        offset: Int,
+        length: Int,
+    ): Int = tracked { input.read(buffer, offset, length) }
+
+    override fun available(): Int = tracked { input.available() }
+
+    override fun close() = input.close()
 }

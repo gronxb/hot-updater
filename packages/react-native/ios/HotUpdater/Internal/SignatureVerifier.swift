@@ -228,6 +228,11 @@ public class SignatureVerifier {
     public static func verifyHash(fileURL: URL, expectedHash: String) -> Result<Void, SignatureVerificationError> {
         NSLog("[SignatureVerifier] Verifying hash for file: \(fileURL.lastPathComponent)")
 
+        // A file that can't be read is a local failure, not a mismatch.
+        guard HashUtils.calculateSHA256(fileURL: fileURL) != nil else {
+            NSLog("[SignatureVerifier] Failed to calculate file hash")
+            return .failure(.fileReadFailed)
+        }
         guard HashUtils.verifyHash(fileURL: fileURL, expectedHash: expectedHash) else {
             NSLog("[SignatureVerifier] Hash mismatch!")
             return .failure(.fileHashMismatch)

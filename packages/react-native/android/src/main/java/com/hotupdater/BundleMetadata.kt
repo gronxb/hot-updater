@@ -337,23 +337,28 @@ data class InterruptedLaunch(
 /**
  * A bundle whose download was refused because its files are bad: a hash or
  * signature that fails, or a manifest or file that can't be decoded. A bundle
- * ID's files never change, so the device never downloads it again.
+ * ID's files never change, so the build that refused it never downloads it
+ * again. [nativeBuildId] is that build's MIN_BUNDLE_ID: another build, with
+ * its own key and checks, decides again.
  */
 data class RejectedBundleEntry(
     val bundleId: String,
     val rejectedAt: Long,
+    val nativeBuildId: String,
 ) {
     companion object {
-        fun fromJson(json: JSONObject): RejectedBundleEntry? =
-            json.optNullableString("bundleId")?.let { bundleId ->
-                RejectedBundleEntry(bundleId, json.optLong("rejectedAt", 0L))
-            }
+        fun fromJson(json: JSONObject): RejectedBundleEntry? {
+            val bundleId = json.optNullableString("bundleId") ?: return null
+            val nativeBuildId = json.optNullableString("nativeBuildId") ?: return null
+            return RejectedBundleEntry(bundleId, json.optLong("rejectedAt", 0L), nativeBuildId)
+        }
     }
 
     fun toJson(): JSONObject =
         JSONObject().apply {
             put("bundleId", bundleId)
             put("rejectedAt", rejectedAt)
+            put("nativeBuildId", nativeBuildId)
         }
 }
 
@@ -468,12 +473,21 @@ data class CrashedHistory(
         }
     }
 
-    fun isRejected(bundleId: String): Boolean = rejectedBundles.any { it.bundleId == bundleId }
+    fun isRejected(
+        bundleId: String,
+        nativeBuildId: String,
+    ): Boolean = rejectedBundles.any { it.bundleId == bundleId && it.nativeBuildId == nativeBuildId }
 
-    /** Records a refused download of [bundleId], dropping the oldest past the cap. */
-    fun addRejectedBundle(bundleId: String) {
-        rejectedBundles.removeAll { it.bundleId == bundleId }
-        rejectedBundles.add(RejectedBundleEntry(bundleId, System.currentTimeMillis()))
+    /**
+     * Records that [nativeBuildId] refused [bundleId]'s download. Another
+     * build's records are dropped, and the oldest past the cap.
+     */
+    fun addRejectedBundle(
+        bundleId: String,
+        nativeBuildId: String,
+    ) {
+        rejectedBundles.removeAll { it.bundleId == bundleId || it.nativeBuildId != nativeBuildId }
+        rejectedBundles.add(RejectedBundleEntry(bundleId, System.currentTimeMillis(), nativeBuildId))
         while (rejectedBundles.size > MAX_REJECTED_BUNDLES) {
             rejectedBundles.removeAt(0)
         }

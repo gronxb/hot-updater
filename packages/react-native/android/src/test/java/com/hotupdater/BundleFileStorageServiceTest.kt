@@ -3532,11 +3532,11 @@ class BundleFileStorageServiceTest {
     fun `rejected bundles are capped without evicting crashes`() {
         val history = CrashedHistory()
         history.addEntry("crashed")
-        repeat(CrashedHistory.MAX_REJECTED_BUNDLES + 3) { history.addRejectedBundle("rejected-$it") }
+        repeat(CrashedHistory.MAX_REJECTED_BUNDLES + 3) { history.addRejectedBundle("rejected-$it", "build") }
         assertTrue(history.contains("crashed"))
         assertEquals(CrashedHistory.MAX_REJECTED_BUNDLES, history.rejectedBundles.size)
-        assertFalse(history.isRejected("rejected-0"))
-        assertTrue(history.isRejected("rejected-${CrashedHistory.MAX_REJECTED_BUNDLES + 2}"))
+        assertFalse(history.isRejected("rejected-0", "build"))
+        assertTrue(history.isRejected("rejected-${CrashedHistory.MAX_REJECTED_BUNDLES + 2}", "build"))
 
         val file = File(temporaryFolder.newFolder(), CrashedHistory.CRASHED_HISTORY_FILENAME)
         assertTrue(history.saveToFile(file))
@@ -3557,14 +3557,14 @@ class BundleFileStorageServiceTest {
     @Test
     fun `another build forgets rejected bundles but keeps crashes`() {
         val rootDir = temporaryFolder.newFolder()
-        stageBundleUnderTestKey(rootDir)
         val history = CrashedHistory()
         history.addEntry("crashed")
-        history.addRejectedBundle("rejected")
+        history.addRejectedBundle("rejected", "this-build")
         assertTrue(history.saveToFile(crashedHistoryFile(rootDir)))
 
-        val otherBuild = createService(rootDir, isolationKey = "other-key")
-        otherBuild.prepareLaunch(null)
+        // The same isolation key, as an appVersion build of the same version has.
+        assertTrue(createService(rootDir, minBundleId = "this-build").getCrashHistory().contains("rejected"))
+        val otherBuild = createService(rootDir, minBundleId = "other-build")
         assertTrue(otherBuild.getCrashHistory().contains("crashed"))
         assertFalse(otherBuild.getCrashHistory().contains("rejected"))
     }

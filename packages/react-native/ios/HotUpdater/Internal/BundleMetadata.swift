@@ -234,13 +234,17 @@ public struct CrashedBundleEntry: Codable {
 
 /// A bundle whose download was refused because its files are bad: a hash or
 /// signature that fails, or a manifest or file that can't be decoded. A bundle
-/// ID's files never change, so the device never downloads it again.
+/// ID's files never change, so the build that refused it never downloads it
+/// again. `nativeBuildId` is that build's MIN_BUNDLE_ID: another build, with
+/// its own key and checks, decides again.
 public struct RejectedBundleEntry: Codable {
     let bundleId: String
     var rejectedAt: Double
+    let nativeBuildId: String
 
-    init(bundleId: String, rejectedAt: Double = Date().timeIntervalSince1970 * 1000) {
+    init(bundleId: String, nativeBuildId: String, rejectedAt: Double = Date().timeIntervalSince1970 * 1000) {
         self.bundleId = bundleId
+        self.nativeBuildId = nativeBuildId
         self.rejectedAt = rejectedAt
     }
 }
@@ -388,14 +392,15 @@ public struct CrashedHistory: Codable {
         }
     }
 
-    func isRejected(_ bundleId: String) -> Bool {
-        rejectedBundles.contains { $0.bundleId == bundleId }
+    func isRejected(_ bundleId: String, nativeBuildId: String) -> Bool {
+        rejectedBundles.contains { $0.bundleId == bundleId && $0.nativeBuildId == nativeBuildId }
     }
 
-    /// Records a refused download of `bundleId`, dropping the oldest past the cap.
-    mutating func addRejectedBundle(_ bundleId: String) {
-        rejectedBundles.removeAll { $0.bundleId == bundleId }
-        rejectedBundles.append(RejectedBundleEntry(bundleId: bundleId))
+    /// Records that `nativeBuildId` refused `bundleId`'s download. Another
+    /// build's records are dropped, and the oldest past the cap.
+    mutating func addRejectedBundle(_ bundleId: String, nativeBuildId: String) {
+        rejectedBundles.removeAll { $0.bundleId == bundleId || $0.nativeBuildId != nativeBuildId }
+        rejectedBundles.append(RejectedBundleEntry(bundleId: bundleId, nativeBuildId: nativeBuildId))
         if rejectedBundles.count > Self.maxRejectedBundles {
             rejectedBundles.removeFirst(rejectedBundles.count - Self.maxRejectedBundles)
         }
