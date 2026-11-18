@@ -1,3 +1,4 @@
+import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
@@ -11,6 +12,8 @@ interface HashValueDisplayProps {
   maxLength?: number;
   className?: string;
   buttonClassName?: string;
+  /** Shown under the value in the tooltip, which then also opens on click. */
+  hint?: ReactNode;
 }
 
 export const shortenIdentifier = (value: string, maxLength = 12) =>
@@ -24,7 +27,9 @@ export function HashValueDisplay({
   maxLength = 12,
   className,
   buttonClassName,
+  hint,
 }: HashValueDisplayProps) {
+  const [open, setOpen] = useState(false);
   const isTruncated = display !== value || display.length > maxLength;
   const truncated = shortenIdentifier(display, maxLength);
 
@@ -42,6 +47,7 @@ export function HashValueDisplay({
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    if (hint) setOpen(true);
     void copyValue();
   };
 
@@ -66,8 +72,9 @@ export function HashValueDisplay({
   );
 
   return (
-    <Tooltip>
+    <Tooltip open={open} onOpenChange={setOpen}>
       <TooltipTrigger
+        closeOnClick={!hint}
         render={
           <button
             type="button"
@@ -87,10 +94,19 @@ export function HashValueDisplay({
       >
         {content}
       </TooltipTrigger>
-      <TooltipContent hidden={!isTruncated}>
-        <p translate="no" className="break-all font-mono text-xs tabular-nums">
-          {value}
-        </p>
+      <TooltipContent
+        className={hint ? "max-w-64 flex-col items-start" : undefined}
+        hidden={!isTruncated && !hint}
+      >
+        {isTruncated ? (
+          <p
+            translate="no"
+            className="break-all font-mono text-xs tabular-nums"
+          >
+            {value}
+          </p>
+        ) : null}
+        {hint ? <p>{hint}</p> : null}
       </TooltipContent>
     </Tooltip>
   );

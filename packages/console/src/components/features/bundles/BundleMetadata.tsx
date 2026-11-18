@@ -5,6 +5,7 @@ import { ExternalLink } from "lucide-react";
 import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConfigQuery } from "@/lib/api";
+import { CONSOLE_GIT_URL_GUIDE_URL } from "@/lib/constants";
 import { getCommitUrl } from "@/lib/git";
 
 interface BundleMetadataProps {
@@ -29,6 +30,10 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
     bundle?.gitCommitHash && isFetched
       ? getCommitUrl(configData?.console.gitUrl, bundle.gitCommitHash)
       : null;
+  const showGitUrlHint =
+    isFetched &&
+    Boolean(bundle?.gitCommitHash) &&
+    !configData?.console.gitUrl?.trim();
   const target =
     release.strategy === "APP_VERSION"
       ? release.target_app_version
@@ -68,6 +73,22 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
                 <div className="flex items-center justify-start gap-1 sm:justify-end">
                   <HashValueDisplay
                     className={gitCommitUrl ? "text-primary" : undefined}
+                    hint={
+                      showGitUrlHint ? (
+                        <>
+                          Set <code className="font-mono">console.gitUrl</code>{" "}
+                          in your config to open commits in your repository.{" "}
+                          <a
+                            className="font-medium underline underline-offset-2"
+                            href={CONSOLE_GIT_URL_GUIDE_URL}
+                            rel="noopener noreferrer"
+                            target="_blank"
+                          >
+                            Learn more
+                          </a>
+                        </>
+                      ) : undefined
+                    }
                     maxLength={12}
                     value={bundle.gitCommitHash}
                   />
