@@ -88,9 +88,13 @@ const compareVersions = (left: string, right: string): number => {
 export const DEFAULT_ORDERED_SETTINGS: readonly string[] = ["schema.core"];
 
 /**
- * Refuses a database that recorded a newer version of an `ordered` setting
- * than this release migrates to: writing this release's would move the
- * schema back, and every server of the newer release would answer 503.
+ * Refuses a database a newer release migrated, one whose `schema.core` is
+ * newer than this release's: writing this release's settings would move the
+ * schema back, and every server of the newer release would answer 503. Only
+ * `ordered` settings are compared, `schema.core` among them, and the message
+ * lists each that is newer. An official plugin's
+ * newer version alone is no newer release: Insights recorded "1.2.0" in
+ * 1.0.0-rc.23 and rc.24, then went back to "1.0.0" with the same tables.
  */
 export const refuseNewerSchema = (
   adapterName: string,
@@ -107,12 +111,10 @@ export const refuseNewerSchema = (
       ? [{ key, found, expected }]
       : [];
   });
-  if (newer.length === 0) return;
   const core = newer.find(({ key }) => key === "schema.core");
-  const by =
-    core === undefined ? "a newer Hot Updater" : `Hot Updater ${core.found}`;
+  if (core === undefined) return;
   throw new Error(
-    `${adapterName}: the database was migrated by ${by} (${newer.map(({ key, found, expected }) => `${key} "${found}", this CLI's "${expected}"`).join("; ")}). Upgrade hot-updater ${core === undefined ? "and its plugins to that version" : `to ${core.found} or later`}; nothing was written.`,
+    `${adapterName}: the database was migrated by Hot Updater ${core.found} (${newer.map(({ key, found, expected }) => `${key} "${found}", this CLI's "${expected}"`).join("; ")}). Upgrade hot-updater to ${core.found} or later; nothing was written.`,
   );
 };
 

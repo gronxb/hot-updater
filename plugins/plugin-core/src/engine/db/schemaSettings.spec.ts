@@ -45,28 +45,59 @@ describe("the settings a migration never moves back", () => {
     ).toEqual(["schema.core", "schema.insights"]);
   });
 
-  it("refuses an official plugin's newer version, and records a plugin of your own as configured", async () => {
+  it("refuses an official plugin's newer version that came with a newer core, and records a plugin of your own as configured", async () => {
     const adapter = createMemoryAdapter();
     const plugins = [plugin("insights", true), plugin("notes", false)];
     await migrateCoreSchema(adapter, "memory", plugins);
     await writeSchemaSettings(
       adapter,
       "memory",
-      { "schema.insights": "1.1.0", "schema.notes": "2.0.0" },
+      {
+        "schema.core": "9.0.0",
+        "schema.insights": "1.1.0",
+        "schema.notes": "2.0.0",
+      },
       [],
     );
     await expect(migrateCoreSchema(adapter, "memory", plugins)).rejects.toThrow(
-      'memory: the database was migrated by a newer Hot Updater (schema.insights "1.1.0", this CLI\'s "1.0.0"). Upgrade hot-updater and its plugins to that version; nothing was written.',
+      `memory: the database was migrated by Hot Updater 9.0.0 (schema.core "9.0.0", this CLI's "${coreSettings["schema.core"]}"; schema.insights "1.1.0", this CLI's "1.0.0"). Upgrade hot-updater to 9.0.0 or later; nothing was written.`,
     );
 
     await writeSchemaSettings(
       adapter,
       "memory",
-      { "schema.insights": "1.0.0" },
+      { "schema.core": coreSettings["schema.core"]! },
       [],
     );
     await migrateCoreSchema(adapter, "memory", plugins);
-    const [notes] = await readSettings(adapter, ["schema.notes"]);
-    expect(notes?.value).toBe("1.0.0");
+    const rows = await readSettings(adapter, [
+      "schema.insights",
+      "schema.notes",
+    ]);
+    expect(rows.map((row) => row?.value)).toEqual(["1.0.0", "1.0.0"]);
+  });
+
+  // Insights shipped schemaVersion "1.2.0" in 1.0.0-rc.23 and rc.24, then
+  // went back to "1.0.0" with no table change: its row alone is no newer
+  // release.
+  it("migrates a database a prerelease recorded a higher plugin version on, with core no newer", async () => {
+    const adapter = createMemoryAdapter();
+    const plugins = [plugin("insights", true)];
+    await migrateCoreSchema(adapter, "memory", plugins);
+    await writeSchemaSettings(
+      adapter,
+      "memory",
+      { "schema.core": "1.0.0", "schema.insights": "1.2.0" },
+      [],
+    );
+    await migrateCoreSchema(adapter, "memory", plugins);
+    const rows = await readSettings(adapter, [
+      "schema.core",
+      "schema.insights",
+    ]);
+    expect(rows.map((row) => row?.value)).toEqual([
+      coreSettings["schema.core"],
+      "1.0.0",
+    ]);
   });
 });

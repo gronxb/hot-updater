@@ -423,6 +423,33 @@ describe("doctor's schema check", () => {
     });
   });
 
+  // Insights recorded schemaVersion "1.2.0" in 1.0.0-rc.23 and rc.24, then
+  // went back to "1.0.0" with the same tables.
+  it("names the migration for an official plugin's higher version a prerelease recorded, with core no newer", async () => {
+    await migrateCoreSchema(adapter, "memory", [insights()]);
+    await storeSetting("schema.core", "1.0.0");
+    await storeSetting("schema.insights", "1.2.0");
+    serverProject(database(), [insights()]);
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: false,
+      details: {
+        schema: {
+          issues: [
+            {
+              code: "SCHEMA_MIGRATION_PENDING",
+              settings: [
+                { key: "schema.core", expected: "1.2.0", found: "1.0.0" },
+                { key: "schema.insights", expected: "1.0.0", found: "1.2.0" },
+              ],
+              commands: [DB_MIGRATE],
+            },
+          ],
+        },
+      },
+    });
+  });
+
   it("names no migration beside a plugin whose version changed, numeric or not", async () => {
     const later = definePlugin({
       id: "later",

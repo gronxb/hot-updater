@@ -313,13 +313,19 @@ const schemaStatus = (
       (key === "schema.engine" ||
         (owned.has(key) && Number.isNaN(compareVersions(found, expected)))),
   );
-  const newer = settings.filter(
-    (setting) =>
-      !engine.includes(setting) &&
-      owned.has(setting.key) &&
-      setting.found !== null &&
-      compareVersions(setting.found, setting.expected) > 0,
-  );
+  const isNewer = (setting: SchemaSetting) =>
+    !engine.includes(setting) &&
+    owned.has(setting.key) &&
+    setting.found !== null &&
+    compareVersions(setting.found, setting.expected) > 0;
+  // A newer release is one whose core is newer: an official plugin's higher
+  // version alone, such as Insights' "1.2.0" from 1.0.0-rc.23 and rc.24, is
+  // migrated as `db migrate` migrates it.
+  const newer = settings.some(
+    (setting) => setting.key === "schema.core" && isNewer(setting),
+  )
+    ? settings.filter(isNewer)
+    : [];
   // Another plugin's version differs: its own migration changes its
   // tables, which a migration here, creating only what is missing, skips.
   const changed = settings.filter(
