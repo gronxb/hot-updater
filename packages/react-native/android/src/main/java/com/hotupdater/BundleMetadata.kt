@@ -335,16 +335,42 @@ data class InterruptedLaunch(
 }
 
 /**
- * History of crashed bundles
+ * A bundle whose download was refused because its files are bad: a hash or
+ * signature that fails, or a manifest or file that can't be decoded. A bundle
+ * ID's files never change, so the device never downloads it again.
+ */
+data class RejectedBundleEntry(
+    val bundleId: String,
+    val rejectedAt: Long,
+) {
+    companion object {
+        fun fromJson(json: JSONObject): RejectedBundleEntry? =
+            json.optNullableString("bundleId")?.let { bundleId ->
+                RejectedBundleEntry(bundleId, json.optLong("rejectedAt", 0L))
+            }
+    }
+
+    fun toJson(): JSONObject =
+        JSONObject().apply {
+            put("bundleId", bundleId)
+            put("rejectedAt", rejectedAt)
+        }
+}
+
+/**
+ * History of crashed bundles, and of bundles whose files were refused
  */
 data class CrashedHistory(
     val bundles: MutableList<CrashedBundleEntry> = mutableListOf(),
     val maxHistorySize: Int = DEFAULT_MAX_HISTORY_SIZE,
     var interruptedLaunch: InterruptedLaunch? = null,
+    /** Kept apart from [bundles], so refused downloads never evict a crash. */
+    val rejectedBundles: MutableList<RejectedBundleEntry> = mutableListOf(),
 ) {
     companion object {
         private const val TAG = "CrashedHistory"
         const val DEFAULT_MAX_HISTORY_SIZE = 10
+        const val MAX_REJECTED_BUNDLES = 10
         const val CRASHED_HISTORY_FILENAME = "crashed-history.json"
 
         fun fromJson(json: JSONObject): CrashedHistory {
@@ -353,10 +379,19 @@ data class CrashedHistory(
             for (i in 0 until bundlesArray.length()) {
                 bundles.add(CrashedBundleEntry.fromJson(bundlesArray.getJSONObject(i)))
             }
+            // A malformed refusal record must not drop the crash history.
+            val rejectedBundles =
+                runCatching {
+                    val rejectedArray = json.optJSONArray("rejectedBundles") ?: JSONArray()
+                    (0 until rejectedArray.length()).mapNotNull { index ->
+                        rejectedArray.optJSONObject(index)?.let(RejectedBundleEntry::fromJson)
+                    }
+                }.getOrDefault(emptyList())
             return CrashedHistory(
                 bundles = bundles,
                 maxHistorySize = json.optInt("maxHistorySize", DEFAULT_MAX_HISTORY_SIZE),
                 interruptedLaunch = json.optJSONObject("interruptedLaunch")?.let(InterruptedLaunch::fromJson),
+                rejectedBundles = rejectedBundles.toMutableList(),
             )
         }
 
@@ -383,6 +418,11 @@ data class CrashedHistory(
             put("bundles", bundlesArray)
             put("maxHistorySize", maxHistorySize)
             interruptedLaunch?.let { put("interruptedLaunch", it.toJson()) }
+            if (rejectedBundles.isNotEmpty()) {
+                val rejectedArray = JSONArray()
+                rejectedBundles.forEach { rejectedArray.put(it.toJson()) }
+                put("rejectedBundles", rejectedArray)
+            }
         }
 
     fun saveToFile(file: File): Boolean =
@@ -428,9 +468,21 @@ data class CrashedHistory(
         }
     }
 
+    fun isRejected(bundleId: String): Boolean = rejectedBundles.any { it.bundleId == bundleId }
+
+    /** Records a refused download of [bundleId], dropping the oldest past the cap. */
+    fun addRejectedBundle(bundleId: String) {
+        rejectedBundles.removeAll { it.bundleId == bundleId }
+        rejectedBundles.add(RejectedBundleEntry(bundleId, System.currentTimeMillis()))
+        while (rejectedBundles.size > MAX_REJECTED_BUNDLES) {
+            rejectedBundles.removeAt(0)
+        }
+    }
+
     fun clear() {
         bundles.clear()
         interruptedLaunch = null
+        rejectedBundles.clear()
     }
 }
 

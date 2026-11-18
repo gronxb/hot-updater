@@ -230,6 +230,21 @@ public struct CrashedBundleEntry: Codable {
     }
 }
 
+// MARK: - RejectedBundleEntry
+
+/// A bundle whose download was refused because its files are bad: a hash or
+/// signature that fails, or a manifest or file that can't be decoded. A bundle
+/// ID's files never change, so the device never downloads it again.
+public struct RejectedBundleEntry: Codable {
+    let bundleId: String
+    var rejectedAt: Double
+
+    init(bundleId: String, rejectedAt: Double = Date().timeIntervalSince1970 * 1000) {
+        self.bundleId = bundleId
+        self.rejectedAt = rejectedAt
+    }
+}
+
 // MARK: - InterruptedLaunch
 
 /// A bundle whose launch ended before first content without a crash, waiting
@@ -263,29 +278,35 @@ public struct InterruptedLaunch: Codable {
 
 // MARK: - CrashedHistory
 
-/// History of crashed bundles
+/// History of crashed bundles, and of bundles whose files were refused
 public struct CrashedHistory: Codable {
     static let defaultMaxHistorySize = 10
+    static let maxRejectedBundles = 10
     static let crashedHistoryFilename = "crashed-history.json"
 
     var bundles: [CrashedBundleEntry]
     var maxHistorySize: Int
     var interruptedLaunch: InterruptedLaunch?
+    /// Kept apart from `bundles`, so refused downloads never evict a crash.
+    var rejectedBundles: [RejectedBundleEntry]
 
     enum CodingKeys: String, CodingKey {
         case bundles
         case maxHistorySize
         case interruptedLaunch
+        case rejectedBundles
     }
 
     init(
         bundles: [CrashedBundleEntry] = [],
         maxHistorySize: Int = CrashedHistory.defaultMaxHistorySize,
-        interruptedLaunch: InterruptedLaunch? = nil
+        interruptedLaunch: InterruptedLaunch? = nil,
+        rejectedBundles: [RejectedBundleEntry] = []
     ) {
         self.bundles = bundles
         self.maxHistorySize = maxHistorySize
         self.interruptedLaunch = interruptedLaunch
+        self.rejectedBundles = rejectedBundles
     }
 
     public init(from decoder: Decoder) throws {
@@ -294,6 +315,18 @@ public struct CrashedHistory: Codable {
         maxHistorySize = try values.decode(Int.self, forKey: .maxHistorySize)
         // A malformed retry record must not drop the crash history.
         interruptedLaunch = try? values.decodeIfPresent(InterruptedLaunch.self, forKey: .interruptedLaunch)
+        // Neither must a malformed refusal record.
+        rejectedBundles = (try? values.decodeIfPresent([RejectedBundleEntry].self, forKey: .rejectedBundles)) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(bundles, forKey: .bundles)
+        try container.encode(maxHistorySize, forKey: .maxHistorySize)
+        try container.encodeIfPresent(interruptedLaunch, forKey: .interruptedLaunch)
+        if !rejectedBundles.isEmpty {
+            try container.encode(rejectedBundles, forKey: .rejectedBundles)
+        }
     }
 
     static func load(from file: URL) -> CrashedHistory {
@@ -355,9 +388,23 @@ public struct CrashedHistory: Codable {
         }
     }
 
+    func isRejected(_ bundleId: String) -> Bool {
+        rejectedBundles.contains { $0.bundleId == bundleId }
+    }
+
+    /// Records a refused download of `bundleId`, dropping the oldest past the cap.
+    mutating func addRejectedBundle(_ bundleId: String) {
+        rejectedBundles.removeAll { $0.bundleId == bundleId }
+        rejectedBundles.append(RejectedBundleEntry(bundleId: bundleId))
+        if rejectedBundles.count > Self.maxRejectedBundles {
+            rejectedBundles.removeFirst(rejectedBundles.count - Self.maxRejectedBundles)
+        }
+    }
+
     mutating func clear() {
         bundles.removeAll()
         interruptedLaunch = nil
+        rejectedBundles.removeAll()
     }
 }
 

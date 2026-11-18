@@ -1204,6 +1204,8 @@ class BundleFileStorageService(
             return
         }
 
+        clearRejectedBundles()
+
         try {
             var cleanedCount = 0
             bundleStoreDir.listFiles()?.forEach { file ->
@@ -1585,9 +1587,16 @@ class BundleFileStorageService(
 
     private fun isBundleInCrashedHistory(bundleId: String): Boolean = getCrashHistory().contains(bundleId)
 
+    private fun isBundleRejected(bundleId: String): Boolean =
+        synchronized(crashedHistoryLock) {
+            val history = loadCrashedHistory()
+            history.isRejected(bundleId) && !history.contains(bundleId)
+        }
+
     /**
-     * The bundles this device refuses to install: crash history, plus a bundle
-     * waiting for its retry until a process that may retry it.
+     * The bundles this device refuses to install: crash history, a bundle
+     * waiting for its retry until a process that may retry it, and bundles
+     * whose files were refused. Every update check excludes these.
      */
     override fun getCrashHistory(): CrashedHistory =
         synchronized(crashedHistoryLock) {
@@ -1599,8 +1608,47 @@ class BundleFileStorageService(
             ) {
                 history.bundles.add(CrashedBundleEntry(interrupted.bundleId, crashedAt = System.currentTimeMillis()))
             }
+            history.rejectedBundles.forEach { rejected ->
+                if (!history.contains(rejected.bundleId)) {
+                    history.bundles.add(CrashedBundleEntry(rejected.bundleId, crashedAt = rejected.rejectedAt))
+                }
+            }
             history
         }
+
+    /**
+     * Remembers that [bundleId]'s files proved bad, so no update check selects
+     * it again. The bundle this device runs or keeps is never recorded: an
+     * active bundle that checks exclude would send the device to the built-in
+     * bundle.
+     */
+    private fun recordRejectedBundle(bundleId: String) {
+        val metadata = synchronized(releaseStateLock) { loadMetadataOrNull() }
+        if (bundleId == getBundleId() ||
+            bundleId == metadata?.stableBundleId ||
+            bundleId == metadata?.stagingBundleId
+        ) {
+            return
+        }
+        synchronized(crashedHistoryLock) {
+            val history = loadCrashedHistory()
+            history.addRejectedBundle(bundleId)
+            saveCrashedHistory(history)
+        }
+        Log.w(TAG, "Bundle $bundleId failed verification; it will not be downloaded again")
+    }
+
+    /**
+     * Another build is installed: its own verification decides again. Runs
+     * from the constructor, before any other thread can reach this instance
+     * and before [crashedHistoryLock] is initialized.
+     */
+    private fun clearRejectedBundles() {
+        val history = loadCrashedHistory()
+        if (history.rejectedBundles.isEmpty()) return
+        history.rejectedBundles.clear()
+        saveCrashedHistory(history)
+    }
 
     override fun clearCrashHistory(): Boolean {
         synchronized(crashedHistoryLock) {
@@ -1962,7 +2010,7 @@ class BundleFileStorageService(
         // Check if bundle is in crashed history
         if (isBundleInCrashedHistory(bundleId)) {
             Log.w(TAG, "Bundle $bundleId is in crashed history, rejecting update")
-            throw HotUpdaterException.bundleInCrashedHistory(bundleId)
+            throw HotUpdaterException.bundleInCrashedHistory(bundleId, rejected = isBundleRejected(bundleId))
         }
 
         val bundleStoreDir = getBundleStoreDir()
@@ -1977,18 +2025,23 @@ class BundleFileStorageService(
 
         val finalBundleDir = File(bundleStoreDir, bundleId)
         return withContext(Dispatchers.IO) {
-            updateBundleFromManifest(
-                bundleId = bundleId,
-                manifestUrl = manifestUrl,
-                manifestFileHash = manifestFileHash,
-                changedAssets = changedAssets,
-                archiveUrl = archiveUrl,
-                fileResolver = fileResolver,
-                selection = selection,
-                bundleStoreDir = bundleStoreDir,
-                finalBundleDir = finalBundleDir,
-                progressCallback = progressCallback,
-            )
+            try {
+                updateBundleFromManifest(
+                    bundleId = bundleId,
+                    manifestUrl = manifestUrl,
+                    manifestFileHash = manifestFileHash,
+                    changedAssets = changedAssets,
+                    archiveUrl = archiveUrl,
+                    fileResolver = fileResolver,
+                    selection = selection,
+                    bundleStoreDir = bundleStoreDir,
+                    finalBundleDir = finalBundleDir,
+                    progressCallback = progressCallback,
+                )
+            } catch (e: HotUpdaterException) {
+                if (e.rejectsArtifact) recordRejectedBundle(bundleId)
+                throw e
+            }
         }
     }
 
@@ -2203,15 +2256,26 @@ class BundleFileStorageService(
             is DownloadResult.Success -> {
                 try {
                     if (changedAsset.fileCompression == "br") {
-                        decompressBrotliFile(
-                            assetDownloadResult.file,
-                            targetFile,
-                        )
+                        try {
+                            decompressBrotliFile(
+                                assetDownloadResult.file,
+                                targetFile,
+                            )
+                        } catch (e: HotUpdaterException) {
+                            // Whole bytes that are not Brotli; a local write
+                            // failure is a storage failure instead.
+                            throw if (e.failure?.reason == UpdateFailureReason.EXTRACT) e.rejectingArtifact() else e
+                        }
                     }
-                    verifyManifestAssetFileOrThrow(
-                        targetFile,
-                        expectedAsset,
-                    )
+                    try {
+                        verifyManifestAssetFileOrThrow(
+                            targetFile,
+                            expectedAsset,
+                        )
+                    } catch (e: HotUpdaterException) {
+                        val cause = e.cause
+                        throw if (cause is SignatureVerificationException && cause.provesFileBad) e.rejectingArtifact() else e
+                    }
                 } catch (e: Exception) {
                     updateDiffProgressFile(
                         files = diffFiles,
@@ -2511,12 +2575,17 @@ class BundleFileStorageService(
                     try {
                         SignatureVerifier.verifyBundle(publicKeyProvider(), manifestFile, manifestFileHash)
                     } catch (e: SignatureVerificationException) {
-                        throw HotUpdaterException.signatureVerificationFailed(e)
+                        val failure = HotUpdaterException.signatureVerificationFailed(e)
+                        throw if (e.provesFileBad) failure.rejectingArtifact() else failure
                     }
 
-                    val manifest = parseBundleManifestFromFile(manifestFile) ?: throw HotUpdaterException.invalidBundle()
+                    // The manifest passed its hash and signature, so what it
+                    // says is the bundle's own and fails the same way again.
+                    val manifest =
+                        parseBundleManifestFromFile(manifestFile)
+                            ?: throw HotUpdaterException.invalidBundle().rejectingArtifact()
                     if (manifest.bundleId != bundleId) {
-                        throw HotUpdaterException.invalidBundle()
+                        throw HotUpdaterException.invalidBundle().rejectingArtifact()
                     }
                     if (fileResolver == null) {
                         // Legacy: artifact protocol v1, where every file comes with its URL.
@@ -2530,9 +2599,12 @@ class BundleFileStorageService(
                         val descriptor = changedAssets[path]
                         if (RelativePathResolver.normalizeRelativePath(path) != path ||
                             path == "manifest.json" ||
-                            (fileResolver == null && descriptor?.fileUrl.isNullOrBlank()) ||
-                            (fileResolver == null && !descriptor!!.fileHash.equals(asset.fileHash, ignoreCase = true)) ||
                             RelativePathResolver.resolveInside(tmpDir, path) == null
+                        ) {
+                            throw HotUpdaterException.invalidBundle().rejectingArtifact()
+                        }
+                        if ((fileResolver == null && descriptor?.fileUrl.isNullOrBlank()) ||
+                            (fileResolver == null && !descriptor!!.fileHash.equals(asset.fileHash, ignoreCase = true))
                         ) {
                             throw HotUpdaterException.invalidBundle()
                         }

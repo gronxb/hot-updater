@@ -187,6 +187,30 @@ enum UpdatePhase {
 struct UpdateFailureError: Error {
     let underlying: Error
     let failure: UpdateFailure
+    /// Whether the failure proves the bundle's files bad: bytes that arrived
+    /// whole failed their hash or signature, or could not be decoded. Such a
+    /// bundle fails the same way on every attempt, so it is not downloaded again.
+    var rejectsArtifact = false
+
+    init(underlying: Error, failure: UpdateFailure, rejectsArtifact: Bool = false) {
+        self.underlying = underlying
+        self.failure = failure
+        self.rejectsArtifact = rejectsArtifact
+    }
+
+    /// Classifies `error` as `classifying` does and marks it as proving the
+    /// bundle's files bad. An error that is not an update failure stays as is.
+    static func rejectingArtifact(
+        _ error: Error,
+        during phase: UpdatePhase,
+        resource: UpdateFailureResource? = nil
+    ) -> Error {
+        guard var classified = classifying(error, during: phase, resource: resource) as? UpdateFailureError else {
+            return error
+        }
+        classified.rejectsArtifact = true
+        return classified
+    }
 
     /// Classifies `error` as raised during `phase` while fetching or applying
     /// `resource`. An error that is already classified keeps its
@@ -200,7 +224,8 @@ struct UpdateFailureError: Error {
         if let classified = error as? UpdateFailureError {
             return UpdateFailureError(
                 underlying: classified.underlying,
-                failure: classified.failure.with(resource: resource)
+                failure: classified.failure.with(resource: resource),
+                rejectsArtifact: classified.rejectsArtifact
             )
         }
         guard let failure = UpdateFailureClassifier.classify(error, during: phase) else {
@@ -302,7 +327,7 @@ enum UpdateFailureClassifier {
             return .invalidResponse
         case .signatureVerificationFailed(let underlying):
             return classifySignatureError(underlying, during: phase)
-        case .bundleInCrashedHistory:
+        case .bundleInCrashedHistory, .bundleRejected:
             return nil
         case .unknown(.some(let underlying)):
             return classify(underlying, during: phase)

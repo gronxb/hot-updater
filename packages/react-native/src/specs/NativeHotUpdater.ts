@@ -163,7 +163,9 @@ export interface Spec extends TurboModule {
   };
 
   /**
-   * Gets the list of bundle IDs that have been marked as crashed.
+   * Gets the list of bundle IDs this device refuses to install: bundles that
+   * crashed, and bundles whose download failed verification (a hash or
+   * signature that fails, or files that can't be decoded).
    * These bundles will be rejected if attempted to install again.
    *
    * @returns Array of crashed bundle IDs
@@ -171,7 +173,8 @@ export interface Spec extends TurboModule {
   getCrashHistory(): string[];
 
   /**
-   * Clears the crashed bundle history, allowing previously crashed bundles
+   * Clears the crashed bundle history, allowing previously crashed bundles,
+   * and bundles whose download failed verification,
    * to be installed again.
    *
    * @returns true if clearing was successful

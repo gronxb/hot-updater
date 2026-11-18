@@ -25,6 +25,25 @@ public enum SignatureVerificationError: Error, CustomNSError {
         return 0
     }
 
+    /// Whether this failure is the verified file's own: its hash or signature
+    /// fails, or it carries none where one is required. A missing or invalid
+    /// public key, a read failure, or a platform error says nothing about it.
+    var provesFileBad: Bool {
+        switch self {
+        case .fileHashMismatch,
+             .missingFileHash,
+             .invalidSignatureFormat,
+             .signatureVerificationFailed,
+             .unsignedNotAllowed:
+            return true
+        case .publicKeyNotConfigured,
+             .invalidPublicKeyFormat,
+             .fileReadFailed,
+             .securityFrameworkError:
+            return false
+        }
+    }
+
     public var errorCodeString: String {
         switch self {
         case .publicKeyNotConfigured: return "PUBLIC_KEY_NOT_CONFIGURED"

@@ -3554,6 +3554,160 @@ struct BundleFileStorageServiceTests {
         #expect(UpdateDelivery(method: .archive, patchFallback: false).dictionary["delivery"] as? String == "archive")
     }
 
+    @Test(arguments: [
+        ("manifest-hash", true), ("manifest-json", true), ("manifest-bundle-id", true),
+        ("file-hash", true), ("file-brotli", true), ("unsafe-path", true),
+        ("descriptor-set", false), ("missing-bundle-file", false),
+        ("network", false), ("http", false), ("incomplete", false), ("public-key", false),
+    ])
+    func remembersOnlyFailuresThatProveTheFilesBad(kind: String, rejected: Bool) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("target hermes".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let assetPath = kind == "missing-bundle-file" ? "assets/image.png"
+            : kind == "unsafe-path" ? "../index.ios.bundle" : "index.ios.bundle"
+        let manifest = kind == "manifest-json"
+            ? Data("not json".utf8)
+            : try makeManifestData(bundleId: kind == "manifest-bundle-id" ? "other" : "target", assets: [assetPath: hash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        var contents = [manifestURL: manifest, fileURL: bytes]
+        var failures: [URL: Error] = [:]
+        switch kind {
+        case "file-hash", "file-brotli":
+            contents[fileURL] = Data("corrupted bytes".utf8)
+        case "network":
+            failures[fileURL] = URLError(.networkConnectionLost)
+        case "http":
+            failures[fileURL] = DownloadError.httpStatus(503)
+        case "incomplete":
+            failures[fileURL] = DownloadError.incompleteDownload(expected: 100, actual: 40)
+        default:
+            break
+        }
+        let downloads = MappingDownloadService(contents: contents, failures: failures)
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        var descriptors = [assetPath: ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash,
+            fileCompression: kind == "file-brotli" ? "br" : nil)]
+        if kind == "descriptor-set" {
+            descriptors["assets/extra.png"] = ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)
+        }
+        let manifestHash = kind == "manifest-hash" ? String(repeating: "0", count: 64)
+            // A signed hash this build has no public key to verify.
+            : kind == "public-key" ? "sig:c2lnbmF0dXJl"
+            : try #require(sha256(manifest, in: root))
+        let first = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: manifestHash, assets: descriptors)
+        #expect(first.failureError != nil)
+        #expect(service.getCrashHistory().contains("target") == rejected)
+        #expect(loadCrashedHistory(documentsDirectory: root).bundles.isEmpty)
+
+        let requestsBefore = downloads.requestedURLs.count
+        let second = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: manifestHash, assets: descriptors)
+        if rejected {
+            // Refused before any request, and not reported as an update failure.
+            #expect(downloads.requestedURLs.count == requestsBefore)
+            #expect(baseErrorCode(of: second) == "BUNDLE_IN_CRASHED_HISTORY")
+            #expect(updateFailure(of: second) == nil)
+            #expect(second.failureError?.localizedDescription.contains("failed verification") == true)
+        } else {
+            #expect(downloads.requestedURLs.count > requestsBefore)
+        }
+    }
+
+    @Test
+    func clearingCrashHistoryAllowsARejectedBundleAgain() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let service = makeStorageService(documentsDirectory: root,
+            downloadService: MappingDownloadService(contents: [:]))
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        _ = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: String(repeating: "0", count: 64), assets: [:])
+        // The manifest request failed without bytes, so nothing is remembered.
+        #expect(!service.getCrashHistory().contains("target"))
+
+        let downloads = MappingDownloadService(contents: [manifestURL: Data("bad".utf8)])
+        let rejecting = makeStorageService(documentsDirectory: root, downloadService: downloads)
+        _ = updateBundle(rejecting, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: String(repeating: "0", count: 64), assets: [:])
+        #expect(rejecting.getCrashHistory().contains("target"))
+        #expect(rejecting.clearCrashHistory())
+        #expect(!rejecting.getCrashHistory().contains("target"))
+        #expect(loadCrashedHistory(documentsDirectory: root).rejectedBundles.isEmpty)
+    }
+
+    @Test
+    func rejectedBundlesAreCappedWithoutEvictingCrashes() throws {
+        var history = CrashedHistory()
+        history.addEntry("crashed")
+        for index in 0..<(CrashedHistory.maxRejectedBundles + 3) {
+            history.addRejectedBundle("rejected-\(index)")
+        }
+        #expect(history.contains("crashed"))
+        #expect(history.rejectedBundles.count == CrashedHistory.maxRejectedBundles)
+        #expect(!history.isRejected("rejected-0"))
+        #expect(history.isRejected("rejected-\(CrashedHistory.maxRejectedBundles + 2)"))
+
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let file = root.appendingPathComponent(CrashedHistory.crashedHistoryFilename)
+        #expect(history.save(to: file))
+        let loaded = CrashedHistory.load(from: file)
+        #expect(loaded.bundles.map(\.bundleId) == ["crashed"])
+        #expect(loaded.rejectedBundles.map(\.bundleId) == history.rejectedBundles.map(\.bundleId))
+    }
+
+    @Test
+    func malformedRejectedRecordKeepsCrashHistory() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let file = root.appendingPathComponent(CrashedHistory.crashedHistoryFilename)
+        try Data(#"{"bundles":[{"bundleId":"crashed","crashedAt":1,"crashCount":1}],"maxHistorySize":10,"rejectedBundles":"bad"}"#.utf8)
+            .write(to: file)
+        let loaded = CrashedHistory.load(from: file)
+        #expect(loaded.contains("crashed"))
+        #expect(loaded.rejectedBundles.isEmpty)
+    }
+
+    @Test
+    func theRunningBundleIsNeverRejected() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bundle = try createBundleDirectory(documentsDirectory: root, bundleId: "target")
+        try writeBundle(in: bundle, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: bundle, bundleId: "target")
+        try writeMetadata(documentsDirectory: root,
+            BundleMetadata(isolationKey: testIsolationKey, stableBundleId: "target"))
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let service = makeStorageService(documentsDirectory: root,
+            downloadService: MappingDownloadService(contents: [manifestURL: Data("bad".utf8)]))
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: String(repeating: "0", count: 64), assets: [:])
+        #expect(updateFailure(of: result) == UpdateFailure.hashMismatch.with(resource: .manifest))
+        #expect(!service.getCrashHistory().contains("target"))
+    }
+
+    @Test
+    func anotherBuildForgetsRejectedBundlesButKeepsCrashes() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        _ = try stageBundleUnderOriginalKey(root)
+        var history = CrashedHistory()
+        history.addEntry("crashed")
+        history.addRejectedBundle("rejected")
+        #expect(history.save(to: root
+            .appendingPathComponent("bundle-store", isDirectory: true)
+            .appendingPathComponent(CrashedHistory.crashedHistoryFilename)))
+
+        let service = makeStorageService(documentsDirectory: root)
+        #expect(service.getCrashHistory().contains("crashed"))
+        #expect(!service.getCrashHistory().contains("rejected"))
+    }
+
     @Test
     func crashedBundleRejectionIsNotClassified() throws {
         let root = try makeWorkingDirectory()

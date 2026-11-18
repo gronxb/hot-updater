@@ -200,6 +200,9 @@ public enum BundleStorageError: Error, CustomNSError {
     case signatureVerificationFailed(SignatureVerificationError)
     case moveOperationFailed(Error)
     case bundleInCrashedHistory(String)
+    /// A bundle whose files failed verification on this device. It keeps the
+    /// crash-history code: both are bundles the device refuses to install.
+    case bundleRejected(String)
     case unknown(Error?)
 
     // CustomNSError protocol implementation
@@ -219,7 +222,7 @@ public enum BundleStorageError: Error, CustomNSError {
         case .invalidBundle: return "INVALID_BUNDLE"
         case .signatureVerificationFailed: return "SIGNATURE_VERIFICATION_FAILED"
         case .moveOperationFailed: return "MOVE_OPERATION_FAILED"
-        case .bundleInCrashedHistory: return "BUNDLE_IN_CRASHED_HISTORY"
+        case .bundleInCrashedHistory, .bundleRejected: return "BUNDLE_IN_CRASHED_HISTORY"
         case .unknown: return "UNKNOWN_ERROR"
         }
     }
@@ -258,6 +261,10 @@ public enum BundleStorageError: Error, CustomNSError {
         case .bundleInCrashedHistory(let bundleId):
             userInfo[NSLocalizedDescriptionKey] = "Bundle '\(bundleId)' is in crashed history and cannot be applied"
             userInfo[NSLocalizedRecoverySuggestionErrorKey] = "This bundle previously caused a crash and was blocked for safety"
+
+        case .bundleRejected(let bundleId):
+            userInfo[NSLocalizedDescriptionKey] = "Bundle '\(bundleId)' failed verification on this device and cannot be applied"
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Its files did not match their hash or signature, so it is not downloaded again"
 
         case .unknown(let underlyingError):
             userInfo[NSLocalizedDescriptionKey] = "An unknown error occurred during bundle update"
@@ -671,6 +678,22 @@ class BundleFileStorageService: BundleStorageService {
         let compressedDirectory = (tempDirectory as NSString).appendingPathComponent("compressed")
         _ = fileSystem.createDirectory(atPath: compressedDirectory)
         return (compressedDirectory as NSString).appendingPathComponent("\(safeName).\(compression)")
+    }
+
+    /// Whether a downloaded file's verification failed on the file itself.
+    private static func provesFileBad(_ error: Error) -> Bool {
+        if case .signatureVerificationFailed(let cause)? = UpdateFailureError.unwrap(error) as? BundleStorageError {
+            return cause.provesFileBad
+        }
+        return false
+    }
+
+    /// Whether Brotli decoding failed on the input's bytes, not on creating or
+    /// writing the output.
+    private static func isBrotliDecodeFailure(_ error: Error) -> Bool {
+        let error = error as NSError
+        return error.domain == BrotliFileDecompressor.errorDomain &&
+            BrotliFileDecompressor.inputErrorCodes.contains(error.code)
     }
 
     private func materializeDownloadedAsset(
@@ -1382,6 +1405,7 @@ class BundleFileStorageService: BundleStorageService {
             NSLog("[BundleStorage] Failed to clear metadata; keeping bundles until the next start")
             return
         }
+        clearRejectedBundles()
 
         do {
             let contents = try fileSystem.contentsOfDirectory(atPath: storeDir)
@@ -2333,8 +2357,20 @@ class BundleFileStorageService: BundleStorageService {
         // Check if bundle is in crashed history
         if getCrashHistory().contains(bundleId) {
             NSLog("[BundleStorage] Bundle '\(bundleId)' is in crashed history, rejecting update")
-            completion(.failure(BundleStorageError.bundleInCrashedHistory(bundleId)))
+            completion(.failure(
+                isBundleRejected(bundleId)
+                    ? BundleStorageError.bundleRejected(bundleId)
+                    : BundleStorageError.bundleInCrashedHistory(bundleId)
+            ))
             return
+        }
+
+        let completion: (Result<UpdateDelivery, Error>) -> Void = { result in
+            if case .failure(let error) = result,
+               (error as? UpdateFailureError)?.rejectsArtifact == true {
+                self.recordRejectedBundle(bundleId)
+            }
+            completion(result)
         }
 
         fileOperationQueue.async(flags: .barrier) {
@@ -2515,22 +2551,30 @@ class BundleFileStorageService: BundleStorageService {
         ) {
         case .success(let downloadedFileURL):
             do {
-                try UpdateFailureError.during(.extraction, resource: .file) {
+                do {
                     try materializeDownloadedAsset(
                         downloadedPath: downloadedFileURL.path,
                         destinationPath: destinationPath,
                         changedAsset: changedAsset
                     )
+                } catch {
+                    throw Self.isBrotliDecodeFailure(error)
+                        ? UpdateFailureError.rejectingArtifact(error, during: .extraction, resource: .file)
+                        : UpdateFailureError.classifying(error, during: .extraction, resource: .file)
                 }
                 // Compressed files are checked after decoding, so their
                 // mismatch is an extraction failure.
                 let verificationPhase: UpdatePhase =
                     changedAsset.fileCompression == "br" ? .extraction : .verification
-                try UpdateFailureError.during(verificationPhase, resource: .file) {
+                do {
                     try verifyManifestAssetFile(
                         atPath: destinationPath,
                         asset: expectedAsset
                     )
+                } catch {
+                    throw Self.provesFileBad(error)
+                        ? UpdateFailureError.rejectingArtifact(error, during: verificationPhase, resource: .file)
+                        : UpdateFailureError.classifying(error, during: verificationPhase, resource: .file)
                 }
             } catch {
                 updateDiffProgressFile(
@@ -2928,18 +2972,35 @@ class BundleFileStorageService: BundleStorageService {
             )
             guard case .success = manifestVerificationResult else {
                 if case .failure(let error) = manifestVerificationResult {
-                    throw BundleStorageError.signatureVerificationFailed(error)
+                    let failure = BundleStorageError.signatureVerificationFailed(error)
+                    throw error.provesFileBad
+                        ? UpdateFailureError.rejectingArtifact(failure, during: .verification, resource: .manifest)
+                        : failure
                 }
                 throw BundleStorageError.unknown(nil)
             }
 
             failurePhase = .manifest
-            guard let manifestData = try? Data(contentsOf: URL(fileURLWithPath: tempManifestPath)),
-                  let manifestJson = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any],
+            guard let manifestData = try? Data(contentsOf: URL(fileURLWithPath: tempManifestPath)) else {
+                throw BundleStorageError.invalidBundle
+            }
+            // The manifest passed its hash and signature, so what it says is
+            // the bundle's own and fails the same way again.
+            let parsedManifestJson: Any
+            do {
+                parsedManifestJson = try JSONSerialization.jsonObject(with: manifestData)
+            } catch {
+                throw UpdateFailureError.rejectingArtifact(error, during: .manifest, resource: .manifest)
+            }
+            guard let manifestJson = parsedManifestJson as? [String: Any],
                   let targetManifest = parseBundleManifest(from: manifestJson),
                   targetManifest.bundleId == bundleId
             else {
-                throw BundleStorageError.invalidBundle
+                throw UpdateFailureError.rejectingArtifact(
+                    BundleStorageError.invalidBundle,
+                    during: .manifest,
+                    resource: .manifest
+                )
             }
             if fileResolver == nil {
                 // Legacy: artifact protocol v1, where every file comes with its URL.
@@ -2956,7 +3017,11 @@ class BundleFileStorageService: BundleStorageService {
             for (path, asset) in targetManifest.assets {
                 guard FileUtilities.normalizedRelativePath(from: path) == path,
                       path != "manifest.json" else {
-                    throw BundleStorageError.invalidBundle
+                    throw UpdateFailureError.rejectingArtifact(
+                        BundleStorageError.invalidBundle,
+                        during: .manifest,
+                        resource: .manifest
+                    )
                 }
                 if fileResolver == nil {
                     guard let descriptor = changedAssets[path],
@@ -3292,8 +3357,9 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     /**
-     * Returns the bundles this device refuses to install: crash history, plus a
-     * bundle waiting for its retry until a process that may retry it.
+     * Returns the bundles this device refuses to install: crash history, a
+     * bundle waiting for its retry until a process that may retry it, and
+     * bundles whose files were refused. Every update check excludes these.
      * @return The crashed history object
      */
     func getCrashHistory() -> CrashedHistory {
@@ -3305,7 +3371,46 @@ class BundleFileStorageService: BundleStorageService {
            !history.contains(interrupted.bundleId) {
             history.bundles.append(CrashedBundleEntry(bundleId: interrupted.bundleId))
         }
+        for rejected in history.rejectedBundles where !history.contains(rejected.bundleId) {
+            history.bundles.append(CrashedBundleEntry(bundleId: rejected.bundleId, crashedAt: rejected.rejectedAt))
+        }
         return history
+    }
+
+    private func isBundleRejected(_ bundleId: String) -> Bool {
+        crashedHistoryLock.lock()
+        defer { crashedHistoryLock.unlock() }
+        let history = loadCrashedHistory()
+        return history.isRejected(bundleId) && !history.contains(bundleId)
+    }
+
+    /// Remembers that `bundleId`'s files proved bad, so no update check
+    /// selects it again. The bundle this device runs or keeps is never
+    /// recorded: an active bundle that checks exclude would send the device to
+    /// the built-in bundle.
+    private func recordRejectedBundle(_ bundleId: String) {
+        let metadata = loadMetadataOrNull()
+        guard bundleId != getCachedBundleId(),
+              bundleId != metadata?.stableBundleId,
+              bundleId != metadata?.stagingBundleId else {
+            return
+        }
+        crashedHistoryLock.lock()
+        defer { crashedHistoryLock.unlock() }
+        var history = loadCrashedHistory()
+        history.addRejectedBundle(bundleId)
+        _ = saveCrashedHistory(history)
+        NSLog("[BundleStorage] Bundle '\(bundleId)' failed verification; it will not be downloaded again")
+    }
+
+    /// Another build is installed: its own verification decides again.
+    private func clearRejectedBundles() {
+        crashedHistoryLock.lock()
+        defer { crashedHistoryLock.unlock() }
+        var history = loadCrashedHistory()
+        guard !history.rejectedBundles.isEmpty else { return }
+        history.rejectedBundles.removeAll()
+        _ = saveCrashedHistory(history)
     }
 
     /**
