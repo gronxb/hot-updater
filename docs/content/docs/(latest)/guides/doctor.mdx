@@ -245,6 +245,7 @@ Doctor writes nothing. Each issue's `resolution` says what resolves it, and
 | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `SCHEMA_MIGRATION_PENDING`, on a deployment `hot-updater init` created                | `npx hot-updater init --provider <provider> --from-env-file .env.hotupdater`: it migrates the database and redeploys the server back to back. See [Check the database schema](#check-the-database-schema)                         |
 | `SCHEMA_MIGRATION_PENDING`, on a server of your own                                   | `npx hot-updater db migrate <server file>` in the server's project; for Drizzle, Prisma, D1, and Supabase, `npx hot-updater db generate <server file>` and the database's tooling first                                         |
+| `SCHEMA_TABLES_MISSING`                                                               | `npx hot-updater db generate <server file>`, the ORM's apply step such as `npx drizzle-kit push` or `npx prisma db push`, then `npx hot-updater db migrate <server file>`                                                       |
 | `MISSING_FINGERPRINT_JSON`, `INVALID_FINGERPRINT_JSON`, `FINGERPRINT_JSON_STALE`, `FINGERPRINT_ENGINE_UNRECORDED` | `npx hot-updater fingerprint create`, then rebuild the app when the fingerprint changed                                                                                                                                           |
 | `FINGERPRINT_JSON_UNUSED`                                                             | Delete `fingerprint.json`, then rebuild the apps, or set `updateStrategy` to `"fingerprint"`                                                                                                                                      |
 | `MISSING_PUBLIC_KEY`, `PUBLIC_KEY_MISMATCH`                                           | `npx hot-updater keys export-public`, then rebuild and release the app. Apps already installed keep the previous key and reject bundles signed with the configured one                                                           |
@@ -403,8 +404,18 @@ remediation names no command either: upgrading it would migrate the database
 over those settings.
 
 A setting newer than this CLI expects is `SCHEMA_NEWER_THAN_CLI`: the database
-was migrated by a newer Hot Updater, and Hot Updater never moves a schema
-back. Upgrade the CLI and the `@hot-updater` packages instead. A database Hot
+was migrated by a newer Hot Updater, and `hot-updater db migrate` refuses to
+move a schema back. Upgrade the CLI and the `@hot-updater` packages to that
+version instead.
+
+On Drizzle and Prisma, whose tooling applies the tables, the settings rows can
+pass while a table is missing. Once the fence passes, doctor plans the
+migration without writing: a table or index the schema declares and the
+database lacks is `SCHEMA_TABLES_MISSING`, resolved by
+`npx hot-updater db generate <server file>`, the ORM's apply step, then
+`npx hot-updater db migrate <server file>`. A step `db migrate` still has to
+run, such as a collation the ORM cannot declare, is
+`SCHEMA_MIGRATION_PENDING`. A database Hot
 Updater v1 cannot migrate in place, such as a v0 database, is
 `SCHEMA_NOT_MIGRATABLE`.
 

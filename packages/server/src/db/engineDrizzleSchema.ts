@@ -14,11 +14,31 @@ const drizzle = {
 
 const literal = (value: string) => JSON.stringify(value);
 
+/** PostgreSQL's identifier limit, NAMEDATALEN - 1 bytes; longer names are cut. */
+const POSTGRES_NAME_BYTES = 63;
+
+/**
+ * The type drizzle-kit declares for a column. drizzle-kit reads a
+ * PostgreSQL column's type without its collation, so a type that names one
+ * never matches the database and every push would change it again: the
+ * collation goes, and `hot-updater db migrate` sets it.
+ */
+export const drizzleColumnType = (dialect: SqlDialect, type: string) =>
+  dialect === "postgresql"
+    ? type.replace(/ COLLATE "C"$/u, "")
+    : dialect === "sqlite"
+      ? type.toLowerCase()
+      : type;
+
 /**
  * The Drizzle schema `drizzle-kit` applies for the engine's tables: every
- * column typed exactly as the engine's DDL, keys, indexes, index tables, and
- * the settings table. The engine keeps references itself, so there are no
- * foreign keys. `hot-updater db migrate` then writes only the settings rows.
+ * column typed as the engine's DDL, keys, indexes, index tables, and the
+ * settings table. The engine keeps references itself, so there are no
+ * foreign keys. It is what drizzle-kit reads back from the database, so a
+ * second `drizzle-kit push` plans nothing: a one-column key is the column's
+ * own, a composite key on PostgreSQL is named as PostgreSQL stores its
+ * default name, and PostgreSQL types leave out the collation, which
+ * `hot-updater db migrate` sets before it writes the settings rows.
  */
 export const generateDrizzleEngineSchema = (
   dialect: SqlDialect,
@@ -28,13 +48,20 @@ export const generateDrizzleEngineSchema = (
   const tables = [...schema.tables, SETTINGS_TABLE];
   const blocks: string[] = [];
   const emit = (shape: SqlTableShape) => {
+    const ownKey = shape.key.length === 1 ? shape.key[0] : undefined;
     const columns = shape.columns.map(
       (column) =>
-        `  ${literal(column.name)}: column(${literal(column.type)})(${literal(column.name)})${column.notNull ? ".notNull()" : ""}${column.default === undefined ? "" : `.default(${column.default})`},`,
+        `  ${literal(column.name)}: column(${literal(drizzleColumnType(dialect, column.type))})(${literal(column.name)})${column.notNull ? ".notNull()" : ""}${column.name === ownKey ? ".primaryKey()" : ""}${column.default === undefined ? "" : `.default(${column.default})`},`,
     );
     const at = (name: string) => `table[${literal(name)}]`;
+    // drizzle-kit's default name, which PostgreSQL cuts to its limit.
+    const keyName = `${shape.name}_${shape.key.join("_")}_pk`;
     const extras = [
-      `primaryKey({ columns: [${shape.key.map(at).join(", ")}] })`,
+      ...(ownKey === undefined
+        ? [
+            `primaryKey({ ${dialect !== "sqlite" && keyName.length > POSTGRES_NAME_BYTES ? `name: ${literal(dialect === "mysql" ? `${shape.name}_pk` : keyName.slice(0, POSTGRES_NAME_BYTES))}, ` : ""}columns: [${shape.key.map(at).join(", ")}] })`,
+          ]
+        : []),
       ...shape.indexes.flatMap((index) =>
         index.kind === "index"
           ? [

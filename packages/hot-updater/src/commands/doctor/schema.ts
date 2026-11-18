@@ -168,13 +168,90 @@ export const checkSchema = async (
   if (server === null || isRemoteDatabase(server.database)) return undefined;
   try {
     await server.core.ready();
-    return undefined;
   } catch (error) {
     if (!isSchemaMigrationRequired(error)) return undefined;
     return schemaStatus(server, error, await v0VersionOf(server, error), {
       managed: await context.managed(),
       scaffold: await context.scaffoldUpgrade(),
     });
+  }
+  return ormSchemaStatus(server);
+};
+
+/** The migrator's error for tables an ORM has yet to apply, by name. */
+const isTablesMissing = (
+  error: unknown,
+): error is Error & {
+  readonly applyTables: string;
+} =>
+  error instanceof Error &&
+  error.name === "HotUpdaterSchemaTablesMissingError" &&
+  typeof (error as { applyTables?: unknown }).applyTables === "string";
+
+/**
+ * On a database whose ORM applies the tables (Drizzle, Prisma), the fence
+ * reads only the settings rows: what `db migrate` would still do once it
+ * passes. Its migrator plans without writing, and refuses when a table or
+ * index the server reads is missing; any step left, such as a collation the
+ * ORM cannot declare, is pending. Undefined when nothing is left, or the
+ * plan failed for another reason, which the server data checks report.
+ */
+const ormSchemaStatus = async ({
+  database,
+  plugins,
+}: LoadedServer): Promise<SchemaStatus | undefined> => {
+  if (isRemoteDatabase(database)) return undefined;
+  const tooling = database as typeof database & {
+    readonly createMigrator?: unknown;
+    readonly generateSchema?: unknown;
+  };
+  if (
+    tooling.createMigrator === undefined ||
+    tooling.generateSchema === undefined
+  ) {
+    return undefined;
+  }
+  try {
+    const { operations } = await createMigrator({
+      database,
+      plugins,
+    }).migrateToLatest();
+    if (operations.length === 0) return undefined;
+    return {
+      settings: [],
+      issues: [
+        {
+          type: "error",
+          code: "SCHEMA_MIGRATION_PENDING",
+          message: `The database has a migration step left: ${operations
+            .map((operation) =>
+              "description" in operation
+                ? operation.description
+                : operation.type,
+            )
+            .join("; ")}.`,
+          resolution: `In the server's project, run \`${DB_MIGRATE}\`.`,
+          commands: [DB_MIGRATE],
+        },
+      ],
+    };
+  } catch (error) {
+    if (!isTablesMissing(error)) return undefined;
+    return {
+      settings: [],
+      issues: [
+        {
+          type: "error",
+          code: "SCHEMA_TABLES_MISSING",
+          message: error.message.replace(
+            / Run `hot-updater db generate`.*$/su,
+            "",
+          ),
+          resolution: `In the server's project, run \`${DB_GENERATE}\`, apply it with ${error.applyTables}, then run \`${DB_MIGRATE}\`.`,
+          commands: [DB_GENERATE, DB_MIGRATE],
+        },
+      ],
+    };
   }
 };
 
@@ -268,12 +345,12 @@ const schemaStatus = (
     });
   }
   if (newer.length > 0) {
+    const core = newer.find(({ key }) => key === "schema.core")?.found;
     issues.push({
       type: "error",
       code: "SCHEMA_NEWER_THAN_CLI",
-      message: `The database was migrated by a newer hot-updater: ${listed(newer)}.`,
-      resolution:
-        "Upgrade hot-updater and the @hot-updater packages to the version that migrated the database. Hot Updater never moves a schema back.",
+      message: `The database was migrated by ${core ? `Hot Updater ${core}` : "a newer Hot Updater"}: ${listed(newer)}.`,
+      resolution: `Upgrade hot-updater and the @hot-updater packages to ${core ? `${core} or later` : "the version that migrated the database"}. \`hot-updater db migrate\` never moves a schema back.`,
     });
   }
   if (changed.length > 0) {

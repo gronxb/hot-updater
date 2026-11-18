@@ -296,16 +296,19 @@ are, runs core's SQL through `createSqlAdapter` and gives its database a
 migrator from `@hot-updater/plugin-core`, which its `createMigrator` returns:
 
 - `createEngineSqlMigrator({ executor, adapterName, schema, settings,
-tablePrefix })` when Hot Updater creates the tables: it applies the
+ordered, tablePrefix })` when Hot Updater creates the tables: it applies the
   generated SQL schema when a settings row is missing or different, as
   `kyselyAdapter`'s does.
-- `createSettingsMigrator({ executor, adapterName, settings, applyTables,
-fixups })` when the ORM applies the DDL itself, as Drizzle's and Prisma's
-  do: `fixups` sets what the ORM cannot declare, then it writes the settings
-  rows. `applyTables` says how the ORM creates the tables, for the error when
-  they are missing.
+- `createSettingsMigrator({ executor, adapterName, schema, settings, ordered,
+applyTables, collate })` when the ORM applies the DDL itself, as Drizzle's
+  and Prisma's do. It refuses while a table or index of `schema` is missing,
+  naming each and `applyTables`, the command that applies them. It then sets
+  the collation the ORM cannot declare on each column `collate` selects that
+  lacks it, and writes the settings rows.
 
-Both refuse a v0 database. The ORM's own schema generator renders each
+Pass `schema`, `settings` and `ordered` from the `target` your
+`createMigrator` receives. Both refuse a v0 database, and a database whose
+`ordered` settings, such as `schema.core`, a newer release recorded. The ORM's own schema generator renders each
 table from `sqlTableShapes` and quotes names with `quoteSql`; see
 [Create the schema](#create-the-schema).
 

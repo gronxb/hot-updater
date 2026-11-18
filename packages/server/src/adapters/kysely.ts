@@ -37,12 +37,13 @@ export const kyselyAdapter = <TDatabase extends object>(
       adapter: createSqlAdapter({ executor }),
     }),
     provider,
-    createMigrator: ({ schema, settings } = coreTarget) =>
+    createMigrator: ({ schema, settings, ordered } = coreTarget) =>
       createEngineSqlMigrator({
         adapterName: "kysely",
         executor,
         schema,
         settings,
+        ordered,
       }),
   };
 };

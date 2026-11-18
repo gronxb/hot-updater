@@ -99,9 +99,12 @@ npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
 This command writes `hot-updater-schema.ts` at the project root: every table,
-key and index, with each column typed exactly as Hot Updater's SQL schema
-declares it, and no foreign keys. The tables are core's and those of the
-server's [plugins](/docs/custom/server-plugins#create-the-plugins-tables).
+key and index, and no foreign keys. The tables are core's and those of the
+server's [plugins](/docs/custom/server-plugins#create-the-plugins-tables). The
+file declares what Drizzle Kit reads back from the database, so a second
+`drizzle-kit push` plans nothing. On PostgreSQL that leaves out each string
+column's `COLLATE "C"`, which Drizzle Kit cannot read back:
+`hot-updater db migrate` sets it.
 
 Point Drizzle Kit at the generated file and the same SQLite database. If your
 config already lists schema files, add `./hot-updater-schema.ts` to its
@@ -127,13 +130,25 @@ npx drizzle-kit push
 npx hot-updater db migrate src/hotUpdater.ts --yes
 ```
 
-Drizzle Kit creates the tables. `db migrate` then writes only the settings
-rows. It asks you to apply the tables first when they are missing, and it
-refuses a database created by an older Hot Updater schema instead of
-converting it. The server checks the settings rows before its first read or
-write; until they exist, it throws `HotUpdaterSchemaMigrationRequiredError`
-and its handlers answer 503. A running server checks again on its next
-request. Run all three commands again after upgrading Hot Updater.
+Drizzle Kit creates the tables. `db migrate` then checks that every table and
+index exists, sets the PostgreSQL collations, and writes the settings rows. It
+names any table or index that is missing and writes nothing. It also refuses
+a database created by an older Hot Updater schema, or migrated by a newer
+Hot Updater, instead of converting it. The server checks the settings rows
+before its first read or write; until they exist, it throws
+`HotUpdaterSchemaMigrationRequiredError` and its handlers answer 503. A
+running server checks again on its next request. Run all three commands again
+after upgrading Hot Updater.
+
+On MySQL, apply the schema with migration files instead: `drizzle-kit push`
+cannot read MySQL's character sets, so every push would change the columns
+again. Set `out` in drizzle.config.ts, then run:
+
+```bash
+npx drizzle-kit generate
+npx drizzle-kit migrate
+npx hot-updater db migrate src/hotUpdater.ts --yes
+```
 
 <Callout>
   Need plain SQL to apply yourself? See [SQL

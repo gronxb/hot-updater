@@ -100,12 +100,16 @@ describe("plugin tables in db tooling", () => {
     );
 
     const result = await migrate(hotUpdater);
-    expect(result.operations).toContainEqual(
-      expect.objectContaining({
-        type: "create-table",
-        value: expect.objectContaining({ ormName: "notes_notes" }),
-      }),
-    );
+    expect(result.operations).toEqual([
+      {
+        type: "custom",
+        description: "Create the tables and indexes the database lacks",
+      },
+      {
+        type: "custom",
+        description: `Record schema.engine 1, schema.core ${coreTarget.settings["schema.core"]}, schema.notes 2`,
+      },
+    ]);
     await hotUpdater.api.notes.add("n1", "ada", "hello");
     await expect(hotUpdater.api.notes.read("n1")).resolves.toEqual({
       id: "n1",
@@ -166,8 +170,14 @@ describe("plugin tables in db tooling", () => {
         clientAccess: "public",
       }),
     );
-    // An earlier release's core, before the server added two plugins.
-    await writeSchemaSettings(adapter, "memory", { "schema.core": "0.9.0" });
+    // An earlier release's core, before the server added two plugins,
+    // written as that release wrote it.
+    await writeSchemaSettings(
+      adapter,
+      "memory",
+      { "schema.core": "0.9.0" },
+      [],
+    );
     const hotUpdater = createHotUpdater({
       database,
       storage: createReleaseCatalogTestStorage(),

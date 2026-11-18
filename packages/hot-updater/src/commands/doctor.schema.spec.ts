@@ -415,7 +415,7 @@ describe("doctor's schema check", () => {
             {
               code: "SCHEMA_NEWER_THAN_CLI",
               message:
-                'The database was migrated by a newer hot-updater: schema.core is "9.0.0", expected "1.2.0".',
+                'The database was migrated by Hot Updater 9.0.0: schema.core is "9.0.0", expected "1.2.0".',
             },
           ],
         },

@@ -89,6 +89,7 @@ export interface SchemaIssue {
     | "SCHEMA_MIGRATION_PENDING"
     | "SCHEMA_NEWER_THAN_CLI"
     | "SCHEMA_NOT_MIGRATABLE"
+    | "SCHEMA_TABLES_MISSING"
     | "PLUGIN_SCHEMA_CHANGED";
   /** SCHEMA_MIGRATION_PENDING: the settings a migration writes. */
   settings?: SchemaSetting[];

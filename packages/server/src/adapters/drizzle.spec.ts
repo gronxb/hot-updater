@@ -330,8 +330,21 @@ describe("drizzleAdapter schema and migrations", () => {
       ).rejects.toBeInstanceOf(HotUpdaterSchemaMigrationRequiredError);
       const migrator = database.createMigrator!();
       const pending = await migrator.migrateToLatest();
+      // drizzle-kit cannot declare PostgreSQL's collation: db migrate sets it.
       expect(pending.operations).toEqual([
-        expect.objectContaining({ type: "custom" }),
+        ...(provider === "postgresql"
+          ? [
+              {
+                type: "custom",
+                description:
+                  "Set the byte-order collation the ORM cannot declare on 65 columns of 9 tables",
+              },
+            ]
+          : []),
+        {
+          type: "custom",
+          description: "Record schema.engine 1, schema.core 1.2.0",
+        },
       ]);
       await pending.execute();
       await expect(migrator.migrateToLatest()).resolves.toMatchObject({
