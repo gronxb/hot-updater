@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => ({
   printAppSetup: vi.fn(),
   provisionClientCredential: vi.fn(),
   readHotUpdaterInitEnv: vi.fn(),
+  readLoadedHotUpdaterEnv: vi.fn(),
   readHotUpdaterTables: vi.fn(),
   resolveVercelToken: vi.fn(),
   select: vi.fn(),
@@ -72,6 +73,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     printAppSetup: mocks.printAppSetup,
     provisionClientCredential: mocks.provisionClientCredential,
     readHotUpdaterInitEnv: mocks.readHotUpdaterInitEnv,
+    readLoadedHotUpdaterEnv: mocks.readLoadedHotUpdaterEnv,
     writeHotUpdaterFiles: mocks.writeHotUpdaterFiles,
   };
 });
@@ -123,6 +125,7 @@ const replayEnv = {
 
 const givenInitEnv = (env: Record<string, string>) => {
   mocks.readHotUpdaterInitEnv.mockResolvedValue({ env, managedEnv: env });
+  mocks.readLoadedHotUpdaterEnv.mockResolvedValue(env);
 };
 
 /** The project env after connecting the store with init's prefix. */
@@ -849,6 +852,24 @@ describe("Vercel init on a public Blob store an earlier release created", () => 
     );
     expect(result?.nextSteps[0]).toBe(
       "Set HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN to hot-updater-storage-private's token wherever deploys read it besides .env.hotupdater, such as CI: the project's production HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN holds it.",
+    );
+  });
+
+  it("leaves .env.hotupdater without a token only a team secrets store held, when saving was declined", async () => {
+    const env = {
+      ...savedEnv,
+      HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN: PUBLIC_TOKEN,
+    };
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({ env, managedEnv: env });
+    mocks.readLoadedHotUpdaterEnv.mockResolvedValue(savedEnv);
+    mocks.confirmInitInputPersistence.mockResolvedValue(false);
+
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    expect(mocks.makeEnv).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN: expect.anything(),
+      }),
     );
   });
 

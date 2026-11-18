@@ -72,6 +72,8 @@ export const loadGoogleCredential = async (
       `GOOGLE_APPLICATION_CREDENTIALS names ${applicationCredentials}, which is not a readable service account key file. ${next}`,
     );
   }
+  // Firestore's emulator takes no credential.
+  if (process.env["FIRESTORE_EMULATOR_HOST"]) return credential;
   try {
     await credential.getAccessToken();
   } catch (error) {

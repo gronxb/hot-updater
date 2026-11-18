@@ -92,8 +92,10 @@ const adapterOf = ({
   const store = createFirestoreStore({ firestore, collection });
   return createKvAdapter({
     // The Cloud Function passes no credential: its default app has one.
+    // Firestore's emulator takes none.
     store:
-      appOptions.credential === undefined
+      appOptions.credential === undefined ||
+      process.env["FIRESTORE_EMULATOR_HOST"]
         ? store
         : withLoadedCredential(store, appOptions.credential),
   });

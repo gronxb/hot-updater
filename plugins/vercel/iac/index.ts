@@ -17,6 +17,7 @@ import {
   provisionClientCredential,
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
+  readLoadedHotUpdaterEnv,
   resolveInitProviderInputs,
   type RunInitOptions,
   type RunInitResult,
@@ -766,9 +767,12 @@ export const runInit = async ({
       toToken: blobToken,
     });
   }
-  // A Blob token .env.hotupdater saved was saved with consent: it follows the
-  // store, so deploys don't write to the one init no longer uses.
-  const savedBlobToken = managedEnv[BLOB_TOKEN_ENV]?.trim();
+  // A Blob token .env.hotupdater itself saved was saved with consent: it
+  // follows the store, so deploys don't write to the one init no longer
+  // uses. One only a team secrets store holds is not the file's to replace.
+  const savedBlobToken = (await readLoadedHotUpdaterEnv(cwd))[
+    BLOB_TOKEN_ENV
+  ]?.trim();
   await makeEnv({
     ...getInitProviderEnvVars({
       includeConsentInputs: persistCredentialInputs,

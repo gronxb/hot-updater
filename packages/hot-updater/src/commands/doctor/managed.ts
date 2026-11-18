@@ -146,6 +146,26 @@ export const foreignPluginsNote = ({
  * names init's command. Read as init reads its inputs: the environment's
  * value first, then `.env.hotupdater`'s.
  */
+/** Init's command for a retired input, unless replaying it would drop plugins. */
+const retiredResolution = (
+  managed: ManagedDeployment,
+): { readonly resolution: string; readonly commands: string[] } => {
+  const foreign = foreignPluginsNote(managed);
+  if (foreign !== undefined) {
+    return {
+      resolution: `${foreign} make the same change to that server's deployment yourself.`,
+      commands: [],
+    };
+  }
+  return {
+    resolution:
+      managed.source === "file"
+        ? `Run init again with its saved inputs: \`${managed.command}\`.`
+        : `Run init again, with init's saved inputs as <env file>: \`${managed.command}\`.`,
+    commands: [managed.command],
+  };
+};
+
 export const checkRetiredInputs = async (
   cwd: string,
   managed: ManagedDeployment | null,
@@ -164,11 +184,7 @@ export const checkRetiredInputs = async (
             type: "error" as const,
             code: "MANAGED_INPUT_RETIRED" as const,
             message,
-            resolution:
-              managed.source === "file"
-                ? `Run init again with its saved inputs: \`${managed.command}\`.`
-                : `Run init again, with init's saved inputs as <env file>: \`${managed.command}\`.`,
-            commands: [managed.command],
+            ...retiredResolution(managed),
           },
         ]
       : [],

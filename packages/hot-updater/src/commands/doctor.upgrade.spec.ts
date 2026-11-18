@@ -579,6 +579,46 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
     }
   });
 
+  it("does not name init for the public Blob store while the config lists a plugin of its own", async () => {
+    deployed = "1.2.0";
+    const adapter = createSqlAdapter({
+      executor: pgliteExecutor(new PGlite()),
+    });
+    await migrateCoreSchema(adapter, "postgres", managedPlugins());
+    await project(
+      marked(createEngineDatabase({ name: "postgres", adapter }), "vercel"),
+      "vercel",
+      { ...SAVED.vercel.env, HOT_UPDATER_VERCEL_BLOB_ACCESS: "public" },
+    );
+    const custom = definePlugin({
+      id: "custom",
+      schemaVersion: "1",
+      schema: {},
+      init: () => ({ api: {} }),
+    });
+    const config = await loadConfig(null);
+    vi.mocked(loadConfig).mockResolvedValue({
+      ...config,
+      plugins: [...managedPlugins(), custom],
+    } as never);
+
+    await expect(run()).resolves.toMatchObject({
+      details: {
+        managedDeployment: {
+          issues: [
+            {
+              code: "MANAGED_INPUT_RETIRED",
+              resolution: expect.stringContaining(
+                "lists a plugin the managed server does not run (custom)",
+              ),
+              commands: [],
+            },
+          ],
+        },
+      },
+    });
+  });
+
   it.each<InitProvider>(["aws", "firebase", "azure"])(
     "names init for a managed %s database, whose migrator writes its settings rows",
     async (provider) => {
