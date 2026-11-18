@@ -16,6 +16,7 @@ import { getFirestore } from "firebase-admin/firestore";
 
 import { FIREBASE_V1_COLLECTION } from "./firebaseInfrastructureNames";
 import { createFirestoreStore } from "./firestoreStore";
+import { resolveApplicationDefault } from "./googleCredential";
 
 export type FirebaseDatabaseConfig = AppOptions & {
   /**
@@ -45,7 +46,7 @@ const withLoadedCredential = (
 ): KeyValueStore => {
   let loaded: Promise<void> | undefined;
   const load = () =>
-    (loaded ??= credential.getAccessToken().then(
+    (loaded ??= resolveApplicationDefault(credential).then(
       () => undefined,
       (error: unknown) => {
         loaded = undefined;

@@ -24,6 +24,7 @@ import {
   FIREBASE_V1_FUNCTION_NAME,
 } from "../src/firebaseInfrastructureNames";
 import { firestoreDocumentId } from "../src/firestoreStore";
+import { resolveApplicationDefault } from "../src/googleCredential";
 
 /** The settings row of the storage engine's layout, which a setup checks first. */
 const ENGINE_SETTING = "schema.engine";
@@ -75,7 +76,7 @@ export const loadGoogleCredential = async (
   // Firestore's emulator takes no credential.
   if (process.env["FIRESTORE_EMULATOR_HOST"]) return credential;
   try {
-    await credential.getAccessToken();
+    await resolveApplicationDefault(credential);
   } catch (error) {
     const reason = (error instanceof Error ? error.message : String(error))
       .split(/(?<=\.)\s/u)[0]!
