@@ -796,6 +796,13 @@ export interface InsightsUpdateFailures {
   };
   /** Over a time range: failures by stage and reason, most first. */
   readonly breakdown?: readonly InsightsFailureBreakdown[];
+  /**
+   * Over a time range: the hours, oldest first, that held more breakdown rows
+   * than a read takes from an hour. Their failures count only in part, so the
+   * failure counts and the breakdown are at least what they say, and the
+   * coverage is partial. Downloads and installations count in full.
+   */
+  readonly cappedHours?: readonly number[];
 }
 
 /** The longest period the failures read covers: the console's longest, 30 days. */
@@ -875,58 +882,78 @@ const breakdownOf = (
   });
 };
 
-/** Breakdown rows a failures read takes per hour of its range. */
-const FAILURE_ROWS_PER_HOUR = 10;
-/** The fewest it takes: a day's. */
-const FAILURE_ROWS_MIN = 24 * FAILURE_ROWS_PER_HOUR;
+/**
+ * The breakdown rows a failures read takes from one hour. An hour holds a
+ * row per release, stage, reason, and detail that failed in it, a handful in
+ * practice, and an incident across several releases and error codes still
+ * fits; but a client with the app's API key can report any number of
+ * details.
+ */
+const FAILURE_ROWS_PER_HOUR = 20;
+/** The stored rows of one aggregate row: one per counter shard. */
+const FAILURE_SHARDS = 8;
+/**
+ * One query's stored rows: an hour's bound and one more row, on every shard,
+ * so an hour past its bound costs at most one query's worth of rows more.
+ */
+const FAILURE_QUERY_LIMIT = Math.min(
+  PAGE,
+  (FAILURE_ROWS_PER_HOUR + 1) * FAILURE_SHARDS,
+);
 
 /**
- * A channel's breakdown rows over a range, newest first, up to ten an hour
- * of the range and a day's at least: 240 rows for a day, 7,200 for 30 days.
- * An hour holds a row per release, stage, reason, and detail that failed in
- * it, a handful in practice, but a client with the app's API key can report
- * any number of details, so the read stops at the bound instead of growing
- * with them. Past it, the oldest hour read may be cut short, so it is left
- * out whole and `cutBeforeMs` is the hour after it: the hours from there
- * count every failure they hold, and the report's counts and coverage start
- * there. The bound counts logical rows: stored rows are at most eight times
- * as many, when a client spreads each row over every counter shard.
+ * A channel's breakdown rows over a range, newest first, up to
+ * {@link FAILURE_ROWS_PER_HOUR} an hour: 480 rows for a day, 14,400 for 30
+ * days, however many details clients report. An hour that holds more is read
+ * no further, and the read goes on from the hour before it with a new query;
+ * the hour is listed in `cappedHours`, since its failures count only in part.
+ * Every other hour counts every failure it holds.
  */
-const newestFailureRows = async (
+const failureRowsByHour = async (
   db: Db,
   platform: "ios" | "android",
   channel: string,
   timeRange: { readonly start: number; readonly end: number },
 ) => {
-  const bound = Math.max(
-    FAILURE_ROWS_MIN,
-    Math.ceil((timeRange.end - timeRange.start) / HOUR_MS) *
-      FAILURE_ROWS_PER_HOUR,
-  );
-  const read = (cursor: string | undefined, limit: number) =>
+  const read = (end: number, cursor: string | undefined) =>
     db.findAggregates("insights_failures", {
       index: "byScope",
       where: { platform, channel },
-      range: { gte: timeRange.start, lt: timeRange.end },
+      range: { gte: timeRange.start, lt: end },
       order: "desc",
-      limit,
+      limit: FAILURE_QUERY_LIMIT,
       ...(cursor === undefined ? {} : { cursor }),
     });
   const rows: Awaited<ReturnType<typeof read>>["rows"][number][] = [];
+  const cappedHours: number[] = [];
+  const perHour = new Map<number, number>();
+  let end = timeRange.end;
   let cursor: string | undefined;
-  // One row past the bound tells a range that holds more from one that
-  // holds exactly as many.
-  do {
-    const page = await read(cursor, Math.min(PAGE, bound + 1 - rows.length));
-    rows.push(...page.rows);
-    cursor = page.next;
-  } while (cursor !== undefined && rows.length <= bound);
-  if (rows.length <= bound) return { rows, cutBeforeMs: undefined };
-  const cut = rows.at(-1)!.bucket_start_ms;
-  return {
-    rows: rows.filter((row) => row.bucket_start_ms !== cut),
-    cutBeforeMs: cut + HOUR_MS,
-  };
+  while (end > timeRange.start) {
+    const page = await read(end, cursor);
+    // Every row is kept until one passes its hour's bound.
+    let capped: number | undefined;
+    for (const row of page.rows) {
+      const hour = row.bucket_start_ms;
+      const count = (perHour.get(hour) ?? 0) + 1;
+      if (count > FAILURE_ROWS_PER_HOUR) {
+        capped = hour;
+        break;
+      }
+      perHour.set(hour, count);
+      rows.push(row);
+    }
+    if (capped !== undefined) {
+      cappedHours.unshift(capped);
+      end = capped;
+      cursor = undefined;
+    } else if (page.next === undefined) {
+      break;
+    } else {
+      cursor = page.next;
+    }
+  }
+  return { rows, cappedHours };
 };
 
 /**
@@ -936,8 +963,8 @@ const newestFailureRows = async (
  * reason, and detail, all summed from the breakdown's hourly rows; downloads
  * from the counters; failed installations from their sketches. A release reads hourly rows, a
  * channel daily rows past 48 hours like its activity; the breakdown's rows
- * are hourly, so its coverage is the raw period's, or partial from where the
- * breakdown reached its bound, which every count then starts from.
+ * are hourly, so its coverage is the raw period's, and partial when an hour
+ * held more breakdown rows than a read takes from it.
  */
 export const getUpdateFailures = async (
   db: Db,
@@ -998,30 +1025,17 @@ export const getUpdateFailures = async (
     };
   }
   const days = releaseId === undefined;
-  // The breakdown first: when it reaches its bound, every other count covers
-  // the same hours it does, so no rate mixes two ranges.
-  const { rows, cutBeforeMs } = await newestFailureRows(
-    db,
-    platform,
-    channel,
-    timeRange,
-  );
-  const range =
-    cutBeforeMs === undefined
-      ? timeRange
-      : { start: cutBeforeMs, end: timeRange.end };
-  const window = [range, days, kept.hour] as const;
-  const [counters, failures, checks, active] =
-    range.start < range.end
-      ? await Promise.all([
-          counterRows(db, parts, ...window),
-          sketchRows(db, failure, ...window),
-          days
-            ? sketchRows(db, { ...channelParts, scopeKind: "check" }, ...window)
-            : [],
-          days ? sketchRows(db, usageParts(channel, platform), ...window) : [],
-        ])
-      : [[], [], [], []];
+  const window = [timeRange, days, kept.hour] as const;
+  const [counters, failures, checks, active, { rows, cappedHours }] =
+    await Promise.all([
+      counterRows(db, parts, ...window),
+      sketchRows(db, failure, ...window),
+      days
+        ? sketchRows(db, { ...channelParts, scopeKind: "check" }, ...window)
+        : [],
+      days ? sketchRows(db, usageParts(channel, platform), ...window) : [],
+      failureRowsByHour(db, platform, channel, timeRange),
+    ]);
   const total = (field: Exclude<keyof CounterRow, "bucket_start_ms">) =>
     counters.reduce((sum, row) => sum + row[field], 0);
   // Only the stages a failure records count: other rows are no failure.
@@ -1040,12 +1054,9 @@ export const getUpdateFailures = async (
   const coverage = coverageOf(timeRange.start, kept.hour);
   return {
     coverage:
-      cutBeforeMs === undefined
+      cappedHours.length === 0
         ? coverage
-        : {
-            kind: "partial",
-            sinceMs: Math.max(coverage.sinceMs ?? 0, cutBeforeMs),
-          },
+        : { kind: "partial", sinceMs: coverage.sinceMs },
     measuredAtMs: at,
     failedUpdates: failuresAt((stage) => stage !== "check"),
     failedInstallations: failed(failures),
@@ -1064,5 +1075,6 @@ export const getUpdateFailures = async (
         }
       : {}),
     breakdown: breakdownOf(scoped),
+    ...(cappedHours.length === 0 ? {} : { cappedHours }),
   };
 };

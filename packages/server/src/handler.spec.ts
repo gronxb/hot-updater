@@ -126,6 +126,35 @@ describe("createHandlers client routes", () => {
     expect(getReleaseCatalogRow).toHaveBeenCalledOnce();
   });
 
+  it("remembers a scope without a catalog for five seconds, then reads it again", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.UTC(2026, 0, 1) });
+    try {
+      const api = createApi();
+      const getReleaseCatalogRow = vi
+        .spyOn(api.core, "getReleaseCatalogRow")
+        .mockResolvedValue(null);
+      const handler = createHandlers(api).client;
+      const check = () =>
+        handler(
+          new Request(
+            "http://localhost/release-catalogs/app-version/ios/" +
+              "cHJvZHVjdGlvbg/1.0.0",
+          ),
+        );
+
+      expect((await check()).status).toBe(404);
+      vi.advanceTimersByTime(4_999);
+      expect((await check()).status).toBe(404);
+      expect(getReleaseCatalogRow).toHaveBeenCalledOnce();
+      vi.advanceTimersByTime(1);
+      expect((await check()).status).toBe(404);
+      expect(getReleaseCatalogRow).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    }
+  });
+
   it("remembers a scope without a catalog once the catalogs that filled the memo expire", async () => {
     const channelKey = "cHJvZHVjdGlvbg";
     const rowOf = (scopeKey: string, fingerprint: string) =>

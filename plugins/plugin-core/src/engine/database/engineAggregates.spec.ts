@@ -168,6 +168,55 @@ describe("engine aggregates", () => {
     ).resolves.toEqual({ rows: [{ bucket: 1, events: 12, failures: 1 }] });
   });
 
+  it("pages a sharded aggregate newest first, each row once and whole, across pages that cut rows", async () => {
+    const { db } = await setup();
+    // One shardBy value per shard of `overview`'s 4.
+    const shardKeys = ["a", "b", "c", "d", "e", "f", "g", "h"]
+      .filter(
+        (value, index, values) =>
+          values.findIndex(
+            (other) => shardOf(other, 4) === shardOf(value, 4),
+          ) === index,
+      )
+      .slice(0, 4);
+    expect(shardKeys.map((value) => shardOf(value, 4)).toSorted()).toEqual([
+      0, 1, 2, 3,
+    ]);
+    await db.transaction(async (tx) => {
+      for (let bucket = 1; bucket <= 10; bucket += 1) {
+        // Bucket n on n % 4 + 1 shards, so pages cut rows of every width.
+        for (const shardBy of shardKeys.slice(0, (bucket % 4) + 1)) {
+          tx.aggregate("overview", { bucket }, { events: bucket }, { shardBy });
+        }
+      }
+    });
+    const read = (cursor?: string) =>
+      db.findAggregates("overview", {
+        index: "all",
+        where: {},
+        range: { gte: 2, lt: 10 },
+        order: "desc",
+        limit: 3,
+        ...(cursor === undefined ? {} : { cursor }),
+      });
+    const rows: { bucket: number; events: number }[] = [];
+    let page = await read();
+    let pages = 1;
+    rows.push(...page.rows);
+    while (page.next !== undefined) {
+      page = await read(page.next);
+      pages += 1;
+      rows.push(...page.rows);
+    }
+    expect(pages).toBeGreaterThan(3);
+    expect(rows.map(({ bucket, events }) => [bucket, events])).toEqual(
+      [9, 8, 7, 6, 5, 4, 3, 2].map((bucket) => [
+        bucket,
+        bucket * ((bucket % 4) + 1),
+      ]),
+    );
+  });
+
   it("reads, merges, and writes back gauges per shard, deleting a row at zero", async () => {
     const { db, writes } = await setup();
     const change = (id: string, release: string, installations: number) =>

@@ -52,6 +52,7 @@ function FailureSummary({
   failures,
   installations,
   previous,
+  atLeast,
   children,
 }: {
   readonly id: string;
@@ -61,6 +62,8 @@ function FailureSummary({
   /** What the rate is a share of. */
   readonly of: string;
   readonly failures: number;
+  /** Failures, and the rate when it counts them, are at least what they say. */
+  readonly atLeast?: { readonly rate: boolean };
   readonly installations: number;
   readonly previous?: {
     readonly rate: number | null;
@@ -78,6 +81,7 @@ function FailureSummary({
         <InfoTooltip label={`About ${title.toLowerCase()}`}>{info}</InfoTooltip>
       </h3>
       <p className="text-3xl font-semibold tracking-tight tabular-nums">
+        {atLeast?.rate && rate !== null ? "≥" : null}
         <Rate value={rate} />
       </p>
       <p className="text-xs text-muted-foreground">{of}</p>
@@ -89,6 +93,7 @@ function FailureSummary({
         />
       ) : null}
       <p className="mt-2 text-sm text-muted-foreground tabular-nums">
+        {atLeast ? "≥" : null}
         {failures.toLocaleString()} {failures === 1 ? "failure" : "failures"}
         {" · "}
         <EstimatedCount value={installations} />{" "}
@@ -223,6 +228,8 @@ function FailuresReport({
     .filter(({ reason }) => reason === "unknown")
     .reduce((sum, { events }) => sum + events, 0);
   const patchAttempts = report.patchDownloads + report.patchFallbacks;
+  // An hour read only in part: its failures count in part, installations in full.
+  const capped = (report.cappedHours?.length ?? 0) > 0;
   return (
     <div className="flex flex-col gap-8">
       <div className={cn("grid gap-6", report.checks && "sm:grid-cols-2")}>
@@ -234,6 +241,7 @@ function FailuresReport({
           of="of update attempts failed"
           failures={report.failedUpdates}
           installations={report.failedInstallations}
+          atLeast={capped ? { rate: true } : undefined}
           previous={
             report.previous && {
               rate: report.previous.attemptRate,
@@ -258,6 +266,7 @@ function FailuresReport({
             of="of active installations had a check fail"
             failures={report.checks.failures}
             installations={report.checks.failedInstallations}
+            atLeast={capped ? { rate: false } : undefined}
             previous={
               report.previous && {
                 rate: report.previous.checkRate,

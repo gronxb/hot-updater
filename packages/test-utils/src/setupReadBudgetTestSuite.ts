@@ -254,19 +254,24 @@ const FLOOD = {
   start: T0 + 5 * DAY,
 } as const;
 
-/** The flood's failed checks: more breakdown rows than a read takes. */
-const FLOOD_CHECKS = 300;
+/** The flood's failed checks: more breakdown rows than a read takes from an hour. */
+const FLOOD_CHECKS = 24;
+/**
+ * Installations whose IDs fall on all 8 counter shards: each flood row is
+ * reported by all of them, so it is stored on every shard.
+ */
+const FLOOD_INSTALLS = Array.from({ length: 8 }, (_, n) => `flood-${n}`);
 
 /**
- * Flood failure `n`: below {@link FLOOD_CHECKS}, a failed check per HTTP
- * status, each its own breakdown row, all in day 5's first hour; at it, a
- * real failure, a failed download in the hour after.
+ * Flood failure `n`: below {@link FLOOD_CHECKS} × 8, a failed check of HTTP
+ * status 100 + n / 8 by installation n % 8, all in day 5's first hour; at
+ * it, a real failure, a failed download in the hour after.
  */
 const floodFailureOf = (n: number) => {
-  const real = n === FLOOD_CHECKS;
+  const real = n === FLOOD_CHECKS * FLOOD_INSTALLS.length;
   return eventOf(1_000 + n, {
     type: "UPDATE_FAILED",
-    install_id: `flood-${n}`,
+    install_id: real ? "flood-real" : FLOOD_INSTALLS[n % 8]!,
     user_id: null,
     to_release_id: real ? "release-b" : null,
     to_bundle_id: real ? "bundle-b" : "bundle-a",
@@ -276,7 +281,11 @@ const floodFailureOf = (n: number) => {
       ...eventOf(0).metadata,
       failure: real
         ? { stage: "download", reason: "http", http_status: 403 }
-        : { stage: "check", reason: "http", http_status: 100 + n },
+        : {
+            stage: "check",
+            reason: "http",
+            http_status: 100 + Math.floor(n / 8),
+          },
     },
     received_at_ms: FLOOD.start + (real ? HOUR : n * 1_000),
   } as Partial<BundleEventRow>);
@@ -503,7 +512,7 @@ const seed = async (database: MeasuredDatabase) => {
   await api.insights.recordEvent(failureOf(1, 3));
   await api.insights.recordEvent(failureOf(2, 5));
   await api.insights.recordEvent(failureOf(3, 7, true));
-  for (let n = 0; n <= FLOOD_CHECKS; n += 1) {
+  for (let n = 0; n <= FLOOD_CHECKS * FLOOD_INSTALLS.length; n += 1) {
     await api.insights.recordEvent(floodFailureOf(n));
   }
   // Three Remote Config versions; the last is active.
@@ -1174,27 +1183,29 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       }),
   }),
   budget({
-    api: "update failures of a flooded channel: a day's 240 newest breakdown rows and one more",
-    // 300 failed checks in hour 0, a breakdown row each, and a failed
-    // download in hour 1. The read takes hour 1's row and 239 of hour 0's,
-    // then one more row, which shows hour 0 holds more, so it leaves hour 0
-    // out whole; the full page also gets the 7 other shards of its last row.
-    // The counters and sketches then cover hour 1 only: its failure sketch
-    // on 1 shard, and no counters, check, or usage rows.
+    api: "update failures of a flooded channel: 20 breakdown rows of the flooded hour, every other hour whole",
+    // 24 failed checks in hour 0, each on all 8 shards, and a failed download
+    // in hour 1. One query of 168 stored rows reads hour 1's row, 20 of hour
+    // 0's, and 7 shards of a 21st, whose last shard one get completes; the
+    // 21st passes the hour's bound, so the read ends there. Counters and
+    // sketches cover both hours: hour 0's check sketch on the 8 shards of its
+    // installations, and hour 1's failure sketch on 1.
     read: ({ insights }) =>
       insights.getUpdateFailures({
         platform: FLOOD.platform,
         channel: FLOOD.channel,
         timeRange: { start: FLOOD.start, end: FLOOD.start + 2 * HOUR },
       }),
-    adapter: reads(1, 7, 5, 242),
-    engine: { calls: 5, rows: 242 },
+    adapter: reads(1, 1, 5, 177),
+    engine: { calls: 5, rows: 24 },
     check: (failures) =>
       expect(failures).toMatchObject({
-        coverage: { kind: "partial", sinceMs: FLOOD.start + HOUR },
+        coverage: { kind: "partial" },
+        cappedHours: [FLOOD.start],
         failedUpdates: 1,
         failedInstallations: 1,
-        checks: { failures: 0, failedInstallations: 0 },
+        // 20 rows of 8 reports each: at least that many.
+        checks: { failures: 160, failedInstallations: 8 },
       }),
   }),
   budget({

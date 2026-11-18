@@ -568,30 +568,39 @@ describe("insights update failures", () => {
     ]);
   });
 
-  it("reads a window's newest failure rows up to its bound, and reports the hours it cut as partial", async () => {
-    const { api, read, fail } = await setup();
-    // A client floods the window's first hour with a failed check per HTTP
-    // status, a breakdown row each: more rows than a day's read takes.
+  /** 500 failed checks in `at`'s hour, a breakdown row each. */
+  const flood = async (
+    fail: Awaited<ReturnType<typeof setup>>["fail"],
+    at: number,
+  ) => {
     for (let status = 100; status < 600; status += 1) {
-      await fail(1_000 + status, 1_000 + status, T0 + 30 * 60_000, {
+      await fail(1_000 + status, 1_000 + status, at, {
         stage: "check",
         reason: "http",
         http_status: status,
       });
     }
+  };
+  const floodInstalls = Array.from(
+    { length: 500 },
+    (_, n) => `install-${1_100 + n}`,
+  );
+
+  it("reads 20 breakdown rows of an hour that holds more, and every row of the hours after it", async () => {
+    const { api, read, fail } = await setup();
+    // A client floods the window's first hour.
+    await flood(fail, T0 + 30 * 60_000);
     const failures = await read(() =>
       api.getUpdateFailures({
         ...scope,
         timeRange: { start: T0, end: T0 + DAY },
       }),
     );
-    // The newest rows up to the bound, and one more that shows it was
-    // reached: the flooded hour is cut whole, and the hours after it count
-    // every failure they hold.
-    expect(failures.rows.insights_failures).toBe(241);
-    // Every count covers the same hours: no installation of the cut hour.
+    // One query: hours 1–5's 5 rows, then hour 0's, past its 20th.
+    expect(failures.rows.insights_failures).toBe(168);
     expect(failures.result).toMatchObject({
-      coverage: { kind: "partial", sinceMs: T0 + HOUR },
+      coverage: { kind: "partial", sinceMs: 0 },
+      cappedHours: [T0],
       failedUpdates: 4,
       failedInstallations: distinct([
         "install-1",
@@ -599,7 +608,29 @@ describe("insights update failures", () => {
         "install-3",
         "install-4",
       ]),
-      checks: { failures: 1, failedInstallations: distinct(["install-8"]) },
+      // Hour 0's 20 rows read: at least that many failed checks.
+      checks: {
+        failures: 21,
+        failedInstallations: distinct(["install-8", ...floodInstalls]),
+      },
+    });
+  });
+
+  it("counts every hour before a flooded newest hour, and downloads in full", async () => {
+    const { api, read, fail } = await setup();
+    await flood(fail, T0 + 23 * HOUR);
+    const failures = await read(() =>
+      api.getUpdateFailures({
+        ...scope,
+        timeRange: { start: T0, end: T0 + DAY },
+      }),
+    );
+    expect(failures.result).toMatchObject({
+      coverage: { kind: "partial", sinceMs: 0 },
+      cappedHours: [T0 + 23 * HOUR],
+      failedUpdates: 4,
+      downloads: 3,
+      checks: { failures: 21 },
     });
     expect(
       failures.result.breakdown!.map(({ stage, reason, events }) => [
@@ -608,48 +639,24 @@ describe("insights update failures", () => {
         events,
       ]),
     ).toEqual([
+      ["check", "http", 21],
       ["download", "http", 2],
-      ["check", "http", 1],
       ["download", "network", 1],
       ["install", "hash_mismatch", 1],
     ]);
+    // Hour 23's query, then one from hour 22 down for hours 1–5's rows.
+    expect(failures.rows.insights_failures).toBe(168 + 5);
   });
 
-  it("reports a window whose newest hour is flooded as partial from its end, reading nothing else", async () => {
+  it("reads every row of hours at the bound, newest first across pages and shards", async () => {
     const { api, read, fail } = await setup();
-    for (let status = 100; status < 600; status += 1) {
-      await fail(1_000 + status, 1_000 + status, T0 + 23 * HOUR, {
-        stage: "check",
-        reason: "http",
-        http_status: status,
-      });
-    }
-    const failures = await read(() =>
-      api.getUpdateFailures({
-        ...scope,
-        timeRange: { start: T0, end: T0 + DAY },
-      }),
-    );
-    expect(failures.rows).toEqual({ insights_failures: 241 });
-    expect(failures.result).toMatchObject({
-      coverage: { kind: "partial", sinceMs: T0 + DAY },
-      failedUpdates: 0,
-      failedInstallations: 0,
-      downloads: 0,
-      checks: { failures: 0, failedInstallations: 0, activeInstallations: 0 },
-      breakdown: [],
-    });
-  });
-
-  it("reads every failure row of a window under its bound, newest first across pages and shards", async () => {
-    const { api, fail } = await setup();
-    // 700 breakdown rows over days 0 and 1, each on the shards of two
-    // installations: more rows than a page, fewer than 3 days' bound.
+    // 20 breakdown rows in each hour of day 2, each on the shards of two
+    // installations: many pages, and no hour past its bound.
     let n = 2_000;
-    for (const at of [T0 + 10 * HOUR, T0 + DAY + 10 * HOUR]) {
-      for (let status = 100; status < 450; status += 1) {
+    for (let hour = 0; hour < 24; hour += 1) {
+      for (let status = 100; status < 120; status += 1) {
         for (const install of [n, n + 1]) {
-          await fail(n++, install, at, {
+          await fail(n++, install, T0 + 2 * DAY + hour * HOUR, {
             stage: "check",
             reason: "http",
             http_status: status,
@@ -657,21 +664,26 @@ describe("insights update failures", () => {
         }
       }
     }
-    const failures = await api.getUpdateFailures({
-      ...scope,
-      timeRange: { start: T0, end: T0 + 3 * DAY },
-    });
-    expect(failures).toMatchObject({
+    const failures = await read(() =>
+      api.getUpdateFailures({
+        ...scope,
+        timeRange: { start: T0, end: T0 + 3 * DAY },
+      }),
+    );
+    expect(failures.result).toMatchObject({
       coverage: { kind: "complete", sinceMs: 0 },
       failedUpdates: 5,
-      checks: { failures: 1_401 },
+      checks: { failures: 1 + 24 * 20 * 2 },
     });
-    const check = failures.breakdown!.find(({ stage }) => stage === "check")!;
-    expect(check.events).toBe(1_401);
-    // Each status's row of both days, both shards each, and the seed's check.
-    expect(check.details).toHaveLength(351);
-    expect(check.details.filter(({ events }) => events === 4)).toHaveLength(
-      350,
+    expect(failures.result).not.toHaveProperty("cappedHours");
+    const check = failures.result.breakdown!.find(
+      ({ stage }) => stage === "check",
+    )!;
+    expect(check.events).toBe(961);
+    // Each status's rows of all 24 hours, both shards each, and the seed's.
+    expect(check.details).toHaveLength(21);
+    expect(check.details.filter(({ events }) => events === 48)).toHaveLength(
+      20,
     );
   });
 

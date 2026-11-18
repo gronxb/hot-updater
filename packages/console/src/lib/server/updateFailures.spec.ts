@@ -222,4 +222,20 @@ describe("update failures report", () => {
       ]).coverage,
     ).toEqual({ kind: "partial", sinceMs: null });
   });
+
+  it("keeps the hours either platform read only in part, and calls the period partial", () => {
+    const merged = mergeUpdateFailures([
+      {
+        ...failures,
+        coverage: { kind: "partial", sinceMs: 0 },
+        cappedHours: [7_200_000],
+      },
+      { ...failures, cappedHours: [3_600_000, 7_200_000] },
+    ]);
+    expect(merged.coverage.kind).toBe("partial");
+    expect(merged.cappedHours).toEqual([3_600_000, 7_200_000]);
+    expect(mergeUpdateFailures([failures, failures])).not.toHaveProperty(
+      "cappedHours",
+    );
+  });
 });

@@ -119,6 +119,36 @@ describe("UpdateFailures", () => {
     expect(row.closest("details")?.open).toBe(false);
   });
 
+  it("marks failure counts as at least what they say when an hour was read only in part", () => {
+    render(
+      <UpdateFailures
+        query={query({
+          ...report,
+          coverage: { kind: "partial", sinceMs: 0 },
+          cappedHours: [0],
+          checks: {
+            failures: 21,
+            failedInstallations: 2,
+            activeInstallations: 10,
+          },
+        })}
+        onRefresh={() => {}}
+      />,
+    );
+    const card = screen.getByRole("region", { name: "Update failures" });
+    const updates = within(card).getByRole("region", {
+      name: "Downloads & installs",
+    });
+    expect(updates.textContent).toContain("≥30.77%");
+    expect(updates.textContent).toContain("≥4 failures");
+    const checks = within(card).getByRole("region", { name: "Update checks" });
+    // The check rate counts installations, which count in full.
+    expect(checks.textContent).toContain("20.00%");
+    expect(checks.textContent).not.toContain("≥20.00%");
+    expect(checks.textContent).toContain("≥21 failures");
+    expect(within(card).getByText("Partial")).toBeDefined();
+  });
+
   it("shows a rising failure rate in percentage points and keeps investigation immediately below it", () => {
     render(
       <UpdateFailures
