@@ -16,9 +16,17 @@ protocol FileSystemService {
     func copyItem(atPath srcPath: String, toPath dstPath: String) throws
     func contentsOfDirectory(atPath path: String) throws -> [String]
     func attributesOfItem(atPath path: String) throws -> [FileAttributeKey: Any]
+    /// Whether `path` is a regular file itself, not a link to one.
+    func isRegularFile(atPath path: String) -> Bool
     func documentsPath() -> String
     /// Base directory for data that lives as long as the installation.
     func applicationSupportPath() -> String
+}
+
+extension FileSystemService {
+    func isRegularFile(atPath path: String) -> Bool {
+        (try? attributesOfItem(atPath: path)[.type] as? FileAttributeType) == .typeRegular
+    }
 }
 
 /// `Application Support/HotUpdater`: data the SDK keeps for the life of an
@@ -118,6 +126,12 @@ class FileManagerService: FileSystemService {
             NSLog("[FileSystemService] Failed to get attributes for \(path): \(error)")
             throw FileSystemError.fileOperationFailed(path, error)
         }
+    }
+
+    /// One lstat, where attributesOfItem builds a dictionary of every attribute.
+    func isRegularFile(atPath path: String) -> Bool {
+        var info = stat()
+        return lstat(path, &info) == 0 && (info.st_mode & S_IFMT) == S_IFREG
     }
     
     func documentsPath() -> String {
