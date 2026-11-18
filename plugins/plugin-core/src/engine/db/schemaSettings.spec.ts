@@ -38,11 +38,11 @@ describe("the settings a migration never moves back", () => {
         : {},
     );
 
-  it("are the engine's, core's and the official plugins'", () => {
+  it("are core's and the official plugins'", () => {
     expect(
       toolingTargetOf([plugin("insights", true), plugin("notes", false)])
         .ordered,
-    ).toEqual(["schema.engine", "schema.core", "schema.insights"]);
+    ).toEqual(["schema.core", "schema.insights"]);
   });
 
   it("refuses an official plugin's newer version, and records a plugin of your own as configured", async () => {

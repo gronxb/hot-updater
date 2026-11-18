@@ -30,7 +30,7 @@ export const coreSettings: SchemaSettings = {
 export const coreTarget: ToolingTarget = {
   schema: coreSchema,
   settings: coreSettings,
-  ordered: [ENGINE_SCHEMA_KEY, "schema.core"],
+  ordered: ["schema.core"],
 };
 
 /** The brand Hot Updater's own plugin factories set, read as the server reads it. */

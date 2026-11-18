@@ -80,11 +80,12 @@ const compareVersions = (left: string, right: string): number => {
   return 0;
 };
 
-/** The settings whose versions only move forward when a `ToolingTarget` names none. */
-export const DEFAULT_ORDERED_SETTINGS: readonly string[] = [
-  ENGINE_SCHEMA_KEY,
-  "schema.core",
-];
+/**
+ * The settings whose versions only move forward when a `ToolingTarget` names
+ * none. `schema.engine` is a storage layout, not a release: a store refuses
+ * another layout itself, and doctor reports it as not migratable.
+ */
+export const DEFAULT_ORDERED_SETTINGS: readonly string[] = ["schema.core"];
 
 /**
  * Refuses a database that recorded a newer version of an `ordered` setting

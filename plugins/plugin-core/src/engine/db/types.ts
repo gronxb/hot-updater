@@ -57,8 +57,8 @@ export interface ToolingTarget {
   readonly schema: ResolvedSchema;
   readonly settings: SchemaSettings;
   /**
-   * The settings keys whose versions only move forward: the engine's,
-   * core's and the official plugins'. A migrator refuses a database that
+   * The settings keys whose versions only move forward: core's and the
+   * official plugins'. A migrator refuses a database that
    * recorded a newer one than `settings` instead of writing it back.
    */
   readonly ordered?: readonly string[];
