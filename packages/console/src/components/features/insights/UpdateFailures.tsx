@@ -52,6 +52,7 @@ function FailureSummary({
   failures,
   installations,
   previous,
+  atLeast,
   children,
 }: {
   readonly id: string;
@@ -61,6 +62,8 @@ function FailureSummary({
   /** What the rate is a share of. */
   readonly of: string;
   readonly failures: number;
+  /** Failures, and the rate when it counts them, are at least what they say. */
+  readonly atLeast?: { readonly rate: boolean };
   readonly installations: number;
   readonly previous?: {
     readonly rate: number | null;
@@ -78,6 +81,7 @@ function FailureSummary({
         <InfoTooltip label={`About ${title.toLowerCase()}`}>{info}</InfoTooltip>
       </h3>
       <p className="text-3xl font-semibold tracking-tight tabular-nums">
+        {atLeast?.rate && rate !== null ? "≥" : null}
         <Rate value={rate} />
       </p>
       <p className="text-xs text-muted-foreground">{of}</p>
@@ -89,6 +93,7 @@ function FailureSummary({
         />
       ) : null}
       <p className="mt-2 text-sm text-muted-foreground tabular-nums">
+        {atLeast ? "≥" : null}
         {failures.toLocaleString()} {failures === 1 ? "failure" : "failures"}
         {" · "}
         <EstimatedCount value={installations} />{" "}
@@ -147,8 +152,10 @@ function FailureRow({
   total,
 }: {
   readonly failure: InsightsFailureBreakdown;
-  readonly total: number;
+  /** The breakdown's total; null when it holds only the rows read, so its counts are at least what they say. */
+  readonly total: number | null;
 }) {
+  const atLeast = total === null ? "≥" : "";
   const label = `${failureStageLabel(failure.stage)} · ${failureReasonLabel(failure.reason)}`;
   return (
     <TableRow className="[&>td]:px-2 [&>td]:py-3 [&>td]:align-top sm:[&>td]:px-4">
@@ -188,6 +195,7 @@ function FailureRow({
                       : parts.join(" · ")}
                   </span>
                   <span className="shrink-0 font-medium tabular-nums">
+                    {atLeast}
                     {detail.events.toLocaleString()}
                   </span>
                 </li>
@@ -198,14 +206,17 @@ function FailureRow({
       </TableCell>
       <TableCell className="text-right tabular-nums">
         <span className="inline-flex min-h-11 items-center text-sm font-medium">
+          {atLeast}
           {failure.events.toLocaleString()}
         </span>
       </TableCell>
-      <TableCell className="text-right tabular-nums text-muted-foreground">
-        <span className="inline-flex min-h-11 items-center text-sm">
-          {share(failure.events, total)}
-        </span>
-      </TableCell>
+      {total === null ? null : (
+        <TableCell className="text-right tabular-nums text-muted-foreground">
+          <span className="inline-flex min-h-11 items-center text-sm">
+            {share(failure.events, total)}
+          </span>
+        </TableCell>
+      )}
     </TableRow>
   );
 }
@@ -223,6 +234,8 @@ function FailuresReport({
     .filter(({ reason }) => reason === "unknown")
     .reduce((sum, { events }) => sum + events, 0);
   const patchAttempts = report.patchDownloads + report.patchFallbacks;
+  // An hour read only in part: its failures count in part, installations in full.
+  const capped = (report.cappedHours?.length ?? 0) > 0;
   return (
     <div className="flex flex-col gap-8">
       <div className={cn("grid gap-6", report.checks && "sm:grid-cols-2")}>
@@ -234,6 +247,7 @@ function FailuresReport({
           of="of update attempts failed"
           failures={report.failedUpdates}
           installations={report.failedInstallations}
+          atLeast={capped ? { rate: true } : undefined}
           previous={
             report.previous && {
               rate: report.previous.attemptRate,
@@ -258,6 +272,7 @@ function FailuresReport({
             of="of active installations had a check fail"
             failures={report.checks.failures}
             installations={report.checks.failedInstallations}
+            atLeast={capped ? { rate: false } : undefined}
             previous={
               report.previous && {
                 rate: report.previous.checkRate,
@@ -289,7 +304,9 @@ function FailuresReport({
         ) : null}
         {breakdown.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No update failures in this period.
+            {capped
+              ? "None among the failures read: some hours held more failure kinds than are read."
+              : "No update failures in this period."}
           </p>
         ) : (
           <Table aria-label="Failures by stage and reason">
@@ -299,7 +316,11 @@ function FailuresReport({
                 <TableHead className="w-16 text-right sm:w-24">
                   Reports
                 </TableHead>
-                <TableHead className="w-16 text-right sm:w-24">Share</TableHead>
+                {capped ? null : (
+                  <TableHead className="w-16 text-right sm:w-24">
+                    Share
+                  </TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -307,7 +328,7 @@ function FailuresReport({
                 <FailureRow
                   key={`${failure.stage} ${failure.reason}`}
                   failure={failure}
-                  total={total}
+                  total={capped ? null : total}
                 />
               ))}
             </TableBody>

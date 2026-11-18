@@ -126,6 +126,96 @@ describe("createHandlers client routes", () => {
     expect(getReleaseCatalogRow).toHaveBeenCalledOnce();
   });
 
+  it("remembers a scope without a catalog for five seconds, then reads it again", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.UTC(2026, 0, 1) });
+    try {
+      const api = createApi();
+      const getReleaseCatalogRow = vi
+        .spyOn(api.core, "getReleaseCatalogRow")
+        .mockResolvedValue(null);
+      const handler = createHandlers(api).client;
+      const check = () =>
+        handler(
+          new Request(
+            "http://localhost/release-catalogs/app-version/ios/" +
+              "cHJvZHVjdGlvbg/1.0.0",
+          ),
+        );
+
+      expect((await check()).status).toBe(404);
+      vi.advanceTimersByTime(4_999);
+      expect((await check()).status).toBe(404);
+      expect(getReleaseCatalogRow).toHaveBeenCalledOnce();
+      vi.advanceTimersByTime(1);
+      expect((await check()).status).toBe(404);
+      expect(getReleaseCatalogRow).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("remembers a scope without a catalog once the catalogs that filled the memo expire", async () => {
+    const channelKey = "cHJvZHVjdGlvbg";
+    const rowOf = (scopeKey: string, fingerprint: string) =>
+      ({
+        scope_key: scopeKey,
+        catalog_id: "project-a",
+        strategy: "FINGERPRINT",
+        channel_id: "channel-production",
+        channel_key: channelKey,
+        platform: "android",
+        fingerprint_hash: fingerprint,
+        generation: 1,
+        payload: JSON.stringify({
+          schemaVersion: 1,
+          strategy: "FINGERPRINT",
+          fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
+          releaseDescriptors: [],
+          releaseIndexes: [],
+          rollbackReleaseIndexes: [],
+        }),
+        catalog_hash: "sha256:catalog",
+        byte_size: 0,
+        is_tombstone: false,
+        updated_at_ms: 0,
+      }) satisfies ReleaseCatalogRow;
+    const api = createApi();
+    const getReleaseCatalogRow = vi
+      .spyOn(api.core, "getReleaseCatalogRow")
+      .mockImplementation(async (scopeKey) => {
+        const fingerprint = scopeKey.split(":").at(-1)!;
+        return fingerprint.startsWith("catalog-")
+          ? rowOf(scopeKey, fingerprint)
+          : null;
+      });
+    let now = Date.UTC(2026, 0, 1);
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const handler = createHandlers(api).client;
+    const check = (fingerprint: string) =>
+      handler(
+        new Request(
+          `http://localhost/release-catalogs/fingerprint/android/` +
+            `${channelKey}/${fingerprint}`,
+        ),
+      );
+
+    // The memo fills with catalogs, which then expire.
+    for (let n = 0; n < 128; n += 1) {
+      expect((await check(`catalog-${n}`)).status).toBe(200);
+    }
+    now += 5_000;
+    for (let n = 0; n < 10; n += 1) {
+      expect((await check("missing")).status).toBe(404);
+    }
+    expect(
+      getReleaseCatalogRow.mock.calls.filter(([scopeKey]) =>
+        scopeKey.endsWith(":missing"),
+      ),
+    ).toHaveLength(1);
+    vi.restoreAllMocks();
+  });
+
   it("serves artifact protocol v1 on an explicit route", async () => {
     const api = createApi();
     const getArtifactInfo = vi

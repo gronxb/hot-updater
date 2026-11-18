@@ -247,6 +247,50 @@ const failureOf = (n: number, install: number, check = false) =>
     received_at_ms: T0 + 3 * DAY + n * 10 * 60_000,
   } as Partial<BundleEventRow>);
 
+/** Where a client floods update failures: Android `flood`, day 5. */
+const FLOOD = {
+  platform: "android",
+  channel: "flood",
+  start: T0 + 5 * DAY,
+} as const;
+
+/** The flood's failed checks: more breakdown rows than a read takes from an hour. */
+const FLOOD_CHECKS = 24;
+/**
+ * Installations whose IDs fall on all 8 counter shards: each flood row is
+ * reported by all of them, so it is stored on every shard.
+ */
+const FLOOD_INSTALLS = Array.from({ length: 8 }, (_, n) => `flood-${n}`);
+
+/**
+ * Flood failure `n`: below {@link FLOOD_CHECKS} × 8, a failed check of HTTP
+ * status 100 + n / 8 by installation n % 8, all in day 5's first hour; at
+ * it, a real failure, a failed download in the hour after.
+ */
+const floodFailureOf = (n: number) => {
+  const real = n === FLOOD_CHECKS * FLOOD_INSTALLS.length;
+  return eventOf(1_000 + n, {
+    type: "UPDATE_FAILED",
+    install_id: real ? "flood-real" : FLOOD_INSTALLS[n % 8]!,
+    user_id: null,
+    to_release_id: real ? "release-b" : null,
+    to_bundle_id: real ? "bundle-b" : "bundle-a",
+    platform: FLOOD.platform,
+    channel: FLOOD.channel,
+    metadata: {
+      ...eventOf(0).metadata,
+      failure: real
+        ? { stage: "download", reason: "http", http_status: 403 }
+        : {
+            stage: "check",
+            reason: "http",
+            http_status: 100 + Math.floor(n / 8),
+          },
+    },
+    received_at_ms: FLOOD.start + (real ? HOUR : n * 1_000),
+  } as Partial<BundleEventRow>);
+};
+
 /**
  * History event `n` of the day before T0, three an hour, on its own release
  * and bundles: every windowed read, which starts at T0 or later, skips it.
@@ -468,6 +512,9 @@ const seed = async (database: MeasuredDatabase) => {
   await api.insights.recordEvent(failureOf(1, 3));
   await api.insights.recordEvent(failureOf(2, 5));
   await api.insights.recordEvent(failureOf(3, 7, true));
+  for (let n = 0; n <= FLOOD_CHECKS * FLOOD_INSTALLS.length; n += 1) {
+    await api.insights.recordEvent(floodFailureOf(n));
+  }
   // Three Remote Config versions; the last is active.
   for (const [baseVersion, greeting] of ["Hi", "Hello", "Hey"].entries()) {
     await api.remoteConfig.publish({
@@ -1133,6 +1180,32 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       expect(failures).toMatchObject({
         failedUpdates: 2,
         checks: { failures: 1 },
+      }),
+  }),
+  budget({
+    api: "update failures of a flooded channel: 20 breakdown rows of the flooded hour, every other hour whole",
+    // 24 failed checks in hour 0, each on all 8 shards, and a failed download
+    // in hour 1. One query of 168 stored rows reads hour 1's row, 20 of hour
+    // 0's, and 7 shards of a 21st, whose last shard one get completes; the
+    // 21st passes the hour's bound, so the read ends there. Counters and
+    // sketches cover both hours: hour 0's check sketch on the 8 shards of its
+    // installations, and hour 1's failure sketch on 1.
+    read: ({ insights }) =>
+      insights.getUpdateFailures({
+        platform: FLOOD.platform,
+        channel: FLOOD.channel,
+        timeRange: { start: FLOOD.start, end: FLOOD.start + 2 * HOUR },
+      }),
+    adapter: reads(1, 1, 5, 177),
+    engine: { calls: 5, rows: 24 },
+    check: (failures) =>
+      expect(failures).toMatchObject({
+        coverage: { kind: "partial" },
+        cappedHours: [FLOOD.start],
+        failedUpdates: 1,
+        failedInstallations: 1,
+        // 20 rows of 8 reports each: at least that many.
+        checks: { failures: 160, failedInstallations: 8 },
       }),
   }),
   budget({

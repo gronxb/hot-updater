@@ -259,6 +259,50 @@ describe("hot-updater insights over hot-updater.config.ts", () => {
     });
   });
 
+  it("marks failure counts as lower bounds when an hour held more failures than are read", async () => {
+    await seed(database);
+    vi.setSystemTime(REPORTED_AT_MS);
+    const server = serverOver(database);
+    // 30 failed checks of distinct HTTP statuses in the seed's hour.
+    for (let n = 0; n < 30; n += 1) {
+      const response = await server.handlers.client(
+        new Request("https://updates.example.com/events", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            appVersion: "1.0.0",
+            channel: "production",
+            cohort: "42",
+            fingerprintHash: null,
+            fromBundleId: BUNDLE_ID,
+            fromReleaseId: null,
+            platform: "ios",
+            toBundleId: BUNDLE_ID,
+            toReleaseId: null,
+            updateStrategy: "appVersion",
+            userId: "user-1",
+            installId: `flood-${n}`,
+            type: "UPDATE_FAILED",
+            metadata: {
+              failure: { stage: "check", reason: "http", httpStatus: 400 + n },
+            },
+          }),
+        }),
+      );
+      expect(response.status).toBe(204);
+    }
+    vi.setSystemTime(READ_AT_MS);
+
+    await handleInsightsFailures({ platform: "ios", channel: "production" });
+
+    const printed = messages();
+    expect(printed).toMatch(/│ ≥33\.33%\s+│ ≥1 of ≥3\s+│/u);
+    expect(printed).toContain(
+      "Partial: 1 hour held more failure kinds than are read, so failures are at least the counts shown.",
+    );
+    expect(printed).not.toContain("past retention");
+  });
+
   it("lists a bundle's reports of one outcome, and an installation's", async () => {
     const release = await seed(database);
 
