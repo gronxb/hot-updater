@@ -615,6 +615,32 @@ describe("insights update failures", () => {
     ]);
   });
 
+  it("reports a window whose newest hour is flooded as partial from its end, reading nothing else", async () => {
+    const { api, read, fail } = await setup();
+    for (let status = 100; status < 600; status += 1) {
+      await fail(1_000 + status, 1_000 + status, T0 + 23 * HOUR, {
+        stage: "check",
+        reason: "http",
+        http_status: status,
+      });
+    }
+    const failures = await read(() =>
+      api.getUpdateFailures({
+        ...scope,
+        timeRange: { start: T0, end: T0 + DAY },
+      }),
+    );
+    expect(failures.rows).toEqual({ insights_failures: 241 });
+    expect(failures.result).toMatchObject({
+      coverage: { kind: "partial", sinceMs: T0 + DAY },
+      failedUpdates: 0,
+      failedInstallations: 0,
+      downloads: 0,
+      checks: { failures: 0, failedInstallations: 0, activeInstallations: 0 },
+      breakdown: [],
+    });
+  });
+
   it("reads every failure row of a window under its bound, newest first across pages and shards", async () => {
     const { api, fail } = await setup();
     // 700 breakdown rows over days 0 and 1, each on the shards of two

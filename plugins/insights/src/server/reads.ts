@@ -889,7 +889,8 @@ const FAILURE_ROWS_MIN = 24 * FAILURE_ROWS_PER_HOUR;
  * with them. Past it, the oldest hour read may be cut short, so it is left
  * out whole and `cutBeforeMs` is the hour after it: the hours from there
  * count every failure they hold, and the report's counts and coverage start
- * there.
+ * there. The bound counts logical rows: stored rows are at most eight times
+ * as many, when a client spreads each row over every counter shard.
  */
 const newestFailureRows = async (
   db: Db,
@@ -935,7 +936,8 @@ const newestFailureRows = async (
  * reason, and detail, all summed from the breakdown's hourly rows; downloads
  * from the counters; failed installations from their sketches. A release reads hourly rows, a
  * channel daily rows past 48 hours like its activity; the breakdown's rows
- * are hourly, so its coverage is the raw period's.
+ * are hourly, so its coverage is the raw period's, or partial from where the
+ * breakdown reached its bound, which every count then starts from.
  */
 export const getUpdateFailures = async (
   db: Db,
