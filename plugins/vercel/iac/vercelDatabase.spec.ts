@@ -4,7 +4,6 @@ import { pgliteExecutor } from "@hot-updater/test-utils/node";
 import { describe, expect, it } from "vitest";
 
 import {
-  countBlobStoreReferences,
   moveBlobStoreReferences,
   referencedBlobStores,
 } from "./vercelDatabase";
@@ -12,6 +11,30 @@ import {
 const PUBLIC = "store_Public1";
 const PRIVATE = "store_Private1";
 const uri = (store: string, key: string) => `vercel-blob://${store}/${key}`;
+
+/** How many storage URIs name `store`. */
+const countBlobStoreReferences = async (db: PGlite, store: string) => {
+  const prefix = `vercel-blob://${store}/`;
+  let count = 0;
+  for (const [table, column] of [
+    ["bundles", "manifest_storage_uri"],
+    ["bundles", "asset_base_storage_uri"],
+    ["bundle_patches", "patch_storage_uri"],
+    ["native_builds", "artifact_storage_uri"],
+  ]) {
+    const exists = await db.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM information_schema.tables WHERE table_name = $1",
+      [table],
+    );
+    if (exists.rows[0]!.n === 0) continue;
+    const { rows } = await db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM "${table}" WHERE left("${column}", length($1)) = $1`,
+      [prefix],
+    );
+    count += rows[0]!.n;
+  }
+  return count;
+};
 
 /** A database this release's init created, with a bundle and a patch in `store`. */
 const databaseWith = async (store: string) => {

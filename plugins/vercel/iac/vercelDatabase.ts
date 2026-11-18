@@ -121,24 +121,6 @@ export const referencedBlobStores = async (
   return stores;
 };
 
-/** How many storage URIs name the store. */
-export const countBlobStoreReferences = async (
-  client: PostgresQueryable,
-  storeId: string,
-): Promise<number> => {
-  const prefix = storeUriPrefix(storeId);
-  let count = 0;
-  for (const [table, column] of await existingUriColumns(client)) {
-    const { rows } = await client.query<{ count: string | number }>(
-      `SELECT count(*) AS count FROM "${table}"
-        WHERE left("${column}", length($1)) = $1`,
-      [prefix],
-    );
-    count += Number(rows[0]?.count ?? 0);
-  }
-  return count;
-};
-
 /**
  * Points every storage URI that names store `from` at store `to`, with the
  * same key, in one transaction; returns how many it moved. The tables stay
