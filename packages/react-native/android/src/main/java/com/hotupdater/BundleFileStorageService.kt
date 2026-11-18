@@ -1175,6 +1175,25 @@ class BundleFileStorageService(
     }
 
     /**
+     * [verifyManifestAssetFileOrThrow] for a staged file whose bytes came from
+     * the download, a patch, or the built-in bundle. A failure that proves the
+     * file or its manifest entry bad (a hash or signature that fails) is
+     * remembered; a local read failure is not.
+     */
+    private fun verifyStagedAssetOrThrow(
+        file: File,
+        asset: ParsedManifestAsset,
+        hashMismatch: UpdateFailure = UpdateFailure.download(UpdateFailureReason.HASH_MISMATCH),
+    ) {
+        try {
+            verifyManifestAssetFileOrThrow(file, asset, hashMismatch)
+        } catch (e: HotUpdaterException) {
+            val cause = e.cause
+            throw if (cause is SignatureVerificationException && cause.provesFileBad) e.rejectingArtifact() else e
+        }
+    }
+
+    /**
      * Checks if isolationKey has changed and cleans up old bundles if needed.
      * This handles migration when isolationKey format changes.
      */
@@ -2172,16 +2191,11 @@ class BundleFileStorageService(
         if (patchOutcome == PatchOutcome.APPLIED) {
             // The patched bytes already match the manifest's hash, so a
             // signature that still fails is the manifest's own.
-            try {
-                verifyManifestAssetFileOrThrow(
-                    targetFile,
-                    expectedAsset,
-                    hashMismatch = PATCH_FAILURE,
-                )
-            } catch (e: HotUpdaterException) {
-                val cause = e.cause
-                throw if (cause is SignatureVerificationException && cause.provesFileBad) e.rejectingArtifact() else e
-            }
+            verifyStagedAssetOrThrow(
+                targetFile,
+                expectedAsset,
+                hashMismatch = PATCH_FAILURE,
+            )
             updateDiffProgressFile(
                 files = diffFiles,
                 assetPath = assetPath,
@@ -2283,15 +2297,10 @@ class BundleFileStorageService(
                             throw if (e.failure?.reason == UpdateFailureReason.EXTRACT) e.rejectingArtifact() else e
                         }
                     }
-                    try {
-                        verifyManifestAssetFileOrThrow(
-                            targetFile,
-                            expectedAsset,
-                        )
-                    } catch (e: HotUpdaterException) {
-                        val cause = e.cause
-                        throw if (cause is SignatureVerificationException && cause.provesFileBad) e.rejectingArtifact() else e
-                    }
+                    verifyStagedAssetOrThrow(
+                        targetFile,
+                        expectedAsset,
+                    )
                 } catch (e: Exception) {
                     updateDiffProgressFile(
                         files = diffFiles,
@@ -2689,7 +2698,9 @@ class BundleFileStorageService(
                         }
                         if (reused) return@forEachIndexed
                         if (builtInAssetResolver.copyIfMatches(assetPath, expectedAsset.fileHash, targetFile)) {
-                            verifyManifestAssetFileOrThrow(targetFile, expectedAsset)
+                            // The copy matches the manifest's hash, so a
+                            // signature that still fails is the manifest's own.
+                            verifyStagedAssetOrThrow(targetFile, expectedAsset)
                             return@forEachIndexed
                         }
                         val packagedHash = builtInAssetResolver.copyIfSourceMatches(assetPath, expectedAsset.fileHash, targetFile)

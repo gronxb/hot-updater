@@ -3712,6 +3712,30 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func aBuiltInCopyWhoseManifestSizeFailsIsRemembered() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("target hermes".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        // The packaged file matches the hash, but the manifest expects another size.
+        let manifest = try JSONSerialization.data(withJSONObject: [
+            "bundleId": "target",
+            "assets": ["index.ios.bundle": ["fileHash": hash, "byteSize": bytes.count + 1]],
+        ])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let downloads = MappingDownloadService(contents: [manifestURL: manifest])
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: ["index.ios.bundle": bytes]))
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
+        #expect(baseErrorCode(of: result) == "SIGNATURE_VERIFICATION_FAILED")
+        #expect(service.getCrashHistory().contains("target"))
+        #expect(downloads.requestedURLs == [manifestURL])
+    }
+
+    @Test
     func aLocalReadFailureIsNotRemembered() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }

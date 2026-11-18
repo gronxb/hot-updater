@@ -680,12 +680,24 @@ class BundleFileStorageService: BundleStorageService {
         return (compressedDirectory as NSString).appendingPathComponent("\(safeName).\(compression)")
     }
 
-    /// Whether a downloaded file's verification failed on the file itself.
-    private static func provesFileBad(_ error: Error) -> Bool {
-        if case .signatureVerificationFailed(let cause)? = UpdateFailureError.unwrap(error) as? BundleStorageError {
-            return cause.provesFileBad
+    /// Verifies a staged file whose bytes came from the download, a patch,
+    /// or the built-in bundle. A failure that proves the file or its manifest
+    /// entry bad (a hash, size, or signature that fails) is remembered; a
+    /// local read failure is not.
+    private func verifyStagedAsset(
+        atPath path: String,
+        asset: ParsedManifestAsset,
+        during phase: UpdatePhase,
+        resource: UpdateFailureResource
+    ) throws {
+        do {
+            try verifyManifestAssetFile(atPath: path, asset: asset)
+        } catch {
+            if case .signatureVerificationFailed(let cause)? = error as? BundleStorageError, cause.provesFileBad {
+                throw UpdateFailureError.rejectingArtifact(error, during: phase, resource: resource)
+            }
+            throw UpdateFailureError.classifying(error, during: phase, resource: resource)
         }
-        return false
     }
 
     /// Whether Brotli decoding failed on the input's bytes, not on creating or
@@ -2473,13 +2485,7 @@ class BundleFileStorageService: BundleStorageService {
             // The patch produced these bytes, so a mismatch is a patch failure.
             // They already match the manifest's hash, so a size or signature
             // that still fails is the manifest's own.
-            do {
-                try verifyManifestAssetFile(atPath: destinationPath, asset: expectedAsset)
-            } catch {
-                throw Self.provesFileBad(error)
-                    ? UpdateFailureError.rejectingArtifact(error, during: .patch, resource: .patch)
-                    : UpdateFailureError.classifying(error, during: .patch, resource: .patch)
-            }
+            try verifyStagedAsset(atPath: destinationPath, asset: expectedAsset, during: .patch, resource: .patch)
             updateDiffProgressFile(
                 files: &diffFiles,
                 assetPath: assetPath,
@@ -2571,16 +2577,12 @@ class BundleFileStorageService: BundleStorageService {
                 // mismatch is an extraction failure.
                 let verificationPhase: UpdatePhase =
                     changedAsset.fileCompression == "br" ? .extraction : .verification
-                do {
-                    try verifyManifestAssetFile(
-                        atPath: destinationPath,
-                        asset: expectedAsset
-                    )
-                } catch {
-                    throw Self.provesFileBad(error)
-                        ? UpdateFailureError.rejectingArtifact(error, during: verificationPhase, resource: .file)
-                        : UpdateFailureError.classifying(error, during: verificationPhase, resource: .file)
-                }
+                try verifyStagedAsset(
+                    atPath: destinationPath,
+                    asset: expectedAsset,
+                    during: verificationPhase,
+                    resource: .file
+                )
             } catch {
                 updateDiffProgressFile(
                     files: &diffFiles,
@@ -3095,9 +3097,9 @@ class BundleFileStorageService: BundleStorageService {
                 }
                 if reused { continue }
                 if builtInAssetResolver.copyIfMatches(assetPath: assetPath, expectedHash: expectedAsset.fileHash, destination: destinationPath) {
-                    try UpdateFailureError.during(.verification, resource: .file) {
-                        try verifyManifestAssetFile(atPath: destinationPath, asset: expectedAsset)
-                    }
+                    // The copy matches the manifest's hash, so a size or
+                    // signature that still fails is the manifest's own.
+                    try verifyStagedAsset(atPath: destinationPath, asset: expectedAsset, during: .verification, resource: .file)
                     continue
                 }
                 downloads[assetPath] = plannedAssets[assetPath]
