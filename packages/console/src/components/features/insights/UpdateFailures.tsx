@@ -152,8 +152,10 @@ function FailureRow({
   total,
 }: {
   readonly failure: InsightsFailureBreakdown;
-  readonly total: number;
+  /** The breakdown's total; null when it holds only the rows read, so its counts are at least what they say. */
+  readonly total: number | null;
 }) {
+  const atLeast = total === null ? "≥" : "";
   const label = `${failureStageLabel(failure.stage)} · ${failureReasonLabel(failure.reason)}`;
   return (
     <TableRow className="[&>td]:px-2 [&>td]:py-3 [&>td]:align-top sm:[&>td]:px-4">
@@ -193,6 +195,7 @@ function FailureRow({
                       : parts.join(" · ")}
                   </span>
                   <span className="shrink-0 font-medium tabular-nums">
+                    {atLeast}
                     {detail.events.toLocaleString()}
                   </span>
                 </li>
@@ -203,14 +206,17 @@ function FailureRow({
       </TableCell>
       <TableCell className="text-right tabular-nums">
         <span className="inline-flex min-h-11 items-center text-sm font-medium">
+          {atLeast}
           {failure.events.toLocaleString()}
         </span>
       </TableCell>
-      <TableCell className="text-right tabular-nums text-muted-foreground">
-        <span className="inline-flex min-h-11 items-center text-sm">
-          {share(failure.events, total)}
-        </span>
-      </TableCell>
+      {total === null ? null : (
+        <TableCell className="text-right tabular-nums text-muted-foreground">
+          <span className="inline-flex min-h-11 items-center text-sm">
+            {share(failure.events, total)}
+          </span>
+        </TableCell>
+      )}
     </TableRow>
   );
 }
@@ -310,7 +316,11 @@ function FailuresReport({
                 <TableHead className="w-16 text-right sm:w-24">
                   Reports
                 </TableHead>
-                <TableHead className="w-16 text-right sm:w-24">Share</TableHead>
+                {capped ? null : (
+                  <TableHead className="w-16 text-right sm:w-24">
+                    Share
+                  </TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -318,7 +328,7 @@ function FailuresReport({
                 <FailureRow
                   key={`${failure.stage} ${failure.reason}`}
                   failure={failure}
-                  total={total}
+                  total={capped ? null : total}
                 />
               ))}
             </TableBody>

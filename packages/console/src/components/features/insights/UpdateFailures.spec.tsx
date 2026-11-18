@@ -147,6 +147,23 @@ describe("UpdateFailures", () => {
     expect(checks.textContent).not.toContain("≥20.00%");
     expect(checks.textContent).toContain("≥21 failures");
     expect(within(card).getByText("Partial")).toBeDefined();
+    // The breakdown holds only the rows read: no shares of a whole it lacks.
+    const table = within(card).getByRole("table", {
+      name: "Failures by stage and reason",
+    });
+    expect(
+      within(table).queryByRole("columnheader", { name: "Share" }),
+    ).toBeNull();
+    expect(within(table).queryByText("75.0%")).toBeNull();
+    const row = within(table).getByLabelText("Download · HTTP error", {
+      selector: "summary",
+    });
+    expect(row.closest("tr")?.textContent).toContain("≥3");
+    fireEvent.click(row);
+    expect(
+      within(table).getByRole("list", { name: "Download · HTTP error details" })
+        .textContent,
+    ).toContain("≥2");
   });
 
   it("doesn't call a capped period's empty breakdown free of failures", () => {
