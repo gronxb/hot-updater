@@ -866,15 +866,8 @@ describe("Vercel init on a public Blob store an earlier release created", () => 
         HOT_UPDATER_VERCEL_DATABASE_URL: expect.anything(),
       }),
     );
-    // A team secrets store holding the public store's token takes the new one.
-    expect(result?.replacedSecrets).toEqual({
-      HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN: {
-        value: PRIVATE_TOKEN,
-        replaces: [PUBLIC_TOKEN],
-      },
-    });
     expect(result?.nextSteps[0]).toBe(
-      "Set HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN to hot-updater-storage-private's token wherever deploys read it besides .env.hotupdater, such as CI: the project's production HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN holds it.",
+      "Set HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN to hot-updater-storage-private's token wherever deploys read it besides .env.hotupdater, such as CI or a team secrets store: the project's production HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN holds it.",
     );
   });
 
@@ -940,55 +933,6 @@ describe("Vercel init on a public Blob store an earlier release created", () => 
       "store_Public1",
       "store_Private1",
     );
-  });
-
-  it("names the public token a team store holds as replaced on a run after the move, and no other", async () => {
-    // A run after an interrupted one: the private store is saved and the
-    // database names it alone; the team store still holds the public token.
-    const env = {
-      ...replayEnv,
-      HOT_UPDATER_VERCEL_BLOB_STORE_ID: "store_Private1",
-      HOT_UPDATER_VERCEL_PROJECT_ID: "prj_1",
-    };
-    mocks.readHotUpdaterInitEnv.mockResolvedValue({ env, managedEnv: env });
-    mocks.readLoadedHotUpdaterEnv.mockResolvedValue(env);
-    const OTHER_TOKEN = "vercel_blob_rw_Other1_secret";
-    mocks.api.listBlobStores.mockResolvedValue([
-      { ...publicStore, connections: [] },
-      // Another deployment's public store, whose bundles never moved here.
-      { ...publicStore, connections: [], id: "store_Other1", name: "other" },
-      {
-        access: "private",
-        connections: [
-          {
-            environmentVariables: [
-              "HOT_UPDATER_VERCEL_BLOB_PRIVATE_READ_WRITE_TOKEN",
-            ],
-            environments: ["production"],
-            id: "spc_private",
-            projectId: "prj_1",
-          },
-        ],
-        id: "store_Private1",
-        name: "hot-updater-storage-private",
-        region: "iad1",
-      },
-    ]);
-    mocks.referencedBlobStores.mockResolvedValue(new Set(["store_Private1"]));
-    const run = (held: string) =>
-      runInit({
-        build: "bare",
-        envFile: ".env.hotupdater",
-        secretsEnv: { HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN: held },
-      });
-
-    expect((await run(PUBLIC_TOKEN))?.replacedSecrets).toEqual({
-      HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN: {
-        value: PRIVATE_TOKEN,
-        replaces: [PUBLIC_TOKEN],
-      },
-    });
-    expect((await run(OTHER_TOKEN))?.replacedSecrets).toBeUndefined();
   });
 
   it("refuses an unconnected private store of that name, which init didn't create", async () => {

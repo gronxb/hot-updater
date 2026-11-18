@@ -55,6 +55,8 @@ const DELEGATION_LIFETIME_MS = 24 * 60 * 60 * 1000;
 /** Vercel's limit on a delegation, and so on a presigned URL. */
 const MAX_SIGNED_LIFETIME_SECONDS = 7 * 24 * 60 * 60;
 const DELETE_BATCH_SIZE = 100;
+/** What Vercel answers a private upload to a public store. */
+const PUBLIC_STORE_ERROR = /private access on a public store/iu;
 
 /**
  * A character @vercel/blob drops from a pathname's URL, such as `#`, or
@@ -216,17 +218,29 @@ export const vercelBlobStorage = (
         bucket: storeId,
         key: storageKey,
       });
-      await put(toPathname(storageKey), body, {
-        access,
-        token,
-        addRandomSuffix: false,
-        allowOverwrite: true,
-        cacheControlMaxAge: ONE_YEAR_IN_SECONDS,
-        contentType,
-        multipart:
-          contentLength === undefined ||
-          contentLength > MULTIPART_THRESHOLD_BYTES,
-      });
+      try {
+        await put(toPathname(storageKey), body, {
+          access,
+          token,
+          addRandomSuffix: false,
+          allowOverwrite: true,
+          cacheControlMaxAge: ONE_YEAR_IN_SECONDS,
+          contentType,
+          multipart:
+            contentLength === undefined ||
+            contentLength > MULTIPART_THRESHOLD_BYTES,
+        });
+      } catch (error) {
+        // A token kept from a public store, such as CI's after init moved
+        // the bundles to a private one.
+        if (error instanceof Error && PUBLIC_STORE_ERROR.test(error.message)) {
+          throw new Error(
+            "vercelBlobStorage's token belongs to a public Blob store, and bundles go only to a private one. Use the private store's read-write token: after `hot-updater init` moved the bundles, the Vercel project's production HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN holds it.",
+            { cause: error },
+          );
+        }
+        throw error;
+      }
       return { storageUri };
     },
     async get({ storageUri }) {

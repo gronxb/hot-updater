@@ -32,11 +32,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 
 import { makeEnv } from "@hot-updater/cli-tools";
 
-import {
-  openInitTeamSecrets,
-  replaceInitTeamSecrets,
-  storeInitTeamSecrets,
-} from "./initSecrets";
+import { openInitTeamSecrets, storeInitTeamSecrets } from "./initSecrets";
 
 const PROVIDER = {
   label: "Cloudflare",
@@ -182,75 +178,6 @@ describe("init with a team secrets store", () => {
     expect(mocks.success).not.toHaveBeenCalled();
     expect(await envFile()).toContain(
       "HOT_UPDATER_CLOUDFLARE_API_TOKEN=local-token",
-    );
-  });
-
-  it("replaces a credential init replaced when the store holds the old one, and adds none it doesn't hold", async () => {
-    // Given: the store holds the token of a resource init moved off
-    const { adapter, values } = teamStore({
-      HOT_UPDATER_CLOUDFLARE_API_TOKEN: "old-token",
-    });
-    mocks.loadTeamSecrets.mockResolvedValue(adapter);
-    const team = await openInitTeamSecrets({
-      provider: PROVIDER,
-      env: {},
-      cwd: directory,
-    });
-
-    // When
-    await replaceInitTeamSecrets(
-      team!,
-      {
-        HOT_UPDATER_CLOUDFLARE_API_TOKEN: {
-          value: "new-token",
-          replaces: ["old-token"],
-        },
-        HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: {
-          value: "new-access-key",
-          replaces: ["old-access-key"],
-        },
-      },
-      directory,
-    );
-
-    // Then: only the held one changes, and nothing reaches the env file
-    expect(Object.fromEntries(values)).toEqual({
-      HOT_UPDATER_CLOUDFLARE_API_TOKEN: "new-token",
-    });
-    expect(mocks.success).toHaveBeenCalledWith(
-      [
-        "Replaced in the teamStore secrets adapter:",
-        "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
-      ].join("\n"),
-    );
-    await expect(envFile()).rejects.toThrow();
-  });
-
-  it("leaves another value the store holds, such as another deployment's token", async () => {
-    const { adapter, values } = teamStore({
-      HOT_UPDATER_CLOUDFLARE_API_TOKEN: "other-deployment-token",
-    });
-    mocks.loadTeamSecrets.mockResolvedValue(adapter);
-    const team = await openInitTeamSecrets({
-      provider: PROVIDER,
-      env: {},
-      cwd: directory,
-    });
-
-    await replaceInitTeamSecrets(
-      team!,
-      {
-        HOT_UPDATER_CLOUDFLARE_API_TOKEN: {
-          value: "new-token",
-          replaces: ["old-token"],
-        },
-      },
-      directory,
-    );
-
-    expect(adapter.set).not.toHaveBeenCalled();
-    expect(values.get("HOT_UPDATER_CLOUDFLARE_API_TOKEN")).toBe(
-      "other-deployment-token",
     );
   });
 

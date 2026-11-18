@@ -134,6 +134,26 @@ describe("vercelBlobStorage", () => {
     );
   });
 
+  it("names the private store's token when the token is a public store's", async () => {
+    blob.put.mockRejectedValueOnce(
+      new Error(
+        "Vercel Blob: Cannot use private access on a public store. The store must be configured with private access.",
+      ),
+    );
+    const storage = vercelBlobStorage({ token });
+
+    await expect(
+      storage.put({
+        body: new Blob(["bundle"]).stream(),
+        contentLength: 6,
+        contentType: "application/octet-stream",
+        key: "bundle.tar.br",
+      }),
+    ).rejects.toThrow(
+      "vercelBlobStorage's token belongs to a public Blob store, and bundles go only to a private one. Use the private store's read-write token: after `hot-updater init` moved the bundles, the Vercel project's production HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN holds it.",
+    );
+  });
+
   it("refuses a URI of another store", async () => {
     const storage = vercelBlobStorage({ token });
 

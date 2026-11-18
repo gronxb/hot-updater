@@ -6,7 +6,6 @@ import {
   MANAGED_CLIENT_CREDENTIAL_ENV,
   p,
   readMissingFromTeamSecrets,
-  type RunInitResult,
   StoredSecretsConflictError,
   storeEnvFileSecrets,
 } from "@hot-updater/cli-tools";
@@ -77,60 +76,6 @@ export const openInitTeamSecrets = async ({
     throw new InitError(message(error));
   }
   return { adapter, names, secretsEnv };
-};
-
-/**
- * Writes the credentials init replaced (`RunInitResult.replacedSecrets`)
- * through the team adapter, over an old value it holds, and reads them
- * back. Another value the adapter holds, such as another deployment's, and
- * a name it doesn't hold stay as they are: init stores from
- * `.env.hotupdater` as for every other credential, and names a conflict.
- */
-export const replaceInitTeamSecrets = async (
-  team: InitTeamSecrets,
-  replacedSecrets: NonNullable<NonNullable<RunInitResult>["replacedSecrets"]>,
-  cwd: string,
-): Promise<void> => {
-  const replaced = Object.fromEntries(
-    Object.entries(replacedSecrets).map(([name, { value }]) => [name, value]),
-  );
-  const names = team.names.filter((name) => Object.hasOwn(replaced, name));
-  if (names.length === 0) return;
-  try {
-    const held = await team.adapter.get(names, { cwd });
-    const changed = names.filter((name) => {
-      const value = held[name];
-      return (
-        typeof value === "string" &&
-        value !== replaced[name] &&
-        replacedSecrets[name]!.replaces.includes(value)
-      );
-    });
-    for (const name of changed) {
-      await team.adapter.set(name, replaced[name]!, { cwd });
-    }
-    if (changed.length === 0) return;
-    const read = await team.adapter.get(changed, { cwd });
-    const unread = changed.filter((name) => read[name] !== replaced[name]);
-    if (unread.length > 0) {
-      throw new Error(
-        `The ${team.adapter.name} secrets adapter did not read back ${unread.join(", ")}.`,
-      );
-    }
-    p.log.success(
-      [
-        `Replaced in the ${team.adapter.name} secrets adapter:`,
-        ...changed,
-      ].join("\n"),
-    );
-  } catch (error) {
-    p.log.warn(
-      [
-        `${message(error)}`,
-        `Set ${names.join(", ")} in the ${team.adapter.name} secrets adapter to the value the project's production environment holds.`,
-      ].join("\n"),
-    );
-  }
 };
 
 /**

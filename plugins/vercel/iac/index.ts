@@ -878,25 +878,7 @@ export const runInit = async ({
   const baseURL = productionBaseUrl(deployedProject);
   await verifyFunction(baseURL);
   p.log.success(`Deployed the Hot Updater Function: ${baseURL}`);
-  // The tokens of the stores init moved off: those it read, and the one a
-  // team secrets store holds for a public store whose bundles moved to this
-  // store, which init named after it, as on a run after an interrupted one.
-  // When .env.hotupdater sets another token, init names the conflict.
-  const heldToken = secretsEnv?.[BLOB_TOKEN_ENV];
-  const heldStore =
-    heldToken === undefined
-      ? undefined
-      : stores.find((candidate) => candidate.id === storeIdOfToken(heldToken));
-  const retiredTokens = [
-    ...new Set([
-      ...sourceTokens.values(),
-      ...(heldToken !== undefined &&
-      heldStore?.access === "public" &&
-      privateStoreNameFor(heldStore.name) === store.name
-        ? [heldToken]
-        : []),
-    ]),
-  ];
+
   // A deploy that passed the schema fence before the migration may have
   // written a bundle to a moved store since: move it too. One later still
   // is moved by init's next run.
@@ -941,20 +923,11 @@ export const runInit = async ({
   });
 
   return {
-    // A team secrets store that holds a moved store's token takes the new
-    // one, also on a run after an interrupted one moved the bundles.
-    ...(retiredTokens.length === 0
-      ? {}
-      : {
-          replacedSecrets: {
-            [BLOB_TOKEN_ENV]: { value: blobToken, replaces: retiredTokens },
-          },
-        }),
     nextSteps: [
       ...(sources.length === 0
         ? []
         : [
-            `Set ${BLOB_TOKEN_ENV} to ${store.name}'s token wherever deploys read it besides .env.hotupdater, such as CI: the project's production ${BLOB_TOKEN_ENV} holds it.`,
+            `Set ${BLOB_TOKEN_ENV} to ${store.name}'s token wherever deploys read it besides .env.hotupdater, such as CI or a team secrets store: the project's production ${BLOB_TOKEN_ENV} holds it.`,
           ]),
       link(
         "https://hot-updater.dev/docs/managed/vercel#step-3-add-hotupdater-to-your-project",
