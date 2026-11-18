@@ -554,8 +554,8 @@ why, and the command that upgrades it:
 
 ```txt
 ■  Infrastructure update required: 1.2.0+
-│  Core schema 1.2.0: the native build registry table and the tables of the
-│  official plugins added beside it
+│  Core schema 1.2.0: the native build registry and iOS device registry
+│  tables, and on SQL databases an index on Insights events
 │
 ●  Migrate the database and redeploy the server in one run:
 │  npx hot-updater init --provider cloudflare --from-env-file .env.hotupdater
