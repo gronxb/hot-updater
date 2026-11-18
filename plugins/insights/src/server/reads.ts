@@ -875,6 +875,58 @@ const breakdownOf = (
   });
 };
 
+/** Breakdown rows a failures read takes per hour of its range. */
+const FAILURE_ROWS_PER_HOUR = 10;
+/** The fewest it takes: a day's. */
+const FAILURE_ROWS_MIN = 24 * FAILURE_ROWS_PER_HOUR;
+
+/**
+ * A channel's breakdown rows over a range, newest first, up to ten an hour
+ * of the range and a day's at least: 240 rows for a day, 7,200 for 30 days.
+ * An hour holds a row per release, stage, reason, and detail that failed in
+ * it, a handful in practice, but a client with the app's API key can report
+ * any number of details, so the read stops at the bound instead of growing
+ * with them. Past it, the oldest hour read may be cut short, so it is left
+ * out whole and `cutBeforeMs` is the hour after it: the hours from there
+ * count every failure they hold, and the read's coverage starts there.
+ */
+const newestFailureRows = async (
+  db: Db,
+  platform: "ios" | "android",
+  channel: string,
+  timeRange: { readonly start: number; readonly end: number },
+) => {
+  const bound = Math.max(
+    FAILURE_ROWS_MIN,
+    Math.ceil((timeRange.end - timeRange.start) / HOUR_MS) *
+      FAILURE_ROWS_PER_HOUR,
+  );
+  const read = (cursor: string | undefined, limit: number) =>
+    db.findAggregates("insights_failures", {
+      index: "byScope",
+      where: { platform, channel },
+      range: { gte: timeRange.start, lt: timeRange.end },
+      order: "desc",
+      limit,
+      ...(cursor === undefined ? {} : { cursor }),
+    });
+  const rows: Awaited<ReturnType<typeof read>>["rows"][number][] = [];
+  let cursor: string | undefined;
+  // One row past the bound tells a range that holds more from one that
+  // holds exactly as many.
+  do {
+    const page = await read(cursor, Math.min(PAGE, bound + 1 - rows.length));
+    rows.push(...page.rows);
+    cursor = page.next;
+  } while (cursor !== undefined && rows.length <= bound);
+  if (rows.length <= bound) return { rows, cutBeforeMs: undefined };
+  const cut = rows.at(-1)!.bucket_start_ms;
+  return {
+    rows: rows.filter((row) => row.bucket_start_ms !== cut),
+    cutBeforeMs: cut + HOUR_MS,
+  };
+};
+
 /**
  * A release's or a channel's update failures. Since a release's first
  * report: its lifetime counters and failed installations. Over a time range
@@ -944,23 +996,16 @@ export const getUpdateFailures = async (
   }
   const days = releaseId === undefined;
   const window = [timeRange, days, kept.hour] as const;
-  const [counters, failures, checks, active, rows] = await Promise.all([
-    counterRows(db, parts, ...window),
-    sketchRows(db, failure, ...window),
-    days
-      ? sketchRows(db, { ...channelParts, scopeKind: "check" }, ...window)
-      : [],
-    days ? sketchRows(db, usageParts(channel, platform), ...window) : [],
-    drain((page) =>
-      db.findAggregates("insights_failures", {
-        index: "byScope",
-        where: { platform, channel },
-        range: { gte: timeRange.start, lt: timeRange.end },
-        limit: PAGE,
-        ...page,
-      }),
-    ),
-  ]);
+  const [counters, failures, checks, active, { rows, cutBeforeMs }] =
+    await Promise.all([
+      counterRows(db, parts, ...window),
+      sketchRows(db, failure, ...window),
+      days
+        ? sketchRows(db, { ...channelParts, scopeKind: "check" }, ...window)
+        : [],
+      days ? sketchRows(db, usageParts(channel, platform), ...window) : [],
+      newestFailureRows(db, platform, channel, timeRange),
+    ]);
   const total = (field: Exclude<keyof CounterRow, "bucket_start_ms">) =>
     counters.reduce((sum, row) => sum + row[field], 0);
   // Only the stages a failure records count: other rows are no failure.
@@ -976,8 +1021,15 @@ export const getUpdateFailures = async (
       (sum, row) => sum + (counted(row.stage) ? Math.max(0, row.events) : 0),
       0,
     );
+  const coverage = coverageOf(timeRange.start, kept.hour);
   return {
-    coverage: coverageOf(timeRange.start, kept.hour),
+    coverage:
+      cutBeforeMs === undefined
+        ? coverage
+        : {
+            kind: "partial",
+            sinceMs: Math.max(coverage.sinceMs ?? 0, cutBeforeMs),
+          },
     measuredAtMs: at,
     failedUpdates: failuresAt((stage) => stage !== "check"),
     failedInstallations: failed(failures),

@@ -389,6 +389,14 @@ export const setupReleaseCatalogTestSuite = (options: {
           );
           expect(response.headers.get("x-hot-updater-catalog")).toBe("none");
           await publish("121");
+          // The server remembers the miss as it does a catalog, so the first
+          // release shows once that expires.
+          await expect
+            .poll(async () => (await request(catalogPath())).status, {
+              interval: 100,
+              timeout: 10_000,
+            })
+            .toBe(200);
           expect((await readCatalog()).releases).toHaveLength(1);
         });
 

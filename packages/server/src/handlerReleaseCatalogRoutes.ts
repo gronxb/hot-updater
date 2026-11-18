@@ -39,9 +39,9 @@ const CATALOG_CACHE_CONTROL = "public, max-age=0, s-maxage=5";
  * background. `stale-if-error=0` keeps origin errors visible: without it,
  * Cloudflare serves a stale copy on error indefinitely.
  *
- * A device can see a catalog up to 15 seconds after a deploy or a Roll back
- * replaced it: the origin's 5-second catalog memo, then 5 seconds fresh and
- * 5 stale at the CDN. A revoked API key can read a cached catalog up to
+ * A device can see a catalog, or a scope's lack of one, up to 15 seconds
+ * after a deploy or a Roll back replaced it: the origin's 5-second catalog
+ * memo, then 5 seconds fresh and 5 stale at the CDN. A revoked API key can read a cached catalog up to
  * 10 seconds. Devices and caches that don't read the header keep
  * `Cache-Control`.
  */
@@ -161,11 +161,29 @@ export const createReleaseCatalogRouteHandlers = (): Record<
 > => {
   // Keyed by the scope's catalog key, the row an update check reads: every
   // app version of a scope shares one read and one parse, and each check
-  // projects its own version from the parsed row.
+  // projects its own version from the parsed row. A scope without a catalog
+  // is remembered as null for the same five seconds, since a store without a
+  // CDN in front would otherwise read it on every check. Misses never evict
+  // a catalog: past the limit, the oldest miss goes first, and a new miss
+  // with only catalogs ahead of it goes itself.
   const cache = new Map<
     string,
-    { readonly row: ParsedReleaseCatalogRow; readonly expiresAt: number }
+    {
+      readonly row: ParsedReleaseCatalogRow | null;
+      readonly expiresAt: number;
+    }
   >();
+  const evictOne = (insertedHit: boolean) => {
+    let oldest: string | undefined;
+    for (const [key, entry] of cache) {
+      if (entry.row === null) {
+        cache.delete(key);
+        return;
+      }
+      oldest ??= key;
+    }
+    if (insertedHit && oldest !== undefined) cache.delete(oldest);
+  };
   const inFlight = new Map<string, Promise<ParsedReleaseCatalogRow | null>>();
   const loadRow = async (
     scopeKey: string,
@@ -182,17 +200,11 @@ export const createReleaseCatalogRouteHandlers = (): Record<
     if (pending !== undefined) return pending;
 
     const next = load().then((row) => {
-      if (row !== null) {
-        cache.set(scopeKey, {
-          row,
-          expiresAt: Date.now() + ORIGIN_CACHE_TTL_MS,
-        });
-        while (cache.size > ORIGIN_CACHE_MAX_ENTRIES) {
-          const oldestKey = cache.keys().next().value as string | undefined;
-          if (oldestKey === undefined) break;
-          cache.delete(oldestKey);
-        }
-      }
+      cache.set(scopeKey, {
+        row,
+        expiresAt: Date.now() + ORIGIN_CACHE_TTL_MS,
+      });
+      if (cache.size > ORIGIN_CACHE_MAX_ENTRIES) evictOne(row !== null);
       return row;
     });
     inFlight.set(scopeKey, next);

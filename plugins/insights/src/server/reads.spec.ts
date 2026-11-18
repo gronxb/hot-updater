@@ -480,9 +480,10 @@ describe("insights update failures", () => {
       return {
         ...measured,
         tables: Object.keys(Object.fromEntries(meter.rows)),
+        rows: Object.fromEntries(meter.rows),
       };
     };
-    return { api: harness.api, db: harness.db, read };
+    return { api: harness.api, db: harness.db, read, fail };
   };
   const scope = { platform: "ios", channel: "production" } as const;
 
@@ -565,6 +566,80 @@ describe("insights update failures", () => {
       "insights_overview",
       "insights_sketches",
     ]);
+  });
+
+  it("reads a window's newest failure rows up to its bound, and reports the hours it cut as partial", async () => {
+    const { api, read, fail } = await setup();
+    // A client floods the window's first hour with a failed check per HTTP
+    // status, a breakdown row each: more rows than a day's read takes.
+    for (let status = 100; status < 600; status += 1) {
+      await fail(1_000 + status, 1_000 + status, T0 + 30 * 60_000, {
+        stage: "check",
+        reason: "http",
+        http_status: status,
+      });
+    }
+    const failures = await read(() =>
+      api.getUpdateFailures({
+        ...scope,
+        timeRange: { start: T0, end: T0 + DAY },
+      }),
+    );
+    // The newest rows up to the bound, and one more that shows it was
+    // reached: the flooded hour is cut whole, and the hours after it count
+    // every failure they hold.
+    expect(failures.rows.insights_failures).toBe(241);
+    expect(failures.result).toMatchObject({
+      coverage: { kind: "partial", sinceMs: T0 + HOUR },
+      failedUpdates: 4,
+      checks: { failures: 1 },
+    });
+    expect(
+      failures.result.breakdown!.map(({ stage, reason, events }) => [
+        stage,
+        reason,
+        events,
+      ]),
+    ).toEqual([
+      ["download", "http", 2],
+      ["check", "http", 1],
+      ["download", "network", 1],
+      ["install", "hash_mismatch", 1],
+    ]);
+  });
+
+  it("reads every failure row of a window under its bound, newest first across pages and shards", async () => {
+    const { api, fail } = await setup();
+    // 700 breakdown rows over days 0 and 1, each on the shards of two
+    // installations: more rows than a page, fewer than 3 days' bound.
+    let n = 2_000;
+    for (const at of [T0 + 10 * HOUR, T0 + DAY + 10 * HOUR]) {
+      for (let status = 100; status < 450; status += 1) {
+        for (const install of [n, n + 1]) {
+          await fail(n++, install, at, {
+            stage: "check",
+            reason: "http",
+            http_status: status,
+          });
+        }
+      }
+    }
+    const failures = await api.getUpdateFailures({
+      ...scope,
+      timeRange: { start: T0, end: T0 + 3 * DAY },
+    });
+    expect(failures).toMatchObject({
+      coverage: { kind: "complete", sinceMs: 0 },
+      failedUpdates: 5,
+      checks: { failures: 1_401 },
+    });
+    const check = failures.breakdown!.find(({ stage }) => stage === "check")!;
+    expect(check.events).toBe(1_401);
+    // Each status's row of both days, both shards each, and the seed's check.
+    expect(check.details).toHaveLength(351);
+    expect(check.details.filter(({ events }) => events === 4)).toHaveLength(
+      350,
+    );
   });
 
   it("counts only the stages a failure records", async () => {
