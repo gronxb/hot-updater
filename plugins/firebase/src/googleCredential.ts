@@ -1,4 +1,4 @@
-import { applicationDefault, type Credential } from "firebase-admin/app";
+import type { Credential } from "firebase-admin/app";
 
 const CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 
@@ -13,8 +13,10 @@ export const resolveApplicationDefault = async (
   credential: Credential,
   projectId: string | undefined,
 ): Promise<void> => {
-  // Its class, from an instance that reads nothing until used.
-  if (!(credential instanceof applicationDefault().constructor)) return;
+  // By its class's name, which creating one to compare with would load, as
+  // firebase-admin before 13 does. Those return a credential of another
+  // class, which this leaves alone.
+  if (credential.constructor.name !== "ApplicationDefaultCredential") return;
   const { GoogleAuth } = await import("google-auth-library");
   await new GoogleAuth({
     scopes: [CLOUD_PLATFORM_SCOPE],
