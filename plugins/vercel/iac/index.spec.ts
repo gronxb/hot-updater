@@ -952,56 +952,43 @@ describe("Vercel init on a public Blob store an earlier release created", () => 
     };
     mocks.readHotUpdaterInitEnv.mockResolvedValue({ env, managedEnv: env });
     mocks.readLoadedHotUpdaterEnv.mockResolvedValue(env);
-    const privateStore = {
-      access: "private" as const,
-      connections: [
-        {
-          environmentVariables: [
-            "HOT_UPDATER_VERCEL_BLOB_PRIVATE_READ_WRITE_TOKEN",
-          ],
-          environments: ["production"],
-          id: "spc_private",
-          projectId: "prj_1",
-        },
-      ],
-      id: "store_Private1",
-      name: "hot-updater-storage-private",
-      region: "iad1",
-    };
-    const run = async (
-      publicConnections: (typeof publicStore)["connections"],
-    ) => {
-      mocks.api.listBlobStores.mockResolvedValue([
-        { ...publicStore, connections: publicConnections },
-        privateStore,
-      ]);
-      mocks.referencedBlobStores.mockResolvedValue(new Set(["store_Private1"]));
-      return runInit({
+    const OTHER_TOKEN = "vercel_blob_rw_Other1_secret";
+    mocks.api.listBlobStores.mockResolvedValue([
+      { ...publicStore, connections: [] },
+      // Another deployment's public store, whose bundles never moved here.
+      { ...publicStore, connections: [], id: "store_Other1", name: "other" },
+      {
+        access: "private",
+        connections: [
+          {
+            environmentVariables: [
+              "HOT_UPDATER_VERCEL_BLOB_PRIVATE_READ_WRITE_TOKEN",
+            ],
+            environments: ["production"],
+            id: "spc_private",
+            projectId: "prj_1",
+          },
+        ],
+        id: "store_Private1",
+        name: "hot-updater-storage-private",
+        region: "iad1",
+      },
+    ]);
+    mocks.referencedBlobStores.mockResolvedValue(new Set(["store_Private1"]));
+    const run = (held: string) =>
+      runInit({
         build: "bare",
         envFile: ".env.hotupdater",
-        secretsEnv: { HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN: PUBLIC_TOKEN },
+        secretsEnv: { HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN: held },
       });
-    };
 
-    expect((await run([]))?.replacedSecrets).toEqual({
+    expect((await run(PUBLIC_TOKEN))?.replacedSecrets).toEqual({
       HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN: {
         value: PRIVATE_TOKEN,
         replaces: [PUBLIC_TOKEN],
       },
     });
-    // Another project still uses that public store: its token is not ours.
-    expect(
-      (
-        await run([
-          {
-            environmentVariables: ["BLOB_READ_WRITE_TOKEN"],
-            environments: ["production"],
-            id: "spc_other",
-            projectId: "prj_other",
-          },
-        ])
-      )?.replacedSecrets,
-    ).toBeUndefined();
+    expect((await run(OTHER_TOKEN))?.replacedSecrets).toBeUndefined();
   });
 
   it("refuses an unconnected private store of that name, which init didn't create", async () => {

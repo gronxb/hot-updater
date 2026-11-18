@@ -878,8 +878,10 @@ export const runInit = async ({
   const baseURL = productionBaseUrl(deployedProject);
   await verifyFunction(baseURL);
   p.log.success(`Deployed the Hot Updater Function: ${baseURL}`);
-  // The tokens of the stores init moved off: those it read, and one a team
-  // secrets store holds for a public store no other project uses.
+  // The tokens of the stores init moved off: those it read, and the one a
+  // team secrets store holds for a public store whose bundles moved to this
+  // store, which init named after it, as on a run after an interrupted one.
+  // When .env.hotupdater sets another token, init names the conflict.
   const heldToken = secretsEnv?.[BLOB_TOKEN_ENV];
   const heldStore =
     heldToken === undefined
@@ -890,9 +892,7 @@ export const runInit = async ({
       ...sourceTokens.values(),
       ...(heldToken !== undefined &&
       heldStore?.access === "public" &&
-      heldStore.connections.every(
-        (connection) => connection.projectId === project.id,
-      )
+      privateStoreNameFor(heldStore.name) === store.name
         ? [heldToken]
         : []),
     ]),
