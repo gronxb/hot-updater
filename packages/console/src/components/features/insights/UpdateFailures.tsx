@@ -399,7 +399,11 @@ export function UpdateFailures({
         </CardContent>
         {query.data?.coverage.kind === "partial" ? (
           <CardFooter className="border-t px-6 py-5">
-            <span className="text-xs text-muted-foreground">Partial</span>
+            <span className="text-xs text-muted-foreground">
+              {(query.data.cappedHours?.length ?? 0) > 0
+                ? "Partial: some hours held more failure kinds than are read, so failures are at least the counts shown."
+                : "Partial"}
+            </span>
           </CardFooter>
         ) : null}
       </Card>

@@ -146,7 +146,12 @@ describe("UpdateFailures", () => {
     expect(checks.textContent).toContain("20.00%");
     expect(checks.textContent).not.toContain("≥20.00%");
     expect(checks.textContent).toContain("≥21 failures");
-    expect(within(card).getByText("Partial")).toBeDefined();
+    // The footer says why the counts are lower bounds.
+    expect(
+      within(card).getByText(
+        "Partial: some hours held more failure kinds than are read, so failures are at least the counts shown.",
+      ),
+    ).toBeDefined();
     // The breakdown holds only the rows read: no shares of a whole it lacks.
     const table = within(card).getByRole("table", {
       name: "Failures by stage and reason",
