@@ -187,16 +187,19 @@ const replacePublicStore = (
 ): BlobStoreSelection => {
   const name = privateStoreNameFor(publicStore.name);
   const existing = stores.find((store) => store.name === name);
-  // The store an interrupted run created: connected to this project, or to
-  // none yet.
+  // The store an interrupted run created, which init connects to this
+  // project as soon as it creates it, and to no other.
   const ours =
     existing?.access === "private" &&
+    existing.connections.some(
+      (connection) => connection.projectId === projectId,
+    ) &&
     existing.connections.every(
       (connection) => connection.projectId === projectId,
     );
   if (existing !== undefined && !ours) {
     throw new InitError(
-      `Blob store ${publicStore.name} is public, and init moves its bundles to a private store named ${name}, which is ${existing.access === "public" ? "a public store" : "another project's store"}. Delete or rename ${name} in the Vercel dashboard's Storage tab, then rerun init.`,
+      `Blob store ${publicStore.name} is public, and init moves its bundles to a private store named ${name}, which is ${existing.access === "public" ? "a public store" : "not connected to this project"}. Delete or rename ${name} in the Vercel dashboard's Storage tab, then rerun init.`,
     );
   }
   p.log.info(
@@ -919,6 +922,10 @@ export const runInit = async ({
   });
 
   return {
+    // A team secrets store that held the moved store's token takes the new one.
+    ...(sources.length === 0
+      ? {}
+      : { replacedSecrets: { [BLOB_TOKEN_ENV]: blobToken } }),
     nextSteps: [
       ...(sources.length === 0
         ? []

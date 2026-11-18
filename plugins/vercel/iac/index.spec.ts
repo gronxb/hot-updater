@@ -866,6 +866,10 @@ describe("Vercel init on a public Blob store an earlier release created", () => 
         HOT_UPDATER_VERCEL_DATABASE_URL: expect.anything(),
       }),
     );
+    // A team secrets store holding the public store's token takes the new one.
+    expect(result?.replacedSecrets).toEqual({
+      HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN: PRIVATE_TOKEN,
+    });
     expect(result?.nextSteps[0]).toBe(
       "Set HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN to hot-updater-storage-private's token wherever deploys read it besides .env.hotupdater, such as CI: the project's production HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN holds it.",
     );
@@ -935,6 +939,24 @@ describe("Vercel init on a public Blob store an earlier release created", () => 
     );
   });
 
+  it("refuses an unconnected private store of that name, which init didn't create", async () => {
+    mocks.api.listBlobStores.mockResolvedValue([
+      publicStore,
+      {
+        access: "private",
+        connections: [],
+        id: "store_Other",
+        name: "hot-updater-storage-private",
+        region: "iad1",
+      },
+    ]);
+
+    await expect(
+      runInit({ build: "bare", envFile: ".env.hotupdater" }),
+    ).rejects.toThrow("which is not connected to this project.");
+    expect(mocks.copyBlobStore).not.toHaveBeenCalled();
+  });
+
   it("refuses a private store of that name another project uses", async () => {
     mocks.api.listBlobStores.mockResolvedValue([
       publicStore,
@@ -957,7 +979,7 @@ describe("Vercel init on a public Blob store an earlier release created", () => 
     await expect(
       runInit({ build: "bare", envFile: ".env.hotupdater" }),
     ).rejects.toThrow(
-      "which is another project's store. Delete or rename hot-updater-storage-private",
+      "which is not connected to this project. Delete or rename hot-updater-storage-private",
     );
     expect(mocks.copyBlobStore).not.toHaveBeenCalled();
     expect(mocks.makeEnv).not.toHaveBeenCalled();

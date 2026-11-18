@@ -32,7 +32,11 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 
 import { makeEnv } from "@hot-updater/cli-tools";
 
-import { openInitTeamSecrets, storeInitTeamSecrets } from "./initSecrets";
+import {
+  openInitTeamSecrets,
+  replaceInitTeamSecrets,
+  storeInitTeamSecrets,
+} from "./initSecrets";
 
 const PROVIDER = {
   label: "Cloudflare",
@@ -179,6 +183,41 @@ describe("init with a team secrets store", () => {
     expect(await envFile()).toContain(
       "HOT_UPDATER_CLOUDFLARE_API_TOKEN=local-token",
     );
+  });
+
+  it("replaces a credential init replaced when the store holds the old one, and adds none it doesn't hold", async () => {
+    // Given: the store holds the token of a resource init moved off
+    const { adapter, values } = teamStore({
+      HOT_UPDATER_CLOUDFLARE_API_TOKEN: "old-token",
+    });
+    mocks.loadTeamSecrets.mockResolvedValue(adapter);
+    const team = await openInitTeamSecrets({
+      provider: PROVIDER,
+      env: {},
+      cwd: directory,
+    });
+
+    // When
+    await replaceInitTeamSecrets(
+      team!,
+      {
+        HOT_UPDATER_CLOUDFLARE_API_TOKEN: "new-token",
+        HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: "new-access-key",
+      },
+      directory,
+    );
+
+    // Then: only the held one changes, and nothing reaches the env file
+    expect(Object.fromEntries(values)).toEqual({
+      HOT_UPDATER_CLOUDFLARE_API_TOKEN: "new-token",
+    });
+    expect(mocks.success).toHaveBeenCalledWith(
+      [
+        "Replaced in the teamStore secrets adapter:",
+        "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+      ].join("\n"),
+    );
+    await expect(envFile()).rejects.toThrow();
   });
 
   it("says what it stored apart from what the store already held", async () => {

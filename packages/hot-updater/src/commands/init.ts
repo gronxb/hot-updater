@@ -32,7 +32,11 @@ import {
   isInitProvider,
   loadInitProvider,
 } from "./initProviders";
-import { openInitTeamSecrets, storeInitTeamSecrets } from "./initSecrets";
+import {
+  openInitTeamSecrets,
+  replaceInitTeamSecrets,
+  storeInitTeamSecrets,
+} from "./initSecrets";
 
 const BUILD_ADAPTER_KEYS = ["bare", "rock", "expo", "one"] as const;
 
@@ -277,7 +281,12 @@ export const init = async (options: InitOptions = {}) => {
       envFile: options.envFile,
       ...(team === undefined ? {} : { secretsEnv: team.secretsEnv }),
     } satisfies RunInitOptions);
-    if (team !== undefined) await storeInitTeamSecrets(team, cwd);
+    if (team !== undefined) {
+      if (result?.replacedSecrets !== undefined) {
+        await replaceInitTeamSecrets(team, result.replacedSecrets, cwd);
+      }
+      await storeInitTeamSecrets(team, cwd);
+    }
   } catch (error) {
     if (handleInitError(error)) {
       return;

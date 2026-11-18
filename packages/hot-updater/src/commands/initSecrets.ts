@@ -79,6 +79,51 @@ export const openInitTeamSecrets = async ({
 };
 
 /**
+ * Writes the credentials init replaced (`RunInitResult.replacedSecrets`)
+ * through the team adapter, over the old value it holds, and reads them
+ * back. A name the adapter doesn't hold stays out of it: init stores those
+ * from `.env.hotupdater`, as for every other credential.
+ */
+export const replaceInitTeamSecrets = async (
+  team: InitTeamSecrets,
+  replaced: Readonly<Record<string, string>>,
+  cwd: string,
+): Promise<void> => {
+  const names = team.names.filter((name) => Object.hasOwn(replaced, name));
+  if (names.length === 0) return;
+  try {
+    const held = await team.adapter.get(names, { cwd });
+    const changed = names.filter(
+      (name) => typeof held[name] === "string" && held[name] !== replaced[name],
+    );
+    for (const name of changed) {
+      await team.adapter.set(name, replaced[name]!, { cwd });
+    }
+    if (changed.length === 0) return;
+    const read = await team.adapter.get(changed, { cwd });
+    const unread = changed.filter((name) => read[name] !== replaced[name]);
+    if (unread.length > 0) {
+      throw new Error(
+        `The ${team.adapter.name} secrets adapter did not read back ${unread.join(", ")}.`,
+      );
+    }
+    p.log.success(
+      [
+        `Replaced in the ${team.adapter.name} secrets adapter:`,
+        ...changed,
+      ].join("\n"),
+    );
+  } catch (error) {
+    p.log.warn(
+      [
+        `${message(error)}`,
+        `Set ${names.join(", ")} in the ${team.adapter.name} secrets adapter to the value the project's production environment holds.`,
+      ].join("\n"),
+    );
+  }
+};
+
+/**
  * Stores the credentials init saved in `.env.hotupdater` through the team
  * adapter and reads them back. It deletes nothing: the app's build reads
  * `HOT_UPDATER_API_KEY` from the file, and its lines override the adapter

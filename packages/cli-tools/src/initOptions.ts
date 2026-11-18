@@ -20,6 +20,12 @@ export type RunInitOptions = {
  */
 export type RunInitResult = {
   readonly nextSteps: readonly string[];
+  /**
+   * Credentials init replaced because what they reach changed, such as a
+   * Blob store's token after init moved the bundles to another store. A
+   * team secrets store that holds one takes the new value over the old.
+   */
+  readonly replacedSecrets?: Readonly<Record<string, string>>;
 } | null;
 
 export class InitError extends Error {
