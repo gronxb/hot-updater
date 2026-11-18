@@ -1,0 +1,80 @@
+---
+title: "GitHub JSON file"
+description: Keep Hot Updater's metadata as one JSON file in a GitHub repository.
+icon: GitBranch
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/github --save-dev
+```
+
+For a deployed server, install the package as a runtime dependency instead
+of a development dependency.
+
+## Setup
+
+Use a repository the token can write to, such as the one
+[`githubReleaseStorage`](/docs/storage-adapters/github) keeps your bundles in.
+The token is a fine-grained personal access token with read and write access
+to the repository's **Contents**.
+
+## Configuration
+
+```typescript
+interface GithubJsonDatabaseConfig {
+  owner: string; // The account or organization that owns the repository
+  repo: string;
+  token: string;
+  path?: string; // The database file. Default: hot-updater/database.json
+  branch?: string; // The branch that holds the file. Default: the default branch
+  cacheTtlMs?: number; // How long a read may reuse the fetched file. Default: 0
+  apiUrl?: string; // GitHub Enterprise Server's REST API
+}
+```
+
+## Usage
+
+```typescript title="hot-updater.config.ts (excerpt)"
+import { githubJsonDatabase } from "@hot-updater/github"; // [!code ++]
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  // ... build, storage, plugins, and updateStrategy
+  database: githubJsonDatabase({
+    // [!code ++]
+    owner: "acme", // [!code ++]
+    repo: "app-updates", // [!code ++]
+    token: process.env.HOT_UPDATER_GITHUB_TOKEN!, // [!code ++]
+  }), // [!code ++]
+});
+```
+
+## Schema
+
+`hot-updater db migrate` creates the file when it is missing and writes the
+schema settings of core and of the configured plugins. The database answers
+503 until those settings exist. `migrateGithubJsonDatabase(config, plugins)`
+runs the same migration from a script.
+
+## How it stores data
+
+The file holds every row. A write is one commit that replaces the file and
+names the version it replaces, so GitHub refuses a write that another
+process's commit has overtaken; the adapter then reads the file again and
+applies the write on top. Writes that one process makes at the same time share
+a commit. A read revalidates the file with a conditional request, which does
+not count against GitHub's rate limit while the file is unchanged.
+
+- Use it for releases, where writes are deploys and Console changes. A table
+  written for every device event, such as the `insights()` plugin's, commits
+  for each event; run those plugins on another database.
+- Keep the file on a branch of its own when commits to the default branch
+  start workflows.
+- Rows of a table with retention are removed by the first write after they
+  expire.
+- GitHub reads a file of at most 100 MB through this API.
+
+To check for updates from the app with no server in between, see
+[Run without an update server](/docs/storage-adapters/github#run-without-an-update-server).

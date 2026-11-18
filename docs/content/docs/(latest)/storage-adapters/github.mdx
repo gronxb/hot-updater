@@ -1,0 +1,130 @@
+---
+title: "GitHub Releases"
+description: Store your Hot Updater bundles as release assets of a GitHub repository, which can be private.
+icon: GitBranch
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/github --save-dev
+```
+
+For a deployed server, or an app that
+[runs without an update server](#run-without-an-update-server), install the
+package as a runtime dependency instead of a development dependency.
+
+## Setup
+
+Create a repository for your bundles; it can be private, and it needs one
+commit before the first deploy. Create a
+[fine-grained personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
+limited to that repository, with read and write access to **Contents**.
+
+## Configuration
+
+```typescript
+interface GithubReleaseStorageConfig {
+  owner: string; // The account or organization that owns the repository
+  repo: string;
+  token: string;
+  basePath?: string; // Optional base path for every key
+  indexPath?: string; // The index file. Default: hot-updater/storage.json
+  branch?: string; // The branch that holds the index. Default: the default branch
+  cacheTtlMs?: number; // How long a read may reuse the fetched index. Default: 0
+  apiUrl?: string; // GitHub Enterprise Server's REST API
+  uploadUrl?: string; // GitHub Enterprise Server's upload host
+}
+```
+
+## Usage
+
+```typescript title="hot-updater.config.ts (excerpt)"
+import { githubReleaseStorage } from "@hot-updater/github"; // [!code ++]
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  // ... build, database, plugins, and updateStrategy
+  storage: githubReleaseStorage({
+    // [!code ++]
+    owner: "acme", // [!code ++]
+    repo: "app-updates", // [!code ++]
+    token: process.env.HOT_UPDATER_GITHUB_TOKEN!, // [!code ++]
+  }), // [!code ++]
+});
+```
+
+## Protocol
+
+`github-release://owner.repo/encoded/key`
+
+For example,
+`github-release://acme.app-updates/bundles/0195a3c1/manifest.json` is stored in
+the `storageUri` field. The bucket is the owner and the repository, joined by a
+dot. Keys retain their slash hierarchy and encode each segment.
+
+## Capabilities
+
+`githubReleaseStorage` implements upload, read, download URL, existence-check,
+exact-delete, listing, and batch-delete operations.
+
+- Each object is one release asset. The adapter creates prereleases named
+  `Hot Updater storage` to hold them, and starts another when one nears
+  GitHub's limit of 1,000 assets per release.
+- GitHub names an asset by a numeric id, so the adapter keeps an index,
+  `hot-updater/storage.json`, that maps each key to its asset. Every upload
+  and delete commits to it; uploads that run at the same time share a commit.
+- A download URL is the signed URL GitHub redirects an authorized asset
+  request to. It needs no token and expires within minutes, so the server
+  resolves one for each update.
+- `put` reads the whole body into memory before it uploads, since GitHub
+  needs the length first. A file is at most 2 GiB.
+- GitHub refuses an empty release asset. The adapter records an empty object
+  in the index and reads it back, but it has no download URL, so a bundle
+  with an empty file cannot be served.
+
+## Run without an update server
+
+An app can read the repository itself instead of calling an update server.
+`githubUpdateFetch` from `@hot-updater/github/client` is a `fetch` for
+`HotUpdater.init` that answers update checks from
+[`githubJsonDatabase`](/docs/database-adapters/github) and resolves download
+URLs from this storage:
+
+```typescript title="updates.ts"
+import {
+  GITHUB_UPDATE_BASE_URL,
+  githubUpdateFetch,
+} from "@hot-updater/github/client";
+import { HotUpdater } from "@hot-updater/react-native";
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: GITHUB_UPDATE_BASE_URL,
+  fetch: githubUpdateFetch({
+    owner: "acme",
+    repo: "app-updates",
+    token: "<a read-only token>",
+  }),
+});
+```
+
+Pass the `basePath`, `branch`, `databasePath`, and `storageIndexPath` your
+`hot-updater.config.ts` uses, when it sets them.
+
+<Callout type="warn">
+  The token ships inside the app, and every request to GitHub carries it, so
+  anyone who has the app can read it. Use a fine-grained token with read-only
+  access to **Contents** of this one repository, and keep nothing else in the
+  repository.
+</Callout>
+
+What changes without a server:
+
+- Server plugins do not run: there is no Insights, API key, or Remote Config.
+- After a crash that does not roll back, native code repeats the last update
+  check against `baseURL` without the app's JavaScript. `GITHUB_UPDATE_BASE_URL`
+  does not resolve, so that check finds nothing; rolling back to the previous
+  bundle works as before.
+- Every device shares the token's GitHub rate limit.
+- The app answers artifact protocol v1, which resolves a URL for every file
+  of a bundle when the update is selected.
