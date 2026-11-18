@@ -1645,7 +1645,8 @@ class BundleFileStorageService: BundleStorageService {
     ) -> Bool {
         releaseStateLock.lock()
         defer { releaseStateLock.unlock() }
-        var metadata = loadMetadataOrNull() ?? createInitialMetadata()
+        let stored = loadMetadataOrNull()
+        var metadata = stored ?? createInitialMetadata()
         let stateKey = releaseScopeStateKey(catalogId: catalogId, scopeKey: scopeKey)
         if let highestSeen = metadata.highestSeenCatalogs[stateKey] {
             if generation < highestSeen.generation { return false }
@@ -1653,14 +1654,17 @@ class BundleFileStorageService: BundleStorageService {
                 return false
             }
         }
-        metadata.highestSeenCatalogs[stateKey] = CatalogHighWater(
-            generation: generation,
-            catalogHash: catalogHash
-        )
-        metadata.currentSelectionContexts[stateKey] = selectionContextValue(
-            channel: channel,
-            selectionContextHash: selectionContextHash
-        )
+        let highWater = CatalogHighWater(generation: generation, catalogHash: catalogHash)
+        let context = selectionContextValue(channel: channel, selectionContextHash: selectionContextHash)
+        // The same catalog in the same context, as every launch's check sees
+        // until a deploy: the stored metadata already says so.
+        if stored != nil,
+           metadata.highestSeenCatalogs[stateKey] == highWater,
+           metadata.currentSelectionContexts[stateKey] == context {
+            return true
+        }
+        metadata.highestSeenCatalogs[stateKey] = highWater
+        metadata.currentSelectionContexts[stateKey] = context
         metadata.updatedAt = Date().timeIntervalSince1970 * 1000
         return saveMetadata(metadata)
     }
@@ -1927,29 +1931,23 @@ class BundleFileStorageService: BundleStorageService {
                 return .success(nil)
             }
 
-            do {
-                var bundlePaths: [String] = []
-                for assetPath in parsedManifest.assets.keys {
-                    let assetURL = try FileUtilities.fileURL(
-                        for: assetPath,
-                        destinationRoot: directoryPath
-                    )
-                    guard fileSystem.fileExists(atPath: assetURL.path),
-                          let attributes = try? fileSystem.attributesOfItem(atPath: assetURL.path),
-                          attributes[.type] as? FileAttributeType == .typeRegular else {
-                        return .success(nil)
-                    }
-
-                    let fileName = assetURL.lastPathComponent
-                    if fileName.hasSuffix(".bundle") || fileName == "main.jsbundle" {
-                        bundlePaths.append(assetURL.path)
-                    }
+            var bundlePaths: [String] = []
+            let directoryURL = URL(fileURLWithPath: directoryPath, isDirectory: true)
+            for assetPath in parsedManifest.assets.keys {
+                // The manifest holds only normalized relative paths
+                // (parseBundleManifest), which stay inside the directory.
+                let assetURL = directoryURL.appendingPathComponent(assetPath)
+                guard fileSystem.isRegularFile(atPath: assetURL.path) else {
+                    return .success(nil)
                 }
 
-                return .success(bundlePaths.count == 1 ? bundlePaths[0] : nil)
-            } catch {
-                return .failure(error)
+                let fileName = assetURL.lastPathComponent
+                if fileName.hasSuffix(".bundle") || fileName == "main.jsbundle" {
+                    bundlePaths.append(assetURL.path)
+                }
             }
+
+            return .success(bundlePaths.count == 1 ? bundlePaths[0] : nil)
         }
 
         return .success(nil)

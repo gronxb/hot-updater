@@ -1524,6 +1524,47 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func acceptingTheSameCatalogAgainLeavesTheMetadataAlone() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        var writes = 0
+        let service = makeStorageService(
+            documentsDirectory: workingDirectory,
+            metadataWriter: { metadata, file in
+                writes += 1
+                return metadata.save(to: file)
+            }
+        )
+        func accept(_ generation: Int64, _ context: String) -> Bool {
+            service.acceptReleaseCatalog(
+                catalogId: "project-a",
+                scopeKey: "scope-production",
+                generation: generation,
+                catalogHash: "hash-\(generation)",
+                channel: "production",
+                selectionContextHash: context
+            )
+        }
+
+        #expect(accept(1, "context-1"))
+        let first = writes
+        // Every launch's check sees the same catalog until a deploy.
+        #expect(accept(1, "context-1"))
+        #expect(accept(1, "context-1"))
+        #expect(writes == first)
+
+        // A new context or generation is stored.
+        #expect(accept(1, "context-2"))
+        #expect(writes == first + 1)
+        #expect(accept(2, "context-2"))
+        #expect(writes == first + 2)
+        let metadata = try #require(loadMetadata(documentsDirectory: workingDirectory))
+        #expect(metadata.highestSeenCatalogs["project-a|scope-production"]
+            == CatalogHighWater(generation: 2, catalogHash: "hash-2"))
+        #expect(metadata.currentSelectionContexts["project-a|scope-production"] == "production\ncontext-2")
+    }
+
+    @Test
     func catalogHighWaterRejectsReplayAndSurvivesChannelReset() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(workingDirectory) }

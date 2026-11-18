@@ -252,6 +252,41 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
+    fun `accepting the same catalog again leaves the metadata alone`() {
+        val rootDir = temporaryFolder.newFolder()
+        var writes = 0
+        val service =
+            createService(
+                rootDir,
+                metadataWriter = { metadata, file ->
+                    writes++
+                    metadata.saveToFile(file)
+                },
+            )
+
+        fun accept(
+            generation: Long,
+            context: String,
+        ) = service.acceptReleaseCatalog("project-a", "scope-production", generation, "hash-$generation", "production", context)
+
+        assertTrue(accept(1, "context-1"))
+        val first = writes
+        // Every launch's check sees the same catalog until a deploy.
+        assertTrue(accept(1, "context-1"))
+        assertTrue(accept(1, "context-1"))
+        assertEquals(first, writes)
+
+        // A new context or generation is stored.
+        assertTrue(accept(1, "context-2"))
+        assertEquals(first + 1, writes)
+        assertTrue(accept(2, "context-2"))
+        assertEquals(first + 2, writes)
+        val metadata = loadMetadata(rootDir)
+        assertEquals(CatalogHighWater(2, "hash-2"), metadata?.highestSeenCatalogs?.get("project-a|scope-production"))
+        assertEquals("production\ncontext-2", metadata?.currentSelectionContexts?.get("project-a|scope-production"))
+    }
+
+    @Test
     fun `a built-in commit keeps the running bundle until the next launch`() =
         runBlocking {
             val rootDir = temporaryFolder.newFolder()

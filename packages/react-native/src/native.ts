@@ -19,6 +19,18 @@ import HotUpdaterNative, {
 export { HotUpdaterErrorCode, isHotUpdaterError };
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+
+type NativeConstants = ReturnType<typeof HotUpdaterNative.getConstants>;
+let nativeConstants: NativeConstants | undefined;
+
+/**
+ * The native module's constants, read once per runtime. They are fixed for
+ * it: the build's MIN_BUNDLE_ID, app version and fingerprint, and the channel
+ * this runtime started on, which only the session state reads, once. Android
+ * computes them again, reading the bundle metadata, on every call.
+ */
+const getNativeConstants = (): NativeConstants =>
+  (nativeConstants ??= HotUpdaterNative.getConstants());
 type PersistedUpdateStrategy = "fingerprint" | "appVersion";
 
 const normalizeAndValidateCohort = (cohort: string): string => {
@@ -62,7 +74,7 @@ class HotUpdaterSessionState {
   >();
 
   constructor() {
-    const constants = HotUpdaterNative.getConstants();
+    const constants = getNativeConstants();
     this.defaultChannel = constants.DEFAULT_CHANNEL ?? constants.CHANNEL;
     this.currentChannel = constants.CHANNEL;
   }
@@ -507,7 +519,7 @@ export async function updateBundle(params: UpdateParams): Promise<boolean> {
  * Fetches the current app version.
  */
 export const getAppVersion = (): string | null => {
-  const constants = HotUpdaterNative.getConstants();
+  const constants = getNativeConstants();
   return constants?.APP_VERSION ?? null;
 };
 
@@ -535,7 +547,7 @@ export const reload = async () => {
  * @returns {string} The minimum bundle id.
  */
 export const getMinBundleId = (): string => {
-  const constants = HotUpdaterNative.getConstants();
+  const constants = getNativeConstants();
   return constants.MIN_BUNDLE_ID;
 };
 
@@ -628,7 +640,7 @@ export const isChannelSwitched = (): boolean => {
  * @returns {string | null} Resolves with the fingerprint hash
  */
 export const getFingerprintHash = (): string | null => {
-  const constants = HotUpdaterNative.getConstants();
+  const constants = getNativeConstants();
   return constants.FINGERPRINT_HASH ?? null;
 };
 
