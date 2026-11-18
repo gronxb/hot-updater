@@ -1467,7 +1467,8 @@ class BundleFileStorageService(
         selectionContextHash: String,
     ): Boolean =
         synchronized(releaseStateLock) {
-            val metadata = loadMetadataOrNull() ?: createInitialMetadata()
+            val stored = loadMetadataOrNull()
+            val metadata = stored ?: createInitialMetadata()
             val stateKey = releaseScopeStateKey(catalogId, scopeKey)
             val highestSeen = metadata.highestSeenCatalogs[stateKey]
             if (highestSeen != null && generation < highestSeen.generation) {
@@ -1481,10 +1482,20 @@ class BundleFileStorageService(
                 return@synchronized false
             }
 
+            val highWater = CatalogHighWater(generation, catalogHash)
+            val context = selectionContextValue(channel, selectionContextHash)
+            // The same catalog in the same context, as every launch's check
+            // sees until a deploy: the stored metadata already says so.
+            if (stored != null &&
+                highestSeen == highWater &&
+                metadata.currentSelectionContexts[stateKey] == context
+            ) {
+                return@synchronized true
+            }
             val highWaters = metadata.highestSeenCatalogs.toMutableMap()
-            highWaters[stateKey] = CatalogHighWater(generation, catalogHash)
+            highWaters[stateKey] = highWater
             val contexts = metadata.currentSelectionContexts.toMutableMap()
-            contexts[stateKey] = selectionContextValue(channel, selectionContextHash)
+            contexts[stateKey] = context
             saveMetadata(
                 metadata.copy(
                     highestSeenCatalogs = highWaters,

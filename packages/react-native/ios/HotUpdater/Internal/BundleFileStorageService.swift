@@ -1645,7 +1645,8 @@ class BundleFileStorageService: BundleStorageService {
     ) -> Bool {
         releaseStateLock.lock()
         defer { releaseStateLock.unlock() }
-        var metadata = loadMetadataOrNull() ?? createInitialMetadata()
+        let stored = loadMetadataOrNull()
+        var metadata = stored ?? createInitialMetadata()
         let stateKey = releaseScopeStateKey(catalogId: catalogId, scopeKey: scopeKey)
         if let highestSeen = metadata.highestSeenCatalogs[stateKey] {
             if generation < highestSeen.generation { return false }
@@ -1653,14 +1654,17 @@ class BundleFileStorageService: BundleStorageService {
                 return false
             }
         }
-        metadata.highestSeenCatalogs[stateKey] = CatalogHighWater(
-            generation: generation,
-            catalogHash: catalogHash
-        )
-        metadata.currentSelectionContexts[stateKey] = selectionContextValue(
-            channel: channel,
-            selectionContextHash: selectionContextHash
-        )
+        let highWater = CatalogHighWater(generation: generation, catalogHash: catalogHash)
+        let context = selectionContextValue(channel: channel, selectionContextHash: selectionContextHash)
+        // The same catalog in the same context, as every launch's check sees
+        // until a deploy: the stored metadata already says so.
+        if stored != nil,
+           metadata.highestSeenCatalogs[stateKey] == highWater,
+           metadata.currentSelectionContexts[stateKey] == context {
+            return true
+        }
+        metadata.highestSeenCatalogs[stateKey] = highWater
+        metadata.currentSelectionContexts[stateKey] = context
         metadata.updatedAt = Date().timeIntervalSince1970 * 1000
         return saveMetadata(metadata)
     }
