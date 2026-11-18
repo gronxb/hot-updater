@@ -14,3 +14,6 @@ export const ALL_CHANNELS = "all";
 
 /** The channel filter's choice that lists every channel, on every page. */
 export const ALL_CHANNELS_LABEL = "All channels";
+
+export const CONSOLE_GIT_URL_GUIDE_URL =
+  "https://hot-updater.dev/docs/guides/console#git-url";

@@ -3,8 +3,10 @@ import { getPatchBaseFileHash, getPatchFileHash } from "@hot-updater/protocol";
 import { ExternalLink } from "lucide-react";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";
+import { InfoTooltip } from "@/components/InfoTooltip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConfigQuery } from "@/lib/api";
+import { CONSOLE_GIT_URL_GUIDE_URL } from "@/lib/constants";
 import { getCommitUrl } from "@/lib/git";
 
 interface BundleMetadataProps {
@@ -29,6 +31,10 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
     bundle?.gitCommitHash && isFetched
       ? getCommitUrl(configData?.console.gitUrl, bundle.gitCommitHash)
       : null;
+  const showGitUrlHint =
+    isFetched &&
+    Boolean(bundle?.gitCommitHash) &&
+    !configData?.console.gitUrl?.trim();
   const target =
     release.strategy === "APP_VERSION"
       ? release.target_app_version
@@ -81,6 +87,23 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
                     >
                       <ExternalLink aria-hidden="true" />
                     </a>
+                  ) : null}
+                  {showGitUrlHint ? (
+                    <InfoTooltip label="Link commits">
+                      Set{" "}
+                      <code className="font-mono text-foreground">
+                        console.gitUrl
+                      </code>{" "}
+                      in your config to link commits.{" "}
+                      <a
+                        className="text-primary hover:underline"
+                        href={CONSOLE_GIT_URL_GUIDE_URL}
+                        rel="noopener noreferrer"
+                        target="_blank"
+                      >
+                        Learn more
+                      </a>
+                    </InfoTooltip>
                   ) : null}
                 </div>
               }
