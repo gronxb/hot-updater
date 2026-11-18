@@ -13,8 +13,13 @@ const MULTIPART_THRESHOLD_BYTES = 100 * 1024 * 1024;
  * store's name with `-private`, so a rerun finds the store an interrupted
  * run created.
  */
-export const privateStoreNameFor = (publicName: string) =>
-  `${publicName.slice(0, MAX_STORE_NAME - PRIVATE_SUFFIX.length)}${PRIVATE_SUFFIX}`;
+export const privateStoreNameFor = (publicName: string) => {
+  const named = (suffix: string) =>
+    `${publicName.slice(0, MAX_STORE_NAME - suffix.length)}${suffix}`;
+  // A name that already ends in the suffix at full length maps to itself.
+  const name = named(PRIVATE_SUFFIX);
+  return name === publicName ? named(`${PRIVATE_SUFFIX}2`) : name;
+};
 
 /** Every object of a store, by pathname, with its size. */
 const listObjects = async (token: string) => {

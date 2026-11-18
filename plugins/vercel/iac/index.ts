@@ -48,10 +48,10 @@ import { resolveVercelToken } from "./vercelAuth";
 import { copyBlobStore, privateStoreNameFor } from "./vercelBlobMigration";
 import {
   assertPostgresCanInitialize,
-  countBlobStoreReferences,
   migratePostgres,
   moveBlobStoreReferences,
   readHotUpdaterTables,
+  referencedBlobStores,
   withPostgresClient,
 } from "./vercelDatabase";
 import { deployFunction, verifyFunction } from "./vercelFunction";
@@ -676,10 +676,11 @@ export const runInit = async ({
     });
   }
 
+  const stores = await api.listBlobStores();
   const storeSelection = await selectBlobStore({
     nonInteractive,
     ...(existingProject ? { projectId: existingProject.id } : {}),
-    stores: await api.listBlobStores(),
+    stores,
     ...(saved.blobStoreId ? { savedId: saved.blobStoreId } : {}),
     ...(saved.blobStoreName ? { savedName: saved.blobStoreName } : {}),
   });
@@ -712,21 +713,32 @@ export const runInit = async ({
   // Before any Blob store or deployment change: a database init can reach
   // and may initialize.
   assertPostgresCanInitialize(await readHotUpdaterTables(databaseUrl));
-  // A replaced public store's bundles are read with its token, while the
-  // database still names it.
+  // Every public store the database still names moves: the saved one, and
+  // one whose bundles a deploy that raced an earlier move left behind. Each
+  // is read with its token, which init needs before any change.
   const replaces = storeSelection.replaces;
-  const replacedToken =
-    replaces !== undefined &&
-    (await withPostgresClient(databaseUrl, (client) =>
-      countBlobStoreReferences(client, replaces.id),
-    )) > 0
-      ? await readPublicStoreToken(
-          api,
-          project,
-          replaces,
-          saved.blobReadWriteToken,
-        )
-      : undefined;
+  const referenced = await withPostgresClient(
+    databaseUrl,
+    referencedBlobStores,
+  );
+  const sources = stores.filter(
+    (candidate) =>
+      candidate.access === "public" &&
+      (candidate.id === replaces?.id || referenced.has(candidate.id)),
+  );
+  const sourceTokens = new Map<string, string>();
+  for (const source of sources) {
+    if (!referenced.has(source.id)) continue;
+    sourceTokens.set(
+      source.id,
+      await readPublicStoreToken(
+        api,
+        project,
+        source,
+        saved.blobReadWriteToken,
+      ),
+    );
+  }
 
   let store: VercelBlobStore;
   if (storeSelection.kind === "existing") {
@@ -752,7 +764,7 @@ export const runInit = async ({
     api,
     project,
     store,
-    replaces === undefined ? BLOB_ENV_PREFIX : `${BLOB_ENV_PREFIX}_PRIVATE`,
+    sources.length === 0 ? BLOB_ENV_PREFIX : `${BLOB_ENV_PREFIX}_PRIVATE`,
   );
   const resolvedInputs = {
     blobReadWriteToken: blobToken,
@@ -773,12 +785,12 @@ export const runInit = async ({
     provider: VERCEL_INIT_PROVIDER,
   });
   const plugins = [insights(), apiKeys(), remoteConfig()];
-  if (replaces !== undefined) {
+  for (const source of sources) {
     await moveBlobStore({
       api,
       databaseUrl,
-      from: replaces,
-      fromToken: replacedToken,
+      from: source,
+      fromToken: sourceTokens.get(source.id),
       plugins,
       project,
       to: store,
@@ -838,6 +850,19 @@ export const runInit = async ({
   const baseURL = productionBaseUrl(deployedProject);
   await verifyFunction(baseURL);
   p.log.success(`Deployed the Hot Updater Function: ${baseURL}`);
+  // A deploy that passed the schema fence before the migration may have
+  // written a bundle to a moved store since: move it too. One later still
+  // is moved by init's next run.
+  for (const [sourceId, sourceToken] of sourceTokens) {
+    await withPostgresClient(databaseUrl, (client) =>
+      moveBlobStoreReferences(client, sourceId, store.id, async () => {
+        await copyBlobStore({
+          from: { name: sourceId, token: sourceToken },
+          to: { token: blobToken },
+        });
+      }),
+    );
+  }
 
   const database = postgres({ connectionString: databaseUrl });
   // The managed server: its plugins over the database init set up, which
@@ -870,7 +895,7 @@ export const runInit = async ({
 
   return {
     nextSteps: [
-      ...(replaces === undefined
+      ...(sources.length === 0
         ? []
         : [
             `Set ${BLOB_TOKEN_ENV} to ${store.name}'s token wherever deploys read it besides .env.hotupdater, such as CI: the project's production ${BLOB_TOKEN_ENV} holds it.`,

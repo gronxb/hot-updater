@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   confirm: vi.fn(),
   confirmInitInputPersistence: vi.fn(),
   copyBlobStore: vi.fn(),
-  countBlobStoreReferences: vi.fn(),
+  referencedBlobStores: vi.fn(),
   createVercelApi: vi.fn(),
   deployFunction: vi.fn(),
   dispose: vi.fn(),
@@ -86,7 +86,7 @@ vi.mock("./vercelAuth", () => ({
 }));
 vi.mock("./vercelDatabase", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./vercelDatabase")>()),
-  countBlobStoreReferences: mocks.countBlobStoreReferences,
+  referencedBlobStores: mocks.referencedBlobStores,
   migratePostgres: mocks.migratePostgres,
   moveBlobStoreReferences: async (
     client: object,
@@ -156,7 +156,7 @@ beforeEach(() => {
   mocks.resolveVercelToken.mockResolvedValue("vercel-token");
   mocks.confirmInitInputPersistence.mockResolvedValue(true);
   mocks.readHotUpdaterTables.mockResolvedValue([]);
-  mocks.countBlobStoreReferences.mockResolvedValue(0);
+  mocks.referencedBlobStores.mockResolvedValue(new Set());
   mocks.copyBlobStore.mockResolvedValue({ copied: 0, total: 0 });
   mocks.moveBlobStoreReferences.mockResolvedValue(0);
   mocks.migratePostgres.mockResolvedValue("1.0.0");
@@ -773,7 +773,7 @@ describe("Vercel init on a public Blob store an earlier release created", () => 
       async (_project: string, envId: string) =>
         envId === "env_public" ? PUBLIC_TOKEN : PRIVATE_TOKEN,
     );
-    mocks.countBlobStoreReferences.mockResolvedValue(7);
+    mocks.referencedBlobStores.mockResolvedValue(new Set(["store_Public1"]));
   });
 
   it("copies the bundles to a private store, points the database at it, and redeploys", async () => {
@@ -821,9 +821,13 @@ describe("Vercel init on a public Blob store an earlier release created", () => 
     // then free the token variable for the Function's, then deploy.
     const order = (mock: { mock: { invocationCallOrder: number[] } }) =>
       mock.mock.invocationCallOrder[0]!;
-    const [firstCopy, lockedCopy] =
+    const [firstCopy, lockedCopy, lastCopy] =
       mocks.copyBlobStore.mock.invocationCallOrder;
-    expect(mocks.copyBlobStore).toHaveBeenCalledTimes(2);
+    // The third, after the deploy, catches a write that passed the fence
+    // before the migration.
+    expect(mocks.copyBlobStore).toHaveBeenCalledTimes(3);
+    expect(mocks.moveBlobStoreReferences).toHaveBeenCalledTimes(2);
+    expect(order(mocks.deployFunction)).toBeLessThan(lastCopy!);
     expect(firstCopy).toBeLessThan(order(mocks.migratePostgres));
     expect(order(mocks.migratePostgres)).toBeLessThan(lockedCopy!);
     expect(lockedCopy).toBeLessThan(order(mocks.moveBlobStoreReferences));
@@ -885,6 +889,52 @@ describe("Vercel init on a public Blob store an earlier release created", () => 
     );
   });
 
+  it("moves bundles a raced deploy left in the public store on a later run, to the saved private store", async () => {
+    // A replay after the move: the private store is saved, and the database
+    // still names the public one for a bundle written during the move.
+    givenInitEnv({
+      ...replayEnv,
+      HOT_UPDATER_VERCEL_BLOB_STORE_ID: "store_Private1",
+      HOT_UPDATER_VERCEL_BLOB_STORE_NAME: "hot-updater-storage-private",
+      HOT_UPDATER_VERCEL_PROJECT_ID: "prj_1",
+    });
+    mocks.api.listBlobStores.mockResolvedValue([
+      publicStore,
+      {
+        access: "private",
+        connections: [
+          {
+            environmentVariables: [
+              "HOT_UPDATER_VERCEL_BLOB_PRIVATE_READ_WRITE_TOKEN",
+            ],
+            environments: ["production"],
+            id: "spc_private",
+            projectId: "prj_1",
+          },
+        ],
+        id: "store_Private1",
+        name: "hot-updater-storage-private",
+        region: "iad1",
+      },
+    ]);
+    mocks.referencedBlobStores.mockResolvedValue(
+      new Set(["store_Private1", "store_Public1"]),
+    );
+
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    expect(mocks.api.createBlobStore).not.toHaveBeenCalled();
+    expect(mocks.copyBlobStore).toHaveBeenCalledWith({
+      from: { name: "hot-updater-storage", token: PUBLIC_TOKEN },
+      to: { token: PRIVATE_TOKEN },
+    });
+    expect(mocks.moveBlobStoreReferences).toHaveBeenCalledWith(
+      {},
+      "store_Public1",
+      "store_Private1",
+    );
+  });
+
   it("refuses a private store of that name another project uses", async () => {
     mocks.api.listBlobStores.mockResolvedValue([
       publicStore,
@@ -933,7 +983,7 @@ describe("Vercel init on a public Blob store an earlier release created", () => 
         region: "iad1",
       },
     ]);
-    mocks.countBlobStoreReferences.mockResolvedValue(0);
+    mocks.referencedBlobStores.mockResolvedValue(new Set(["store_Private1"]));
 
     await runInit({ build: "bare", envFile: ".env.hotupdater" });
 

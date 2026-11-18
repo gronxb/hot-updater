@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   countBlobStoreReferences,
   moveBlobStoreReferences,
+  referencedBlobStores,
 } from "./vercelDatabase";
 
 const PUBLIC = "store_Public1";
@@ -155,7 +156,16 @@ describe("moving a Blob store's storage URIs", () => {
     expect(await countBlobStoreReferences(db, PUBLIC)).toBe(5);
   });
 
+  it("lists the stores the URIs name", async () => {
+    const db = await databaseWith(PUBLIC);
+    await db.query(`UPDATE "bundle_patches" SET "patch_storage_uri" = $1`, [
+      uri(PRIVATE, "b2/patches/b1.bsdiff"),
+    ]);
+    expect(await referencedBlobStores(db)).toEqual(new Set([PUBLIC, PRIVATE]));
+  });
+
   it("counts nothing on an empty database", async () => {
     expect(await countBlobStoreReferences(new PGlite(), PUBLIC)).toBe(0);
+    expect(await referencedBlobStores(new PGlite())).toEqual(new Set());
   });
 });

@@ -142,5 +142,9 @@ describe("copying a public Blob store to a private one", () => {
     expect(privateStoreNameFor("a".repeat(32))).toBe(
       `${"a".repeat(24)}-private`,
     );
+    // Never the public store's own name.
+    expect(privateStoreNameFor(`${"a".repeat(24)}-private`)).toBe(
+      `${"a".repeat(23)}-private2`,
+    );
   });
 });

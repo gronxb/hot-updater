@@ -103,6 +103,24 @@ const existingUriColumns = async (client: PostgresQueryable) => {
   return STORAGE_URI_COLUMNS.filter(([table]) => tables.has(table));
 };
 
+/** The Blob stores the database's storage URIs name, by ID. */
+export const referencedBlobStores = async (
+  client: PostgresQueryable,
+): Promise<Set<string>> => {
+  const stores = new Set<string>();
+  const prefix = "vercel-blob://";
+  for (const [table, column] of await existingUriColumns(client)) {
+    const { rows } = await client.query<{ store: string }>(
+      `SELECT DISTINCT split_part(substr("${column}", length($1) + 1), '/', 1) AS store
+         FROM "${table}"
+        WHERE left("${column}", length($1)) = $1`,
+      [prefix],
+    );
+    for (const { store } of rows) stores.add(store);
+  }
+  return stores;
+};
+
 /** How many storage URIs name the store. */
 export const countBlobStoreReferences = async (
   client: PostgresQueryable,
