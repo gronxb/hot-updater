@@ -38,9 +38,6 @@ const compose = [
 const POSTGRES = "postgres://postgres:hot_updater@127.0.0.1:15432";
 const MYSQL = "mysql://root:hot_updater@127.0.0.1:13306";
 
-/** The plugins a managed server runs, so every official table is applied. */
-const target = toolingTargetOf([apiKeys(), insights(), remoteConfig()]);
-
 /** drizzle-kit's CLI, run as `npx drizzle-kit` runs it. */
 const drizzleKit = path.join(
   path.dirname(createRequire(import.meta.url).resolve("drizzle-kit/api")),
@@ -71,39 +68,54 @@ afterAll(async () => {
   await execa("docker", [...compose, "down", "-v"]);
 }, 60_000);
 
-/** The tables 1.2 adds; the statements that create them and their indexes are all an upgrade needs. */
+/** The tables 1.2 adds. */
 const NEW_TABLES = ["native_builds", "ios_devices", "ios_device_account"];
 /** The index 1.2 adds to a table 1.1 created. */
 const NEW_INDEX = "bundle_events__byBundle__key";
 
 /**
- * The documented edit of the migration `drizzle-kit generate` writes after
- * upgrading from 1.1: keep the statements that create the new tables, their
- * indexes, and the new index; delete every other statement.
+ * The table or index a generated statement creates, changes, copies or
+ * drops: an index statement's index, any other statement's table, SQLite's
+ * `__new_<table>` copies counted as `<table>`.
  */
-const keepNewTables = (sql: string) =>
+const objectOf = (statement: string) => {
+  const name =
+    /^CREATE (?:UNIQUE )?INDEX ["`](\w+)["`]/u.exec(statement)?.[1] ??
+    /^(?:CREATE|ALTER|DROP) TABLE ["`](\w+)["`]/u.exec(statement)?.[1] ??
+    /^INSERT INTO ["`](\w+)["`]/u.exec(statement)?.[1];
+  return name?.replace(/^__new_/u, "");
+};
+
+/**
+ * The documented edit of the migration `drizzle-kit generate` writes after
+ * upgrading: delete each statement on a Hot Updater table or index the
+ * database already has; keep everything else, the new tables and indexes and
+ * the app's own changes among it.
+ */
+const dropExisting = (existing: ReadonlySet<string>) => (sql: string) =>
   sql
     .split("--> statement-breakpoint")
     .map((statement) => statement.trim())
     .filter((statement) => {
-      const name = /^CREATE (?:UNIQUE )?(?:TABLE|INDEX) ["`](\w+)["`]/u.exec(
-        statement,
-      )?.[1];
-      const on = /^CREATE (?:UNIQUE )?INDEX ["`]\w+["`] ON ["`](\w+)["`]/u.exec(
-        statement,
-      )?.[1];
-      return (
-        (name !== undefined && NEW_TABLES.includes(name)) ||
-        (on !== undefined && NEW_TABLES.includes(on)) ||
-        name === NEW_INDEX
-      );
+      const name = objectOf(statement);
+      return name === undefined || !existing.has(name);
     })
     .join("\n--> statement-breakpoint\n");
+
+/** A table of the app's own that the upgrade's migration also creates. */
+const APP_TABLE = {
+  postgresql: `import { pgTable, varchar } from "drizzle-orm/pg-core";\nexport const todos = pgTable("todos", { id: varchar("id", { length: 36 }).primaryKey() });\n`,
+  sqlite: `import { sqliteTable, text } from "drizzle-orm/sqlite-core";\nexport const todos = sqliteTable("todos", { id: text("id").primaryKey() });\n`,
+  mysql: `import { mysqlTable, varchar } from "drizzle-orm/mysql-core";\nexport const todos = mysqlTable("todos", { id: varchar("id", { length: 36 }).primaryKey() });\n`,
+} as const;
 
 let projects = 0;
 
 /** A server project that applies Hot Updater's tables with drizzle-kit generate and migrate. */
-const project = async (dialect: DrizzleProvider) => {
+const project = async (
+  dialect: DrizzleProvider,
+  target = toolingTargetOf([apiKeys(), insights(), remoteConfig()]),
+) => {
   const cwd = path.join(await directory, `${dialect}-${(projects += 1)}`);
   await execa("mkdir", ["-p", cwd]);
   const name = `drizzle_generate_${projects}`;
@@ -152,13 +164,14 @@ const project = async (dialect: DrizzleProvider) => {
   await writeFile(
     path.join(cwd, "drizzle.config.ts"),
     `export default ${JSON.stringify({
-      schema: "./hot-updater-schema.ts",
+      schema: ["./hot-updater-schema.ts", "./app-schema.ts"],
       out: "./drizzle",
       dialect,
       dbCredentials: { url },
     })};\n`,
   );
   const schemaFile = path.join(cwd, "hot-updater-schema.ts");
+  await writeFile(path.join(cwd, "app-schema.ts"), "export {};\n");
   const kit = async (...args: string[]) => {
     const { exitCode, all } = await execa("node", [drizzleKit, ...args], {
       cwd,
@@ -179,14 +192,47 @@ const project = async (dialect: DrizzleProvider) => {
         schemaFile,
         database.generateSchema!("latest", undefined, target).code,
       ),
-    /** The schema file 1.1.16's `hot-updater db generate` wrote. */
-    generate1116: () =>
+    /** The schema file 1.1.16's `hot-updater db generate` wrote, `fixture` naming its plugins. */
+    generate1116: (fixture: string = dialect) =>
       copyFile(
         path.join(
           import.meta.dirname,
-          `__testfixtures__/drizzle-1.1.16.${dialect}.ts`,
+          `__testfixtures__/drizzle-1.1.16.${fixture}.ts`,
         ),
         schemaFile,
+      ),
+    /** The app adds a table of its own in the same upgrade. */
+    addAppTable: () =>
+      writeFile(path.join(cwd, "app-schema.ts"), APP_TABLE[dialect]),
+    /** Every table and index the database has. */
+    objects: async () =>
+      new Set(
+        (
+          await sql(
+            dialect === "postgresql"
+              ? "SELECT tablename AS t FROM pg_tables WHERE schemaname = 'public' UNION SELECT indexname FROM pg_indexes WHERE schemaname = 'public'"
+              : dialect === "mysql"
+                ? "SELECT TABLE_NAME AS t FROM information_schema.tables WHERE TABLE_SCHEMA = DATABASE() UNION SELECT INDEX_NAME FROM information_schema.statistics WHERE TABLE_SCHEMA = DATABASE()"
+                : "SELECT name AS t FROM sqlite_master WHERE type IN ('table', 'index')",
+          )
+        ).map(({ t }) => String(t)),
+      ),
+    /** Every table the database has. */
+    tables: async () =>
+      new Set(
+        (
+          await sql(
+            dialect === "postgresql"
+              ? "SELECT tablename AS t FROM pg_tables WHERE schemaname = 'public'"
+              : dialect === "mysql"
+                ? "SELECT TABLE_NAME AS t FROM information_schema.tables WHERE TABLE_SCHEMA = DATABASE()"
+                : "SELECT name AS t FROM sqlite_master WHERE type = 'table'",
+          )
+        )
+          .map(({ t }) => String(t))
+          .filter(
+            (t) => !t.startsWith("__drizzle") && !t.startsWith("sqlite_"),
+          ),
       ),
     /** The migration file drizzle-kit generate wrote last, edited by `edit`. */
     editLatestMigration: async (edit: (sql: string) => string) => {
@@ -216,14 +262,14 @@ const storage = {
 /**
  * Upgrading a 1.1.16 database whose schema drizzle-kit generate and migrate
  * applied: the migration generate writes re-declares every existing table,
- * so the documented edit keeps only what 1.2 adds. Applied as edited, the
- * upgrade rebuilds no existing table or index, and the next generate has
- * nothing to write.
+ * and the documented edit deletes those statements. Applied as edited, the
+ * upgrade creates the new tables and the app's own, rebuilds no existing
+ * table or index, and the next generate has nothing to write.
  */
 describe.each(["postgresql", "sqlite"] as const)(
   "drizzle-kit generate and migrate from a 1.1.16 %s database",
   (dialect) => {
-    it("adds only the new tables and indexes with the documented edit, then has nothing to write", async () => {
+    it("adds only what is new, the app's own table included, with the documented edit, then has nothing to write", async () => {
       const db = await project(dialect);
       await db.generate1116();
       expect((await db.kit("generate")).exitCode).toBe(0);
@@ -236,6 +282,7 @@ describe.each(["postgresql", "sqlite"] as const)(
       await db.sql(
         "INSERT INTO channels (id, name, _refs_releases_channel_id, _v) VALUES ('channel:production', 'production', 0, 0)",
       );
+      const existing = await db.tables();
       const before = new Map(
         (await db.sql(storage[dialect])).map(({ name, at }) => [
           String(name),
@@ -244,10 +291,12 @@ describe.each(["postgresql", "sqlite"] as const)(
       );
 
       await db.generate();
+      await db.addAppTable();
       expect((await db.kit("generate")).exitCode).toBe(0);
-      await db.editLatestMigration(keepNewTables);
-      const migrated = await db.kit("migrate");
-      expect(migrated.output).toContain("migrations applied successfully");
+      await db.editLatestMigration(dropExisting(await db.objects()));
+      expect((await db.kit("migrate")).output).toContain(
+        "migrations applied successfully",
+      );
       await db.migrate();
 
       const after = new Map(
@@ -260,8 +309,9 @@ describe.each(["postgresql", "sqlite"] as const)(
         [...before].filter(([name, at]) => after.get(name) !== at),
       ).toEqual([]);
       expect(
-        [...after.keys()].filter((name) => !before.has(name)).sort(),
-      ).toEqual(expect.arrayContaining([...NEW_TABLES, NEW_INDEX].sort()));
+        [...(await db.tables())].filter((t) => !existing.has(t)).sort(),
+      ).toEqual([...NEW_TABLES, "todos"].sort());
+      expect(after.has(NEW_INDEX)).toBe(true);
       expect((await db.kit("generate")).output).toContain(
         "No schema changes, nothing to migrate",
       );
@@ -272,7 +322,7 @@ describe.each(["postgresql", "sqlite"] as const)(
       if (dialect === "postgresql") {
         await expect(
           db.sql(
-            `SELECT count(*)::int AS n FROM information_schema.columns WHERE table_schema = 'public' AND data_type IN ('text', 'character varying') AND table_name <> 'private_hot_updater_settings' AND collation_name IS DISTINCT FROM 'C'`,
+            `SELECT count(*)::int AS n FROM information_schema.columns WHERE table_schema = 'public' AND data_type IN ('text', 'character varying') AND table_name NOT IN ('private_hot_updater_settings', 'todos') AND collation_name IS DISTINCT FROM 'C'`,
           ),
         ).resolves.toEqual([{ n: 0 }]);
       }
@@ -281,37 +331,73 @@ describe.each(["postgresql", "sqlite"] as const)(
   },
 );
 
-describe("drizzle-kit on a MySQL database 1.1.16 left", () => {
-  it("never created Hot Updater's tables, and the documented step applies them from what it left", async () => {
-    const db = await project("mysql");
-    await db.generate1116();
-    // 1.1.16's composite key names exceed MySQL's 64 characters: the push
-    // stops after the first tables, before the settings table.
-    expect((await db.kit("push", "--force")).output).toContain("is too long");
-    const left = (
-      await db.sql(
-        "SELECT TABLE_NAME AS t FROM information_schema.tables WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME",
-      )
-    ).map(({ t }) => String(t));
-    expect(left).toEqual(["api_keys", "bundle_event_heads", "bundle_events"]);
-    for (const table of left) {
-      await expect(
-        db.sql(`SELECT count(*) AS n FROM \`${table}\``),
-      ).resolves.toEqual([{ n: 0 }]);
-    }
+/**
+ * MySQL databases 1.1.16's `drizzle-kit push` created. With apiKeys() and
+ * remoteConfig() its schema applied and served; with insights() its key
+ * names exceeded MySQL's 64 characters and the push stopped after the first
+ * tables. From either, the first migration generate writes creates every
+ * table, which migrate refuses on a table that exists; the documented edit
+ * deletes the statements on those, keeping their rows.
+ */
+describe("drizzle-kit generate and migrate from a MySQL database 1.1.16's push created", () => {
+  /** generate, then migrate as written: refused at the first table that exists, having created nothing. */
+  const migrateAsWritten = async (db: Awaited<ReturnType<typeof project>>) => {
+    const existing = await db.tables();
+    expect((await db.kit("migrate")).exitCode).toBe(1);
+    expect(await db.tables()).toEqual(existing);
+  };
 
-    // Generate writes CREATE TABLE without IF NOT EXISTS, so migrate stops
-    // at the first table 1.1.16 left, having created nothing; the documented
-    // step drops what it left first.
+  it("keeps a served database's rows", async () => {
+    const plugins = toolingTargetOf([apiKeys(), remoteConfig()]);
+    const db = await project("mysql", plugins);
+    await db.generate1116("mysql.api-keys-remote-config");
+    expect((await db.kit("push", "--force")).output).toContain(
+      "Changes applied",
+    );
+    await db.sql(
+      "INSERT INTO private_hot_updater_settings (`key`, value, _v) VALUES ('schema.engine', '1', 0), ('schema.core', '1.0.0', 0), ('schema.apiKeys', '1.0.0', 0), ('schema.remoteConfig', '1.0.0', 0)",
+    );
+    await db.sql(
+      "INSERT INTO channels (id, name, _refs_releases_channel_id, _v) VALUES ('channel:production', 'production', 0, 0)",
+    );
+    const existing = await db.tables();
+
     await db.generate();
     expect((await db.kit("generate")).exitCode).toBe(0);
-    expect((await db.kit("migrate")).exitCode).toBe(1);
-    await expect(
-      db.sql(
-        "SELECT TABLE_NAME AS t FROM information_schema.tables WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME <> '__drizzle_migrations' ORDER BY TABLE_NAME",
-      ),
-    ).resolves.toEqual(left.map((t) => ({ t })));
-    for (const table of left) await db.sql(`DROP TABLE \`${table}\``);
+    await migrateAsWritten(db);
+    await db.editLatestMigration(dropExisting(await db.objects()));
+    expect((await db.kit("migrate")).output).toContain(
+      "migrations applied successfully",
+    );
+    await db.migrate();
+    expect(
+      [...(await db.tables())].filter((t) => !existing.has(t)).sort(),
+    ).toEqual([...NEW_TABLES].sort());
+    expect((await db.kit("generate")).output).toContain(
+      "No schema changes, nothing to migrate",
+    );
+    await expect(db.migrate()).resolves.toEqual([]);
+    await expect(db.sql("SELECT name FROM channels")).resolves.toEqual([
+      expect.objectContaining({ name: "production" }),
+    ]);
+    await db.close();
+  }, 180_000);
+
+  it("completes one whose push stopped on a key name", async () => {
+    const db = await project("mysql");
+    await db.generate1116();
+    expect((await db.kit("push", "--force")).output).toContain("is too long");
+    const existing = await db.tables();
+    expect([...existing].sort()).toEqual([
+      "api_keys",
+      "bundle_event_heads",
+      "bundle_events",
+    ]);
+
+    await db.generate();
+    expect((await db.kit("generate")).exitCode).toBe(0);
+    await migrateAsWritten(db);
+    await db.editLatestMigration(dropExisting(await db.objects()));
     expect((await db.kit("migrate")).output).toContain(
       "migrations applied successfully",
     );

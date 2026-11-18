@@ -150,19 +150,14 @@ npx drizzle-kit migrate
 npx hot-updater db migrate src/hotUpdater.ts --yes
 ```
 
-If you apply the schema with migration files on PostgreSQL or SQLite, and
-your database was created before Hot Updater 1.2, edit the first migration
-`drizzle-kit generate` writes after upgrading to 1.2 before you migrate. It
-declares every existing table again, which would rebuild them in one
-transaction. Keep only the statements that create `native_builds`,
-`ios_devices` and `ios_device_account`, the indexes on those three tables, and
-`bundle_events__byBundle__key`, and delete the rest.
-
-Before 1.2, drizzle-kit could not create Hot Updater's tables on MySQL. A push
-or migration stopped after `api_keys`, `bundle_event_heads` and
-`bundle_events`, so drop those tables where a database has them: they hold no
-rows. Remove a migration of that schema that failed with
-`npx drizzle-kit drop`, then generate and migrate.
+When you apply the schema with migration files to a database Hot Updater 1.1
+or earlier created, edit the first migration `drizzle-kit generate` writes
+after upgrading to 1.2 before you migrate. It declares Hot Updater's existing
+tables again, which would rebuild them, or on MySQL stop at the first one that
+exists. Delete each statement on a Hot Updater table or index the database
+already has: its `CREATE`, `ALTER` and `DROP` statements, and on SQLite the
+`__new_<table>` statements that copy it. Keep the rest, your own changes
+included. The next `generate` then has nothing to write.
 
 <Callout>
   Need plain SQL to apply yourself? See [SQL
