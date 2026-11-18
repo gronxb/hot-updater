@@ -963,24 +963,51 @@ describe("Vercel init on a public Blob store an earlier release created", () => 
     expect(mocks.makeEnv).not.toHaveBeenCalled();
   });
 
-  it("finishes an interrupted move: reuses the private store, and copies nothing once the database names it", async () => {
-    mocks.api.listBlobStores.mockResolvedValue([
-      { ...publicStore, connections: [] },
+  it("finishes an interrupted move: reuses the private store, and reconnects the public one to read its token", async () => {
+    const privateStore = {
+      access: "private" as const,
+      connections: [
+        {
+          environmentVariables: [
+            "HOT_UPDATER_VERCEL_BLOB_PRIVATE_READ_WRITE_TOKEN",
+          ],
+          environments: ["production"],
+          id: "spc_private",
+          projectId: "prj_1",
+        },
+      ],
+      id: "store_Private1",
+      name: "hot-updater-storage-private",
+      region: "iad1",
+    };
+    // An earlier run disconnected the public store; init connects it again.
+    mocks.api.listBlobStores
+      .mockResolvedValueOnce([
+        { ...publicStore, connections: [] },
+        privateStore,
+      ])
+      .mockResolvedValue([
+        {
+          ...publicStore,
+          connections: [
+            {
+              environmentVariables: [
+                "HOT_UPDATER_VERCEL_BLOB_PUBLIC_READ_WRITE_TOKEN",
+              ],
+              environments: ["production"],
+              id: "spc_again",
+              projectId: "prj_1",
+            },
+          ],
+        },
+        privateStore,
+      ]);
+    mocks.api.listProjectEnv.mockResolvedValue([
+      ...projectEnv.slice(1),
       {
-        access: "private",
-        connections: [
-          {
-            environmentVariables: [
-              "HOT_UPDATER_VERCEL_BLOB_PRIVATE_READ_WRITE_TOKEN",
-            ],
-            environments: ["production"],
-            id: "spc_private",
-            projectId: "prj_1",
-          },
-        ],
-        id: "store_Private1",
-        name: "hot-updater-storage-private",
-        region: "iad1",
+        id: "env_public",
+        key: "HOT_UPDATER_VERCEL_BLOB_PUBLIC_READ_WRITE_TOKEN",
+        target: ["production"],
       },
     ]);
     mocks.referencedBlobStores.mockResolvedValue(new Set(["store_Private1"]));
@@ -988,9 +1015,24 @@ describe("Vercel init on a public Blob store an earlier release created", () => 
     await runInit({ build: "bare", envFile: ".env.hotupdater" });
 
     expect(mocks.api.createBlobStore).not.toHaveBeenCalled();
-    expect(mocks.api.connectBlobStore).not.toHaveBeenCalled();
-    expect(mocks.copyBlobStore).not.toHaveBeenCalled();
-    expect(mocks.moveBlobStoreReferences).not.toHaveBeenCalled();
+    expect(mocks.api.connectBlobStore.mock.calls).toEqual([
+      [
+        {
+          envVarPrefix: "HOT_UPDATER_VERCEL_BLOB_PUBLIC",
+          projectId: "prj_1",
+          storeId: "store_Public1",
+        },
+      ],
+    ]);
+    // A deploy under way may have written to it since the last run.
+    expect(mocks.copyBlobStore).toHaveBeenCalledWith({
+      from: { name: "hot-updater-storage", token: PUBLIC_TOKEN },
+      to: { token: PRIVATE_TOKEN },
+    });
+    expect(mocks.api.disconnectBlobStore).toHaveBeenCalledWith(
+      "store_Public1",
+      "spc_again",
+    );
     expect(mocks.makeEnv).toHaveBeenCalledWith(
       expect.objectContaining({
         HOT_UPDATER_VERCEL_BLOB_STORE_ID: "store_Private1",
@@ -999,10 +1041,13 @@ describe("Vercel init on a public Blob store an earlier release created", () => 
     expect(mocks.deployFunction).toHaveBeenCalled();
   });
 
-  it("refuses before any change without the public store's token", async () => {
+  it("refuses before any other change when it can't read the public store's token", async () => {
     mocks.api.listBlobStores.mockResolvedValue([
       { ...publicStore, connections: [] },
     ]);
+    mocks.api.connectBlobStore.mockRejectedValueOnce(
+      new VercelApiError(403, "forbidden", "Vercel API POST failed (403)"),
+    );
 
     await expect(
       runInit({ build: "bare", envFile: ".env.hotupdater" }),

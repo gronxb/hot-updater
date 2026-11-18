@@ -334,9 +334,9 @@ const resolveBlobToken = async (
 };
 
 /**
- * The read-write token of the saved public store whose bundles init moves:
- * from its connection to the project, or the token init saved. Read before
- * any change; without one, init refuses.
+ * The read-write token of a public store whose bundles init moves: from its
+ * connection to the project, the token init saved, or a connection init
+ * makes for it. Without one, init refuses before it changes anything else.
  */
 const readPublicStoreToken = async (
   api: VercelApi,
@@ -362,6 +362,26 @@ const readPublicStoreToken = async (
   }
   if (savedToken !== undefined && storeIdOfToken(savedToken) === store.id) {
     return savedToken;
+  }
+  // A store an earlier move disconnected: connected again under a prefix of
+  // its own, which the move disconnects once more.
+  const prefix = `${BLOB_ENV_PREFIX}_PUBLIC`;
+  let token: string | undefined;
+  try {
+    await api.connectBlobStore({
+      envVarPrefix: prefix,
+      projectId: project.id,
+      storeId: store.id,
+    });
+    token = await readProductionEnv(api, project, `${prefix}_READ_WRITE_TOKEN`);
+  } catch (error) {
+    if (!(error instanceof VercelApiError)) throw error;
+  }
+  if (
+    token?.startsWith("vercel_blob_rw_") &&
+    storeIdOfToken(token) === store.id
+  ) {
+    return token;
   }
   throw new InitError(
     `Blob store ${store.name} is public, and init needs its read-write token to move its bundles to a private store. Connect ${store.name} to project ${project.name} in the Vercel dashboard's Storage tab, then rerun init.`,
@@ -431,7 +451,11 @@ const moveBlobStore = async ({
       },
     ]);
   }
-  for (const connection of from.connections) {
+  // Including a connection init made to read the token.
+  const current = (await api.listBlobStores()).find(
+    (store) => store.id === from.id,
+  );
+  for (const connection of current?.connections ?? from.connections) {
     if (connection.projectId !== project.id) continue;
     await api.disconnectBlobStore(from.id, connection.id);
     p.log.info(`Disconnected Blob store ${from.name} from ${project.name}`);
@@ -726,9 +750,10 @@ export const runInit = async ({
       candidate.access === "public" &&
       (candidate.id === replaces?.id || referenced.has(candidate.id)),
   );
+  // The saved one too while the database names none of it yet: a deploy
+  // already under way may write to it until the move.
   const sourceTokens = new Map<string, string>();
   for (const source of sources) {
-    if (!referenced.has(source.id)) continue;
     sourceTokens.set(
       source.id,
       await readPublicStoreToken(
