@@ -181,12 +181,20 @@ type BlobStoreSelection = (
 const replacePublicStore = (
   publicStore: VercelBlobStore,
   stores: readonly VercelBlobStore[],
+  projectId: string | undefined,
 ): BlobStoreSelection => {
   const name = privateStoreNameFor(publicStore.name);
   const existing = stores.find((store) => store.name === name);
-  if (existing?.access === "public") {
+  // The store an interrupted run created: connected to this project, or to
+  // none yet.
+  const ours =
+    existing?.access === "private" &&
+    existing.connections.every(
+      (connection) => connection.projectId === projectId,
+    );
+  if (existing !== undefined && !ours) {
     throw new InitError(
-      `Blob store ${publicStore.name} is public, and init moves its bundles to a private store named ${name}, which is a public store too. Delete or rename ${name} in the Vercel dashboard's Storage tab, then rerun init.`,
+      `Blob store ${publicStore.name} is public, and init moves its bundles to a private store named ${name}, which is ${existing.access === "public" ? "a public store" : "another project's store"}. Delete or rename ${name} in the Vercel dashboard's Storage tab, then rerun init.`,
     );
   }
   p.log.info(
@@ -204,11 +212,14 @@ const replacePublicStore = (
  */
 const selectBlobStore = async ({
   nonInteractive,
+  projectId,
   savedId,
   savedName,
   stores,
 }: {
   readonly nonInteractive: boolean;
+  /** The project init deploys to, when it exists. */
+  readonly projectId?: string;
   readonly savedId?: string;
   readonly savedName?: string;
   readonly stores: readonly VercelBlobStore[];
@@ -218,7 +229,9 @@ const selectBlobStore = async ({
     (savedId === undefined
       ? stores.find((store) => store.name === savedName)
       : undefined);
-  if (found?.access === "public") return replacePublicStore(found, stores);
+  if (found?.access === "public") {
+    return replacePublicStore(found, stores, projectId);
+  }
   const privateStores = stores.filter((store) => store.access === "private");
   const saved = found;
   if (nonInteractive) {
@@ -648,6 +661,7 @@ export const runInit = async ({
 
   const storeSelection = await selectBlobStore({
     nonInteractive,
+    ...(existingProject ? { projectId: existingProject.id } : {}),
     stores: await api.listBlobStores(),
     ...(saved.blobStoreId ? { savedId: saved.blobStoreId } : {}),
     ...(saved.blobStoreName ? { savedName: saved.blobStoreName } : {}),
@@ -723,6 +737,24 @@ export const runInit = async ({
     store,
     replaces === undefined ? BLOB_ENV_PREFIX : `${BLOB_ENV_PREFIX}_PRIVATE`,
   );
+  const resolvedInputs = {
+    blobReadWriteToken: blobToken,
+    blobStoreId: store.id,
+    blobStoreName: store.name,
+    databaseUrl,
+    projectId: project.id,
+    projectName: project.name,
+    teamId: scope.id,
+    ...(saved.vercelToken ? { vercelToken: saved.vercelToken } : {}),
+  };
+  // Asked before the move, which the Function of the replaced store can't
+  // serve until init redeploys it.
+  const persistCredentialInputs = await confirmInitInputPersistence({
+    existingEnv: managedEnv,
+    inputs: resolvedInputs,
+    nonInteractive,
+    provider: VERCEL_INIT_PROVIDER,
+  });
   if (replaces !== undefined) {
     await moveBlobStore({
       api,
@@ -734,30 +766,19 @@ export const runInit = async ({
       toToken: blobToken,
     });
   }
-
-  const resolvedInputs = {
-    blobReadWriteToken: blobToken,
-    blobStoreId: store.id,
-    blobStoreName: store.name,
-    databaseUrl,
-    projectId: project.id,
-    projectName: project.name,
-    teamId: scope.id,
-    ...(saved.vercelToken ? { vercelToken: saved.vercelToken } : {}),
-  };
-  const persistCredentialInputs = await confirmInitInputPersistence({
-    existingEnv: managedEnv,
-    inputs: resolvedInputs,
-    nonInteractive,
-    provider: VERCEL_INIT_PROVIDER,
-  });
-  await makeEnv(
-    getInitProviderEnvVars({
+  // A Blob token .env.hotupdater saved was saved with consent: it follows the
+  // store, so deploys don't write to the one init no longer uses.
+  const savedBlobToken = managedEnv[BLOB_TOKEN_ENV]?.trim();
+  await makeEnv({
+    ...getInitProviderEnvVars({
       includeConsentInputs: persistCredentialInputs,
       inputs: resolvedInputs,
       provider: VERCEL_INIT_PROVIDER,
     }),
-  );
+    ...(savedBlobToken && savedBlobToken !== blobToken
+      ? { [BLOB_TOKEN_ENV]: blobToken }
+      : {}),
+  });
   // The deployment is on a private store now.
   const retiredKeys = VERCEL_INIT_PROVIDER.retiredInputs
     .map(({ envKey }) => envKey)
@@ -828,6 +849,11 @@ export const runInit = async ({
 
   return {
     nextSteps: [
+      ...(replaces === undefined
+        ? []
+        : [
+            `Set ${BLOB_TOKEN_ENV} to ${store.name}'s token wherever deploys read it besides .env.hotupdater, such as CI: the project's production ${BLOB_TOKEN_ENV} holds it.`,
+          ]),
       link(
         "https://hot-updater.dev/docs/managed/vercel#step-3-add-hotupdater-to-your-project",
       ),

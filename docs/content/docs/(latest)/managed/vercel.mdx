@@ -120,10 +120,10 @@ environment variables.
 
 The Blob store is always private: devices download bundles only through signed
 URLs that expire, which the server issues to requests with a valid API key. Init
-does not use a public store. A public store that init of 1.0.2 or 1.0.3 created
-is replaced when init runs again: init copies its bundles to the private store
-`<store>-private`, points the database at it, and redeploys the Function. The
-public store keeps its objects until you delete it.
+does not use a public store. When the store `.env.hotupdater` names is public,
+init replaces it: it copies the bundles to the private store `<store>-private`,
+points the database at it, and redeploys the Function. The public store keeps
+its objects until you delete it.
 
 Managed init reuses `HOT_UPDATER_API_KEY` when supplied or creates an API key,
 registers it in the database, and persists the plaintext value locally. Send this

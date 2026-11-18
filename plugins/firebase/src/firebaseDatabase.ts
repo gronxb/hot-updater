@@ -91,7 +91,7 @@ const adapterOf = ({
     : getFirestore(app);
   const store = createFirestoreStore({ firestore, collection });
   return createKvAdapter({
-    // The Cloud Function passes no credential: its runtime provides one.
+    // The Cloud Function passes no credential: its default app has one.
     store:
       appOptions.credential === undefined
         ? store
