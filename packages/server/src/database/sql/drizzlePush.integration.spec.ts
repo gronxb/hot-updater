@@ -2,7 +2,13 @@ import { copyFile, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-import { toolingTargetOf } from "@hot-updater/plugin-core";
+import {
+  coreSettings,
+  createTableStatements,
+  SETTINGS_TABLE,
+  toolingTargetOf,
+  type ToolingTarget,
+} from "@hot-updater/plugin-core";
 import { assertDockerComposeAvailable } from "@hot-updater/test-utils/node";
 import { createClient } from "@libsql/client";
 import { drizzle as libsql } from "drizzle-orm/libsql";
@@ -274,4 +280,91 @@ describe("drizzle-kit generate and migrate of the generated mysql schema", () =>
     );
     await pool.end();
   }, 180_000);
+});
+
+describe("db migrate's catalog reads on PostgreSQL", () => {
+  /** A database of its own, its pool connecting with `options`. */
+  const database = async (name: string, options?: string) => {
+    await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+    await admin.query(`CREATE DATABASE ${name}`);
+    return new pg.Pool({
+      connectionString: `${POSTGRES}/${name}`,
+      ...(options === undefined ? {} : { options }),
+    });
+  };
+  /** One table of a plugin's, as a target declares it. */
+  const targetOf = (name: string): ToolingTarget => ({
+    schema: {
+      models: new Map(),
+      tables: [
+        {
+          name,
+          columns: [
+            { name: "id", type: "string", nullable: false, maxLength: 36 },
+            { name: "_v", type: "integer", nullable: false, default: 0 },
+          ],
+          key: ["id"],
+          indexes: [],
+        },
+      ],
+    } as unknown as ToolingTarget["schema"],
+    settings: coreSettings,
+  });
+
+  it("finds a table whose name PostgreSQL cut to its limit", async () => {
+    const pool = await database("drizzle_long_names");
+    const target = targetOf(`plugin_${"x".repeat(70)}`);
+    await pool.query(
+      createTableStatements("postgresql", [
+        ...target.schema.tables,
+        SETTINGS_TABLE,
+      ]).join(";\n"),
+    );
+    const migrator = drizzleAdapter({
+      db: nodePostgres(pool),
+      provider: "postgresql",
+    }).createMigrator!(target);
+    await (await migrator.migrateToLatest()).execute();
+    await expect(migrator.migrateToLatest()).resolves.toMatchObject({
+      operations: [],
+    });
+    await pool.end();
+  });
+
+  it("sets the collation on the table the search path reads, not one it shadows", async () => {
+    const pool = await database(
+      "drizzle_shadowed",
+      "-c search_path=tenant,public",
+    );
+    const target = targetOf("items");
+    // public.items compares by bytes; tenant.items, which the server reads,
+    // does not yet.
+    await pool.query(
+      [
+        "CREATE SCHEMA tenant",
+        "CREATE TABLE tenant.items (id varchar(36) NOT NULL PRIMARY KEY, _v bigint NOT NULL DEFAULT 0)",
+        // Created after it, so a read that mixes both schemas sees this one last.
+        ...createTableStatements("postgresql", target.schema.tables).map(
+          (statement) => statement.replace('"items"', "public.items"),
+        ),
+        ...createTableStatements("postgresql", [SETTINGS_TABLE]),
+      ].join(";\n"),
+    );
+    const pending = await drizzleAdapter({
+      db: nodePostgres(pool),
+      provider: "postgresql",
+    }).createMigrator!(target).migrateToLatest();
+    expect(pending.operations[0]).toEqual({
+      type: "custom",
+      description:
+        "Set the byte-order collation the ORM cannot declare on 1 column of 1 table",
+    });
+    await pending.execute();
+    await expect(
+      pool.query(
+        "SELECT collation_name FROM information_schema.columns WHERE table_schema = 'tenant' AND table_name = 'items' AND column_name = 'id'",
+      ),
+    ).resolves.toMatchObject({ rows: [{ collation_name: "C" }] });
+    await pool.end();
+  });
 });

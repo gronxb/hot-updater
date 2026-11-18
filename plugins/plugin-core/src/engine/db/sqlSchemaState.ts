@@ -37,19 +37,41 @@ export interface SqlSchemaState {
   hasIndex(table: string, index: string): boolean;
 }
 
+/** PostgreSQL's identifier limit, NAMEDATALEN - 1 bytes. */
+const POSTGRES_NAME_BYTES = 63;
+
+/** A name as PostgreSQL stores it: cut to its limit on a character boundary. */
+const postgresName = (name: string) => {
+  const encoder = new TextEncoder();
+  let bytes = 0;
+  let cut = "";
+  for (const character of name) {
+    bytes += encoder.encode(character).length;
+    if (bytes > POSTGRES_NAME_BYTES) break;
+    cut += character;
+  }
+  return cut;
+};
+
 /**
- * MySQL compares index names, and with lower_case_table_names table names,
- * without case, and reports them folded: every name is compared folded.
+ * A name as the catalog reports it, so declared and stored names compare.
+ * PostgreSQL cuts a longer name to its limit. MySQL compares index names,
+ * and with lower_case_table_names table names, without case, and reports
+ * them folded.
  */
 const fold = (dialect: SqlExecutor["dialect"], name: unknown) =>
-  dialect === "mysql" ? String(name).toLowerCase() : String(name);
+  dialect === "mysql"
+    ? String(name).toLowerCase()
+    : dialect === "postgresql"
+      ? postgresName(String(name))
+      : String(name);
 
 const CATALOG = {
   postgresql: {
     tables:
-      "SELECT c.relname AS t FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r', 'p') AND n.nspname = ANY (current_schemas(false))",
+      "SELECT c.relname AS t FROM pg_class c WHERE c.relkind IN ('r', 'p') AND pg_table_is_visible(c.oid)",
     indexes:
-      "SELECT t.relname AS t, c.relname AS i FROM pg_index x JOIN pg_class c ON c.oid = x.indexrelid JOIN pg_class t ON t.oid = x.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE n.nspname = ANY (current_schemas(false))",
+      "SELECT t.relname AS t, c.relname AS i FROM pg_index x JOIN pg_class c ON c.oid = x.indexrelid JOIN pg_class t ON t.oid = x.indrelid WHERE pg_table_is_visible(t.oid)",
   },
   mysql: {
     tables:
@@ -124,7 +146,7 @@ const declaredCollation = (type: string) =>
 
 const COLLATIONS = {
   postgresql:
-    "SELECT c.relname AS t, a.attname AS c, co.collname AS k FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace JOIN pg_collation co ON co.oid = a.attcollation WHERE c.relkind IN ('r', 'p') AND a.attnum > 0 AND NOT a.attisdropped AND n.nspname = ANY (current_schemas(false))",
+    "SELECT c.relname AS t, a.attname AS c, co.collname AS k FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_collation co ON co.oid = a.attcollation WHERE c.relkind IN ('r', 'p') AND a.attnum > 0 AND NOT a.attisdropped AND pg_table_is_visible(c.oid)",
   mysql:
     "SELECT TABLE_NAME AS t, COLUMN_NAME AS c, COLLATION_NAME AS k FROM information_schema.columns WHERE TABLE_SCHEMA = DATABASE() AND COLLATION_NAME IS NOT NULL",
 } as const;
@@ -148,7 +170,7 @@ export const collationStatements = async (
   });
   const stored = new Map(
     rows.map(({ t, c, k }) => [
-      JSON.stringify([fold(dialect, t), String(c)]),
+      JSON.stringify([fold(dialect, t), fold(dialect, c)]),
       String(k),
     ]),
   );
@@ -162,7 +184,10 @@ export const collationStatements = async (
           expected !== undefined &&
           collate(column) &&
           stored.get(
-            JSON.stringify([fold(dialect, shape.name), column.name]),
+            JSON.stringify([
+              fold(dialect, shape.name),
+              fold(dialect, column.name),
+            ]),
           ) !== expected
         );
       })
