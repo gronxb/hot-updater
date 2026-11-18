@@ -16,10 +16,10 @@ const nativeModuleMock = vi.hoisted(() => {
     getManifest,
     getCrashHistory,
     getConstants: vi.fn(() => ({
-      APP_VERSION: null,
+      APP_VERSION: null as string | null,
       CHANNEL: "production",
       DEFAULT_CHANNEL: "production",
-      FINGERPRINT_HASH: null,
+      FINGERPRINT_HASH: null as string | null,
       MIN_BUNDLE_ID: "min-bundle-id",
     })),
     notifyAppReady: vi.fn(),
@@ -947,6 +947,28 @@ describe("notifyAppReady", () => {
     const { getInstallId } = await import("./native");
 
     expect(getInstallId()).toBe("install-123");
+  });
+
+  it("reads the native constants once per runtime", async () => {
+    nativeModuleMock.getConstants.mockClear();
+    nativeModuleMock.getConstants.mockReturnValue({
+      APP_VERSION: "1.0.0",
+      CHANNEL: "production",
+      DEFAULT_CHANNEL: "production",
+      FINGERPRINT_HASH: "fingerprint",
+      MIN_BUNDLE_ID: "min-bundle-id",
+    });
+
+    const { getAppVersion, getFingerprintHash, getMinBundleId } =
+      await import("./native");
+
+    for (let index = 0; index < 3; index++) {
+      expect(getAppVersion()).toBe("1.0.0");
+      expect(getFingerprintHash()).toBe("fingerprint");
+      expect(getMinBundleId()).toBe("min-bundle-id");
+    }
+    // Android computes them again, metadata included, on every call.
+    expect(nativeModuleMock.getConstants).toHaveBeenCalledTimes(1);
   });
 
   it("normalizes an omitted native fingerprint constant to null", async () => {
