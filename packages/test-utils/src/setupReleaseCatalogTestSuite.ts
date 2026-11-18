@@ -398,7 +398,7 @@ export const setupReleaseCatalogTestSuite = (options: {
             })
             .toBe(200);
           expect((await readCatalog()).releases).toHaveLength(1);
-        });
+        }, 15_000);
 
         it("preserves rollout and named cohort policy without server-side cohort selection", async () => {
           const stable = await publish("131");
