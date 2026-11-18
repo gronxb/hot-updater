@@ -17,14 +17,12 @@ import {
   provisionClientCredential,
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
-  readLoadedHotUpdaterEnv,
   resolveInitProviderInputs,
   type RunInitOptions,
   type RunInitResult,
   shouldAutoSelectOnlyInitResource,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
-import type { AnyHotUpdaterPlugin } from "@hot-updater/plugin-core";
 import { postgres } from "@hot-updater/postgres";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { execa } from "execa";
@@ -45,14 +43,10 @@ import {
   type VercelUser,
 } from "./vercelApi";
 import { resolveVercelToken } from "./vercelAuth";
-import { copyBlobStore, privateStoreNameFor } from "./vercelBlobMigration";
 import {
   assertPostgresCanInitialize,
   migratePostgres,
-  moveBlobStoreReferences,
   readHotUpdaterTables,
-  referencedBlobStores,
-  withPostgresClient,
 } from "./vercelDatabase";
 import { deployFunction, verifyFunction } from "./vercelFunction";
 import {
@@ -166,79 +160,30 @@ const resolveProjectName = async (
   );
 };
 
-type BlobStoreSelection = (
-  | { readonly kind: "existing"; readonly store: VercelBlobStore }
-  | { readonly kind: "create"; readonly name: string }
-) & {
-  /** A saved public store, whose bundles init moves to the selected store. */
-  readonly replaces?: VercelBlobStore;
-};
-
-/**
- * The private store a saved public store's bundles move to: Hot Updater
- * 1.0.2 and 1.0.3 could create a public store, and bundles now download only
- * through signed URLs, which a public store has no use for. Refuses before
- * any change when that store's name is taken by another public store.
- */
-const replacePublicStore = (
-  publicStore: VercelBlobStore,
-  stores: readonly VercelBlobStore[],
-  projectId: string | undefined,
-): BlobStoreSelection => {
-  const name = privateStoreNameFor(publicStore.name);
-  const existing = stores.find((store) => store.name === name);
-  // The store an interrupted run created, which init connects to this
-  // project as soon as it creates it, and to no other.
-  const ours =
-    existing?.access === "private" &&
-    existing.connections.some(
-      (connection) => connection.projectId === projectId,
-    ) &&
-    existing.connections.every(
-      (connection) => connection.projectId === projectId,
-    );
-  if (existing !== undefined && !ours) {
-    throw new InitError(
-      `Blob store ${publicStore.name} is public, and init moves its bundles to a private store named ${name}, which is ${existing.access === "public" ? "a public store" : "not connected to this project"}. Delete or rename ${name} in the Vercel dashboard's Storage tab, then rerun init.`,
-    );
-  }
-  p.log.info(
-    `Blob store ${publicStore.name} is public. Init copies its bundles to the private store ${name} and serves them from there; ${publicStore.name} itself is not changed.`,
-  );
-  return existing
-    ? { kind: "existing", store: existing, replaces: publicStore }
-    : { kind: "create", name, replaces: publicStore };
-};
-
 /**
  * The saved private store, or one the user selects or creates. Bundles
- * download only through signed URLs, so a public store is never used: a
- * saved one is replaced by a private store its bundles move to.
+ * download only through signed URLs, so a public store is never used.
  */
 const selectBlobStore = async ({
   nonInteractive,
-  projectId,
   savedId,
   savedName,
   stores,
 }: {
   readonly nonInteractive: boolean;
-  /** The project init deploys to, when it exists. */
-  readonly projectId?: string;
   readonly savedId?: string;
   readonly savedName?: string;
   readonly stores: readonly VercelBlobStore[];
-}): Promise<BlobStoreSelection> => {
-  const found =
-    stores.find((store) => store.id === savedId) ??
-    (savedId === undefined
-      ? stores.find((store) => store.name === savedName)
-      : undefined);
-  if (found?.access === "public") {
-    return replacePublicStore(found, stores, projectId);
-  }
+}): Promise<
+  | { readonly kind: "existing"; readonly store: VercelBlobStore }
+  | { readonly kind: "create"; readonly name: string }
+> => {
   const privateStores = stores.filter((store) => store.access === "private");
-  const saved = found;
+  const saved =
+    privateStores.find((store) => store.id === savedId) ??
+    (savedId === undefined
+      ? privateStores.find((store) => store.name === savedName)
+      : undefined);
   if (nonInteractive) {
     if (saved) return { kind: "existing", store: saved };
     if (savedName) return { kind: "create", name: savedName };
@@ -280,33 +225,14 @@ const selectBlobStore = async ({
   return { kind: "create", name };
 };
 
-/** The production value of a project's environment variable `key`. */
-const readProductionEnv = async (
-  api: VercelApi,
-  project: VercelProject,
-  key: string | undefined,
-) => {
-  const env = (await api.listProjectEnv(project.id)).find(
-    (candidate) =>
-      candidate.key === key && candidate.target.includes("production"),
-  );
-  return env === undefined
-    ? undefined
-    : await api.getProjectEnvValue(project.id, env.id);
-};
-
-/** The store a read-write token `vercel_blob_rw_<id>_<secret>` belongs to, `store_<id>`. */
-const storeIdOfToken = (token: string) => `store_${token.split("_")[3]}`;
-
 /**
  * The store's read-write token: from its connection to the project, which
- * init makes when there is none, with `prefix` for the variable Vercel adds.
+ * init makes when there is none.
  */
 const resolveBlobToken = async (
   api: VercelApi,
   project: VercelProject,
   store: VercelBlobStore,
-  prefix = BLOB_ENV_PREFIX,
 ): Promise<string> => {
   const connection = store.connections.find(
     (candidate) => candidate.projectId === project.id,
@@ -316,153 +242,32 @@ const resolveBlobToken = async (
   );
   if (connection === undefined) {
     await api.connectBlobStore({
-      envVarPrefix: prefix,
+      envVarPrefix: BLOB_ENV_PREFIX,
       projectId: project.id,
       storeId: store.id,
     });
-    tokenEnv = `${prefix}_READ_WRITE_TOKEN`;
+    tokenEnv = BLOB_TOKEN_ENV;
   }
-  const token = await readProductionEnv(api, project, tokenEnv);
+  const env = (await api.listProjectEnv(project.id)).find(
+    (candidate) =>
+      candidate.key === tokenEnv && candidate.target.includes("production"),
+  );
+  const token =
+    env === undefined
+      ? undefined
+      : await api.getProjectEnvValue(project.id, env.id);
   if (!token?.startsWith("vercel_blob_rw_")) {
     throw new InitError(
       `Blob store ${store.name} is connected to project ${project.name} without a read-write token for production. Reconnect it from the project's Storage tab with a read-write token, then rerun init.`,
     );
   }
-  if (storeIdOfToken(token) !== store.id) {
+  // `vercel_blob_rw_<id>_<secret>` names its store, `store_<id>`.
+  if (`store_${token.split("_")[3]}` !== store.id) {
     throw new InitError(
       `The production ${tokenEnv} of project ${project.name} belongs to another Blob store, not ${store.name}. Disconnect that store from the project's Storage tab, then rerun init.`,
     );
   }
   return token;
-};
-
-/**
- * The read-write token of a public store whose bundles init moves: from its
- * connection to the project, the token init saved, or a connection init
- * makes for it. Without one, init refuses before it changes anything else.
- */
-const readPublicStoreToken = async (
-  api: VercelApi,
-  project: VercelProject,
-  store: VercelBlobStore,
-  savedToken: string | undefined,
-): Promise<string> => {
-  for (const connection of store.connections) {
-    if (connection.projectId !== project.id) continue;
-    const token = await readProductionEnv(
-      api,
-      project,
-      connection.environmentVariables.find((name) =>
-        name.endsWith("_READ_WRITE_TOKEN"),
-      ),
-    );
-    if (
-      token?.startsWith("vercel_blob_rw_") &&
-      storeIdOfToken(token) === store.id
-    ) {
-      return token;
-    }
-  }
-  if (savedToken !== undefined && storeIdOfToken(savedToken) === store.id) {
-    return savedToken;
-  }
-  // A store an earlier move disconnected: connected again under a prefix of
-  // its own, which the move disconnects once more.
-  const prefix = `${BLOB_ENV_PREFIX}_PUBLIC`;
-  let token: string | undefined;
-  try {
-    await api.connectBlobStore({
-      envVarPrefix: prefix,
-      projectId: project.id,
-      storeId: store.id,
-    });
-    token = await readProductionEnv(api, project, `${prefix}_READ_WRITE_TOKEN`);
-  } catch (error) {
-    if (!(error instanceof VercelApiError)) throw error;
-  }
-  if (
-    token?.startsWith("vercel_blob_rw_") &&
-    storeIdOfToken(token) === store.id
-  ) {
-    return token;
-  }
-  throw new InitError(
-    `Blob store ${store.name} is public, and init needs its read-write token to move its bundles to a private store. Connect ${store.name} to project ${project.name} in the Vercel dashboard's Storage tab, then rerun init.`,
-  );
-};
-
-/**
- * Moves the bundles of the saved public store `from` to the private store
- * `to`: copies every object under the same pathname, migrates the database,
- * whose schema fence then stops a CLI of an earlier release from writing a
- * bundle to `from`, then points the database's storage URIs at `to` with the
- * tables locked, copying first what was written since. Last, it disconnects
- * `from` from the project, whose token variable the Function's now takes.
- * `from` keeps its objects. Each step is safe to run again, and a rerun
- * after the URIs moved copies nothing.
- */
-const moveBlobStore = async ({
-  api,
-  databaseUrl,
-  from,
-  fromToken,
-  plugins,
-  project,
-  to,
-  toToken,
-}: {
-  readonly api: VercelApi;
-  readonly databaseUrl: string;
-  readonly from: VercelBlobStore;
-  readonly fromToken: string | undefined;
-  readonly plugins: readonly AnyHotUpdaterPlugin[];
-  readonly project: VercelProject;
-  readonly to: VercelBlobStore;
-  readonly toToken: string;
-}) => {
-  if (fromToken !== undefined) {
-    const copy = () =>
-      copyBlobStore({
-        from: { name: from.name, token: fromToken },
-        to: { token: toToken },
-      });
-    await p.tasks([
-      {
-        title: `Copying the bundles of ${from.name} to ${to.name}...`,
-        task: async () => {
-          const { copied, total } = await copy();
-          return `Copied ${copied} of ${total} objects from ${from.name} to ${to.name}`;
-        },
-      },
-      {
-        title: "Migrating the PostgreSQL database...",
-        task: async () => {
-          const version = await migratePostgres(databaseUrl, plugins);
-          return `Migrated the PostgreSQL database to ${version}`;
-        },
-      },
-      {
-        title: `Pointing the database's bundles at ${to.name}...`,
-        task: async () => {
-          const moved = await withPostgresClient(databaseUrl, (client) =>
-            moveBlobStoreReferences(client, from.id, to.id, async () => {
-              await copy();
-            }),
-          );
-          return `Pointed ${moved} storage URIs at ${to.name}`;
-        },
-      },
-    ]);
-  }
-  // Including a connection init made to read the token.
-  const current = (await api.listBlobStores()).find(
-    (store) => store.id === from.id,
-  );
-  for (const connection of current?.connections ?? from.connections) {
-    if (connection.projectId !== project.id) continue;
-    await api.disconnectBlobStore(from.id, connection.id);
-    p.log.info(`Disconnected Blob store ${from.name} from ${project.name}`);
-  }
 };
 
 /**
@@ -703,11 +508,9 @@ export const runInit = async ({
     });
   }
 
-  const stores = await api.listBlobStores();
   const storeSelection = await selectBlobStore({
     nonInteractive,
-    ...(existingProject ? { projectId: existingProject.id } : {}),
-    stores,
+    stores: await api.listBlobStores(),
     ...(saved.blobStoreId ? { savedId: saved.blobStoreId } : {}),
     ...(saved.blobStoreName ? { savedName: saved.blobStoreName } : {}),
   });
@@ -740,33 +543,6 @@ export const runInit = async ({
   // Before any Blob store or deployment change: a database init can reach
   // and may initialize.
   assertPostgresCanInitialize(await readHotUpdaterTables(databaseUrl));
-  // Every public store the database still names moves: the saved one, and
-  // one whose bundles a deploy that raced an earlier move left behind. Each
-  // is read with its token, which init needs before any change.
-  const replaces = storeSelection.replaces;
-  const referenced = await withPostgresClient(
-    databaseUrl,
-    referencedBlobStores,
-  );
-  const sources = stores.filter(
-    (candidate) =>
-      candidate.access === "public" &&
-      (candidate.id === replaces?.id || referenced.has(candidate.id)),
-  );
-  // The saved one too while the database names none of it yet: a deploy
-  // already under way may write to it until the move.
-  const sourceTokens = new Map<string, string>();
-  for (const source of sources) {
-    sourceTokens.set(
-      source.id,
-      await readPublicStoreToken(
-        api,
-        project,
-        source,
-        saved.blobReadWriteToken,
-      ),
-    );
-  }
 
   let store: VercelBlobStore;
   if (storeSelection.kind === "existing") {
@@ -786,14 +562,8 @@ export const runInit = async ({
     };
     p.log.info(`Created Blob store: ${store.name} (private)`);
   }
-  // The replaced store's connection holds init's variable prefix until
-  // the move disconnects it.
-  const blobToken = await resolveBlobToken(
-    api,
-    project,
-    store,
-    sources.length === 0 ? BLOB_ENV_PREFIX : `${BLOB_ENV_PREFIX}_PRIVATE`,
-  );
+  const blobToken = await resolveBlobToken(api, project, store);
+
   const resolvedInputs = {
     blobReadWriteToken: blobToken,
     blobStoreId: store.id,
@@ -804,51 +574,21 @@ export const runInit = async ({
     teamId: scope.id,
     ...(saved.vercelToken ? { vercelToken: saved.vercelToken } : {}),
   };
-  // Asked before the move, which the Function of the replaced store can't
-  // serve until init redeploys it.
   const persistCredentialInputs = await confirmInitInputPersistence({
     existingEnv: managedEnv,
     inputs: resolvedInputs,
     nonInteractive,
     provider: VERCEL_INIT_PROVIDER,
   });
-  const plugins = [insights(), apiKeys(), remoteConfig()];
-  for (const source of sources) {
-    await moveBlobStore({
-      api,
-      databaseUrl,
-      from: source,
-      fromToken: sourceTokens.get(source.id),
-      plugins,
-      project,
-      to: store,
-      toToken: blobToken,
-    });
-  }
-  // A Blob token .env.hotupdater itself saved was saved with consent: it
-  // follows the store, so deploys don't write to the one init no longer
-  // uses. One only a team secrets store holds is not the file's to replace.
-  const savedBlobToken = (await readLoadedHotUpdaterEnv(cwd))[
-    BLOB_TOKEN_ENV
-  ]?.trim();
-  await makeEnv({
-    ...getInitProviderEnvVars({
+  await makeEnv(
+    getInitProviderEnvVars({
       includeConsentInputs: persistCredentialInputs,
       inputs: resolvedInputs,
       provider: VERCEL_INIT_PROVIDER,
     }),
-    ...(savedBlobToken && savedBlobToken !== blobToken
-      ? { [BLOB_TOKEN_ENV]: blobToken }
-      : {}),
-  });
-  // The deployment is on a private store now.
-  const retiredKeys = VERCEL_INIT_PROVIDER.retiredInputs
-    .map(({ envKey }) => envKey)
-    .filter((envKey) => Object.hasOwn(managedEnv, envKey));
-  if (retiredKeys.length > 0) {
-    await makeEnv({}, undefined, { removeKeys: retiredKeys });
-  }
+  );
 
+  const plugins = [insights(), apiKeys(), remoteConfig()];
   await p.tasks([
     {
       title: "Migrating the PostgreSQL database...",
@@ -878,20 +618,6 @@ export const runInit = async ({
   const baseURL = productionBaseUrl(deployedProject);
   await verifyFunction(baseURL);
   p.log.success(`Deployed the Hot Updater Function: ${baseURL}`);
-
-  // A deploy that passed the schema fence before the migration may have
-  // written a bundle to a moved store since: move it too. One later still
-  // is moved by init's next run.
-  for (const [sourceId, sourceToken] of sourceTokens) {
-    await withPostgresClient(databaseUrl, (client) =>
-      moveBlobStoreReferences(client, sourceId, store.id, async () => {
-        await copyBlobStore({
-          from: { name: sourceId, token: sourceToken },
-          to: { token: blobToken },
-        });
-      }),
-    );
-  }
 
   const database = postgres({ connectionString: databaseUrl });
   // The managed server: its plugins over the database init set up, which
@@ -924,11 +650,6 @@ export const runInit = async ({
 
   return {
     nextSteps: [
-      ...(sources.length === 0
-        ? []
-        : [
-            `Set ${BLOB_TOKEN_ENV} to ${store.name}'s token wherever deploys read it besides .env.hotupdater, such as CI or a team secrets store: the project's production ${BLOB_TOKEN_ENV} holds it.`,
-          ]),
       link(
         "https://hot-updater.dev/docs/managed/vercel#step-3-add-hotupdater-to-your-project",
       ),

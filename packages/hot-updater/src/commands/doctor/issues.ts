@@ -82,15 +82,6 @@ export interface SchemaSetting {
   readonly found: string | null;
 }
 
-/** A finding about the deployment `hot-updater init` manages. */
-export interface ManagedDeploymentIssue {
-  type: "error" | "warning";
-  code: "MANAGED_INPUT_RETIRED";
-  message: string;
-  resolution: string;
-  commands?: string[];
-}
-
 /** A finding about the schema the server's fence checks. */
 export interface SchemaIssue {
   type: "error" | "warning";

@@ -17,9 +17,7 @@ missing, then vc.function, which sets the Function's variables and deploys this
 scaffold's Function to production, and finish with vc.complete. Reuse the
 recorded resources and saved client credential; never create replacements to
 upgrade. `hot-updater init` with the saved inputs performs the same migration
-and deployment. A recorded Blob store that is public is the one exception:
-stop and have the user run `hot-updater init` with the saved inputs, which
-moves its bundles to a private store.
+and deployment.
 
 ## Setup
 
