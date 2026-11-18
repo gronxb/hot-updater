@@ -60,11 +60,13 @@ import {
 } from "./doctor/googlePlay";
 import { humanText, unusedSecretsText } from "./doctor/humanText";
 import {
+  type ManagedDeploymentIssue,
   type NativeCheckIssue,
   type NativePlatform,
   type ReleaseCatalogStatus,
   type SchemaStatus,
 } from "./doctor/issues";
+import { checkRetiredInputs } from "./doctor/managed";
 import { checkSandboxSchemes } from "./doctor/sandbox";
 import {
   findScaffoldDeployments,
@@ -153,6 +155,8 @@ interface DoctorDetails {
     commands: string[];
   };
   native?: NativeStatus;
+  /** What the deployment `hot-updater init` manages needs init for. */
+  managedDeployment?: { issues: ManagedDeploymentIssue[] };
   /** The schema the server's fence checks, when it does not pass. */
   schema?: SchemaStatus;
   /** The server's release catalogs, each against a rebuild from its releases. */
@@ -1038,6 +1042,9 @@ async function checkProject(
       }
     }
 
+    const retired = await checkRetiredInputs(cwd, await context.managed());
+    if (retired.length > 0) details.managedDeployment = { issues: retired };
+
     // The server's data reads through the fence, so it is checked once the
     // schema passes.
     const schema = await checkSchema(context);
@@ -1083,6 +1090,7 @@ async function checkProject(
     const hasNativeIssue =
       details.native?.issues.some((issue) => issue.type === "error") === true;
     const hasServerDataIssue = [
+      ...(details.managedDeployment?.issues ?? []),
       ...(details.schema?.issues ?? []),
       ...(details.releaseCatalogs?.issues ?? []),
     ].some((issue) => issue.type === "error");
@@ -1111,6 +1119,7 @@ async function checkProject(
 
     if (
       details.native ||
+      details.managedDeployment ||
       details.schema ||
       details.releaseCatalogs ||
       details.signing ||
@@ -1578,6 +1587,10 @@ export const handleDoctor = async ({
     // names isn't counted again.
     const { warned, text } = formatGooglePlayStatus(details.googlePlay);
     (warned ? log.warn : p.log.step)(text);
+  }
+
+  if (details?.managedDeployment) {
+    reportIssues(log, details.managedDeployment.issues);
   }
 
   if (details?.schema) {

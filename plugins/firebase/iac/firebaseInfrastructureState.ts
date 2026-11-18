@@ -13,6 +13,7 @@ import {
 import {
   applicationDefault,
   cert,
+  type Credential,
   deleteApp,
   initializeApp,
 } from "firebase-admin/app";
@@ -49,6 +50,41 @@ export const firebaseEngineSettingDocumentId = () =>
     sk: encodeKvKey([ENGINE_SETTING]),
   });
 
+/**
+ * The Google credential init reads Firestore with, once it loads: the
+ * service account key file `applicationCredentials` names, or the
+ * application default credentials. Before any change, an InitError says
+ * what is wrong with one that does not load, where Firestore's client would
+ * end init with a stack trace.
+ */
+export const loadGoogleCredential = async (
+  applicationCredentials?: string,
+): Promise<Credential> => {
+  const next =
+    "Set GOOGLE_APPLICATION_CREDENTIALS to a service account key file, then rerun init.";
+  let credential: Credential;
+  try {
+    credential = applicationCredentials
+      ? cert(JSON.parse(await fs.readFile(applicationCredentials, "utf8")))
+      : applicationDefault();
+  } catch {
+    throw new InitError(
+      `GOOGLE_APPLICATION_CREDENTIALS names ${applicationCredentials}, which is not a readable service account key file. ${next}`,
+    );
+  }
+  try {
+    await credential.getAccessToken();
+  } catch (error) {
+    const reason = (error instanceof Error ? error.message : String(error))
+      .split(/(?<=\.)\s/u)[0]!
+      .replace(/\.$/u, "");
+    throw new InitError(
+      `Could not load Google credentials: ${reason}. ${next}`,
+    );
+  }
+  return credential;
+};
+
 export const assertFirebaseInfrastructureCanInitialize = async ({
   applicationCredentials,
   databaseId,
@@ -58,9 +94,7 @@ export const assertFirebaseInfrastructureCanInitialize = async ({
   readonly databaseId: string;
   readonly projectId: string;
 }): Promise<void> => {
-  const credential = applicationCredentials
-    ? cert(JSON.parse(await fs.readFile(applicationCredentials, "utf8")))
-    : applicationDefault();
+  const credential = await loadGoogleCredential(applicationCredentials);
   const app = initializeApp(
     { credential, projectId },
     `hot-updater-init-${projectId}-${Date.now()}`,

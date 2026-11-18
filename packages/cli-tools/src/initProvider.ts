@@ -46,7 +46,24 @@ export type InitProviderDefinition<
    * environment and the env file lack from it.
    */
   readonly secrets?: readonly string[];
+  /**
+   * Values an earlier release's init saved that this release's init moves
+   * the deployment off when it runs again, such as the public Blob store
+   * access Vercel's 1.0.2 and 1.0.3 init saved. Doctor names init's command
+   * while the environment or `.env.hotupdater` holds one, and init removes
+   * the variable once it has moved the deployment.
+   */
+  readonly retiredInputs?: readonly InitProviderRetiredInput[];
 };
+
+/** A saved value an earlier init wrote, which init now moves off. */
+export interface InitProviderRetiredInput {
+  readonly envKey: string;
+  /** The saved value that needs init to run again. */
+  readonly value: string;
+  /** What is wrong with the deployment while it holds the value, for doctor. */
+  readonly message: string;
+}
 
 export const defineInitProvider = <
   const TInputs extends InitProviderInputsDefinition,

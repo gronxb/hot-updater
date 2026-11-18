@@ -301,6 +301,21 @@ export const createVercelApi = ({
       );
     },
 
+    /**
+     * Removes a store's connection to a project, with the environment
+     * variables the connection added. A deployment keeps the values it was
+     * built with.
+     */
+    async disconnectBlobStore(
+      storeId: string,
+      connectionId: string,
+    ): Promise<void> {
+      await request(
+        "DELETE",
+        `/v1/storage/stores/${encodeURIComponent(storeId)}/connections/${encodeURIComponent(connectionId)}`,
+      );
+    },
+
     async listProjectEnv(projectId: string): Promise<VercelProjectEnv[]> {
       const envs = await paginate(
         `/v10/projects/${encodeURIComponent(projectId)}/env`,

@@ -189,4 +189,15 @@ describe("Vercel API", () => {
       projectId: "prj_1",
     });
   });
+
+  it("disconnects a store from a project by the connection's ID", async () => {
+    const fetch = vi.fn(async () => respond({}));
+    const api = createVercelApi({ fetch, teamId: "team_1", token: "token" });
+
+    await api.disconnectBlobStore("store_1", "spc_1");
+
+    const [url, init] = fetch.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/v1/storage/stores/store_1/connections/spc_1");
+    expect(init.method).toBe("DELETE");
+  });
 });

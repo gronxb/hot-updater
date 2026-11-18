@@ -530,6 +530,55 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
     });
   });
 
+  it("names init for a Vercel deployment on the public Blob store 1.0.2 saved, until init moves it", async () => {
+    deployed = "1.2.0";
+    const adapter = createSqlAdapter({
+      executor: pgliteExecutor(new PGlite()),
+    });
+    await migrateCoreSchema(adapter, "postgres", managedPlugins());
+    const database = marked(
+      createEngineDatabase({ name: "postgres", adapter }),
+      "vercel",
+    );
+    const command = initReplayCommand("vercel");
+    await project(database, "vercel", {
+      ...SAVED.vercel.env,
+      HOT_UPDATER_VERCEL_BLOB_ACCESS: "public",
+    });
+
+    await expect(run()).resolves.toMatchObject({
+      success: false,
+      details: {
+        managedDeployment: {
+          issues: [
+            {
+              type: "error",
+              code: "MANAGED_INPUT_RETIRED",
+              message: expect.stringContaining(
+                "The Blob store init saved is public",
+              ),
+              resolution: `Run init again with its saved inputs: \`${command}\`.`,
+              commands: [command],
+            },
+          ],
+        },
+      },
+    });
+
+    // Init removes the saved access once the bundles are on a private store;
+    // a private store 1.0.2 saved needs nothing.
+    for (const saved of [
+      SAVED.vercel.env,
+      { ...SAVED.vercel.env, HOT_UPDATER_VERCEL_BLOB_ACCESS: "private" },
+    ]) {
+      await project(database, "vercel", saved);
+      const result = await run();
+      expect(result === true ? undefined : result.details).not.toHaveProperty(
+        "managedDeployment",
+      );
+    }
+  });
+
   it.each<InitProvider>(["aws", "firebase", "azure"])(
     "names init for a managed %s database, whose migrator writes its settings rows",
     async (provider) => {

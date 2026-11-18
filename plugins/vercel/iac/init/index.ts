@@ -95,4 +95,14 @@ export const initProvider = {
     "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN",
     "HOT_UPDATER_VERCEL_DATABASE_URL",
   ],
+  retiredInputs: [
+    {
+      // Init of 1.0.2 and 1.0.3 saved the store's access, and could create
+      // a public store.
+      envKey: "HOT_UPDATER_VERCEL_BLOB_ACCESS",
+      value: "public",
+      message:
+        "The Blob store init saved is public, and Hot Updater now serves bundles only from a private store through signed URLs. Init copies the bundles to a private store, points the database at it, and redeploys the Function; the public store is not changed.",
+    },
+  ],
 } as const satisfies InitProviderDefinition;

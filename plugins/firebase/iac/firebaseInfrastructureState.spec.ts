@@ -1,10 +1,37 @@
 import { InitError } from "@hot-updater/cli-tools";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   assertFirebaseFunctionCanInitialize,
+  loadGoogleCredential,
   resolveFirebaseInfrastructureState,
 } from "./firebaseInfrastructureState";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+describe("Google credentials for init", () => {
+  it("says a key file the input names is unreadable, before any change", async () => {
+    const loaded = loadGoogleCredential("missing-credentials.json");
+
+    await expect(loaded).rejects.toBeInstanceOf(InitError);
+    await expect(loaded).rejects.toThrow(
+      "GOOGLE_APPLICATION_CREDENTIALS names missing-credentials.json, which is not a readable service account key file. Set GOOGLE_APPLICATION_CREDENTIALS to a service account key file, then rerun init.",
+    );
+  });
+
+  it("says the 1.0.0 placeholder the environment sets cannot load, without a stack trace", async () => {
+    vi.stubEnv("GOOGLE_APPLICATION_CREDENTIALS", "your-credentials.json");
+
+    const loaded = loadGoogleCredential();
+
+    await expect(loaded).rejects.toBeInstanceOf(InitError);
+    await expect(loaded).rejects.toThrow(
+      /^Could not load Google credentials: .*your-credentials\.json.*\. Set GOOGLE_APPLICATION_CREDENTIALS to a service account key file, then rerun init\.$/u,
+    );
+  });
+});
 
 describe("Firebase infrastructure generation", () => {
   it.each([

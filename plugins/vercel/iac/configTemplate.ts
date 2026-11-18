@@ -19,6 +19,8 @@ export const getConfigScaffold = (
     configString: `vercelBlobStorage({
     token: secret("HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN"),
   })`,
+    // 1.0.2 and 1.0.3 wrote the store's `access`, which 1.0.6 removed.
+    removedOptions: ["access"],
   };
   const databaseConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/vercel", named: ["postgres"] }],

@@ -67,3 +67,105 @@ export const migratePostgres = async (
     await database.dispose?.();
   }
 };
+
+/** What a Blob store migration runs its statements on: a `pg` client, or PGlite. */
+export interface PostgresQueryable {
+  query<Row extends object>(
+    text: string,
+    values?: unknown[],
+  ): Promise<{ readonly rows: Row[] }>;
+}
+
+/**
+ * Every column that holds a storage URI, which names its Blob store:
+ * `vercel-blob://<storeId>/<key>`. Release catalogs hold bundle IDs, never a
+ * URI, so moving a store changes no catalog.
+ */
+const STORAGE_URI_COLUMNS = [
+  ["bundles", "manifest_storage_uri"],
+  ["bundles", "asset_base_storage_uri"],
+  ["bundle_patches", "patch_storage_uri"],
+  ["native_builds", "artifact_storage_uri"],
+] as const;
+
+const storeUriPrefix = (storeId: string) => `vercel-blob://${storeId}/`;
+
+/** The URI columns whose tables exist: an earlier release lacks native_builds. */
+const existingUriColumns = async (client: PostgresQueryable) => {
+  const { rows } = await client.query<{ table_name: string }>(
+    `SELECT table_name
+       FROM information_schema.tables
+      WHERE table_schema = current_schema()
+        AND table_name = ANY($1)`,
+    [[...new Set(STORAGE_URI_COLUMNS.map(([table]) => table))]],
+  );
+  const tables = new Set(rows.map((row) => row.table_name));
+  return STORAGE_URI_COLUMNS.filter(([table]) => tables.has(table));
+};
+
+/** How many storage URIs name the store. */
+export const countBlobStoreReferences = async (
+  client: PostgresQueryable,
+  storeId: string,
+): Promise<number> => {
+  const prefix = storeUriPrefix(storeId);
+  let count = 0;
+  for (const [table, column] of await existingUriColumns(client)) {
+    const { rows } = await client.query<{ count: string | number }>(
+      `SELECT count(*) AS count FROM "${table}"
+        WHERE left("${column}", length($1)) = $1`,
+      [prefix],
+    );
+    count += Number(rows[0]?.count ?? 0);
+  }
+  return count;
+};
+
+/**
+ * Points every storage URI that names store `from` at store `to`, with the
+ * same key, in one transaction; returns how many it moved. A row's `_v`
+ * advances, so a write that read it before conflicts. Running it again
+ * moves nothing.
+ */
+export const moveBlobStoreReferences = async (
+  client: PostgresQueryable,
+  from: string,
+  to: string,
+): Promise<number> => {
+  const [fromPrefix, toPrefix] = [storeUriPrefix(from), storeUriPrefix(to)];
+  const columns = await existingUriColumns(client);
+  let moved = 0;
+  await client.query("BEGIN");
+  try {
+    for (const [table, column] of columns) {
+      const { rows } = await client.query<{ id: string }>(
+        `UPDATE "${table}"
+            SET "${column}" = $2 || substr("${column}", length($1) + 1),
+                "_v" = "_v" + 1
+          WHERE left("${column}", length($1)) = $1
+      RETURNING "id"`,
+        [fromPrefix, toPrefix],
+      );
+      moved += rows.length;
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  }
+  return moved;
+};
+
+/** Runs `run` on a client connected to the database. */
+export const withPostgresClient = async <T>(
+  connectionString: string,
+  run: (client: PostgresQueryable) => Promise<T>,
+): Promise<T> => {
+  const client = new pg.Client({ connectionString });
+  await client.connect();
+  try {
+    return await run(client);
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+};

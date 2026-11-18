@@ -9,6 +9,8 @@ import {
   toolingTargetOf,
 } from "@hot-updater/plugin-core";
 
+import { getHotUpdaterEnvValue } from "./hotUpdaterEnv";
+
 /** A plugin's endpoint on a server's `handlers.client`. */
 export interface ServerClientEndpoint {
   /** The id of the plugin that adds it. */
@@ -166,7 +168,8 @@ export const generateClientCredential = (
 /**
  * Provisions the credential an app sends to client routes, through the
  * plugin that provides clientAuth, on the definition's database: a
- * credential saved in `env` is registered again rather than replaced.
+ * credential the environment or `env` holds is registered again rather
+ * than replaced.
  * Undefined when client routes are public.
  */
 export const provisionClientCredential = async (
@@ -180,7 +183,8 @@ export const provisionClientCredential = async (
   const found = credentialOf(definition);
   if (found === undefined) return undefined;
   const { label, header, env, provision } = found.credential;
-  const existing = input.env[env]?.trim();
+  // The environment's value first, then the env files', as init's inputs.
+  const existing = getHotUpdaterEnvValue(input.env, env);
   const value = await provision(definition.api[found.plugin], {
     ...(existing ? { existing } : {}),
     name: input.name,

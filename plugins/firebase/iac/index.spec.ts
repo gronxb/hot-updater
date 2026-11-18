@@ -159,6 +159,7 @@ vi.mock("./firebaseRegion", () => ({
 vi.mock("./firebaseInfrastructureState", () => ({
   assertFirebaseFunctionCanInitialize: mocks.assertFunction,
   assertFirebaseInfrastructureCanInitialize: mocks.assertInfrastructure,
+  loadGoogleCredential: vi.fn(async () => ({})),
 }));
 
 vi.mock("./prepareTemplate", () => ({

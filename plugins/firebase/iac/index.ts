@@ -25,12 +25,7 @@ import type { PluginClientPlugin } from "@hot-updater/plugin-core";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { isEqual, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
-import {
-  applicationDefault,
-  cert,
-  deleteApp,
-  getApps,
-} from "firebase-admin/app";
+import { deleteApp, getApps } from "firebase-admin/app";
 
 import {
   firebaseDatabase,
@@ -41,6 +36,7 @@ import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCreden
 import {
   assertFirebaseFunctionCanInitialize,
   assertFirebaseInfrastructureCanInitialize,
+  loadGoogleCredential,
 } from "./firebaseInfrastructureState";
 import {
   assertFirebaseNonInteractiveInputs,
@@ -617,11 +613,7 @@ export const runInit = async ({
     nonInteractive,
     cliEnv,
   );
-  const credential = applicationCredentials
-    ? cert(
-        JSON.parse(await fs.promises.readFile(applicationCredentials, "utf-8")),
-      )
-    : applicationDefault();
+  const credential = await loadGoogleCredential(applicationCredentials);
   // Loading hot-updater.config.ts for its secrets adapter ran the config's
   // adapters, which bound the default app to the config's project and
   // credential, in an environment init has restored since. The database

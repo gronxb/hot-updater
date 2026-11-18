@@ -15,6 +15,7 @@ import {
   initReplayCommand,
   isInitProvider,
 } from "../initProviders";
+import type { ManagedDeploymentIssue } from "./issues";
 
 /**
  * The resource a database reaches, as its factory marks it: the same key in
@@ -137,4 +138,39 @@ export const foreignPluginsNote = ({
   if (foreignPlugins.length === 0) return undefined;
   const one = foreignPlugins.length === 1;
   return `hot-updater.config.ts lists ${one ? "a plugin" : "plugins"} the managed server does not run (${foreignPlugins.join(", ")}): \`hot-updater init\` deploys ${server} with only the official insights(), apiKeys() and remoteConfig(), and running it again sets the plugins in hot-updater.config.ts to those, so it would drop ${one ? "it" : "them"}. Remove ${one ? "it" : "them"} from plugins and run doctor again, which then names init; or, if a server of your own runs ${one ? "it" : "them"} on this database:`;
+};
+
+/**
+ * A value an earlier release's init saved, which the provider's init now
+ * moves the deployment off (`initProvider.retiredInputs`), as an error that
+ * names init's command. Read as init reads its inputs: the environment's
+ * value first, then `.env.hotupdater`'s.
+ */
+export const checkRetiredInputs = async (
+  cwd: string,
+  managed: ManagedDeployment | null,
+): Promise<ManagedDeploymentIssue[]> => {
+  if (managed === null) return [];
+  const provider = await INIT_PROVIDER_PACKAGES[managed.provider]
+    .load()
+    .catch(() => null);
+  const retired = provider?.initProvider.retiredInputs ?? [];
+  if (retired.length === 0) return [];
+  const file = await readLoadedHotUpdaterEnv(cwd).catch(() => ({}));
+  return retired.flatMap(({ envKey, value, message }) =>
+    getHotUpdaterEnvValue(file, envKey) === value
+      ? [
+          {
+            type: "error" as const,
+            code: "MANAGED_INPUT_RETIRED" as const,
+            message,
+            resolution:
+              managed.source === "file"
+                ? `Run init again with its saved inputs: \`${managed.command}\`.`
+                : `Run init again, with init's saved inputs as <env file>: \`${managed.command}\`.`,
+            commands: [managed.command],
+          },
+        ]
+      : [],
+  );
 };

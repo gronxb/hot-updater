@@ -49,6 +49,7 @@
     "pg": "catalog:db"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "catalog:db",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "@types/pg": "^8.11.10",

@@ -116,7 +116,7 @@ const ownValue = (
 ): string | undefined => (Object.hasOwn(record, key) ? record[key] : undefined);
 
 export const getHotUpdaterEnvValue = (
-  env: Readonly<Record<string, string>>,
+  env: Readonly<Record<string, string | undefined>>,
   key: string,
 ) => {
   const fromProcess = ownValue(process.env, key);

@@ -10,6 +10,12 @@ export type ImportInfo = {
 export type ProviderConfig = {
   imports: ImportInfo[]; // Imports required specifically by this provider part
   configString: string; // The JS code string for storage: ..., database: ...
+  /**
+   * Options an earlier release's init wrote into this adapter call and the
+   * adapter no longer takes: init's config rewrite drops them from the
+   * project's call, so the rewritten config still type-checks.
+   */
+  removedOptions?: readonly string[];
 };
 
 const normalizeImportInfos = (imports: ImportInfo[]) => {
@@ -99,7 +105,9 @@ export type ConfigBuilderScaffold = {
   imports: ImportInfo[];
   buildConfigString: string;
   storageConfigString: string;
+  storageRemovedOptions: readonly string[];
   databaseConfigString: string;
+  databaseRemovedOptions: readonly string[];
   pluginsConfigString: string;
   intermediateCode: string;
   text: string;
@@ -229,7 +237,9 @@ ${this.intermediateCode ? `${this.intermediateCode}\n\n` : ""}export default def
       imports,
       buildConfigString,
       storageConfigString: this.storageInfo.configString,
+      storageRemovedOptions: this.storageInfo.removedOptions ?? [],
       databaseConfigString: this.databaseInfo.configString,
+      databaseRemovedOptions: this.databaseInfo.removedOptions ?? [],
       pluginsConfigString: plugins,
       intermediateCode: this.intermediateCode,
       text,
