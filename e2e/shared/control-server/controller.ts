@@ -7249,6 +7249,9 @@ function readFirstOtaReuseEvidence(bundleId: string) {
   const imageSuffix = "builtin_reuse.png";
   // Android release builds re-encode this PNG, so only its source matches.
   const crunchedImageSuffix = "builtin_reuse_uncrunched.png";
+  // Android release builds compile this XML drawable to binary XML, so only a
+  // download has its source.
+  const compiledXmlSuffix = "builtin_reuse_vector.xml";
   // A font fixture is required too, so an empty resolver cannot satisfy this assertion.
   const required = assets.filter(
     ({ path }) =>
@@ -7300,6 +7303,16 @@ function readFirstOtaReuseEvidence(bundleId: string) {
             asset.builtInEquivalent,
         )) &&
       required.some(({ path }) => path.endsWith("builtin_reuse.ttf")) &&
+      (fixtureSession.platform === "ios" ||
+        (evidence.some(
+          (asset) =>
+            asset.assetPath.endsWith(compiledXmlSuffix) && !asset.reused,
+        ) &&
+          finalFiles.assets.some(
+            (asset) =>
+              asset.assetPath.endsWith(compiledXmlSuffix) &&
+              asset.assetFile.fileHash === asset.expectedHash,
+          ))) &&
       required.every(({ path }) =>
         reused.some((asset) => asset.path === path),
       ) &&
