@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   api: {
@@ -153,7 +153,29 @@ beforeEach(() => {
   );
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe("Vercel init", () => {
+  it("reads an input the environment sets over the env files, as init's preflight does", async () => {
+    const { HOT_UPDATER_VERCEL_DATABASE_URL: _, ...withoutUrl } = replayEnv;
+    givenInitEnv(withoutUrl);
+    vi.stubEnv("HOT_UPDATER_VERCEL_DATABASE_URL", DATABASE_URL);
+
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    expect(mocks.migratePostgres).toHaveBeenCalledWith(
+      DATABASE_URL,
+      expect.any(Array),
+    );
+    expect(mocks.api.setProductionEnv).toHaveBeenCalledWith(
+      "prj_1",
+      "HOT_UPDATER_VERCEL_DATABASE_URL",
+      DATABASE_URL,
+    );
+  });
+
   it("replays saved inputs: creates the project and Blob store, migrates, deploys, and writes the config", async () => {
     givenInitEnv(replayEnv);
 

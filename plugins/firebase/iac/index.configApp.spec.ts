@@ -87,10 +87,20 @@ vi.mock("./firebaseRegion", () => ({
   resolveFirebaseRegion: vi.fn(async () => "asia-northeast3"),
 }));
 
-vi.mock("./firebaseInfrastructureState", () => ({
-  assertFirebaseFunctionCanInitialize: vi.fn(),
-  assertFirebaseInfrastructureCanInitialize: vi.fn(),
-}));
+vi.mock("./firebaseInfrastructureState", async () => {
+  const { applicationDefault, cert } = await import("firebase-admin/app");
+  const { readFile } = await import("node:fs/promises");
+  return {
+    assertFirebaseFunctionCanInitialize: vi.fn(),
+    assertFirebaseInfrastructureCanInitialize: vi.fn(),
+    // The credential init builds, without fetching a token.
+    loadGoogleCredential: vi.fn(async (applicationCredentials?: string) =>
+      applicationCredentials
+        ? cert(JSON.parse(await readFile(applicationCredentials, "utf8")))
+        : applicationDefault(),
+    ),
+  };
+});
 
 vi.mock("./prepareTemplate", () => ({
   prepareFirebaseTemplate: vi.fn(async () => ({

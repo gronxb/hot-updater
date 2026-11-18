@@ -163,6 +163,20 @@ describe("provisionClientCredential", () => {
       ["keys api", { existing: "saved", name: "Init again" }],
     ]);
   });
+
+  it("registers the credential the environment sets over the env files", async () => {
+    provision.mockClear();
+    vi.stubEnv("HOT_UPDATER_KEY", "from-env");
+    try {
+      const provisioned = await provisionClientCredential(guarded(), {
+        env: { HOT_UPDATER_KEY: "saved" },
+        name: "Init",
+      });
+      expect(provisioned?.value).toBe("from-env");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe("database tooling", () => {

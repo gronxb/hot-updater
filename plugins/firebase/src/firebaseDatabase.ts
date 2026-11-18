@@ -1,4 +1,4 @@
-import type { EngineDatabase } from "@hot-updater/plugin-core";
+import type { EngineDatabase, KeyValueStore } from "@hot-updater/plugin-core";
 import {
   createEngineDatabase,
   createKvAdapter,
@@ -10,11 +10,13 @@ import {
   getApps,
   initializeApp,
   type AppOptions,
+  type Credential,
 } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
 import { FIREBASE_V1_COLLECTION } from "./firebaseInfrastructureNames";
 import { createFirestoreStore } from "./firestoreStore";
+import { resolveApplicationDefault } from "./googleCredential";
 
 export type FirebaseDatabaseConfig = AppOptions & {
   /**
@@ -32,6 +34,53 @@ export type FirebaseDatabaseConfig = AppOptions & {
   readonly aggregateBatching?: EngineDatabase["aggregateBatching"] | false;
 };
 
+/**
+ * `store` that loads `credential` before its first call: one that cannot
+ * load, such as GOOGLE_APPLICATION_CREDENTIALS naming a missing file, fails
+ * that call with what is wrong. Firestore's own client would also reject a
+ * promise nobody awaits, which ends a CLI process with a stack trace.
+ */
+const withLoadedCredential = (
+  store: KeyValueStore,
+  credential: Credential,
+  projectId: string | undefined,
+): KeyValueStore => {
+  let loaded: Promise<void> | undefined;
+  const load = () =>
+    (loaded ??= resolveApplicationDefault(credential, projectId).then(
+      () => undefined,
+      (error: unknown) => {
+        loaded = undefined;
+        throw new Error(
+          `Could not load the Google credentials for Firestore: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
+      },
+    ));
+  const { deleteConsumed } = store;
+  return {
+    ...store,
+    get: async (keys) => {
+      await load();
+      return store.get(keys);
+    },
+    query: async (range) => {
+      await load();
+      return store.query(range);
+    },
+    write: async (ops) => {
+      await load();
+      return store.write(ops);
+    },
+    ...(deleteConsumed && {
+      deleteConsumed: async (keys) => {
+        await load();
+        return deleteConsumed.call(store, keys);
+      },
+    }),
+  };
+};
+
 const adapterOf = ({
   databaseId,
   collection = FIREBASE_V1_COLLECTION,
@@ -42,8 +91,18 @@ const adapterOf = ({
   const firestore = databaseId
     ? getFirestore(app, databaseId)
     : getFirestore(app);
+  const store = createFirestoreStore({ firestore, collection });
+  // The credential of the app Firestore uses, which an app that already
+  // exists keeps. The Cloud Function passes none to the database: its
+  // default app has one. Firestore's emulator takes none.
+  const credential = app.options.credential;
   return createKvAdapter({
-    store: createFirestoreStore({ firestore, collection }),
+    store:
+      appOptions.credential === undefined ||
+      credential === undefined ||
+      process.env["FIRESTORE_EMULATOR_HOST"]
+        ? store
+        : withLoadedCredential(store, credential, app.options.projectId),
   });
 };
 

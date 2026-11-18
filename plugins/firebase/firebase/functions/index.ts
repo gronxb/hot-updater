@@ -27,9 +27,14 @@ if (!storageBucket) {
   );
 }
 
+// The database reads through the runtime's default app. A credential passed
+// to firebaseDatabase is loaded before its first read, which a CLI's config
+// needs and a request here doesn't.
+const { credential: _runtimeCredential, ...databaseOptions } = adminOptions;
+
 const hotUpdater = createHotUpdater({
   database: firebaseDatabase({
-    ...adminOptions,
+    ...databaseOptions,
     databaseId: HotUpdater.FIRESTORE_DATABASE_ID,
   }),
   plugins: [insights(), apiKeys(), remoteConfig()],

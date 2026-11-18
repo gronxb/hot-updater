@@ -67,10 +67,14 @@ export type HotUpdaterConfigScaffold = {
   storage: {
     initializer: string;
     callee: string;
+    /** Options of the project's call the rewrite drops: `ProviderConfig.removedOptions`. */
+    removedOptions?: readonly string[];
   };
   database: {
     initializer: string;
     callee: string;
+    /** Options of the project's call the rewrite drops: `ProviderConfig.removedOptions`. */
+    removedOptions?: readonly string[];
   };
   /** The server's plugin factory array. */
   plugins: {
@@ -623,11 +627,13 @@ const parseCall = (text: string): CallSource | null => {
 
 /**
  * The project's call without its spreads of the managed helpers the rebuilt
- * config no longer declares.
+ * config no longer declares, and without the options the adapter no longer
+ * takes (`removedOptions`).
  */
 const withoutDroppedHelpers = (
   call: CallSource,
   droppedHelpers: ReadonlySet<string>,
+  removedOptions: readonly string[] = [],
 ): CallSource | null => {
   const [argument] = call.callExpression.arguments;
   if (
@@ -639,11 +645,11 @@ const withoutDroppedHelpers = (
 
   const callStart = call.callExpression.start;
   const edits = argument.properties
-    .filter(
-      (property) =>
-        property.type === "SpreadElement" &&
-        property.argument.type === "Identifier" &&
-        droppedHelpers.has(property.argument.name),
+    .filter((property) =>
+      property.type === "SpreadElement"
+        ? property.argument.type === "Identifier" &&
+          droppedHelpers.has(property.argument.name)
+        : removedOptions.includes(getObjectPropertyName(property) ?? ""),
     )
     .map((property) => {
       const edit = removePropertyEdit(call.source.text, property);
@@ -675,8 +681,13 @@ const buildMergedCallInitializer = (
   existing: CallSource,
   next: CallSource,
   droppedHelpers: ReadonlySet<string>,
+  removedOptions: readonly string[],
 ) => {
-  const project = withoutDroppedHelpers(existing, droppedHelpers);
+  const project = withoutDroppedHelpers(
+    existing,
+    droppedHelpers,
+    removedOptions,
+  );
   if (!project) {
     return null;
   }
@@ -826,6 +837,9 @@ const updateManagedObject = (
   existing: ManagedConfigObject,
   next: ManagedConfigObject,
   droppedHelpers: ReadonlySet<string>,
+  removedOptions: Readonly<
+    Record<"storage" | "database", readonly string[] | undefined>
+  >,
 ): { readonly text: string; readonly keptBuild: boolean } | null => {
   const objectStart = existing.objectExpression.start;
   const objectText = getNodeText(existing.source, existing.objectExpression);
@@ -833,7 +847,7 @@ const updateManagedObject = (
   const missingPropertyTexts: string[] = [];
   let keptBuild = false;
 
-  for (const propertyName of ["build", "storage", "database"]) {
+  for (const propertyName of ["build", "storage", "database"] as const) {
     const existingProperty = findManagedProperty(
       existing.objectExpression,
       propertyName,
@@ -887,6 +901,7 @@ const updateManagedObject = (
           source: next.source,
         },
         droppedHelpers,
+        removedOptions[propertyName] ?? [],
       );
       if (!mergedInitializer) {
         return null;
@@ -1254,6 +1269,10 @@ const mergeHotUpdaterConfigText = (
       source: nextSource,
     },
     droppedHelpers,
+    {
+      storage: scaffold.storage.removedOptions,
+      database: scaffold.database.removedOptions,
+    },
   );
   if (!nextObject) {
     return {
@@ -1460,10 +1479,12 @@ export const createHotUpdaterConfigScaffoldFromBuilder = (
     storage: {
       initializer: scaffold.storageConfigString,
       callee: extractCallIdentifier(scaffold.storageConfigString),
+      removedOptions: scaffold.storageRemovedOptions,
     },
     database: {
       initializer: scaffold.databaseConfigString,
       callee: extractCallIdentifier(scaffold.databaseConfigString),
+      removedOptions: scaffold.databaseRemovedOptions,
     },
     plugins: {
       initializer: scaffold.pluginsConfigString,

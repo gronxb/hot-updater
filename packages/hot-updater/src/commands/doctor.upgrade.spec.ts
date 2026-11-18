@@ -7,6 +7,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
+import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -20,6 +21,7 @@ import {
   readPackageUp,
 } from "@hot-updater/cli-tools";
 import { d1Database } from "@hot-updater/cloudflare";
+import { firebaseDatabase } from "@hot-updater/firebase";
 import {
   type AnyHotUpdaterPlugin,
   createEngineDatabase,
@@ -528,6 +530,54 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
       key: "schema.core",
       value: "1.2.0",
     });
+  });
+
+  it("reports a 1.0.0 Firebase config whose Google credentials can't load, instead of ending with a stack trace", async () => {
+    deployed = "1.2.0";
+    // firebase-admin as @hot-updater/firebase resolves it.
+    const { applicationDefault, deleteApp, getApps } = createRequire(
+      createRequire(import.meta.url).resolve("@hot-updater/firebase"),
+    )("firebase-admin/app") as {
+      applicationDefault: () => NonNullable<
+        Parameters<typeof firebaseDatabase>[0]["credential"]
+      >;
+      deleteApp: (app: unknown) => Promise<void>;
+      getApps: () => unknown[];
+    };
+    // The placeholder 1.0.0's init writes into .env.hotupdater, which the
+    // config loads.
+    vi.stubEnv("GOOGLE_APPLICATION_CREDENTIALS", "your-credentials.json");
+    try {
+      await project(
+        firebaseDatabase({
+          credential: applicationDefault(),
+          projectId: "app",
+        }),
+        "firebase",
+      );
+
+      const result = await run();
+
+      expect(result).toMatchObject({
+        details: {
+          releaseCatalogs: {
+            issues: [
+              {
+                code: "RELEASE_CATALOGS_UNCHECKED",
+                message: expect.stringContaining(
+                  "Could not load the Google credentials for Firestore: ",
+                ),
+              },
+            ],
+          },
+        },
+      });
+      // Firestore's client rejects a second promise on its own; vitest
+      // fails the run on one nobody handles.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    } finally {
+      await Promise.all(getApps().map((app) => deleteApp(app)));
+    }
   });
 
   it.each<InitProvider>(["aws", "firebase", "azure"])(

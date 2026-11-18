@@ -15,6 +15,7 @@ import {
   provisionClientCredential,
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
+  resolveInitProviderInputs,
   type RunInitOptions,
   type RunInitResult,
   shouldAutoSelectOnlyInitResource,
@@ -181,11 +182,11 @@ export const runInit = async ({
     initEnvSources,
     nonInteractive,
   );
-  const saved = Object.fromEntries(
-    Object.entries(inputs).map(([name, input]) => [
-      name,
-      initInputEnv[input.envKey]?.trim() || undefined,
-    ]),
+  // The environment's value first, then the env files', as init's
+  // preflight and every other provider read them.
+  const saved = resolveInitProviderInputs(
+    initInputEnv,
+    AZURE_INIT_PROVIDER,
   ) as Partial<Record<keyof typeof inputs, string>>;
 
   const cliVersion = await azureCliVersion();
