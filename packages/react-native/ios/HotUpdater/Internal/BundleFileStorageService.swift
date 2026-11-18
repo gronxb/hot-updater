@@ -3192,7 +3192,11 @@ class BundleFileStorageService: BundleStorageService {
                             progressLock.unlock()
                         } catch {
                             progressLock.lock()
-                            if installError == nil { installError = error }
+                            // A file proven bad outranks another worker's
+                            // failure, so the bundle is remembered either way.
+                            let rejectsArtifact = (error as? UpdateFailureError)?.rejectsArtifact == true
+                            let keptRejects = (installError as? UpdateFailureError)?.rejectsArtifact == true
+                            if installError == nil || (rejectsArtifact && !keptRejects) { installError = error }
                             progressLock.unlock()
                         }
                     }

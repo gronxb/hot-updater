@@ -3736,6 +3736,39 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func aFileProvenBadIsRememberedWhenAnotherFileFailsFirst() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bundleBytes = Data("target hermes".utf8)
+        let imageBytes = Data("target image".utf8)
+        let manifest = try makeManifestData(bundleId: "target", assets: [
+            "index.ios.bundle": try #require(sha256(bundleBytes, in: root)),
+            "assets/image.png": try #require(sha256(imageBytes, in: root)),
+        ])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let bundleURL = URL(string: "https://example.com/index.ios.bundle")!
+        let imageURL = URL(string: "https://example.com/assets/image.png")!
+        // Both downloads start; the image fails first, the corrupt bundle after.
+        let downloads = StaggeredDownloadService(
+            contents: [manifestURL: manifest, bundleURL: Data("corrupted bytes".utf8)],
+            failures: [imageURL: DownloadError.httpStatus(404)],
+            delays: [imageURL: 0.1, bundleURL: 0.4]
+        )
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: [
+                "index.ios.bundle": ChangedAssetDescriptor(fileUrl: bundleURL,
+                    fileHash: try #require(sha256(bundleBytes, in: root))),
+                "assets/image.png": ChangedAssetDescriptor(fileUrl: imageURL,
+                    fileHash: try #require(sha256(imageBytes, in: root))),
+            ])
+        #expect(result.failureError != nil)
+        #expect(service.getCrashHistory().contains("target"))
+    }
+
+    @Test
     func aLocalReadFailureIsNotRemembered() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
@@ -5376,6 +5409,41 @@ private func baseErrorCode(of result: Result<UpdateDelivery, Error>) -> String? 
         (UpdateFailureError.unwrap($0) as? BundleStorageError)?.errorCodeString
     }
 }
+/// Answers each URL, with its contents or its failure, after its delay.
+private final class StaggeredDownloadService: DownloadService {
+    private let contents: [URL: Data]
+    private let failures: [URL: Error]
+    private let delays: [URL: TimeInterval]
+
+    init(contents: [URL: Data], failures: [URL: Error], delays: [URL: TimeInterval]) {
+        self.contents = contents
+        self.failures = failures
+        self.delays = delays
+    }
+
+    func downloadFile(from url: URL, to destination: String,
+        fileSizeHandler: ((Int64) -> Void)?,
+        progressHandler: @escaping (DownloadProgress) -> Void,
+        completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
+        DispatchQueue.global().asyncAfter(deadline: .now() + (delays[url] ?? 0)) {
+            if let failure = self.failures[url] {
+                completion(.failure(failure))
+                return
+            }
+            do {
+                guard let bytes = self.contents[url] else { throw NSError(domain: "staggered", code: 1) }
+                let target = URL(fileURLWithPath: destination)
+                try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try bytes.write(to: target)
+                completion(.success(target))
+            } catch {
+                completion(.failure(error))
+            }
+        }
+        return nil
+    }
+}
+
 private final class DelayedAuditDownloadService: DownloadService {
     private let contents: [URL: Data]
     private let lock = NSLock()
