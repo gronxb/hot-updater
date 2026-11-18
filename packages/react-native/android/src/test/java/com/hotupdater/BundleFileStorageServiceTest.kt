@@ -3499,8 +3499,53 @@ class BundleFileStorageServiceTest {
             val descriptorRoot = temporaryFolder.newFolder("descriptor-hash")
             // The artifact response, not the signed manifest, names another hash.
             assertFalse(
-                rejectsAgainWithoutDownloading(descriptorRoot, descriptor = ChangedAssetDescriptor(BUNDLE_URL, sha256(descriptorRoot, "other"))),
+                rejectsAgainWithoutDownloading(
+                    descriptorRoot,
+                    descriptor = ChangedAssetDescriptor(BUNDLE_URL, sha256(descriptorRoot, "other")),
+                ),
             )
+        }
+
+    @Test
+    fun `a file proven bad is remembered when another file fails first`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder()
+            val imageUrl = "https://example.com/assets/image.png"
+            val bundleHash = sha256(root, BUNDLE_CONTENT)
+            val imageHash = sha256(root, "image")
+            val manifest = manifestJson("target", mapOf("index.android.bundle" to bundleHash, "assets/image.png" to imageHash))
+            val imageFailed = CountDownLatch(1)
+            val served =
+                BinaryMappingDownloadService(
+                    mapOf(MANIFEST_URL to manifest.toByteArray(), BUNDLE_URL to "tampered".toByteArray()),
+                    mapOf(imageUrl to HttpStatusException(404, "Not Found")),
+                )
+            // Both downloads run; the image fails first, the tampered bundle after.
+            val downloads =
+                object : DownloadService {
+                    override suspend fun downloadFile(
+                        fileUrl: URL,
+                        destination: File,
+                        fileSizeCallback: ((Long) -> Unit)?,
+                        progressCallback: (DownloadProgress) -> Unit,
+                    ): DownloadResult {
+                        if (fileUrl.toString() == BUNDLE_URL) {
+                            imageFailed.await(5, TimeUnit.SECONDS)
+                            Thread.sleep(200)
+                        }
+                        return served.downloadFile(fileUrl, destination, fileSizeCallback, progressCallback).also {
+                            if (fileUrl.toString() == imageUrl) imageFailed.countDown()
+                        }
+                    }
+                }
+            val service = createService(root, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
+            val assets =
+                mapOf(
+                    "index.android.bundle" to ChangedAssetDescriptor(BUNDLE_URL, bundleHash),
+                    "assets/image.png" to ChangedAssetDescriptor(imageUrl, imageHash),
+                )
+            assertNotNull(runCatching { service.updateBundle("target", MANIFEST_URL, sha256(root, manifest), assets) {} }.exceptionOrNull())
+            assertTrue(service.getCrashHistory().contains("target"))
         }
 
     @Test

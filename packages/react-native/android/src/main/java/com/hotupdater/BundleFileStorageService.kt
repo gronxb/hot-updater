@@ -16,6 +16,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
 import java.net.URL
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.cancellation.CancellationException
 
 data class ChangedAssetDescriptor(
@@ -1677,7 +1678,6 @@ class BundleFileStorageService(
         Log.w(TAG, "Bundle $bundleId failed verification; it will not be downloaded again")
     }
 
-
     override fun clearCrashHistory(): Boolean {
         synchronized(crashedHistoryLock) {
             saveCrashedHistory(CrashedHistory())
@@ -2563,6 +2563,9 @@ class BundleFileStorageService(
         tempDir.mkdirs()
 
         var diffFiles = mutableListOf<DiffProgressFileSnapshot>()
+        // A file proven bad outranks another download worker's failure, which
+        // the parallel downloads would otherwise report alone.
+        val rejectedFileFailure = AtomicReference<HotUpdaterException?>()
 
         try {
             val manifestFile = File(tempDir, "manifest.json")
@@ -2754,34 +2757,39 @@ class BundleFileStorageService(
                             .toList()
                             .map { progressFile ->
                                 async {
-                                    permits.withPermit {
-                                        updateStep(UpdateFailureStage.DOWNLOAD, UpdateFailureResource.FILE) {
-                                            val path = progressFile.path
-                                            val workerTemp =
-                                                File(tempDir, progressFile.order.toString()).apply { mkdirs() }
-                                            downloadManifestAsset(
-                                                assetPath = path,
-                                                expectedAsset = targetManifest.assets.getValue(path),
-                                                changedAsset = downloads.getValue(path),
-                                                currentBundleId = currentBundleId,
-                                                activeBundleDir = activeBundleDir,
-                                                builtInBaseFile = builtInPatchBases[path],
-                                                targetFile =
-                                                    RelativePathResolver.resolveInside(tmpDir, path)
-                                                        ?: throw HotUpdaterException.invalidBundle(),
-                                                tempDir = workerTemp,
-                                                progressFile = progressFile,
-                                                progressCallback = { payload ->
-                                                    synchronized(progressLock) {
-                                                        payload.details?.files?.firstOrNull()?.let { snapshot ->
-                                                            val index = diffFiles.indexOfFirst { it.path == path }
-                                                            diffFiles[index] = snapshot
+                                    try {
+                                        permits.withPermit {
+                                            updateStep(UpdateFailureStage.DOWNLOAD, UpdateFailureResource.FILE) {
+                                                val path = progressFile.path
+                                                val workerTemp =
+                                                    File(tempDir, progressFile.order.toString()).apply { mkdirs() }
+                                                downloadManifestAsset(
+                                                    assetPath = path,
+                                                    expectedAsset = targetManifest.assets.getValue(path),
+                                                    changedAsset = downloads.getValue(path),
+                                                    currentBundleId = currentBundleId,
+                                                    activeBundleDir = activeBundleDir,
+                                                    builtInBaseFile = builtInPatchBases[path],
+                                                    targetFile =
+                                                        RelativePathResolver.resolveInside(tmpDir, path)
+                                                            ?: throw HotUpdaterException.invalidBundle(),
+                                                    tempDir = workerTemp,
+                                                    progressFile = progressFile,
+                                                    progressCallback = { payload ->
+                                                        synchronized(progressLock) {
+                                                            payload.details?.files?.firstOrNull()?.let { snapshot ->
+                                                                val index = diffFiles.indexOfFirst { it.path == path }
+                                                                diffFiles[index] = snapshot
+                                                            }
+                                                            emitDiffProgress(progressCallback, "downloading", diffFiles)
                                                         }
-                                                        emitDiffProgress(progressCallback, "downloading", diffFiles)
-                                                    }
-                                                },
-                                            )
+                                                    },
+                                                )
+                                            }
                                         }
+                                    } catch (e: HotUpdaterException) {
+                                        if (e.rejectsArtifact) rejectedFileFailure.compareAndSet(null, e)
+                                        throw e
                                     }
                                 }
                             }.awaitAll()
@@ -2897,7 +2905,14 @@ class BundleFileStorageService(
         } catch (e: Exception) {
             tempDir.deleteRecursively()
             // A retry rehashes completed files and rejects partial bytes.
-            throw classifyUpdateFailure(e, UpdateFailureStage.DOWNLOAD, resource = null)
+            val rejected = rejectedFileFailure.get()
+            val failure =
+                if (rejected != null && e !is CancellationException && (e as? HotUpdaterException)?.rejectsArtifact != true) {
+                    rejected
+                } else {
+                    e
+                }
+            throw classifyUpdateFailure(failure, UpdateFailureStage.DOWNLOAD, resource = null)
         }
     }
 
