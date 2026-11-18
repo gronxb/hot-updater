@@ -3,11 +3,7 @@ import type { SchemaSettings } from "../database/fence";
 import { SETTINGS_TABLE } from "../database/fence";
 import type { ResolvedSchema } from "../database/resolveSchema";
 import type { SqlExecutor } from "../database/sql/sqlAdapter";
-import {
-  quoteSql,
-  sqlTableShapes,
-  type SqlTableShape,
-} from "../database/sql/sqlSchema";
+import { quoteSql } from "../database/sql/sqlSchema";
 import {
   type EngineSqlOptions,
   generateEngineSql,
@@ -16,28 +12,31 @@ import {
 import { getEmptyMigrationResult } from "./fixedMigratorShared";
 import {
   readStoredSettings,
+  refuseNewerSchema,
   refuseV0Database,
+  settingsOperation,
   storedSchemaVersion,
 } from "./settingsMigrator";
-import type { MigrateOptions, MigrationResult, Migrator } from "./types";
+import {
+  missingSqlSchema,
+  readSqlSchemaState,
+  targetShapes,
+} from "./sqlSchemaState";
+import type {
+  MigrateOptions,
+  MigrationOperation,
+  MigrationResult,
+  Migrator,
+} from "./types";
 
 export interface EngineSqlMigratorOptions extends EngineSqlOptions {
   readonly adapterName: string;
   readonly executor: SqlExecutor;
   readonly schema: ResolvedSchema;
   readonly settings: SchemaSettings;
+  /** The settings whose versions only move forward; `ToolingTarget.ordered`. */
+  readonly ordered?: readonly string[];
 }
-
-/** Each table, and the index tables of its multi-valued indexes. */
-const flatten = (shapes: readonly SqlTableShape[]): SqlTableShape[] =>
-  shapes.flatMap((shape) => [
-    shape,
-    ...flatten(
-      shape.indexes.flatMap((index) =>
-        index.kind === "table" ? [index.table] : [],
-      ),
-    ),
-  ]);
 
 /**
  * MySQL declares a table's indexes in its CREATE TABLE, which a table an
@@ -50,26 +49,18 @@ const missingMysqlIndexes = async (
   tablePrefix?: string,
 ): Promise<string[]> => {
   const quote = (name: string) => quoteSql("mysql", name);
-  const { rows } = await executor.execute({
-    sql: "SELECT DISTINCT TABLE_NAME AS t, INDEX_NAME AS i FROM information_schema.statistics WHERE TABLE_SCHEMA = DATABASE()",
-    params: [],
+  const shapes = targetShapes("mysql", schema, tablePrefix);
+  return missingSqlSchema(
+    shapes,
+    await readSqlSchemaState(executor),
+  ).indexes.map(({ table, index: name }) => {
+    const index = shapes
+      .find((shape) => shape.name === table)!
+      .indexes.find(
+        (candidate) => candidate.kind === "index" && candidate.name === name,
+      )!;
+    return `CREATE ${index.kind === "index" && index.unique ? "UNIQUE " : ""}INDEX ${quote(name)} ON ${quote(table)} (${index.kind === "index" ? index.columns.map(quote).join(", ") : ""})`;
   });
-  // MySQL compares index names, and with lower_case_table_names table names,
-  // without case, and reports them folded: compare both folded.
-  const folded = (table: unknown, index: unknown) =>
-    JSON.stringify([String(table).toLowerCase(), String(index).toLowerCase()]);
-  const present = new Set(rows.map(({ t, i }) => folded(t, i)));
-  return flatten(
-    sqlTableShapes("mysql", [...schema.tables, SETTINGS_TABLE], tablePrefix),
-  ).flatMap((shape) =>
-    shape.indexes.flatMap((index) =>
-      index.kind === "index" && !present.has(folded(shape.name, index.name))
-        ? [
-            `CREATE ${index.unique ? "UNIQUE " : ""}INDEX ${quote(index.name)} ON ${quote(shape.name)} (${index.columns.map(quote).join(", ")})`,
-          ]
-        : [],
-    ),
-  );
 };
 
 /**
@@ -125,13 +116,16 @@ export const createEngineSqlMigrator = (
   ): Promise<MigrationResult> => {
     const stored = await read();
     refuseV0Database(options.adapterName, stored);
-    if (
-      Object.entries(options.settings).every(
-        ([key, value]) => stored.get(key) === value,
-      )
-    ) {
-      return getEmptyMigrationResult();
-    }
+    refuseNewerSchema(
+      options.adapterName,
+      stored,
+      options.settings,
+      options.ordered,
+    );
+    const changed = Object.entries(options.settings).filter(
+      ([key, value]) => stored.get(key) !== value,
+    );
+    if (changed.length === 0) return getEmptyMigrationResult();
     const statements = generateEngineSql(
       options.executor.dialect,
       options.schema,
@@ -144,29 +138,34 @@ export const createEngineSqlMigrator = (
       options.tablePrefix,
     );
     const tablesSql = statements.slice(0, -settingsSql.length || undefined);
+    // Only what the database lacks: the statements create a table or an
+    // index only when it is missing.
+    const missing = missingSqlSchema(
+      targetShapes(
+        options.executor.dialect,
+        options.schema,
+        options.tablePrefix,
+      ).filter(
+        (shape) =>
+          shape.name !== (options.tablePrefix ?? "") + SETTINGS_TABLE.name,
+      ),
+      await readSqlSchemaState(options.executor),
+    );
+    const operations: MigrationOperation[] = [
+      ...missing.tables.map((table) => ({
+        type: "create-table" as const,
+        value: { ormName: table, columns: {} },
+      })),
+      ...missing.indexes.map(({ table, index }) => ({
+        type: "custom" as const,
+        description: `Create index: ${index} on ${table}`,
+      })),
+      ...(migrate.updateSettings === false
+        ? []
+        : [settingsOperation(stored, changed)]),
+    ];
     return {
-      operations: [
-        ...options.schema.tables.map((table) => ({
-          type: "create-table" as const,
-          value: {
-            ormName: table.name,
-            columns: Object.fromEntries(
-              table.columns.map((column) => [
-                column.name,
-                { ormName: column.name, type: column.type },
-              ]),
-            ),
-          },
-        })),
-        ...(migrate.updateSettings === false
-          ? []
-          : [
-              {
-                type: "custom" as const,
-                description: `Write the schema settings: ${Object.keys(options.settings).join(", ")}`,
-              },
-            ]),
-      ],
+      operations,
       getSQL: () => statements.map((statement) => `${statement};`).join("\n\n"),
       execute: () =>
         run(

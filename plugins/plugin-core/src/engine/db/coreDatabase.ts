@@ -30,7 +30,13 @@ export const coreSettings: SchemaSettings = {
 export const coreTarget: ToolingTarget = {
   schema: coreSchema,
   settings: coreSettings,
+  ordered: ["schema.core"],
 };
+
+/** The brand Hot Updater's own plugin factories set, read as the server reads it. */
+const isOfficialPlugin = (plugin: object) =>
+  Reflect.get(plugin, Symbol.for("@hot-updater/server/official-plugin")) ===
+  true;
 
 /**
  * The log and lease tables a database with `aggregateBatching` writes
@@ -85,6 +91,12 @@ export const toolingTargetOf = (
     : {
         schema: resolveSchema([coreModule, ...plugins.map(pluginModule)]),
         settings: { ...coreSettings, ...pluginSettings(plugins) },
+        ordered: [
+          ...coreTarget.ordered!,
+          ...plugins.flatMap((plugin) =>
+            isOfficialPlugin(plugin) ? [`schema.${plugin.id}`] : [],
+          ),
+        ],
       };
 
 /**
@@ -96,8 +108,8 @@ export const migrateCoreSchema = (
   name: string,
   plugins: readonly PluginTables[] = [],
 ) => {
-  const { schema, settings } = toolingTargetOf(plugins);
-  return migrateSchema(adapter, name, schema.tables, settings);
+  const { schema, settings, ordered } = toolingTargetOf(plugins);
+  return migrateSchema(adapter, name, schema.tables, settings, ordered);
 };
 
 /** `createEngineDatabase`'s options. */
@@ -147,12 +159,13 @@ export const createEngineDatabase = ({
   readSettings: readStored,
 }: EngineDatabaseOptions): ToolingDatabase => {
   const fenced = withSchemaFence(adapter, name, coreSettings);
-  const createMigrator = ({ schema, settings } = coreTarget) =>
+  const createMigrator = ({ schema, settings, ordered } = coreTarget) =>
     createEngineMigrator({
       adapterName: name,
       adapter,
       schema,
       settings,
+      ordered,
       readSettings:
         readStored ??
         (async () => {

@@ -127,6 +127,7 @@ import {
 } from "./commands/storage";
 import { handleUploadKeyIssue } from "./commands/uploadKey";
 import { ui } from "./utils/cli-ui";
+import { exitWhenFlushed } from "./utils/exitWhenFlushed";
 
 const DEFAULT_CHANNEL = "production";
 const parseBooleanOption = (value: string) => {
@@ -253,7 +254,11 @@ program
   .option("--app-version <version>", "app-version catalog target")
   .option("--fingerprint <hash>", "fingerprint catalog target")
   .option("--json", "output machine-readable doctor result")
-  .action(handleDoctor);
+  // The config's database pool or client may keep the process alive.
+  .action(async (options) => {
+    await handleDoctor(options);
+    await exitWhenFlushed(0);
+  });
 
 const fingerprintCommand = program
   .command("fingerprint")
