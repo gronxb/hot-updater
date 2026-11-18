@@ -3557,7 +3557,7 @@ struct BundleFileStorageServiceTests {
     @Test(arguments: [
         ("manifest-hash", true), ("manifest-json", true), ("manifest-bundle-id", true),
         ("file-hash", true), ("file-brotli", true), ("unsafe-path", true),
-        ("descriptor-set", false), ("missing-bundle-file", false),
+        ("missing-bundle-file", true), ("descriptor-set", false),
         ("network", false), ("http", false), ("incomplete", false), ("public-key", false),
     ])
     func remembersOnlyFailuresThatProveTheFilesBad(kind: String, rejected: Bool) throws {

@@ -3215,10 +3215,13 @@ class BundleFileStorageService: BundleStorageService {
             switch self.findBundleFile(in: tmpDir, expectedBundleId: bundleId) {
             case .success(let maybeBundlePath):
                 guard let bundlePathInTmp = maybeBundlePath else {
-                    // The manifest does not name exactly one platform bundle file.
+                    // The manifest does not name exactly one platform bundle
+                    // file. Every file was verified against it, so the
+                    // manifest itself is at fault.
                     throw UpdateFailureError(
                         underlying: BundleStorageError.invalidBundle,
-                        failure: UpdateFailure.invalidResponse.with(resource: .manifest)
+                        failure: UpdateFailure.invalidResponse.with(resource: .manifest),
+                        rejectsArtifact: true
                     )
                 }
 

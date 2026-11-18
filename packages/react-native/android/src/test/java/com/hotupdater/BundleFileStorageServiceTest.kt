@@ -3472,6 +3472,8 @@ class BundleFileStorageServiceTest {
             )
             assertTrue(rejectsAgainWithoutDownloading(temporaryFolder.newFolder("unparsable"), manifest = "not json"))
             assertTrue(rejectsAgainWithoutDownloading(temporaryFolder.newFolder("unsafe-path"), assetPath = "../index.android.bundle"))
+            // Every file verified against the manifest, yet none is the platform bundle.
+            assertTrue(rejectsAgainWithoutDownloading(temporaryFolder.newFolder("missing-platform-bundle"), assetPath = "assets/image.png"))
             val brotli = temporaryFolder.newFolder("brotli")
             assertTrue(
                 rejectsAgainWithoutDownloading(
@@ -3494,8 +3496,6 @@ class BundleFileStorageServiceTest {
             }
             // The manifest is signed, but this build has no key to check it with.
             assertFalse(rejectsAgainWithoutDownloading(temporaryFolder.newFolder("no-public-key"), manifestFileHash = "sig:c2lnbmF0dXJl"))
-            // Every file verified, yet none of them is the platform bundle.
-            assertFalse(rejectsAgainWithoutDownloading(temporaryFolder.newFolder("missing-platform-bundle"), assetPath = "assets/image.png"))
             val descriptorRoot = temporaryFolder.newFolder("descriptor-hash")
             // The artifact response, not the signed manifest, names another hash.
             assertFalse(

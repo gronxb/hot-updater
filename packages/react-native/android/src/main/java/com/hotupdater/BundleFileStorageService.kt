@@ -2765,8 +2765,9 @@ class BundleFileStorageService(
 
                 val extractedIndex = tmpDir.walk().find { it.name == "index.android.bundle" }
                 if (extractedIndex == null) {
-                    // The manifest lists no platform bundle.
-                    throw HotUpdaterException.invalidBundle().withResource(UpdateFailureResource.MANIFEST)
+                    // The manifest lists no platform bundle. Every file was
+                    // verified against it, so the manifest itself is at fault.
+                    throw HotUpdaterException.invalidBundle().withResource(UpdateFailureResource.MANIFEST).rejectingArtifact()
                 }
 
                 val backupDir = installBackupDir(bundleId)
