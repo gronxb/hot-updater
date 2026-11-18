@@ -44,6 +44,8 @@ const bundle = {
   platform: "ios",
 } as Bundle;
 
+const COPY_COMMIT = "Copy full value: abc123def4567890";
+
 describe("BundleMetadata", () => {
   beforeEach(() => {
     mockUseConfigQuery.mockReset();
@@ -65,10 +67,11 @@ describe("BundleMetadata", () => {
     expect(link.getAttribute("href")).toBe(
       "https://github.com/acme/app/commit/abc123def4567890",
     );
-    expect(screen.queryByRole("button", { name: "Not linked" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: COPY_COMMIT }));
+    expect(screen.queryByText(/console\.gitUrl/)).toBeNull();
   });
 
-  it("shows a Not linked tooltip when console.gitUrl is missing", () => {
+  it("hints on the commit hash when console.gitUrl is missing", () => {
     mockUseConfigQuery.mockReturnValue({
       data: { console: {} },
       isFetched: true,
@@ -78,15 +81,16 @@ describe("BundleMetadata", () => {
 
     expect(screen.queryByRole("link", { name: "Open git commit" })).toBeNull();
 
-    const trigger = screen.getByRole("button", { name: "Not linked" });
-    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: COPY_COMMIT }));
 
+    // The truncated hash keeps its full value above the hint.
+    expect(screen.getByText("abc123def4567890")).toBeDefined();
     expect(screen.getByText(/console\.gitUrl/)).toBeDefined();
     const guide = screen.getByRole("link", { name: "Learn more" });
     expect(guide.getAttribute("href")).toBe(CONSOLE_GIT_URL_GUIDE_URL);
   });
 
-  it("waits for config before showing the Not linked tooltip", () => {
+  it("waits for config before hinting on the commit hash", () => {
     mockUseConfigQuery.mockReturnValue({
       data: undefined,
       isFetched: false,
@@ -94,7 +98,8 @@ describe("BundleMetadata", () => {
 
     render(<BundleMetadata bundle={bundle} release={release} />);
 
-    expect(screen.queryByRole("button", { name: "Not linked" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: COPY_COMMIT }));
+    expect(screen.queryByText(/console\.gitUrl/)).toBeNull();
     expect(screen.queryByRole("link", { name: "Open git commit" })).toBeNull();
   });
 });

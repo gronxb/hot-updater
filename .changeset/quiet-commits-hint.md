@@ -2,4 +2,4 @@
 "@hot-updater/console": patch
 ---
 
-Show "Not linked" beside a git commit when `console.gitUrl` is unset, with the setup hint and docs link in the Console tooltip.
+Show the `console.gitUrl` setup hint in the git commit hash's tooltip instead of a separate info icon, and keep it readable and open on click.
