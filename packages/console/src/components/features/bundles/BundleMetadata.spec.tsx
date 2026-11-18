@@ -65,10 +65,10 @@ describe("BundleMetadata", () => {
     expect(link.getAttribute("href")).toBe(
       "https://github.com/acme/app/commit/abc123def4567890",
     );
-    expect(screen.queryByRole("button", { name: "Link commits" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Not linked" })).toBeNull();
   });
 
-  it("shows a tooltip trigger when console.gitUrl is missing", () => {
+  it("shows a Not linked tooltip when console.gitUrl is missing", () => {
     mockUseConfigQuery.mockReturnValue({
       data: { console: {} },
       isFetched: true,
@@ -78,7 +78,7 @@ describe("BundleMetadata", () => {
 
     expect(screen.queryByRole("link", { name: "Open git commit" })).toBeNull();
 
-    const trigger = screen.getByRole("button", { name: "Link commits" });
+    const trigger = screen.getByRole("button", { name: "Not linked" });
     fireEvent.click(trigger);
 
     expect(screen.getByText(/console\.gitUrl/)).toBeDefined();
@@ -86,7 +86,7 @@ describe("BundleMetadata", () => {
     expect(guide.getAttribute("href")).toBe(CONSOLE_GIT_URL_GUIDE_URL);
   });
 
-  it("waits for config before showing the link-commits tooltip", () => {
+  it("waits for config before showing the Not linked tooltip", () => {
     mockUseConfigQuery.mockReturnValue({
       data: undefined,
       isFetched: false,
@@ -94,7 +94,7 @@ describe("BundleMetadata", () => {
 
     render(<BundleMetadata bundle={bundle} release={release} />);
 
-    expect(screen.queryByRole("button", { name: "Link commits" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Not linked" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Open git commit" })).toBeNull();
   });
 });

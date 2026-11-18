@@ -1,10 +1,15 @@
 import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
 import { getPatchBaseFileHash, getPatchFileHash } from "@hot-updater/protocol";
 import { ExternalLink } from "lucide-react";
+import { useId, useState } from "react";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";
-import { InfoTooltip } from "@/components/InfoTooltip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useConfigQuery } from "@/lib/api";
 import { CONSOLE_GIT_URL_GUIDE_URL } from "@/lib/constants";
 import { getCommitUrl } from "@/lib/git";
@@ -20,6 +25,47 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="min-w-0 text-left text-sm sm:text-right">{value}</dd>
     </div>
+  );
+}
+
+function GitUrlHint() {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  return (
+    <Tooltip open={open} onOpenChange={setOpen} triggerId={id}>
+      <TooltipTrigger
+        id={id}
+        aria-describedby={open ? `${id}-description` : undefined}
+        closeOnClick={false}
+        onClick={() => setOpen(true)}
+        render={
+          <button
+            type="button"
+            className="relative ml-1 shrink-0 cursor-help text-xs text-muted-foreground underline decoration-dotted underline-offset-4 outline-none after:absolute after:-inset-2.5 hover:text-foreground focus-visible:text-foreground focus-visible:ring-[2px] focus-visible:ring-ring/30 rounded-sm md:after:hidden"
+          />
+        }
+      >
+        Not linked
+      </TooltipTrigger>
+      <TooltipContent
+        id={`${id}-description`}
+        className="max-w-64"
+        side="bottom"
+      >
+        <p>
+          Set <code className="font-mono">console.gitUrl</code> in your config
+          to open commits in your repository.{" "}
+          <a
+            className="font-medium underline underline-offset-2"
+            href={CONSOLE_GIT_URL_GUIDE_URL}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Learn more
+          </a>
+        </p>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -88,23 +134,7 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
                       <ExternalLink aria-hidden="true" />
                     </a>
                   ) : null}
-                  {showGitUrlHint ? (
-                    <InfoTooltip label="Link commits">
-                      Set{" "}
-                      <code className="font-mono text-foreground">
-                        console.gitUrl
-                      </code>{" "}
-                      in your config to link commits.{" "}
-                      <a
-                        className="text-primary hover:underline"
-                        href={CONSOLE_GIT_URL_GUIDE_URL}
-                        rel="noopener noreferrer"
-                        target="_blank"
-                      >
-                        Learn more
-                      </a>
-                    </InfoTooltip>
-                  ) : null}
+                  {showGitUrlHint ? <GitUrlHint /> : null}
                 </div>
               }
             />
