@@ -626,7 +626,13 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
     // firebase-admin as @hot-updater/firebase resolves it.
     const { applicationDefault, deleteApp, getApps } = createRequire(
       createRequire(import.meta.url).resolve("@hot-updater/firebase"),
-    )("firebase-admin/app") as typeof import("firebase-admin/app");
+    )("firebase-admin/app") as {
+      applicationDefault: () => NonNullable<
+        Parameters<typeof firebaseDatabase>[0]["credential"]
+      >;
+      deleteApp: (app: unknown) => Promise<void>;
+      getApps: () => unknown[];
+    };
     // The placeholder 1.0.0's init writes into .env.hotupdater, which the
     // config loads.
     vi.stubEnv("GOOGLE_APPLICATION_CREDENTIALS", "your-credentials.json");
