@@ -2365,17 +2365,6 @@ class BundleFileStorageService: BundleStorageService {
      * @param completion Callback with result of the operation
      */
     func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL? = nil, assets: [String: ChangedAssetDescriptor], fileResolver: ArtifactFileResolver? = nil, selection: PersistedSelection? = nil, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<UpdateDelivery, Error>) -> Void) {
-        // Check if bundle is in crashed history
-        if getCrashHistory().contains(bundleId) {
-            NSLog("[BundleStorage] Bundle '\(bundleId)' is in crashed history, rejecting update")
-            completion(.failure(
-                isBundleRejected(bundleId)
-                    ? BundleStorageError.bundleRejected(bundleId)
-                    : BundleStorageError.bundleInCrashedHistory(bundleId)
-            ))
-            return
-        }
-
         let completion: (Result<UpdateDelivery, Error>) -> Void = { result in
             if case .failure(let error) = result,
                (error as? UpdateFailureError)?.rejectsArtifact == true {
@@ -2385,6 +2374,17 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         fileOperationQueue.async(flags: .barrier) {
+            // Checked in turn: an install queued behind one that refused this
+            // bundle's files sees that refusal.
+            if self.getCrashHistory().contains(bundleId) {
+                NSLog("[BundleStorage] Bundle '\(bundleId)' is in crashed history, rejecting update")
+                completion(.failure(
+                    self.isBundleRejected(bundleId)
+                        ? BundleStorageError.bundleRejected(bundleId)
+                        : BundleStorageError.bundleInCrashedHistory(bundleId)
+                ))
+                return
+            }
             let storeDirResult = self.bundleStoreDir()
             guard case .success(let storeDir) = storeDirResult else {
                 completion(.failure(UpdateFailureError.classifying(

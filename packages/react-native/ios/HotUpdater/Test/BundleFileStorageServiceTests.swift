@@ -3769,6 +3769,46 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func anInstallQueuedBehindARefusalIsRefusedToo() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("target hermes".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": hash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        // The first download is corrupt; a second would be intact.
+        let downloads = SequencedDownloadService(contents: [
+            manifestURL: [manifest, manifest],
+            fileURL: [Data("corrupted bytes".utf8), bytes],
+        ])
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        let assets = ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)]
+        let manifestHash = try #require(sha256(manifest, in: root))
+        // Both installs are queued before either runs.
+        let group = DispatchGroup()
+        var results: [Result<UpdateDelivery, Error>] = []
+        let lock = NSLock()
+        for _ in 0..<2 {
+            group.enter()
+            service.updateBundle(bundleId: "target", manifestUrl: manifestURL, manifestFileHash: manifestHash,
+                assets: assets, progressHandler: { _ in }) { result in
+                lock.lock()
+                results.append(result)
+                lock.unlock()
+                group.leave()
+            }
+        }
+        #expect(group.wait(timeout: .now() + 5) == .success)
+        #expect(results.count == 2)
+        #expect(results.allSatisfy { $0.failureError != nil })
+        #expect(downloads.requestCount == 2)
+        #expect(service.getCrashHistory().contains("target"))
+        #expect(loadMetadata(documentsDirectory: root)?.stagingBundleId == nil)
+    }
+
+    @Test
     func aLocalReadFailureIsNotRemembered() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
@@ -5409,6 +5449,43 @@ private func baseErrorCode(of result: Result<UpdateDelivery, Error>) -> String? 
         (UpdateFailureError.unwrap($0) as? BundleStorageError)?.errorCodeString
     }
 }
+/// Answers each request for a URL with the next of its contents.
+private final class SequencedDownloadService: DownloadService {
+    private var contents: [URL: [Data]]
+    private let lock = NSLock()
+    private var requests = 0
+
+    init(contents: [URL: [Data]]) {
+        self.contents = contents
+    }
+
+    var requestCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return requests
+    }
+
+    func downloadFile(from url: URL, to destination: String,
+        fileSizeHandler: ((Int64) -> Void)?,
+        progressHandler: @escaping (DownloadProgress) -> Void,
+        completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
+        lock.lock()
+        requests += 1
+        let data = contents[url]?.isEmpty == false ? contents[url]?.removeFirst() : nil
+        lock.unlock()
+        do {
+            guard let data else { throw NSError(domain: "sequenced", code: 1) }
+            let target = URL(fileURLWithPath: destination)
+            try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: target)
+            completion(.success(target))
+        } catch {
+            completion(.failure(error))
+        }
+        return nil
+    }
+}
+
 /// Answers each URL, with its contents or its failure, after its delay.
 private final class StaggeredDownloadService: DownloadService {
     private let contents: [URL: Data]
