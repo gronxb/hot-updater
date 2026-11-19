@@ -1,5 +1,16 @@
 # @hot-updater/console
 
+## 1.1.17
+
+### Patch Changes
+
+- f6beea5: Show the `console.gitUrl` setup hint in the git commit hash's tooltip instead of a separate info icon, and keep it readable and open on click.
+- 745ed5f: Show a hint in bundle metadata when a git commit is present but `console.gitUrl` is not configured, with a link to the Git URL setup docs.
+- @hot-updater/bsdiff@1.1.17
+  - @hot-updater/protocol@1.1.17
+  - @hot-updater/server@1.1.17
+  - @hot-updater/plugin-core@1.1.17
+
 ## 1.1.16
 
 ### Patch Changes

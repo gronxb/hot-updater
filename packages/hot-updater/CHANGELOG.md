@@ -1,5 +1,20 @@
 # hot-updater
 
+## 1.1.17
+
+### Patch Changes
+
+- Updated dependencies [f6beea5]
+- Updated dependencies [745ed5f]
+  - @hot-updater/console@1.1.17
+  - @hot-updater/android-helper@1.1.17
+  - @hot-updater/apple-helper@1.1.17
+  - @hot-updater/bsdiff@1.1.17
+  - @hot-updater/cli-tools@1.1.17
+  - @hot-updater/protocol@1.1.17
+  - @hot-updater/server@1.1.17
+  - @hot-updater/plugin-core@1.1.17
+
 ## 1.1.16
 
 ### Patch Changes
