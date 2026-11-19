@@ -7337,7 +7337,7 @@ async function assertFirstOtaUsesBuiltInManifest(args: { bundleId: string }) {
       const reuse = readFirstOtaReuseEvidence(args.bundleId);
       if (!reuse.ok) {
         throw createEndpointError(
-          "First OTA did not reuse byte-identical packaged image/font files without downloads",
+          "First OTA did not reuse the built-in image and font files without downloads, or reused a compiled XML drawable instead of downloading its source",
           reuse,
         );
       }
