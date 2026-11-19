@@ -45,6 +45,8 @@ class HotUpdaterBuiltInAssetIndex implements Action<Task> {
         String path = resources.toPath().relativize(file.toPath()).toString().replace(File.separatorChar, '/' as char)
         // A nine-patch's border becomes a chunk, not a re-encoding of the image.
         if (path.endsWith(".9.png")) return
+        // AAPT2 compiles XML outside raw/ to binary XML, so the packaged bytes are not the source.
+        if (path.endsWith(".xml") && !path.startsWith("raw/")) return
         assets[path] = sha256(file)
       }
     }
