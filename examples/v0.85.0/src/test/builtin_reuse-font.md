@@ -18,3 +18,8 @@ repository, stored with zlib level 0 so that AAPT2's PNG crunch in Android
 release builds re-encodes it (12,420 bytes before, a few hundred after). The
 packaged bytes then differ from the OTA's, while the source is the same: the
 E2E checks that the first OTA still reuses it instead of downloading it.
+
+`builtin_reuse_vector.xml` is a minimal vector drawable made for this
+repository. Android release builds compile it to binary XML (AAPT2), so the
+packaged file is not its source: the E2E checks that the first OTA downloads
+it instead of reusing the packaged file.
