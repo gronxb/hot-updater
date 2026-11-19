@@ -49,6 +49,11 @@ export default Repack.defineRspackConfig({
         },
       },
       ...Repack.getAssetTransformRules(),
+      // Re.Pack's asset rule leaves out XML, which Metro treats as an asset.
+      {
+        test: /\.xml$/,
+        use: { loader: '@callstack/repack/assets-loader' },
+      },
     ],
   },
   plugins: [new Repack.RepackPlugin()],
