@@ -21,8 +21,10 @@ import {
   apiKeys,
   createInsightsModel,
   createInsightsProvider,
+  formatManagedPlugins,
   insights,
   type InsightsProvider,
+  MANAGED_PLUGIN_IDS,
   remoteConfig,
 } from "@hot-updater/server/plugins";
 import {
@@ -242,6 +244,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
         {
           REGION,
           FIRESTORE_DATABASE_ID,
+          PLUGINS: formatManagedPlugins(MANAGED_PLUGIN_IDS),
         },
       ),
     );

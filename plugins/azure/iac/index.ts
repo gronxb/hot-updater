@@ -3,6 +3,7 @@ import path from "path";
 
 import {
   assembleServer,
+  formatManagedPlugins,
   getCwd,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
@@ -16,10 +17,16 @@ import {
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   type RunInitOptions,
+  selectManagedPlugins,
   shouldAutoSelectOnlyInitResource,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
-import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+import {
+  apiKeys,
+  insights,
+  managedPlugins,
+  remoteConfig,
+} from "@hot-updater/server/plugins";
 
 import { AZURE_BLOB_V1_CONTAINER } from "../src/azureInfrastructureNames";
 import { cosmosDatabase, migrateCosmosDatabase } from "../src/cosmosDatabase";
@@ -289,6 +296,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     hint: "Use 2 to 60 letters, digits, and inner '-'.",
   });
 
+  // The plugins the Function runs, which the config lists and the app follows.
+  const selectedPlugins = await selectManagedPlugins({
+    nonInteractive,
+    saved: saved.plugins,
+  });
+
   // Every check before any resource exists: a refusal after one is created
   // would leave it behind.
   await assertFunctionAppCanInitialize({
@@ -365,6 +378,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     functionApp,
     storageConnectionString,
     cosmosConnectionString,
+    plugins: formatManagedPlugins(selectedPlugins),
   };
   // The connection strings too: hot-updater.config.ts reads them, and init
   // reads them from Azure again on every run.
@@ -376,6 +390,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     }),
   );
 
+  // Every managed plugin's tables and schema settings, so running one later
+  // needs no migration.
   const plugins = [insights(), apiKeys(), remoteConfig()];
   let baseURL = "";
   await p.tasks([
@@ -408,6 +424,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
               storageConnectionString,
             [FUNCTION_SETTINGS.blobContainer]: AZURE_BLOB_V1_CONTAINER,
             [FUNCTION_SETTINGS.cosmosConnectionString]: cosmosConnectionString,
+            [FUNCTION_SETTINGS.plugins]: formatManagedPlugins(selectedPlugins),
           },
         });
         return `Function App ${functionApp} is ready`;
@@ -434,7 +451,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const database = cosmosDatabase({ connectionString: cosmosConnectionString });
   // The managed server: its plugins over the database init set up, which
   // assembling it neither reads nor writes.
-  const server = assembleServer({ database, plugins });
+  const server = assembleServer({
+    database,
+    plugins: managedPlugins(selectedPlugins).plugins,
+  });
   let credential: ProvisionedClientCredential | undefined;
   try {
     credential = await provisionClientCredential(server, {
@@ -449,7 +469,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   p.log.success("Generated '.env.hotupdater' file with Azure settings.");
-  await writeHotUpdaterFiles(getConfigScaffold(build), {
+  await writeHotUpdaterFiles(getConfigScaffold(build, selectedPlugins), {
     cwd,
     settings: "Azure",
   });

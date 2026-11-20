@@ -212,6 +212,7 @@ describe("AWS init", () => {
         bucketName: "bundles",
         dynamodbRegion: "ap-northeast-2",
         dynamodbTableName: "hot-updater-metadata",
+        plugins: "insights,apiKeys,remoteConfig",
         publicKeyId: "public-key-id",
         ssmParameterName,
         ssmRegion: "ap-northeast-2",

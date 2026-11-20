@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+import { managedPlugins } from "@hot-updater/server/plugins";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase/edge";
 import { Hono } from "hono";
 
@@ -8,6 +8,8 @@ declare global {
   var HotUpdater: {
     BUCKET_NAME: string;
     FUNCTION_NAME: string;
+    /** The plugins the function runs, as init selected them. */
+    PLUGINS: string;
   };
 }
 
@@ -23,13 +25,13 @@ const hotUpdater = createHotUpdater({
     supabaseUrl,
     supabaseServiceRoleKey,
   }),
-  plugins: [insights(), apiKeys(), remoteConfig()],
+  ...managedPlugins(HotUpdater.PLUGINS),
   storage: supabaseStorage({
     supabaseUrl,
     supabaseServiceRoleKey,
     bucketName,
   }),
-});
+} as Parameters<typeof createHotUpdater>[0]);
 
 const app = new Hono().basePath(functionBasePath);
 

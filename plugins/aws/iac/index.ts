@@ -3,6 +3,7 @@ import {
   colors,
   confirmInitInputPersistence,
   ensureInstallPackages,
+  formatManagedPlugins,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -13,10 +14,17 @@ import {
   provisionClientCredential,
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
+  resolveInitProviderInput,
   type RunInitOptions,
+  selectManagedPlugins,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
-import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+import {
+  apiKeys,
+  insights,
+  managedPlugins,
+  remoteConfig,
+} from "@hot-updater/server/plugins";
 import { execa } from "execa";
 
 import { dynamoDB, migrateDynamoDB } from "../src/dynamoDB";
@@ -64,7 +72,8 @@ export const prepareDynamoDBDeployment = async (input: {
 }): Promise<void> => {
   const dynamodbManager = new DynamoDBManager(input.region, input.credentials);
   await dynamodbManager.ensureTable(input.tableName);
-  // The plugin reads nothing until the table's schema settings exist.
+  // The plugin reads nothing until the table's schema settings exist. Every
+  // managed plugin's are written, so running one later needs no migration.
   await migrateDynamoDB(input, [insights(), apiKeys(), remoteConfig()]);
 };
 
@@ -275,6 +284,14 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       domainName: selectedDistribution.DomainName,
     });
   }
+  // The plugins the function runs, which the config lists and the app follows.
+  const plugins = await selectManagedPlugins({
+    nonInteractive,
+    saved: resolveInitProviderInput(
+      providerEnv,
+      AWS_INIT_PROVIDER.inputs.plugins,
+    ),
+  });
   const resolvedInputs = {
     ...resolvedAuthInputs,
     bucketName,
@@ -282,6 +299,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     distributionId: selectedDistribution?.Id,
     dynamodbTableName: resolvedDynamoDBTableName,
     lambdaName,
+    plugins: formatManagedPlugins(plugins),
   };
   const persistCredentialInputs = await confirmInitInputPersistence({
     existingEnv: managedEnv,
@@ -337,7 +355,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   // The managed server, as the function runs it: its plugins on the table.
   const server = assembleServer({
     database,
-    plugins: [insights(), apiKeys(), remoteConfig()],
+    plugins: managedPlugins(plugins).plugins,
   });
   // The app's credential, through the managed server's plugins, on the table they read.
   let credential: ProvisionedClientCredential | undefined;
@@ -383,6 +401,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       bucketName,
       dynamodbRegion: bucketRegion,
       dynamodbTableName: resolvedDynamoDBTableName,
+      plugins: formatManagedPlugins(plugins),
       publicKeyId: publicKeyId,
       ssmParameterName: ssmParameterName,
       ssmRegion: bucketRegion,
@@ -424,10 +443,13 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   p.log.success("Generated '.env.hotupdater' file with AWS settings.");
-  await writeHotUpdaterFiles(getConfigScaffold(build, configAuthMode), {
-    cwd: process.cwd(),
-    settings: "AWS",
-  });
+  await writeHotUpdaterFiles(
+    getConfigScaffold(build, configAuthMode, plugins),
+    {
+      cwd: process.cwd(),
+      settings: "AWS",
+    },
+  );
 
   // The app's server URL is the CloudFront domain.
   printAppSetup({

@@ -90,6 +90,7 @@ describe("LambdaEdgeDeployer", () => {
         bucketName: "hot-updater-storage",
         dynamodbRegion: "ap-northeast-2",
         dynamodbTableName: "hot-updater-metadata",
+        plugins: "insights,remoteConfig",
         publicKeyId: "public-key-id",
         ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
         ssmRegion: "ap-northeast-2",
@@ -105,6 +106,11 @@ describe("LambdaEdgeDeployer", () => {
     expect(transformEnvMock).toHaveBeenCalledWith(
       "/tmp/hot-updater-lambda/index.cjs",
       expect.not.objectContaining({ CATALOG_ID: expect.anything() }),
+    );
+    // The plugins init selected reach the function's code.
+    expect(transformEnvMock).toHaveBeenCalledWith(
+      "/tmp/hot-updater-lambda/index.cjs",
+      expect.objectContaining({ PLUGINS: "insights,remoteConfig" }),
     );
     expect(lambdaMocks.updateFunctionConfiguration).toHaveBeenCalledWith({
       FunctionName: "hot-updater-edge",
@@ -148,6 +154,7 @@ describe("LambdaEdgeDeployer", () => {
         bucketName: "hot-updater-storage",
         dynamodbRegion: "ap-northeast-2",
         dynamodbTableName: "hot-updater-metadata",
+        plugins: "insights,remoteConfig",
         publicKeyId: "public-key-id",
         ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
         ssmRegion: "ap-northeast-2",
@@ -196,6 +203,7 @@ describe("LambdaEdgeDeployer", () => {
         bucketName: "hot-updater-storage",
         dynamodbRegion: "ap-northeast-2",
         dynamodbTableName: "hot-updater-metadata",
+        plugins: "insights,remoteConfig",
         publicKeyId: "public-key-id",
         ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
         ssmRegion: "ap-northeast-2",

@@ -58,9 +58,10 @@ Review the setup result:
 | Update server base URL | The actual deployed endpoint, including a provider base path when required |
 | Remote resources | The selected account/project, database and storage match the local config |
 
-For every managed provider, `init` imports `apiKeys`, `insights`, and
-`remoteConfig` from `hot-updater/plugins` and writes
-`plugins: [apiKeys(), insights(), remoteConfig()]` into `hot-updater.config.ts`.
+For every managed provider, `init` asks which of `apiKeys`, `insights`, and
+`remoteConfig` the server runs, with all three selected, imports them from
+`hot-updater/plugins`, and writes them, such as
+`plugins: [apiKeys(), insights(), remoteConfig()]`, into `hot-updater.config.ts`.
 If it cannot safely merge an existing config, it keeps the file and prints the
 imports and settings to add. A later spread or computed property must not
 override the `plugins` list.

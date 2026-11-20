@@ -1,5 +1,5 @@
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+import { managedPlugins } from "@hot-updater/server/plugins";
 import { env } from "cloudflare:workers";
 import { Hono } from "hono";
 
@@ -15,13 +15,15 @@ export type CloudflareWorkerEnv = {
   ACCOUNT_ID: string;
   R2_ACCESS_KEY_ID: string;
   R2_SECRET_ACCESS_KEY: string;
+  /** The plugins the Worker runs, as init selected them; every plugin when unset. */
+  PLUGINS?: string;
 };
 
 export const HOT_UPDATER_BASE_PATH = "/";
 
 const hotUpdater = createHotUpdater({
   database: d1Database(env.DB),
-  plugins: [insights(), apiKeys(), remoteConfig()],
+  ...managedPlugins(env.PLUGINS),
   storage: r2Storage({
     bucket: env.BUCKET,
     bucketName: env.BUCKET_NAME,
@@ -32,7 +34,7 @@ const hotUpdater = createHotUpdater({
       secretAccessKey: env.R2_SECRET_ACCESS_KEY,
     },
   }),
-});
+} as Parameters<typeof createHotUpdater>[0]);
 
 const app = new Hono<{ Bindings: CloudflareWorkerEnv }>();
 

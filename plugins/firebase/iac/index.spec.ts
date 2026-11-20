@@ -146,6 +146,10 @@ vi.mock("@hot-updater/cli-tools", async () => {
     })),
     resolveHotUpdaterServerVersion: vi.fn(() => "1.0.0"),
     resolvePackageVersion: vi.fn(() => "1.0.0"),
+    // The plugin prompt, answered with the saved selection.
+    selectManagedPlugins: (
+      options: Parameters<typeof actual.selectManagedPlugins>[0],
+    ) => actual.selectManagedPlugins({ ...options, nonInteractive: true }),
   };
 });
 

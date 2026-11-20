@@ -3,6 +3,8 @@ import {
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
   type HotUpdaterConfigScaffold,
+  type ManagedPluginId,
+  managedPluginsConfig,
   type ProviderConfig,
 } from "@hot-updater/cli-tools";
 
@@ -13,8 +15,10 @@ import {
  */
 const BLOB_CONTAINER = "hot-updater";
 
+/** The config for `build`, listing `plugins`, the ones the Function runs: all by default. */
 export const getConfigScaffold = (
   build: BuildType,
+  plugins?: readonly ManagedPluginId[],
 ): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/azure", named: ["azureBlobStorage"] }],
@@ -35,14 +39,6 @@ export const getConfigScaffold = (
       .setBuildType(build)
       .setStorage(storageConfig)
       .setDatabase(databaseConfig)
-      .setPlugins({
-        imports: [
-          {
-            pkg: "hot-updater/plugins",
-            named: ["apiKeys", "insights", "remoteConfig"],
-          },
-        ],
-        configString: "[apiKeys(), insights(), remoteConfig()]",
-      }),
+      .setPlugins(managedPluginsConfig(plugins)),
   );
 };

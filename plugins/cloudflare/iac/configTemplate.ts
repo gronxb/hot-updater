@@ -2,12 +2,16 @@ import {
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
   type HotUpdaterConfigScaffold,
+  type ManagedPluginId,
+  managedPluginsConfig,
   type ProviderConfig,
   type RunInitOptions,
 } from "@hot-updater/cli-tools";
 
+/** The config for `build`, listing `plugins`, the ones the Worker runs: all by default. */
 export const getConfigScaffold = (
   build: RunInitOptions["build"],
+  plugins?: readonly ManagedPluginId[],
 ): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
@@ -34,14 +38,6 @@ export const getConfigScaffold = (
       .setBuildType(build)
       .setStorage(storageConfig)
       .setDatabase(databaseConfig)
-      .setPlugins({
-        imports: [
-          {
-            pkg: "hot-updater/plugins",
-            named: ["apiKeys", "insights", "remoteConfig"],
-          },
-        ],
-        configString: "[apiKeys(), insights(), remoteConfig()]",
-      }),
+      .setPlugins(managedPluginsConfig(plugins)),
   );
 };

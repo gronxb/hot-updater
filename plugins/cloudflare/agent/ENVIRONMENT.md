@@ -20,6 +20,7 @@ provider credentials must never enter the React Native app.
 | `HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID` | Required by the local D1 plugin and Worker DB binding. | Query/create D1 and record the provider-returned ID. |
 | `HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME` | Used by Wrangler migrations and deployment configuration. | Read the selected D1 database's name; it is different from its ID. |
 | `HOT_UPDATER_CLOUDFLARE_R2_PRIVATE` | Bucket privacy choice recorded for init reuse; `true` or `false`. The environment value alone does not change bucket access. | Inspect actual bucket settings, preserve existing privacy, and use the setup guide's private default for a new bucket. |
+| `HOT_UPDATER_PLUGINS` | Interactive init's selection of the server plugins to run. This scaffold does not read it: its prebuilt server, config and credential helper run `insights()`, `apiKeys()` and `remoteConfig()`. | Leave unset. |
 <!-- if credential -->
 | `{{CREDENTIAL_ENV}}` | The client {{CREDENTIAL_LABEL}}, sent in `{{CREDENTIAL_HEADER}}`; required after schema setup. | Reuse the existing one or run app/provision-client-credential.mjs. It saves client-credential.local before registration. Keep the same {{CREDENTIAL_LABEL}} on retries; only this client credential belongs in app request configuration. |
 <!-- end -->
