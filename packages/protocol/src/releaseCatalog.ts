@@ -38,6 +38,12 @@ export interface Release {
   readonly sourceReleaseId: string | null;
   readonly createdAtMs: number;
   readonly updatedAtMs: number;
+  /**
+   * The release's label, `v<label>` in the CLI and the Console: sequential
+   * per channel and platform, never changed or reused. Null or left out
+   * until the database assigns one.
+   */
+  readonly label?: number | null;
 }
 
 export interface ReleaseCatalogDescriptor {
@@ -48,6 +54,12 @@ export interface ReleaseCatalogDescriptor {
   readonly targetCohorts: readonly string[];
   readonly shouldForceUpdate: boolean;
   readonly message: string | null;
+  /**
+   * The release's label, when it has one. Optional on the wire: a server
+   * before labels, or a catalog too large to carry them, leaves it out, and
+   * clients read a missing or malformed one as none.
+   */
+  readonly label?: number;
 }
 
 export interface ReleaseCatalog {

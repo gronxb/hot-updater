@@ -57,6 +57,15 @@ interface DatabaseAdapter {
       index: string,
       options?: { readonly dryRun?: boolean },
     ): Promise<number>;
+    /**
+     * Adds those of `columns` an existing `table` lacks, or with `dryRun`
+     * only finds them; for a store whose tables have columns.
+     */
+    addColumns?(
+      table: PhysicalTable,
+      columns: readonly string[],
+      options?: { readonly dryRun?: boolean },
+    ): Promise<string[]>;
   };
   dispose?(): Promise<void>;
 }
@@ -264,6 +273,15 @@ after the migration, without that index's items. Each migration calls
 rows lacked one, and with `dryRun` it only counts them. `hot-updater db migrate`
 uses the dry run on a database whose settings already match. A store whose
 indexes cover every row by themselves, as SQL and MongoDB do, leaves it out.
+
+`migrations.addColumns(table, columns, { dryRun })` is for a store whose
+tables have columns, as the SQL kit's do. Core declares `releases.label` on a
+table an earlier release created. Each migration calls `addColumns` for it
+before `apply`, which then creates the indexes on it: the method adds the
+columns the table lacks, nullable, and returns their names, none for a table
+that doesn't exist yet; with `dryRun` it only finds them. `hot-updater db
+migrate` uses the dry run on a database whose settings already match. A store
+whose rows hold any field, as key-value stores and MongoDB do, leaves it out.
 
 ## Check an adapter
 

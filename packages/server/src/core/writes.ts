@@ -11,6 +11,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import { DatabaseConstraintError } from "@hot-updater/plugin-core";
 
+import { LABEL_PLATFORMS, labelSequenceId } from "./labels";
 import { toChannelRow, type CoreDatabase } from "./reads";
 
 export type CoreTransaction = HotUpdaterTransaction<CoreSchema>;
@@ -160,7 +161,11 @@ export const insertChannel = async (
   }
 };
 
-/** Deletes a channel no release or native build uses: 1 read, 1 query, 1 write. */
+/**
+ * Deletes a channel no release or native build uses, with its label
+ * counters, so one created again with its name starts at 1: 3 reads,
+ * 1 query, 1 write.
+ */
 export const deleteChannel = (
   db: CoreDatabase,
   id: string,
@@ -178,6 +183,12 @@ export const deleteChannel = (
       limit: 1,
     });
     if (builds.length > 0) return { deleted: false, reason: "not_empty" };
+    for (const platform of LABEL_PLATFORMS) {
+      const counter = await tx.findOne("label_sequences", {
+        id: labelSequenceId(id, platform),
+      });
+      if (counter !== null) await tx.delete("label_sequences", counter);
+    }
     await tx.delete("channels", row);
     return { deleted: true };
   });

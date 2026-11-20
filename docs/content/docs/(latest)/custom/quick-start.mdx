@@ -187,7 +187,8 @@ npx hot-updater db migrate src/hotUpdater.ts
 `db generate` writes the SQL to `hot-updater_migrations/`. `db migrate` creates
 core's tables and the tables of `insights()` and `apiKeys()`, then writes the
 settings rows the server checks before its first request. Until they exist,
-the handlers answer `503`.
+the handlers answer `503`. On a database that already holds bundles, it also
+gives each bundle without a label its label, in the order they were deployed.
 
 Then create the API key for your mobile app through the `apiKeys()` plugin of
 the same `createHotUpdater` configuration:

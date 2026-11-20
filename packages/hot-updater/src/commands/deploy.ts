@@ -139,6 +139,8 @@ type DeployPlatformResult = {
 
 type CommittedDeployPlatformResult = DeployPlatformResult & {
   readonly releaseId: string;
+  /** The release's label; null from a server before labels. */
+  readonly label: number | null;
 };
 
 export interface DeployOptions {
@@ -457,6 +459,7 @@ const resolveCommittedDeployments = (
     {
       readonly commit: ReleaseCatalogMutationResult;
       readonly releaseId: string;
+      readonly label: number | null;
     }
   >();
 
@@ -480,6 +483,7 @@ const resolveCommittedDeployments = (
     commitsByBundleId.set(release.bundle_id, {
       commit,
       releaseId: release.id,
+      label: typeof release.label === "number" ? release.label : null,
     });
   }
 
@@ -503,6 +507,7 @@ const resolveCommittedDeployments = (
     return {
       ...prepared,
       releaseId: matched.releaseId,
+      label: matched.label,
     };
   });
 
@@ -519,15 +524,23 @@ const summarizeDeploymentResults = (
   results: readonly CommittedDeployPlatformResult[],
 ): string => {
   if (results.length === 1) {
+    const [result] = results;
     return ui.block("Deployment successful", [
-      ui.kv("ID", ui.id(results[0]!.releaseId)),
+      ui.kv("ID", ui.id(result!.releaseId)),
+      ...(result!.label === null ? [] : [ui.kv("Label", `v${result!.label}`)]),
     ]);
   }
   return ui.block(
     "Deployment successful",
-    results.map((result) =>
-      ui.kv(`${getPlatformName(result.platform)} ID`, ui.id(result.releaseId)),
-    ),
+    results.flatMap((result) => {
+      const platform = getPlatformName(result.platform);
+      return [
+        ui.kv(`${platform} ID`, ui.id(result.releaseId)),
+        ...(result.label === null
+          ? []
+          : [ui.kv(`${platform} label`, `v${result.label}`)]),
+      ];
+    }),
   );
 };
 

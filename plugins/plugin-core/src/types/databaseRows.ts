@@ -57,6 +57,13 @@ export interface ReleaseRow {
   readonly source_release_id: string | null;
   readonly created_at_ms: number;
   readonly updated_at_ms: number;
+  /**
+   * The release's label, shown `v<label>`: sequential per channel and
+   * platform, assigned once and never changed or reused while the channel
+   * exists. Null on a row the label fill hasn't reached yet, and left out
+   * of a row read through an adapter of an earlier release.
+   */
+  readonly label?: number | null;
 }
 
 export interface ReleaseCatalogRow {

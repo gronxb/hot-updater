@@ -22,6 +22,7 @@ import {
   type RunInitResult,
   shouldAutoSelectOnlyInitResource,
   writeHotUpdaterFiles,
+  fillReleaseLabels,
 } from "@hot-updater/cli-tools";
 import { postgres } from "@hot-updater/postgres";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
@@ -625,6 +626,8 @@ export const runInit = async ({
   const server = assembleServer({ database, plugins });
   let credential: ProvisionedClientCredential | undefined;
   try {
+    // Labels the releases written before labels, and rebuilds their catalogs.
+    await fillReleaseLabels(server);
     credential = await provisionClientCredential(server, {
       env: initInputEnv,
       name: "Vercel init",

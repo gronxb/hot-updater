@@ -24,6 +24,7 @@ import type {
   ReleaseCatalogMutationPreflight,
   ReleaseCatalogMutationResult,
   ReleaseCatalogRebuildPreflight,
+  ReleaseLabelFill,
   ReleaseCatalogRebuildResult,
   ReleaseCatalogRow,
   ReleaseFilter,
@@ -302,6 +303,11 @@ export const createStandaloneCoreApi = (
         limit: String(limit),
       }),
     getRelease: (id) => call<ReleaseRow>("GET", `/releases/${encode(id)}`),
+    getReleaseByLabel: ({ channel, platform, label }) =>
+      call<ReleaseRow>("GET", "/release-labels", {
+        query: { channel, platform, label: String(label) },
+        requiredRoute: "release label",
+      }),
     listReleases: ({ filter, ...input }) =>
       list<ReleaseRow>("/releases", {
         ...keysetParams(input),
@@ -470,6 +476,11 @@ export const createStandaloneCoreApi = (
         "POST",
         `/release-catalogs/${encode(scopeKey)}/rebuild`,
       ))!,
+    fillReleaseLabels: async (input = {}) =>
+      (await call<ReleaseLabelFill>("POST", "/release-labels/fill", {
+        body: input,
+        requiredRoute: "release label",
+      }))!,
     preflightReleaseCatalogRebuild: async (scopeKey) =>
       (await call<ReleaseCatalogRebuildPreflight>(
         "POST",

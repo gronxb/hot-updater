@@ -109,6 +109,39 @@ const apply = (db: PGlite, sql: string) =>
     JSON.stringify([{ sql, params: [] }]),
   ]);
 
+/**
+ * Every table with its row-level security and columns, every index, the
+ * apply RPC, and every settings row. Columns compare in name order, since
+ * `ALTER TABLE … ADD COLUMN` appends one a new table declares in place.
+ */
+const describeSchema = async (db: PGlite) => ({
+  tables: (
+    await db.query(
+      "SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename",
+    )
+  ).rows,
+  columns: (
+    await db.query(
+      "SELECT table_name, column_name, data_type, is_nullable, column_default, collation_name FROM information_schema.columns WHERE table_schema = 'public' ORDER BY table_name, column_name",
+    )
+  ).rows,
+  indexes: (
+    await db.query(
+      "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' ORDER BY indexname",
+    )
+  ).rows,
+  apply: (
+    await db.query(
+      `SELECT prosrc FROM pg_proc WHERE proname = '${SUPABASE_APPLY_FUNCTION}'`,
+    )
+  ).rows,
+  settings: (
+    await db.query(
+      `SELECT key, value FROM public."${SUPABASE_SETTINGS_TABLE}" ORDER BY key`,
+    )
+  ).rows,
+});
+
 describe("Supabase schema", () => {
   it("checks in the shipped migrations unchanged and the next one generated", async () => {
     const shipped = await Promise.all(
@@ -134,28 +167,6 @@ describe("Supabase schema", () => {
   });
 
   it("creates the managed schema from the migrations in order, as from the whole schema", async () => {
-    const describeSchema = async (db: PGlite) => ({
-      tables: (
-        await db.query(
-          "SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename",
-        )
-      ).rows,
-      indexes: (
-        await db.query(
-          "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' ORDER BY indexname",
-        )
-      ).rows,
-      apply: (
-        await db.query(
-          `SELECT prosrc FROM pg_proc WHERE proname = '${SUPABASE_APPLY_FUNCTION}'`,
-        )
-      ).rows,
-      settings: (
-        await db.query(
-          `SELECT key, value FROM public."${SUPABASE_SETTINGS_TABLE}" ORDER BY key`,
-        )
-      ).rows,
-    });
     const migrated = await createDatabase();
     const created = new PGlite();
     await created.exec(
@@ -167,6 +178,36 @@ describe("Supabase schema", () => {
     );
     await migrated.close();
     await created.close();
+  });
+
+  it("brings a database a 1.2 prerelease migrated up to release labels with the statements the release notes print", async () => {
+    const latest = supabaseMigrationStatements(await readMigration(LATEST));
+    // The release notes' statements: release labels' own, then the apply
+    // RPC that names their table, with its grants.
+    const notes = latest.filter(
+      (sql) =>
+        /"label"|label_sequences/u.test(sql) ||
+        sql.includes(`public.${SUPABASE_APPLY_FUNCTION}(`),
+    );
+    expect(notes.length).toBeGreaterThan(3);
+    const prerelease = new PGlite();
+    await prerelease.exec(
+      "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;",
+    );
+    for (const name of Object.keys(SHIPPED)) {
+      await prerelease.exec(await readMigration(name));
+    }
+    for (const sql of latest) {
+      if (!notes.includes(sql)) await prerelease.exec(sql);
+    }
+    const before = await describeSchema(prerelease);
+    for (const sql of notes) await prerelease.exec(sql);
+    const migrated = await createDatabase();
+    const after = await describeSchema(prerelease);
+    expect(before).not.toEqual(after);
+    expect(after).toEqual(await describeSchema(migrated));
+    await prerelease.close();
+    await migrated.close();
   });
 
   it("writes into a later migration only what the earlier ones did not create, the apply RPC with its grants, and every settings row", async () => {

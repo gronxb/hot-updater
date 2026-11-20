@@ -457,6 +457,14 @@ the returned `code` to its relative `path`. When the adapter also has
 `migrations`, as D1's does, `hot-updater db migrate` applies the same schema
 directly; without them, as with Supabase, it points to `db generate`.
 
+Migration files diff by statement, so a column added to a table an earlier file
+created, such as `releases.label`, needs its own statement:
+`lateColumnStatements(dialect, schema, earlier, { tablePrefix })` returns an
+`ALTER TABLE … ADD COLUMN` for each column a `CREATE TABLE` among the `earlier`
+statements lacks. Put them before the new file's other statements, which
+create the indexes on them, and only in a file that runs once: SQLite has no
+`ADD COLUMN IF NOT EXISTS`.
+
 ## Test the adapter
 
 `@hot-updater/test-utils` publishes the suites that every official database

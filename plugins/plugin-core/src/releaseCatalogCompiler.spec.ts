@@ -253,6 +253,70 @@ describe("compileReleaseCatalog", () => {
     ).rejects.toMatchObject({ code: "CATALOG_OVERSIZE" });
   }, 20_000);
 
+  it("carries each labeled release's label, and none for a release without one", async () => {
+    const compilation = await compileReleaseCatalog({
+      releases: [
+        fingerprintRelease(1, { label: 7 }),
+        fingerprintRelease(2, { label: null }),
+        fingerprintRelease(3),
+      ],
+      strategy: "FINGERPRINT",
+    });
+
+    expect(compilation.payload.releaseDescriptors).toEqual([
+      expect.not.objectContaining({ label: expect.anything() }),
+      expect.not.objectContaining({ label: expect.anything() }),
+      expect.objectContaining({ releaseId: releaseId(1), label: 7 }),
+    ]);
+    const unlabeled = await compileReleaseCatalog({
+      releases: [1, 2, 3].map((sequence) => fingerprintRelease(sequence)),
+      strategy: "FINGERPRINT",
+    });
+    expect(unlabeled.catalogHash).not.toBe(compilation.catalogHash);
+  });
+
+  it("leaves labels out of a catalog they would push over its limit", async () => {
+    const compile = (count: number, labels: boolean) =>
+      compileReleaseCatalog({
+        releases: Array.from({ length: count }, (_, index) =>
+          fingerprintRelease(
+            index + 1,
+            labels ? { label: 1_000_000 + index } : {},
+          ),
+        ),
+        strategy: "FINGERPRINT",
+      });
+    const fits = (count: number) =>
+      compile(count, false).then(
+        () => true,
+        () => false,
+      );
+    // The most releases whose catalog fits without labels.
+    let low = 1;
+    let high = 4_000;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (await fits(middle)) low = middle;
+      else high = middle - 1;
+    }
+    const unlabeled = await compile(low, false);
+    expect(unlabeled.byteSize).toBeGreaterThan(
+      MAX_COMPILED_CATALOG_BYTES - 1_000,
+    );
+
+    const labeled = await compile(low, true);
+
+    expect(labeled.catalogHash).toBe(unlabeled.catalogHash);
+    expect(
+      labeled.payload.releaseDescriptors.some(
+        (descriptor) => descriptor.label !== undefined,
+      ),
+    ).toBe(false);
+    await expect(compile(low + 1, true)).rejects.toMatchObject({
+      code: "CATALOG_OVERSIZE",
+    });
+  }, 60_000);
+
   it("retains every supported fingerprint Release for exact rollback", async () => {
     const releases = Array.from({ length: 100 }, (_, index) =>
       fingerprintRelease(index + 1),

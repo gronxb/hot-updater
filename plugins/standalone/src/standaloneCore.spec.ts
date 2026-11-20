@@ -362,6 +362,61 @@ describe("createStandaloneCoreApi", () => {
     );
   });
 
+  it("finds a release by its label and fills labels, and asks for an upgrade where the routes are missing", async () => {
+    const queries: Record<string, string>[] = [];
+    const fills: unknown[] = [];
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/release-labels`, ({ request }) => {
+        queries.push(Object.fromEntries(new URL(request.url).searchParams));
+        return HttpResponse.json({ data: null });
+      }),
+      http.post(`${BASE_URL}/release-labels/fill`, async ({ request }) => {
+        fills.push(await request.json());
+        return HttpResponse.json({ data: { releases: 2, catalogs: 1 } });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await expect(
+      core.getReleaseByLabel({
+        channel: "production",
+        platform: "ios",
+        label: 12,
+      }),
+    ).resolves.toBeNull();
+    await expect(core.fillReleaseLabels({ dryRun: true })).resolves.toEqual({
+      releases: 2,
+      catalogs: 1,
+    });
+    expect(queries).toEqual([
+      { channel: "production", platform: "ios", label: "12" },
+    ]);
+    expect(fills).toEqual([{ dryRun: true }]);
+
+    // A server before labels answers 404, which is no missing release.
+    server.use(
+      http.all(
+        `${BASE_URL}/release-labels*`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    const upgrade = {
+      message: expect.stringContaining(
+        `The server at ${BASE_URL} has no release label route`,
+      ),
+      status: 404,
+    };
+    await expect(
+      core.getReleaseByLabel({
+        channel: "production",
+        platform: "ios",
+        label: 12,
+      }),
+    ).rejects.toMatchObject(upgrade);
+    await expect(core.fillReleaseLabels()).rejects.toMatchObject(upgrade);
+  });
+
   it("asks for a server upgrade when the server has no native build routes", async () => {
     server.use(
       version(2),

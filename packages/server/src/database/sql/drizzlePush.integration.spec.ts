@@ -191,13 +191,26 @@ describe.each(["postgresql", "sqlite"] as const)(
       const upgrade = await db.push();
       expect(upgrade.exitCode).toBe(0);
       expect(upgrade.output).toContain("Changes applied");
-      expect(upgrade.output).not.toMatch(/ALTER|DROP|__new_|data loss/iu);
+      // The one change to an existing table: the column 1.2 adds.
+      expect(
+        upgrade.output.replaceAll(
+          /ALTER TABLE ["`]releases["`] ADD (?:COLUMN )?["`]label["`] (?:bigint|integer);/giu,
+          "",
+        ),
+      ).not.toMatch(/ALTER|DROP|__new_|data loss/iu);
+      expect(upgrade.output).toMatch(/ADD (?:COLUMN )?["`]label["`]/u);
       expect(
         [...upgrade.output.matchAll(/CREATE TABLE "?`?(\w+)/gu)]
           .map(([, table]) => table)
           .sort(),
-      ).toEqual(["ios_device_account", "ios_devices", "native_builds"]);
+      ).toEqual([
+        "ios_device_account",
+        "ios_devices",
+        "label_sequences",
+        "native_builds",
+      ]);
       expect(upgrade.output).toContain("bundle_events__byBundle__key");
+      expect(upgrade.output).toContain("byLabel");
 
       await db.migrate();
       expectNoChanges((await db.push()).output);

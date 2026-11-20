@@ -131,8 +131,9 @@ npx hot-updater db migrate src/hotUpdater.ts --yes
 ```
 
 Drizzle Kit creates the tables. `db migrate` then checks that every table and
-index exists, sets the PostgreSQL collations, and writes the settings rows. It
-names any table or index that is missing and writes nothing. It also refuses
+index exists, adds a column Hot Updater added to a table the database already
+has, with its indexes, sets the PostgreSQL collations, and writes the settings
+rows. It names any other table or index that is missing and writes nothing. It also refuses
 a database created by an older Hot Updater schema, or migrated by a newer
 Hot Updater, instead of converting it. The server checks the settings rows
 before its first read or write; until they exist, it throws
@@ -156,8 +157,10 @@ after upgrading to 1.2 before you migrate. It declares Hot Updater's existing
 tables again, which would rebuild them, or on MySQL stop at the first one that
 exists. Delete each statement on a Hot Updater table or index the database
 already has: its `CREATE`, `ALTER` and `DROP` statements, and on SQLite the
-`__new_<table>` statements that copy it. Keep the rest, your own changes
-included. The next `generate` then has nothing to write.
+`__new_<table>` statements that copy it. Also delete each index on a column
+such a table doesn't have yet, such as `releases_byLabel` on
+`releases.label`: `db migrate` adds the column and its index. Keep the rest,
+your own changes included. The next `generate` then has nothing to write.
 
 <Callout>
   Need plain SQL to apply yourself? See [SQL

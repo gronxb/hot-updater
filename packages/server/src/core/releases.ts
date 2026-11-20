@@ -21,6 +21,7 @@ import {
   MAX_COMPILED_CATALOG_BYTES,
 } from "@hot-updater/protocol";
 
+import { catchUpLabels, writeWithLabels, type LabelAllocator } from "./labels";
 import { toCatalogRow, toReleaseRow, type CoreDatabase } from "./reads";
 import { insertBundle, type CoreTransaction } from "./writes";
 
@@ -28,10 +29,15 @@ const PAGE = 500;
 
 /** One change to one release, applied with its scope's catalog. */
 export type ReleaseChange =
-  /** `id` is assigned after the scope's latest release unless given. */
+  /**
+   * `id` is assigned after the scope's latest release unless given, and
+   * `label` is always the pair's next one.
+   */
   | {
       readonly operation: "insert";
-      readonly row: Omit<ReleaseRow, "id"> & { readonly id?: string };
+      readonly row: Omit<ReleaseRow, "id" | "label"> & {
+        readonly id?: string;
+      };
     }
   | {
       readonly operation: "update";
@@ -120,15 +126,15 @@ const enabledReleases = (
     tx.findMany("releases", enabledIn(scopeKey, cursor)),
   );
 
-/** The scope's newest release id: `byScope` descending, limit 1. */
-const latestReleaseId = async (tx: CoreTransaction, scopeKey: string) => {
+/** The scope's newest release: `byScope` descending, limit 1. */
+const latestRelease = async (tx: CoreTransaction, scopeKey: string) => {
   const { rows } = await tx.findMany("releases", {
     index: "byScope",
     where: { scope_key: scopeKey },
     order: "desc",
     limit: 1,
   });
-  return rows[0]?.id ?? null;
+  return rows[0] === undefined ? null : toReleaseRow(rows[0]);
 };
 
 /** The scope's next catalog generation, compiled as `compilation`. */
@@ -228,14 +234,20 @@ const assertHistory = (
   }
 };
 
-/** One release change and its scope's next catalog, inside `tx`. */
+/**
+ * One release change and its scope's next catalog, inside `tx`. An insert
+ * takes its channel and platform's next label from `labels`, after labeling
+ * the releases a server of an earlier release wrote in the scope since its
+ * last labeled one.
+ */
 export const changeRelease = async (
   tx: CoreTransaction,
   { scope, change, bundle, updatedAtMs }: ReleaseChangeInput,
+  labels?: LabelAllocator,
 ): Promise<ReleaseChangeResult> => {
   checkScope(scope);
   const stored = await readCatalog(tx, scope.scopeKey);
-  const enabled = await enabledReleases(tx, scope.scopeKey);
+  let enabled = await enabledReleases(tx, scope.scopeKey);
   if (bundle !== undefined) {
     insertBundle(tx, bundle.row);
     for (const patch of bundle.patches) tx.create("bundle_patches", patch);
@@ -243,7 +255,11 @@ export const changeRelease = async (
   let before: ReleaseRow | null = null;
   let release: ReleaseRow | null;
   if (change.operation === "insert") {
-    const latest = await latestReleaseId(tx, scope.scopeKey);
+    if (labels === undefined) {
+      throw new Error("A release insert takes its label from an allocator.");
+    }
+    const newest = await latestRelease(tx, scope.scopeKey);
+    const latest = newest?.id ?? null;
     assertHistory(stored, latest !== null);
     const floor = [
       latest,
@@ -259,7 +275,17 @@ export const changeRelease = async (
         `Release "${id}" must sort after "${latest}"`,
       );
     }
-    release = { ...change.row, id };
+    const given = await catchUpLabels(tx, labels, newest);
+    if (given.size > 0) {
+      enabled = enabled.map((row) =>
+        given.has(row.id) ? { ...row, label: given.get(row.id)! } : row,
+      );
+    }
+    release = {
+      ...change.row,
+      id,
+      label: await labels.next(scope.channelId, scope.platform),
+    };
     if (
       release.scope_key !== scope.scopeKey ||
       release.channel_id !== scope.channelId ||
@@ -288,7 +314,12 @@ export const changeRelease = async (
       await tx.delete("releases", row);
       release = null;
     } else {
-      const set = { ...change.update, revision: before.revision + 1 };
+      // A label never changes: one an untyped caller sends is dropped.
+      const { label: _label, ...update } =
+        change.update as typeof change.update & {
+          readonly label?: unknown;
+        };
+      const set = { ...update, revision: before.revision + 1 };
       tx.update("releases", row, set);
       release = { ...before, ...set };
     }
@@ -323,9 +354,11 @@ export const changeReleases = (
   if (scopes.size !== inputs.length) {
     fail("INVALID_SCOPE", "A batch cannot change one catalog scope twice");
   }
-  return db.transaction(async (tx) => {
+  return writeWithLabels(db, async (tx, labels) => {
     const results: ReleaseChangeResult[] = [];
-    for (const input of inputs) results.push(await changeRelease(tx, input));
+    for (const input of inputs) {
+      results.push(await changeRelease(tx, input, labels));
+    }
     return results;
   });
 };
@@ -342,6 +375,35 @@ const isCurrent = (
   current.platform === scope.platform &&
   current.fingerprint_hash === scope.fingerprintHash &&
   current.catalog_hash === compilation.catalogHash;
+
+/** A compiled payload with its descriptors' labels left out. */
+const withoutLabels = (payload: string): string => {
+  const parsed = JSON.parse(payload) as {
+    readonly releaseDescriptors?: readonly Record<string, unknown>[];
+  };
+  return JSON.stringify({
+    ...parsed,
+    releaseDescriptors: (parsed.releaseDescriptors ?? []).map(
+      ({ label: _label, ...descriptor }) => descriptor,
+    ),
+  });
+};
+
+/**
+ * Whether `projected` differs from `current` only by release labels, as a
+ * catalog compiled before its releases had them does.
+ */
+export const differsInLabelsOnly = (
+  current: ReleaseCatalogRow,
+  projected: ReleaseCatalogRow,
+): boolean =>
+  current.payload !== projected.payload &&
+  current.strategy === projected.strategy &&
+  current.channel_id === projected.channel_id &&
+  current.channel_key === projected.channel_key &&
+  current.platform === projected.platform &&
+  current.fingerprint_hash === projected.fingerprint_hash &&
+  withoutLabels(current.payload) === withoutLabels(projected.payload);
 
 /** The scope a catalog row names. */
 export const catalogRowScope = (
@@ -387,13 +449,15 @@ export const preflightRebuild = async (
   );
   const compilation = await compileScope(scope, enabled);
   const changed = !isCurrent(scope, current, compilation);
+  const projectedCatalog = changed
+    ? nextCatalog(scope, { catalog: current }, compilation, updatedAtMs)
+    : current;
   return {
     changed,
+    labelsOnly: changed && differsInLabelsOnly(current, projectedCatalog),
     currentCatalog: current,
     diagnostics: compilation.diagnostics,
-    projectedCatalog: changed
-      ? nextCatalog(scope, { catalog: current }, compilation, updatedAtMs)
-      : current,
+    projectedCatalog,
   };
 };
 
@@ -410,7 +474,7 @@ export const rebuildScope = async (
 }> => {
   checkScope(scope);
   const stored = await readCatalog(tx, scope.scopeKey);
-  assertHistory(stored, (await latestReleaseId(tx, scope.scopeKey)) !== null);
+  assertHistory(stored, (await latestRelease(tx, scope.scopeKey)) !== null);
   const enabled = await enabledReleases(tx, scope.scopeKey);
   const compilation = await compileScope(scope, enabled);
   const current = stored.catalog;

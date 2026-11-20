@@ -119,6 +119,7 @@ Use Bundle commands for automation and CI scripts:
 ```package-install
 npx hot-updater bundle list --platform ios
 npx hot-updater bundle show <id>
+npx hot-updater bundle show v12 -c production -p ios
 npx hot-updater bundle disable <id> -y
 npx hot-updater bundle enable <id> -y
 npx hot-updater bundle update <id> --force-update true -y
@@ -126,9 +127,13 @@ npx hot-updater bundle update <id> --rollout-cohort-count 500 -y
 npx hot-updater bundle update <id> --target-cohorts qa,dogfood -y
 ```
 
+Each command that takes a bundle `<id>` also takes its label, such as `v12`,
+with `-c <channel>` and `-p <platform>`. `bundle list` prints the label first.
+
 Add `--json` to `bundle list`, `bundle show`, or `bundle update` when
 another tool needs raw internal row data. Its field names follow the database
-schema rather than the human-readable Bundle terminology.
+schema rather than the human-readable Bundle terminology: the label is
+`label`, a number, or `null` until the database gives the bundle one.
 
 ### Preview and protect automated changes
 
@@ -199,7 +204,8 @@ confirming.
 
 Devices receive the rollback on their next update check and apply it through
 the app's download and restart flow. Disabling a bundle does not restart apps
-that are already running it.
+that are already running it. A rollback creates no bundle, so it takes no
+label.
 
 <img src={"/docs/console/enabled.png"} />
 
@@ -227,8 +233,10 @@ npx hot-updater bundle promote <source-id> --target <channel>
 
 No Storage object is uploaded or copied. The promoted update has a new ID
 and rollout seed, is enabled, starts at a 100% numeric rollout, and has no
-target cohorts. The command previews those defaults before confirmation. A
-`--action move` promotion also disables the source bundle atomically.
+target cohorts. It takes the target channel's next label, and the command
+prints both, such as `Label  production v5 (from staging v12)`. The command
+previews those defaults before confirmation. A `--action move` promotion also
+disables the source bundle atomically.
 
 ## Git URL
 

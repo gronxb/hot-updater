@@ -308,11 +308,34 @@ const validCatalog = (
   scopeKey: createReleaseCatalogScopeKey(scope as ReleaseCatalogScopeKeyInput),
   ...overrides,
 });
+const labeled = (descriptors: ReleaseCatalogDescriptor[], first: number) =>
+  descriptors.map((release, index) => ({ ...release, label: first - index }));
 const bodyCases: {
   name: string;
   body: string;
   scope: ExpectedReleaseCatalogScope;
+  /** The body whose parse a client records, when not `body`'s own. */
+  parsedAs?: string;
 }[] = [
+  {
+    // Released clients don't read `label`: they accept a catalog that carries
+    // it, and parse its releases as they parse them without it.
+    name: "a release's label is ignored",
+    body: JSON.stringify(
+      validCatalog(appVersionScope, {
+        releases: labeled(
+          [descriptor(3, { message: "Fix" }), descriptor(2)],
+          3,
+        ),
+        rollbackReleases: labeled(
+          [descriptor(2), descriptor(1, { shouldForceUpdate: true })],
+          2,
+        ),
+      }),
+    ),
+    parsedAs: JSON.stringify(validCatalog(appVersionScope)),
+    scope: appVersionScope,
+  },
   {
     name: "valid app-version catalog",
     body: JSON.stringify(validCatalog(appVersionScope)),
@@ -485,12 +508,14 @@ const bodyCases: {
   { name: "JSON array", body: "[]", scope: appVersionScope },
   { name: "JSON null", body: "null", scope: appVersionScope },
 ];
-const parseCatalogCases = bodyCases.map(({ name, body, scope }) => ({
-  name,
-  body,
-  expectedScope: scope,
-  catalog: parseReleaseCatalog(body, scope),
-}));
+const parseCatalogCases = bodyCases.map(
+  ({ name, body, scope, parsedAs = body }) => ({
+    name,
+    body,
+    expectedScope: scope,
+    catalog: parseReleaseCatalog(parsedAs, scope),
+  }),
+);
 
 // Selection compares IDs only by their order, so short sortable IDs keep the
 // fixture small: r#### for Releases, b#### for bundles.
@@ -688,5 +713,21 @@ describe("release selection conformance fixture", () => {
       authorizeReleaseTransition: authorizeCases,
     };
     await expect(serializeFixture(fixture)).toMatchFileSnapshot(FIXTURE_PATH);
+  });
+
+  it("parses a catalog whose releases carry a label as the protocol did before labels", () => {
+    const { body, parsedAs, scope } = bodyCases.find(
+      ({ parsedAs }) => parsedAs !== undefined,
+    )!;
+    const parsed = parseReleaseCatalog(body, scope);
+
+    expect(parsed).not.toBeNull();
+    const withoutLabels = (releases: readonly object[]) =>
+      releases.map(({ label: _, ...release }: { label?: unknown }) => release);
+    expect({
+      ...parsed,
+      releases: withoutLabels(parsed!.releases),
+      rollbackReleases: withoutLabels(parsed!.rollbackReleases),
+    }).toEqual(parseReleaseCatalog(parsedAs!, scope));
   });
 });

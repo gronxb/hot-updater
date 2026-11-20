@@ -340,6 +340,138 @@ describe("Bundle commands", () => {
     expect(log.warn).not.toHaveBeenCalled();
   });
 
+  describe("labels", () => {
+    const seedTwo = async () =>
+      databaseHarness.seedDeployments([
+        deployment("01900000-0000-7000-8000-000000000011"),
+        deployment("01900000-0000-7000-8000-000000000012"),
+      ]);
+
+    beforeEach(() => {
+      vi.spyOn(process, "exit").mockImplementation((() => {
+        throw new Error("process.exit");
+      }) as never);
+    });
+
+    it("lists each bundle's label first, and gives it in --json", async () => {
+      await seedTwo();
+      const output = vi.spyOn(console, "log").mockImplementation(() => {});
+      const { handleReleaseList } = await import("./release");
+
+      await handleReleaseList({ channel: "production" });
+      await handleReleaseList({ channel: "production", json: true });
+
+      // A box table: the header row, then one row per bundle, label first.
+      const cells = stripVTControlCharacters(String(output.mock.calls[0]?.[0]))
+        .split("\n")
+        .filter((line) => line.startsWith("│"))
+        .map((line) => line.split("│")[1]!.trim());
+      expect(cells).toEqual(["Label", "v2", "v1"]);
+      expect(
+        (
+          JSON.parse(String(output.mock.calls[1]?.[0])) as { label: number }[]
+        ).map(({ label }) => label),
+      ).toEqual([2, 1]);
+    });
+
+    it("shows, updates, disables, enables and deletes a bundle by its label with -c and -p", async () => {
+      const [, second] = await seedTwo();
+      const output = vi.spyOn(console, "log").mockImplementation(() => {});
+      const scope = { channel: "production", platform: "ios" } as const;
+      const {
+        handleReleaseDelete,
+        handleReleaseEnablement,
+        handleReleaseShow,
+        handleReleaseUpdate,
+      } = await import("./release");
+
+      await handleReleaseShow("v2", scope);
+      const shown = stripVTControlCharacters(String(output.mock.calls[0]?.[0]));
+      expect(shown).toMatch(new RegExp(`^ID {2,}${second!.id}$`, "mu"));
+      expect(shown).toMatch(/^Label {2,}v2$/mu);
+
+      await handleReleaseUpdate("v2", {
+        ...scope,
+        message: "labeled",
+        yes: true,
+      });
+      await handleReleaseEnablement("v2", false, { ...scope, yes: true });
+      await handleReleaseEnablement("V2", true, { ...scope, yes: true });
+      await handleReleaseEnablement("v2", false, { ...scope, yes: true });
+      await handleReleaseDelete("v2", { ...scope, yes: true });
+
+      expect(
+        output.mock.calls
+          .slice(1)
+          .map(([text]) =>
+            stripVTControlCharacters(String(text)).split("\n").slice(0, 3),
+          ),
+      ).toEqual([
+        ["Bundle updated", `ID        ${second!.id}`, "Label     v2"],
+        ["Bundle disabled", `ID     ${second!.id}`, "Label  v2"],
+        ["Bundle enabled", `ID     ${second!.id}`, "Label  v2"],
+        ["Bundle disabled", `ID     ${second!.id}`, "Label  v2"],
+        ["Bundle deleted", `ID     ${second!.id}`, "Label  v2"],
+      ]);
+      await expect(
+        databaseHarness.core.getRelease(second!.id),
+      ).resolves.toBeNull();
+    });
+
+    it("refuses a label without its channel and platform in one line", async () => {
+      await seedTwo();
+      const { handleReleaseShow } = await import("./release");
+
+      await expect(
+        handleReleaseShow("v2", { channel: "production" }),
+      ).rejects.toThrow("process.exit");
+
+      expect(log.error.mock.calls).toEqual([
+        [
+          "A label needs its channel and platform: v2 -c <channel> -p <platform>.",
+        ],
+      ]);
+      expect(process.exit).toHaveBeenCalledWith(1);
+    });
+
+    it("names the label no bundle has in one line", async () => {
+      await seedTwo();
+      const { handleReleaseShow } = await import("./release");
+
+      await expect(
+        handleReleaseShow("v9", { channel: "production", platform: "ios" }),
+      ).rejects.toThrow("process.exit");
+
+      expect(log.error.mock.calls).toEqual([
+        ["No bundle labeled v9 on production ios."],
+      ]);
+    });
+
+    it("says in one line that a server without labels can't look one up", async () => {
+      const server = testServer({ database: databaseHarness.database });
+      loadServer.mockResolvedValue({
+        ...server,
+        core: {
+          ...server.core,
+          getReleaseByLabel: async () => {
+            throw Object.assign(new Error("no release label route"), {
+              status: 404,
+            });
+          },
+        },
+      });
+      const { handleReleaseShow } = await import("./release");
+
+      await expect(
+        handleReleaseShow("v1", { channel: "production", platform: "ios" }),
+      ).rejects.toThrow("process.exit");
+
+      expect(log.error.mock.calls).toEqual([
+        ["This server can't look up labels: pass the bundle's ID."],
+      ]);
+    });
+  });
+
   describe("an ID no bundle has", () => {
     const deployed = async () => {
       const seeded = deployment("01900000-0000-7000-8000-000000000003");

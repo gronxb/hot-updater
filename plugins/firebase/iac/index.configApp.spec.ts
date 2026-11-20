@@ -71,6 +71,8 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   return {
     ...actual,
     confirmInitInputPersistence: vi.fn(async () => true),
+    // Labels releases over the assembled server; its database is mocked.
+    fillReleaseLabels: vi.fn(async () => ({ releases: 0, catalogs: 0 })),
     makeEnv: vi.fn(async () => ""),
     printAppSetup: vi.fn(),
     provisionClientCredential: vi.fn(async () => undefined),

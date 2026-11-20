@@ -96,6 +96,39 @@ describe("the settings-only migrator's guards", () => {
     ).toEqual({ n: 0 });
   });
 
+  it("adds a late column and its index a migration file for an earlier release's database left out, then writes the settings", async () => {
+    const database = applied();
+    database.exec(
+      'DROP INDEX "releases_byLabel"; ALTER TABLE "releases" DROP COLUMN "label"',
+    );
+    const migrator = migratorOver(database);
+
+    const pending = await migrator.migrateToLatest();
+    expect(pending.operations).toEqual([
+      { type: "custom", description: "Add column: label to releases" },
+      {
+        type: "custom",
+        description: "Create index: releases_byLabel on releases",
+      },
+      {
+        type: "custom",
+        description: "Record schema.engine 1, schema.core 1.0.0",
+      },
+    ]);
+    await pending.execute();
+
+    expect(
+      database
+        .prepare(
+          "SELECT name FROM pragma_table_info('releases') WHERE name = 'label'",
+        )
+        .all(),
+    ).toEqual([{ name: "label" }]);
+    await expect(migrator.migrateToLatest()).resolves.toMatchObject({
+      operations: [],
+    });
+  });
+
   it("refuses a database a newer release migrated, and writes nothing", async () => {
     const database = applied();
     database.exec(

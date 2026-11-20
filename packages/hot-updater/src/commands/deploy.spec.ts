@@ -563,7 +563,7 @@ describe("deploy rollout wiring", () => {
     });
   });
 
-  it("prints only the committed update ID, matching the console and runtime", async () => {
+  it("prints the committed update ID, matching the console and runtime, and its label", async () => {
     await deploy({
       channel: "production",
       forceUpdate: false,
@@ -584,6 +584,7 @@ describe("deploy rollout wiring", () => {
     expect(release.id).not.toBe(release.bundle_id);
     expect(summary).toContain("Deployment successful");
     expect(summary).toMatch(/^ID {2,}/mu);
+    expect(summary).toMatch(/^Label {2,}v1$/mu);
     expect(summary).toContain(release.id);
     expect(summary).not.toContain("Release ID");
     expect(summary).not.toContain("Bundle ID");
@@ -594,7 +595,7 @@ describe("deploy rollout wiring", () => {
     expect(summary.match(new RegExp(release.id, "g"))).toHaveLength(1);
     expect(mockCli.p.log.message).not.toHaveBeenCalled();
     expect(mockCli.p.outro).toHaveBeenCalledWith(
-      `Deployment successful\nID  ${release.id}`,
+      `Deployment successful\nID     ${release.id}\nLabel  v1`,
     );
   });
 
@@ -735,7 +736,7 @@ describe("deploy rollout wiring", () => {
     }
     expect(mockCli.p.log.message).not.toHaveBeenCalled();
     expect(mockCli.p.outro).toHaveBeenCalledWith(
-      `Deployment successful\niOS ID      ${releases.find(({ platform }) => platform === "ios")!.id}\nAndroid ID  ${releases.find(({ platform }) => platform === "android")!.id}`,
+      `Deployment successful\niOS ID         ${releases.find(({ platform }) => platform === "ios")!.id}\niOS label      v1\nAndroid ID     ${releases.find(({ platform }) => platform === "android")!.id}\nAndroid label  v1`,
     );
     expect(
       (await databaseHarness.bundles()).map(({ id }) => id).sort(),

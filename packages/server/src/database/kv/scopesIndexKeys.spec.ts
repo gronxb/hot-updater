@@ -48,6 +48,7 @@ const coreOn = async (
   skip?: string,
 ) => {
   const store = createMemoryKeyValueStore();
+  const partitions = new Set<string>();
   const fits = ({ pk, sk }: KvKey) =>
     pk === skip || (bytes(pk) <= keyBytes.pk && bytes(sk) <= keyBytes.sk);
   const keyed: KeyValueStore = {
@@ -57,6 +58,7 @@ const coreOn = async (
       if (!ops.every(({ key }) => fits(key))) {
         throw new Error("A key exceeds the store's limit.");
       }
+      for (const { key } of ops) partitions.add(key.pk);
       return store.write(ops);
     },
   };
@@ -70,7 +72,7 @@ const coreOn = async (
     storage: createReleaseCatalogTestStorage(),
     clientAccess: "public",
   }) as unknown as { core: HotUpdaterCoreApi };
-  return { core, store };
+  return { core, store, partitions };
 };
 
 type Scope =
@@ -146,7 +148,7 @@ describe("releases.scopes sort keys on a key-value store", () => {
   ] as const) {
     it(`take a release on the longest channel ${store} holds, with the longest fingerprint`, async () => {
       const keyBytes = KEY_BYTES[store];
-      const { core, store: items } = await coreOn(keyBytes);
+      const { core, store: items, partitions } = await coreOn(keyBytes);
       const longest = character.repeat(length);
 
       await expect(
@@ -167,6 +169,22 @@ describe("releases.scopes sort keys on a key-value store", () => {
       // The scope key, the release ID, and their separators.
       expect(longestItem).toBe(bytes(scopeKey) + 38);
       expect(longestItem).toBeLessThanOrEqual(keyBytes.sk);
+
+      // A label's unique item keys its channel ID, platform and label in its
+      // partition, and its counter row its platform and channel ID: both
+      // shorter than the channel's own `all` item, so the channel bounds them.
+      const labelItems = [...partitions].filter((pk) =>
+        pk.startsWith("releases#byLabel#"),
+      );
+      expect(labelItems).toHaveLength(2);
+      for (const pk of labelItems) {
+        expect(bytes(pk)).toBeLessThanOrEqual(keyBytes.pk);
+      }
+      const counters = await items.query({ ...SCOPES, pk: "label_sequences" });
+      expect(counters.items).toHaveLength(2);
+      for (const { sk } of counters.items) {
+        expect(bytes(sk)).toBeLessThanOrEqual(keyBytes.sk);
+      }
     });
   }
 

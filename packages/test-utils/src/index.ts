@@ -1,6 +1,7 @@
 export * from "./adminApiTestClient";
 export * from "./setupBundleMethodsTestSuite";
 export * from "./setupCoreAdminTestSuite";
+export * from "./setupReleaseLabelTestSuite";
 export * from "./setupSemverSatisfiesTestSuite";
 export * from "./setupDatabaseTestSuite";
 export * from "./setupDatabaseAdapterConformanceSuite";

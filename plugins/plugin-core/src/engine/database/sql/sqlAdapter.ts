@@ -18,11 +18,13 @@ import {
   indexOrderTuple,
   normalizeStoredRow,
 } from "../../../database/values";
+import { readSqlSchemaState } from "../../db/sqlSchemaState";
 import {
   createTableStatements,
   isMultiIndex,
   pruneStatements,
   quoteSql,
+  sqlTableShapes,
   type SqlDialect,
 } from "./sqlSchema";
 
@@ -556,6 +558,30 @@ export const createSqlAdapter = ({
         for (const text of statements) {
           await executor.execute({ sql: text, params: [] });
         }
+      },
+      async addColumns(table, columns, { dryRun = false } = {}) {
+        const [shape] = sqlTableShapes(dialect, [table], tablePrefix);
+        const state = await readSqlSchemaState(executor);
+        if (shape === undefined || !state.hasTable(shape.name)) return [];
+        const missing = columns.filter(
+          (column) => !state.hasColumn(shape.name, column),
+        );
+        if (dryRun) return missing;
+        for (const name of missing) {
+          const column = shape.columns.find(
+            (candidate) => candidate.name === name,
+          );
+          if (column === undefined || column.notNull) {
+            throw new Error(
+              `${table.name}.${name} can't be added to an existing table: only an optional column can.`,
+            );
+          }
+          await executor.execute({
+            sql: `ALTER TABLE ${quoteSql(dialect, shape.name)} ADD COLUMN ${quoteSql(dialect, name)} ${column.type}`,
+            params: [],
+          });
+        }
+        return missing;
       },
     },
   };

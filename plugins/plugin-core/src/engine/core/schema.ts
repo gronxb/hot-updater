@@ -13,7 +13,7 @@ const CHANNEL_ID = { type: "string", maxLength: 1408, ascii: true } as const;
  * every database's migrator creates missing tables and then records the
  * version, and none of them changes an existing table's columns, so changing
  * one needs a migration step of its own first. An index added to an existing
- * table is listed in `LATE_INDEXES`. The schema fence answers 503 on
+ * table is listed in `LATE_INDEXES`, and a column in `LATE_COLUMNS`. The schema fence answers 503 on
  * a database whose row differs, until it runs. Before a version is released,
  * its tables change in place in its own migration, and a database one of its
  * prereleases migrated takes the same change by hand: the fence compares this
@@ -107,6 +107,9 @@ const releases = defineTable(
     },
     created_at_ms: { type: "integer" },
     updated_at_ms: { type: "integer" },
+    // Last, so a table that gained it by `ALTER TABLE … ADD COLUMN` (see
+    // `LATE_COLUMNS`) has the columns of one created with it.
+    label: { type: "integer", required: false },
   },
   {
     key: ["id"],
@@ -138,6 +141,15 @@ const releases = defineTable(
       // holds still leaves room for the longest fingerprint (DynamoDB: 896
       // of 1,024 bytes; `scopesIndexKeys.spec.ts` in @hot-updater/server).
       scopes: { eq: [], sort: ["scope_key"] },
+      // A label names one release of a channel and platform, on every
+      // store; a row without one yet holds no entry. The channel ID bounds
+      // its key as it bounds `byChannelPlatform`'s
+      // (`scopesIndexKeys.spec.ts` in @hot-updater/server).
+      byLabel: {
+        eq: ["channel_id", "platform", "label"],
+        sort: [],
+        unique: true,
+      },
     },
   },
 );
@@ -155,6 +167,38 @@ export const LATE_INDEXES: readonly {
   readonly table: string;
   readonly index: string;
 }[] = [{ table: "releases", index: "scopes" }];
+
+/**
+ * Columns added to a table that a released schema created: a migrator whose
+ * store has columns adds each one missing from an existing table, with
+ * `ALTER TABLE … ADD COLUMN`, before it creates the table's indexes, and
+ * `db migrate` on a database whose settings match still looks for them,
+ * since a database a prerelease migrated records the same settings. Each
+ * is optional, so rows written before it, and rows a server of the earlier
+ * release still writes, read as null. `releases.label` arrived in 1.2.0.
+ */
+export const LATE_COLUMNS: readonly {
+  readonly table: string;
+  readonly column: string;
+}[] = [{ table: "releases", column: "label" }];
+
+/**
+ * One counter per sequence: `releases/<platform>/<channel ID>` holds the
+ * last label that channel and platform's releases took. A deploy or a
+ * promote reads it and writes the next value in the transaction that writes
+ * the release, so two writers never take one label. `is_filled` is true once
+ * every release of the sequence written before labels has one, in ID order;
+ * until then a writer fills them first. Deleting a channel deletes its
+ * counters, so a channel created again with the name starts at 1.
+ */
+const labelSequences = defineTable(
+  {
+    id: { type: "string", maxLength: 1440, ascii: true },
+    last_label: { type: "integer" },
+    is_filled: { type: "boolean" },
+  },
+  { key: ["id"], indexes: { all: { eq: [], sort: ["id"] } } },
+);
 
 /** One compiled catalog per scope; the update check reads exactly this row. */
 const releaseCatalogs = defineTable(
@@ -377,6 +421,7 @@ export const coreSchema = {
   native_builds: nativeBuilds,
   ios_devices: iosDevices,
   ios_device_account: iosDeviceAccount,
+  label_sequences: labelSequences,
 } as const;
 
 /**

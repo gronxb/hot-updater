@@ -119,6 +119,31 @@ describe("handlePromote", () => {
     expect(await releasesForChannel("beta")).toEqual([]);
   });
 
+  it("promotes a bundle by its label, and prints the target's label with the source's", async () => {
+    const { handlePromote } = await import("./promote");
+
+    await handlePromote("v1", {
+      action: "copy",
+      channel: "production",
+      platform: "ios",
+      target: "beta",
+      yes: true,
+    });
+
+    const [promoted] = await releasesForChannel("beta");
+    expect(promoted).toMatchObject({
+      source_release_id: sourceReleaseId,
+      label: 1,
+    });
+    const plan = stripVTControlCharacters(
+      String(log.message.mock.calls[0]?.[0]),
+    );
+    expect(plan).toMatch(/^Source label {2,}production v1$/mu);
+    expect(
+      stripVTControlCharacters(String(log.info.mock.calls.at(-1)?.[0])),
+    ).toBe(`ID     ${promoted!.id}\nLabel  beta v1 (from production v1)`);
+  });
+
   it("creates a target-channel Release that reuses the source Bundle", async () => {
     const { handlePromote } = await import("./promote");
 

@@ -194,7 +194,11 @@ function rangeToIntervals(range: string): readonly VersionInterval[] {
   }
 }
 
-function releaseDescriptor(release: Release): ReleaseCatalogDescriptor {
+/** A release's descriptor; its label only when it has one and `labels`. */
+function releaseDescriptor(
+  release: Release,
+  labels: boolean,
+): ReleaseCatalogDescriptor {
   return {
     releaseId: release.id,
     kind: release.kind,
@@ -203,6 +207,9 @@ function releaseDescriptor(release: Release): ReleaseCatalogDescriptor {
     targetCohorts: [...new Set(release.targetCohorts)].sort(),
     shouldForceUpdate: release.shouldForceUpdate,
     message: release.message,
+    ...(labels && typeof release.label === "number"
+      ? { label: release.label }
+      : {}),
   };
 }
 
@@ -615,12 +622,27 @@ export async function compileReleaseCatalog(input: {
     input.strategy === "APP_VERSION"
       ? compileAppVersion(releases)
       : compileFingerprint(releases);
-  const payload = {
-    ...envelope,
-    releaseDescriptors: retainedReleases.map(releaseDescriptor),
-  } as CompiledReleaseCatalog;
-  const canonicalPayload = canonicalStringify(payload);
-  const byteSize = new TextEncoder().encode(canonicalPayload).byteLength;
+  const compile = (labels: boolean) => {
+    const payload = {
+      ...envelope,
+      releaseDescriptors: retainedReleases.map((release) =>
+        releaseDescriptor(release, labels),
+      ),
+    } as CompiledReleaseCatalog;
+    const canonicalPayload = canonicalStringify(payload);
+    const byteSize = new TextEncoder().encode(canonicalPayload).byteLength;
+    return { payload, canonicalPayload, byteSize };
+  };
+  // Labels are for display, and clients read a missing one as none, so they
+  // never push a catalog over its limit: an oversize catalog drops them.
+  let compiled = compile(true);
+  if (
+    compiled.byteSize > MAX_COMPILED_CATALOG_BYTES &&
+    retainedReleases.some((release) => typeof release.label === "number")
+  ) {
+    compiled = compile(false);
+  }
+  const { payload, canonicalPayload, byteSize } = compiled;
   if (byteSize > MAX_COMPILED_CATALOG_BYTES) {
     throw new ReleaseCatalogCompilationError(
       "CATALOG_OVERSIZE",

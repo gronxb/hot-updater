@@ -23,6 +23,7 @@ import {
   resolvePackageVersion,
   transformEnv,
   writeHotUpdaterFiles,
+  fillReleaseLabels,
 } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
@@ -1144,6 +1145,8 @@ const runInitWithoutCliMetadata = async ({
     ({ clientPlugins } = managedServer);
     // The app's credential, through the managed server's plugins, on the tables they read.
     try {
+      // Labels the releases written before labels, and rebuilds their catalogs.
+      await fillReleaseLabels(managedServer);
       credential = await provisionClientCredential(managedServer, {
         env: initInputEnv,
         name: "Supabase init",
