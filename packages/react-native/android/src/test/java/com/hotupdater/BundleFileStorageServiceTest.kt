@@ -3976,30 +3976,41 @@ class BundleFileStorageServiceTest {
                 }
             service = createService(root, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
             assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 1, "hash-1", "production", "context-app"))
-            val assets = mapOf("index.android.bundle" to ChangedAssetDescriptor(BUNDLE_URL, hash))
-
             val stale =
                 runCatching {
                     service.updateBundle(
-                        "target",
-                        MANIFEST_URL,
-                        sha256(root, manifest),
-                        assets,
+                        bundleId = "target",
+                        manifestUrl = MANIFEST_URL,
+                        manifestFileHash = sha256(root, manifest),
+                        assets = emptyMap(),
+                        fileResolver = RecordingArtifactFileResolver { BUNDLE_URL },
                         selection = releaseSelection("release-one", "target", 1, "hash-1", "context-app"),
-                    ) {}
+                        progressCallback = {},
+                    )
                 }.exceptionOrNull()
             assertTrue("Expected a stale selection, got $stale", stale is StaleReleaseSelectionException)
             assertEquals(1, served.calls.count { it == BUNDLE_URL })
 
             // The sandbox's staging of the same bundle reuses the downloaded
-            // file: nothing is downloaded again, so no file request can fail it.
+            // file: it asks for no file URLs, so a failing files request
+            // (a server 500) can't fail it.
+            var fileRequests = 0
             service.updateBundle(
-                "target",
-                MANIFEST_URL,
-                sha256(root, manifest),
-                assets,
+                bundleId = "target",
+                manifestUrl = MANIFEST_URL,
+                manifestFileHash = sha256(root, manifest),
+                assets = emptyMap(),
+                fileResolver =
+                    object : ArtifactFileResolver {
+                        override suspend fun resolve(paths: List<String>): Map<String, ResolvedArtifactFile> {
+                            fileRequests += 1
+                            throw java.io.IOException("HTTP error 500")
+                        }
+                    },
                 selection = releaseSelection("release-one", "target", 1, "hash-1", "context-sandbox"),
-            ) {}
+                progressCallback = {},
+            )
+            assertEquals(0, fileRequests)
             assertEquals(1, served.calls.count { it == BUNDLE_URL })
             assertEquals("target", loadMetadata(root)?.stagingBundleId)
         }
