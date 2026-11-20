@@ -150,7 +150,7 @@ export const fillLabels = async (
           let count = 0;
           for (const releaseId of batch) {
             const row = await tx.findOne("releases", { id: releaseId });
-            if (row === null || row.label !== null) continue;
+            if (row === null || typeof row.label === "number") continue;
             last += 1;
             count += 1;
             tx.update("releases", row, { label: last });
@@ -190,7 +190,8 @@ export const fillLabels = async (
     });
     // oxlint-disable-next-line hot-updater/no-filtered-find-many -- the fill reads each release of a pair that has some without a label once, in ID order, which it labels them in; no index selects a row without a label, which holds no `byLabel` entry
     const unlabeled = page.rows
-      .filter((row) => row.label === null || row.label === undefined)
+      // A release an earlier server wrote may hold no label field at all.
+      .filter((row) => typeof row.label !== "number")
       .map((row) => row.id);
     if (dryRun) labeled += unlabeled.length;
     else await label(unlabeled);
@@ -328,7 +329,7 @@ export const catchUpLabels = async (
       ...(cursor === undefined ? {} : { cursor }),
     });
     for (const row of page.rows) {
-      if (row.label !== null && row.label !== undefined) break scan;
+      if (typeof row.label === "number") break scan;
       unlabeled.push(row);
     }
     cursor = page.next;

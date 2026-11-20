@@ -455,6 +455,79 @@ describe("release labels", () => {
     ).resolves.toMatchObject({ changed: true, labelsOnly: false });
   });
 
+  it("fills releases a key-value store holds without a label field, as an earlier server wrote them", async () => {
+    // An earlier server's release items have no `label` field at all, and no
+    // label index items.
+    const store = createMemoryKeyValueStore();
+    let earlier = true;
+    const context = setup(
+      createKvAdapter({
+        store: {
+          ...store,
+          write: (ops) =>
+            store.write(
+              earlier
+                ? ops
+                    .filter(
+                      (op) =>
+                        !(
+                          op.type === "put" &&
+                          op.key.pk.startsWith("releases#byLabel#")
+                        ),
+                    )
+                    .map((op) => {
+                      if (
+                        op.type !== "put" ||
+                        !/^releases(#|$)/u.test(op.key.pk)
+                      )
+                        return op;
+                      const { label: _, ...value } = op.value as StoredRow & {
+                        label?: unknown;
+                      };
+                      return { ...op, value: value as StoredRow };
+                    })
+                : ops,
+            ),
+        },
+      }),
+    );
+    const { core, raw } = context;
+    const releases = [
+      await deploy(core),
+      await deploy(core),
+      await deploy(core),
+    ];
+    const { rows: counters } = await raw.findMany("label_sequences", {
+      index: "all",
+      where: {},
+      limit: 10,
+    });
+    await raw.transaction(async (tx) => {
+      for (const { id } of counters) {
+        const counter = await tx.findOne("label_sequences", { id });
+        if (counter !== null) await tx.delete("label_sequences", counter);
+      }
+    });
+    earlier = false;
+    expect(
+      await raw.findOne("releases", { id: releases[0]!.id }),
+    ).not.toHaveProperty("label");
+
+    await expect(core.fillReleaseLabels()).resolves.toMatchObject({
+      releases: 3,
+    });
+
+    const labeled = [];
+    for (const { id } of releases) {
+      labeled.push((await core.getRelease(id))?.label);
+    }
+    expect(labeled).toEqual([1, 2, 3]);
+    await expect(core.fillReleaseLabels({ dryRun: true })).resolves.toEqual({
+      releases: 0,
+      catalogs: 0,
+    });
+  });
+
   it("skips a label an index item a server of an earlier release left behind still holds", async () => {
     // A key-value store keeps each unique entry as an item of its own, which
     // a server that knows no label index leaves behind when it deletes the row.
