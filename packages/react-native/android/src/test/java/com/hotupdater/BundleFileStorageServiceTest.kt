@@ -3657,13 +3657,17 @@ class BundleFileStorageServiceTest {
             val bundleHash = sha256(root, BUNDLE_CONTENT)
             val imageHash = sha256(root, "image")
             val manifest = manifestJson("target", mapOf("index.android.bundle" to bundleHash, "assets/image.png" to imageHash))
+            val bundleStarted = CountDownLatch(1)
             val imageFailed = CountDownLatch(1)
             val served =
                 BinaryMappingDownloadService(
                     mapOf(MANIFEST_URL to manifest.toByteArray(), BUNDLE_URL to "tampered".toByteArray()),
                     mapOf(imageUrl to HttpStatusException(404, "Not Found")),
                 )
-            // Both downloads run; the image fails first, the tampered bundle after.
+            // Both downloads run; the image fails first, the tampered bundle
+            // after. The image waits for the bundle's download to start: its
+            // failure cancels the downloads, and one cancelled before it
+            // starts never proves its file bad.
             val downloads =
                 object : DownloadService {
                     override suspend fun downloadFile(
@@ -3673,8 +3677,11 @@ class BundleFileStorageServiceTest {
                         progressCallback: (DownloadProgress) -> Unit,
                     ): DownloadResult {
                         if (fileUrl.toString() == BUNDLE_URL) {
+                            bundleStarted.countDown()
                             imageFailed.await(5, TimeUnit.SECONDS)
                             Thread.sleep(200)
+                        } else if (fileUrl.toString() == imageUrl) {
+                            assertTrue(bundleStarted.await(5, TimeUnit.SECONDS))
                         }
                         return served.downloadFile(fileUrl, destination, fileSizeCallback, progressCallback).also {
                             if (fileUrl.toString() == imageUrl) imageFailed.countDown()
