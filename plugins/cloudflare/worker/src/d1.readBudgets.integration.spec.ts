@@ -78,18 +78,24 @@ const rowsRead = (database: D1Database) => {
  * The worker's `d1Database` on the D1 binding. Its schema fence reads the
  * settings rows the migration writes once, while the suite seeds.
  */
+// Both suites share the binding's database, which the migrations, whose
+// ALTER TABLE runs once, create a single time.
+let migrated: Promise<void> | undefined;
+const migrate = async () => {
+  // `exec` runs one statement per line, and a comment line is not one.
+  for (const migration of inject("d1Migrations")) {
+    await env.DB.exec(
+      migration.sql
+        .split("\n")
+        .filter((line) => line.trim() !== "" && !line.startsWith("--"))
+        .join("\n"),
+    );
+  }
+};
 const backend: ReadBudgetSuiteOptions = {
   name: "d1 (workerd)",
   createAdapter: async () => {
-    // `exec` runs one statement per line, and a comment line is not one.
-    for (const migration of inject("d1Migrations")) {
-      await env.DB.exec(
-        migration.sql
-          .split("\n")
-          .filter((line) => line.trim() !== "" && !line.startsWith("--"))
-          .join("\n"),
-      );
-    }
+    await (migrated ??= migrate());
     const { binding, examined, written } = rowsRead(env.DB);
     return { adapter: d1Database(binding).adapter, examined, written };
   },
