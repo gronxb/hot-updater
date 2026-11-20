@@ -186,9 +186,7 @@ it("doesn't retry a read that failed for another reason", async () => {
   const error = d1Error("no such column: nope: SQLITE_ERROR");
   failures.push(error);
 
-  await expect(core.getBundle(createBundleFixture("1").id)).rejects.toBe(
-    error,
-  );
+  await expect(core.getBundle(createBundleFixture("1").id)).rejects.toBe(error);
   expect(calls.reads - before).toBe(1);
 });
 
