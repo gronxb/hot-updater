@@ -929,6 +929,15 @@ function stripAnsi(value: string) {
  * deploys one platform at a time with the workspace CLI, so no `iOS ID` or
  * `Android ID` row, or a released CLI's `ID:`, is ever read here.
  */
+/**
+ * The label `hot-updater deploy` printed for its release, such as `v12`: what
+ * the server assigned, which the app must then show. Null when it printed none.
+ */
+function extractDeployReleaseLabel(output: string) {
+  const match = stripAnsi(output).match(/^[ \t│]*Label[ \t]+(v\d+)[ \t]*$/im);
+  return match?.[1] ?? null;
+}
+
 function extractDeployReleaseId(output: string) {
   const plainOutput = stripAnsi(output);
   const match = plainOutput.match(
@@ -6928,6 +6937,7 @@ async function deployFixtureBundle(
         : undefined,
     patchBaseBundleIds,
     primaryBundleAssetPath: getPrimaryBundleAssetPath(),
+    label: extractDeployReleaseLabel(deployOutput),
     releaseId: deployed.release.id,
     rolloutCohortCount: deployed.release.rollout_cohort_count,
     scopeKey: deployed.release.scope_key,
