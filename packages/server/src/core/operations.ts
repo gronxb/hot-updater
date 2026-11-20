@@ -24,6 +24,7 @@ import {
   encodeChannelKey,
 } from "@hot-updater/protocol";
 
+import { fillLabels, pendingLabelPairs, writeWithLabels } from "./labels";
 import { isBuiltInBundle, refuseSandboxPatchBase } from "./nativeBuilds";
 import {
   toBundleRow,
@@ -57,12 +58,15 @@ type CoreOperations = Pick<
   | "deleteRelease"
   | "promoteRelease"
   | "rebuildReleaseCatalog"
+  | "fillReleaseLabels"
   | "preflightReleaseCatalogRebuild"
   | "ensureChannel"
   | "deleteChannel"
   | "updateBundle"
   | "deleteBundles"
 >;
+
+const CATALOG_PAGE = 100;
 
 /** Carries a preflight's result out of the transaction it stops, so nothing is written. */
 class Preflight<T> extends Error {
@@ -437,7 +441,7 @@ export const createCoreOperations = (
         }
         const channel = await ensureChannel(targetChannel);
         const updatedAtMs = now();
-        return db.transaction(async (tx) => {
+        return writeWithLabels(db, async (tx, labels) => {
           const { release: source, scope: sourceScope } = await loadTarget(
             tx,
             input,
@@ -476,27 +480,32 @@ export const createCoreOperations = (
                   updatedAtMs,
                 })
               : null;
-          const target = await changeRelease(tx, {
-            scope: targetScope,
-            change: {
-              operation: "insert",
-              row: {
-                ...source,
-                id: createUUIDv7After(floor ?? null, updatedAtMs),
-                revision: 1,
-                scope_key: targetScope.scopeKey,
-                channel_id: targetScope.channelId,
-                enabled: true,
-                rollout_cohort_count: 1_000,
-                target_cohorts: [],
-                operation: "PROMOTE",
-                source_release_id: source.id,
-                created_at_ms: updatedAtMs,
-                updated_at_ms: updatedAtMs,
+          const { label: _label, ...copied } = source;
+          const target = await changeRelease(
+            tx,
+            {
+              scope: targetScope,
+              change: {
+                operation: "insert",
+                row: {
+                  ...copied,
+                  id: createUUIDv7After(floor ?? null, updatedAtMs),
+                  revision: 1,
+                  scope_key: targetScope.scopeKey,
+                  channel_id: targetScope.channelId,
+                  enabled: true,
+                  rollout_cohort_count: 1_000,
+                  target_cohorts: [],
+                  operation: "PROMOTE",
+                  source_release_id: source.id,
+                  created_at_ms: updatedAtMs,
+                  updated_at_ms: updatedAtMs,
+                },
               },
+              updatedAtMs,
             },
-            updatedAtMs,
-          });
+            labels,
+          );
           return {
             source: moved === null ? null : mutationResult(moved),
             target: mutationResult(target),
@@ -518,6 +527,44 @@ export const createCoreOperations = (
 
     preflightReleaseCatalogRebuild: (scopeKey) =>
       preflightRebuild(db, scopeKey, now()),
+
+    fillReleaseLabels: async ({ dryRun = false, catalogs = true } = {}) => {
+      let releases = 0;
+      for (const pair of await pendingLabelPairs(db)) {
+        releases += await fillLabels(db, pair, { dryRun });
+      }
+      let rebuilt = 0;
+      if (catalogs) {
+        // Each catalog compiled before its releases had labels, rebuilt in
+        // its own transaction; one core can't compile is doctor's to report.
+        let cursor: string | undefined;
+        do {
+          const page = await db.findMany("release_catalogs", {
+            index: "all",
+            where: {},
+            limit: CATALOG_PAGE,
+            ...(cursor === undefined ? {} : { cursor }),
+          });
+          for (const row of page.rows) {
+            if (row.is_tombstone) continue;
+            const preflight = await preflightRebuild(
+              db,
+              row.scope_key,
+              now(),
+            ).catch(() => null);
+            if (preflight === null || !preflight.labelsOnly) continue;
+            rebuilt += 1;
+            if (dryRun) continue;
+            const updatedAtMs = now();
+            await db.transaction((tx) =>
+              rebuildScope(tx, catalogRowScope(toCatalogRow(row)), updatedAtMs),
+            );
+          }
+          cursor = page.next;
+        } while (cursor !== undefined);
+      }
+      return { releases, catalogs: rebuilt };
+    },
 
     ensureChannel,
 

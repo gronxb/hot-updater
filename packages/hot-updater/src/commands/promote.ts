@@ -6,10 +6,15 @@ import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
 import { failBundleCommand, notFoundError } from "../utils/publicBundleError";
+import {
+  labelText,
+  resolveBundleId,
+  type LabelScopeOptions,
+} from "./releaseLabel";
 
 export type PromoteAction = "copy" | "move";
 
-export interface PromoteOptions {
+export interface PromoteOptions extends LabelScopeOptions {
   readonly action?: PromoteAction;
   readonly target: string;
   readonly yes?: boolean;
@@ -33,6 +38,9 @@ const summarizePlan = (
 ) =>
   ui.block(`Promote Bundle (${action})`, [
     ui.kv("Source ID", ui.id(source.id)),
+    labelText(source) === ""
+      ? ""
+      : ui.kv("Source label", `${sourceChannel} ${labelText(source)}`),
     ui.kv("Platform", ui.platform(source.platform)),
     ui.kv("From", ui.channel(sourceChannel)),
     ui.kv("To", ui.channel(targetChannel)),
@@ -48,7 +56,7 @@ const summarizePlan = (
   ]);
 
 export const handlePromote = async (
-  sourceReleaseId: string,
+  sourceIdOrLabel: string,
   options: PromoteOptions,
 ) => {
   printBanner();
@@ -61,6 +69,11 @@ export const handlePromote = async (
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
+    const sourceReleaseId = await resolveBundleId(
+      core,
+      sourceIdOrLabel,
+      options,
+    );
     const source = await core.getRelease(sourceReleaseId);
     if (source === null) {
       return await failBundleCommand(
@@ -110,7 +123,19 @@ export const handlePromote = async (
         ? `Promoted bundle to ${targetChannel}.`
         : `Moved bundle to ${targetChannel}.`,
     );
-    p.log.info(ui.block("", [ui.kv("ID", ui.id(promoted.id))]));
+    const label = labelText(promoted);
+    const sourceLabel = labelText(source);
+    p.log.info(
+      ui.block("", [
+        ui.kv("ID", ui.id(promoted.id)),
+        label === ""
+          ? ""
+          : ui.kv(
+              "Label",
+              `${targetChannel} ${label}${sourceLabel === "" ? "" : ` (from ${sourceChannel} ${sourceLabel})`}`,
+            ),
+      ]),
+    );
   } finally {
     await safeDispose(server);
   }

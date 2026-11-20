@@ -557,6 +557,44 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     json({ data: await core.rebuildReleaseCatalog(scopeKeyOf(params)) }),
   ),
 
+  /**
+   * The release a label names, or `null`: never 404, which tells a client
+   * the server has no such route.
+   */
+  getReleaseByLabel: onCore(async (core, request) => {
+    const url = new URL(request.url);
+    const channel = url.searchParams.get("channel");
+    const platform = platformOf(url);
+    const label = Number(url.searchParams.get("label"));
+    if (
+      channel === null ||
+      channel.length === 0 ||
+      platform === undefined ||
+      !Number.isSafeInteger(label) ||
+      label < 1
+    ) {
+      throw new HandlerBadRequestError(
+        "A release label lookup takes channel, platform, and a label of 1 or more.",
+      );
+    }
+    return json({
+      data: await core.getReleaseByLabel({ channel, platform, label }),
+    });
+  }),
+
+  fillReleaseLabels: onCore(async (core, request) => {
+    const body: unknown = await request.json().catch(() => ({}));
+    const input = (
+      body !== null && typeof body === "object" ? body : {}
+    ) as Record<string, unknown>;
+    return json({
+      data: await core.fillReleaseLabels({
+        dryRun: input.dryRun === true,
+        catalogs: input.catalogs !== false,
+      }),
+    });
+  }),
+
   updateBundle: onCore(async (core, request, params) => {
     const bundleId = requireRouteParam(params, "id");
     const update = bundleUpdateOf(await request.json(), bundleId);
@@ -999,6 +1037,12 @@ export const ADMIN_ROUTES: readonly {
   },
   { method: "GET", path: "/release-catalogs", handler: "listReleaseCatalogs" },
   { method: "GET", path: "/release-scopes", handler: "listReleaseScopeKeys" },
+  { method: "GET", path: "/release-labels", handler: "getReleaseByLabel" },
+  {
+    method: "POST",
+    path: "/release-labels/fill",
+    handler: "fillReleaseLabels",
+  },
   {
     method: "POST",
     path: "/release-catalogs/:scopeKey/rebuild",

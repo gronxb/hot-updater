@@ -1,5 +1,6 @@
 import {
   createMigrator as createHotUpdaterMigrator,
+  fillReleaseLabels,
   p,
 } from "@hot-updater/cli-tools";
 
@@ -244,17 +245,13 @@ async function migrateWithMigrator(
   const operations = (result as { operations?: MigrationOperation[] })
     .operations;
 
-  if (!operations || operations.length === 0) {
-    p.log.success("Schema is up to date.");
-    process.exit(0);
-  }
-
-  // Format operations into human-readable changes
-  const changes = formatOperations(operations);
-
-  // Double-check: if operations exist but produce no changes, schema is up to date
+  // Format operations into human-readable changes; operations that produce
+  // no change leave the schema up to date.
+  const changes = formatOperations(operations ?? []);
   if (changes.length === 0) {
     p.log.success("Schema is up to date.");
+    // Releases a server of an earlier release still writes need labels too.
+    await fillReleaseLabels(hotUpdater);
     process.exit(0);
   }
 
@@ -284,6 +281,7 @@ async function migrateWithMigrator(
 
   const newVersion = await migrator.getVersion();
   p.log.success(ui.line(["Migrated to", ui.version(newVersion)]));
+  await fillReleaseLabels(hotUpdater);
 
   // Exit process to ensure all connections are closed
   // This is especially important for MongoDB and other databases

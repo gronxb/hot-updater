@@ -133,8 +133,10 @@ const checkReleaseCatalogs = async (
   core: HotUpdaterCoreApi,
   catalogScopeKeys: readonly string[],
   releaseScopeKeys: ReadonlySet<string>,
+  repair: string,
 ): Promise<ReleaseCatalogStatus> => {
   const status: ReleaseCatalogStatus = { scopes: [], issues: [] };
+  let withoutLabels = 0;
   const withRow = new Set(catalogScopeKeys);
   const scopeKeys = [...new Set([...catalogScopeKeys, ...releaseScopeKeys])];
   for (const scopeKey of scopeKeys.sort()) {
@@ -201,7 +203,10 @@ const checkReleaseCatalogs = async (
       byteSize: result.diagnostics.byteSize,
       descriptorCount: result.diagnostics.descriptorCount,
     });
-    if (state === "stale") {
+    if (state === "stale" && result.labelsOnly === true) {
+      // Compiled before its releases had labels: the label fill rebuilds it.
+      withoutLabels += 1;
+    } else if (state === "stale") {
       const issue: ReleaseCatalogIssue = {
         type: "error",
         code: "RELEASE_CATALOG_STALE",
@@ -219,12 +224,61 @@ const checkReleaseCatalogs = async (
     const near = nearLimit(scopeKey, result.diagnostics.byteSize);
     if (near !== null) status.issues.push(near);
   }
+  if (withoutLabels > 0) {
+    status.issues.push({
+      type: "warning",
+      code: "RELEASE_CATALOGS_WITHOUT_LABELS",
+      message: `${withoutLabels} release catalog${withoutLabels === 1 ? " lacks" : "s lack"} the labels of ${withoutLabels === 1 ? "its" : "their"} releases, so apps don't get them.`,
+      resolution: "Migrating the database again rebuilds them:",
+      commands: [repair],
+    });
+  }
   return status;
 };
 
-/** The server's release catalogs, each against a rebuild from its releases. */
+/**
+ * Releases without a label: written before labels, or by a server of an
+ * earlier release after the migration. Two reads per scope and one per
+ * channel and platform, then the releases of a channel and platform that
+ * has some.
+ */
+const checkReleaseLabels = async (
+  core: HotUpdaterCoreApi,
+  repair: string,
+): Promise<ReleaseCatalogIssue | null> => {
+  let releases: number;
+  try {
+    ({ releases } = await core.fillReleaseLabels({
+      dryRun: true,
+      catalogs: false,
+    }));
+  } catch (error) {
+    return {
+      type: "warning",
+      code: "RELEASE_LABELS_UNCHECKED",
+      message: `Could not check release labels: ${errorMessage(error)}`,
+      resolution: "Fix what the message names, then rerun doctor.",
+    };
+  }
+  if (releases === 0) return null;
+  return {
+    type: "warning",
+    code: "RELEASE_LABELS_MISSING",
+    message: `${releases} release${releases === 1 ? " has" : "s have"} no label.`,
+    resolution:
+      "Migrating the database again labels them in the order they were created:",
+    commands: [repair],
+  };
+};
+
+/**
+ * The server's release catalogs, each against a rebuild from its releases,
+ * and its releases' labels. `repair` is the command that migrates the
+ * database: init's for a deployment init created, else `db migrate`'s.
+ */
 export const checkServerData = async (
   core: HotUpdaterCoreApi,
+  repair = "npx hot-updater db migrate <server file>",
 ): Promise<ReleaseCatalogStatus> => {
   let catalogs: { scopeKey: string; tombstone: boolean }[];
   try {
@@ -244,7 +298,10 @@ export const checkServerData = async (
     core,
     catalogScopeKeys,
     walked ?? new Set(),
+    repair,
   );
+  const labels = await checkReleaseLabels(core, repair);
+  if (labels !== null) status.issues.push(labels);
   if (walked === undefined) {
     // A self-hosted server older than this hot-updater has no scope route.
     const older =

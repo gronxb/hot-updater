@@ -3,7 +3,7 @@ import type {
   PhysicalTable,
   WriteOp,
 } from "../../database/adapter";
-import { LATE_INDEXES } from "../core/schema";
+import { LATE_COLUMNS, LATE_INDEXES } from "../core/schema";
 import {
   readSettings,
   SETTINGS_TABLE,
@@ -87,8 +87,33 @@ export const fillLateIndexes = async (
 };
 
 /**
- * Creates or updates every table, writes the late indexes' missing items,
- * then writes the settings rows last. A database a newer release migrated is
+ * The `LATE_COLUMNS` among `tables` that an existing table lacks, as
+ * `<table>.<column>`, added unless `dryRun`: none on a store without
+ * `migrations.addColumns`, or for a table not created yet.
+ */
+export const addLateColumns = async (
+  adapter: DatabaseAdapter,
+  tables: readonly PhysicalTable[],
+  { dryRun = false }: { readonly dryRun?: boolean } = {},
+): Promise<string[]> => {
+  const addColumns = adapter.migrations?.addColumns;
+  if (addColumns === undefined) return [];
+  const lacking: string[] = [];
+  for (const table of tables) {
+    const columns = LATE_COLUMNS.filter(
+      ({ table: name }) => name === table.name,
+    ).map(({ column }) => column);
+    if (columns.length === 0) continue;
+    const added = await addColumns(table, columns, { dryRun });
+    lacking.push(...added.map((column) => `${table.name}.${column}`));
+  }
+  return lacking;
+};
+
+/**
+ * Adds the late columns existing tables lack, creates or updates every
+ * table, writes the late indexes' missing items, then writes the settings
+ * rows last. A database a newer release migrated is
  * refused before anything is written: its settings are read first, and a
  * store without them yet, whose read fails, has none to refuse.
  */
@@ -115,6 +140,7 @@ export const migrateSchema = async (
       ordered,
     );
   }
+  await addLateColumns(adapter, tables);
   await adapter.migrations.apply([...tables, SETTINGS_TABLE]);
   await fillLateIndexes(adapter, tables);
   await writeSchemaSettings(adapter, adapterName, settings, ordered);

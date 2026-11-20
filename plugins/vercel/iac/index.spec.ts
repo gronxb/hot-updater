@@ -133,7 +133,12 @@ beforeEach(() => {
   mocks.readHotUpdaterTables.mockResolvedValue([]);
   mocks.migratePostgres.mockResolvedValue("1.0.0");
   mocks.postgres.mockReturnValue({ dispose: mocks.dispose });
-  mocks.assembleServer.mockReturnValue({ clientPlugins: [] });
+  mocks.assembleServer.mockReturnValue({
+    clientPlugins: [],
+    core: {
+      fillReleaseLabels: vi.fn(async () => ({ releases: 0, catalogs: 0 })),
+    },
+  });
   mocks.provisionClientCredential.mockResolvedValue({
     env: "HOT_UPDATER_API_KEY",
     header: "x-api-key",

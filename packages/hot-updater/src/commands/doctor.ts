@@ -820,7 +820,9 @@ async function checkServer(
   } catch (error) {
     return releaseCatalogsUnchecked(error);
   }
-  return server === null ? undefined : await checkServerData(server.core);
+  if (server === null) return undefined;
+  const managed = await context.managed();
+  return checkServerData(server.core, managed?.command);
 }
 
 /**

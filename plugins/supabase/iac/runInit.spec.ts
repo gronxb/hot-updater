@@ -75,6 +75,8 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     ...actual,
     confirmInitInputPersistence: vi.fn(async () => false),
     // The managed server's plugins, over the project's database.
+    // Labels releases over the assembled server; its database is mocked.
+    fillReleaseLabels: vi.fn(async () => ({ releases: 0, catalogs: 0 })),
     provisionClientCredential: mocks.provisionClientCredential,
     makeEnv: mocks.makeEnv,
     printAppSetup: mocks.printAppSetup,

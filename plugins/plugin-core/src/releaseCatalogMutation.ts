@@ -52,6 +52,12 @@ export interface ReleaseCatalogRebuildResult {
 
 export interface ReleaseCatalogRebuildPreflight {
   readonly changed: boolean;
+  /**
+   * Whether the rebuild would change only release labels: a catalog
+   * compiled before its releases had them. A server before labels leaves it
+   * out.
+   */
+  readonly labelsOnly?: boolean;
   readonly currentCatalog: ReleaseCatalogRow | null;
   readonly diagnostics: ReleaseCatalogCompilation["diagnostics"];
   readonly projectedCatalog: ReleaseCatalogRow;

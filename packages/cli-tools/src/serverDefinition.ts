@@ -4,12 +4,14 @@ import {
   type Migrator,
   type PluginClientCredential,
   type PluginClientPlugin,
+  type ReleaseLabelFill,
   type SchemaGenerator,
   type ToolingDatabase,
   toolingTargetOf,
 } from "@hot-updater/plugin-core";
 
 import { getHotUpdaterEnvValue } from "./hotUpdaterEnv";
+import { p } from "./prompts";
 
 /** A plugin's endpoint on a server's `handlers.client`. */
 export interface ServerClientEndpoint {
@@ -227,4 +229,37 @@ export const generateSchema = (
     );
   }
   return database.generateSchema(version, name, toolingTargetOf(plugins));
+};
+
+/** One line for what a release label fill changed, or null for nothing. */
+const releaseLabelFillLine = ({
+  releases,
+  catalogs,
+}: ReleaseLabelFill): string | null => {
+  const parts = [
+    ...(releases > 0
+      ? [`labeled ${releases} release${releases === 1 ? "" : "s"}`]
+      : []),
+    ...(catalogs > 0
+      ? [`rebuilt ${catalogs} release catalog${catalogs === 1 ? "" : "s"}`]
+      : []),
+  ];
+  if (parts.length === 0) return null;
+  const line = parts.join(" and ");
+  return `${line[0]!.toUpperCase()}${line.slice(1)}.`;
+};
+
+/**
+ * Gives labels to the releases a database holds without one, and rebuilds
+ * the release catalogs that lack them, once its schema is migrated:
+ * `hot-updater init` and `db migrate` run it. It prints one line when it
+ * changed something, and nothing otherwise.
+ */
+export const fillReleaseLabels = async (
+  definition: Pick<ServerDefinition, "core">,
+): Promise<ReleaseLabelFill> => {
+  const filled = await definition.core.fillReleaseLabels();
+  const line = releaseLabelFillLine(filled);
+  if (line !== null) p.log.info(line);
+  return filled;
 };

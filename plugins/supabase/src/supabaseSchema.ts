@@ -4,6 +4,7 @@ import {
   isMultiIndex,
   WRITE_GUARD_TABLE,
   generateEngineSql,
+  lateColumnStatements,
   type ToolingTarget,
   SETTINGS_TABLE,
   type ResolvedSchema,
@@ -178,9 +179,21 @@ export const supabaseMigrationStatements = (sql: string): string[] =>
     .map((statement) => statement.replace(/;\n$/u, "").trim())
     .filter((statement) => statement !== "");
 
+/** Whether `sql` creates a table an earlier migration created, which it never does again. */
+const createdBefore = (sql: string, earlier: readonly string[]) => {
+  const table = /^CREATE TABLE IF NOT EXISTS ("[^"]+") \(/u.exec(sql)?.[1];
+  return (
+    table !== undefined &&
+    earlier.some((ran) =>
+      ran.startsWith(`CREATE TABLE IF NOT EXISTS ${table} (`),
+    )
+  );
+};
+
 /**
- * A managed Supabase migration after the first: each statement of the
- * target's schema that no earlier migration ran, then every settings row, so
+ * A managed Supabase migration after the first: the columns added to tables
+ * an earlier migration created, then each statement of the target's schema
+ * that no earlier migration ran, then every settings row, so
  * the migration is never empty and the fence passes once it ran. A new table
  * brings its row-level security and a new apply RPC naming it, which brings
  * the RPC's grants again. Shipped migrations are frozen; a schema change
@@ -192,7 +205,8 @@ export const supabaseMigrationSql = (
 ): string => {
   const statements = supabaseSchemaStatements(target);
   const settings = Object.keys(target.settings).length;
-  const ran = new Set(earlier.flatMap(supabaseMigrationStatements));
+  const ranStatements = earlier.flatMap(supabaseMigrationStatements);
+  const ran = new Set(ranStatements);
   const apply = statements.findIndex((sql) =>
     sql.startsWith(
       `CREATE OR REPLACE FUNCTION public.${SUPABASE_APPLY_FUNCTION}(`,
@@ -201,9 +215,16 @@ export const supabaseMigrationSql = (
   // The apply RPC's REVOKE and GRANT follow it.
   const grants = ran.has(statements[apply]!) ? [] : [apply + 1, apply + 2];
   return toSql([
+    ...lateColumnStatements("postgresql", target.schema, ranStatements, {
+      tablePrefix: SUPABASE_TABLE_PREFIX,
+    }),
     ...statements
       .slice(0, -settings)
-      .filter((sql, index) => !ran.has(sql) || grants.includes(index)),
+      .filter(
+        (sql, index) =>
+          (!ran.has(sql) && !createdBefore(sql, ranStatements)) ||
+          grants.includes(index),
+      ),
     ...statements.slice(-settings),
   ]);
 };

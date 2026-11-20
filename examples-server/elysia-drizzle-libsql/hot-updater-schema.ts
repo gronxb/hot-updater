@@ -57,6 +57,7 @@ export const releases = sqliteTable("releases", {
   "source_release_id": column("text")("source_release_id"),
   "created_at_ms": column("integer")("created_at_ms").notNull(),
   "updated_at_ms": column("integer")("updated_at_ms").notNull(),
+  "label": column("integer")("label"),
   "_v": column("integer")("_v").notNull().default(0),
 }, (table) => [
   index("releases_byScope").on(table["scope_key"], table["id"]),
@@ -64,6 +65,7 @@ export const releases = sqliteTable("releases", {
   index("releases_byChannelPlatform").on(table["channel_id"], table["platform"], table["id"]),
   index("releases_byChannelPlatformEnabled").on(table["channel_id"], table["platform"], table["enabled"], table["id"]),
   index("releases_byBundle").on(table["bundle_id"], table["id"]),
+  uniqueIndex("releases_byLabel").on(table["channel_id"], table["platform"], table["label"]),
 ]);
 
 export const release_catalogs = sqliteTable("release_catalogs", {
@@ -162,6 +164,15 @@ export const ios_device_account = sqliteTable("ios_device_account", {
   "id": column("text")("id").notNull().primaryKey(),
   "apple_issuer_id": column("text")("apple_issuer_id").notNull(),
   "claimed_at_ms": column("integer")("claimed_at_ms").notNull(),
+  "_v": column("integer")("_v").notNull().default(0),
+}, (table) => [
+
+]);
+
+export const label_sequences = sqliteTable("label_sequences", {
+  "id": column("text")("id").notNull().primaryKey(),
+  "last_label": column("integer")("last_label").notNull(),
+  "is_filled": column("integer")("is_filled").notNull(),
   "_v": column("integer")("_v").notNull().default(0),
 }, (table) => [
 

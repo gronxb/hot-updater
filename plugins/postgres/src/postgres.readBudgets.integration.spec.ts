@@ -12,6 +12,8 @@ import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import {
   postgresRowsExamined,
   setupReadBudgetTestSuite,
+  setupReleaseLabelEngineTestSuite,
+  type ReadBudgetSuiteOptions,
 } from "@hot-updater/test-utils";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
@@ -23,7 +25,7 @@ const plugins = [insights(), apiKeys(), remoteConfig()];
  * core over Kysely's executor on a PGlite dialect, on `sql/bundles.sql` and
  * the plugins' tables, as `hot-updater db migrate` adds them.
  */
-setupReadBudgetTestSuite({
+const backend: ReadBudgetSuiteOptions = {
   name: "postgres (PGlite)",
   createAdapter: async () => {
     const client = new PGlite();
@@ -53,4 +55,6 @@ setupReadBudgetTestSuite({
       },
     };
   },
-});
+};
+setupReadBudgetTestSuite(backend);
+setupReleaseLabelEngineTestSuite(backend);

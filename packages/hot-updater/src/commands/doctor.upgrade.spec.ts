@@ -374,12 +374,30 @@ const wranglerMigrationsApply = async (db: DatabaseSync) => {
 };
 
 /** The schema SQLite keeps for Hot Updater's tables and indexes, by name. */
+/**
+ * Every table with its columns, and every index. A table compares by its
+ * columns in name order: `ALTER TABLE … ADD COLUMN` appends one where a new
+ * table declares it in place.
+ */
 const sqliteSchema = (db: DatabaseSync) =>
   db
     .prepare(
       "SELECT type, name, tbl_name, sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations' ORDER BY name",
     )
-    .all();
+    .all()
+    .map((object) =>
+      object["type"] === "table"
+        ? {
+            type: object["type"],
+            name: object["name"],
+            columns: db
+              .prepare(
+                'SELECT name, type, "notnull", dflt_value, pk FROM pragma_table_info(?) ORDER BY name',
+              )
+              .all(String(object["name"])),
+          }
+        : object,
+    );
 
 const sqliteSettings = (db: DatabaseSync) =>
   db

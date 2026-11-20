@@ -1,5 +1,9 @@
 -- HotUpdater.schema
 
+ALTER TABLE "releases" ADD COLUMN "label" INTEGER;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "releases_byLabel" ON "releases" ("channel_id", "platform", "label");
+
 CREATE TABLE IF NOT EXISTS "native_builds" ("id" TEXT NOT NULL, "scope_key" TEXT NOT NULL, "platform" TEXT NOT NULL, "channel_id" TEXT NOT NULL, "fingerprint_hash" TEXT, "app_version" TEXT, "min_bundle_id" TEXT NOT NULL, "artifact_kind" TEXT NOT NULL, "artifact_storage_uri" TEXT NOT NULL, "byte_size" INTEGER NOT NULL, "git_commit_hash" TEXT, "created_at_ms" INTEGER NOT NULL, "build_key" TEXT, "build_number" TEXT, "submitted_to" TEXT, "submitted_at_ms" INTEGER, "submitted_version" TEXT, "is_store_build" INTEGER NOT NULL, "is_sandbox" INTEGER NOT NULL, "sandbox_url_scheme" TEXT, "export_method" TEXT, "native_app_version" TEXT, "store_build_scope_key" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
 CREATE INDEX IF NOT EXISTS "native_builds_byScope" ON "native_builds" ("scope_key", "id");
@@ -23,6 +27,8 @@ CREATE INDEX IF NOT EXISTS "ios_devices_byRegistration" ON "ios_devices" ("regis
 CREATE UNIQUE INDEX IF NOT EXISTS "ios_devices_udid" ON "ios_devices" ("udid");
 
 CREATE TABLE IF NOT EXISTS "ios_device_account" ("id" TEXT NOT NULL, "apple_issuer_id" TEXT NOT NULL, "claimed_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
+CREATE TABLE IF NOT EXISTS "label_sequences" ("id" TEXT NOT NULL, "last_label" INTEGER NOT NULL, "is_filled" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
 CREATE INDEX IF NOT EXISTS "bundle_events__byBundle__key" ON "bundle_events__byBundle" ("id");
 

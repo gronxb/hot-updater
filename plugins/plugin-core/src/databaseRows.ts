@@ -36,6 +36,7 @@ export const releaseToRow = (
   source_release_id: release.sourceReleaseId,
   created_at_ms: release.createdAtMs,
   updated_at_ms: release.updatedAtMs,
+  label: release.label ?? null,
 });
 
 export const releaseRowToRelease = (row: ReleaseRow): Release => ({
@@ -57,6 +58,7 @@ export const releaseRowToRelease = (row: ReleaseRow): Release => ({
   sourceReleaseId: row.source_release_id,
   createdAtMs: row.created_at_ms,
   updatedAtMs: row.updated_at_ms,
+  label: row.label ?? null,
 });
 
 export const BundleRowHydrationErrorReason = {

@@ -1,6 +1,10 @@
 import path from "node:path";
 
-import { setupReadBudgetTestSuite } from "@hot-updater/test-utils";
+import {
+  setupReadBudgetTestSuite,
+  setupReleaseLabelEngineTestSuite,
+  type ReadBudgetSuiteOptions,
+} from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
   findOpenPort,
@@ -58,11 +62,13 @@ afterAll(async () => {
  * `mongoAdapter`'s composition without its schema fence: the MongoDB adapter
  * on the replica set, reading in batches as small as the suite's pages.
  */
-setupReadBudgetTestSuite({
+const backend: ReadBudgetSuiteOptions = {
   name: "mongodb (replica set)",
   createAdapter: async ({ tables, nativePageSize }) => {
     const adapter = createMongoAdapter({ client, batchSize: nativePageSize });
     await adapter.migrations!.apply(tables);
     return { adapter };
   },
-});
+};
+setupReadBudgetTestSuite(backend);
+setupReleaseLabelEngineTestSuite(backend);

@@ -72,6 +72,16 @@ const RC_IOS_DEVICES_BY_REGISTRATION_STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS "ios_devices_byRegistration" ON "ios_devices" ("registered_at_ms", "id")',
 ];
 
+/**
+ * What the packaged 1.2.0 upgrade guide tells a database a 1.2 prerelease
+ * migrated to run by hand for release labels: D1's statements of `LATEST`.
+ */
+const RC_RELEASE_LABELS_STATEMENTS = [
+  'ALTER TABLE "releases" ADD COLUMN "label" INTEGER',
+  'CREATE UNIQUE INDEX IF NOT EXISTS "releases_byLabel" ON "releases" ("channel_id", "platform", "label")',
+  'CREATE TABLE IF NOT EXISTS "label_sequences" ("id" TEXT NOT NULL, "last_label" INTEGER NOT NULL, "is_filled" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"))',
+];
+
 const readMigration = (name: string) =>
   fs.readFile(path.join(MIGRATIONS, name), "utf8");
 
@@ -100,13 +110,30 @@ const sqliteD1 = (db: DatabaseSync) => {
   });
 };
 
-/** Every table, index, and settings row of a database. */
+/**
+ * Every table with its columns, every index, and every settings row of a
+ * database. A table compares by its columns, in name order: `ALTER TABLE …
+ * ADD COLUMN` appends one where a new table declares it in place.
+ */
 const describeSchema = (db: DatabaseSync) => ({
   objects: db
     .prepare(
       "SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name",
     )
-    .all(),
+    .all()
+    .map((object) =>
+      object.type === "table"
+        ? {
+            type: object.type,
+            name: object.name,
+            columns: db
+              .prepare(
+                'SELECT name, type, "notnull", dflt_value, pk FROM pragma_table_info(?) ORDER BY name',
+              )
+              .all(String(object.name)),
+          }
+        : object,
+    ),
   settings: db
     .prepare("SELECT key, value FROM private_hot_updater_settings ORDER BY key")
     .all(),
@@ -179,6 +206,50 @@ describe("d1 schema", () => {
     ).toEqual(Object.keys(later.settings));
   });
 
+  it("adds no column twice in the migration after the checked-in ones, which applies over them", async () => {
+    const later = toolingTargetOf([
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+      definePlugin({
+        id: "audit",
+        schemaVersion: "1",
+        schema: {
+          entries: defineTable({ id: { type: "string" } }, { key: ["id"] }),
+        },
+        init: () => ({ api: {} }),
+      }),
+    ]);
+    const chain = [...Object.keys(SHIPPED), LATEST];
+    const next = d1MigrationSql(
+      later,
+      await Promise.all(chain.map((name) => readMigration(name))),
+    );
+
+    expect(
+      d1MigrationStatements(next).filter((sql) => sql.startsWith("ALTER")),
+    ).toEqual([]);
+    const migrated = new DatabaseSync(":memory:");
+    for (const name of chain) {
+      for (const statement of d1MigrationStatements(
+        await readMigration(name),
+      )) {
+        migrated.exec(statement);
+      }
+    }
+    for (const statement of d1MigrationStatements(next)) {
+      migrated.exec(statement);
+    }
+    expect(
+      migrated
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'audit_entries'",
+        )
+        .all(),
+    ).toHaveLength(1);
+    migrated.close();
+  });
+
   it("brings a database a 1.2 prerelease migrated up to the iOS device registry with the statements the release notes print", async () => {
     // A prerelease's 0002: this one without the iOS device registry.
     const prerelease = new DatabaseSync(":memory:");
@@ -205,6 +276,67 @@ describe("d1 schema", () => {
       prerelease.exec(statement);
     }
     await expect(core.listIosDevices({ limit: 1 })).resolves.toEqual([]);
+    const migrated = new DatabaseSync(":memory:");
+    for (const name of [...Object.keys(SHIPPED), LATEST]) {
+      for (const statement of d1MigrationStatements(
+        await readMigration(name),
+      )) {
+        migrated.exec(statement);
+      }
+    }
+    expect(describeSchema(prerelease)).toEqual(describeSchema(migrated));
+    prerelease.close();
+    migrated.close();
+  });
+
+  it("prints release labels' statements in the packaged 1.2.0 upgrade guide", async () => {
+    const guide = await fs.readFile(
+      path.resolve("packages/hot-updater/infrastructure-upgrades/1.2.0.md"),
+      "utf8",
+    );
+    for (const statement of RC_RELEASE_LABELS_STATEMENTS) {
+      expect(guide).toContain(
+        `npx wrangler d1 execute <database-name> --remote --command '${statement}'`,
+      );
+    }
+  });
+
+  it("brings a database a 1.2 prerelease migrated up to release labels with the statements the upgrade guide prints", async () => {
+    const policy = {
+      channel: "production",
+      enabled: true,
+      fingerprintHash: null,
+      message: null,
+      shouldForceUpdate: false,
+      targetAppVersion: "1.0.0",
+    };
+    // A prerelease's 0002: this one without release labels.
+    const prerelease = new DatabaseSync(":memory:");
+    for (const name of [...Object.keys(SHIPPED), LATEST]) {
+      for (const statement of d1MigrationStatements(
+        await readMigration(name),
+      )) {
+        if (!RC_RELEASE_LABELS_STATEMENTS.includes(statement)) {
+          prerelease.exec(statement);
+        }
+      }
+    }
+    const core = createHotUpdater({
+      database: sqliteD1(prerelease),
+      storage: createReleaseCatalogTestStorage(),
+      clientAccess: "public",
+    }).core;
+    // The fence compares schema.core, so only the write says the column is missing.
+    await expect(
+      core.deploy([{ bundle: createBundleFixture("1"), release: policy }]),
+    ).rejects.toThrow();
+    for (const statement of RC_RELEASE_LABELS_STATEMENTS) {
+      prerelease.exec(statement);
+    }
+    const [deployed] = await core.deploy([
+      { bundle: createBundleFixture("2"), release: policy },
+    ]);
+    expect(deployed!.release!.label).toBe(1);
     const migrated = new DatabaseSync(":memory:");
     for (const name of [...Object.keys(SHIPPED), LATEST]) {
       for (const statement of d1MigrationStatements(

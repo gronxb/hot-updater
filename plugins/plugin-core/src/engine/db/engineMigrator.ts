@@ -1,9 +1,14 @@
 import type { DatabaseAdapter } from "../../database/adapter";
 import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
 import type { SchemaSettings } from "../database/fence";
+import { SETTINGS_TABLE } from "../database/fence";
 import type { ResolvedSchema } from "../database/resolveSchema";
 import { getEmptyMigrationResult } from "./fixedMigratorShared";
-import { fillLateIndexes, migrateSchema } from "./schemaSettings";
+import {
+  addLateColumns,
+  fillLateIndexes,
+  migrateSchema,
+} from "./schemaSettings";
 import {
   refuseNewerSchema,
   refuseV0Database,
@@ -51,30 +56,71 @@ export const createEngineMigrator = (
       ([key, value]) => stored.get(key) !== value,
     );
     if (changed.length === 0) {
-      // Up to date, but for late index items an earlier release's server
-      // wrote rows without.
+      // Up to date, but for late columns a prerelease of this version's
+      // schema lacked, which bring their tables and indexes, and for late
+      // index items an earlier release's server wrote rows without.
+      const columns = await addLateColumns(
+        options.adapter,
+        options.schema.tables,
+        { dryRun: true },
+      );
       const lacking = await fillLateIndexes(
         options.adapter,
         options.schema.tables,
         { dryRun: true },
       );
-      if (lacking.length === 0) return getEmptyMigrationResult();
+      if (columns.length === 0 && lacking.length === 0) {
+        return getEmptyMigrationResult();
+      }
       return {
         operations: [
-          {
-            type: "custom",
-            description: `Write the index items rows lack: ${lacking.join(", ")}`,
-          },
+          ...columns.map((column) => ({
+            type: "custom" as const,
+            description: `Add column: ${column}`,
+          })),
+          ...(columns.length === 0
+            ? []
+            : [
+                {
+                  type: "custom" as const,
+                  description:
+                    "Create the tables and indexes the database lacks",
+                },
+              ]),
+          ...(lacking.length === 0
+            ? []
+            : [
+                {
+                  type: "custom" as const,
+                  description: `Write the index items rows lack: ${lacking.join(", ")}`,
+                },
+              ]),
         ],
         execute: async () => {
+          if (columns.length > 0) {
+            await addLateColumns(options.adapter, options.schema.tables);
+            await options.adapter.migrations!.apply([
+              ...options.schema.tables,
+              SETTINGS_TABLE,
+            ]);
+          }
           await fillLateIndexes(options.adapter, options.schema.tables);
         },
       };
     }
     // The store creates what is missing and leaves what exists; it cannot
-    // tell which, so the plan names the step once.
+    // tell which, so the plan names the step once, after the columns it adds.
+    const columns = await addLateColumns(
+      options.adapter,
+      options.schema.tables,
+      { dryRun: true },
+    ).catch(() => []);
     return {
       operations: [
+        ...columns.map((column) => ({
+          type: "custom" as const,
+          description: `Add column: ${column}`,
+        })),
         {
           type: "custom",
           description: "Create the tables and indexes the database lacks",

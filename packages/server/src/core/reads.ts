@@ -21,6 +21,7 @@ import type {
 import {
   ARTIFACT_FILES_PROTOCOL_VERSION,
   ARTIFACT_PROTOCOL_VERSION,
+  encodeChannelKey,
   NIL_UUID,
   type ArtifactFiles,
   type ArtifactInfo,
@@ -72,7 +73,7 @@ export const toPatchRow = pick<BundlePatchRow>([
   "order_index",
 ]);
 
-export const toReleaseRow = pick<ReleaseRow>([
+const pickReleaseRow = pick<ReleaseRow>([
   "id",
   "revision",
   "scope_key",
@@ -93,6 +94,15 @@ export const toReleaseRow = pick<ReleaseRow>([
   "created_at_ms",
   "updated_at_ms",
 ]);
+
+/** A release row; `label` null where the store holds none, as before the column. */
+export const toReleaseRow = (row: Readonly<Record<string, unknown>>) => {
+  const release = pickReleaseRow(row);
+  return {
+    ...release,
+    label: typeof row.label === "number" ? row.label : null,
+  } satisfies ReleaseRow;
+};
 
 export const toCatalogRow = pick<ReleaseCatalogRow>([
   "scope_key",
@@ -156,7 +166,8 @@ export interface CoreStorage {
 export const createCoreReads = (
   db: CoreDatabase,
   storage: CoreStorage,
-): CoreReads & Pick<HotUpdaterCoreApi, "listReleaseScopeKeys"> => {
+): CoreReads &
+  Pick<HotUpdaterCoreApi, "listReleaseScopeKeys" | "getReleaseByLabel"> => {
   /** A bundle row's patches, exactly as many as its reference counter holds. */
   const detail = async (
     row: ReadRow<CoreSchema["bundles"]>,
@@ -349,6 +360,26 @@ export const createCoreReads = (
     async getRelease(id: string): Promise<ReleaseRow | null> {
       const row = await db.findOne("releases", { id });
       return row === null ? null : toReleaseRow(row);
+    },
+
+    /**
+     * The release a label names: its unique index, then the row itself,
+     * since a key-value store keeps an index copy a server of an earlier
+     * release may have left behind when it changed or deleted the row.
+     */
+    async getReleaseByLabel({ channel, platform, label }) {
+      const found = await db.findOne("releases", {
+        channel_id: `channel:${encodeChannelKey(channel)}`,
+        platform,
+        label,
+      });
+      if (found === null) return null;
+      const row = await db.findOne("releases", { id: found.id });
+      if (row === null) return null;
+      const release = toReleaseRow(row);
+      return release.label === label && release.platform === platform
+        ? release
+        : null;
     },
 
     /** One page of releases through the index its filter names. */

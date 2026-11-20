@@ -337,7 +337,7 @@ describe("drizzleAdapter schema and migrations", () => {
               {
                 type: "custom",
                 description:
-                  "Set the byte-order collation the ORM cannot declare on 65 columns of 9 tables",
+                  "Set the byte-order collation the ORM cannot declare on 66 columns of 10 tables",
               },
             ]
           : []),

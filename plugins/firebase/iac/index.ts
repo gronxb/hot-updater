@@ -20,6 +20,7 @@ import {
   type RunInitOptions,
   type RunInitResult,
   transformEnv,
+  fillReleaseLabels,
 } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
@@ -639,6 +640,8 @@ export const runInit = async ({
     // The database reads nothing until the schema settings exist.
     await migrateFirebaseDatabase(databaseConfig, server.plugins);
     // The app's credential, through the managed server's plugins, on the tables they read.
+    // Labels the releases written before labels, and rebuilds their catalogs.
+    await fillReleaseLabels(server);
     clientCredential = await provisionClientCredential(server, {
       env: initInputEnv,
       name: "Firebase init",

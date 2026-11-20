@@ -5,6 +5,8 @@ import {
   mysqlRowsExamined,
   postgresRowsExamined,
   setupReadBudgetTestSuite,
+  setupReleaseLabelEngineTestSuite,
+  type ReadBudgetSuiteOptions,
 } from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
@@ -82,7 +84,7 @@ afterAll(async () => {
 }, 60_000);
 
 /** The SQL core over a pool; reads are explained on one connection of it. */
-setupReadBudgetTestSuite({
+const backend: ReadBudgetSuiteOptions = {
   name: "sql (pooled PostgreSQL)",
   createAdapter: async ({ tables }) => {
     const session = await postgres.connect();
@@ -100,9 +102,11 @@ setupReadBudgetTestSuite({
       cleanup: async () => session.release(),
     };
   },
-});
+};
+setupReadBudgetTestSuite(backend);
+setupReleaseLabelEngineTestSuite(backend);
 
-setupReadBudgetTestSuite({
+const backend2: ReadBudgetSuiteOptions = {
   name: "sql (pooled MySQL)",
   createAdapter: async ({ tables }) => {
     const session = await mariadb.getConnection();
@@ -121,4 +125,6 @@ setupReadBudgetTestSuite({
       cleanup: async () => session.release(),
     };
   },
-});
+};
+setupReadBudgetTestSuite(backend2);
+setupReleaseLabelEngineTestSuite(backend2);

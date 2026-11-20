@@ -19,6 +19,7 @@ export type {
   NativeBuildSandboxScope,
   NativeBuildScope,
   ReleaseFilter,
+  ReleaseLabelFill,
   ReleaseTarget,
   StoredBundleDeployment,
 } from "./coreApi";
@@ -236,6 +237,7 @@ export {
 export {
   type EngineSqlOptions,
   generateEngineSql,
+  lateColumnStatements,
 } from "./engine/db/engineSql";
 export {
   type EngineSqlMigratorOptions,

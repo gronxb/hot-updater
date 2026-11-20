@@ -242,6 +242,14 @@ export interface IosDeviceRequestResult {
   readonly created: boolean;
 }
 
+/** What a release label fill labeled, or with `dryRun` would label. */
+export interface ReleaseLabelFill {
+  /** Releases that had no label. */
+  readonly releases: number;
+  /** Catalogs whose releases have labels they lack. */
+  readonly catalogs: number;
+}
+
 export interface ReleaseTarget {
   readonly releaseId: string;
   /** Refuses the change when the release is at another revision. */
@@ -284,6 +292,16 @@ export interface HotUpdaterCoreApi {
     limit: number,
   ): Promise<string[]>;
   getRelease(id: string): Promise<ReleaseRow | null>;
+  /**
+   * The release a label names in a channel and platform, or null: one read
+   * of the label's unique index, and one of the release it names, which a
+   * key-value store's index copy may outlive.
+   */
+  getReleaseByLabel(input: {
+    readonly channel: string;
+    readonly platform: Platform;
+    readonly label: number;
+  }): Promise<ReleaseRow | null>;
   listReleases(
     input: KeysetInput & { readonly filter: ReleaseFilter },
   ): Promise<ReleaseRow[]>;
@@ -392,6 +410,20 @@ export interface HotUpdaterCoreApi {
     },
   ): Promise<PromoteReleaseResult>;
   rebuildReleaseCatalog(scopeKey: string): Promise<ReleaseCatalogRebuildResult>;
+  /**
+   * Gives labels to the releases written before labels, or by a server of
+   * an earlier release, in the order they were created, per channel and
+   * platform; then, unless `catalogs` is false, rebuilds each catalog that
+   * differs from its releases only by their labels. With `dryRun`, it writes
+   * nothing and counts both. `hot-updater init` and `db migrate` run it.
+   * Reads: two per scope with releases and one per channel and platform,
+   * then each pending pair's releases, and for the catalog pass what a
+   * rebuild preflight reads per catalog.
+   */
+  fillReleaseLabels(input?: {
+    readonly dryRun?: boolean;
+    readonly catalogs?: boolean;
+  }): Promise<ReleaseLabelFill>;
   preflightReleaseCatalogRebuild(
     scopeKey: string,
   ): Promise<ReleaseCatalogRebuildPreflight>;

@@ -18,6 +18,7 @@ import {
   storedSchemaVersion,
 } from "./settingsMigrator";
 import {
+  addColumnStatements,
   missingSqlSchema,
   readSqlSchemaState,
   targetShapes,
@@ -125,7 +126,30 @@ export const createEngineSqlMigrator = (
     const changed = Object.entries(options.settings).filter(
       ([key, value]) => stored.get(key) !== value,
     );
-    if (changed.length === 0) return getEmptyMigrationResult();
+    // Only what the database lacks: the statements create a table or an
+    // index only when it is missing, and a late column is added to a table
+    // that exists, before its indexes are created.
+    const missing = missingSqlSchema(
+      targetShapes(
+        options.executor.dialect,
+        options.schema,
+        options.tablePrefix,
+      ).filter(
+        (shape) =>
+          shape.name !== (options.tablePrefix ?? "") + SETTINGS_TABLE.name,
+      ),
+      await readSqlSchemaState(options.executor),
+      options.tablePrefix,
+    );
+    // Up to date, but for a column a prerelease of this version's schema
+    // lacked: its settings match, and the column and its indexes are missing.
+    if (changed.length === 0 && missing.columns.length === 0) {
+      return getEmptyMigrationResult();
+    }
+    const addColumns = addColumnStatements(
+      options.executor.dialect,
+      missing.columns,
+    );
     const statements = generateEngineSql(
       options.executor.dialect,
       options.schema,
@@ -137,21 +161,17 @@ export const createEngineSqlMigrator = (
       options.settings,
       options.tablePrefix,
     );
-    const tablesSql = statements.slice(0, -settingsSql.length || undefined);
-    // Only what the database lacks: the statements create a table or an
-    // index only when it is missing.
-    const missing = missingSqlSchema(
-      targetShapes(
-        options.executor.dialect,
-        options.schema,
-        options.tablePrefix,
-      ).filter(
-        (shape) =>
-          shape.name !== (options.tablePrefix ?? "") + SETTINGS_TABLE.name,
-      ),
-      await readSqlSchemaState(options.executor),
-    );
+    const tablesSql = [
+      ...addColumns,
+      ...statements.slice(0, -settingsSql.length || undefined),
+    ];
+    const writesSettings =
+      changed.length > 0 && migrate.updateSettings !== false;
     const operations: MigrationOperation[] = [
+      ...missing.columns.map(({ table, column }) => ({
+        type: "custom" as const,
+        description: `Add column: ${column.name} to ${table}`,
+      })),
       ...missing.tables.map((table) => ({
         type: "create-table" as const,
         value: { ormName: table, columns: {} },
@@ -160,18 +180,19 @@ export const createEngineSqlMigrator = (
         type: "custom" as const,
         description: `Create index: ${index} on ${table}`,
       })),
-      ...(migrate.updateSettings === false
-        ? []
-        : [settingsOperation(stored, changed)]),
+      ...(writesSettings ? [settingsOperation(stored, changed)] : []),
     ];
     return {
       operations,
-      getSQL: () => statements.map((statement) => `${statement};`).join("\n\n"),
+      getSQL: () =>
+        [...addColumns, ...statements]
+          .map((statement) => `${statement};`)
+          .join("\n\n"),
       execute: () =>
         run(
           options.executor,
           tablesSql,
-          settingsSql,
+          changed.length > 0 ? settingsSql : [],
           options.schema,
           options.tablePrefix,
         ),

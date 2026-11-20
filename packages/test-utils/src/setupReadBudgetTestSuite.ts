@@ -1228,13 +1228,28 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   budget({
     api: "catalog compile: the scope's enabled releases, all used",
     // A deploy reads the channel, the scope's catalog (once, then as the root
-    // of each range), its 4 enabled releases, and its latest release; with
-    // copies, it reads those 5 releases whole.
+    // of each range), its 4 enabled releases, its latest release, and its
+    // channel and platform's label counter; with copies, it reads those 5
+    // releases whole.
     read: ({ core }) =>
       core.deploy([{ bundle: bundleOf("107"), release: production }]),
-    adapter: (copies) => reads(copies ? 5 : 3, copies ? 8 : 3, 3, 6),
-    engine: { calls: 6, rows: 9 },
+    adapter: (copies) => reads(copies ? 6 : 4, copies ? 9 : 4, 3, 6),
+    engine: { calls: 7, rows: 10 },
     writes: 1,
+  }),
+  budget({
+    api: "release by label: its unique index, then the release",
+    // The label's index names the release; a key-value store's index copy
+    // can outlive a row an earlier server changed, so the row is read too.
+    read: ({ core }) =>
+      core.getReleaseByLabel({
+        channel: "production",
+        platform: "ios",
+        label: 2,
+      }),
+    adapter: reads(1, 1, 1, 1),
+    engine: { calls: 2, rows: 2 },
+    check: (release) => expect(release).toMatchObject({ label: 2 }),
   }),
   budget({
     api: "channel insert: 1 write, after the name's read finds nothing",
@@ -1244,12 +1259,12 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     writes: 1,
   }),
   budget({
-    api: "channel delete: the channel, its native builds under it, and 1 write",
+    api: "channel delete: the channel, its native builds under it, its label counters, and 1 write",
     // The channel, then again as the root of its native build range, which
-    // is empty.
+    // is empty, and its two platforms' label counters, which it never had.
     read: ({ core, nightlyId }) => core.deleteChannel(nightlyId),
-    adapter: reads(2, 2, 1, 0),
-    engine: { calls: 3, rows: 2 },
+    adapter: reads(4, 4, 1, 0),
+    engine: { calls: 5, rows: 2 },
     writes: 1,
     check: (result) => expect(result).toEqual({ deleted: true }),
   }),

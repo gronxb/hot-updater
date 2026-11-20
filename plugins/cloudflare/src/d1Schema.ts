@@ -3,6 +3,7 @@ import {
   createTableStatements,
   WRITE_GUARD_TABLE,
   generateEngineSql,
+  lateColumnStatements,
   type ToolingTarget,
 } from "@hot-updater/plugin-core";
 
@@ -36,11 +37,23 @@ export const d1MigrationStatements = (sql: string): string[] =>
     .map((statement) => statement.replace(/;\n$/u, "").trim())
     .filter((statement) => statement !== "");
 
+/** Whether `sql` creates a table an earlier migration created, which it never does again. */
+const createdBefore = (sql: string, earlier: readonly string[]) => {
+  const table = /^CREATE TABLE IF NOT EXISTS ("[^"]+") \(/u.exec(sql)?.[1];
+  return (
+    table !== undefined &&
+    earlier.some((ran) =>
+      ran.startsWith(`CREATE TABLE IF NOT EXISTS ${table} (`),
+    )
+  );
+};
+
 /**
- * A managed D1 migration after the first: each statement of the target's
- * schema that no earlier migration ran, then every settings row, so the
- * migration is never empty and the fence passes once it ran. Shipped
- * migrations are frozen; a schema change goes into the next one.
+ * A managed D1 migration after the first: the columns added to tables an
+ * earlier migration created, then each statement of the target's schema that
+ * no earlier migration ran, then every settings row, so the migration is
+ * never empty and the fence passes once it ran. Shipped migrations are
+ * frozen; a schema change goes into the next one.
  */
 export const d1MigrationSql = (
   target: ToolingTarget,
@@ -48,9 +61,13 @@ export const d1MigrationSql = (
 ): string => {
   const statements = d1SchemaStatements(target);
   const settings = Object.keys(target.settings).length;
-  const ran = new Set(earlier.flatMap(d1MigrationStatements));
+  const ranStatements = earlier.flatMap(d1MigrationStatements);
+  const ran = new Set(ranStatements);
   return toSql([
-    ...statements.slice(0, -settings).filter((sql) => !ran.has(sql)),
+    ...lateColumnStatements("sqlite", target.schema, ranStatements),
+    ...statements
+      .slice(0, -settings)
+      .filter((sql) => !ran.has(sql) && !createdBefore(sql, ranStatements)),
     ...statements.slice(-settings),
   ]);
 };

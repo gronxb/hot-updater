@@ -99,18 +99,30 @@ directory, which is configured separately.
 ### Deployment Result
 
 After its database commit succeeds, each single-platform deploy prints its
-public Bundle ID:
+public Bundle ID and its label:
 
 ```text
 Deployment successful
-ID  01a0586e-a286-7a74-a959-6d2c770b8793
+ID     01a0586e-a286-7a74-a959-6d2c770b8793
+Label  v12
 ```
 
 Record the ID from each platform's command.
 
 Interactive deploy opens that exact update in the console. Use this ID with
 `bundle show`, `bundle update`, `bundle disable`, `bundle delete`, or
-`bundle promote`. The advanced `patch` command takes the Artifact ID shown in
+`bundle promote`.
+
+The label numbers a channel and platform's bundles in the order they were
+deployed: `v1`, `v2`, and so on. It never changes, and no other bundle of that
+channel and platform takes it while the channel exists, so deleting a bundle
+leaves a gap. Disabling or enabling a bundle keeps its label, and a promotion
+takes the target channel's next one. The same commands take a label in place
+of the ID, with its channel and platform:
+
+```bash
+npx hot-updater bundle show v12 -c production -p ios
+``` The advanced `patch` command takes the Artifact ID shown in
 Advanced diagnostics. Given an Artifact ID, the `bundle` commands change
 nothing and name the bundle ID to use.
 

@@ -96,6 +96,31 @@ const makeStale = async (scopeKey: string) => {
   });
 };
 
+/** Takes every release's label and every counter off, as a 1.1 database holds them. */
+const asBeforeLabels = async () => {
+  const engine = createEngine(harness.database);
+  const { rows } = await engine.core.findMany("releases", {
+    index: "all",
+    where: {},
+    limit: 100,
+  });
+  const { rows: counters } = await engine.core.findMany("label_sequences", {
+    index: "all",
+    where: {},
+    limit: 100,
+  });
+  await engine.core.transaction(async (tx) => {
+    for (const { id } of rows) {
+      const row = await tx.findOne("releases", { id });
+      tx.update("releases", row!, { label: null });
+    }
+    for (const { id } of counters) {
+      const counter = await tx.findOne("label_sequences", { id });
+      await tx.delete("label_sequences", counter!);
+    }
+  });
+};
+
 describe("doctor's release catalog check", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -222,6 +247,68 @@ describe("doctor's release catalog check", () => {
               ],
             },
           ],
+        },
+      },
+    });
+  });
+
+  it("reports releases without labels and catalogs without them, names the command that migrates, and nothing once it ran", async () => {
+    const ios = await deploy(1);
+    const android = await deploy(2, { platform: "android" });
+    await asBeforeLabels();
+    // Catalogs compiled while the releases had none, then a fill of the
+    // releases alone: the catalogs now lack their labels.
+    await harness.core.rebuildReleaseCatalog(ios);
+    await harness.core.rebuildReleaseCatalog(android);
+    await expect(doctor()).resolves.toMatchObject({
+      success: true,
+      details: {
+        releaseCatalogs: {
+          issues: [
+            {
+              type: "warning",
+              code: "RELEASE_LABELS_MISSING",
+              message: "2 releases have no label.",
+              commands: ["npx hot-updater db migrate <server file>"],
+            },
+          ],
+        },
+      },
+    });
+    await harness.core.fillReleaseLabels({ catalogs: false });
+    await expect(doctor()).resolves.toMatchObject({
+      success: true,
+      details: {
+        releaseCatalogs: {
+          scopes: [
+            { scopeKey: android, state: "stale" },
+            { scopeKey: ios, state: "stale" },
+          ],
+          issues: [
+            {
+              type: "warning",
+              code: "RELEASE_CATALOGS_WITHOUT_LABELS",
+              message:
+                "2 release catalogs lack the labels of their releases, so apps don't get them.",
+              commands: ["npx hot-updater db migrate <server file>"],
+            },
+          ],
+        },
+      },
+    });
+
+    // What `db migrate` and init run once the schema is migrated.
+    await harness.core.fillReleaseLabels();
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: true,
+      details: {
+        releaseCatalogs: {
+          scopes: [
+            { scopeKey: android, state: "verified" },
+            { scopeKey: ios, state: "verified" },
+          ],
+          issues: [],
         },
       },
     });

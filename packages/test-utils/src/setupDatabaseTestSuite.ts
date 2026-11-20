@@ -10,6 +10,7 @@ import { createReleaseCatalogTestStorage } from "./releaseCatalogHttpFixtures";
 import { setupBundleMethodsTestSuite } from "./setupBundleMethodsTestSuite";
 import { setupCoreAdminTestSuite } from "./setupCoreAdminTestSuite";
 import { setupReleaseCatalogTestSuite } from "./setupReleaseCatalogTestSuite";
+import { setupReleaseLabelTestSuite } from "./setupReleaseLabelTestSuite";
 
 export type { DatabaseTestLifecycle } from "./databaseTestRunner";
 
@@ -71,6 +72,7 @@ export const setupDatabaseTestSuite = <TDatabase extends EngineDatabase>(
     setupCoreAdminTestSuite({ getClient });
     setupBundleMethodsTestSuite({ getClient });
     setupReleaseCatalogTestSuite({ getClient });
+    setupReleaseLabelTestSuite({ getClient });
     for (const suite of options.plugins ?? []) {
       describe(suite.name, () => {
         suite.register({ getClient, getDatabase });

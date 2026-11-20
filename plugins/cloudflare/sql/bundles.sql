@@ -14,7 +14,7 @@ CREATE INDEX IF NOT EXISTS "bundle_patches_byBundle" ON "bundle_patches" ("bundl
 
 CREATE INDEX IF NOT EXISTS "bundle_patches_byBase" ON "bundle_patches" ("base_bundle_id", "bundle_id", "id");
 
-CREATE TABLE IF NOT EXISTS "releases" ("id" TEXT NOT NULL, "revision" INTEGER NOT NULL, "scope_key" TEXT NOT NULL, "channel_id" TEXT NOT NULL, "platform" TEXT NOT NULL, "kind" TEXT NOT NULL, "bundle_id" TEXT, "strategy" TEXT NOT NULL, "target_app_version" TEXT, "fingerprint_hash" TEXT, "enabled" INTEGER NOT NULL, "should_force_update" INTEGER NOT NULL, "message" TEXT, "rollout_cohort_count" INTEGER NOT NULL, "target_cohorts" TEXT NOT NULL, "operation" TEXT NOT NULL, "source_release_id" TEXT, "created_at_ms" INTEGER NOT NULL, "updated_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+CREATE TABLE IF NOT EXISTS "releases" ("id" TEXT NOT NULL, "revision" INTEGER NOT NULL, "scope_key" TEXT NOT NULL, "channel_id" TEXT NOT NULL, "platform" TEXT NOT NULL, "kind" TEXT NOT NULL, "bundle_id" TEXT, "strategy" TEXT NOT NULL, "target_app_version" TEXT, "fingerprint_hash" TEXT, "enabled" INTEGER NOT NULL, "should_force_update" INTEGER NOT NULL, "message" TEXT, "rollout_cohort_count" INTEGER NOT NULL, "target_cohorts" TEXT NOT NULL, "operation" TEXT NOT NULL, "source_release_id" TEXT, "created_at_ms" INTEGER NOT NULL, "updated_at_ms" INTEGER NOT NULL, "label" INTEGER, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
 CREATE INDEX IF NOT EXISTS "releases_byScope" ON "releases" ("scope_key", "id");
 
@@ -25,6 +25,8 @@ CREATE INDEX IF NOT EXISTS "releases_byChannelPlatform" ON "releases" ("channel_
 CREATE INDEX IF NOT EXISTS "releases_byChannelPlatformEnabled" ON "releases" ("channel_id", "platform", "enabled", "id");
 
 CREATE INDEX IF NOT EXISTS "releases_byBundle" ON "releases" ("bundle_id", "id");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "releases_byLabel" ON "releases" ("channel_id", "platform", "label");
 
 CREATE TABLE IF NOT EXISTS "release_catalogs" ("scope_key" TEXT NOT NULL, "catalog_id" TEXT NOT NULL, "strategy" TEXT NOT NULL, "channel_id" TEXT NOT NULL, "channel_key" TEXT NOT NULL, "platform" TEXT NOT NULL, "fingerprint_hash" TEXT, "generation" INTEGER NOT NULL, "payload" TEXT NOT NULL, "catalog_hash" TEXT NOT NULL, "byte_size" INTEGER NOT NULL, "is_tombstone" INTEGER NOT NULL, "updated_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("scope_key"));
 
@@ -59,6 +61,8 @@ CREATE INDEX IF NOT EXISTS "ios_devices_byRegistration" ON "ios_devices" ("regis
 CREATE UNIQUE INDEX IF NOT EXISTS "ios_devices_udid" ON "ios_devices" ("udid");
 
 CREATE TABLE IF NOT EXISTS "ios_device_account" ("id" TEXT NOT NULL, "apple_issuer_id" TEXT NOT NULL, "claimed_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
+CREATE TABLE IF NOT EXISTS "label_sequences" ("id" TEXT NOT NULL, "last_label" INTEGER NOT NULL, "is_filled" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
 CREATE TABLE IF NOT EXISTS "bundle_events" ("id" TEXT NOT NULL, "type" TEXT NOT NULL, "install_id" TEXT NOT NULL, "user_id" TEXT, "from_release_id" TEXT, "from_bundle_id" TEXT, "to_release_id" TEXT, "to_bundle_id" TEXT NOT NULL, "platform" TEXT NOT NULL, "app_version" TEXT NOT NULL, "channel" TEXT NOT NULL, "metadata" TEXT NOT NULL, "received_at_ms" INTEGER NOT NULL, "day" INTEGER, "movement_install_id" TEXT, "bundle_ref" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 

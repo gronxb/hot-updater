@@ -12,6 +12,11 @@ import { ui } from "../utils/cli-ui";
 import { printBanner } from "../utils/printBanner";
 import { canPrompt } from "../utils/prompt";
 import { failBundleCommand, notFoundError } from "../utils/publicBundleError";
+import {
+  labelText,
+  resolveBundleId,
+  type LabelScopeOptions,
+} from "./releaseLabel";
 
 const DEFAULT_LIMIT = 20;
 
@@ -63,6 +68,12 @@ const parseTargetCohorts = (
         .map((cohort) => cohort.trim())
         .filter(Boolean);
 
+/** A `Label` row, only for a release that has one. */
+const labelRow = (release: Pick<ReleaseRow, "label"> | null | undefined) =>
+  release && typeof release.label === "number"
+    ? ui.kv("Label", labelText(release))
+    : "";
+
 const releaseTarget = (release: ReleaseRow): string =>
   release.strategy === "APP_VERSION"
     ? (release.target_app_version ?? "")
@@ -74,6 +85,7 @@ const releaseTable = (
 ): string =>
   ui.table(
     [
+      { key: "label", label: "Label" },
       { key: "release", label: "ID", format: ui.id },
       { key: "channel", label: "Channel", format: ui.channel },
       { key: "platform", label: "Platform", format: ui.platform },
@@ -89,6 +101,7 @@ const releaseTable = (
       created: new Date(release.created_at_ms).toISOString(),
       enabled: release.enabled ? "yes" : "no",
       force: release.should_force_update ? "yes" : "no",
+      label: labelText(release),
       message: release.message ?? "",
       platform: release.platform,
       release: release.id,
@@ -100,6 +113,7 @@ const releaseTable = (
 const releaseSummary = (release: ReleaseRow, channelName: string): string =>
   ui.block("Bundle", [
     ui.kv("ID", ui.id(release.id)),
+    labelRow(release),
     ui.kv("Revision", String(release.revision)),
     ui.kv("Channel", ui.channel(channelName)),
     ui.kv("Platform", ui.platform(release.platform)),
@@ -124,6 +138,7 @@ const releaseDisablePreview = (
 ): string =>
   ui.block("Disable Bundle", [
     ui.kv("ID", ui.id(release.id)),
+    labelRow(release),
     ui.kv("Revision", String(release.revision)),
     ui.kv("Channel", ui.channel(channelName)),
     ui.kv("Platform", ui.platform(release.platform)),
@@ -317,13 +332,14 @@ export const handleReleaseList = async (options: ReleaseListOptions = {}) => {
 };
 
 export const handleReleaseShow = async (
-  releaseId: string,
-  options: { readonly json?: boolean } = {},
+  idOrLabel: string,
+  options: { readonly json?: boolean } & LabelScopeOptions = {},
 ) => {
   if (!options.json) printBanner();
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
+    const releaseId = await resolveBundleId(core, idOrLabel, options);
     const release = await core.getRelease(releaseId);
     if (release === null) {
       p.log.error(`No bundle with ID ${releaseId}.`);
@@ -375,8 +391,8 @@ const createPolicyPatch = (
 };
 
 export const handleReleaseUpdate = async (
-  releaseId: string,
-  options: ReleaseUpdateOptions,
+  idOrLabel: string,
+  options: ReleaseUpdateOptions & LabelScopeOptions,
 ) => {
   const patch = createPolicyPatch(options);
   if (Object.keys(patch).length === 0) {
@@ -390,6 +406,7 @@ export const handleReleaseUpdate = async (
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
+    const releaseId = await resolveBundleId(core, idOrLabel, options);
     const target = {
       ...(options.expectedRevision === undefined
         ? {}
@@ -416,6 +433,7 @@ export const handleReleaseUpdate = async (
         : fitText(
             ui.block("Bundle updated", [
               ui.kv("ID", ui.id(releaseId)),
+              labelRow(result.release),
               ui.kv("Revision", String(result.release?.revision ?? "")),
             ]),
           ),
@@ -426,18 +444,19 @@ export const handleReleaseUpdate = async (
 };
 
 export const handleReleaseEnablement = async (
-  releaseId: string,
+  idOrLabel: string,
   enabled: boolean,
   options: {
     readonly expectedRevision?: number;
     readonly json?: boolean;
     readonly yes?: boolean;
-  },
+  } & LabelScopeOptions,
 ) => {
   if (!options.json) printBanner();
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
+    const releaseId = await resolveBundleId(core, idOrLabel, options);
     let expectedRevision = options.expectedRevision;
     if (!enabled) {
       const release = await core.getRelease(releaseId);
@@ -505,6 +524,7 @@ export const handleReleaseEnablement = async (
         : fitText(
             ui.block(enabled ? "Bundle enabled" : "Bundle disabled", [
               ui.kv("ID", ui.id(releaseId)),
+              labelRow(result.release),
             ]),
           ),
     );
@@ -514,21 +534,22 @@ export const handleReleaseEnablement = async (
 };
 
 export const handleReleaseDelete = async (
-  releaseId: string,
+  idOrLabel: string,
   options: {
     readonly expectedRevision?: number;
     readonly json?: boolean;
     readonly yes?: boolean;
-  },
+  } & LabelScopeOptions,
 ) => {
   if (!options.json) printBanner();
   await confirmMutation(
-    `Permanently delete disabled bundle ${releaseId}?`,
+    `Permanently delete disabled bundle ${idOrLabel}?`,
     options.yes,
   );
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
+    const releaseId = await resolveBundleId(core, idOrLabel, options);
     const release = await core.getRelease(releaseId);
     if (release === null) {
       return await failBundleCommand(
@@ -566,7 +587,12 @@ export const handleReleaseDelete = async (
       return;
     }
     console.log(
-      fitText(ui.block("Bundle deleted", [ui.kv("ID", ui.id(releaseId))])),
+      fitText(
+        ui.block("Bundle deleted", [
+          ui.kv("ID", ui.id(releaseId)),
+          labelRow(release),
+        ]),
+      ),
     );
     if (deletedArtifactId !== null) {
       p.log.info(

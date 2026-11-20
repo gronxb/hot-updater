@@ -18,6 +18,7 @@ import {
   type RunInitOptions,
   type RunInitResult,
   writeHotUpdaterFiles,
+  fillReleaseLabels,
 } from "@hot-updater/cli-tools";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { Cloudflare } from "cloudflare";
@@ -679,6 +680,8 @@ export const runInit = async ({
   // The app's credential, through the managed server's plugins, on the tables they read.
   let credential: ProvisionedClientCredential | undefined;
   try {
+    // Labels the releases written before labels, and rebuilds their catalogs.
+    await fillReleaseLabels(server);
     credential = await provisionClientCredential(server, {
       env: initInputEnv,
       name: "Cloudflare init",

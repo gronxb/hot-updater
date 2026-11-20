@@ -1105,14 +1105,29 @@ bundleCommand
   )
   .action(handleBundleList);
 
-bundleCommand
-  .command("show")
-  .description("Show one bundle by ID")
-  .argument("<id>", "the ID shown in the console or hotUpdater.getBundleId()")
-  .option("--json", "output raw internal data as JSON")
-  .action((id: string, options: { json?: boolean }) =>
-    handleBundleShow(id, options),
-  );
+/** What a bundle command's `<id>` takes. */
+const BUNDLE_ID_ARGUMENT =
+  "the ID shown in the console or hotUpdater.getBundleId(), or a label such as v12 with -c and -p";
+
+/** The channel and platform a `v<N>` label names a bundle in. */
+const addLabelScopeOptions = <
+  TArgs extends unknown[],
+  TOptions extends Record<string, unknown>,
+  TGlobalOptions extends Record<string, unknown>,
+>(
+  command: Command<TArgs, TOptions, TGlobalOptions>,
+) =>
+  command
+    .option("-c, --channel <channel>", "the channel of a label")
+    .addOption(platformCommandOption);
+
+addLabelScopeOptions(
+  bundleCommand
+    .command("show")
+    .description("Show one bundle by ID or label")
+    .argument("<id>", BUNDLE_ID_ARGUMENT)
+    .option("--json", "output raw internal data as JSON"),
+).action((id, options) => handleBundleShow(id, options));
 
 const addBundlePolicyOptions = <
   TArgs extends unknown[],
@@ -1156,30 +1171,34 @@ const addBundlePolicyOptions = <
     )
     .option("--json", "output JSON");
 
-addBundlePolicyOptions(
-  bundleCommand
-    .command("update")
-    .description("Update bundle rollout and targeting")
-    .argument("<id>", "the ID shown in the console or hotUpdater.getBundleId()")
-    .option(
-      "--dry-run",
-      "validate the update and show the projected catalog without saving",
-    )
-    .option("-y, --yes", "skip confirmation prompt"),
+addLabelScopeOptions(
+  addBundlePolicyOptions(
+    bundleCommand
+      .command("update")
+      .description("Update bundle rollout and targeting")
+      .argument("<id>", BUNDLE_ID_ARGUMENT)
+      .option(
+        "--dry-run",
+        "validate the update and show the projected catalog without saving",
+      )
+      .option("-y, --yes", "skip confirmation prompt"),
+  ),
 ).action(handleBundleUpdate);
 
 for (const [name, enabled] of [
   ["enable", true],
   ["disable", false],
 ] as const) {
-  bundleCommand
-    .command(name)
-    .description(
-      enabled
-        ? "Enable a bundle"
-        : "Disable a bundle and re-resolve compatible delivery",
-    )
-    .argument("<id>", "the ID shown in the console or hotUpdater.getBundleId()")
+  addLabelScopeOptions(
+    bundleCommand
+      .command(name)
+      .description(
+        enabled
+          ? "Enable a bundle"
+          : "Disable a bundle and re-resolve compatible delivery",
+      )
+      .argument("<id>", BUNDLE_ID_ARGUMENT),
+  )
     .option(
       "--expected-revision <revision>",
       "expected bundle revision",
@@ -1198,10 +1217,12 @@ for (const [name, enabled] of [
     );
 }
 
-bundleCommand
-  .command("delete")
-  .description("Delete a disabled bundle")
-  .argument("<id>", "the ID shown in the console or hotUpdater.getBundleId()")
+addLabelScopeOptions(
+  bundleCommand
+    .command("delete")
+    .description("Delete a disabled bundle")
+    .argument("<id>", BUNDLE_ID_ARGUMENT),
+)
   .option(
     "--expected-revision <revision>",
     "expected bundle revision",
@@ -1217,10 +1238,15 @@ bundleCommand
   .option("-y, --yes", "skip confirmation prompt")
   .action(handleBundleDelete);
 
-bundleCommand
-  .command("promote")
-  .description("Copy or move a bundle to another channel")
-  .argument("<source-id>", "the source ID shown in the console")
+addLabelScopeOptions(
+  bundleCommand
+    .command("promote")
+    .description("Copy or move a bundle to another channel")
+    .argument(
+      "<source-id>",
+      "the source ID shown in the console, or its label such as v12 with -c and -p",
+    ),
+)
   .requiredOption("-t, --target <channel>", "target channel")
   .addOption(
     new Option(
@@ -1238,6 +1264,8 @@ bundleCommand
         target: string;
         action: "copy" | "move";
         yes?: boolean;
+        channel?: string;
+        platform?: "ios" | "android";
       },
     ) => handlePromote(sourceReleaseId, options),
   );

@@ -3,6 +3,8 @@ import { createSqlAdapter, toolingTargetOf } from "@hot-updater/plugin-core";
 import {
   postgresRowsExamined,
   setupReadBudgetTestSuite,
+  setupReleaseLabelEngineTestSuite,
+  type ReadBudgetSuiteOptions,
 } from "@hot-updater/test-utils";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
@@ -18,7 +20,7 @@ import { kyselyExecutor } from "./kyselyExecutor";
  * the Kysely executor on PGlite, on the tables its migrator creates for core
  * and the plugins the suite measures.
  */
-setupReadBudgetTestSuite({
+const backend: ReadBudgetSuiteOptions = {
   name: "kysely (PGlite)",
   createAdapter: async () => {
     const client = new PGlite();
@@ -42,4 +44,6 @@ setupReadBudgetTestSuite({
       },
     };
   },
-});
+};
+setupReadBudgetTestSuite(backend);
+setupReleaseLabelEngineTestSuite(backend);

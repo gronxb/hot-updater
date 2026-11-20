@@ -69,7 +69,12 @@ afterAll(async () => {
 }, 60_000);
 
 /** The tables 1.2 adds. */
-const NEW_TABLES = ["native_builds", "ios_devices", "ios_device_account"];
+const NEW_TABLES = [
+  "native_builds",
+  "ios_devices",
+  "ios_device_account",
+  "label_sequences",
+];
 /** The index 1.2 adds to a table 1.1 created. */
 const NEW_INDEX = "bundle_events__byBundle__key";
 
@@ -86,11 +91,17 @@ const objectOf = (statement: string) => {
   return name?.replace(/^__new_/u, "");
 };
 
+/** An index statement's table and the columns it lists. */
+const INDEX_ON =
+  /^CREATE (?:UNIQUE )?INDEX ["`]\w+["`] ON ["`](\w+)["`](?: USING \w+)? \(([^)]*)\)/u;
+
 /**
  * The documented edit of the migration `drizzle-kit generate` writes after
  * upgrading: delete each statement on a Hot Updater table or index the
- * database already has; keep everything else, the new tables and indexes and
- * the app's own changes among it.
+ * database already has, and each index on a column such a table doesn't have
+ * yet, which `db migrate` adds with the column; keep everything else, the new
+ * tables and indexes and the app's own changes among it. `existing` holds the
+ * database's tables and indexes, and its columns as `<table>.<column>`.
  */
 const dropExisting = (existing: ReadonlySet<string>) => (sql: string) =>
   sql
@@ -98,7 +109,15 @@ const dropExisting = (existing: ReadonlySet<string>) => (sql: string) =>
     .map((statement) => statement.trim())
     .filter((statement) => {
       const name = objectOf(statement);
-      return name === undefined || !existing.has(name);
+      if (name !== undefined && existing.has(name)) return false;
+      const [, table, columns = ""] = INDEX_ON.exec(statement) ?? [];
+      return !(
+        table !== undefined &&
+        existing.has(table) &&
+        [...columns.matchAll(/["`](\w+)["`]/gu)].some(
+          ([, column]) => !existing.has(`${table}.${column}`),
+        )
+      );
     })
     .join("\n--> statement-breakpoint\n");
 
@@ -210,10 +229,10 @@ const project = async (
         (
           await sql(
             dialect === "postgresql"
-              ? "SELECT tablename AS t FROM pg_tables WHERE schemaname = 'public' UNION SELECT indexname FROM pg_indexes WHERE schemaname = 'public'"
+              ? "SELECT tablename AS t FROM pg_tables WHERE schemaname = 'public' UNION SELECT indexname FROM pg_indexes WHERE schemaname = 'public' UNION SELECT table_name || '.' || column_name FROM information_schema.columns WHERE table_schema = 'public'"
               : dialect === "mysql"
-                ? "SELECT TABLE_NAME AS t FROM information_schema.tables WHERE TABLE_SCHEMA = DATABASE() UNION SELECT INDEX_NAME FROM information_schema.statistics WHERE TABLE_SCHEMA = DATABASE()"
-                : "SELECT name AS t FROM sqlite_master WHERE type IN ('table', 'index')",
+                ? "SELECT TABLE_NAME AS t FROM information_schema.tables WHERE TABLE_SCHEMA = DATABASE() UNION SELECT INDEX_NAME FROM information_schema.statistics WHERE TABLE_SCHEMA = DATABASE() UNION SELECT CONCAT(TABLE_NAME, '.', COLUMN_NAME) FROM information_schema.columns WHERE TABLE_SCHEMA = DATABASE()"
+                : "SELECT name AS t FROM sqlite_master WHERE type IN ('table', 'index') UNION SELECT m.name || '.' || p.name FROM sqlite_master m JOIN pragma_table_info(m.name) p WHERE m.type = 'table'",
           )
         ).map(({ t }) => String(t)),
       ),
@@ -312,6 +331,10 @@ describe.each(["postgresql", "sqlite"] as const)(
         [...(await db.tables())].filter((t) => !existing.has(t)).sort(),
       ).toEqual([...NEW_TABLES, "todos"].sort());
       expect(after.has(NEW_INDEX)).toBe(true);
+      // The label index, which db migrate adds with the column.
+      expect([...after.keys()].some((name) => name.includes("byLabel"))).toBe(
+        true,
+      );
       expect((await db.kit("generate")).output).toContain(
         "No schema changes, nothing to migrate",
       );

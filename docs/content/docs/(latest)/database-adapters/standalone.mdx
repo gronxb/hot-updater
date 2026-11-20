@@ -175,6 +175,8 @@ response wraps its result in `data`.
 | `POST`   | `/release-catalogs/:scopeKey/rebuild`   |                                                              | `ReleaseCatalogRebuildResult`                           |
 | `POST`   | `/release-catalogs/:scopeKey/preflight` |                                                              | `ReleaseCatalogRebuildPreflight`                        |
 | `GET`    | `/release-scopes`                       | `limit` (1–100), `cursor=<scope key>`                        | The next scope keys that have Releases, ascending, with `next` |
+| `GET`    | `/release-labels`                       | `channel`, `platform`, `label`                               | The `ReleaseRow` with that label in that channel and platform, or `null` |
+| `POST`   | `/release-labels/fill`                  | `{ dryRun?, catalogs? }`                                     | `{ releases, catalogs }`: what `fillReleaseLabels` labeled and rebuilt, or with `dryRun` would |
 | `GET`    | `/channels`                             | Optional `name`, `ids=<channel id>,...` (1–100), or page     | Every `ChannelRow`, those of `ids`, one page by name with `next`, or the `ChannelRow` for `name` or `404` |
 | `POST`   | `/channels`                             | `{ name }`                                                   | The `ChannelRow` of that name, created when missing     |
 | `DELETE` | `/channels/:id`                         |                                                              | `204`                                                   |

@@ -16,6 +16,7 @@ import {
   type RunInitOptions,
   type RunInitResult,
   writeHotUpdaterFiles,
+  fillReleaseLabels,
 } from "@hot-updater/cli-tools";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { execa } from "execa";
@@ -351,6 +352,8 @@ export const runInit = async ({
   // The app's credential, through the managed server's plugins, on the table they read.
   let credential: ProvisionedClientCredential | undefined;
   try {
+    // Labels the releases written before labels, and rebuilds their catalogs.
+    await fillReleaseLabels(server);
     credential = await provisionClientCredential(server, {
       env: providerEnv,
       name: "AWS init",

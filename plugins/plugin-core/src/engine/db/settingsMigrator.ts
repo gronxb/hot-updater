@@ -12,6 +12,7 @@ import { quoteSql, type SqlColumnShape } from "../database/sql/sqlSchema";
 import { settingsStatements } from "./engineSql";
 import { getEmptyMigrationResult } from "./fixedMigratorShared";
 import {
+  addColumnStatements,
   collationStatements,
   missingSqlSchema,
   readSqlSchemaState,
@@ -119,7 +120,7 @@ export const refuseNewerSchema = (
 };
 
 /**
- * The tables or indexes an ORM has yet to apply, found before `db migrate`
+ * The tables, late columns or indexes an ORM has yet to apply, found before `db migrate`
  * writes the settings rows, so the fence never passes over missing tables.
  */
 export class HotUpdaterSchemaTablesMissingError extends Error {
@@ -135,6 +136,11 @@ export class HotUpdaterSchemaTablesMissingError extends Error {
         ? []
         : [
             `table${missing.tables.length === 1 ? "" : "s"} ${missing.tables.join(", ")}`,
+          ]),
+      ...(missing.columns.length === 0
+        ? []
+        : [
+            `column${missing.columns.length === 1 ? "" : "s"} ${missing.columns.map(({ table, column }) => `${table}.${column.name}`).join(", ")}`,
           ]),
       ...(missing.indexes.length === 0
         ? []
@@ -195,13 +201,39 @@ export const createSettingsMigrator = (options: {
       shapes,
       await readSqlSchemaState(executor),
     );
-    if (missing.tables.length > 0 || missing.indexes.length > 0) {
+    // A column added to a table a released schema created, and that table's
+    // missing indexes, are added here when the ORM's migration left them
+    // out: a migration file written for a database an earlier release
+    // created leaves out every statement on the tables it already has.
+    const lateTables = new Set(missing.columns.map(({ table }) => table));
+    const lateIndexes = missing.indexes.filter(({ table }) =>
+      lateTables.has(table),
+    );
+    const blocking = missing.indexes.filter(
+      ({ table }) => !lateTables.has(table),
+    );
+    if (missing.tables.length > 0 || blocking.length > 0) {
       throw new HotUpdaterSchemaTablesMissingError(
         options.adapterName,
-        missing,
+        { tables: missing.tables, columns: [], indexes: blocking },
         options.applyTables,
       );
     }
+    const quote = (name: string) => quoteSql(executor.dialect, name);
+    const lateSchema = [
+      ...addColumnStatements(executor.dialect, missing.columns),
+      ...lateIndexes.map(({ table, index: name }) => {
+        const index = shapes
+          .find((shape) => shape.name === table)!
+          .indexes.find(
+            (candidate) =>
+              candidate.kind === "index" && candidate.name === name,
+          )!;
+        return index.kind === "index"
+          ? `CREATE ${index.unique ? "UNIQUE " : ""}INDEX ${quote(name)} ON ${quote(table)} (${index.columns.map(quote).join(", ")})`
+          : "";
+      }),
+    ];
     const collations =
       options.collate === undefined
         ? { statements: [], columns: 0 }
@@ -216,16 +248,29 @@ export const createSettingsMigrator = (options: {
         : Object.entries(options.settings).filter(
             ([key, value]) => stored.get(key) !== value,
           );
-    if (collations.statements.length === 0 && changed.length === 0) {
+    if (
+      lateSchema.length === 0 &&
+      collations.statements.length === 0 &&
+      changed.length === 0
+    ) {
       return getEmptyMigrationResult();
     }
     const statements = [
+      ...lateSchema,
       ...collations.statements,
       ...(changed.length === 0
         ? []
         : settingsStatements(executor.dialect, options.settings)),
     ];
     const operations: MigrationOperation[] = [
+      ...missing.columns.map(({ table, column }) => ({
+        type: "custom" as const,
+        description: `Add column: ${column.name} to ${table}`,
+      })),
+      ...lateIndexes.map(({ table, index }) => ({
+        type: "custom" as const,
+        description: `Create index: ${index} on ${table}`,
+      })),
       ...(collations.columns === 0
         ? []
         : [
