@@ -73,8 +73,8 @@ const RC_IOS_DEVICES_BY_REGISTRATION_STATEMENTS = [
 ];
 
 /**
- * What the release notes of release labels tell a database a 1.2 prerelease
- * migrated to run by hand: D1's statements of `LATEST` for them.
+ * What the packaged 1.2.0 upgrade guide tells a database a 1.2 prerelease
+ * migrated to run by hand for release labels: D1's statements of `LATEST`.
  */
 const RC_RELEASE_LABELS_STATEMENTS = [
   'ALTER TABLE "releases" ADD COLUMN "label" INTEGER',
@@ -206,6 +206,50 @@ describe("d1 schema", () => {
     ).toEqual(Object.keys(later.settings));
   });
 
+  it("adds no column twice in the migration after the checked-in ones, which applies over them", async () => {
+    const later = toolingTargetOf([
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+      definePlugin({
+        id: "audit",
+        schemaVersion: "1",
+        schema: {
+          entries: defineTable({ id: { type: "string" } }, { key: ["id"] }),
+        },
+        init: () => ({ api: {} }),
+      }),
+    ]);
+    const chain = [...Object.keys(SHIPPED), LATEST];
+    const next = d1MigrationSql(
+      later,
+      await Promise.all(chain.map((name) => readMigration(name))),
+    );
+
+    expect(
+      d1MigrationStatements(next).filter((sql) => sql.startsWith("ALTER")),
+    ).toEqual([]);
+    const migrated = new DatabaseSync(":memory:");
+    for (const name of chain) {
+      for (const statement of d1MigrationStatements(
+        await readMigration(name),
+      )) {
+        migrated.exec(statement);
+      }
+    }
+    for (const statement of d1MigrationStatements(next)) {
+      migrated.exec(statement);
+    }
+    expect(
+      migrated
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'audit_entries'",
+        )
+        .all(),
+    ).toHaveLength(1);
+    migrated.close();
+  });
+
   it("brings a database a 1.2 prerelease migrated up to the iOS device registry with the statements the release notes print", async () => {
     // A prerelease's 0002: this one without the iOS device registry.
     const prerelease = new DatabaseSync(":memory:");
@@ -245,7 +289,19 @@ describe("d1 schema", () => {
     migrated.close();
   });
 
-  it("brings a database a 1.2 prerelease migrated up to release labels with the statements the release notes print", async () => {
+  it("prints release labels' statements in the packaged 1.2.0 upgrade guide", async () => {
+    const guide = await fs.readFile(
+      path.resolve("packages/hot-updater/infrastructure-upgrades/1.2.0.md"),
+      "utf8",
+    );
+    for (const statement of RC_RELEASE_LABELS_STATEMENTS) {
+      expect(guide).toContain(
+        `npx wrangler d1 execute <database-name> --remote --command '${statement}'`,
+      );
+    }
+  });
+
+  it("brings a database a 1.2 prerelease migrated up to release labels with the statements the upgrade guide prints", async () => {
     const policy = {
       channel: "production",
       enabled: true,

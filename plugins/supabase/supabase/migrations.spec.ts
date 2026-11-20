@@ -180,10 +180,10 @@ describe("Supabase schema", () => {
     await created.close();
   });
 
-  it("brings a database a 1.2 prerelease migrated up to release labels with the statements the release notes print", async () => {
+  it("brings a database a 1.2 prerelease migrated up to release labels with this release's migration run again, as the upgrade guide says", async () => {
     const latest = supabaseMigrationStatements(await readMigration(LATEST));
-    // The release notes' statements: release labels' own, then the apply
-    // RPC that names their table, with its grants.
+    // What the prerelease's migration lacked: release labels' own
+    // statements, and the apply RPC that names their table, with its grants.
     const notes = latest.filter(
       (sql) =>
         /"label"|label_sequences/u.test(sql) ||
@@ -201,7 +201,8 @@ describe("Supabase schema", () => {
       if (!notes.includes(sql)) await prerelease.exec(sql);
     }
     const before = await describeSchema(prerelease);
-    for (const sql of notes) await prerelease.exec(sql);
+    // packages/hot-updater/infrastructure-upgrades/1.2.0.md, Supabase.
+    await prerelease.exec(await readMigration(LATEST));
     const migrated = await createDatabase();
     const after = await describeSchema(prerelease);
     expect(before).not.toEqual(after);
@@ -240,6 +241,44 @@ describe("Supabase schema", () => {
         () => `INSERT INTO "${SUPABASE_SETTINGS_TABLE}" ("key", "value", "_v")`,
       ),
     ]);
+  });
+
+  it("adds no column twice in the migration after the checked-in ones, which applies over them", async () => {
+    const later = toolingTargetOf([
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+      definePlugin({
+        id: "audit",
+        schemaVersion: "1",
+        schema: {
+          entries: defineTable({ id: { type: "string" } }, { key: ["id"] }),
+        },
+        init: () => ({ api: {} }),
+      }),
+    ]);
+    const next = supabaseMigrationSql(
+      later,
+      await Promise.all(
+        [...Object.keys(SHIPPED), LATEST].map((name) => readMigration(name)),
+      ),
+    );
+
+    expect(
+      supabaseMigrationStatements(next).filter((sql) =>
+        /^ALTER TABLE \S+ ADD COLUMN/u.test(sql),
+      ),
+    ).toEqual([]);
+    const db = await createDatabase();
+    try {
+      await db.exec(`RESET ROLE; ${next}`);
+      const tables = await db.query(
+        "SELECT tablename FROM pg_tables WHERE tablename = 'hot_updater_v1_audit_entries'",
+      );
+      expect(tables.rows).toHaveLength(1);
+    } finally {
+      await db.close();
+    }
   });
 
   it("creates namespaced tables with row-level security beside a v0 schema it leaves alone", async () => {

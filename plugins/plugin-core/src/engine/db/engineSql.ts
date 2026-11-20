@@ -53,7 +53,8 @@ export const generateEngineSql = (
 /**
  * A managed provider's numbered migration needs these: an
  * `ALTER TABLE … ADD COLUMN` for each column added to a table a released
- * schema created, where an `earlier` migration's `CREATE TABLE` lacks it. A
+ * schema created, where neither an `earlier` migration's `CREATE TABLE` nor
+ * an earlier `ALTER TABLE … ADD COLUMN` has it. A
  * migration that diffs statements skips the changed `CREATE TABLE IF NOT
  * EXISTS`, which an existing table ignores anyway, so the D1 and Supabase
  * generators put these first, before the statements that index the column.
@@ -76,9 +77,15 @@ export const lateColumnStatements = (
     const declared = shapes
       .find((shape) => shape.name === name)
       ?.columns.find((candidate) => candidate.name === column);
+    const added = earlier.some((sql) =>
+      sql
+        .replace(" ADD COLUMN IF NOT EXISTS ", " ADD COLUMN ")
+        .startsWith(`ALTER TABLE ${quote(name)} ADD COLUMN ${quote(column)} `),
+    );
     if (
       created === undefined ||
       declared === undefined ||
+      added ||
       created.includes(`${quote(column)} `)
     ) {
       return [];
