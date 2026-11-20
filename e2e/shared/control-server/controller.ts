@@ -4327,8 +4327,10 @@ export function handleAssertBundleArtifactTransfers(input: {
    * no other, was selected and downloaded once, as a file unless patched.
    * The count then follows the bundler, not the scenario: Metro and Re.Pack
    * 5.4 also emit raw/keep.xml, which changes with the asset list.
+   * Or the paths of the assets downloaded as whole files: each once, and no
+   * other file.
    */
-  fileRequests: number | "changed-assets";
+  fileRequests: number | "changed-assets" | readonly string[];
   /** Artifact protocol v2 files requests; any, when omitted. */
   filesRequests?: number;
   maxRequestsPerAsset?: number;
@@ -4372,10 +4374,22 @@ export function handleAssertBundleArtifactTransfers(input: {
           input.targetBundleId,
         )
       : null;
+  const expectedFilePaths =
+    typeof input.fileRequests === "object" ? input.fileRequests : null;
   const expectedFileRequests =
-    changedAssetPaths === null
+    typeof input.fileRequests === "number"
       ? input.fileRequests
-      : changedAssetPaths.length - input.patchRequests;
+      : expectedFilePaths !== null
+        ? expectedFilePaths.length
+        : changedAssetPaths!.length - input.patchRequests;
+  const downloadsNamedFiles =
+    expectedFilePaths === null ||
+    sameSet(
+      assets
+        .filter((asset) => asset.file.requests > 0)
+        .map((asset) => asset.path),
+      expectedFilePaths,
+    );
   const selectsChangedAssets =
     changedAssetPaths === null ||
     (sameSet(
@@ -4409,6 +4423,7 @@ export function handleAssertBundleArtifactTransfers(input: {
     archiveInterruption,
     assets,
     changedAssetPaths,
+    expectedFilePaths,
     expectedFileRequests,
     fileRequests,
     filesRequests: artifact.filesRequests,
@@ -4433,6 +4448,7 @@ export function handleAssertBundleArtifactTransfers(input: {
   const matches =
     archive.requests === input.archiveRequests &&
     fileRequests === expectedFileRequests &&
+    downloadsNamedFiles &&
     selectsChangedAssets &&
     patchRequests === input.patchRequests &&
     (input.filesRequests === undefined ||

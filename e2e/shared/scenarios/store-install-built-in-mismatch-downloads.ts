@@ -1,4 +1,5 @@
 import {
+  ANDROID_COMPILED_BUILT_IN_FILES,
   assertFirstOtaRuns,
   installFirstOtaOfNativeBuild,
 } from "./store-install-patches-from-built-in.ts";
@@ -35,14 +36,18 @@ export const storeInstallBuiltInMismatchDownloadsScenario: ScenarioDefinition =
         },
       );
       // The device checks the base before it fetches the patch, so it
-      // downloads the complete file and never the patch.
+      // downloads the complete file and never the patch, besides what the
+      // built-in bundle can't give.
       await app.control(
         "assert the file was downloaded instead of the patch",
         "/e2e/assert-bundle-artifact-transfers",
         {
           archiveRequests: 0,
           currentBundleId: "$nativeBuildMinBundleId",
-          fileRequests: 1,
+          fileRequests:
+            app.platform === "android"
+              ? ["index.android.bundle", ...ANDROID_COMPILED_BUILT_IN_FILES]
+              : 1,
           patchRequests: 0,
           targetBundleId: "$firstOtaBundleId",
         },

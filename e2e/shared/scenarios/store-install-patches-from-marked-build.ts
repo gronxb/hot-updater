@@ -1,3 +1,4 @@
+import { ANDROID_COMPILED_BUILT_IN_FILES } from "./store-install-patches-from-built-in.ts";
 import type { ScenarioDefinition } from "./types.ts";
 
 /** The version the example's native projects build: the exact app version a native build registers. */
@@ -111,7 +112,9 @@ export const storeInstallPatchesFromMarkedBuildScenario: ScenarioDefinition = {
         {
           archiveRequests: 0,
           currentBundleId: "$storeBuildMinBundleId",
-          fileRequests: 0,
+          // Besides the patch, only what the built-in bundle can't give.
+          fileRequests:
+            app.platform === "android" ? ANDROID_COMPILED_BUILT_IN_FILES : 0,
           patchRequests: 1,
           targetBundleId: "$otaBundleId",
         },
