@@ -8,6 +8,7 @@ import {
   selectDesiredRelease,
   type PersistedSelectionReceipt,
   type ReleaseCatalog,
+  readReleaseLabel,
 } from "@hot-updater/protocol";
 import { Platform } from "react-native";
 
@@ -75,6 +76,12 @@ export type CheckForUpdateResult = {
   readonly status: "ROLLBACK" | "UPDATE";
   readonly targetCohorts: string[];
   readonly releaseId?: string | null;
+  /**
+   * The release's label, shown `v<label>` in the console and the CLI:
+   * numbered per channel and platform, never changed or reused. Null for the
+   * built-in bundle, a release without one, and a server before labels.
+   */
+  readonly label?: number | null;
   readonly transitionKind?: ReleaseTransitionKind;
   /**
    * Updates the bundle.
@@ -338,6 +345,9 @@ async function checkForReleaseCatalogUpdate(input: {
     channel: input.targetChannel,
     generation: catalog.generation,
     kind: desired.kind,
+    // Native keeps it with the selection, for `getReleaseLabel()`; native
+    // before labels ignores the key.
+    label: readReleaseLabel(desired.release?.label),
     releaseId: desired.releaseId,
     scopeKey,
     selectionContextHash,
@@ -496,6 +506,7 @@ async function checkForReleaseCatalogUpdate(input: {
 
   return {
     id: desired.releaseId ?? desired.bundleId,
+    label: receipt.label ?? null,
     message: release?.message ?? null,
     releaseId: desired.releaseId,
     rolloutCohortCount: release?.rolloutCohortCount ?? 1000,
@@ -568,6 +579,7 @@ function leaveSwitchedChannel(
   ]);
   const result: CheckForUpdateResult = {
     id: input.minimumReleaseId,
+    label: null,
     message: null,
     releaseId: null,
     rolloutCohortCount: 1000,

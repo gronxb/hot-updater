@@ -7,6 +7,7 @@ const RUNTIME_SCREEN_URLS = {
   runtimeInitialCohort: "hotupdaterexample://e2e/runtime-initial-cohort",
   runtimeLargeAsset: "hotupdaterexample://e2e/runtime-large-asset",
   runtimeMarker: "hotupdaterexample://e2e/runtime-marker",
+  runtimeReleaseLabel: "hotupdaterexample://e2e/runtime-release-label",
   runtimeReleaseState: "hotupdaterexample://e2e/runtime-release-state",
   runtimeRemoteConfig: "hotupdaterexample://e2e/runtime-remote-config",
   runtimeReportedBundle: "hotupdaterexample://e2e/runtime-reported-bundle",
@@ -22,6 +23,7 @@ const RUNTIME_TEST_ID_SCREEN_PATHS = {
   "runtime-initial-cohort": "runtimeInitialCohort",
   "runtime-large-e2e-asset": "runtimeLargeAsset",
   "runtime-scenario-marker": "runtimeMarker",
+  "runtime-release-label": "runtimeReleaseLabel",
   "runtime-release-state": "runtimeReleaseState",
   "runtime-remote-config": "runtimeRemoteConfig",
 };

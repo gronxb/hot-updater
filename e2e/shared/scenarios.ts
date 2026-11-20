@@ -28,6 +28,7 @@ import { numericCohortRolloutScenario } from "./scenarios/numeric-cohort-rollout
 import { otaAfterGoingBackToABuildScenario } from "./scenarios/ota-after-going-back-to-a-build.ts";
 import { postContentCrashNativeRecoveryScenario } from "./scenarios/post-content-crash-native-recovery.ts";
 import { postContentCrashNativeRollbackScenario } from "./scenarios/post-content-crash-native-rollback.ts";
+import { releaseLabelInAppScenario } from "./scenarios/release-label-in-app.ts";
 import { releaseOtaRecoveryScenario } from "./scenarios/release-ota-recovery.ts";
 import { remoteConfigFetchActivateScenario } from "./scenarios/remote-config-fetch-activate.ts";
 import { republishedCrashedBundleSkippedScenario } from "./scenarios/republished-crashed-bundle-skipped.ts";
@@ -96,6 +97,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   tenCrashHistorySafeBundleScenario,
   remoteConfigFetchActivateScenario,
   foreignSigningKeyRefusedScenario,
+  releaseLabelInAppScenario,
   brownfieldNativeRequiredUpdateScenario,
   brownfieldNativeMinorUpdateScenario,
   brownfieldInstancesUpdateIndependentlyScenario,

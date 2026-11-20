@@ -8,6 +8,7 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.ReadableType
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -231,6 +232,12 @@ class HotUpdaterModule internal constructor(
             catalogHash = selection.getString("catalogHash"),
             channel = selection.getString("channel") ?: "",
             selectionContextHash = selection.getString("selectionContextHash"),
+            label =
+                if (selection.hasKey("label") && selection.getType("label") == ReadableType.Number) {
+                    releaseLabel(selection.getDouble("label"))
+                } else {
+                    null
+                },
         )
     }
 

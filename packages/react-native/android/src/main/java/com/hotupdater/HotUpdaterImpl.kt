@@ -588,6 +588,28 @@ class HotUpdaterImpl {
      */
     fun getRunningBundleId(): String? = (currentLaunchSelection ?: runningLaunchSelection)?.launchedBundleId
 
+    /**
+     * The label of the release this launch runs: the receipt its launch
+     * recorded, which a commit of the next launch's selection leaves, or
+     * before a launch, the active or stable receipt of the bundle it would
+     * pick. Null for the built-in bundle, a release without one, and before
+     * the launch's bundle is read.
+     */
+    fun getRunningReleaseLabel(): Long? {
+        val bundleId = getRunningBundleId() ?: return null
+        val state = getActiveUpdateState()
+        val receipts =
+            if (state.containsKey("runningSelection")) {
+                listOf("runningSelection")
+            } else {
+                listOf("activeSelection", "stableSelection")
+            }
+        return receipts
+            .mapNotNull { state[it] as? Map<*, *> }
+            .firstOrNull { it["kind"] == SelectionKind.BUNDLE.name && it["bundleId"] == bundleId }
+            ?.let { releaseLabel(it["label"]) }
+    }
+
     /** Takes the queued native update events for JavaScript's `takeNativeUpdateEvents`. */
     fun takeNativeUpdateEvents(): String? =
         NativeUpdateEventQueue(::getStorageItem, ::setStorageItem, build = {

@@ -31,6 +31,7 @@
   "ten-crash-history-safe-bundle",
   "remote-config-fetch-activate",
   "foreign-signing-key-refused",
+  "release-label-in-app",
   "brownfield-native-required-update",
   "brownfield-native-minor-update",
   "brownfield-instances-update-independently",

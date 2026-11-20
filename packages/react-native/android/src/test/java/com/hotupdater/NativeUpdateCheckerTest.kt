@@ -349,6 +349,37 @@ class NativeUpdateCheckerTest {
     }
 
     @Test
+    fun `an update carries its release label into the receipt it stages`() =
+        runBlocking {
+            val state = FakeState()
+            val transport = FakeTransport(routes(catalog(listOf(release(RELEASE_B, BUNDLE_B).put("label", 7)))))
+
+            val update = NativeUpdateChecker(state, transport).checkForUpdate(OPTIONS)!!
+
+            assertEquals(7L, update.label)
+            assertTrue(update.updateBundle())
+            val staged = state.staged.await()
+            assertEquals(7L, staged.selection.label)
+        }
+
+    @Test
+    fun `an update without a label or with a malformed one has none`() =
+        runBlocking {
+            for (label in listOf<Any?>(null, "7", 0, 1.5, true)) {
+                val state = FakeState()
+                val descriptor = release(RELEASE_B, BUNDLE_B).apply { if (label != null) put("label", label) }
+                val transport = FakeTransport(routes(catalog(listOf(descriptor))))
+
+                val update = NativeUpdateChecker(state, transport).checkForUpdate(OPTIONS)!!
+
+                assertNull("label $label", update.label)
+                assertTrue(update.updateBundle())
+                val staged = state.staged.await()
+                assertNull("label $label", staged.selection.label)
+            }
+        }
+
+    @Test
     fun `a switched channel with an empty catalog is left on staging`() =
         runBlocking {
             val state = FakeState().also(::switchedToPr)

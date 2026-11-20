@@ -135,6 +135,8 @@ class HotUpdaterUpdate internal constructor(
     val rolloutCohortCount: Int,
     /** Cohorts that receive the Release whatever [rolloutCohortCount] says. */
     val targetCohorts: List<String>,
+    /** The release's label, shown `v<label>`: null for the built-in bundle, a release without one, and a server before labels. */
+    val label: Long? = null,
     /** `INSTALL`, `ADOPT_RELEASE`, or `USE_BUILTIN`. */
     val transitionKind: String,
     /** The update selects the bundle the app already launches, so staging it only records the selection. */

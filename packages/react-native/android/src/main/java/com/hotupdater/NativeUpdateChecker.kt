@@ -704,8 +704,9 @@ internal class NativeUpdateChecker(
                 catalogHash = catalog.catalogHash,
                 channel = input.targetChannel,
                 selectionContextHash = selectionContextHash,
+                label = desired.release?.label,
             )
-        if (active == receipt) return null
+        if (receipt.sameSelection(active)) return null
 
         val authorization = ReleaseSelector.authorizeReleaseTransition(active, receipt, explicitScopeSwitch)
         if (!authorization.authorized) {
@@ -779,6 +780,7 @@ internal class NativeUpdateChecker(
                 message = release?.message,
                 rolloutCohortCount = release?.rolloutCohortCount ?: ReleaseSelector.DEFAULT_ROLLOUT_COHORT_COUNT,
                 targetCohorts = release?.targetCohorts?.toList() ?: emptyList(),
+                label = release?.label,
                 transitionKind = transitionKind,
                 runsCurrentBundle = desired.bundleId == input.currentBundleId,
                 // JSON, so no field can spell another, such as a channel with a colon.

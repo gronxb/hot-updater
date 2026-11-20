@@ -308,34 +308,11 @@ const validCatalog = (
   scopeKey: createReleaseCatalogScopeKey(scope as ReleaseCatalogScopeKeyInput),
   ...overrides,
 });
-const labeled = (descriptors: ReleaseCatalogDescriptor[], first: number) =>
-  descriptors.map((release, index) => ({ ...release, label: first - index }));
 const bodyCases: {
   name: string;
   body: string;
   scope: ExpectedReleaseCatalogScope;
-  /** The body whose parse a client records, when not `body`'s own. */
-  parsedAs?: string;
 }[] = [
-  {
-    // Released clients don't read `label`: they accept a catalog that carries
-    // it, and parse its releases as they parse them without it.
-    name: "a release's label is ignored",
-    body: JSON.stringify(
-      validCatalog(appVersionScope, {
-        releases: labeled(
-          [descriptor(3, { message: "Fix" }), descriptor(2)],
-          3,
-        ),
-        rollbackReleases: labeled(
-          [descriptor(2), descriptor(1, { shouldForceUpdate: true })],
-          2,
-        ),
-      }),
-    ),
-    parsedAs: JSON.stringify(validCatalog(appVersionScope)),
-    scope: appVersionScope,
-  },
   {
     name: "valid app-version catalog",
     body: JSON.stringify(validCatalog(appVersionScope)),
@@ -384,6 +361,41 @@ const bodyCases: {
     ),
     scope: appVersionScope,
   },
+  {
+    name: "a release's label",
+    body: JSON.stringify(
+      validCatalog(appVersionScope, {
+        releases: [descriptor(3, { message: "Fix", label: 7 }), descriptor(2)],
+        rollbackReleases: [
+          descriptor(2),
+          descriptor(1, { shouldForceUpdate: true, label: 5 }),
+        ],
+      }),
+    ),
+    scope: appVersionScope,
+  },
+  // A label is for display: one that isn't a positive safe integer reads as
+  // none, and the catalog is still accepted.
+  ...(
+    [
+      ["a string", '"7"'],
+      ["zero", "0"],
+      ["negative", "-1"],
+      ["a fraction", "1.5"],
+      ["true", "true"],
+      ["null", "null"],
+      ["past the safe integers", "9007199254740992"],
+      ["written as 7.0", "7.0"],
+    ] as const
+  ).map(([name, label]) => ({
+    name: `a label that is ${name}`,
+    body: JSON.stringify(
+      validCatalog(appVersionScope, {
+        releases: [descriptor(3, { message: "Fix", label: 7 }), descriptor(2)],
+      }),
+    ).replace('"label":7', `"label":${label}`),
+    scope: appVersionScope,
+  })),
   ...[
     ["schemaVersion", 2],
     ["catalogId", ""],
@@ -508,14 +520,12 @@ const bodyCases: {
   { name: "JSON array", body: "[]", scope: appVersionScope },
   { name: "JSON null", body: "null", scope: appVersionScope },
 ];
-const parseCatalogCases = bodyCases.map(
-  ({ name, body, scope, parsedAs = body }) => ({
-    name,
-    body,
-    expectedScope: scope,
-    catalog: parseReleaseCatalog(parsedAs, scope),
-  }),
-);
+const parseCatalogCases = bodyCases.map(({ name, body, scope }) => ({
+  name,
+  body,
+  expectedScope: scope,
+  catalog: parseReleaseCatalog(body, scope),
+}));
 
 // Selection compares IDs only by their order, so short sortable IDs keep the
 // fixture small: r#### for Releases, b#### for bundles.
@@ -715,19 +725,19 @@ describe("release selection conformance fixture", () => {
     await expect(serializeFixture(fixture)).toMatchFileSnapshot(FIXTURE_PATH);
   });
 
-  it("parses a catalog whose releases carry a label as the protocol did before labels", () => {
-    const { body, parsedAs, scope } = bodyCases.find(
-      ({ parsedAs }) => parsedAs !== undefined,
+  it("reads a release's label and parses everything else as it did before labels", () => {
+    const { body, scope } = bodyCases.find(
+      ({ name }) => name === "a release's label",
     )!;
     const parsed = parseReleaseCatalog(body, scope);
 
-    expect(parsed).not.toBeNull();
+    expect(parsed!.releases.map(({ label }) => label)).toEqual([7, undefined]);
     const withoutLabels = (releases: readonly object[]) =>
       releases.map(({ label: _, ...release }: { label?: unknown }) => release);
     expect({
       ...parsed,
       releases: withoutLabels(parsed!.releases),
       rollbackReleases: withoutLabels(parsed!.rollbackReleases),
-    }).toEqual(parseReleaseCatalog(parsedAs!, scope));
+    }).toEqual(parseReleaseCatalog(JSON.stringify(validCatalog(scope)), scope));
   });
 });

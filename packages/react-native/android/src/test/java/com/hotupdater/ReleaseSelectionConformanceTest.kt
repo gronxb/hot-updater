@@ -267,6 +267,8 @@ class ReleaseSelectionConformanceTest {
             targetCohorts = json.getJSONArray("targetCohorts").strings(),
             shouldForceUpdate = json.getBoolean("shouldForceUpdate"),
             message = json.nullableString("message"),
+            // The protocol leaves out a label it reads as none.
+            label = if (json.has("label")) json.getLong("label") else null,
         )
 
     /** The catalog's schema fields: the protocol also returns fields the schema leaves out. */

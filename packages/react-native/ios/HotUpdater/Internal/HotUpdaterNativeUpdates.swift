@@ -374,6 +374,14 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
     /// `bundleURL()` is read.
     @objc public func getBundleId() -> String? { impl.runningBundleId() }
 
+    /// The label of the release this launch runs, shown `v<label>`: nil for
+    /// the built-in bundle, a release without one, or before `bundleURL()` is
+    /// read. Kept with the bundle, so it reads the same after a restart and
+    /// offline.
+    @objc public func getReleaseLabel() -> NSNumber? {
+        impl.runningReleaseLabel().map(NSNumber.init(value:))
+    }
+
     @objc public func getMinBundleId() -> String { HotUpdaterImpl.minBundleId() }
 
     @objc public func getChannel() -> String { impl.getChannel() }

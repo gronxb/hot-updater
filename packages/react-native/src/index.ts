@@ -15,6 +15,7 @@ import {
   clearCrashHistory,
   getAppVersion,
   getBaseURL,
+  getReleaseLabel,
   getUpdateId,
   getChannel,
   getCohort,
@@ -169,6 +170,21 @@ const nativeMethods = {
    * A staged update can change this ID before the app reloads.
    */
   getBundleId: getUpdateId,
+
+  /**
+   * Returns the label of the release the app runs now, shown `v<label>` in
+   * the console and the CLI, such as `12` for `v12`. Native keeps it with the
+   * running bundle, so it reads the same after a restart and offline.
+   * Returns null for the built-in bundle, and for a release that has no
+   * label yet.
+   *
+   * @example
+   * ```ts
+   * const label = hotUpdater.getReleaseLabel();
+   * console.log(label === null ? "built-in" : `v${label}`);
+   * ```
+   */
+  getReleaseLabel,
 
   /** Returns the minimum bundle ID based on the native app build time. */
   getMinBundleId,

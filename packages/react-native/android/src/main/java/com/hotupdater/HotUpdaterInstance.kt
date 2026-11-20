@@ -90,6 +90,14 @@ class HotUpdaterInstance internal constructor(
     /** The bundle this launch runs, or null for the built-in bundle or before [getJSBundleFile] is read. */
     fun getBundleId(): String? = impl.getRunningBundleId()
 
+    /**
+     * The label of the release this launch runs, shown `v<label>`: null for
+     * the built-in bundle, a release without one, or before [getJSBundleFile]
+     * is read. Kept with the bundle, so it reads the same after a restart and
+     * offline.
+     */
+    fun getReleaseLabel(): Long? = impl.getRunningReleaseLabel()
+
     fun getMinBundleId(): String = HotUpdaterImpl.getMinBundleId()
 
     fun getChannel(): String = impl.getChannel()

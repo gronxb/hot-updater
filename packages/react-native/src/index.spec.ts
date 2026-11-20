@@ -82,6 +82,7 @@ vi.mock("./native", () => ({
   getPublicActiveUpdateState: mocks.getActiveUpdateState,
   getActiveUpdateState: mocks.getActiveUpdateState,
   getBundleId: () => "bundle-id",
+  getReleaseLabel: () => 7,
   getAppVersion: mocks.getAppVersion,
   getBaseURL: mocks.getBaseURL,
   getUpdateId: mocks.getUpdateId,
@@ -242,6 +243,16 @@ describe("HotUpdater client initialization", () => {
     expect(hotUpdater.getBundleId()).toBe("release-id");
     expect(hotUpdater).not.toHaveProperty("getReleaseId");
     expect(hotUpdater).not.toHaveProperty("getUpdateId");
+  });
+
+  it("exposes the running release's label beside its ID", async () => {
+    const HotUpdater = await importHotUpdater();
+    const hotUpdater = HotUpdater.init({
+      baseURL: "https://updates.example.com",
+    });
+
+    const label: number | null = hotUpdater.getReleaseLabel();
+    expect(label).toBe(7);
   });
 
   it("initializes a private HTTP client from the required baseURL", async () => {

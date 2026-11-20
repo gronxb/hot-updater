@@ -720,7 +720,8 @@ private func hotUpdaterGetMinBundleId() -> String {
             generation: (data["generation"] as? NSNumber)?.int64Value,
             catalogHash: data["catalogHash"] as? String,
             channel: channel,
-            selectionContextHash: data["selectionContextHash"] as? String
+            selectionContextHash: data["selectionContextHash"] as? String,
+            label: releaseLabel(data["label"])
         )
     }
 
@@ -938,6 +939,29 @@ private func hotUpdaterGetMinBundleId() -> String {
     /// selection, but the running bundle stays until React Native reloads.
     func runningBundleId() -> String? {
         (launchSelections.next ?? launchSelections.running)?.launchedBundleId
+    }
+
+    /// The label of the release this launch runs: the receipt its launch
+    /// recorded, which a commit of the next launch's selection leaves. Nil for
+    /// the built-in bundle, a release without one, and before `bundleURL()` is
+    /// read.
+    func runningReleaseLabel() -> Int64? {
+        guard let bundleId = runningBundleId() else { return nil }
+        let state = bundleStorage.getActiveUpdateState()
+        // The receipt the launch recorded, which a commit of the next launch's
+        // selection leaves; before a launch, the next launch's receipts.
+        let keys = state.keys.contains("runningSelection")
+            ? ["runningSelection"]
+            : ["activeSelection", "stableSelection"]
+        for key in keys {
+            guard let selection = state[key] as? [String: Any],
+                  (selection["kind"] as? String) == SelectionKind.bundle.rawValue,
+                  (selection["bundleId"] as? String) == bundleId else {
+                continue
+            }
+            return releaseLabel(selection["label"])
+        }
+        return nil
     }
 
     /**

@@ -196,6 +196,12 @@ data class PersistedSelection(
     val catalogHash: String?,
     val channel: String,
     val selectionContextHash: String?,
+    /**
+     * The selected release's label, read back after a restart and offline:
+     * null for the built-in bundle, a release without one, and a receipt an
+     * SDK before labels wrote. Comparisons of receipts leave it out.
+     */
+    val label: Long? = null,
 ) {
     companion object {
         /** A selection that names only a Bundle, with no Release Catalog receipt, such as the built-in bundle. */
@@ -223,6 +229,7 @@ data class PersistedSelection(
                 catalogHash = json.optNullableString("catalogHash"),
                 channel = json.optString("channel", ""),
                 selectionContextHash = json.optNullableString("selectionContextHash"),
+                label = releaseLabel(json.opt("label")),
             )
     }
 
@@ -237,6 +244,7 @@ data class PersistedSelection(
             put("catalogHash", catalogHash ?: JSONObject.NULL)
             put("channel", channel)
             put("selectionContextHash", selectionContextHash ?: JSONObject.NULL)
+            put("label", label ?: JSONObject.NULL)
         }
 
     fun toMap(): Map<String, Any?> =
@@ -250,7 +258,11 @@ data class PersistedSelection(
             "catalogHash" to catalogHash,
             "channel" to channel,
             "selectionContextHash" to selectionContextHash,
+            "label" to label?.toDouble(),
         )
+
+    /** Whether two receipts select the same thing: their labels are left out. */
+    fun sameSelection(other: PersistedSelection?): Boolean = other != null && copy(label = null) == other.copy(label = null)
 }
 
 data class PendingSelectionTransition(

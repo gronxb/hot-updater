@@ -325,6 +325,119 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
+    fun `a committed receipt keeps its label for the next process`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            createCompleteBundle(rootDir, "running-bundle", "running")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "running-bundle"))
+            val service = createService(rootDir)
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 2, "hash-2", "production", "context-2"))
+
+            // A metadata-only adoption of the running bundle's Release, labeled.
+            assertTrue(
+                service.commitReleaseSelection(
+                    PersistedSelection(
+                        kind = "BUNDLE",
+                        releaseId = "release-12",
+                        bundleId = "running-bundle",
+                        catalogId = "project-a",
+                        scopeKey = "scope-production",
+                        generation = 2,
+                        catalogHash = "hash-2",
+                        channel = "production",
+                        selectionContextHash = "context-2",
+                        label = 12,
+                    ),
+                ),
+            )
+
+            // A new process reads the receipt from the metadata file.
+            val active = createService(rootDir).getActiveUpdateState()["activeSelection"] as Map<*, *>
+            assertEquals(12.0, active["label"])
+            assertEquals(12L, loadMetadata(rootDir)?.stableSelection?.label)
+        }
+
+    @Test
+    fun `the running receipt keeps its label while a built-in rollback waits for a restart`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            createCompleteBundle(rootDir, "running-bundle", "running")
+            val labeled =
+                PersistedSelection(
+                    kind = "BUNDLE",
+                    releaseId = "release-12",
+                    bundleId = "running-bundle",
+                    catalogId = "project-a",
+                    scopeKey = "scope-production",
+                    generation = 1,
+                    catalogHash = "hash-1",
+                    channel = "production",
+                    selectionContextHash = "context-1",
+                    label = 12,
+                )
+            writeMetadata(
+                rootDir,
+                BundleMetadata(
+                    isolationKey = TEST_ISOLATION_KEY,
+                    stableBundleId = "running-bundle",
+                    stableSelection = labeled,
+                ),
+            )
+            val service = createService(rootDir)
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 2, "hash-2", "production", "context-2"))
+
+            // A rollback to the built-in bundle, for the next launch.
+            assertTrue(
+                service.commitReleaseSelection(
+                    PersistedSelection(
+                        kind = "BUILTIN",
+                        releaseId = "release-builtin",
+                        bundleId = "builtin-bundle",
+                        catalogId = "project-a",
+                        scopeKey = "scope-production",
+                        generation = 2,
+                        catalogHash = "hash-2",
+                        channel = "production",
+                        selectionContextHash = "context-2",
+                    ),
+                ),
+            )
+
+            val state = service.getActiveUpdateState()
+            assertEquals("BUILTIN", (state["activeSelection"] as Map<*, *>)["kind"])
+            val running = state["runningSelection"] as Map<*, *>
+            assertEquals("running-bundle", running["bundleId"])
+            assertEquals(12.0, running["label"])
+            // A new process runs the built-in bundle.
+            val restarted = createService(rootDir)
+            assertFalse(restarted.getActiveUpdateState().containsKey("runningSelection"))
+            restarted.prepareLaunch(null)
+            assertTrue(restarted.getActiveUpdateState().containsKey("runningSelection"))
+            assertNull(restarted.getActiveUpdateState()["runningSelection"])
+        }
+
+    @Test
+    fun `a receipt an earlier SDK wrote has no label`() {
+        val selection =
+            PersistedSelection.fromJson(
+                JSONObject(
+                    """{"kind":"BUNDLE","releaseId":"release-3","bundleId":"running-bundle","catalogId":"project-a",""" +
+                        """"scopeKey":"scope-production","generation":1,"catalogHash":"hash-1","channel":"production",""" +
+                        """"selectionContextHash":"context-1"}""",
+                ),
+            )
+        assertEquals("release-3", selection.releaseId)
+        assertNull(selection.label)
+        assertNull(selection.toMap()["label"])
+        assertTrue(selection.toJson().isNull("label"))
+        // Receipts that differ only by their label select the same thing.
+        assertTrue(selection.copy(label = 3).sameSelection(selection))
+        assertFalse(selection.copy(generation = 2).sameSelection(selection))
+    }
+
+    @Test
     fun `a new process removes the bundle a reset kept`() =
         runBlocking {
             val rootDir = temporaryFolder.newFolder()
@@ -3604,13 +3717,17 @@ class BundleFileStorageServiceTest {
             val bundleHash = sha256(root, BUNDLE_CONTENT)
             val imageHash = sha256(root, "image")
             val manifest = manifestJson("target", mapOf("index.android.bundle" to bundleHash, "assets/image.png" to imageHash))
+            val bundleStarted = CountDownLatch(1)
             val imageFailed = CountDownLatch(1)
             val served =
                 BinaryMappingDownloadService(
                     mapOf(MANIFEST_URL to manifest.toByteArray(), BUNDLE_URL to "tampered".toByteArray()),
                     mapOf(imageUrl to HttpStatusException(404, "Not Found")),
                 )
-            // Both downloads run; the image fails first, the tampered bundle after.
+            // Both downloads run; the image fails first, the tampered bundle
+            // after. The image waits for the bundle's download to start: its
+            // failure cancels the downloads, and one cancelled before it
+            // starts never proves its file bad.
             val downloads =
                 object : DownloadService {
                     override suspend fun downloadFile(
@@ -3620,8 +3737,11 @@ class BundleFileStorageServiceTest {
                         progressCallback: (DownloadProgress) -> Unit,
                     ): DownloadResult {
                         if (fileUrl.toString() == BUNDLE_URL) {
+                            bundleStarted.countDown()
                             imageFailed.await(5, TimeUnit.SECONDS)
                             Thread.sleep(200)
+                        } else if (fileUrl.toString() == imageUrl) {
+                            assertTrue(bundleStarted.await(5, TimeUnit.SECONDS))
                         }
                         return served.downloadFile(fileUrl, destination, fileSizeCallback, progressCallback).also {
                             if (fileUrl.toString() == imageUrl) imageFailed.countDown()

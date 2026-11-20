@@ -25,6 +25,7 @@
     "---Diagnose---",
     "getAppVersion",
     "getBundleId",
+    "getReleaseLabel",
     "notifyAppReady",
     "getActiveUpdateState",
     "getInstallId",

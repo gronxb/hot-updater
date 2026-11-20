@@ -438,6 +438,13 @@ class BundleFileStorageService: BundleStorageService {
     // names them in retainedBundleFilename for the next launch to remove, in
     // this process or, after a restart, the next one.
     private var runningBundleId: String?
+    // The receipt of the bundle this process's last launch runs, under
+    // releaseStateLock: a commit of the next launch's selection, such as a
+    // built-in rollback that waits for a restart, leaves it, so the running
+    // release keeps its label until it stops running. Set once a launch is
+    // prepared.
+    private var runningSelection: PersistedSelection?
+    private var hasRunningSelection = false
     private static let retainedBundleFilename = "retained-bundle"
     private let activeBundleMetadataLock = NSLock()
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot?
@@ -1679,13 +1686,17 @@ class BundleFileStorageService: BundleStorageService {
     func getActiveUpdateState() -> [String: Any] {
         releaseStateLock.lock()
         defer { releaseStateLock.unlock() }
+        // The running bundle's receipt once a launch is prepared; before it,
+        // the reader looks among the next launch's.
+        let running: [String: Any] =
+            hasRunningSelection ? ["runningSelection": runningSelection?.dictionary ?? NSNull()] : [:]
         guard let metadata = loadMetadataOrNull() else {
             return [
                 "activeSelection": NSNull(),
                 "stableSelection": NSNull(),
                 "verificationPending": false,
                 "highestSeenCatalogs": [:]
-            ]
+            ].merging(running) { current, _ in current }
         }
         let highWaters = metadata.highestSeenCatalogs.mapValues { highWater in
             [
@@ -1698,7 +1709,7 @@ class BundleFileStorageService: BundleStorageService {
             "stableSelection": metadata.stableSelection?.dictionary ?? NSNull(),
             "verificationPending": metadata.verificationPending,
             "highestSeenCatalogs": highWaters
-        ]
+        ].merging(running) { current, _ in current }
     }
 
     func isReleaseSelectionCurrent(
@@ -1781,6 +1792,11 @@ class BundleFileStorageService: BundleStorageService {
         metadata.updatedAt = Date().timeIntervalSince1970 * 1000
         metadata.currentSelectionContexts = contextsAfterCommitting(metadata.currentSelectionContexts, selection)
         guard saveMetadata(metadata) else { return false }
+        // A metadata-only commit for the running bundle, such as its label
+        // once its catalog has one, is the running receipt too.
+        if selection.kind == "BUNDLE", selection.bundleId == runningBundleId {
+            runningSelection = selection
+        }
         do {
             try preferences.setItem(
                 selection.channel,
@@ -2320,6 +2336,11 @@ class BundleFileStorageService: BundleStorageService {
         defer { releaseStateLock.unlock() }
         removeRetainedBundle(launching: selection.launchedBundleId)
         runningBundleId = selection.launchedBundleId
+        hasRunningSelection = true
+        let metadata = loadMetadataOrNull()
+        runningSelection = [metadata?.stagingSelection, metadata?.stableSelection]
+            .compactMap { $0 }
+            .first { $0.kind == "BUNDLE" && $0.bundleId == selection.launchedBundleId }
         return selection
     }
 

@@ -35,6 +35,10 @@ public struct PersistedSelection: Codable {
     let catalogHash: String?
     let channel: String
     let selectionContextHash: String?
+    /// The selected release's label, read back after a restart and offline:
+    /// nil for the built-in bundle, a release without one, and a receipt an
+    /// SDK before labels wrote. Comparisons of receipts leave it out.
+    var label: Int64? = nil
 
     /// A selection that names only a Bundle, with no Release Catalog receipt,
     /// such as the built-in bundle.
@@ -62,7 +66,8 @@ public struct PersistedSelection: Codable {
             "generation": generation.map(NSNumber.init(value:)) ?? NSNull(),
             "catalogHash": catalogHash ?? NSNull(),
             "channel": channel,
-            "selectionContextHash": selectionContextHash ?? NSNull()
+            "selectionContextHash": selectionContextHash ?? NSNull(),
+            "label": label.map(NSNumber.init(value:)) ?? NSNull()
         ]
     }
 }

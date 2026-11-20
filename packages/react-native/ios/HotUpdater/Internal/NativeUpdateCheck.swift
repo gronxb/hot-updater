@@ -242,6 +242,9 @@ struct NativeCheckRequest {
     @objc public let targetCohorts: [String]
     /// `INSTALL`, `ADOPT_RELEASE`, or `USE_BUILTIN`.
     @objc public let transitionKind: String
+    /// The release's label, shown `v<label>`: nil for the built-in bundle, a
+    /// release without one, and a server before labels.
+    @objc public let label: NSNumber?
 
     /// The bundle the update stages.
     let bundleId: String
@@ -268,6 +271,7 @@ struct NativeCheckRequest {
         message: String?,
         rolloutCohortCount: Int = 1000,
         targetCohorts: [String] = [],
+        label: Int64? = nil,
         bundleId: String,
         transitionKind: String,
         runsCurrentBundle: Bool,
@@ -283,6 +287,7 @@ struct NativeCheckRequest {
         self.message = message
         self.rolloutCohortCount = rolloutCohortCount
         self.targetCohorts = targetCohorts
+        self.label = label.map(NSNumber.init(value:))
         self.bundleId = bundleId
         self.transitionKind = transitionKind
         self.runsCurrentBundle = runsCurrentBundle
@@ -1386,7 +1391,8 @@ final class NativeUpdateChecker {
             generation: catalog.generation,
             catalogHash: catalog.catalogHash,
             channel: targetChannel,
-            selectionContextHash: selectionContextHash
+            selectionContextHash: selectionContextHash,
+            label: desired.release?.label
         )
         if let active, Self.sameReceipt(active, receipt) {
             return nil
@@ -1550,6 +1556,7 @@ final class NativeUpdateChecker {
             message: release?.message,
             rolloutCohortCount: release?.rolloutCohortCount ?? 1000,
             targetCohorts: release?.targetCohorts ?? [],
+            label: release?.label,
             bundleId: desired.bundleId,
             transitionKind: transitionKind,
             runsCurrentBundle: desired.bundleId.jsEquals(currentBundleId),
@@ -1701,7 +1708,8 @@ final class NativeUpdateChecker {
             generation: (data["generation"] as? NSNumber)?.int64Value,
             catalogHash: data["catalogHash"] as? String,
             channel: channel,
-            selectionContextHash: data["selectionContextHash"] as? String
+            selectionContextHash: data["selectionContextHash"] as? String,
+            label: releaseLabel(data["label"])
         )
     }
 
