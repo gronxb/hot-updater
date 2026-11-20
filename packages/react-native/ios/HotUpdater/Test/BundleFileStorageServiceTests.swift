@@ -918,10 +918,22 @@ struct BundleFileStorageServiceTests {
             cleanupWorkingDirectory(workingDirectory)
         }
 
+        // JavaScript reads the launch report on its own thread right after
+        // first content saved the verified metadata and before it wrote the
+        // report. That read waits for the report instead of answering UNCHANGED.
+        let concurrentRead = ConcurrentLaunchReportRead()
         let service = makeStorageService(
             documentsDirectory: workingDirectory,
-            builtInBundleId: "builtin-bundle"
+            builtInBundleId: "builtin-bundle",
+            metadataWriter: { metadata, file in
+                let saved = metadata.save(to: file)
+                if !metadata.verificationPending {
+                    concurrentRead.startOnce()
+                }
+                return saved
+            }
         )
+        concurrentRead.service = service
         let stagingDirectory = try createBundleDirectory(
             documentsDirectory: workingDirectory,
             bundleId: "next-bundle"
@@ -946,7 +958,10 @@ struct BundleFileStorageServiceTests {
         #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "next-bundle")
         #expect(service.notifyAppReady()["status"] as? String == "PENDING")
 
+        concurrentRead.arm()
         service.markLaunchCompleted(bundleId: "next-bundle")
+        let concurrentReport = try #require(concurrentRead.join())
+        #expect(concurrentReport["status"] as? String == "UPDATE_APPLIED")
         let report = service.notifyAppReady()
 
         #expect(report["status"] as? String == "UPDATE_APPLIED")
@@ -4613,6 +4628,64 @@ private func makeWorkingDirectory() throws -> URL {
 
 private func cleanupWorkingDirectory(_ workingDirectory: URL) {
     try? FileManager.default.removeItem(at: workingDirectory)
+}
+
+/// Calls `notifyAppReady` once on its own `Thread`, as JavaScript does, from
+/// inside a metadata write. The write waits until the read started and then up
+/// to a second for it, so a read that doesn't wait for the writer's lock
+/// answers while the write is unfinished.
+private final class ConcurrentLaunchReportRead: @unchecked Sendable {
+    weak var service: BundleFileStorageService?
+    private let condition = NSCondition()
+    private var armed = false
+    private var started = false
+    private var finished = false
+    private var report: [String: Any]?
+
+    func arm() {
+        condition.lock()
+        armed = true
+        condition.unlock()
+    }
+
+    func startOnce() {
+        condition.lock()
+        guard armed, let service else {
+            condition.unlock()
+            return
+        }
+        armed = false
+        condition.unlock()
+        Thread { [self] in
+            condition.lock()
+            started = true
+            condition.broadcast()
+            condition.unlock()
+            let result = service.notifyAppReady()
+            condition.lock()
+            report = result
+            finished = true
+            condition.broadcast()
+            condition.unlock()
+        }.start()
+        wait(seconds: 5) { started }
+        wait(seconds: 1) { finished }
+    }
+
+    /// The report the read returned, nil if it never ran or didn't finish.
+    func join() -> [String: Any]? {
+        wait(seconds: 5) { finished }
+        condition.lock()
+        defer { condition.unlock() }
+        return report
+    }
+
+    private func wait(seconds: TimeInterval, until done: () -> Bool) {
+        let deadline = Date().addingTimeInterval(seconds)
+        condition.lock()
+        defer { condition.unlock() }
+        while !done(), condition.wait(until: deadline) {}
+    }
 }
 
 private func makeStorageService(
