@@ -359,6 +359,66 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
+    fun `the running receipt keeps its label while a built-in rollback waits for a restart`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            createCompleteBundle(rootDir, "running-bundle", "running")
+            val labeled =
+                PersistedSelection(
+                    kind = "BUNDLE",
+                    releaseId = "release-12",
+                    bundleId = "running-bundle",
+                    catalogId = "project-a",
+                    scopeKey = "scope-production",
+                    generation = 1,
+                    catalogHash = "hash-1",
+                    channel = "production",
+                    selectionContextHash = "context-1",
+                    label = 12,
+                )
+            writeMetadata(
+                rootDir,
+                BundleMetadata(
+                    isolationKey = TEST_ISOLATION_KEY,
+                    stableBundleId = "running-bundle",
+                    stableSelection = labeled,
+                ),
+            )
+            val service = createService(rootDir)
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 2, "hash-2", "production", "context-2"))
+
+            // A rollback to the built-in bundle, for the next launch.
+            assertTrue(
+                service.commitReleaseSelection(
+                    PersistedSelection(
+                        kind = "BUILTIN",
+                        releaseId = "release-builtin",
+                        bundleId = "builtin-bundle",
+                        catalogId = "project-a",
+                        scopeKey = "scope-production",
+                        generation = 2,
+                        catalogHash = "hash-2",
+                        channel = "production",
+                        selectionContextHash = "context-2",
+                    ),
+                ),
+            )
+
+            val state = service.getActiveUpdateState()
+            assertEquals("BUILTIN", (state["activeSelection"] as Map<*, *>)["kind"])
+            val running = state["runningSelection"] as Map<*, *>
+            assertEquals("running-bundle", running["bundleId"])
+            assertEquals(12.0, running["label"])
+            // A new process runs the built-in bundle.
+            val restarted = createService(rootDir)
+            assertFalse(restarted.getActiveUpdateState().containsKey("runningSelection"))
+            restarted.prepareLaunch(null)
+            assertTrue(restarted.getActiveUpdateState().containsKey("runningSelection"))
+            assertNull(restarted.getActiveUpdateState()["runningSelection"])
+        }
+
+    @Test
     fun `a receipt an earlier SDK wrote has no label`() {
         val selection =
             PersistedSelection.fromJson(

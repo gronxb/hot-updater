@@ -319,6 +319,12 @@ type ActiveUpdateSelection = Pick<
 export interface InternalActiveUpdateState {
   readonly activeSelection: PersistedSelectionReceipt | null;
   readonly stableSelection: PersistedSelectionReceipt | null;
+  /**
+   * The receipt of the bundle this launch runs, null for the built-in bundle
+   * or one without a receipt. Native before labels, and native before its
+   * launch is prepared, leave it out.
+   */
+  readonly runningSelection?: PersistedSelectionReceipt | null;
   readonly verificationPending: boolean;
   readonly highestSeenCatalogs: Readonly<Record<string, CatalogHighWater>>;
 }
@@ -561,8 +567,15 @@ export const getMinBundleId = (): string => {
  */
 export const getReleaseLabel = (): number | null => {
   const running = getBundleId();
-  const { activeSelection, stableSelection } = getActiveUpdateState();
-  const receipt = [activeSelection, stableSelection].find(
+  const state = getActiveUpdateState();
+  // The receipt the launch recorded, which a commit of the next launch's
+  // selection, such as a built-in rollback that waits for a restart, leaves.
+  // Native before it reports only the next launch's receipts.
+  const receipts =
+    state.runningSelection === undefined
+      ? [state.activeSelection, state.stableSelection]
+      : [state.runningSelection];
+  const receipt = receipts.find(
     (selection) =>
       selection !== null &&
       selection.kind === "BUNDLE" &&

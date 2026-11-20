@@ -1189,6 +1189,33 @@ describe("getReleaseLabel", () => {
     expect(getReleaseLabel()).toBe(12);
   });
 
+  it("keeps the running release's label while a built-in rollback waits for a restart", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue("running");
+    // The built-in commit replaced both receipts; native kept the launch's.
+    nativeModuleMock.getActiveUpdateState.mockReturnValue({
+      activeSelection: { ...receipt("builtin"), kind: "BUILTIN" },
+      stableSelection: null,
+      runningSelection: receipt("running", 12),
+      verificationPending: false,
+    });
+    const { getReleaseLabel } = await import("./native");
+
+    expect(getReleaseLabel()).toBe(12);
+  });
+
+  it("reads only the receipt the launch recorded, when native reports one", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue("built-in");
+    nativeModuleMock.getActiveUpdateState.mockReturnValue({
+      activeSelection: receipt("built-in", 12),
+      stableSelection: null,
+      runningSelection: null,
+      verificationPending: false,
+    });
+    const { getReleaseLabel } = await import("./native");
+
+    expect(getReleaseLabel()).toBeNull();
+  });
+
   it.each([
     ["native before labels, whose receipt has none", receipt("running")],
     ["a release without one", receipt("running", null)],

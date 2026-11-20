@@ -751,6 +751,13 @@ class BundleFileStorageService(
     // reload restarts the process, so the next one does.
     private var runningBundleId: String? = null
 
+    // The receipt of the bundle this process's last launch runs, under
+    // releaseStateLock: a commit of the next launch's selection, such as a
+    // built-in rollback that waits for a restart, leaves it, so the running
+    // release keeps its label until it stops running.
+    private var runningSelection: PersistedSelection? = null
+    private var hasRunningSelection = false
+
     @Volatile
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot? = null
     private val activeBundleMetadataLock = Any()
@@ -1525,7 +1532,10 @@ class BundleFileStorageService(
                             "catalogHash" to value.catalogHash,
                         )
                     },
-            )
+            ) +
+                // The running bundle's receipt once a launch is prepared; before
+                // it, the reader looks among the next launch's.
+                if (hasRunningSelection) mapOf("runningSelection" to runningSelection?.toMap()) else emptyMap()
         }
 
     override fun isReleaseSelectionCurrent(
@@ -1618,6 +1628,11 @@ class BundleFileStorageService(
                         currentSelectionContexts = contextsAfterCommitting(nextMetadata.currentSelectionContexts, selection),
                     )
                 if (!saveMetadata(committedMetadata)) return@synchronized false
+                // A metadata-only commit for the running bundle, such as its
+                // label once its catalog has one, is the running receipt too.
+                if (selection.kind == "BUNDLE" && selection.bundleId == runningBundleId) {
+                    runningSelection = selection
+                }
 
                 if (selection.channel == defaultChannelProvider()) {
                     preferences.setItem("HotUpdaterChannel", null)
@@ -1960,6 +1975,13 @@ class BundleFileStorageService(
         synchronized(releaseStateLock) {
             removeRetainedBundle(launching = selection.launchedBundleId)
             runningBundleId = selection.launchedBundleId
+            hasRunningSelection = true
+            runningSelection =
+                loadMetadataOrNull()?.let { metadata ->
+                    listOfNotNull(metadata.stagingSelection, metadata.stableSelection).firstOrNull {
+                        it.kind == "BUNDLE" && it.bundleId == selection.launchedBundleId
+                    }
+                }
         }
         Log.d(
             TAG,

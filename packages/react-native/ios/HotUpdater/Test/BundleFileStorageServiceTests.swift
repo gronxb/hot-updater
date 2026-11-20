@@ -231,6 +231,59 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func theRunningReceiptKeepsItsLabelWhileABuiltInRollbackWaitsForARestart() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let directory = try createBundleDirectory(documentsDirectory: root, bundleId: "running-bundle")
+        try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: directory, bundleId: "running-bundle")
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: "running-bundle",
+            stableSelection: PersistedSelection(
+                kind: SelectionKind.bundle.rawValue,
+                releaseId: "release-12",
+                bundleId: "running-bundle",
+                catalogId: "project-a",
+                scopeKey: "scope-production",
+                generation: 1,
+                catalogHash: "hash-1",
+                channel: "production",
+                selectionContextHash: "context-1",
+                label: 12
+            )
+        ))
+        let service = makeStorageService(documentsDirectory: root)
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "running-bundle")
+        #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-production",
+            generation: 2, catalogHash: "hash-2", channel: "production", selectionContextHash: "context-2"))
+
+        // A rollback to the built-in bundle, for the next launch.
+        #expect(service.commitReleaseSelection(PersistedSelection(
+            kind: SelectionKind.builtin.rawValue,
+            releaseId: "release-builtin",
+            bundleId: "builtin-bundle",
+            catalogId: "project-a",
+            scopeKey: "scope-production",
+            generation: 2,
+            catalogHash: "hash-2",
+            channel: "production",
+            selectionContextHash: "context-2"
+        )))
+
+        let state = service.getActiveUpdateState()
+        #expect((state["activeSelection"] as? [String: Any])?["kind"] as? String == SelectionKind.builtin.rawValue)
+        let running = try #require(state["runningSelection"] as? [String: Any])
+        #expect(running["bundleId"] as? String == "running-bundle")
+        #expect((running["label"] as? NSNumber)?.int64Value == 12)
+        // A new process runs the built-in bundle.
+        let restarted = makeStorageService(documentsDirectory: root)
+        #expect(restarted.getActiveUpdateState()["runningSelection"] == nil)
+        _ = restarted.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(restarted.getActiveUpdateState()["runningSelection"] is NSNull)
+    }
+
+    @Test
     func aReceiptAnEarlierSDKWroteHasNoLabel() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
