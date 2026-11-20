@@ -273,7 +273,12 @@ in a table like the Bundles page's, one kind of value per column:
 - **Artifact**: the build's kind, such as `IPA`, which opens its page, tagged
   **Sandbox** for a [sandbox build](/docs/native-builds/sandbox).
 - **Channel** and **Platform**.
-- **Build**: the build number the artifact reports.
+- **Build**: the build as the stores show it, such as `1.7.0 (66)`: the
+  store's version and build number once `testflight` or `google-play upload`
+  submitted it, else the version and build number the artifact reports, its
+  `CFBundleShortVersionString` and `CFBundleVersion`, or `versionName` and
+  `versionCode`. A build without a recorded version shows its build number
+  alone.
 - **Target**: what its OTAs target, as the Bundles page's Target column shows
   it: the fingerprint, or the app version under the `appVersion` strategy. A
   fingerprint build also shows the app version its artifact reports, its
@@ -289,7 +294,7 @@ in a table like the Bundles page's, one kind of value per column:
 The build's page holds the rest, such as its built-in bundle and commit.
 
 On a narrow screen, each build is a compact card with the same values: its
-artifact and channel; its build number, size, and age; its target and build
+artifact and channel; its version and build number, size, and age; its target and build
 key; and its store.
 
 Pick a channel to list only the builds that embed it, such as
@@ -311,8 +316,8 @@ build's page, `/native-builds/<build id>`:
   token, `/api/native-builds/<build id>/download` asks for the session: a browser
   that opens it without one goes to the build's page, which signs it in and
   comes back to the build.
-- **Build**: the build number, the `CFBundleVersion` or `versionCode` the
-  artifact reports, as the list's **Build** column shows it.
+- **Build**: the build's version and build number, as the list's **Build**
+  column shows it, which the page's heading names too.
 - **Built-in bundle**: the build's min bundle ID, the base its OTAs patch
   from, how many bundles patch from it, and whether new deploys patch from it,
   as the scope's store build or its newest. A build they don't patch from links
@@ -628,6 +633,11 @@ builds:
 ```package-install
 npx hot-updater native-build find -p ios -s release
 ```
+
+It names the build by its ID and its **Build**, its version and build number
+as the [Console](#native-builds-in-the-console) shows them, such as
+`1.7.0 (66)`; `native-build download`, `install`, and `delete` name it the
+same way.
 
 It reads the native projects and writes nothing to them. With the Expo build
 adapter it reads the app version and channel `expo prebuild` would write from

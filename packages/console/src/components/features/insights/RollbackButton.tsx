@@ -92,7 +92,7 @@ export function RollbackButton({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Roll back this bundle?</AlertDialogTitle>
-          <BundleIdDisplay bundleId={id} />
+          <BundleIdDisplay bundleId={id} label={release.label} />
           <AlertDialogDescription>
             It crashed for {percent(rate)} of the installations that tried it (
             {crashes.toLocaleString()} of {attempts.toLocaleString()}). Rolling

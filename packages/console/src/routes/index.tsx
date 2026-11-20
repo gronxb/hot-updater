@@ -332,7 +332,11 @@ function BundleEntry({
         title={release.id}
         type="button"
       >
-        <BundleIdDisplay bundleId={release.id} fullOnMobile />
+        <BundleIdDisplay
+          bundleId={release.id}
+          fullOnMobile
+          label={release.label}
+        />
         {!release.bundle_id ? (
           <span className="inline-flex items-center gap-1.5 text-sm">
             <RotateCcw className="size-3.5" /> Built-in bundle

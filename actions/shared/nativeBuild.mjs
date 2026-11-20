@@ -14,6 +14,11 @@ import { parseJsonOutput } from "./cli.mjs";
  * @property {string} artifact_storage_uri
  * @property {string | null} [build_key] Null for a build registered from elsewhere.
  * @property {string | null} [submitted_to] The store track that took the build.
+ * @property {string | null} [submitted_version] The store's label of the build,
+ *   such as `1.7.0 (66)`, once a store took it.
+ * @property {string | null} [native_app_version] The version the artifact reports.
+ * @property {string | null} [app_version]
+ * @property {string | null} [build_number] The build number the artifact reports.
  * @property {string} [min_bundle_id] The oldest bundle ID the build runs.
  * @property {boolean} [is_sandbox] Whether the build is a sandbox build, as registered.
  * @property {string | null} [sandbox_url_scheme] The URL scheme a sandbox
@@ -59,6 +64,22 @@ import { parseJsonOutput } from "./cli.mjs";
 
 /** @type {readonly Platform[]} */
 export const PLATFORMS = ["android", "ios"];
+
+/**
+ * A native build as the stores show it, such as `1.7.0 (66)`, as the CLI and
+ * the Console name it: the store's own label once a store took it, else its
+ * version and build number, or the build number alone without a version.
+ * Null without a build number.
+ *
+ * @param {Pick<NativeBuildRow, "submitted_version" | "native_app_version" | "app_version" | "build_number">} build
+ * @returns {string | null}
+ */
+export const nativeBuildVersionLabel = (build) => {
+  if (build.submitted_version) return build.submitted_version;
+  if (!build.build_number) return null;
+  const version = build.native_app_version ?? build.app_version;
+  return version ? `${version} (${build.build_number})` : build.build_number;
+};
 
 /**
  * The platforms of a comma-separated input, each once.

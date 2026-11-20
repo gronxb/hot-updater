@@ -2,6 +2,7 @@ import { NUMERIC_COHORT_SIZE } from "@hot-updater/protocol";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, PackageOpen } from "lucide-react";
 
+import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
 import { Badge } from "@/components/ui/badge";
@@ -181,13 +182,15 @@ export function ServedNowCard({
                       <TableCell className="py-3 whitespace-normal">
                         <div className="flex min-w-0 flex-col gap-1">
                           <Link
-                            className="font-mono text-xs [overflow-wrap:anywhere] underline-offset-4 hover:underline"
+                            className="underline-offset-4 hover:underline"
                             search={{ releaseId: release.releaseId }}
                             title={bundleId}
                             to="/"
-                            translate="no"
                           >
-                            {bundleId}
+                            <BundleIdDisplay
+                              bundleId={bundleId}
+                              label={release.label}
+                            />
                           </Link>
                           {release.message ? (
                             <span className="text-xs text-muted-foreground">

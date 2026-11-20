@@ -263,6 +263,28 @@ describe("BundlesPage", () => {
     vi.clearAllMocks();
   });
 
+  it("names a bundle by its label before its ID, and by its ID alone without one", () => {
+    releases = [
+      { ...release, label: 12 },
+      { ...release, id: "release-2", label: null },
+    ];
+    try {
+      render(<BundlesPage />);
+
+      const labeled = screen.getByRole("row", {
+        name: "Open bundle release-1",
+      });
+      expect(within(labeled).getByText("v12")).toBeTruthy();
+      expect(within(labeled).getByText("release-1")).toBeTruthy();
+      const unlabeled = screen.getByRole("row", {
+        name: "Open bundle release-2",
+      });
+      expect(within(unlabeled).queryByText(/^v\d+$/u)).toBeNull();
+    } finally {
+      releases = [release];
+    }
+  });
+
   it("opens the Bundle edit sheet from the whole table row", () => {
     render(<BundlesPage />);
     const row = screen.getByRole("row", {

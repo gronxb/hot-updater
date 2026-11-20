@@ -9,6 +9,7 @@ import {
   within,
 } from "@testing-library/react";
 import { type ReactNode, useState } from "react";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ReleaseEditorSheet } from "./ReleaseEditorSheet";
@@ -141,7 +142,7 @@ describe("ReleaseEditorSheet", () => {
     preflight.mockReset();
     preflight.mockResolvedValue({});
     promote.mockReset();
-    promote.mockResolvedValue({});
+    promote.mockResolvedValue({ source: null, target: { release: null } });
     update.mockReset();
     update.mockResolvedValue({});
   });
@@ -475,6 +476,42 @@ describe("ReleaseEditorSheet", () => {
         targetChannel: "beta",
       });
     });
+  });
+
+  it("names the promoted bundle's label in the target channel", async () => {
+    const success = vi.spyOn(toast, "success");
+    promote.mockResolvedValue({
+      source: null,
+      target: { release: { ...release, id: "release-2", label: 5 } },
+    });
+    render(
+      <ReleaseEditorSheet
+        channels={[
+          { id: "channel-1", name: "production" },
+          { id: "channel-2", name: "beta" },
+        ]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={release.id}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Promote to channel" }));
+    const dialog = screen.getByRole("dialog", {
+      name: "Promote to Channel",
+    });
+    fireEvent.click(
+      within(dialog).getByRole("combobox", { name: "Target Channel" }),
+    );
+    const betaOption = screen.getByRole("option", { name: "beta" });
+    fireEvent.pointerDown(betaOption);
+    fireEvent.click(betaOption);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+
+    await waitFor(() => {
+      expect(success).toHaveBeenCalledWith("Bundle moved to beta as v5");
+    });
+    success.mockRestore();
   });
 
   it("explains Force update in a tooltip beside its switch", async () => {

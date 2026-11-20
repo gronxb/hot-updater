@@ -31,7 +31,10 @@ import {
 import { type Row, ui } from "../utils/cli-ui";
 import { formatBytes } from "../utils/formatBytes";
 import { type LoadedServer, loadServer } from "../utils/loadServer";
-import { describeNativeBuild } from "../utils/native/describeNativeBuild";
+import {
+  describeNativeBuild,
+  nativeBuildLabel,
+} from "../utils/native/describeNativeBuild";
 import {
   downloadNativeBuild,
   nativeBuildDownloadPath,
@@ -227,6 +230,7 @@ export const handleNativeBuildFind = async (
     p.log.success(
       ui.block("Native build found", [
         ui.kv("ID", ui.id(nativeBuild.id)),
+        buildRow(nativeBuild),
         ui.kv("Platform", ui.platform(scope.platform)),
         // A sandbox build found on another pull request's channel says so.
         ui.kv(
@@ -251,6 +255,17 @@ export const handleNativeBuildFind = async (
     p.log.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
+};
+
+/**
+ * A `Build  1.7.0 (66)` row: the build as the stores show it, when it has a
+ * build number.
+ */
+const buildRow = (
+  build: Parameters<typeof nativeBuildLabel>[0],
+): false | ReturnType<typeof ui.kv> => {
+  const label = nativeBuildLabel(build);
+  return label !== null && ui.kv("Build", label);
 };
 
 /**
@@ -457,6 +472,7 @@ export const handleNativeBuildDownload = async (
       p.log.success(
         ui.block("Native build downloaded", [
           ui.kv("ID", ui.id(id)),
+          buildRow(build),
           ui.kv("Kind", kindOf(build)),
           ui.kv("Size", formatBytes(byteSize)),
           ui.kv("File", ui.path(ui.fitPath(file))),
@@ -624,6 +640,7 @@ export const handleNativeBuildInstall = async (
       p.log.success(
         ui.block("Native build installed and opened", [
           ui.kv("ID", ui.id(id)),
+          buildRow(build),
           ui.kv("App", appId),
           url !== null &&
             open !== undefined &&
@@ -679,6 +696,7 @@ export const handleNativeBuildDelete = async (
         p.log.step(
           ui.block("Native build", [
             ui.kv("ID", ui.id(build.id)),
+            buildRow(build),
             ui.kv("Platform", ui.platform(build.platform)),
             ui.kv("Channel", ui.channel(channel)),
             build.fingerprint_hash === null
@@ -728,6 +746,7 @@ export const handleNativeBuildDelete = async (
         p.log.success(
           ui.block("Native build deleted", [
             ui.kv("ID", ui.id(id)),
+            buildRow(build),
             ui.kv("Platform", ui.platform(build.platform)),
             ui.kv("Channel", ui.channel(channel)),
           ]),

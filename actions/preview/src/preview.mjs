@@ -12,6 +12,7 @@ import {
   refreshFingerprint,
   runJson,
   STORES,
+  nativeBuildVersionLabel,
 } from "../../shared/nativeBuild.mjs";
 import {
   nativeBuildInstallUrl,
@@ -32,6 +33,16 @@ import { removeQrCodes, writeQrCodes } from "./qrBranch.mjs";
 
 export { parseJsonOutput };
 
+/**
+ * A build's `version` field, as the stores show it, when it has a build
+ * number; none otherwise, so a preview's outputs only gain it.
+ *
+ * @param {Parameters<typeof nativeBuildVersionLabel>[0]} build
+ */
+const versionOf = (build) => {
+  const version = nativeBuildVersionLabel(build);
+  return version ? { version } : {};
+};
 /**
  * @typedef {import("./comment.mjs").Platform} Platform
  * @typedef {import("./comment.mjs").PlatformPreview} PlatformPreview
@@ -637,6 +648,7 @@ const previewOf = (
     id: build.id,
     artifactKind: build.artifact_kind,
     fileName: artifactFileName(build.artifact_storage_uri),
+    ...versionOf(build),
     ...(typeof expiresAtMs === "number" ? { expiresAtMs } : {}),
   };
   const sandboxPreview = sandboxOf(
@@ -712,6 +724,7 @@ const previewPlatform = async (
       id: build.id,
       artifactKind: build.artifact_kind,
       fileName: artifactFileName(build.artifact_storage_uri),
+      ...versionOf(build),
     };
     return {
       platform,
@@ -1187,6 +1200,7 @@ const publicPreview = ({
     id: nativeBuild.id,
     artifactKind: nativeBuild.artifactKind,
     fileName: nativeBuild.fileName,
+    ...(nativeBuild.version ? { version: nativeBuild.version } : {}),
     ...(typeof nativeBuild.expiresAtMs === "number"
       ? { expiresAtMs: nativeBuild.expiresAtMs }
       : {}),

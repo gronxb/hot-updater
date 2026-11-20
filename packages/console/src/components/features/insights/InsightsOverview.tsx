@@ -430,6 +430,7 @@ export function InsightsOverview({
                     <BundleIdDisplay
                       bundleId={bundle.release.releaseId}
                       className="text-sm"
+                      label={bundle.release.label}
                     />
                   </AlertTitle>
                   <AlertDescription className="flex flex-col items-start gap-3">
@@ -524,6 +525,7 @@ export function InsightsOverview({
                                 <BundleIdDisplay
                                   bundleId={release.releaseId}
                                   className="min-w-0"
+                                  label={release.label}
                                 />
                                 {release.enabled ? null : (
                                   <Badge variant="outline">Disabled</Badge>
@@ -640,7 +642,7 @@ export function InsightsOverview({
                   placeholder={
                     full
                       ? `Up to ${MAX_ADOPTION_RELEASES} bundles`
-                      : "Add a bundle by ID or app version…"
+                      : "Add a bundle by label, ID or app version…"
                   }
                   onPick={(release) =>
                     onReleasesChange([...ids, release.releaseId])

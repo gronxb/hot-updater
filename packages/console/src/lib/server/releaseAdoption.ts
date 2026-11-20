@@ -53,6 +53,7 @@ const labelled = async (
   );
   return bundles.map((release) => ({
     releaseId: release.id,
+    label: release.label ?? null,
     bundleId: release.bundle_id!,
     platform: release.platform,
     deployedAtMs: release.created_at_ms,

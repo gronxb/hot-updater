@@ -67,6 +67,10 @@ the same list as
 The Bundles list and its detail sheet show an **ID** that matches
 [`hotUpdater.getBundleId()`](/docs/react-native-api/getBundleId) on the device.
 Promoted updates have their own IDs even when they reuse the same files.
+Each bundle's ID follows its label, such as `v12`, numbered per channel and
+platform, wherever the Console names a bundle: the Bundles list and detail
+sheet, Insights, and a native build's **Served now**. A promotion's toast names
+the label the bundle took in its target channel.
 
 Start the local console, then open the link it prints:
 

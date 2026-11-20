@@ -180,6 +180,7 @@ export function ComparedBundlesChart({
       <BundleIdDisplay
         bundleId={release.releaseId}
         className="whitespace-nowrap"
+        label={release.label}
       />
       {name ? <span className="text-muted-foreground">{name}</span> : null}
     </span>

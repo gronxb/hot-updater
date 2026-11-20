@@ -370,6 +370,7 @@ export function ReleaseEditorSheet({
                     <BundleIdDisplay
                       bundleId={release.id}
                       fullOnMobile
+                      label={release.label}
                       maxLength={18}
                     />
                     {!release.bundle_id ? (
@@ -888,17 +889,19 @@ export function ReleaseEditorSheet({
               onClick={async () => {
                 if (!release) return;
                 try {
-                  await promote.mutateAsync({
+                  const promoted = await promote.mutateAsync({
                     action: promoteAction,
                     expectedRevision: release.revision,
                     releaseId: release.id,
                     targetChannel: normalizedTargetChannel,
                   });
                   handlePromoteOpenChange(false);
+                  const label = promoted.target.release?.label;
+                  const as = typeof label === "number" ? ` as v${label}` : "";
                   toast.success(
                     isCopyPromotion
-                      ? `Bundle copied to ${normalizedTargetChannel}`
-                      : `Bundle moved to ${normalizedTargetChannel}`,
+                      ? `Bundle copied to ${normalizedTargetChannel}${as}`
+                      : `Bundle moved to ${normalizedTargetChannel}${as}`,
                   );
                 } catch (caught) {
                   toast.error(

@@ -25,6 +25,7 @@ import { ALL_CHANNELS } from "@/lib/constants";
 import {
   formatByteSize,
   nativeBuildArtifacts,
+  nativeBuildVersionLabel,
   platformLabel,
 } from "@/lib/native-builds";
 
@@ -105,6 +106,14 @@ export function NativeBuildDetailPage({
                 {nativeBuildArtifacts[detail.build.artifact_kind].label}
                 <SandboxBadge build={detail.build} />
               </span>
+              {nativeBuildVersionLabel(detail.build) ? (
+                <span
+                  className="font-mono whitespace-nowrap tabular-nums"
+                  translate="no"
+                >
+                  {nativeBuildVersionLabel(detail.build)}
+                </span>
+              ) : null}
               <span className="min-w-0 [overflow-wrap:anywhere]">
                 · <span translate="no">{detail.channel}</span>
               </span>
