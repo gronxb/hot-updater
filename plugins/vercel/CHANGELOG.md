@@ -1,5 +1,27 @@
 # @hot-updater/vercel
 
+## 1.2.0-rc.50
+
+### Patch Changes
+
+- d840def: fix: managed upgrades from 1.0.x and 1.1.x to 1.2.0.
+  - **Inputs from the environment.** Vercel's and Azure's init read an input the environment sets, as init's preflight and every other provider do, so a database URL set for the run, as the 1.2.0 upgrade guide says, is used instead of failing with `must be a postgres:// or postgresql:// URL`. Every provider's init also reuses a `HOT_UPDATER_API_KEY` the environment sets.
+  - **Vercel config.** Init's rewrite of a 1.0.2 or 1.0.3 config drops `vercelBlobStorage`'s removed `access` option, so the config type-checks.
+  - **Google credentials.** Firebase init stops before any change with what is wrong when Google credentials don't load, such as the 1.0.0 placeholder `GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json`. `firebaseDatabase` with a `credential` loads it before its first Firestore call, so doctor reports the failed read instead of ending with a stack trace.
+
+- Updated dependencies [24fc70c]
+- Updated dependencies [f7884ec]
+- Updated dependencies [9851868]
+- Updated dependencies [21cf534]
+- Updated dependencies [36e1f23]
+- Updated dependencies [d840def]
+- Updated dependencies [ee805d9]
+  - @hot-updater/plugin-core@1.2.0-rc.50
+  - @hot-updater/server@1.2.0-rc.50
+  - @hot-updater/cli-tools@1.2.0-rc.50
+  - @hot-updater/postgres@1.2.0-rc.50
+  - @hot-updater/protocol@1.2.0-rc.50
+
 ## 1.2.0-rc.49
 
 ### Patch Changes

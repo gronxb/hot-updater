@@ -1,5 +1,17 @@
 # @hot-updater/sentry-plugin
 
+## 1.2.0-rc.50
+
+### Patch Changes
+
+- Updated dependencies [24fc70c]
+- Updated dependencies [21cf534]
+- Updated dependencies [36e1f23]
+- Updated dependencies [d840def]
+  - @hot-updater/plugin-core@1.2.0-rc.50
+  - @hot-updater/cli-tools@1.2.0-rc.50
+  - @hot-updater/protocol@1.2.0-rc.50
+
 ## 1.2.0-rc.49
 
 ### Patch Changes
