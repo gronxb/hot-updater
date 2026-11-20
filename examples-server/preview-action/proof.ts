@@ -48,6 +48,10 @@ interface NativeBuild {
   min_bundle_id: string;
   artifact_storage_uri: string;
   byte_size: string;
+  app_version: string | null;
+  native_app_version: string | null;
+  build_number: string | null;
+  submitted_version: string | null;
 }
 
 interface Release {
@@ -75,7 +79,8 @@ const nativeBuilds = async (db: pg.Pool, platform: string) =>
   (
     await db.query<NativeBuild>(
       `select nb.id, c.name as channel, nb.fingerprint_hash, nb.min_bundle_id,
-              nb.artifact_storage_uri, nb.byte_size
+              nb.artifact_storage_uri, nb.byte_size, nb.app_version,
+              nb.native_app_version, nb.build_number, nb.submitted_version
          from native_builds nb join channels c on c.id = nb.channel_id
         where nb.platform = $1 order by nb.id`,
       [platform],
@@ -148,9 +153,27 @@ const checkRelease = (release: Release | undefined, build: NativeBuild) => {
   );
 };
 
+/**
+ * The build as the stores show it, `1.0 (1)`, from its row: the store's
+ * label once one took it, else the version its artifact reports and its
+ * build number.
+ */
+const storeLabel = (build: NativeBuild | undefined): string | null => {
+  if (!build) return null;
+  if (build.submitted_version) return build.submitted_version;
+  if (!build.build_number) return null;
+  const version = build.native_app_version ?? build.app_version;
+  return version ? `${version} (${build.build_number})` : build.build_number;
+};
+
 const checkComment = async (
   comment: string,
-  expected: { buildId: string; built: boolean; releaseId: string },
+  expected: {
+    buildId: string;
+    built: boolean;
+    releaseId: string;
+    version: string | null;
+  },
 ) => {
   const consoleUrl = env("PROOF_CONSOLE_URL").replace(/\/+$/, "");
   // A native build gets links only, and this job has no sandbox build, whose
@@ -163,8 +186,14 @@ const checkComment = async (
     !/hot-updater\/channel\/|openurl|am start/.test(comment),
     `the comment has a channel link:\n${comment}`,
   );
-  const link = `- **Android**: [Download APK](${consoleUrl}/api/native-builds/${expected.buildId}/download) · [Details](${consoleUrl}/native-builds/${expected.buildId})`;
-  const row = `| Android | \`${expected.buildId}\` · ${expected.built ? "built for this commit" : "reused"} |`;
+  // The example app reports its versionName and versionCode.
+  check(
+    expected.version !== null,
+    `native build ${expected.buildId} has no version and build number`,
+  );
+  const version = `\`${expected.version}\``;
+  const link = `- **Android**: [Download APK](${consoleUrl}/api/native-builds/${expected.buildId}/download) · ${version} · [Details](${consoleUrl}/native-builds/${expected.buildId})`;
+  const row = `| Android | ${version} · \`${expected.buildId}\` · ${expected.built ? "built for this commit" : "reused"} |`;
   for (const line of [link, row]) {
     check(
       comment.includes(line),
@@ -219,6 +248,7 @@ try {
         buildId: build.id,
         built: true,
         releaseId: newestRelease?.id ?? "",
+        version: storeLabel(build),
       });
       state.firstBuildId = build.id;
       state.firstFingerprint = build.fingerprint_hash;
@@ -241,6 +271,7 @@ try {
         buildId: state.firstBuildId ?? "",
         built: false,
         releaseId: newestRelease?.id ?? "",
+        version: storeLabel(builds[0]),
       });
       check(
         !comment.includes("built for this commit"),
@@ -270,6 +301,7 @@ try {
         buildId: build.id,
         built: true,
         releaseId: newestRelease?.id ?? "",
+        version: storeLabel(build),
       });
       break;
     }
