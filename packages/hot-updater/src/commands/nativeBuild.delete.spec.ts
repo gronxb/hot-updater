@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from "node:util";
+
 import {
   createStorageAdapter,
   type NativeBuildRegistration,
@@ -146,8 +148,11 @@ describe("handleNativeBuildDelete", () => {
 
     await handleNativeBuildDelete(BUILD_ID, {});
 
+    // Colors are on where `CI` is set.
     const lines = (calls: unknown[][]) =>
-      calls.flatMap(([text]) => String(text).split("\n"));
+      calls.flatMap(([text]) =>
+        stripVTControlCharacters(String(text)).split("\n"),
+      );
     expect(lines(log.step.mock.calls)).toContain("Build        1.7.0 (66)");
     expect(lines(log.success.mock.calls)).toContain("Build     1.7.0 (66)");
 
