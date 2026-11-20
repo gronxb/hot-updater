@@ -3110,6 +3110,12 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     func notifyAppReady() -> [String: Any] {
+        // JavaScript reads on its own thread while first content verifies the
+        // launch on the main thread. markLaunchCompleted saves the verified
+        // metadata before the report, so a read between the two would answer a
+        // final UNCHANGED; under the lock it sees both writes or neither.
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
         guard let report = loadLaunchReport() else {
             if let launchedBundleId = pendingLaunchBundleId,
                let metadata = loadMetadataOrNull(),

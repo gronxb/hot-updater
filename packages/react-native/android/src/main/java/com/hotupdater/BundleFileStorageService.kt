@@ -1641,28 +1641,33 @@ class BundleFileStorageService(
 
     // MARK: - notifyAppReady
 
-    override fun notifyAppReady(): Map<String, Any?> {
-        val report = loadLaunchReport()
-        if (report == null) {
-            val metadata = loadMetadataOrNull()
-            val launchedBundleId = pendingLaunchBundleId
-            if (launchedBundleId != null &&
-                metadata?.verificationPending == true &&
-                metadata.stagingBundleId == launchedBundleId
-            ) {
-                return mapOf("status" to "PENDING")
+    // JS reads on its own thread while first content verifies the launch on the
+    // main thread. markLaunchCompleted saves the verified metadata before the
+    // report, so a read between the two would answer a final UNCHANGED; under
+    // the lock it sees both writes or neither.
+    override fun notifyAppReady(): Map<String, Any?> =
+        synchronized(releaseStateLock) {
+            val report = loadLaunchReport()
+            if (report == null) {
+                val metadata = loadMetadataOrNull()
+                val launchedBundleId = pendingLaunchBundleId
+                if (launchedBundleId != null &&
+                    metadata?.verificationPending == true &&
+                    metadata.stagingBundleId == launchedBundleId
+                ) {
+                    return@synchronized mapOf("status" to "PENDING")
+                }
+                return@synchronized mapOf("status" to "UNCHANGED")
             }
-            return mapOf("status" to "UNCHANGED")
+            buildMap {
+                put("status", report.status)
+                report.fromReleaseId?.let { put("fromReleaseId", it) }
+                report.fromBundleId?.let { put("fromBundleId", it) }
+                report.toReleaseId?.let { put("toReleaseId", it) }
+                report.toBundleId?.let { put("toBundleId", it) }
+                report.updateStrategy?.let { put("updateStrategy", it) }
+            }
         }
-        return buildMap {
-            put("status", report.status)
-            report.fromReleaseId?.let { put("fromReleaseId", it) }
-            report.fromBundleId?.let { put("fromBundleId", it) }
-            report.toReleaseId?.let { put("toReleaseId", it) }
-            report.toBundleId?.let { put("toBundleId", it) }
-            report.updateStrategy?.let { put("updateStrategy", it) }
-        }
-    }
 
     // MARK: - Bundle URL Operations
 
