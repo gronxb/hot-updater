@@ -380,7 +380,7 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
     archiveRequests?: number;
     archiveResumes?: number;
     currentBundleId?: string;
-    fileRequests?: number | "changed-assets";
+    fileRequests?: number | "changed-assets" | string[];
     filesRequests?: number;
     maxRequestsPerAsset?: number;
     minNetworkAssets?: number;
@@ -388,13 +388,23 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
     targetBundleId?: string;
     verifyAllAssetHashes?: boolean;
   };
+  const filePaths = Array.isArray(payload.fileRequests)
+    ? payload.fileRequests
+    : null;
   const counts = [
     payload.archiveRequests,
-    payload.fileRequests === "changed-assets" ? 0 : payload.fileRequests,
+    payload.fileRequests === "changed-assets" || filePaths !== null
+      ? 0
+      : payload.fileRequests,
     payload.patchRequests,
   ];
   if (
     payload.currentBundleId === "" ||
+    (filePaths !== null &&
+      (!filePaths.every(
+        (filePath) => typeof filePath === "string" && filePath.length > 0,
+      ) ||
+        new Set(filePaths).size !== filePaths.length)) ||
     !payload.targetBundleId ||
     counts.some(
       (value) =>
@@ -418,7 +428,7 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
     return c.json(
       {
         error:
-          "a target bundle id and non-negative archive, file, and patch request counts are required",
+          "a target bundle id, non-negative archive, file, and patch request counts, and unique file paths are required",
       },
       400,
     );

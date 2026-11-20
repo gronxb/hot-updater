@@ -14,6 +14,7 @@ import {
   resolveSuiteScenarioNames,
 } from "./scenarios.ts";
 import type { ControlOptions, ScenarioAppDriver } from "./scenarios.ts";
+import { BROWNFIELD_E2E_TARGET, listE2eTargets } from "./targets.ts";
 
 const repoDir = path.resolve(import.meta.dirname, "../..");
 const sharedScreenRoutesDir = path.join(repoDir, "e2e/shared/screen-routes");
@@ -184,6 +185,7 @@ type RecordedScenarioCall =
 
 async function recordScenarioCalls(
   scenarioName: string,
+  platform: ScenarioAppDriver["platform"] = "ios",
 ): Promise<readonly RecordedScenarioCall[]> {
   const calls: RecordedScenarioCall[] = [];
   const app: ScenarioAppDriver = {
@@ -203,7 +205,7 @@ async function recordScenarioCalls(
       calls.push({ kind: "launch", options, stage });
       return Promise.resolve();
     },
-    platform: "ios",
+    platform,
     reload: (stage) => {
       calls.push({ kind: "reload", stage });
       return Promise.resolve();
@@ -236,6 +238,7 @@ async function recordScenarioCalls(
 async function runScenarioFailingAt(
   scenarioName: string,
   failingStage?: string,
+  platform: ScenarioAppDriver["platform"] = "ios",
 ): Promise<readonly string[]> {
   const stages: string[] = [];
   const step = (stage: string) => {
@@ -249,7 +252,7 @@ async function runScenarioFailingAt(
     background: step,
     control: step,
     launch: step,
-    platform: "ios",
+    platform,
     reload: step,
     resetAppState: step,
     tap: step,
@@ -393,15 +396,22 @@ describe("E2E scenario contract", () => {
       );
     });
 
-    it.each([
-      "the app installs the first update",
-      "the server log shows only a patch downloaded",
-      "the first update runs",
-    ])("fails when %s doesn't hold, then checks the rest", async (stage) => {
-      await expect(runScenarioFailingAt(name, stage)).rejects.toThrow(
-        `${reason}\nmismatch at ${stage}`,
-      );
-    });
+    it.each(
+      (["ios", "android"] as const).flatMap((platform) =>
+        [
+          "the app installs the first update",
+          "the server log shows only a patch downloaded",
+          "the first update runs",
+        ].map((stage) => [stage, platform] as const),
+      ),
+    )(
+      "fails when %s doesn't hold on %s, then checks the rest",
+      async (stage, platform) => {
+        await expect(
+          runScenarioFailingAt(name, stage, platform),
+        ).rejects.toThrow(`${reason}\nmismatch at ${stage}`);
+      },
+    );
 
     it.each([
       "read both builds' IDs from their code",
@@ -433,6 +443,78 @@ describe("E2E scenario contract", () => {
           "/e2e/assert-bundle-artifact-transfers",
         ]),
       );
+    });
+  });
+
+  describe("a store install's first OTA", () => {
+    const xmlDrawable = "drawable-mdpi/src_test_builtin_reuse_vector.xml";
+    const transferSteps = {
+      "store-install-patches-from-built-in":
+        "assert only the patch was downloaded",
+      "store-install-built-in-mismatch-downloads":
+        "assert the file was downloaded instead of the patch",
+      "store-install-patches-from-marked-build":
+        "the server log shows only a patch downloaded",
+    } as const;
+    const transferBody = async (
+      scenarioName: keyof typeof transferSteps,
+      platform: ScenarioAppDriver["platform"],
+    ) => {
+      const call = (await recordScenarioCalls(scenarioName, platform)).find(
+        (entry) => entry.stage === transferSteps[scenarioName],
+      );
+      if (!call || call.kind !== "control") {
+        throw new Error(`Missing transfer step in ${scenarioName}`);
+      }
+      return call.body ?? {};
+    };
+
+    it.each([
+      ["store-install-patches-from-built-in", 0, [xmlDrawable]],
+      [
+        "store-install-built-in-mismatch-downloads",
+        1,
+        ["index.android.bundle", xmlDrawable],
+      ],
+      ["store-install-patches-from-marked-build", 0, [xmlDrawable]],
+    ] as const)(
+      "%s downloads only the XML drawable besides the bundle on Android, which compiles it",
+      async (scenarioName, iosFileRequests, androidFiles) => {
+        expect(await transferBody(scenarioName, "ios")).toMatchObject({
+          archiveRequests: 0,
+          fileRequests: iosFileRequests,
+        });
+        expect(await transferBody(scenarioName, "android")).toMatchObject({
+          archiveRequests: 0,
+          fileRequests: androidFiles,
+        });
+      },
+    );
+
+    it("names the XML drawable every example app requires, where Metro and Re.Pack put it", async () => {
+      // The store install scenarios run on every greenfield target.
+      const targets = listE2eTargets(repoDir).filter(
+        (name) => name !== BROWNFIELD_E2E_TARGET,
+      );
+      expect(targets).toEqual(["v0.74.1", "v0.85.0", "v0.88.0"]);
+      const source = "src/test/builtin_reuse_vector.xml";
+      for (const target of targets) {
+        const app = await fs.readFile(
+          path.join(repoDir, "examples", target, "App.tsx"),
+          "utf8",
+        );
+        expect(app).toContain(`require("./${source}")`);
+        await expect(
+          fs.access(path.join(repoDir, "examples", target, source)),
+        ).resolves.toBeUndefined();
+      }
+      // A 1x drawable, named after its path from the app root.
+      const name = source
+        .replace(/\.xml$/, "")
+        .toLowerCase()
+        .replace(/\//g, "_")
+        .replace(/[^a-z0-9_]/g, "");
+      expect(`drawable-mdpi/${name}.xml`).toBe(xmlDrawable);
     });
   });
 

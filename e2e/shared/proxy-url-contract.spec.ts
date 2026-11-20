@@ -912,6 +912,174 @@ describe("E2E remote asset proxy URLs", () => {
     }
   }, 30_000);
 
+  it("expects exactly the named files downloaded whole, each once", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-named-files-"),
+    );
+    const bundle = "index.android.bundle";
+    const xml = "drawable-mdpi/src_test_builtin_reuse_vector.xml";
+    const png = "drawable-mdpi/src_test_builtin_reuse.png";
+    const baseUrl = "https://provider.example.com/hot-updater";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = new URL(input instanceof Request ? input.url : input);
+        const match =
+          /^\/hot-updater\/artifacts\/v1\/([^/]+)\/from\/built-in$/.exec(
+            url.pathname,
+          );
+        if (!match) return new Response("bytes");
+        const target = match[1]!;
+        return Response.json({
+          artifactProtocolVersion: 1,
+          assets: Object.fromEntries(
+            [bundle, xml, png].map((assetPath) => [
+              assetPath,
+              {
+                file: { url: `/storage/${target}/${assetPath}` },
+                fileHash: "unused",
+                ...(assetPath === bundle
+                  ? {
+                      patch: {
+                        algorithm: "bsdiff",
+                        baseBundleId: "built-in",
+                        patchUrl: `/storage/${target}/${bundle}.bsdiff`,
+                      },
+                    }
+                  : {}),
+              },
+            ]),
+          ),
+          manifestFileHash: "manifest-hash",
+          manifestUrl: `/storage/${target}/manifest.json`,
+        });
+      }),
+    );
+    vi.resetModules();
+    vi.stubEnv("HOT_UPDATER_E2E_APP_BASE_URL", baseUrl);
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.example");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "test-simulator");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", root);
+    vi.stubEnv("PORT", "3107");
+    try {
+      const controller = await import("./control-server/controller.ts");
+      const controlRoutes = (await import("./control-server/routes.ts"))
+        .default;
+      // One artifact request per target, then the downloads the client
+      // chooses: a file, or the patch of the bundle.
+      const install = async (
+        target: string,
+        downloads: Array<{ assetPath: string; patch?: boolean }>,
+      ) => {
+        const payload = (await (
+          await controller.handleProxyUpdateRequest(
+            new Request(
+              `http://localhost:3107/hot-updater/artifacts/v1/${target}/from/built-in`,
+            ),
+          )
+        ).json()) as {
+          assets: Record<
+            string,
+            { file: { url: string }; patch?: { patchUrl: string } }
+          >;
+        };
+        for (const { assetPath, patch } of downloads) {
+          const asset = payload.assets[assetPath]!;
+          await (
+            await controller.handleProxyRemoteAssetRequest(
+              new Request(patch ? asset.patch!.patchUrl : asset.file.url),
+            )
+          ).text();
+        }
+      };
+      const assertFiles = (targetBundleId: string, fileRequests: string[]) =>
+        controller.handleAssertBundleArtifactTransfers({
+          archiveRequests: 0,
+          currentBundleId: "built-in",
+          fileRequests,
+          patchRequests: 1,
+          targetBundleId,
+        });
+
+      // The patch of the bundle, and the XML drawable the built-in bundle
+      // can't give.
+      await install("patch-and-xml", [
+        { assetPath: bundle, patch: true },
+        { assetPath: xml },
+      ]);
+      expect(assertFiles("patch-and-xml", [xml])).toMatchObject({
+        expectedFilePaths: [xml],
+        expectedFileRequests: 1,
+        fileRequests: 1,
+        patchRequests: 1,
+      });
+      // A count of 0 sees the XML drawable as one file too many.
+      expect(() =>
+        controller.handleAssertBundleArtifactTransfers({
+          archiveRequests: 0,
+          currentBundleId: "built-in",
+          fileRequests: 0,
+          patchRequests: 1,
+          targetBundleId: "patch-and-xml",
+        }),
+      ).toThrow("Unexpected Bundle artifact transfers");
+      // One file, but not the one named.
+      expect(() => assertFiles("patch-and-xml", [png])).toThrow(
+        "Unexpected Bundle artifact transfers",
+      );
+
+      // Also the PNG the built-in bundle has.
+      await install("extra-file", [
+        { assetPath: bundle, patch: true },
+        { assetPath: xml },
+        { assetPath: png },
+      ]);
+      expect(() => assertFiles("extra-file", [xml])).toThrow(
+        "Unexpected Bundle artifact transfers",
+      );
+
+      // The XML drawable copied from the built-in bundle instead.
+      await install("no-xml", [{ assetPath: bundle, patch: true }]);
+      expect(() => assertFiles("no-xml", [xml])).toThrow(
+        "Unexpected Bundle artifact transfers",
+      );
+
+      // The XML drawable downloaded twice.
+      await install("xml-twice", [
+        { assetPath: bundle, patch: true },
+        { assetPath: xml },
+        { assetPath: xml },
+      ]);
+      expect(() => assertFiles("xml-twice", [xml])).toThrow(
+        "Unexpected Bundle artifact transfers",
+      );
+
+      // The route takes named files, and refuses an empty or repeated name.
+      const assertRoute = (fileRequests: unknown) =>
+        controlRoutes.request("/e2e/assert-bundle-artifact-transfers", {
+          body: JSON.stringify({
+            archiveRequests: 0,
+            currentBundleId: "built-in",
+            fileRequests,
+            patchRequests: 1,
+            targetBundleId: "patch-and-xml",
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        });
+      expect((await assertRoute([xml])).status).toBe(200);
+      expect((await assertRoute([png])).status).toBe(422);
+      expect((await assertRoute([""])).status).toBe(400);
+      expect((await assertRoute([xml, xml])).status).toBe(400);
+      expect((await assertRoute([1])).status).toBe(400);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await fs.rm(root, { force: true, recursive: true });
+    }
+  }, 30_000);
+
   it("uses the API key for direct and proxied update requests", async () => {
     const resultsDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-api-key-proxy-"),

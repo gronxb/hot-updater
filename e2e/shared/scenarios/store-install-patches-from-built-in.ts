@@ -4,6 +4,18 @@ import type { ScenarioAppDriver, ScenarioDefinition } from "./types.ts";
 const NATIVE_BUILD_APP_VERSION = "1.0";
 
 /**
+ * The files a store install's first OTA downloads whole although its built-in
+ * bundle has the same ones. Android's build compiles an XML drawable to binary
+ * XML, so the APK has no copy of the file the OTA lists; iOS packages every
+ * file as is. The example apps require one, `src/test/builtin_reuse_vector.xml`,
+ * which Metro and Re.Pack both place at 1x in `drawable-mdpi`, named after its
+ * path.
+ */
+export const ANDROID_COMPILED_BUILT_IN_FILES = [
+  "drawable-mdpi/src_test_builtin_reuse_vector.xml",
+];
+
+/**
  * Registers the installed app as a native build, deploys an update to the
  * build's own channel, and installs it from a fresh install: the store
  * install's first OTA.
@@ -125,7 +137,9 @@ export const storeInstallPatchesFromBuiltInScenario: ScenarioDefinition = {
       {
         archiveRequests: 0,
         currentBundleId: "$nativeBuildMinBundleId",
-        fileRequests: 0,
+        // Besides the patch, only what the built-in bundle can't give.
+        fileRequests:
+          app.platform === "android" ? ANDROID_COMPILED_BUILT_IN_FILES : 0,
         patchRequests: 1,
         targetBundleId: "$firstOtaBundleId",
       },
