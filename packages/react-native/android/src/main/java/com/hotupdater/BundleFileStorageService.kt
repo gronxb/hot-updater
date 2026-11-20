@@ -1887,7 +1887,8 @@ class BundleFileStorageService(
             hasSettledPreviousLaunch = true
             recoverInterruptedPromotions()
             // Cleared before the rollbacks below, so the launch reports their RECOVERED.
-            saveLaunchReport(null)
+            // Under releaseStateLock, like every launch report access.
+            synchronized(releaseStateLock) { saveLaunchReport(null) }
             applyPendingRecoveryIfNeeded(pendingRecovery())
             synchronized(releaseStateLock) {
                 // Only a new storage instance consumes an unfinished launch. Repeated bundle
@@ -1946,7 +1947,7 @@ class BundleFileStorageService(
         if (hasPreparedLaunch) {
             // A later launch in this process, after a reset or a reload.
             recoverInterruptedPromotions()
-            saveLaunchReport(null)
+            synchronized(releaseStateLock) { saveLaunchReport(null) }
             applyPendingRecoveryIfNeeded(pendingRecovery)
         } else {
             settlePreviousLaunch { pendingRecovery }

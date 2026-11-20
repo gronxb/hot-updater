@@ -2236,7 +2236,10 @@ class BundleFileStorageService: BundleStorageService {
         guard !hasSettledPreviousLaunch else { return }
         hasSettledPreviousLaunch = true
         // Cleared before the rollbacks below, so the launch reports their RECOVERED.
+        // Under releaseStateLock, like every launch report access.
+        releaseStateLock.lock()
         saveLaunchReport(nil)
+        releaseStateLock.unlock()
         applyPendingRecoveryIfNeeded(pendingRecovery())
         releaseStateLock.lock()
         defer { releaseStateLock.unlock() }
@@ -2302,7 +2305,9 @@ class BundleFileStorageService: BundleStorageService {
         loadOrCreateInstallIdentity()
         if hasPreparedLaunch {
             // A later launch in this process, after a reset or a reload.
+            releaseStateLock.lock()
             saveLaunchReport(nil)
+            releaseStateLock.unlock()
             applyPendingRecoveryIfNeeded(pendingRecovery)
         } else {
             settlePreviousLaunch { pendingRecovery }
