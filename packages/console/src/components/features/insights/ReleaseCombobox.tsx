@@ -31,9 +31,10 @@ type ReleaseGroup = {
   readonly items: readonly AdoptionRelease[];
 };
 
-/** Whether a bundle deployment matches what was typed: its IDs or target app version. */
+/** Whether a bundle deployment matches what was typed: its label, IDs or target app version. */
 const matches = (release: AdoptionRelease, typed: string) =>
   typed === "" ||
+  (release.label !== null && `v${release.label}` === typed) ||
   release.releaseId.includes(typed) ||
   release.bundleId.toLowerCase().includes(typed) ||
   (release.targetAppVersion ?? "").toLowerCase().includes(typed);
@@ -49,7 +50,11 @@ export function ReleaseOption({
       <span className="flex min-w-0 items-center gap-1.5">
         <PlatformIcon platform={release.platform} className="size-3 shrink-0" />
         <span className="sr-only">{platformLabel(release.platform)}</span>
-        <BundleIdDisplay bundleId={release.releaseId} className="min-w-0" />
+        <BundleIdDisplay
+          bundleId={release.releaseId}
+          className="min-w-0"
+          label={release.label}
+        />
       </span>
       <span className="text-xs text-muted-foreground">
         Deployed {formatDeployedAt(release.deployedAtMs)}

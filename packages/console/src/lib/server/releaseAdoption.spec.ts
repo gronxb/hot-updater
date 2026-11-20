@@ -62,7 +62,7 @@ const row = (
 
 // Newest first, as the release index lists them.
 const releases = [
-  row("release-4", 9 * DAY, { message: "Newest" }),
+  row("release-4", 9 * DAY, { message: "Newest", label: 4 }),
   row("release-no-bundle", 8 * DAY, { bundle_id: null }),
   row("release-3", 7 * DAY, { enabled: false }),
   row("release-2", 5 * DAY),
@@ -123,6 +123,7 @@ describe("Release health bundles", () => {
     expect(listed).toEqual([
       {
         releaseId: "release-4",
+        label: 4,
         bundleId: "bundle-release-4",
         platform: "ios",
         deployedAtMs: 9 * DAY,
@@ -133,6 +134,8 @@ describe("Release health bundles", () => {
       },
       expect.objectContaining({
         releaseId: "release-3",
+        // A release the label fill hasn't reached has none.
+        label: null,
         enabled: false,
         live: false,
       }),
@@ -239,6 +242,7 @@ describe("Release health's default bundles", () => {
     live: boolean,
   ): AdoptionRelease => ({
     releaseId,
+    label: null,
     bundleId: `bundle-${releaseId}`,
     platform,
     deployedAtMs: 0,

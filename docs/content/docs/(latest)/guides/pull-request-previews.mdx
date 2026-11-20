@@ -737,9 +737,12 @@ expire. A phone without a Console session signs in first, and a phone that
 opens a private Console's link has to be on its network. Install lines are
 links only: the sandbox links are the comment's only QR codes.
 
-Two collapsed sections follow. **Builds** lists each native build, whether
-this run built or reused it, its fingerprint or app version, and the bundle's
-ID. The other section shows how to install a Simulator app with
+Each install line names the build's version and build number, such as
+`1.7.0 (66)`, as the Console's Native builds page does.
+
+Two collapsed sections follow. **Builds** lists each native build with its
+version and build number, whether this run built or reused it, its
+fingerprint or app version, and the bundle's ID. The other section shows how to install a Simulator app with
 [`native-build install`](/docs/guides/native-build#install-a-build), run in
 your project, and an APK on an emulator with `adb install`.
 

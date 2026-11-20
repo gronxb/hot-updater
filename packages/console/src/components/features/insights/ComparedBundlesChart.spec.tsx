@@ -27,6 +27,7 @@ const releaseOf = (
   deployedAtMs: number,
 ): AdoptionRelease => ({
   releaseId,
+  label: null,
   bundleId: `bundle-${releaseId}`,
   platform: "ios",
   deployedAtMs,

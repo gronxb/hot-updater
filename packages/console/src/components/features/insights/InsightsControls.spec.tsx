@@ -25,6 +25,7 @@ const release = (
   overrides: Partial<AdoptionRelease> = {},
 ): AdoptionRelease => ({
   releaseId,
+  label: null,
   bundleId: `bundle-${releaseId}`,
   platform: "ios",
   deployedAtMs: 0,
@@ -178,6 +179,49 @@ describe("InsightsControls", () => {
     expect(onFiltersChange).toHaveBeenLastCalledWith({
       releaseId: "01a13d86-86f7-7830-952d-21238207019f",
     });
+  });
+
+  it("finds a release by its label, and names the picked one by it", async () => {
+    const labeled = "01a13d86-86f7-7830-952d-21238207019f";
+    const { onFiltersChange, rerender } = renderControls({
+      releases: [
+        release("01a16ed8-85df-749f-8f9e-0e22532a5d87", { label: 11 }),
+        release(labeled, { label: 12 }),
+      ],
+    });
+    fireEvent.click(screen.getByRole("combobox", { name: /^Release/ }));
+    const search = await screen.findByRole("combobox", {
+      name: "Search releases",
+    });
+    act(() => search.focus());
+    fireEvent.input(search, {
+      inputType: "insertText",
+      target: { value: "v12" },
+    });
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      expect.stringMatching(/^iOSv12 01a13d86/),
+    ]);
+    await choose(options[0]!);
+    expect(onFiltersChange).toHaveBeenLastCalledWith({ releaseId: labeled });
+
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <InsightsControls
+          filters={{
+            channel: "production",
+            platform: "all",
+            releaseId: labeled,
+          }}
+          appVersions={[]}
+          releases={[release(labeled, { label: 12 })]}
+          onFiltersChange={onFiltersChange}
+        />
+      </QueryClientProvider>,
+    );
+    expect(
+      screen.getByRole("combobox", { name: `Release: ${labeled}` }).textContent,
+    ).toBe("Releasev12");
   });
 
   it("looks up a pasted release ID the list leaves out, in the filters' scope", async () => {

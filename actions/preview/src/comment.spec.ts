@@ -351,6 +351,29 @@ adb install -r app-release.apk
     expect(body).toContain("| `1.4.0` |");
   });
 
+  it("names each build as the stores show it, where it has a build number", () => {
+    const body = renderPreviewComment({
+      ...base,
+      previews: [
+        {
+          ...android,
+          nativeBuild: { ...android.nativeBuild, version: "1.7.0 (42)" },
+        },
+        { ...ipa, nativeBuild: { ...ipa.nativeBuild, version: "1.7.0 (66)" } },
+      ],
+    });
+
+    expect(body).toContain(
+      `- **Android**: [Download APK](${C}/api/native-builds/${android.nativeBuild.id}/download) · \`1.7.0 (42)\` · [Details]`,
+    );
+    expect(body).toContain(
+      `- **iOS**: [Install on iPhone](${C}/native-builds/${ipa.nativeBuild.id}) · [Download IPA](${C}/api/native-builds/${ipa.nativeBuild.id}/download) · \`1.7.0 (66)\` · registered devices only`,
+    );
+    expect(body).toContain(
+      `| Android | \`1.7.0 (42)\` · \`${android.nativeBuild.id}\` · built for this commit |`,
+    );
+  });
+
   it("quotes an artifact name a shell would read otherwise", () => {
     const body = renderPreviewComment({
       ...base,

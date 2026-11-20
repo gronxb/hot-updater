@@ -498,7 +498,9 @@ describe("NativeBuildsTable", () => {
         }),
       ).toBeTruthy();
       expect(within(card).queryByRole("link", { name: /Download/ })).toBeNull();
-      expect(meta!.textContent).toMatch(/^AndroidBuild 66·50\.0 MB·.+ ago$/);
+      expect(meta!.textContent).toMatch(
+        /^AndroidBuild 1\.3\.0 \(66\)·50\.0 MB·.+ ago$/,
+      );
       expect(hashes!.textContent).toBe(
         "Target 1a2b3c4d…9c0dBuild key a1b2c3d4…9f0e",
       );
@@ -547,6 +549,34 @@ describe("NativeBuildsTable", () => {
     );
 
     expect(cellText(screen.getAllByRole("row")[1]!, "Build")).toBe("66");
+  });
+
+  it("shows the build as the stores show it: its version and build number, or the store's label", () => {
+    render(
+      <NativeBuildsTable
+        builds={builds([
+          build({
+            id: id(2),
+            native_app_version: "1.7.0",
+            app_version: "1.x.x",
+            build_number: "66",
+          }),
+          build({
+            id: id(1),
+            app_version: "1.7.1",
+            build_number: "67",
+            submitted_version: "1.7.1 (67)",
+          }),
+        ])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    const rows = screen.getAllByRole("row");
+    expect(cellText(rows[1]!, "Build")).toBe("1.7.0 (66)");
+    expect(cellText(rows[2]!, "Build")).toBe("1.7.1 (67)");
   });
 
   it("marks a build a store took with its track and the store's label, from the row alone", () => {
@@ -1832,6 +1862,20 @@ describe("BuiltInBundleCard", () => {
     );
   });
 
+  it("shows the build's version and build number, as the list does", () => {
+    render(
+      <BuiltInBundleCard
+        detail={detail({
+          build: build({ id: id(9), app_version: "1.7.0", build_number: "66" }),
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Build").nextSibling?.textContent).toBe(
+      "1.7.0 (66)",
+    );
+  });
+
   it("names the base by app version and build number, as the CLI does", () => {
     const store = build({
       id: id(9),
@@ -1971,6 +2015,23 @@ describe("ServedNowCard", () => {
     targetCohorts: [],
     shouldForceUpdate: false,
     message: `Release of ${bundleId}`,
+  });
+
+  it("names each release by its label before its bundle ID", () => {
+    render(
+      <ServedNowCard
+        detail={detail({
+          servedNow: [
+            { ...release(id(21), id(121)), label: 7 },
+            release(id(20), id(120)),
+          ],
+          patches: patchPage([]),
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: `v7 ${id(21)}` })).toBeTruthy();
+    expect(screen.getByRole("link", { name: id(20) })).toBeTruthy();
   });
 
   it("gives a marked build the command for a newest OTA with no patch from it", () => {

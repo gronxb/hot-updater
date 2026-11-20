@@ -44,6 +44,7 @@ const release = (
   overrides: Partial<AdoptionRelease> = {},
 ): AdoptionRelease => ({
   releaseId,
+  label: null,
   bundleId: `bundle-${releaseId}`,
   platform: "ios",
   deployedAtMs,

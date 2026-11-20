@@ -24,6 +24,8 @@ export type HealthPlatform = "all" | "ios" | "android";
 /** A deployed bundle, as Release health labels and rolls it back. */
 export type AdoptionRelease = {
   readonly releaseId: string;
+  /** The release's label, shown `v12`; null for a release without one. */
+  readonly label: number | null;
   readonly bundleId: string;
   readonly platform: "ios" | "android";
   readonly deployedAtMs: number;

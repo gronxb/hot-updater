@@ -18,7 +18,7 @@ const CREDIT = "Preview by [hot-updater](https://hot-updater.dev)";
  * @property {Platform} platform
  * @property {{ fingerprintHash: string | null, appVersion: string | null }} target
  *   What the native build was matched by.
- * @property {{ id: string, artifactKind: ArtifactKind, fileName: string, expiresAtMs?: number }} nativeBuild
+ * @property {{ id: string, artifactKind: ArtifactKind, fileName: string, version?: string | null, expiresAtMs?: number }} nativeBuild
  *   The tracked build, and its artifact's file name.
  * @property {boolean} built Whether this run built and registered the
  *   native build, rather than reusing a registered one.
@@ -213,14 +213,18 @@ const installLinks = (consoleUrl, channel, preview) => {
       details,
     ].join(" · ");
   }
+  // The build as the stores show it, as a store's row names it.
+  const version = preview.nativeBuild.version
+    ? ` · ${code(preview.nativeBuild.version)}`
+    : "";
   return {
-    apk: `[Download APK](${download}) · ${details} · allow "Install unknown apps" when Android asks`,
-    aab: `[Download AAB](${download}) · ${details}`,
-    ipa: `[Install on iPhone](${nativeBuildPageLink(consoleUrl, id)}) · [Download IPA](${download}) · registered devices only`,
+    apk: `[Download APK](${download})${version} · ${details} · allow "Install unknown apps" when Android asks`,
+    aab: `[Download AAB](${download})${version} · ${details}`,
+    ipa: `[Install on iPhone](${nativeBuildPageLink(consoleUrl, id)}) · [Download IPA](${download})${version} · registered devices only`,
     app:
       simulatorOpens(preview, channel) === undefined
-        ? `${details} · install with the command below`
-        : `${details} · the command below installs it and opens ${code(channel)}`,
+        ? `${details}${version} · install with the command below`
+        : `${details}${version} · the command below installs it and opens ${code(channel)}`,
   }[artifactKind];
 };
 
@@ -332,7 +336,7 @@ const buildsTable = (previews) => {
     "| --- | --- | --- | --- |",
     ...previews.map(
       (preview) =>
-        `| ${installLabel(preview)} | ${code(preview.nativeBuild.id)} · ${preview.built ? "built for this commit" : "reused"} | ${code(
+        `| ${installLabel(preview)} | ${preview.nativeBuild.version ? `${code(preview.nativeBuild.version)} · ` : ""}${code(preview.nativeBuild.id)} · ${preview.built ? "built for this commit" : "reused"} | ${code(
           preview.target.fingerprintHash === null
             ? String(preview.target.appVersion)
             : preview.target.fingerprintHash.slice(0, 12),

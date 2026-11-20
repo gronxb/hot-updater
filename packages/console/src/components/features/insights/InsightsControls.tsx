@@ -206,7 +206,7 @@ export function InsightsControls({
           candidates={releases}
           excluded={filters.releaseId ? [filters.releaseId] : []}
           label="Search releases"
-          placeholder="Search by ID or app version…"
+          placeholder="Search by label, ID or app version…"
           onPick={(release) =>
             onFiltersChange({ releaseId: release.releaseId })
           }
@@ -218,9 +218,14 @@ export function InsightsControls({
             >
               <span className="text-muted-foreground">Release</span>
               {filters.releaseId ? (
-                <span className="max-w-36 truncate font-mono" translate="no">
-                  {filters.releaseId}
-                </span>
+                <PickedRelease
+                  releaseId={filters.releaseId}
+                  label={
+                    releases.find(
+                      ({ releaseId }) => releaseId === filters.releaseId,
+                    )?.label ?? null
+                  }
+                />
               ) : (
                 "All"
               )}
@@ -239,5 +244,24 @@ export function InsightsControls({
         </Button>
       ) : null}
     </div>
+  );
+}
+
+/** The picked release: its label when the loaded releases have it, else its ID. */
+function PickedRelease({
+  releaseId,
+  label,
+}: {
+  readonly releaseId: string;
+  readonly label: number | null;
+}) {
+  return label === null ? (
+    <span className="max-w-36 truncate font-mono" translate="no">
+      {releaseId}
+    </span>
+  ) : (
+    <span className="tabular-nums" title={releaseId} translate="no">
+      v{label}
+    </span>
   );
 }

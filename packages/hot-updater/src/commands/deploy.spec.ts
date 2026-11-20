@@ -2171,7 +2171,7 @@ describe("deploy rollout wiring", () => {
       expect(baseBundleIds()).toEqual([fixtureBundleId(100)]);
       expect(
         printed().filter((line) => line.includes("Built-in base")),
-      ).toEqual([expect.stringMatching(/\(66\).*store build/)]);
+      ).toEqual([expect.stringMatching(/iOS 66 · store build/)]);
       expect(baseWarnings()).toEqual([]);
     });
 
@@ -2191,7 +2191,7 @@ describe("deploy rollout wiring", () => {
       expect(baseBundleIds()).toEqual([fixtureBundleId(101)]);
       expect(
         printed().filter((line) => line.includes("Built-in base")),
-      ).toEqual([expect.stringMatching(/\(67\).*newest build/)]);
+      ).toEqual([expect.stringMatching(/iOS 67 · newest build/)]);
       expect(baseWarnings()).toEqual([]);
     });
 

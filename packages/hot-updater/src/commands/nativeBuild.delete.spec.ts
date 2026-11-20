@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from "node:util";
+
 import {
   createStorageAdapter,
   type NativeBuildRegistration,
@@ -36,7 +38,7 @@ const BUILD_ID = "01900000-0000-7000-8000-00000000b001";
 const MIN_BUNDLE_ID = "01900000-0000-7000-8000-00000000a001";
 const ARTIFACT_URI = `storage://native-builds/ios/${BUILD_ID}/App.ipa`;
 
-const register = () =>
+const register = (overrides: Partial<NativeBuildRegistration> = {}) =>
   databaseHarness.core.registerNativeBuild({
     id: BUILD_ID,
     minBundleId: MIN_BUNDLE_ID,
@@ -52,6 +54,7 @@ const register = () =>
       manifestFileHash: "manifest-hash",
       assetBaseStorageUri: "storage://assets",
     },
+    ...overrides,
   } as NativeBuildRegistration);
 
 const events: string[] = [];
@@ -136,6 +139,32 @@ describe("handleNativeBuildDelete", () => {
       databaseHarness.core.deleteChannel(channel!.id),
     ).resolves.toEqual({ deleted: true });
     expect(process.exitCode).toBeUndefined();
+  });
+
+  it("names the build as the stores show it, its version and build number, and nothing without a build number", async () => {
+    await register({ buildNumber: "66", nativeAppVersion: "1.7.0" });
+    confirm.mockResolvedValue(true);
+    const { handleNativeBuildDelete } = await import("./nativeBuild");
+
+    await handleNativeBuildDelete(BUILD_ID, {});
+
+    // Colors are on where `CI` is set.
+    const lines = (calls: unknown[][]) =>
+      calls.flatMap(([text]) =>
+        stripVTControlCharacters(String(text)).split("\n"),
+      );
+    expect(lines(log.step.mock.calls)).toContain("Build        1.7.0 (66)");
+    expect(lines(log.success.mock.calls)).toContain("Build     1.7.0 (66)");
+
+    log.step.mockClear();
+    log.success.mockClear();
+    await register();
+    await handleNativeBuildDelete(BUILD_ID, {});
+    expect(
+      lines([...log.step.mock.calls, ...log.success.mock.calls]).filter(
+        (line) => line.startsWith("Build "),
+      ),
+    ).toEqual([]);
   });
 
   it("deletes nothing and succeeds for a build that is not registered, so it can run again", async () => {

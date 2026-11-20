@@ -12,6 +12,7 @@ import { useMarkNativeBuildMutation } from "@/lib/api";
 import {
   nativeBuildArtifacts,
   nativeBuildLabel,
+  nativeBuildVersionLabel,
   platformLabel,
   SANDBOX_NO_PATCH_BASE,
 } from "@/lib/native-builds";
@@ -198,10 +199,10 @@ export function BuiltInBundleCard({
               <BuildKeyDisplay value={build.build_key} />
             </span>
           </Row>
-          {!build.build_number ? null : (
+          {nativeBuildVersionLabel(build) === null ? null : (
             <Row label="Build">
               <span className="font-mono text-xs tabular-nums" translate="no">
-                {build.build_number}
+                {nativeBuildVersionLabel(build)}
               </span>
             </Row>
           )}

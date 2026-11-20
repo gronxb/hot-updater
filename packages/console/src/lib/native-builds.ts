@@ -70,31 +70,39 @@ export const nativeBuildPathKey = (
 export const platformLabel = (platform: "ios" | "android") =>
   platform === "ios" ? "iOS" : "Android";
 
+type NativeBuildVersionFields = Pick<
+  NativeBuildRow,
+  "submitted_version" | "app_version" | "native_app_version" | "build_number"
+>;
+
 /**
- * A build as the CLI names it, such as `iOS 1.7.0 (66)`: the store's label
- * when a store took it, else its app version, the one its artifact reports
- * on a fingerprint build, and build number. Null when it reports neither,
- * for the caller to name it another way.
+ * A build's label as the stores show it, such as `1.7.0 (66)`: the store's
+ * own label once a store took it, else the version its artifact reports and
+ * its build number, or the build number alone when the version can't be read.
+ * Null without a build number. The CLI prints the same string.
+ */
+export const nativeBuildVersionLabel = (
+  build: NativeBuildVersionFields,
+): string | null => {
+  if (build.submitted_version) return build.submitted_version;
+  if (build.build_number === null) return null;
+  const version = build.native_app_version ?? build.app_version;
+  return version ? `${version} (${build.build_number})` : build.build_number;
+};
+
+/**
+ * A build as the CLI names it, such as `iOS 1.7.0 (66)`: its platform and
+ * `nativeBuildVersionLabel`, or its version without a build number. Null when
+ * it reports neither, for the caller to name it another way.
  */
 export const nativeBuildLabel = (
-  build: Pick<
-    NativeBuildRow,
-    | "platform"
-    | "submitted_version"
-    | "app_version"
-    | "native_app_version"
-    | "build_number"
-  >,
+  build: NativeBuildVersionFields & Pick<NativeBuildRow, "platform">,
 ): string | null => {
   const label =
-    build.submitted_version ??
-    [
-      build.app_version ?? build.native_app_version ?? null,
-      build.build_number === null ? null : `(${build.build_number})`,
-    ]
-      .filter((part) => part !== null)
-      .join(" ");
-  return label === "" ? null : `${platformLabel(build.platform)} ${label}`;
+    nativeBuildVersionLabel(build) ??
+    build.native_app_version ??
+    build.app_version;
+  return label ? `${platformLabel(build.platform)} ${label}` : null;
 };
 
 /** The console route that redirects to a build's artifact in storage. */

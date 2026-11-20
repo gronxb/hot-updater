@@ -57,6 +57,7 @@ import { ALL_CHANNELS } from "@/lib/constants";
 import {
   formatByteSize,
   nativeBuildArtifacts,
+  nativeBuildVersionLabel,
   nativeBuildChannel,
   platformLabel,
 } from "@/lib/native-builds";
@@ -292,10 +293,12 @@ function StoreBadges({
   );
 }
 
+/** The build as the stores show it, such as `1.7.0 (66)`. */
 function BuildNumber({ build }: { readonly build: NativeBuildRow }) {
-  return build.build_number ? (
+  const label = nativeBuildVersionLabel(build);
+  return label ? (
     <span className="font-mono tabular-nums" translate="no">
-      {build.build_number}
+      {label}
     </span>
   ) : (
     <NoValue />
@@ -416,12 +419,12 @@ function BuildCard({
       </div>
       <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
         <span className="sr-only">{platformLabel(build.platform)}</span>
-        {build.build_number ? (
+        {nativeBuildVersionLabel(build) ? (
           <>
             <span translate="no">
               Build{" "}
               <span className="font-mono tabular-nums text-foreground">
-                {build.build_number}
+                {nativeBuildVersionLabel(build)}
               </span>
             </span>
             <span aria-hidden="true">·</span>
