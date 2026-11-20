@@ -17,7 +17,7 @@ test executors of `@hot-updater/test-utils/node` take `pg`, `mysql2` or
 
 ## Database adapters and providers
 
-Register three suites against a disposable test database:
+Register four suites against a disposable test database:
 
 - `setupDatabaseAdapterConformanceSuite` runs the database adapter contract case
   by case: value round-trips, ordering, guards, all-or-nothing writes, unique
@@ -28,6 +28,10 @@ Register three suites against a disposable test database:
   over `meterReads({ name, adapter: verifyAdapter(adapter) })` from
   `@hot-updater/plugin-core`. `postgresRowsExamined` and `mysqlRowsExamined`
   also count the rows a SQL database examined.
+  Register `setupReleaseLabelEngineTestSuite` beside it with the same options:
+  it writes releases as a server of an earlier release left them, without
+  labels, and checks the label fill, its catalog rebuilds, concurrent fills,
+  and the label index's uniqueness on your adapter.
 - `setupDatabaseTestSuite` runs core, Bundles and the Release Catalog contract
   through the admin and client HTTP APIs of `createHotUpdater`, then the suites
   of the server plugins listed in `plugins`, such as the Insights plugin's

@@ -1,5 +1,9 @@
 import { createKvAdapter } from "@hot-updater/plugin-core";
-import { setupReadBudgetTestSuite } from "@hot-updater/test-utils";
+import {
+  setupReadBudgetTestSuite,
+  setupReleaseLabelEngineTestSuite,
+  type ReadBudgetSuiteOptions,
+} from "@hot-updater/test-utils";
 
 import { createFirestoreTestDatabase } from "../test-utils/createFirestoreTestDatabase";
 import { createFirestoreStore } from "./firestoreStore";
@@ -13,7 +17,7 @@ const { firestore, clearCollection } = createFirestoreTestDatabase(
  * helper over the Firestore store in the emulator, its pages as small as the
  * suite's, in a collection of its own.
  */
-setupReadBudgetTestSuite({
+const backend: ReadBudgetSuiteOptions = {
   name: "key-value (Firestore emulator)",
   createAdapter: async ({ nativePageSize }) => {
     const collection = `read_budgets_${process.pid}`;
@@ -26,4 +30,6 @@ setupReadBudgetTestSuite({
       cleanup: () => clearCollection(collection),
     };
   },
-});
+};
+setupReadBudgetTestSuite(backend);
+setupReleaseLabelEngineTestSuite(backend);

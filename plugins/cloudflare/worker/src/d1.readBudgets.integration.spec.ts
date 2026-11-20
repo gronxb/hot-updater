@@ -1,4 +1,8 @@
-import { setupReadBudgetTestSuite } from "@hot-updater/test-utils";
+import {
+  setupReadBudgetTestSuite,
+  setupReleaseLabelEngineTestSuite,
+  type ReadBudgetSuiteOptions,
+} from "@hot-updater/test-utils";
 import type { RowsExamined } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import { inject } from "vitest";
@@ -74,7 +78,7 @@ const rowsRead = (database: D1Database) => {
  * The worker's `d1Database` on the D1 binding. Its schema fence reads the
  * settings rows the migration writes once, while the suite seeds.
  */
-setupReadBudgetTestSuite({
+const backend: ReadBudgetSuiteOptions = {
   name: "d1 (workerd)",
   createAdapter: async () => {
     // `exec` runs one statement per line, and a comment line is not one.
@@ -89,4 +93,6 @@ setupReadBudgetTestSuite({
     const { binding, examined, written } = rowsRead(env.DB);
     return { adapter: d1Database(binding).adapter, examined, written };
   },
-});
+};
+setupReadBudgetTestSuite(backend);
+setupReleaseLabelEngineTestSuite(backend);

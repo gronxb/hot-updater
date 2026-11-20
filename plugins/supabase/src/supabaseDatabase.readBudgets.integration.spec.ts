@@ -4,6 +4,8 @@ import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import {
   postgresRowsExamined,
   setupReadBudgetTestSuite,
+  setupReleaseLabelEngineTestSuite,
+  type ReadBudgetSuiteOptions,
 } from "@hot-updater/test-utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -16,7 +18,7 @@ import { SUPABASE_TABLE_PREFIX, supabaseSchemaSql } from "./supabaseSchema";
  * generated apply RPC, here on PGlite with Supabase's roles, as the service
  * role. Reads are explained on the same session, outside the RPC.
  */
-setupReadBudgetTestSuite({
+const backend: ReadBudgetSuiteOptions = {
   name: "supabase apply RPC (PGlite)",
   createAdapter: async () => {
     const db = new PGlite();
@@ -59,4 +61,6 @@ setupReadBudgetTestSuite({
       cleanup: () => db.close(),
     };
   },
-});
+};
+setupReadBudgetTestSuite(backend);
+setupReleaseLabelEngineTestSuite(backend);

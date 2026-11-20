@@ -3,6 +3,8 @@ import { createSqlAdapter, toolingTargetOf } from "@hot-updater/plugin-core";
 import {
   postgresRowsExamined,
   setupReadBudgetTestSuite,
+  setupReleaseLabelEngineTestSuite,
+  type ReadBudgetSuiteOptions,
 } from "@hot-updater/test-utils";
 
 import { apiKeys } from "../plugins/api-keys";
@@ -20,7 +22,7 @@ const target = toolingTargetOf([insights(), apiKeys(), remoteConfig()]);
  * the Prisma executor, through Prisma's raw query API on PGlite, on the
  * tables `prisma db push` creates and its migrator completes.
  */
-setupReadBudgetTestSuite({
+const backend: ReadBudgetSuiteOptions = {
   name: "prisma (PGlite)",
   createAdapter: async () => {
     const client = new PGlite();
@@ -41,4 +43,6 @@ setupReadBudgetTestSuite({
       cleanup: () => client.close(),
     };
   },
-});
+};
+setupReadBudgetTestSuite(backend);
+setupReleaseLabelEngineTestSuite(backend);

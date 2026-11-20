@@ -16,6 +16,8 @@ import {
   startHttpTestServer,
   insightsTestSuite,
   createReleaseCatalogTestStorage,
+  setupReleaseLabelEngineTestSuite,
+  type ReadBudgetSuiteOptions,
 } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -79,13 +81,15 @@ setupDatabaseAdapterConformanceSuite({
  * helper over the Cosmos DB store in the emulator, its pages as small as the
  * suite's.
  */
-setupReadBudgetTestSuite({
+const backend: ReadBudgetSuiteOptions = {
   name: "key-value (Cosmos DB emulator)",
   createAdapter: async ({ nativePageSize }) => {
     const { store, cleanup } = await createStore(nativePageSize);
     return { adapter: createKvAdapter({ store }), indexCopies: true, cleanup };
   },
-});
+};
+setupReadBudgetTestSuite(backend);
+setupReleaseLabelEngineTestSuite(backend);
 
 /** `cosmosDatabase()`'s batching in the Cosmos DB emulator, a database per case. */
 setupAggregateBatchingTestSuite({

@@ -72,7 +72,7 @@ export const setupDatabaseTestSuite = <TDatabase extends EngineDatabase>(
     setupCoreAdminTestSuite({ getClient });
     setupBundleMethodsTestSuite({ getClient });
     setupReleaseCatalogTestSuite({ getClient });
-    setupReleaseLabelTestSuite({ getClient, getDatabase });
+    setupReleaseLabelTestSuite({ getClient });
     for (const suite of options.plugins ?? []) {
       describe(suite.name, () => {
         suite.register({ getClient, getDatabase });

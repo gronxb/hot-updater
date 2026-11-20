@@ -1,5 +1,9 @@
 import { createKvAdapter } from "@hot-updater/plugin-core";
-import { setupReadBudgetTestSuite } from "@hot-updater/test-utils";
+import {
+  setupReadBudgetTestSuite,
+  setupReleaseLabelEngineTestSuite,
+  type ReadBudgetSuiteOptions,
+} from "@hot-updater/test-utils";
 import { afterAll, beforeAll } from "vitest";
 
 import {
@@ -20,7 +24,7 @@ afterAll(async () => {
  * `dynamoDB()`'s storage without its schema fence or CloudFront: the
  * key-value helper over the DynamoDB store, its pages as small as the suite's.
  */
-setupReadBudgetTestSuite({
+const backend: ReadBudgetSuiteOptions = {
   name: "key-value (DynamoDB Local)",
   createAdapter: async ({ nativePageSize }) => {
     const tableName = local.tableName();
@@ -38,4 +42,6 @@ setupReadBudgetTestSuite({
       },
     };
   },
-});
+};
+setupReadBudgetTestSuite(backend);
+setupReleaseLabelEngineTestSuite(backend);

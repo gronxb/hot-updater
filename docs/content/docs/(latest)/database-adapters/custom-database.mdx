@@ -468,12 +468,13 @@ create the indexes on them, and only in a file that runs once: SQLite has no
 ## Test the adapter
 
 `@hot-updater/test-utils` publishes the suites that every official database
-runs. Register all three:
+runs. Register all four:
 
 | Suite                                  | Runs                                                                                                           | Against                                  |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
 | `setupDatabaseAdapterConformanceSuite` | the [adapter contract](/docs/database-adapters/adapter-contract), case by case                                 | your adapter, on three test tables       |
 | `setupReadBudgetTestSuite`             | what each read of core and the plugins it measures costs                                                       | your adapter, on their tables            |
+| `setupReleaseLabelEngineTestSuite`     | the release label fill over releases an earlier server wrote, and the label index                              | your adapter, on core's tables           |
 | `setupDatabaseTestSuite`               | core, Bundles, the Release Catalog contract and opted-in plugin suites, through the admin and client HTTP APIs | your database, behind `createHotUpdater` |
 
 The examples expect `TEST_DATABASE_URL` to name an empty PostgreSQL database.
@@ -552,6 +553,8 @@ import { createSqlAdapter } from "@hot-updater/plugin-core";
 import {
   postgresRowsExamined,
   setupReadBudgetTestSuite,
+  setupReleaseLabelEngineTestSuite,
+  type ReadBudgetSuiteOptions,
 } from "@hot-updater/test-utils";
 import pg from "pg";
 import { afterAll } from "vitest";
@@ -562,7 +565,7 @@ import { tableNames } from "./testTables";
 const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL });
 afterAll(() => pool.end());
 
-setupReadBudgetTestSuite({
+const backend: ReadBudgetSuiteOptions = {
   name: "myDatabase",
   createAdapter: async ({ tables }) => {
     // Each read is explained on one session of the pool.
@@ -584,7 +587,10 @@ setupReadBudgetTestSuite({
       },
     };
   },
-});
+};
+setupReadBudgetTestSuite(backend);
+// The release label fill and the label index, on fresh tables.
+setupReleaseLabelEngineTestSuite(backend);
 ```
 
 The suite runs core and the server's `insights()`, `apiKeys()`, and
@@ -720,6 +726,6 @@ import it. Add `clientHeaders` when the server's client routes need a key.
 Publish the factory and its migration from one package, as `dynamoDB` and
 `migrateDynamoDB` ship together. List `@hot-updater/plugin-core` in
 `peerDependencies`, so the adapter runs on the project's copy of the engine,
-and keep the three suites in your CI. See
+and keep the four suites in your CI. See
 [Test and publish](/docs/plugins/publish) for the package layout,
 naming, and what to document.
