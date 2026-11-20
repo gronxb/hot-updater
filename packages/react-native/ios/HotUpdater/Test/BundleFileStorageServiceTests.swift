@@ -193,6 +193,61 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func aCommittedReceiptKeepsItsLabelForTheNextProcess() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let directory = try createBundleDirectory(documentsDirectory: root, bundleId: "running-bundle")
+        try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: directory, bundleId: "running-bundle")
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: "running-bundle"
+        ))
+        let service = makeStorageService(documentsDirectory: root)
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "running-bundle")
+        #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-production",
+            generation: 2, catalogHash: "hash-2", channel: "production", selectionContextHash: "context-2"))
+
+        // A metadata-only adoption of the running bundle's Release, labeled.
+        #expect(service.commitReleaseSelection(PersistedSelection(
+            kind: SelectionKind.bundle.rawValue,
+            releaseId: "release-12",
+            bundleId: "running-bundle",
+            catalogId: "project-a",
+            scopeKey: "scope-production",
+            generation: 2,
+            catalogHash: "hash-2",
+            channel: "production",
+            selectionContextHash: "context-2",
+            label: 12
+        )))
+
+        // A new process reads the receipt from the metadata file.
+        let restarted = makeStorageService(documentsDirectory: root)
+        let state = restarted.getActiveUpdateState()
+        let active = try #require(state["activeSelection"] as? [String: Any])
+        #expect((active["label"] as? NSNumber)?.int64Value == 12)
+        #expect(loadMetadata(documentsDirectory: root)?.stableSelection?.label == 12)
+    }
+
+    @Test
+    func aReceiptAnEarlierSDKWroteHasNoLabel() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        // Metadata as native built before labels wrote it: no `label` key.
+        let earlier = """
+        {"schema":"metadata-v2","isolation_key":"\(testIsolationKey)","stable_bundle_id":"running-bundle",        "stable_selection":{"kind":"BUNDLE","releaseId":"release-3","bundleId":"running-bundle","catalogId":"project-a",        "scopeKey":"scope-production","generation":1,"catalogHash":"hash-1","channel":"production","selectionContextHash":"context-1"},        "verification_pending":false,"launch_in_progress":false,"highest_seen_catalogs":{},"current_selection_contexts":{},"updated_at":1}
+        """
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("bundle-store"), withIntermediateDirectories: true)
+        try Data(earlier.utf8).write(to: root.appendingPathComponent("bundle-store/\(BundleMetadata.metadataFilename)"))
+        let metadata = try #require(loadMetadata(documentsDirectory: root))
+        let selection = try #require(metadata.stableSelection)
+        #expect(selection.releaseId == "release-3")
+        #expect(selection.label == nil)
+        #expect(selection.dictionary["label"] is NSNull)
+    }
+
+    @Test
     func aNewProcessRemovesTheBundleAResetKept() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }

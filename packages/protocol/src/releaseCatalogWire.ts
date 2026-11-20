@@ -54,6 +54,24 @@ export const getUtf8ByteLength = (value: string): number => {
   return bytes;
 };
 
+/**
+ * A release label as it crosses the device boundary: a positive safe
+ * integer, or null for anything else, such as a server before labels or a
+ * label in a form a later release may send. A label is for display only, so
+ * one in another form never makes a catalog or a receipt invalid.
+ */
+export const readReleaseLabel = (value: unknown): number | null =>
+  Number.isSafeInteger(value) && (value as number) >= 1
+    ? (value as number)
+    : null;
+
+/** Drops a descriptor's label that `readReleaseLabel` reads as none. */
+const keepValidLabel = (descriptor: Record<string, unknown>): void => {
+  if ("label" in descriptor && readReleaseLabel(descriptor.label) === null) {
+    delete descriptor.label;
+  }
+};
+
 const isStringArray = (value: unknown): value is readonly string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === "string");
 
@@ -130,6 +148,12 @@ export const parseReleaseCatalog = (
       !hasExpectedReleaseCatalogScope(catalog as ReleaseCatalog, expectedScope)
     ) {
       return null;
+    }
+    for (const descriptor of [
+      ...catalog.releases,
+      ...catalog.rollbackReleases,
+    ]) {
+      keepValidLabel(descriptor as unknown as Record<string, unknown>);
     }
     const distinctTargetCohorts = new Set(
       [...catalog.releases, ...catalog.rollbackReleases].flatMap(

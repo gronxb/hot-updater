@@ -60,6 +60,32 @@ describe("parseReleaseCatalog", () => {
     expect(parse(catalog)).toEqual(catalog);
   });
 
+  it("keeps a release's label", () => {
+    const labeled = {
+      ...catalog,
+      releases: [{ ...descriptor, label: 12 }],
+    };
+    expect(parse(labeled)?.releases).toEqual([{ ...descriptor, label: 12 }]);
+  });
+
+  it.each<[string, unknown]>([
+    ["a string", "12"],
+    ["zero", 0],
+    ["a negative number", -1],
+    ["a fraction", 1.5],
+    ["a boolean", true],
+    ["null", null],
+    ["an unsafe integer", Number.MAX_SAFE_INTEGER + 1],
+  ])("reads a label that is %s as none, and keeps the catalog", (_, label) => {
+    const parsed = parse({
+      ...catalog,
+      releases: [{ ...descriptor, label }],
+      rollbackReleases: [{ ...catalog.rollbackReleases[0]!, label }],
+    });
+    expect(parsed?.releases).toEqual([descriptor]);
+    expect(parsed?.rollbackReleases).toEqual(catalog.rollbackReleases);
+  });
+
   it.each<[string, Partial<ReleaseCatalog>]>([
     ["another schema version", { schemaVersion: 2 as never }],
     ["an empty catalog ID", { catalogId: "" }],

@@ -58,6 +58,9 @@ struct ReleaseCatalogDescriptor {
     /// `targetCohorts`: one with an unpaired surrogate equals no Swift
     /// string, as `JSON.parse` keeps it apart from every valid cohort.
     var matchableTargetCohorts: [String]? = nil
+    /// The release's label, shown `v<label>`; nil when the catalog carries
+    /// none, or one `releaseLabel` reads as none.
+    var label: Int64? = nil
 }
 
 struct ReleaseCatalog {
@@ -536,7 +539,8 @@ private func parseReleaseDescriptor(_ value: Any) -> ReleaseCatalogDescriptor? {
         targetCohorts: targetCohorts,
         shouldForceUpdate: shouldForceUpdate,
         message: message,
-        matchableTargetCohorts: matchableTargetCohorts.count == targetCohorts.count ? nil : matchableTargetCohorts
+        matchableTargetCohorts: matchableTargetCohorts.count == targetCohorts.count ? nil : matchableTargetCohorts,
+        label: releaseLabel(descriptor["label"])
     )
 }
 
@@ -621,6 +625,14 @@ private func jsonBoolean(_ value: Any?) -> Bool? {
 
 /// The value as JavaScript's `Number.isSafeInteger` accepts it, so `3.0` and
 /// `3e0` count and booleans do not.
+/// A release label as JavaScript's `readReleaseLabel` reads it: a positive
+/// safe integer, or nil for anything else. A label is for display only, so a
+/// malformed one never invalidates a catalog or a receipt.
+func releaseLabel(_ value: Any?) -> Int64? {
+    guard let label = jsonSafeInteger(value), label >= 1 else { return nil }
+    return label
+}
+
 private func jsonSafeInteger(_ value: Any?) -> Int64? {
     guard let number = value as? NSNumber, !isJSONBoolean(number) else {
         return nil

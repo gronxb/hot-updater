@@ -27,7 +27,16 @@ internal data class ReleaseCatalogDescriptor(
     val targetCohorts: List<String>,
     val shouldForceUpdate: Boolean,
     val message: String?,
+    /** The release's label, shown `v<label>`; null when the catalog carries none, or one [releaseLabel] reads as none. */
+    val label: Long? = null,
 )
+
+/**
+ * A release label as JavaScript's `readReleaseLabel` reads it: a positive
+ * safe integer, or null for anything else. A label is for display only, so a
+ * malformed one never invalidates a catalog or a receipt.
+ */
+internal fun releaseLabel(value: Any?): Long? = ReleaseCatalogs.releaseLabel(value)
 
 internal data class ReleaseCatalog(
     val schemaVersion: Int,
@@ -322,6 +331,7 @@ internal object ReleaseCatalogs {
             targetCohorts = targetCohorts,
             shouldForceUpdate = shouldForceUpdate,
             message = message as? String,
+            label = releaseLabel(value.opt("label")),
         )
     }
 
@@ -332,6 +342,9 @@ internal object ReleaseCatalogs {
         }
         return strings
     }
+
+    /** See the top-level [com.hotupdater.releaseLabel]. */
+    fun releaseLabel(value: Any?): Long? = safeInteger(value)?.takeIf { it >= 1 }
 
     /**
      * The value when `Number.isSafeInteger` holds for it. JavaScript reads every

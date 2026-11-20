@@ -325,6 +325,59 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
+    fun `a committed receipt keeps its label for the next process`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            createCompleteBundle(rootDir, "running-bundle", "running")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "running-bundle"))
+            val service = createService(rootDir)
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 2, "hash-2", "production", "context-2"))
+
+            // A metadata-only adoption of the running bundle's Release, labeled.
+            assertTrue(
+                service.commitReleaseSelection(
+                    PersistedSelection(
+                        kind = "BUNDLE",
+                        releaseId = "release-12",
+                        bundleId = "running-bundle",
+                        catalogId = "project-a",
+                        scopeKey = "scope-production",
+                        generation = 2,
+                        catalogHash = "hash-2",
+                        channel = "production",
+                        selectionContextHash = "context-2",
+                        label = 12,
+                    ),
+                ),
+            )
+
+            // A new process reads the receipt from the metadata file.
+            val active = createService(rootDir).getActiveUpdateState()["activeSelection"] as Map<*, *>
+            assertEquals(12.0, active["label"])
+            assertEquals(12L, loadMetadata(rootDir)?.stableSelection?.label)
+        }
+
+    @Test
+    fun `a receipt an earlier SDK wrote has no label`() {
+        val selection =
+            PersistedSelection.fromJson(
+                JSONObject(
+                    """{"kind":"BUNDLE","releaseId":"release-3","bundleId":"running-bundle","catalogId":"project-a",""" +
+                        """"scopeKey":"scope-production","generation":1,"catalogHash":"hash-1","channel":"production",""" +
+                        """"selectionContextHash":"context-1"}""",
+                ),
+            )
+        assertEquals("release-3", selection.releaseId)
+        assertNull(selection.label)
+        assertNull(selection.toMap()["label"])
+        assertTrue(selection.toJson().isNull("label"))
+        // Receipts that differ only by their label select the same thing.
+        assertTrue(selection.copy(label = 3).sameSelection(selection))
+        assertFalse(selection.copy(generation = 2).sameSelection(selection))
+    }
+
+    @Test
     fun `a new process removes the bundle a reset kept`() =
         runBlocking {
             val rootDir = temporaryFolder.newFolder()

@@ -55,6 +55,7 @@ vi.mock("./native", () => ({
   getAppVersion: mocks.getAppVersion,
   getBaseURL: vi.fn(() => null),
   getBundleId: mocks.getBundleId,
+  getReleaseLabel: () => null,
   getUpdateId: mocks.getUpdateId,
   getChannel: mocks.getChannel,
   getActiveUpdateState: mocks.getActiveUpdateState,

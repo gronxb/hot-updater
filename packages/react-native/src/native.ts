@@ -5,6 +5,7 @@ import {
   INVALID_COHORT_ERROR_MESSAGE,
   isValidCohort,
   normalizeCohortValue,
+  readReleaseLabel,
   type UpdateStatus,
   type PersistedSelectionReceipt,
 } from "@hot-updater/protocol";
@@ -549,6 +550,25 @@ export const reload = async () => {
 export const getMinBundleId = (): string => {
   const constants = getNativeConstants();
   return constants.MIN_BUNDLE_ID;
+};
+
+/**
+ * The label of the release the app runs now, shown `v<label>`: the receipt
+ * native keeps with the running bundle, so it reads the same after a restart
+ * and offline. A staged update changes it once it launches. Null for the
+ * built-in bundle, a release without one, and native built before labels,
+ * whose receipts have none.
+ */
+export const getReleaseLabel = (): number | null => {
+  const running = getBundleId();
+  const { activeSelection, stableSelection } = getActiveUpdateState();
+  const receipt = [activeSelection, stableSelection].find(
+    (selection) =>
+      selection !== null &&
+      selection.kind === "BUNDLE" &&
+      selection.bundleId === running,
+  );
+  return readReleaseLabel(receipt?.label);
 };
 
 /** Returns the selected update ID shown in the console, including staged updates. */

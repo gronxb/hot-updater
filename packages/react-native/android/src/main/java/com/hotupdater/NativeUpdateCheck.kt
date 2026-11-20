@@ -111,6 +111,7 @@ internal class HotUpdaterImplUpdateCheckState(
             catalogHash = map["catalogHash"] as? String,
             channel = map["channel"] as? String ?: "",
             selectionContextHash = map["selectionContextHash"] as? String,
+            label = releaseLabel(map["label"]),
         )
     }
 }

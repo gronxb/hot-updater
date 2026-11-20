@@ -118,6 +118,42 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func anUpdateCarriesItsReleaseLabelIntoTheReceiptItStages() async throws {
+        let host = FakeUpdateHost()
+        host.stage = { _, _ in ["delivery": "archive", "patchFallback": false] }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2, label: 7)])
+        )
+        let checker = NativeUpdateChecker(host: host, transport: transport)
+
+        let update = try #require(try await checker.checkForUpdate(options()))
+
+        #expect(update.label == 7)
+        #expect(try await update.updateBundle())
+        let selection = try #require(host.stagedParams.first?["selection"] as? [String: Any])
+        #expect((selection["label"] as? NSNumber)?.int64Value == 7)
+    }
+
+    @Test
+    func anUpdateWithoutALabelOrWithAMalformedOneHasNone() async throws {
+        for label in [nil, "7", 0, 1.5, true] as [Any?] {
+            let host = FakeUpdateHost()
+            host.stage = { _, _ in ["delivery": "archive", "patchFallback": false] }
+            let transport = FakeUpdateTransport.serving(
+                catalog: catalog(releases: [descriptor(release2, bundle2, label: label)])
+            )
+            let checker = NativeUpdateChecker(host: host, transport: transport)
+
+            let update = try #require(try await checker.checkForUpdate(options()))
+
+            #expect(update.label == nil)
+            #expect(try await update.updateBundle())
+            let selection = try #require(host.stagedParams.first?["selection"] as? [String: Any])
+            #expect(selection["label"] is NSNull)
+        }
+    }
+
+    @Test
     func updateStagesThroughNativeUpdateBundle() async throws {
         let host = FakeUpdateHost()
         host.stage = { _, _ in ["delivery": "patch", "patchFallback": true] }
@@ -1316,9 +1352,10 @@ private func descriptor(
     _ releaseId: String,
     _ bundleId: String,
     force: Bool = false,
-    message: String? = nil
+    message: String? = nil,
+    label: Any? = nil
 ) -> [String: Any] {
-    [
+    var descriptor: [String: Any] = [
         "releaseId": releaseId,
         "kind": "BUNDLE",
         "bundleId": bundleId,
@@ -1327,6 +1364,8 @@ private func descriptor(
         "shouldForceUpdate": force,
         "message": message ?? NSNull(),
     ]
+    if let label { descriptor["label"] = label }
+    return descriptor
 }
 
 private func catalog(generation: Int = 1, releases: [[String: Any]], channel: String = "production") -> String {

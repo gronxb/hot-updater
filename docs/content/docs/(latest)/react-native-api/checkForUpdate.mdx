@@ -119,6 +119,7 @@ artifact lazily when needed.
 | `rolloutCohortCount` | `number`                                                     | Numeric cohort count selected by the Release policy.                                                                                    |
 | `targetCohorts`      | `string[]`                                                   | Explicit cohort targets in that policy.                                                                                                 |
 | `releaseId`          | `string \| null \| undefined`                                | Release identifier when present.                                                                                                        |
+| `label`              | `number \| null \| undefined`                                | The release's label, such as `12` for `v12`; `null` for the built-in bundle or a release without one.                                   |
 | `transitionKind`     | `"INSTALL" \| "ADOPT_RELEASE" \| "USE_BUILTIN" \| undefined` | How the selected transition will be applied.                                                                                            |
 | `updateBundle`       | `() => Promise<boolean>`                                     | Stage or commit this selection; resolves with whether it succeeded.                                                                     |
 

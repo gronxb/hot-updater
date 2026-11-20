@@ -407,6 +407,50 @@ describe("checkForUpdate Release catalog protocol", () => {
     );
   });
 
+  it("gives the update its release's label, and stages it with the receipt", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const labeled = createCatalog({
+      releases: [{ ...createCatalog().releases[0]!, label: 12 }],
+    });
+    const { client } = createClient(labeled);
+
+    const result = await checkForUpdate({
+      emit,
+      client,
+      updateStrategy: "appVersion",
+    });
+
+    expect(result).toMatchObject({ releaseId: RELEASE_ID, label: 12 });
+    await expect(result?.updateBundle()).resolves.toBe(true);
+    expect(mocks.stageBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selection: expect.objectContaining({
+          releaseId: RELEASE_ID,
+          label: 12,
+        }),
+      }),
+    );
+  });
+
+  it("gives an update from a catalog without labels none", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client } = createClient();
+
+    const result = await checkForUpdate({
+      emit,
+      client,
+      updateStrategy: "appVersion",
+    });
+
+    expect(result).toMatchObject({ releaseId: RELEASE_ID, label: null });
+    await result?.updateBundle();
+    expect(mocks.stageBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selection: expect.objectContaining({ label: null }),
+      }),
+    );
+  });
+
   it("lets native ask for the files it downloads, with the check's headers", async () => {
     const { checkForUpdate } = await import("./checkForUpdate");
     const { client, resolveArtifact } = createClient();
@@ -510,6 +554,47 @@ describe("checkForUpdate Release catalog protocol", () => {
         bundleId: TARGET_BUNDLE_ID,
         releaseId: RELEASE_ID,
       }),
+    });
+  });
+
+  it("commits the label of a Release it adopts for the running bundle", async () => {
+    // The running Release, installed before its catalog carried labels.
+    const active: PersistedSelectionReceipt = {
+      catalogId: CATALOG_ID,
+      bundleId: TARGET_BUNDLE_ID,
+      catalogHash: `sha256:${"b".repeat(64)}`,
+      channel: CHANNEL,
+      generation: 1,
+      kind: "BUNDLE",
+      releaseId: RELEASE_ID,
+      scopeKey: SCOPE_KEY,
+      selectionContextHash: "old-context",
+    };
+    mocks.getBundleId.mockReturnValueOnce(TARGET_BUNDLE_ID);
+    mocks.getActiveUpdateState.mockReturnValueOnce({
+      activeSelection: active,
+      highestSeenCatalogs: {},
+      stableSelection: active,
+      verificationPending: false,
+    });
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client } = createClient(
+      createCatalog({
+        releases: [{ ...createCatalog().releases[0]!, label: 4 }],
+      }),
+    );
+
+    const result = await checkForUpdate({
+      emit,
+      client,
+      updateStrategy: "appVersion",
+    });
+
+    expect(result).toMatchObject({ transitionKind: "ADOPT_RELEASE", label: 4 });
+    await expect(result?.updateBundle()).resolves.toBe(true);
+    expect(mocks.commitReleaseSelection).toHaveBeenCalledWith({
+      guard: expect.anything(),
+      selection: expect.objectContaining({ releaseId: RELEASE_ID, label: 4 }),
     });
   });
 

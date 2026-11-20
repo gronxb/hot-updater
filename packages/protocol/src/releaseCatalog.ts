@@ -93,6 +93,13 @@ export interface PersistedSelectionReceipt {
   readonly catalogHash: string | null;
   readonly channel: string;
   readonly selectionContextHash: string | null;
+  /**
+   * The selected release's label, which native keeps with the receipt so the
+   * app reads it after a restart and offline. Left out or null for the
+   * built-in bundle, a release without one, and native built from an SDK
+   * before labels, which drops it.
+   */
+  readonly label?: number | null;
 }
 
 export interface ReleaseSelectionInput {

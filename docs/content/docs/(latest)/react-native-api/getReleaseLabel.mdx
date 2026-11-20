@@ -1,0 +1,48 @@
+---
+title: "getReleaseLabel"
+description: "Read the label of the release the app runs, such as v12."
+icon: Tag
+---
+
+## Usage
+
+`hotUpdater.getReleaseLabel()` returns the label of the release the app runs
+now: `12` for the release the Console and the CLI show as `v12`. Show it in a
+settings screen or support logs, where `v12` reads easier than an ID.
+
+```tsx
+import { hotUpdater } from "./hotUpdater";
+
+const label = hotUpdater.getReleaseLabel();
+console.log("Release:", label === null ? "built-in" : `v${label}`);
+```
+
+You can inspect that release from the CLI:
+
+```bash
+npx hot-updater bundle show v12 -c production -p ios
+```
+
+## Return value
+
+```ts
+getReleaseLabel(): number | null
+```
+
+Labels number a channel and platform's releases in the order they were
+deployed. A label never changes, and no other release of that channel and
+platform takes it. A promotion gets the target channel's next label.
+
+The getter is synchronous and makes no network request. Native keeps the
+label with the bundle it installed, so it reads the same after a restart and
+offline. It is the running release's: a staged update changes it once the app
+runs it, unlike [`getBundleId()`](/docs/react-native-api/getBundleId), which
+names a staged update right away.
+
+It returns `null` for the built-in bundle, and for a release that has no
+label: one installed from a server or native build that predates labels. Such
+a release gets its label once the app applies an update check that offers it
+again.
+
+To read the label of an update before installing it, use the `label` field of
+[`checkForUpdate()`](/docs/react-native-api/checkForUpdate)'s result.

@@ -366,7 +366,7 @@ struct ReleaseSelectionConformanceTests {
     }
 
     private func descriptorDictionary(_ descriptor: ReleaseCatalogDescriptor) -> [String: Any] {
-        [
+        var dictionary: [String: Any] = [
             "bundleId": descriptor.bundleId ?? NSNull(),
             "kind": descriptor.kind.rawValue,
             "message": descriptor.message ?? NSNull(),
@@ -375,6 +375,9 @@ struct ReleaseSelectionConformanceTests {
             "shouldForceUpdate": descriptor.shouldForceUpdate,
             "targetCohorts": descriptor.targetCohorts,
         ]
+        // The protocol leaves out a label it reads as none.
+        if let label = descriptor.label { dictionary["label"] = NSNumber(value: label) }
+        return dictionary
     }
 
     private func catalogDictionary(_ catalog: ReleaseCatalog) -> [String: Any] {
