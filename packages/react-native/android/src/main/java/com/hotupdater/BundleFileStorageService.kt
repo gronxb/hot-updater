@@ -2865,6 +2865,13 @@ class BundleFileStorageService(
                         if (backupDir.exists()) {
                             throw HotUpdaterException.moveOperationFailed()
                         }
+                        // A newer check replaced this selection while it
+                        // downloaded. Refused before the move, the verified
+                        // files stay staged, so the next staging of the same
+                        // bundle reuses them instead of downloading again.
+                        if (selection != null && !isSelectionCurrent(selection)) {
+                            throw StaleReleaseSelectionException()
+                        }
 
                         val hadExistingFinal = finalBundleDir.exists()
                         var promoted = false

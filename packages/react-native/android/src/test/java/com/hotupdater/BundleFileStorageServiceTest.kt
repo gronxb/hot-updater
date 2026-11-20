@@ -3943,6 +3943,68 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
+    fun `a staging another check made stale keeps its verified files for the next staging`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("stale-keeps-files")
+            val hash = sha256(root, BUNDLE_CONTENT)
+            val manifest = manifestJson("target", mapOf("index.android.bundle" to hash))
+            val served =
+                BinaryMappingDownloadService(
+                    mapOf(MANIFEST_URL to manifest.toByteArray(), BUNDLE_URL to BUNDLE_CONTENT.toByteArray()),
+                )
+            lateinit var service: BundleFileStorageService
+            var sandboxChecked = false
+            val downloads =
+                object : DownloadService {
+                    override suspend fun downloadFile(
+                        fileUrl: URL,
+                        destination: File,
+                        fileSizeCallback: ((Long) -> Unit)?,
+                        progressCallback: (DownloadProgress) -> Unit,
+                    ): DownloadResult {
+                        if (fileUrl.toString() == BUNDLE_URL && !sandboxChecked) {
+                            sandboxChecked = true
+                            // The sandbox's channel open checks the same catalog
+                            // without the built-in floor while the app's own
+                            // check downloads: another selection context.
+                            assertTrue(
+                                service.acceptReleaseCatalog("project-a", "scope-production", 1, "hash-1", "production", "context-sandbox"),
+                            )
+                        }
+                        return served.downloadFile(fileUrl, destination, fileSizeCallback, progressCallback)
+                    }
+                }
+            service = createService(root, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 1, "hash-1", "production", "context-app"))
+            val assets = mapOf("index.android.bundle" to ChangedAssetDescriptor(BUNDLE_URL, hash))
+
+            val stale =
+                runCatching {
+                    service.updateBundle(
+                        "target",
+                        MANIFEST_URL,
+                        sha256(root, manifest),
+                        assets,
+                        selection = releaseSelection("release-one", "target", 1, "hash-1", "context-app"),
+                    ) {}
+                }.exceptionOrNull()
+            assertTrue("Expected a stale selection, got $stale", stale is StaleReleaseSelectionException)
+            assertEquals(1, served.calls.count { it == BUNDLE_URL })
+
+            // The sandbox's staging of the same bundle reuses the downloaded
+            // file: nothing is downloaded again, so no file request can fail it.
+            service.updateBundle(
+                "target",
+                MANIFEST_URL,
+                sha256(root, manifest),
+                assets,
+                selection = releaseSelection("release-one", "target", 1, "hash-1", "context-sandbox"),
+            ) {}
+            assertEquals(1, served.calls.count { it == BUNDLE_URL })
+            assertEquals("target", loadMetadata(root)?.stagingBundleId)
+        }
+
+    @Test
     fun `a selection stays with its own staging`() =
         runBlocking {
             val root = temporaryFolder.newFolder("selection-per-staging")
