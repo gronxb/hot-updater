@@ -209,8 +209,11 @@ export const fillLabels = async (
   return labeled;
 };
 
-// How many times a write fills a pair or skips a held label before it fails,
-// and how many races with another writer's label it reruns after.
+// How many times a write repairs what a repair should have settled, a pair
+// it already filled or a held label, before it fails, and how many races
+// with another writer's label it reruns after. A pair's first fill spends
+// neither: it is progress, at most once per pair the write labels, so a
+// batch over any number of channels and platforms fills each and runs.
 const REPAIRS = 4;
 const RACES = 32;
 
@@ -226,6 +229,15 @@ export const writeWithLabels = async <T>(
   db: CoreDatabase,
   write: (tx: CoreTransaction, labels: LabelAllocator) => Promise<T>,
 ): Promise<T> => {
+  // The pairs this write filled: each fills once for free, and only the
+  // pairs the write labels can join, so the free fills are bounded by them.
+  const filled = new Set<string>();
+  const fill = async (pairs: readonly Pair[]) => {
+    for (const pair of pairs) {
+      filled.add(labelSequenceId(pair.channelId, pair.platform));
+      await fillLabels(db, pair);
+    }
+  };
   for (let repairs = 0, races = 0; ; ) {
     const used = new Map<string, UsedPair>();
     const caughtUp = new Map<string, Pair>();
@@ -239,20 +251,23 @@ export const writeWithLabels = async <T>(
         return result;
       });
     } catch (error) {
-      if (error instanceof NeedsLabelFill && repairs < REPAIRS) {
-        repairs += 1;
-        await fillLabels(db, error);
-        continue;
-      }
-      if (
-        error instanceof DatabaseConstraintError &&
-        error.reason === "too_large" &&
-        caughtUp.size > 0 &&
-        repairs < REPAIRS
-      ) {
-        repairs += 1;
-        for (const pair of caughtUp.values()) await fillLabels(db, pair);
-        continue;
+      const needs =
+        error instanceof NeedsLabelFill
+          ? [error]
+          : error instanceof DatabaseConstraintError &&
+              error.reason === "too_large"
+            ? [...caughtUp.values()]
+            : [];
+      if (needs.length > 0) {
+        const fresh = needs.some(
+          ({ channelId, platform }) =>
+            !filled.has(labelSequenceId(channelId, platform)),
+        );
+        if (fresh || repairs < REPAIRS) {
+          if (!fresh) repairs += 1;
+          await fill(needs);
+          continue;
+        }
       }
       if (
         error instanceof DatabaseConstraintError &&

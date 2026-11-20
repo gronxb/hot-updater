@@ -455,6 +455,25 @@ describe("release labels", () => {
     ).resolves.toMatchObject({ changed: true, labelsOnly: false });
   });
 
+  it("fills every pair a deploy batch needs, however many channels it spans", async () => {
+    const context = setup();
+    const { core } = context;
+    const channels = ["a", "b", "c", "d", "e", "f"];
+    for (const channel of channels) await deploy(core, { channel });
+    await asBeforeLabels(context);
+
+    const results = await core.deploy(
+      channels.map((channel) => deployment(nextBundle(), { channel })),
+    );
+
+    expect(results.map((result) => result.release!.label)).toEqual(
+      channels.map(() => 2),
+    );
+    for (const channel of channels) {
+      await expect(labelsOf(core, channel)).resolves.toEqual([1, 2]);
+    }
+  });
+
   it("fills releases a key-value store holds without a label field, as an earlier server wrote them", async () => {
     // An earlier server's release items have no `label` field at all, and no
     // label index items.
