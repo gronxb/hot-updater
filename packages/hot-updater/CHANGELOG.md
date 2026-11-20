@@ -1,5 +1,55 @@
 # hot-updater
 
+## 1.2.0-rc.50
+
+### Patch Changes
+
+- 21cf534: fix(cli): channel lookups, `bundle list`, and `doctor` no longer read whole tables.
+  - **Channels by ID.** `bundle list`, `bundle show`, `bundle promote`, `native-build delete`, and `insights --bundle` used to read every channel to name the ones they show. They now read only those channels, in one batch read. `bundle list --channel` finds the channel by its name. The preview and release actions run `bundle list -c <channel> -p <platform> --limit 1` after every deploy, and that now reads 2 rows, however many preview channels a project keeps. Core adds `getChannels(ids)`, and `listChannels` takes an optional page.
+  - **Admin `GET /channels`** also takes `ids=<channel id>,...` (1 to 100) and `limit`/`cursor` pages by name. Without them it answers every channel, as before. A CLI on this release still works with an older self-hosted server, which ignores the new parameters.
+  - **`bundle list --platform` without `--channel`, and `--target-app-version`,** read at most 5 pages of 100 bundles. When nothing matched by then, the list prints how many bundles it scanned and a `--cursor` to continue, or you can narrow it with `--channel`. With `--json`, that line goes to stderr.
+  - **`hot-updater doctor`** checks the scopes in the catalog index, and finds every scope with releases but no catalog row by seeking from one scope to the next: one limit-1 read per scope. It no longer reads every release, and its reads grow with scopes, not with releases or channels: 4 rows per scope with one enabled release, where it read the scope's releases plus 7. Core adds `listReleaseScopeKeys`, and the admin API `GET /release-scopes` (`limit` up to 100, `cursor`). Against a self-hosted server without that route, doctor checks the scopes with a catalog row and warns `RELEASE_SCOPES_UNCHECKED`, naming the server as older. When a scope with a catalog row and releases is missing from the walk, doctor warns `RELEASE_SCOPES_UNINDEXED` and names the migration that writes the missing index items.
+  - **Catalog preflight** (`preflightReleaseCatalogRebuild`, `POST /release-catalogs/:scopeKey/preflight`) reads the catalog row once and the scope's enabled releases, outside a transaction: 2 reads where it took 6.
+  - **Core schema:** `releases` declares a `scopes` index ordered by scope key. SQL and MongoDB read it through the existing `byScope` index, so their schemas don't change. DynamoDB, Firestore, and Cosmos DB keep one index item per release. Every migration (`hot-updater init` for a managed deployment, `db migrate` for your own server) writes the items that releases lack: those stored before 1.2.0, and those a 1.1.x server still running after the migration writes, since its schema fence keeps a check that passed. `db migrate` on a database whose schema settings match offers that write when it finds releases without their item. Each migration on those stores reads every release and its index item once. A database adapter's `migrations` may implement the optional `fillIndex(table, index, { dryRun })`; the key-value kit does.
+  - **Admin `POST /ios-devices/in-build`** takes at most 100 IDs a request, and answers 400 for more. The standalone client sends devices in requests of 100. `POST /bundles/delete` stays uncapped: a released `doctor --fix` sends every unreferenced artifact in one request.
+
+- 36e1f23: fix(db): the Drizzle schema converges under `drizzle-kit push`, and `db migrate` refuses a newer or incomplete schema.
+  - `hot-updater db generate` writes a Drizzle schema that matches what drizzle-kit reads back, so a second `drizzle-kit push` plans nothing. The push after upgrading adds only the new tables and indexes, with no data-loss prompt. On PostgreSQL its columns leave out `COLLATE "C"`, which `db migrate` sets where the database lacks it. On MySQL, apply it with `drizzle-kit generate` and `drizzle-kit migrate`. A project that applies it with `drizzle-kit generate` deletes the statements on Hot Updater's existing tables and indexes from the first migration after upgrading, as the 1.2.0 upgrade notes say.
+  - `db migrate` and a managed provider's init refuse a database whose `schema.core` is newer than this release's. They write nothing and name the version to upgrade to. Doctor reports it as `SCHEMA_NEWER_THAN_CLI` with the same step.
+  - On Drizzle and Prisma, `db migrate` checks that every table and index exists before it writes the settings rows, and names what is missing. Doctor reports it as `SCHEMA_TABLES_MISSING`.
+  - `hot-updater doctor` exits after a passing run on a MySQL or MongoDB config.
+  - `db migrate` lists only the tables and indexes it creates, and the settings it changes.
+
+- d840def: fix: managed upgrades from 1.0.x and 1.1.x to 1.2.0.
+  - **Inputs from the environment.** Vercel's and Azure's init read an input the environment sets, as init's preflight and every other provider do, so a database URL set for the run, as the 1.2.0 upgrade guide says, is used instead of failing with `must be a postgres:// or postgresql:// URL`. Every provider's init also reuses a `HOT_UPDATER_API_KEY` the environment sets.
+  - **Vercel config.** Init's rewrite of a 1.0.2 or 1.0.3 config drops `vercelBlobStorage`'s removed `access` option, so the config type-checks.
+  - **Google credentials.** Firebase init stops before any change with what is wrong when Google credentials don't load, such as the 1.0.0 placeholder `GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json`. `firebaseDatabase` with a `credential` loads it before its first Firestore call, so doctor reports the failed read instead of ending with a stack trace.
+
+- ee805d9: fix: 1.2.0 keeps one release catalog row per scope, with its 256 KiB limit, and drops the partitioned release catalogs that `next` carried after 1.2.0-rc.49. No published release had them. Gone: the `release_catalog_partitions` table in every migration, schema and scaffold; `db partition-catalogs`; `GET` and `POST /release-catalog-partitioning`; the app-version tiling kit and `DatabaseAdapter`'s `readSnapshot` and `maxQueriesPerRequest` in `@hot-updater/plugin-core`; and the partitioning parts of init, doctor and the docs.
+  - **The size limit.** A release change whose catalog would be over 256 KiB is still refused before anything is written. The refusal now names the channel and platform, and says to disable or delete old bundles on that channel. Over `standaloneRepository` the server answers it as 400 `CATALOG_OVERSIZE`, which the CLI throws as `ReleaseCatalogCompilationError`, as in process; before, it was a 500.
+  - **Doctor** warns `RELEASE_CATALOG_NEAR_LIMIT` when a scope's catalog reaches 80% of the limit, from the reads it already makes.
+  - **Strong reads.** The MongoDB adapter reads on the primary, whatever read preference its client has. The Prisma and Drizzle adapters run every statement on the primary under a read-replica extension (`$primary()`) or `withReplicas` (`$primary`). The adapter contract page lists how each built-in adapter reads strongly, and the conformance suite checks that a read sees the write committed just before it.
+  - **AWS.** The CloudFront distribution never caches a 500, 502, 503 or 504 (`ErrorCachingMinTTL: 0`, no replacement page), on a new distribution and on the existing one init updates.
+
+- Updated dependencies [24fc70c]
+- Updated dependencies [f7884ec]
+- Updated dependencies [9851868]
+- Updated dependencies [21cf534]
+- Updated dependencies [36e1f23]
+- Updated dependencies [f7884ec]
+- Updated dependencies [d840def]
+- Updated dependencies [a2f8017]
+- Updated dependencies [ee805d9]
+- Updated dependencies [a2f8017]
+  - @hot-updater/plugin-core@1.2.0-rc.50
+  - @hot-updater/server@1.2.0-rc.50
+  - @hot-updater/console@1.2.0-rc.50
+  - @hot-updater/cli-tools@1.2.0-rc.50
+  - @hot-updater/android-helper@1.2.0-rc.50
+  - @hot-updater/apple-helper@1.2.0-rc.50
+  - @hot-updater/bsdiff@1.2.0-rc.50
+  - @hot-updater/protocol@1.2.0-rc.50
+
 ## 1.2.0-rc.49
 
 ### Patch Changes

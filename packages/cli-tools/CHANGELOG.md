@@ -1,5 +1,31 @@
 # @hot-updater/cli-tools
 
+## 1.2.0-rc.50
+
+### Patch Changes
+
+- 36e1f23: fix(db): the Drizzle schema converges under `drizzle-kit push`, and `db migrate` refuses a newer or incomplete schema.
+  - `hot-updater db generate` writes a Drizzle schema that matches what drizzle-kit reads back, so a second `drizzle-kit push` plans nothing. The push after upgrading adds only the new tables and indexes, with no data-loss prompt. On PostgreSQL its columns leave out `COLLATE "C"`, which `db migrate` sets where the database lacks it. On MySQL, apply it with `drizzle-kit generate` and `drizzle-kit migrate`. A project that applies it with `drizzle-kit generate` deletes the statements on Hot Updater's existing tables and indexes from the first migration after upgrading, as the 1.2.0 upgrade notes say.
+  - `db migrate` and a managed provider's init refuse a database whose `schema.core` is newer than this release's. They write nothing and name the version to upgrade to. Doctor reports it as `SCHEMA_NEWER_THAN_CLI` with the same step.
+  - On Drizzle and Prisma, `db migrate` checks that every table and index exists before it writes the settings rows, and names what is missing. Doctor reports it as `SCHEMA_TABLES_MISSING`.
+  - `hot-updater doctor` exits after a passing run on a MySQL or MongoDB config.
+  - `db migrate` lists only the tables and indexes it creates, and the settings it changes.
+
+- d840def: fix: managed upgrades from 1.0.x and 1.1.x to 1.2.0.
+  - **Inputs from the environment.** Vercel's and Azure's init read an input the environment sets, as init's preflight and every other provider do, so a database URL set for the run, as the 1.2.0 upgrade guide says, is used instead of failing with `must be a postgres:// or postgresql:// URL`. Every provider's init also reuses a `HOT_UPDATER_API_KEY` the environment sets.
+  - **Vercel config.** Init's rewrite of a 1.0.2 or 1.0.3 config drops `vercelBlobStorage`'s removed `access` option, so the config type-checks.
+  - **Google credentials.** Firebase init stops before any change with what is wrong when Google credentials don't load, such as the 1.0.0 placeholder `GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json`. `firebaseDatabase` with a `credential` loads it before its first Firestore call, so doctor reports the failed read instead of ending with a stack trace.
+
+- Updated dependencies [24fc70c]
+- Updated dependencies [f7884ec]
+- Updated dependencies [9851868]
+- Updated dependencies [21cf534]
+- Updated dependencies [36e1f23]
+- Updated dependencies [ee805d9]
+  - @hot-updater/plugin-core@1.2.0-rc.50
+  - @hot-updater/server@1.2.0-rc.50
+  - @hot-updater/protocol@1.2.0-rc.50
+
 ## 1.2.0-rc.49
 
 ### Patch Changes

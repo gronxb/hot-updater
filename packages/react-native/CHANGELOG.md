@@ -1,5 +1,24 @@
 # @hot-updater/react-native
 
+## 1.2.0-rc.50
+
+### Patch Changes
+
+- 1645772: fix(android): the first OTA after a store install downloads XML drawables instead of reusing them from the APK. AAPT2 compiles XML under `res/` to binary XML, so the packaged file was copied into the bundle in place of its source, and anything reading that file (such as an XML vector icon loaded by its `file://` URI) got binary XML (#1984). Takes effect with the next native build.
+- 951e3f0: fix(ios, android): the launch status no longer rarely reports `UNCHANGED` for a launch that applied an update. When JavaScript read the status at the moment first content verified the new bundle, it could see the bundle verified but no launch report yet, and answer a final `UNCHANGED` instead of `UPDATE_APPLIED` (Insights then recorded the launch as unchanged). The read now waits for the verification to finish writing. Takes effect with the next native build.
+- a411f96: **Less SDK work at launch and during installs.** The SDK does less work before your JavaScript runs and during each update check, and Android applies a bsdiff patch about three times as fast. Nothing changes in how you use it.
+  - iOS, with an update applied: the launch checks the update's files with one `lstat` each, instead of building a full attribute dictionary and two standardized URLs per file.
+  - The native module's constants are read once per runtime instead of 12–13 times per launch, each time reading the bundle metadata.
+  - A check that sees the catalog it already stored no longer rewrites the metadata. A key-value store write that changes nothing no longer rewrites and syncs `storage.json`.
+  - Android applies a bsdiff patch with buffered input and output; before, the bzip2 decoder read the patch file one byte per system call.
+  - Copying files from the built-in bundle looks up the package and the asset index once, not once per file.
+
+- c4311db: **React Native.** A release whose download fails verification is no longer downloaded again on every launch. When a file or the manifest fails its hash or signature, or can't be decoded, update checks skip that bundle for 24 hours, so a bad release costs each device at most one download a day instead of one per launch. After a day the bundle may be selected again, because a proxy, a block page, or a body cut short can make good bytes fail. `getCrashHistory()` lists these bundles next to crashed ones while they're skipped (up to 10, never as crashes), `clearCrashHistory()` clears them, and installing another native build forgets them. Network, HTTP and local storage errors keep retrying as before. Released JavaScript benefits without an update, because it already skips what `getCrashHistory()` returns. Crash history is now written atomically, so an app killed mid-write keeps the previous history.
+- Updated dependencies [f7884ec]
+  - @hot-updater/plugin-insights@1.2.0-rc.50
+  - @hot-updater/plugin-remote-config@1.2.0-rc.50
+  - @hot-updater/protocol@1.2.0-rc.50
+
 ## 1.2.0-rc.49
 
 ### Patch Changes
