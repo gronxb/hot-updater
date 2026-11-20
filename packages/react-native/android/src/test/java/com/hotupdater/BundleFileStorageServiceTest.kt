@@ -1086,7 +1086,22 @@ class BundleFileStorageServiceTest {
     @Test
     fun `markLaunchCompleted records update applied transition`() {
         val rootDir = temporaryFolder.newFolder("update-applied-transition")
-        val service = createService(rootDir)
+        // JS reads the launch report on its own thread right after first
+        // content saved the verified metadata and before it wrote the report.
+        // That read waits for the report instead of answering UNCHANGED.
+        val concurrentRead = ConcurrentLaunchReportRead()
+        val service =
+            createService(
+                rootDir,
+                metadataWriter = { metadata, file ->
+                    val saved = metadata.saveToFile(file)
+                    if (!metadata.verificationPending) {
+                        concurrentRead.startOnce()
+                    }
+                    saved
+                },
+            )
+        concurrentRead.service = service
 
         val stableDir = createBundleDir(rootDir, "stable-bundle")
         writeFile(stableDir, "index.android.bundle")
@@ -1109,17 +1124,57 @@ class BundleFileStorageServiceTest {
         assertEquals(stagingDir.name, service.prepareLaunch(null).launchedBundleId)
         assertEquals(mapOf("status" to "PENDING"), service.notifyAppReady())
 
+        concurrentRead.arm()
         service.markLaunchCompleted(stagingDir.name)
-
-        assertEquals(
+        val expected =
             mapOf(
                 "status" to "UPDATE_APPLIED",
                 "fromBundleId" to stableDir.name,
                 "toBundleId" to stagingDir.name,
                 "updateStrategy" to "appVersion",
-            ),
-            service.notifyAppReady(),
-        )
+            )
+
+        assertEquals(expected, concurrentRead.join())
+        assertEquals(expected, service.notifyAppReady())
+    }
+
+    /**
+     * Calls notifyAppReady once on its own thread, as JS does, from inside a
+     * metadata write. The write waits until the read started and then up to a
+     * second for it, so a read that doesn't wait for the writer's lock answers
+     * while the write is unfinished.
+     */
+    private class ConcurrentLaunchReportRead {
+        @Volatile
+        var service: BundleFileStorageService? = null
+        private val armed = AtomicBoolean(false)
+        private val started = CountDownLatch(1)
+        private val finished = CountDownLatch(1)
+
+        @Volatile
+        private var report: Map<String, Any?>? = null
+        private var thread: Thread? = null
+
+        fun arm() = armed.set(true)
+
+        fun startOnce() {
+            val service = service ?: return
+            if (!armed.compareAndSet(true, false)) return
+            thread =
+                Thread {
+                    started.countDown()
+                    report = service.notifyAppReady()
+                    finished.countDown()
+                }.also { it.start() }
+            started.await(5, TimeUnit.SECONDS)
+            finished.await(1, TimeUnit.SECONDS)
+        }
+
+        /** The report the read returned, null if it never ran or didn't finish. */
+        fun join(): Map<String, Any?>? {
+            thread?.join(5_000)
+            return report
+        }
     }
 
     @Test
