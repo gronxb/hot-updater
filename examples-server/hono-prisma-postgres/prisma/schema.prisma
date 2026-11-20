@@ -64,6 +64,7 @@ model releases {
   source_release_id String? @db.VarChar(36)
   created_at_ms BigInt
   updated_at_ms BigInt
+  label BigInt?
   hu_v BigInt @default(0) @map("_v")
   @@id([id])
   @@index([scope_key, id], map: "releases_byScope")
@@ -71,6 +72,7 @@ model releases {
   @@index([channel_id, platform, id], map: "releases_byChannelPlatform")
   @@index([channel_id, platform, enabled, id], map: "releases_byChannelPlatformEnabled")
   @@index([bundle_id, id], map: "releases_byBundle")
+  @@unique([channel_id, platform, label], map: "releases_byLabel")
 }
 model release_catalogs {
   scope_key String @db.VarChar(2048)
@@ -161,6 +163,13 @@ model ios_device_account {
   id String @db.VarChar(16)
   apple_issuer_id String @db.VarChar(64)
   claimed_at_ms BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+}
+model label_sequences {
+  id String @db.VarChar(1440)
+  last_label BigInt
+  is_filled Boolean
   hu_v BigInt @default(0) @map("_v")
   @@id([id])
 }

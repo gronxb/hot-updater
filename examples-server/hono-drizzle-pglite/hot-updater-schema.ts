@@ -57,6 +57,7 @@ export const releases = pgTable("releases", {
   "source_release_id": column("varchar(36)")("source_release_id"),
   "created_at_ms": column("bigint")("created_at_ms").notNull(),
   "updated_at_ms": column("bigint")("updated_at_ms").notNull(),
+  "label": column("bigint")("label"),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
   index("releases_byScope").on(table["scope_key"], table["id"]),
@@ -64,6 +65,7 @@ export const releases = pgTable("releases", {
   index("releases_byChannelPlatform").on(table["channel_id"], table["platform"], table["id"]),
   index("releases_byChannelPlatformEnabled").on(table["channel_id"], table["platform"], table["enabled"], table["id"]),
   index("releases_byBundle").on(table["bundle_id"], table["id"]),
+  uniqueIndex("releases_byLabel").on(table["channel_id"], table["platform"], table["label"]),
 ]);
 
 export const release_catalogs = pgTable("release_catalogs", {
@@ -162,6 +164,15 @@ export const ios_device_account = pgTable("ios_device_account", {
   "id": column("varchar(16)")("id").notNull().primaryKey(),
   "apple_issuer_id": column("varchar(64)")("apple_issuer_id").notNull(),
   "claimed_at_ms": column("bigint")("claimed_at_ms").notNull(),
+  "_v": column("bigint")("_v").notNull().default(0),
+}, (table) => [
+
+]);
+
+export const label_sequences = pgTable("label_sequences", {
+  "id": column("varchar(1440)")("id").notNull().primaryKey(),
+  "last_label": column("bigint")("last_label").notNull(),
+  "is_filled": column("boolean")("is_filled").notNull(),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
 
