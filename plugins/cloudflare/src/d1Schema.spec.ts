@@ -350,6 +350,52 @@ describe("d1 schema", () => {
     migrated.close();
   });
 
+  it("fails a dry run of the label fill on a database without the label column or the counters, instead of counting its releases as unlabeled", async () => {
+    const policy = {
+      channel: "production",
+      enabled: true,
+      fingerprintHash: null,
+      message: null,
+      shouldForceUpdate: false,
+      targetAppVersion: "1.0.0",
+    };
+    // The two halves of release labels' schema a 1.2 prerelease lacked.
+    const gaps = [
+      {
+        statements: [
+          'DROP INDEX "releases_byLabel"',
+          'ALTER TABLE "releases" DROP COLUMN "label"',
+        ],
+        error: "no such column: i.label",
+      },
+      {
+        statements: [
+          'UPDATE "releases" SET "label" = NULL',
+          'DROP TABLE "label_sequences"',
+        ],
+        error: "no such table: label_sequences",
+      },
+    ];
+    for (const { statements, error } of gaps) {
+      const db = new DatabaseSync(":memory:");
+      for (const statement of d1SchemaStatements()) db.exec(statement);
+      const core = createHotUpdater({
+        database: sqliteD1(db),
+        storage: createReleaseCatalogTestStorage(),
+        clientAccess: "public",
+      }).core;
+      await core.deploy([
+        { bundle: createBundleFixture("1"), release: policy },
+      ]);
+      for (const statement of statements) db.exec(statement);
+
+      await expect(
+        core.fillReleaseLabels({ dryRun: true, catalogs: false }),
+      ).rejects.toThrow(error);
+      db.close();
+    }
+  });
+
   it("serves once the schema is applied, writing each change as one batch", async () => {
     const db = new DatabaseSync(":memory:");
     const core = createHotUpdater({

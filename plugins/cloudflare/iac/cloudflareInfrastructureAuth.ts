@@ -36,6 +36,20 @@ export const resolveCloudflareInfrastructureApiToken = async ({
   if (existingToken) {
     return existingToken;
   }
+  // An expired login keeps its refresh token, which any Wrangler command
+  // that authenticates renews, without a browser. Its output names the
+  // account's email, so it isn't shown.
+  if (getWranglerLoginAuthToken()?.refresh_token) {
+    await execa("npx", ["wrangler", "whoami"], {
+      cwd,
+      reject: false,
+      stdio: "ignore",
+    });
+    const renewedToken = getValidWranglerAuthToken();
+    if (renewedToken) {
+      return renewedToken;
+    }
+  }
   if (nonInteractive) {
     throw new CloudflareWranglerLoginRequiredError();
   }

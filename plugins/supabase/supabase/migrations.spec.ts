@@ -21,9 +21,11 @@ import {
   startHttpTestServer,
   insightsTestSuite,
   createReleaseCatalogTestStorage,
+  createBundleFixture,
 } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { SUPABASE_CLI } from "../iac/supabaseCliPackage";
 import { supabaseDatabase } from "../src/supabaseDatabase";
 import { toApplyStatement } from "../src/supabaseExecutor";
 import { supabaseDatabase as supabaseToolingDatabase } from "../src/supabaseMigration";
@@ -209,6 +211,65 @@ describe("Supabase schema", () => {
     expect(after).toEqual(await describeSchema(migrated));
     await prerelease.close();
     await migrated.close();
+  });
+
+  it("runs this release's migration again with the Supabase CLI init uses, in the packaged 1.2.0 upgrade guide", async () => {
+    const guide = await fs.readFile(
+      path.resolve("packages/hot-updater/infrastructure-upgrades/1.2.0.md"),
+      "utf8",
+    );
+    expect(guide).toContain(
+      `npx ${SUPABASE_CLI} db query --remote=<project-ref> -f node_modules/@hot-updater/supabase/supabase/migrations/${LATEST}`,
+    );
+  });
+
+  it("fails a dry run of the label fill on a database without the label column or the counters, instead of counting its releases as unlabeled", async () => {
+    // The two halves of release labels' schema a 1.2 prerelease lacked.
+    const gaps = [
+      {
+        sql: 'ALTER TABLE "hot_updater_v1_releases" DROP COLUMN "label"',
+        error: "column i.label does not exist",
+      },
+      {
+        sql: 'UPDATE "hot_updater_v1_releases" SET "label" = NULL; DROP TABLE "hot_updater_v1_label_sequences"',
+        error: 'relation "hot_updater_v1_label_sequences" does not exist',
+      },
+    ];
+    for (const { sql, error } of gaps) {
+      const db = await createDatabase();
+      state.db = db;
+      try {
+        const core = createHotUpdater({
+          database: supabaseDatabase({
+            supabaseUrl: "https://project.supabase.co",
+            supabaseServiceRoleKey: "service-role-key",
+          }),
+          storage: createReleaseCatalogTestStorage(),
+          clientAccess: "public",
+        }).core;
+        await core.deploy([
+          {
+            bundle: createBundleFixture("1"),
+            release: {
+              channel: "production",
+              enabled: true,
+              fingerprintHash: null,
+              message: null,
+              shouldForceUpdate: false,
+              targetAppVersion: "1.0.0",
+            },
+          },
+        ]);
+        await db.exec(`RESET ROLE; ${sql}; SET ROLE service_role;`);
+
+        await expect(
+          core.fillReleaseLabels({ dryRun: true, catalogs: false }),
+        ).rejects.toThrow(error);
+      } finally {
+        state.db = undefined;
+        await db.close();
+      }
+    }
   });
 
   it("writes into a later migration only what the earlier ones did not create, the apply RPC with its grants, and every settings row", async () => {

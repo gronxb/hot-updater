@@ -1,4 +1,8 @@
-import { loadConfig, readPackageUp } from "@hot-updater/cli-tools";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
+
+import { loadConfig, p, readPackageUp } from "@hot-updater/cli-tools";
 import { createEngine } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,6 +10,7 @@ import { loadServer } from "../utils/loadServer";
 import { testServer } from "../utils/testServer";
 import { createDatabaseHarness } from "./database.testFixtures";
 import { doctor, handleDoctor } from "./doctor";
+import { INIT_PROVIDER_PACKAGES } from "./initProviders";
 
 vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
 
@@ -312,6 +317,72 @@ describe("doctor's release catalog check", () => {
         },
       },
     });
+  });
+
+  it("prints each command an issue names under its resolution, once", async () => {
+    await deploy(1);
+    await asBeforeLabels();
+    const warn = vi.spyOn(p.log, "warn");
+
+    await handleDoctor({});
+
+    const block = warn.mock.calls
+      .map(([message]) => stripVTControlCharacters(String(message)))
+      .find((message) => message.startsWith("1 release has no label."));
+    expect(block).toBe(
+      [
+        "1 release has no label.",
+        "Migrating the database again labels them in the order they were created:",
+        "npx hot-updater db migrate <server file>",
+      ].join("\n"),
+    );
+  });
+
+  it("reports a database without release labels' schema as unchecked, with the error and its provider's repair, not as releases without a label", async () => {
+    await deploy(1);
+    await asBeforeLabels();
+    // A D1 database a 1.2 prerelease migrated: no counters table.
+    harness.read.mockImplementation(async (table) => {
+      if (table === "label_sequences") {
+        throw new Error("no such table: label_sequences: SQLITE_ERROR");
+      }
+    });
+    vi.mocked(loadServer).mockImplementation(async () =>
+      testServer({ database: { ...harness.database, name: "d1Database" } }),
+    );
+
+    const result = await doctor();
+
+    const { issues } = (
+      result as {
+        details: { releaseCatalogs: { issues: { code: string }[] } };
+      }
+    ).details.releaseCatalogs;
+    expect(issues).toContainEqual({
+      type: "warning",
+      code: "RELEASE_LABELS_UNCHECKED",
+      message:
+        "Could not check release labels: no such table: label_sequences: SQLITE_ERROR",
+      resolution:
+        "Add release labels' schema, which a 1.2 prerelease's migration left out:",
+      commands: INIT_PROVIDER_PACKAGES.cloudflare.labelSchemaRepair,
+    });
+    expect(issues.map(({ code }) => code)).not.toContain(
+      "RELEASE_LABELS_MISSING",
+    );
+  });
+
+  it("names each provider's label schema repair as the packaged 1.2.0 upgrade guide prints it", async () => {
+    const guide = await fs.readFile(
+      path.resolve("packages/hot-updater/infrastructure-upgrades/1.2.0.md"),
+      "utf8",
+    );
+    for (const command of [
+      ...INIT_PROVIDER_PACKAGES.cloudflare.labelSchemaRepair,
+      ...INIT_PROVIDER_PACKAGES.supabase.labelSchemaRepair,
+    ]) {
+      expect(guide).toContain(command);
+    }
   });
 
   it("verifies a stale catalog once a deploy to its scope recompiles it", async () => {

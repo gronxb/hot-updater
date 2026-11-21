@@ -245,6 +245,7 @@ const checkReleaseCatalogs = async (
 const checkReleaseLabels = async (
   core: HotUpdaterCoreApi,
   repair: string,
+  schemaRepair: LabelSchemaRepair | undefined,
 ): Promise<ReleaseCatalogIssue | null> => {
   let releases: number;
   try {
@@ -257,7 +258,12 @@ const checkReleaseLabels = async (
       type: "warning",
       code: "RELEASE_LABELS_UNCHECKED",
       message: `Could not check release labels: ${errorMessage(error)}`,
-      resolution: "Fix what the message names, then rerun doctor.",
+      ...(schemaRepair === undefined
+        ? { resolution: "Fix what the message names, then rerun doctor." }
+        : {
+            resolution: schemaRepair.resolution,
+            commands: [...schemaRepair.commands],
+          }),
     };
   }
   if (releases === 0) return null;
@@ -272,6 +278,16 @@ const checkReleaseLabels = async (
 };
 
 /**
+ * What adds release labels' schema, when the label check fails on a
+ * database that may lack it, such as one a 1.2 prerelease migrated: the
+ * check's failure is then the database's, and this its next step.
+ */
+export interface LabelSchemaRepair {
+  readonly resolution: string;
+  readonly commands: readonly string[];
+}
+
+/**
  * The server's release catalogs, each against a rebuild from its releases,
  * and its releases' labels. `repair` is the command that migrates the
  * database: init's for a deployment init created, else `db migrate`'s.
@@ -279,6 +295,7 @@ const checkReleaseLabels = async (
 export const checkServerData = async (
   core: HotUpdaterCoreApi,
   repair = "npx hot-updater db migrate <server file>",
+  labelSchemaRepair?: LabelSchemaRepair,
 ): Promise<ReleaseCatalogStatus> => {
   let catalogs: { scopeKey: string; tombstone: boolean }[];
   try {
@@ -300,7 +317,7 @@ export const checkServerData = async (
     walked ?? new Set(),
     repair,
   );
-  const labels = await checkReleaseLabels(core, repair);
+  const labels = await checkReleaseLabels(core, repair, labelSchemaRepair);
   if (labels !== null) status.issues.push(labels);
   if (walked === undefined) {
     // A self-hosted server older than this hot-updater has no scope route.

@@ -19,7 +19,11 @@ import {
   UNSIGNED_BUNDLES_NEXT_STEP,
   UNSIGNED_BUNDLES_WARNING,
 } from "@hot-updater/cli-tools";
-import type { PluginClientPlugin } from "@hot-updater/plugin-core";
+import {
+  isRemoteDatabase,
+  type ConfiguredDatabase,
+  type PluginClientPlugin,
+} from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import {
@@ -79,7 +83,11 @@ import {
   type SecretsStatus,
   uncheckedSecretNames,
 } from "./doctor/secrets";
-import { checkServerData, releaseCatalogsUnchecked } from "./doctor/serverData";
+import {
+  checkServerData,
+  type LabelSchemaRepair,
+  releaseCatalogsUnchecked,
+} from "./doctor/serverData";
 import { checkTestFlightCompliance } from "./doctor/testFlightCompliance";
 import {
   hasVerificationOptions,
@@ -93,7 +101,11 @@ import {
   getRequiredUpdateTarget,
   type InfrastructureStatus,
 } from "./doctorInfrastructure";
-import { INIT_PROVIDER_PACKAGES } from "./initProviders";
+import {
+  INIT_PROVIDER_PACKAGES,
+  type InitProviderPackage,
+  providerOfDatabase,
+} from "./initProviders";
 
 export {
   checkInfrastructureStatus,
@@ -822,8 +834,40 @@ async function checkServer(
   }
   if (server === null) return undefined;
   const managed = await context.managed();
-  return checkServerData(server.core, managed?.command);
+  const repair = managed?.command ?? "npx hot-updater db migrate <server file>";
+  return checkServerData(
+    server.core,
+    repair,
+    labelSchemaRepair(server.database, repair),
+  );
 }
+
+/**
+ * A database a 1.2 prerelease migrated lacks release labels' schema, and
+ * the label check is then the first read of it to fail: its provider's
+ * repair, or the migration that adds it. A self-hosted server's admin API
+ * fails it for its own reasons.
+ */
+const labelSchemaRepair = (
+  database: ConfiguredDatabase,
+  repair: string,
+): LabelSchemaRepair | undefined => {
+  if (isRemoteDatabase(database)) return undefined;
+  const provider = providerOfDatabase(database.name);
+  const repairs: InitProviderPackage | undefined =
+    provider === undefined ? undefined : INIT_PROVIDER_PACKAGES[provider];
+  const statements = repairs?.labelSchemaRepair;
+  return statements === undefined
+    ? {
+        resolution: "Migrating the database again adds what it lacks:",
+        commands: [repair],
+      }
+    : {
+        resolution:
+          "Add release labels' schema, which a 1.2 prerelease's migration left out:",
+        commands: statements,
+      };
+};
 
 /**
  * A warning for each client plugin a server plugin needs that the app does
@@ -1193,7 +1237,10 @@ const promptServerBaseUrl = async () => {
   return trimmed ? trimmed : undefined;
 };
 
-/** Each issue and its resolution, which `--json` prints as they are, as one entry. */
+/**
+ * Each issue, its resolution, and the commands it names that the resolution
+ * doesn't already spell out, which `--json` prints as they are, as one entry.
+ */
 const reportIssues = (
   log: Pick<typeof p.log, "error" | "warn">,
   issues: readonly {
@@ -1202,14 +1249,26 @@ const reportIssues = (
     readonly names?: readonly string[];
     readonly message: string;
     readonly resolution: string;
+    readonly commands?: readonly string[];
   }[],
 ) => {
   for (const issue of issues) {
     const report = issue.type === "error" ? log.error : log.warn;
+    if (issue.code === "SECRETS_MISSING_UNUSED") {
+      report(
+        ui.prose(unusedSecretsText({ ...issue, names: issue.names ?? [] })),
+      );
+      continue;
+    }
+    const resolution = humanText(issue.resolution);
     report(
-      issue.code === "SECRETS_MISSING_UNUSED"
-        ? ui.prose(unusedSecretsText({ ...issue, names: issue.names ?? [] }))
-        : `${ui.prose(humanText(issue.message))}\n${ui.prose(humanText(issue.resolution))}`,
+      [
+        ui.prose(humanText(issue.message)),
+        ui.prose(resolution),
+        ...(issue.commands ?? [])
+          .filter((command) => !resolution.includes(command))
+          .map((command) => ui.command(command)),
+      ].join("\n"),
     );
   }
 };

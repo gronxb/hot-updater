@@ -492,7 +492,9 @@ catalog that differs from its releases only by their labels, which apps read.
 Migrating the database again labels those bundles in the order they were
 created and rebuilds those catalogs; the next deploy to a channel and platform
 labels them too. `RELEASE_LABELS_UNCHECKED` says why the check couldn't run,
-such as a self-hosted server older than the CLI.
+such as a self-hosted server older than the CLI, or a database a 1.2
+prerelease migrated, which lacks the label column: doctor then names the
+repair that adds it.
 
 To preview a proposed change to one Bundle's policy, use
 [`bundle update --dry-run`](/docs/guides/console#preview-and-protect-automated-changes).
