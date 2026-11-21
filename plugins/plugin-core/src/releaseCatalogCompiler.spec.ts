@@ -426,6 +426,16 @@ describe("readCompiledCatalogPayload", () => {
     });
   });
 
+  it.each(["{", "null", "[]", '"catalog"'])(
+    "reads a payload that isn't a catalog, %s, as this release's",
+    (payload) => {
+      expect(readCompiledCatalogPayload(payload)).toEqual({
+        canonicalPayload: payload,
+        fromLaterRelease: false,
+      });
+    },
+  );
+
   it("names a catalog of a later schema version a later release's", async () => {
     const [, fingerprint] = await compiled();
     const payload = JSON.parse(fingerprint!.canonicalPayload) as object;

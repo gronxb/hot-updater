@@ -654,8 +654,19 @@ export function readCompiledCatalogPayload(payload: string): {
       entries.map(([key, entry]) => [key, known(entry)]),
     );
   };
-  const parsed = JSON.parse(payload) as { readonly schemaVersion?: unknown };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    parsed = null;
+  }
+  // A payload that isn't a catalog is no later release's: it is stale, and
+  // a release change rewrites it.
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { canonicalPayload: payload, fromLaterRelease: false };
+  }
   if (
+    "schemaVersion" in parsed &&
     typeof parsed.schemaVersion === "number" &&
     parsed.schemaVersion > RELEASE_CATALOG_SCHEMA_VERSION
   ) {
