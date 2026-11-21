@@ -6,6 +6,7 @@ import {
   credentialPutCommand,
   getBundleSigningPublicKey,
   getCwd,
+  getHotUpdaterEnvValue,
   getPackageManager,
   INVALID_SIGNING_NEXT_STEP,
   ISSUE_SIGNING_KEY_COMMAND,
@@ -14,6 +15,7 @@ import {
   p,
   PUT_SIGNING_KEY_COMMAND,
   readBundleSigningState,
+  readLoadedHotUpdaterEnv,
   readPackageUp,
   nonInteractiveReason,
   UNSIGNED_BUNDLES_NEXT_STEP,
@@ -834,39 +836,54 @@ async function checkServer(
   }
   if (server === null) return undefined;
   const managed = await context.managed();
-  const repair = managed?.command ?? "npx hot-updater db migrate <server file>";
+  // Labels need no redeploy: `db migrate` without a server file fills them
+  // over the config's database, whichever deployment serves it.
   return checkServerData(
     server.core,
-    repair,
-    labelSchemaRepair(server.database, repair),
+    "npx hot-updater db migrate",
+    await labelSchemaRepair(
+      context.cwd,
+      server.database,
+      managed?.command ?? "npx hot-updater db migrate <server file>",
+    ),
   );
 }
+
+/** The resource a database reaches, as its factory marks it (CLAUDE.md). */
+const DATABASE_TARGET = Symbol.for("@hot-updater/database-target");
 
 /**
  * A database a 1.2 prerelease migrated lacks release labels' schema, and
  * the label check is then the first read of it to fail: its provider's
- * repair, or the migration that adds it. A self-hosted server's admin API
- * fails it for its own reasons.
+ * repair, or the migration that adds it. The repair names the resource init's
+ * saved inputs name when they describe the configured database. A
+ * self-hosted server's admin API fails it for its own reasons.
  */
-const labelSchemaRepair = (
+const labelSchemaRepair = async (
+  cwd: string,
   database: ConfiguredDatabase,
   repair: string,
-): LabelSchemaRepair | undefined => {
+): Promise<LabelSchemaRepair | undefined> => {
   if (isRemoteDatabase(database)) return undefined;
   const provider = providerOfDatabase(database.name);
   const repairs: InitProviderPackage | undefined =
     provider === undefined ? undefined : INIT_PROVIDER_PACKAGES[provider];
-  const statements = repairs?.labelSchemaRepair;
-  return statements === undefined
-    ? {
-        resolution: "Migrating the database again adds what it lacks:",
-        commands: [repair],
-      }
-    : {
-        resolution:
-          "Add release labels' schema, which a 1.2 prerelease's migration left out:",
-        commands: statements,
-      };
+  if (repairs?.labelSchemaRepair === undefined) {
+    return {
+      resolution: "Migrating the database again adds what it lacks:",
+      commands: [repair],
+    };
+  }
+  const file = await readLoadedHotUpdaterEnv(cwd).catch(() => ({}));
+  const read = (envKey: string) => getHotUpdaterEnvValue(file, envKey);
+  const saved = repairs.target(read);
+  const named =
+    saved !== undefined && saved === Reflect.get(database, DATABASE_TARGET);
+  return {
+    resolution:
+      "Add release labels' schema, which a 1.2 prerelease's migration left out:",
+    commands: repairs.labelSchemaRepair(named ? read : () => undefined),
+  };
 };
 
 /**

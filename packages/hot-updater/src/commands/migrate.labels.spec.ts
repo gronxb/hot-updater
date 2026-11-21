@@ -1,18 +1,24 @@
+import { stripVTControlCharacters } from "node:util";
+
 import { PGlite } from "@electric-sql/pglite";
-import { assembleServer, p } from "@hot-updater/cli-tools";
+import { assembleServer, loadConfig, p } from "@hot-updater/cli-tools";
 import {
   createEngineDatabase,
   createSqlAdapter,
   migrateCoreSchema,
   SETTINGS_TABLE,
   type Deployment,
+  type ToolingDatabase,
 } from "@hot-updater/plugin-core";
 import { encodeChannelKey } from "@hot-updater/protocol";
 import { pgliteExecutor } from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { migrate } from "./migrate";
-import { loadHotUpdater } from "./utils/load-hot-updater";
+import {
+  findDefaultConfigPaths,
+  loadHotUpdater,
+} from "./utils/load-hot-updater";
 
 // The spinner is silenced; `p.log` stays the object cli-tools logs through
 // itself, so its calls are spied on there.
@@ -21,6 +27,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     await importOriginal<typeof import("@hot-updater/cli-tools")>();
   return {
     ...actual,
+    loadConfig: vi.fn(),
     p: {
       ...actual.p,
       spinner: () => ({ start: vi.fn(), stop: vi.fn(), message: vi.fn() }),
@@ -30,6 +37,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 
 vi.mock("./utils/load-hot-updater", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./utils/load-hot-updater")>()),
+  findDefaultConfigPaths: vi.fn(() => []),
   loadHotUpdater: vi.fn(),
 }));
 
@@ -226,5 +234,204 @@ describe("db migrate on a database a 1.1 server wrote", () => {
     await expect(
       server.core.getRelease(stale!.release!.id),
     ).resolves.toMatchObject({ label: 5 });
+  });
+});
+
+describe("db migrate without a server file", () => {
+  let pglite: PGlite;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(p.log, "error").mockImplementation(() => {});
+    vi.spyOn(p.log, "info").mockImplementation(() => {});
+    vi.spyOn(p.log, "message").mockImplementation(() => {});
+    vi.spyOn(p.log, "success").mockImplementation(() => {});
+    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      exits.push(code);
+      throw new Exit(code);
+    }) as never);
+    pglite = new PGlite();
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    await pglite.close();
+  });
+
+  it("refuses a pending schema on the database init's server reads, naming init, and migrates nothing", async () => {
+    // A deployment init manages: its Worker reads this database, and an
+    // older Worker answers 503 once the schema is migrated without it.
+    vi.stubEnv("HOT_UPDATER_INIT_PROVIDER", "cloudflare");
+    vi.stubEnv("HOT_UPDATER_INIT_BUILD", "expo");
+    vi.stubEnv("HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID", "database");
+    const adapter = createSqlAdapter({ executor: pgliteExecutor(pglite) });
+    await migrateCoreSchema(adapter, "d1Database", []);
+    await pglite.query(
+      `UPDATE "${SETTINGS_TABLE.name}" SET "value" = '1.0.0' WHERE "key" = 'schema.core'`,
+    );
+    vi.mocked(findDefaultConfigPaths).mockReturnValue([]);
+    vi.mocked(loadConfig).mockResolvedValue({
+      database: {
+        ...createEngineDatabase({ name: "d1Database", adapter }),
+        [Symbol.for("@hot-updater/database-target")]: "d1/database",
+      },
+      plugins: [],
+    } as never);
+
+    exits.length = 0;
+    await migrate({ configPath: "", skipConfirm: true }).catch((error) => {
+      if (!(error instanceof Exit)) throw error;
+    });
+
+    expect(exits[0]).toBe(1);
+    // The command on a line of its own, whole, as people copy it.
+    const printed = stripVTControlCharacters(
+      String(vi.mocked(p.log.error).mock.calls[0]?.[0]),
+    );
+    expect(printed).toBe(
+      [
+        "The schema is behind this CLI; migrate it with its server:",
+        "npx hot-updater init --provider cloudflare --build expo --from-env-file <env file>",
+      ].join("\n"),
+    );
+    const { rows } = await pglite.query<{ value: string }>(
+      `SELECT "value" FROM "${SETTINGS_TABLE.name}" WHERE "key" = 'schema.core'`,
+    );
+    expect(rows).toEqual([{ value: "1.0.0" }]);
+  });
+});
+
+describe("db migrate on a database without a migrator", () => {
+  let pglite: PGlite;
+  let server: ReturnType<typeof assembleServer>;
+  let assemble: () => ReturnType<typeof assembleServer>;
+  let log: Record<"error" | "info" | "success", ReturnType<typeof vi.fn>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    log = {
+      error: vi.spyOn(p.log, "error").mockImplementation(() => {}),
+      info: vi.spyOn(p.log, "info").mockImplementation(() => {}),
+      success: vi.spyOn(p.log, "success").mockImplementation(() => {}),
+    } as never;
+    vi.spyOn(p.log, "message").mockImplementation(() => {});
+    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      exits.push(code);
+      throw new Exit(code);
+    }) as never);
+    pglite = new PGlite();
+    const adapter = createSqlAdapter({ executor: pgliteExecutor(pglite) });
+    await migrateCoreSchema(adapter, "postgres", []);
+    assemble = () => {
+      // As Supabase's: its migration files apply the schema, so the
+      // database has no migrator.
+      const { createMigrator: _, ...database } = createEngineDatabase({
+        name: "supabaseDatabase",
+        adapter,
+      });
+      server = assembleServer({
+        database: {
+          ...database,
+          generateSchema: () => ({ code: "", path: "migrations/0001.sql" }),
+        } as ToolingDatabase,
+      });
+      vi.mocked(loadHotUpdater).mockResolvedValue({
+        hotUpdater: server,
+      } as never);
+      return server;
+    };
+    assemble();
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await pglite.close();
+  });
+
+  /**
+   * Releases on two channels, then their labels taken off; their catalogs
+   * keep the labels they were compiled with.
+   */
+  const withoutLabels = async () => {
+    for (const [channel, platform] of [
+      ["production", "ios"],
+      ["production", "ios"],
+      ["beta", "android"],
+    ] as const) {
+      await server.core.deploy([
+        { bundle: bundle(platform), release: policy(channel, "a") },
+      ]);
+    }
+    await pglite.exec(
+      'UPDATE "releases" SET "label" = NULL; DELETE FROM "label_sequences"',
+    );
+  };
+
+  it("labels the releases without migrating, since the schema is current", async () => {
+    await withoutLabels();
+    await expect(runMigrate()).resolves.toBe(0);
+
+    expect(log.success.mock.calls).toEqual([["Schema is up to date."]]);
+    expect(log.info.mock.calls).toEqual([["Labeled 3 releases."]]);
+    await expect(
+      server.core.fillReleaseLabels({ dryRun: true }),
+    ).resolves.toEqual({ releases: 0, catalogs: 0 });
+  });
+
+  it("names what applies the schema when the schema is behind", async () => {
+    await withoutLabels();
+    await pglite.query(
+      `UPDATE "${SETTINGS_TABLE.name}" SET "value" = '1.0.0' WHERE "key" = 'schema.core'`,
+    );
+    // A new run's database, whose fence has not read the settings yet.
+    assemble();
+
+    await expect(runMigrate()).resolves.toBe(1);
+
+    expect(stripVTControlCharacters(String(log.error.mock.calls[0]?.[0]))).toBe(
+      [
+        "The supabaseDatabase database applies its schema from migration files:",
+        "run hot-updater db generate, then apply the file with the provider's",
+        "tooling.",
+      ].join("\n"),
+    );
+    expect(log.info).not.toHaveBeenCalled();
+  });
+
+  it("reads hot-updater.config.ts's database when no server file is given or found", async () => {
+    await withoutLabels();
+    vi.mocked(findDefaultConfigPaths).mockReturnValue([]);
+    vi.mocked(loadConfig).mockResolvedValue({
+      database: server.database,
+      plugins: [],
+    } as never);
+
+    exits.length = 0;
+    await migrate({ configPath: "", skipConfirm: true }).catch((error) => {
+      if (!(error instanceof Exit)) throw error;
+    });
+
+    expect(exits[0]).toBe(0);
+    expect(loadHotUpdater).not.toHaveBeenCalled();
+    expect(log.info.mock.calls).toEqual([["Labeled 3 releases."]]);
+  });
+
+  it("labels the releases through a self-hosted server's admin API, as standaloneRepository reaches it", async () => {
+    await withoutLabels();
+    vi.mocked(findDefaultConfigPaths).mockReturnValue([]);
+    // The server's core, which its admin routes run.
+    vi.mocked(loadConfig).mockResolvedValue({
+      database: { name: "standalone", core: server.core, fetchAdmin: vi.fn() },
+      plugins: [],
+    } as never);
+
+    exits.length = 0;
+    await migrate({ configPath: "", skipConfirm: true }).catch((error) => {
+      if (!(error instanceof Exit)) throw error;
+    });
+
+    expect(exits[0]).toBe(0);
+    expect(log.info.mock.calls).toEqual([["Labeled 3 releases."]]);
   });
 });

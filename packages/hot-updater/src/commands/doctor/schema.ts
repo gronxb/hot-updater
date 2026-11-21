@@ -62,7 +62,7 @@ const ownedSettingKeys = ({ plugins }: LoadedServer): ReadonlySet<string> =>
   ]);
 
 /** What deploys the server that reads the database. */
-interface Deployment {
+export interface Deployment {
   /** The deployment `hot-updater init` manages. */
   readonly managed: ManagedDeployment | null;
   /** The agent infrastructure scaffold that keeps it, which takes init's place. */
@@ -81,8 +81,8 @@ const DB_GENERATE = "npx hot-updater db generate <server file>";
  * deployment init manages, which migrates and redeploys its server back to
  * back; otherwise the database's own tooling in the server's project.
  */
-const pendingResolution = (
-  { database }: LoadedServer,
+export const pendingResolution = (
+  { database }: Pick<LoadedServer, "database">,
   { managed, scaffold }: Deployment,
 ): { readonly resolution: string; readonly commands: string[] } => {
   // A scaffold that keeps the deployment upgrades it with a preview.

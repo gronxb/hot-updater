@@ -297,6 +297,7 @@ describe("runAction preview", () => {
         },
         built: true,
         bundleId: "bundle-2",
+        bundleLabel: null,
         installUrl:
           "https://console.example.com/api/native-builds/build-1/download",
         downloadUrl: "https://storage.example.com/build-1?sig=1",
@@ -585,8 +586,8 @@ describe("runAction preview", () => {
         <sub>Preview by [hot-updater](https://hot-updater.dev)</sub>",
           "ios-download-url": "https://storage.example.com/build-3?sig=1",
           "ios-install-url": "npx hot-updater native-build install build-3",
-          "previews": "[{"platform":"android","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-1","artifactKind":"apk","fileName":"app-release.apk"},"built":true,"bundleId":"bundle-2","installUrl":"https://console.example.com/api/native-builds/build-1/download","downloadUrl":"https://storage.example.com/build-1?sig=1"},{"platform":"ios","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-3","artifactKind":"app","fileName":"App.app.zip"},"built":true,"bundleId":"bundle-4","installUrl":"npx hot-updater native-build install build-3","downloadUrl":"https://storage.example.com/build-3?sig=1"}]",
-          "result": "{"channel":"pr-12","commitSha":"0123456789abcdef","previews":[{"platform":"android","scheme":"releaseApk","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-1","artifactKind":"apk","fileName":"app-release.apk"},"built":true,"bundleId":"bundle-2"},{"platform":"ios","scheme":"simulator","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-3","artifactKind":"app","fileName":"App.app.zip"},"built":true,"bundleId":"bundle-4"}],"failed":[]}",
+          "previews": "[{"platform":"android","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-1","artifactKind":"apk","fileName":"app-release.apk"},"built":true,"bundleId":"bundle-2","bundleLabel":null,"installUrl":"https://console.example.com/api/native-builds/build-1/download","downloadUrl":"https://storage.example.com/build-1?sig=1"},{"platform":"ios","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-3","artifactKind":"app","fileName":"App.app.zip"},"built":true,"bundleId":"bundle-4","bundleLabel":null,"installUrl":"npx hot-updater native-build install build-3","downloadUrl":"https://storage.example.com/build-3?sig=1"}]",
+          "result": "{"channel":"pr-12","commitSha":"0123456789abcdef","previews":[{"platform":"android","scheme":"releaseApk","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-1","artifactKind":"apk","fileName":"app-release.apk"},"built":true,"bundleId":"bundle-2","bundleLabel":null},{"platform":"ios","scheme":"simulator","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-3","artifactKind":"app","fileName":"App.app.zip"},"built":true,"bundleId":"bundle-4","bundleLabel":null}],"failed":[]}",
         }
       `);
     });
@@ -694,8 +695,8 @@ describe("runAction preview", () => {
         <sub>Preview by [hot-updater](https://hot-updater.dev)</sub>",
           "ios-download-url": "https://storage.example.com/build-1?sig=1",
           "ios-install-url": "npx hot-updater native-build install build-1",
-          "previews": "[{"platform":"ios","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-1","artifactKind":"app","fileName":"App.app.zip"},"built":true,"bundleId":"bundle-2","installUrl":"npx hot-updater native-build install build-1","downloadUrl":"https://storage.example.com/build-1?sig=1"}]",
-          "result": "{"channel":"pr-12","commitSha":"0123456789abcdef","previews":[{"platform":"ios","scheme":"Ad Hoc","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-1","artifactKind":"app","fileName":"App.app.zip"},"built":true,"bundleId":"bundle-2"}],"failed":[]}",
+          "previews": "[{"platform":"ios","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-1","artifactKind":"app","fileName":"App.app.zip"},"built":true,"bundleId":"bundle-2","bundleLabel":null,"installUrl":"npx hot-updater native-build install build-1","downloadUrl":"https://storage.example.com/build-1?sig=1"}]",
+          "result": "{"channel":"pr-12","commitSha":"0123456789abcdef","previews":[{"platform":"ios","scheme":"Ad Hoc","target":{"fingerprintHash":"fp-a","appVersion":null},"nativeBuild":{"id":"build-1","artifactKind":"app","fileName":"App.app.zip"},"built":true,"bundleId":"bundle-2","bundleLabel":null}],"failed":[]}",
         }
       `);
     });

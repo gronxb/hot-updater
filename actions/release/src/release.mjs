@@ -295,11 +295,11 @@ const releasePlatform = async (deps, inputs, env, platform) => {
     result.nativeBuildId = found.nativeBuild?.id ?? null;
     await deps.log.group(`Deploy ${platform}`, async () => {
       await refreshFingerprint(deps, found);
-      result.bundleId = await deployBundle(deps, {
+      ({ id: result.bundleId } = await deployBundle(deps, {
         platform,
         channel: found.channel,
         target: found,
-      });
+      }));
     });
     result.outcome = "deployed";
     return result;

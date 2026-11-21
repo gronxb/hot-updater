@@ -210,8 +210,9 @@ export const refreshFingerprint = async (deps, target) => {
 };
 
 /**
- * Deploys one platform's bundle to `channel`, and returns the bundle's ID once
- * the registry says it reaches a native build with `target`.
+ * Deploys one platform's bundle to `channel`, and returns the release's ID
+ * and label once the registry says it reaches a native build with `target`.
+ * The label is null when the project's CLI lists none, as before 1.2.
  *
  * @param {ShellDeps} deps
  * @param {{ platform: Platform, channel: string, target: BuildTarget, message?: string, onDeployed?: () => void }} options
@@ -235,7 +236,7 @@ export const deployBundle = async (
   onDeployed?.();
 
   const [release] =
-    /** @type {{ id: string, fingerprint_hash: string | null, target_app_version: string | null }[]} */ (
+    /** @type {{ id: string, label?: number | null, fingerprint_hash: string | null, target_app_version: string | null }[]} */ (
       await runJson(deps, [
         "bundle",
         "list",
@@ -261,5 +262,8 @@ export const deployBundle = async (
       `The ${platform} bundle ${release.id} targets ${release.fingerprint_hash ?? release.target_app_version}, but the native build has ${describeTarget(target)}.`,
     );
   }
-  return release.id;
+  return {
+    id: release.id,
+    label: typeof release.label === "number" ? release.label : null,
+  };
 };

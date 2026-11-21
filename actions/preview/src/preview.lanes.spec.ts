@@ -80,7 +80,12 @@ const fakeServer = ({
   const fingerprintOf = (name: SchemeName) =>
     fingerprints[name] ?? FINGERPRINTS[SCHEMES[name].platform];
   const builds: Build[] = [];
-  const releases: { id: string; platform: string; channel: string }[] = [];
+  const releases: {
+    id: string;
+    platform: string;
+    channel: string;
+    label: number;
+  }[] = [];
   const calls: string[] = [];
   let clock = 100;
   const cliOf = () => {
@@ -180,10 +185,19 @@ const fakeServer = ({
         if (deployFailing.includes(flag("-p")!)) {
           throw new Error("hot-updater deploy exited with 1.");
         }
+        const [platform, channel] = [flag("-p")!, flag("-c")!];
         releases.push({
           id: idOf(++clock),
-          platform: flag("-p")!,
-          channel: flag("-c")!,
+          platform,
+          channel,
+          // The server's next label on the channel and platform, after 40
+          // releases deployed before this run.
+          label:
+            41 +
+            releases.filter(
+              (release) =>
+                release.platform === platform && release.channel === channel,
+            ).length,
         });
         return { code: 0, stdout: "" };
       }
@@ -199,8 +213,9 @@ const fakeServer = ({
                   release.channel === flag("-c"),
               )
               .reverse()
-              .map(({ id }) => ({
+              .map(({ id, label }) => ({
                 id,
+                label,
                 fingerprint_hash: unconfirmed.includes(platform)
                   ? "c".repeat(64)
                   : FINGERPRINTS[platform as "android" | "ios"],
@@ -404,9 +419,11 @@ describe("lanes and a comment job", () => {
       byKind("ipa"),
       byKind("app"),
     ];
-    const iosBundle = server.releases.find(
+    const iosRelease = server.releases.find(
       ({ platform }) => platform === "ios",
-    )!.id;
+    )!;
+    const iosBundle = iosRelease.id;
+    expect(iosRelease.label).toBe(41);
     const body = github.comment()!;
     expect(github.comments).toHaveLength(1);
     expect(body).toContain(
@@ -423,10 +440,10 @@ describe("lanes and a comment job", () => {
     );
     // The deploy job's one iOS bundle, which both builds run.
     expect(body).toContain(
-      `| iOS | \`${adhoc.id}\` · built for this commit | \`${FINGERPRINTS.ios.slice(0, 12)}\` | \`${iosBundle}\` |`,
+      `| iOS | \`${adhoc.id}\` · built for this commit | \`${FINGERPRINTS.ios.slice(0, 12)}\` | \`v41\` · \`${iosBundle}\` |`,
     );
     expect(body).toContain(
-      `| iOS Simulator | \`${simulator.id}\` · built for this commit | \`${FINGERPRINTS.ios.slice(0, 12)}\` | \`${iosBundle}\` |`,
+      `| iOS Simulator | \`${simulator.id}\` · built for this commit | \`${FINGERPRINTS.ios.slice(0, 12)}\` | \`v41\` · \`${iosBundle}\` |`,
     );
     expect(iosBundle > adhoc.minBundleId).toBe(true);
     expect(iosBundle > simulator.minBundleId).toBe(true);
@@ -624,17 +641,20 @@ describe("lanes and a comment job", () => {
     const adhocBuild = server.builds.find(({ kind }) => kind === "ipa")!;
     // The Simulator build is newer than the first bundle, which it refuses.
     expect(newSimulator.minBundleId > firstBundle).toBe(true);
-    const bundle = server.releases
+    const release = server.releases
       .filter(({ platform }) => platform === "ios")
-      .at(-1)!.id;
+      .at(-1)!;
+    const bundle = release.id;
+    // The re-run's deploy is the channel's second iOS release.
+    expect(release.label).toBe(42);
     expect(bundle > newSimulator.minBundleId).toBe(true);
     expect(bundle > adhocBuild.minBundleId).toBe(true);
     const body = github.comment()!;
     expect(body).toContain(
-      `| iOS | \`${adhocBuild.id}\` · built for this commit | \`${FINGERPRINTS.ios.slice(0, 12)}\` | \`${bundle}\` |`,
+      `| iOS | \`${adhocBuild.id}\` · built for this commit | \`${FINGERPRINTS.ios.slice(0, 12)}\` | \`v42\` · \`${bundle}\` |`,
     );
     expect(body).toContain(
-      `| iOS Simulator | \`${newSimulator.id}\` · built for this commit | \`${FINGERPRINTS.ios.slice(0, 12)}\` | \`${bundle}\` |`,
+      `| iOS Simulator | \`${newSimulator.id}\` · built for this commit | \`${FINGERPRINTS.ios.slice(0, 12)}\` | \`v42\` · \`${bundle}\` |`,
     );
     expect(body).not.toContain("failed on this run");
     // One iOS deploy for both builds on the re-run.

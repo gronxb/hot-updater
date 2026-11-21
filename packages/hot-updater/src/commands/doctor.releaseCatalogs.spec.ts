@@ -4,7 +4,7 @@ import { stripVTControlCharacters } from "node:util";
 
 import { loadConfig, p, readPackageUp } from "@hot-updater/cli-tools";
 import { createEngine } from "@hot-updater/plugin-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadServer } from "../utils/loadServer";
 import { testServer } from "../utils/testServer";
@@ -131,6 +131,10 @@ describe("doctor's release catalog check", () => {
     vi.clearAllMocks();
     harness.reset();
     serverProject();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("skips the check when hot-updater.config.ts names no database", async () => {
@@ -274,7 +278,7 @@ describe("doctor's release catalog check", () => {
               type: "warning",
               code: "RELEASE_LABELS_MISSING",
               message: "2 releases have no label.",
-              commands: ["npx hot-updater db migrate <server file>"],
+              commands: ["npx hot-updater db migrate"],
             },
           ],
         },
@@ -295,7 +299,7 @@ describe("doctor's release catalog check", () => {
               code: "RELEASE_CATALOGS_WITHOUT_LABELS",
               message:
                 "2 release catalogs lack the labels of their releases, so apps don't get them.",
-              commands: ["npx hot-updater db migrate <server file>"],
+              commands: ["npx hot-updater db migrate"],
             },
           ],
         },
@@ -319,6 +323,44 @@ describe("doctor's release catalog check", () => {
     });
   });
 
+  it("names db migrate, which deploys nothing, for releases without labels on the database init's record names, as an agent infrastructure deployment's", async () => {
+    // A deployment init's record names, or one agent infrastructure
+    // deployed with the same inputs: init would redeploy its server.
+    vi.stubEnv("HOT_UPDATER_INIT_PROVIDER", "cloudflare");
+    vi.stubEnv("HOT_UPDATER_INIT_BUILD", "expo");
+    vi.stubEnv("HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID", "database");
+    const database = {
+      ...harness.database,
+      name: "d1Database",
+      [Symbol.for("@hot-updater/database-target")]: "d1/database",
+    };
+    vi.mocked(loadConfig).mockResolvedValue({
+      database,
+      plugins: [],
+    } as never);
+    vi.mocked(loadServer).mockImplementation(async () =>
+      testServer({ database }),
+    );
+    await deploy(1);
+    await asBeforeLabels();
+
+    const result = await doctor();
+
+    expect(result).toMatchObject({
+      details: {
+        releaseCatalogs: {
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: "RELEASE_LABELS_MISSING",
+              commands: ["npx hot-updater db migrate"],
+            }),
+          ]),
+        },
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("hot-updater init");
+  });
+
   it("prints each command an issue names under its resolution, once", async () => {
     await deploy(1);
     await asBeforeLabels();
@@ -332,8 +374,8 @@ describe("doctor's release catalog check", () => {
     expect(block).toBe(
       [
         "1 release has no label.",
-        "Migrating the database again labels them in the order they were created:",
-        "npx hot-updater db migrate <server file>",
+        "Label them in the order they were created:",
+        "npx hot-updater db migrate",
       ].join("\n"),
     );
   });
@@ -365,11 +407,92 @@ describe("doctor's release catalog check", () => {
         "Could not check release labels: no such table: label_sequences: SQLITE_ERROR",
       resolution:
         "Add release labels' schema, which a 1.2 prerelease's migration left out:",
-      commands: INIT_PROVIDER_PACKAGES.cloudflare.labelSchemaRepair,
+      commands: INIT_PROVIDER_PACKAGES.cloudflare.labelSchemaRepair!(
+        () => undefined,
+      ),
     });
     expect(issues.map(({ code }) => code)).not.toContain(
       "RELEASE_LABELS_MISSING",
     );
+  });
+
+  it("names the D1 database in its label schema repair when the environment names the configured one", async () => {
+    vi.stubEnv("HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID", "database");
+    vi.stubEnv("HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME", "ota");
+    await deploy(1);
+    harness.read.mockImplementation(async (table) => {
+      if (table === "label_sequences") {
+        throw new Error("no such table: label_sequences: SQLITE_ERROR");
+      }
+    });
+    const d1 = (target: string) => ({
+      ...harness.database,
+      name: "d1Database",
+      [Symbol.for("@hot-updater/database-target")]: target,
+    });
+    const commands = async () => {
+      const result = (await doctor()) as {
+        details: {
+          releaseCatalogs: { issues: { code: string; commands?: string[] }[] };
+        };
+      };
+      return result.details.releaseCatalogs.issues.find(
+        ({ code }) => code === "RELEASE_LABELS_UNCHECKED",
+      )?.commands;
+    };
+
+    vi.mocked(loadServer).mockImplementation(async () =>
+      testServer({ database: d1("d1/database") }),
+    );
+    const placeholders = INIT_PROVIDER_PACKAGES.cloudflare.labelSchemaRepair!(
+      () => undefined,
+    );
+    await expect(commands()).resolves.toEqual(
+      placeholders.map((command) => command.replace("<database-name>", "ota")),
+    );
+
+    // The name the environment holds is another database's.
+    vi.mocked(loadServer).mockImplementation(async () =>
+      testServer({ database: d1("d1/another") }),
+    );
+    await expect(commands()).resolves.toEqual(placeholders);
+  });
+
+  it("names the Supabase project in its label schema repair when the environment names the configured one", async () => {
+    vi.stubEnv("HOT_UPDATER_SUPABASE_PROJECT_ID", "abcdefgh");
+    await deploy(1);
+    harness.read.mockImplementation(async (table) => {
+      if (table === "label_sequences") {
+        throw new Error(
+          'relation "hot_updater_v1_label_sequences" does not exist',
+        );
+      }
+    });
+    vi.mocked(loadServer).mockImplementation(async () =>
+      testServer({
+        database: {
+          ...harness.database,
+          name: "supabaseDatabase",
+          [Symbol.for("@hot-updater/database-target")]:
+            "supabase/abcdefgh.supabase.co",
+        },
+      }),
+    );
+
+    await expect(doctor()).resolves.toMatchObject({
+      details: {
+        releaseCatalogs: {
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: "RELEASE_LABELS_UNCHECKED",
+              commands: [
+                "npx supabase@3.0.0 db query --remote=abcdefgh -f node_modules/@hot-updater/supabase/supabase/migrations/0002_hot-updater_1.2.0.sql",
+              ],
+            }),
+          ]),
+        },
+      },
+    });
   });
 
   it("names each provider's label schema repair as the packaged 1.2.0 upgrade guide prints it", async () => {
@@ -378,8 +501,8 @@ describe("doctor's release catalog check", () => {
       "utf8",
     );
     for (const command of [
-      ...INIT_PROVIDER_PACKAGES.cloudflare.labelSchemaRepair,
-      ...INIT_PROVIDER_PACKAGES.supabase.labelSchemaRepair,
+      ...INIT_PROVIDER_PACKAGES.cloudflare.labelSchemaRepair!(() => undefined),
+      ...INIT_PROVIDER_PACKAGES.supabase.labelSchemaRepair!(() => undefined),
     ]) {
       expect(guide).toContain(command);
     }

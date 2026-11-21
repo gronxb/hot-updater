@@ -67,10 +67,11 @@ export type InitProviderPackage = {
   /**
    * What adds release labels' schema to a database a 1.2 prerelease
    * migrated, which init doesn't: its migration is recorded as applied. As
-   * the 1.2.0 upgrade guide's provider section prints it. Init adds it on
-   * the providers without one.
+   * the 1.2.0 upgrade guide's provider section prints it, with the
+   * resource's name from init's saved inputs where `read` has it. Init adds
+   * it on the providers without one.
    */
-  readonly labelSchemaRepair?: readonly string[];
+  readonly labelSchemaRepair?: (read: SavedInput) => readonly string[];
 };
 
 export const INIT_PROVIDER_PACKAGES = {
@@ -84,11 +85,16 @@ export const INIT_PROVIDER_PACKAGES = {
       import("@hot-updater/cloudflare/init"),
     packageName: "@hot-updater/cloudflare",
     server: "the Worker",
-    labelSchemaRepair: [
-      `npx wrangler d1 execute <database-name> --remote --command 'ALTER TABLE "releases" ADD COLUMN "label" INTEGER'`,
-      `npx wrangler d1 execute <database-name> --remote --command 'CREATE UNIQUE INDEX IF NOT EXISTS "releases_byLabel" ON "releases" ("channel_id", "platform", "label")'`,
-      `npx wrangler d1 execute <database-name> --remote --command 'CREATE TABLE IF NOT EXISTS "label_sequences" ("id" TEXT NOT NULL, "last_label" INTEGER NOT NULL, "is_filled" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"))'`,
-    ],
+    // `wrangler d1 execute` takes the database's name, not its ID.
+    labelSchemaRepair: (read) => {
+      const name =
+        read("HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME") ?? "<database-name>";
+      return [
+        `npx wrangler d1 execute ${name} --remote --command 'ALTER TABLE "releases" ADD COLUMN "label" INTEGER'`,
+        `npx wrangler d1 execute ${name} --remote --command 'CREATE UNIQUE INDEX IF NOT EXISTS "releases_byLabel" ON "releases" ("channel_id", "platform", "label")'`,
+        `npx wrangler d1 execute ${name} --remote --command 'CREATE TABLE IF NOT EXISTS "label_sequences" ("id" TEXT NOT NULL, "last_label" INTEGER NOT NULL, "is_filled" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"))'`,
+      ];
+    },
   },
   aws: {
     database: "dynamoDB",
@@ -119,8 +125,8 @@ export const INIT_PROVIDER_PACKAGES = {
       import("@hot-updater/supabase/init"),
     packageName: "@hot-updater/supabase",
     server: "the Edge Function",
-    labelSchemaRepair: [
-      "npx supabase@3.0.0 db query --remote=<project-ref> -f node_modules/@hot-updater/supabase/supabase/migrations/0002_hot-updater_1.2.0.sql",
+    labelSchemaRepair: (read) => [
+      `npx supabase@3.0.0 db query --remote=${read("HOT_UPDATER_SUPABASE_PROJECT_ID") ?? "<project-ref>"} -f node_modules/@hot-updater/supabase/supabase/migrations/0002_hot-updater_1.2.0.sql`,
     ],
   },
   firebase: {

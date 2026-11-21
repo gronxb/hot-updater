@@ -1,12 +1,24 @@
 import {
+  type AssembledServer,
+  assembleServer,
   createMigrator as createHotUpdaterMigrator,
   fillReleaseLabels,
+  loadConfig,
   p,
+  ServerDefinitionError,
 } from "@hot-updater/cli-tools";
+import { isRemoteDatabase } from "@hot-updater/plugin-core";
 
 import { ui } from "../utils/cli-ui";
 import { canPrompt } from "../utils/prompt";
-import { loadHotUpdater } from "./utils/load-hot-updater";
+import { scaffoldUpgradeOf } from "./doctor/context";
+import { readManagedDeployment } from "./doctor/managed";
+import { findScaffoldDeployments } from "./doctor/scaffoldRecords";
+import { pendingResolution } from "./doctor/schema";
+import {
+  findDefaultConfigPaths,
+  loadHotUpdater,
+} from "./utils/load-hot-updater";
 
 export interface MigrateOptions {
   configPath: string;
@@ -193,13 +205,21 @@ export async function migrate(options: MigrateOptions) {
     const s = p.spinner();
     s.start("Loading configuration and analyzing schema");
 
-    // Load hotUpdater instance from config file
-    const { hotUpdater } = await loadHotUpdater(configPath);
+    const { hotUpdater, fromConfig } = await loadMigrationServer(configPath);
+
+    // Without a server file, the server is deployed apart from this project,
+    // such as init's or a scaffold's: migrating here would leave it on an
+    // older schema, so only the release labels are filled.
+    if (fromConfig) {
+      await fillLabels(hotUpdater, s, () => deployedServerPending(hotUpdater));
+      return;
+    }
 
     // Every database on the storage engine migrates through its migrator:
     // drizzle-kit and Prisma apply their tables, so theirs set what the ORM
     // cannot declare and write the settings rows; any other adapter creates
-    // core's tables and the plugins' tables itself.
+    // core's tables and the plugins' tables itself. A database without one,
+    // whose migration files apply the schema, gets only its release labels.
     await migrateWithMigrator(hotUpdater, skipConfirm, s);
   } catch (error) {
     p.log.error("Failed to run migration");
@@ -213,16 +233,117 @@ export async function migrate(options: MigrateOptions) {
   }
 }
 
+const SERVER_MIGRATES_ITSELF =
+  "The server migrates its own database: run `hot-updater db migrate` in its project as you deploy it.";
+
+type MigrationServer = Pick<AssembledServer, "core" | "database" | "plugins">;
+
+/**
+ * The server whose database to migrate: the server file given, else a server
+ * project's `src/hotUpdater.*` or `src/db.*`, else the database and plugins
+ * in hot-updater.config.ts, as the CLI runs them (`fromConfig`): a managed
+ * or agent infrastructure project has no server file.
+ */
+const loadMigrationServer = async (
+  configPath: string,
+): Promise<{ hotUpdater: MigrationServer; fromConfig: boolean }> => {
+  if (
+    configPath.trim() === "" &&
+    findDefaultConfigPaths(process.cwd()).length === 0
+  ) {
+    const { database, plugins } = await loadConfig(null);
+    if (database !== undefined) {
+      return {
+        hotUpdater: assembleServer({ database, plugins }),
+        fromConfig: true,
+      };
+    }
+  }
+  return {
+    hotUpdater: (await loadHotUpdater(configPath)).hotUpdater,
+    fromConfig: false,
+  };
+};
+
+/**
+ * Why the config's database is not migrated here, and what migrates it with
+ * its server: doctor's command for a pending schema, such as init's.
+ */
+const deployedServerPending = async ({
+  database,
+  plugins,
+}: MigrationServer): Promise<string> => {
+  if (isRemoteDatabase(database)) return ui.prose(SERVER_MIGRATES_ITSELF);
+  const cwd = process.cwd();
+  const { resolution, commands } = pendingResolution(
+    { database },
+    {
+      managed: await readManagedDeployment(cwd, database, plugins),
+      scaffold: await scaffoldUpgradeOf({ database, plugins }, () =>
+        findScaffoldDeployments(cwd),
+      ),
+    },
+  );
+  const lead = "The schema is behind this CLI; migrate it with its server:";
+  // The one command on its own, whole, as people copy it; several need the
+  // resolution that tells them apart.
+  return commands.length === 1
+    ? ui.withCommand(lead, commands[0]!)
+    : ui.prose(`The schema is behind this CLI. ${resolution}`);
+};
+
+/**
+ * The release labels, once the schema is current; otherwise `pending`'s
+ * next step, as printed: a database whose migration files apply its schema, such as
+ * Supabase's, or a server deployed apart from this project.
+ */
+async function fillLabels(
+  hotUpdater: MigrationServer,
+  s: ReturnType<typeof p.spinner>,
+  pending: () => Promise<string>,
+) {
+  try {
+    await hotUpdater.core.ready();
+  } catch (error) {
+    s.stop("Analysis complete");
+    if (
+      error instanceof Error &&
+      error.name === "HotUpdaterSchemaMigrationRequiredError"
+    ) {
+      p.log.error(await pending());
+      process.exit(1);
+    }
+    throw error;
+  }
+  s.stop("Analysis complete");
+  p.log.success("Schema is up to date.");
+  await fillReleaseLabels(hotUpdater);
+  process.exit(0);
+}
+
 /**
  * Run migrations using createMigrator (for kysely/mongodb)
  */
 async function migrateWithMigrator(
-  hotUpdater: Awaited<ReturnType<typeof loadHotUpdater>>["hotUpdater"],
+  hotUpdater: MigrationServer,
   skipConfirm: boolean,
   s: ReturnType<typeof p.spinner>,
 ) {
-  // Create migrator
-  const migrator = createHotUpdaterMigrator(hotUpdater);
+  const { database, plugins } = hotUpdater;
+  // A self-hosted server, through its admin API, migrates its own database.
+  if (isRemoteDatabase(database)) {
+    return fillLabels(hotUpdater, s, async () =>
+      ui.prose(SERVER_MIGRATES_ITSELF),
+    );
+  }
+  let migrator: ReturnType<typeof createHotUpdaterMigrator>;
+  try {
+    migrator = createHotUpdaterMigrator({ database, plugins });
+  } catch (error) {
+    if (!(error instanceof ServerDefinitionError)) throw error;
+    const { message } = error;
+    return fillLabels(hotUpdater, s, async () => ui.prose(message));
+  }
 
   // Get current version
   const currentVersion = await migrator.getVersion();
