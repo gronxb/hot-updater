@@ -426,6 +426,37 @@ describe("readCompiledCatalogPayload", () => {
     });
   });
 
+  it("names a key a later release adds where this one writes it elsewhere", async () => {
+    const [appVersion, fingerprint] = await compiled();
+    type Payload = {
+      releaseDescriptors: Record<string, unknown>[];
+      segments: Record<string, unknown>[];
+      [key: string]: unknown;
+    };
+    const withKey = (
+      compilation: typeof appVersion,
+      add: (payload: Payload) => void,
+    ) => {
+      const payload = JSON.parse(compilation!.canonicalPayload) as Payload;
+      add(payload);
+      return readCompiledCatalogPayload(JSON.stringify(payload));
+    };
+
+    for (const read of [
+      withKey(fingerprint, (payload) => {
+        payload.releaseDescriptors[0]!.version = "1.0.0";
+      }),
+      withKey(fingerprint, (payload) => {
+        payload.lower = null;
+      }),
+      withKey(appVersion, (payload) => {
+        payload.segments[0]!.label = 1;
+      }),
+    ]) {
+      expect(read.fromLaterRelease).toBe(true);
+    }
+  });
+
   it.each(["{", "null", "[]", '"catalog"'])(
     "reads a payload that isn't a catalog, %s, as this release's",
     (payload) => {

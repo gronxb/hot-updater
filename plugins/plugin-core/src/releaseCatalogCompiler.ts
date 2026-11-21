@@ -603,32 +603,41 @@ function canonicalStringify(value: unknown): string {
     .join(",")}}`;
 }
 
+/** Where each key this release's compiler writes sits; null for a value. */
+interface CatalogShape {
+  readonly [key: string]: CatalogShape | null;
+}
+
+const BOUND_SHAPE: CatalogShape = { inclusive: null, version: null };
+
 /**
- * Every key this release's compiler writes in a catalog payload, at any
- * depth: the envelope's, a segment's and its bounds', and a descriptor's.
- * A key outside it was written by a later release.
+ * Every key this release's compiler writes in a catalog payload, where it
+ * writes it: the envelope's, a segment's and its bounds', and a release
+ * descriptor's. A key outside it was written by a later release.
  */
-const COMPILED_CATALOG_KEYS: ReadonlySet<string> = new Set([
-  "fallbackPolicy",
-  "schemaVersion",
-  "strategy",
-  "releaseDescriptors",
-  "segments",
-  "releaseIndexes",
-  "rollbackReleaseIndexes",
-  "lower",
-  "upper",
-  "inclusive",
-  "version",
-  "releaseId",
-  "kind",
-  "bundleId",
-  "rolloutCohortCount",
-  "targetCohorts",
-  "shouldForceUpdate",
-  "message",
-  "label",
-]);
+const COMPILED_CATALOG_SHAPE: CatalogShape = {
+  fallbackPolicy: null,
+  schemaVersion: null,
+  strategy: null,
+  releaseIndexes: null,
+  rollbackReleaseIndexes: null,
+  segments: {
+    lower: BOUND_SHAPE,
+    upper: BOUND_SHAPE,
+    releaseIndexes: null,
+    rollbackReleaseIndexes: null,
+  },
+  releaseDescriptors: {
+    releaseId: null,
+    kind: null,
+    bundleId: null,
+    rolloutCohortCount: null,
+    targetCohorts: null,
+    shouldForceUpdate: null,
+    message: null,
+    label: null,
+  },
+};
 
 /**
  * A stored catalog payload as this release reads it: canonical, with the
@@ -642,16 +651,19 @@ export function readCompiledCatalogPayload(payload: string): {
   readonly fromLaterRelease: boolean;
 } {
   let fromLaterRelease = false;
-  const known = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(known);
+  const known = (value: unknown, shape: CatalogShape): unknown => {
+    if (Array.isArray(value)) return value.map((item) => known(item, shape));
     if (value === null || typeof value !== "object") return value;
     const entries = Object.entries(value).filter(([key]) => {
-      if (COMPILED_CATALOG_KEYS.has(key)) return true;
+      if (Object.hasOwn(shape, key)) return true;
       fromLaterRelease = true;
       return false;
     });
     return Object.fromEntries(
-      entries.map(([key, entry]) => [key, known(entry)]),
+      entries.map(([key, entry]) => {
+        const inner = shape[key]!;
+        return [key, inner === null ? entry : known(entry, inner)];
+      }),
     );
   };
   let parsed: unknown;
@@ -673,7 +685,7 @@ export function readCompiledCatalogPayload(payload: string): {
     fromLaterRelease = true;
   }
   return {
-    canonicalPayload: canonicalStringify(known(parsed)),
+    canonicalPayload: canonicalStringify(known(parsed, COMPILED_CATALOG_SHAPE)),
     fromLaterRelease,
   };
 }
