@@ -209,6 +209,27 @@ export const fillLabels = async (
   return labeled;
 };
 
+/**
+ * Reads what a pair's fill writes, its counter and its label index, without
+ * writing: a database without release labels' schema, such as one a 1.2
+ * prerelease migrated, fails here as the fill would. The schema is the
+ * database's, so one pair tells. Two reads.
+ */
+export const probeLabelSchema = async (
+  db: CoreDatabase,
+  { channelId, platform }: Pair,
+): Promise<void> => {
+  await db.findOne("label_sequences", {
+    id: labelSequenceId(channelId, platform),
+  });
+  // Labels start at 1, so this reads the column and finds no row.
+  await db.findMany("releases", {
+    index: "byLabel",
+    where: { channel_id: channelId, platform, label: 0 },
+    limit: 1,
+  });
+};
+
 // How many times a write repairs what a repair should have settled, a pair
 // it already filled or a held label, before it fails, and how many races
 // with another writer's label it reruns after. A pair's first fill spends

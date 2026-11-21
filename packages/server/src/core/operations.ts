@@ -24,7 +24,12 @@ import {
   encodeChannelKey,
 } from "@hot-updater/protocol";
 
-import { fillLabels, pendingLabelPairs, writeWithLabels } from "./labels";
+import {
+  fillLabels,
+  pendingLabelPairs,
+  probeLabelSchema,
+  writeWithLabels,
+} from "./labels";
 import { isBuiltInBundle, refuseSandboxPatchBase } from "./nativeBuilds";
 import {
   toBundleRow,
@@ -530,7 +535,13 @@ export const createCoreOperations = (
 
     fillReleaseLabels: async ({ dryRun = false, catalogs = true } = {}) => {
       let releases = 0;
-      for (const pair of await pendingLabelPairs(db)) {
+      const pairs = await pendingLabelPairs(db);
+      // A dry run writes nothing, so without this read a database missing
+      // the label column or counters would count its releases as unlabeled.
+      if (dryRun && pairs[0] !== undefined) {
+        await probeLabelSchema(db, pairs[0]);
+      }
+      for (const pair of pairs) {
         releases += await fillLabels(db, pair, { dryRun });
       }
       let rebuilt = 0;

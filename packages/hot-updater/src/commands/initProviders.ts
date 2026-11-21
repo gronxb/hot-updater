@@ -39,7 +39,7 @@ const postgresTarget = (url: string | undefined) => {
 const targetOf = (prefix: string, value: string | undefined) =>
   value === undefined ? undefined : `${prefix}/${value}`;
 
-type InitProviderPackage = {
+export type InitProviderPackage = {
   /**
    * The `name` of the database the provider's init writes into
    * hot-updater.config.ts: doctor reads a config whose database has it, in a
@@ -64,6 +64,13 @@ type InitProviderPackage = {
   readonly packageName: string;
   /** What init deploys and reconciles beside the database, for doctor's output. */
   readonly server: string;
+  /**
+   * What adds release labels' schema to a database a 1.2 prerelease
+   * migrated, which init doesn't: its migration is recorded as applied. As
+   * the 1.2.0 upgrade guide's provider section prints it. Init adds it on
+   * the providers without one.
+   */
+  readonly labelSchemaRepair?: readonly string[];
 };
 
 export const INIT_PROVIDER_PACKAGES = {
@@ -77,6 +84,11 @@ export const INIT_PROVIDER_PACKAGES = {
       import("@hot-updater/cloudflare/init"),
     packageName: "@hot-updater/cloudflare",
     server: "the Worker",
+    labelSchemaRepair: [
+      `npx wrangler d1 execute <database-name> --remote --command 'ALTER TABLE "releases" ADD COLUMN "label" INTEGER'`,
+      `npx wrangler d1 execute <database-name> --remote --command 'CREATE UNIQUE INDEX IF NOT EXISTS "releases_byLabel" ON "releases" ("channel_id", "platform", "label")'`,
+      `npx wrangler d1 execute <database-name> --remote --command 'CREATE TABLE IF NOT EXISTS "label_sequences" ("id" TEXT NOT NULL, "last_label" INTEGER NOT NULL, "is_filled" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"))'`,
+    ],
   },
   aws: {
     database: "dynamoDB",
@@ -107,6 +119,9 @@ export const INIT_PROVIDER_PACKAGES = {
       import("@hot-updater/supabase/init"),
     packageName: "@hot-updater/supabase",
     server: "the Edge Function",
+    labelSchemaRepair: [
+      "npx supabase@3.0.0 db query --remote=<project-ref> -f node_modules/@hot-updater/supabase/supabase/migrations/0002_hot-updater_1.2.0.sql",
+    ],
   },
   firebase: {
     database: "firebaseDatabase",
