@@ -4,7 +4,9 @@ import { isTokenCredential, type TokenCredential } from "@azure/core-auth";
 import {
   BlobSASPermissions,
   BlobServiceClient,
+  BlockBlobClient,
   generateBlobSASQueryParameters,
+  newPipeline,
   RestError,
   StorageSharedKeyCredential,
   type UserDelegationKey,
@@ -65,6 +67,53 @@ const SAS_EXPIRES_IN_MS = 60 * 60 * 1000;
 
 /** A user delegation key signs SAS URLs for up to seven days; it is renewed well before. */
 const DELEGATION_KEY_LIFETIME_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The largest body `put` holds in memory, so the SDK's retry of a failed
+ * upload sends it again. A larger one is streamed in one attempt.
+ */
+const REPLAYABLE_UPLOAD_BYTES = 16 * 1024 * 1024;
+
+/**
+ * `body` read into memory when it has at most REPLAYABLE_UPLOAD_BYTES, or
+ * else a stream of the same bytes.
+ */
+const readReplayableBody = async (
+  body: ReadableStream<Uint8Array>,
+  contentLength: number | undefined,
+): Promise<Uint8Array | ReadableStream<Uint8Array>> => {
+  if (contentLength !== undefined && contentLength > REPLAYABLE_UPLOAD_BYTES) {
+    return body;
+  }
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  while (byteLength <= REPLAYABLE_UPLOAD_BYTES) {
+    const { done, value } = await reader.read();
+    if (done) {
+      const bytes = new Uint8Array(byteLength);
+      let offset = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      return bytes;
+    }
+    chunks.push(value);
+    byteLength += value.byteLength;
+  }
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks.splice(0)) controller.enqueue(chunk);
+    },
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) controller.close();
+      else controller.enqueue(value);
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
+};
 
 const isNotFound = (error: unknown) =>
   error instanceof RestError && error.statusCode === 404;
@@ -235,17 +284,21 @@ export function azureBlobStorage(
         },
       };
       const blob = (await container()).getBlockBlobClient(storageKey);
-      if (contentLength === undefined) {
+      const payload = await readReplayableBody(body, contentLength);
+      if (payload instanceof Uint8Array || contentLength === undefined) {
+        // In memory, so the SDK's retry sends the whole body again.
         await blob.uploadData(
-          new Uint8Array(await new Response(body).arrayBuffer()),
+          payload instanceof Uint8Array
+            ? payload
+            : new Uint8Array(await new Response(payload).arrayBuffer()),
           options,
         );
       } else {
         // One Put Blob, streamed, so a native build artifact never sits in
-        // memory, and concurrent puts of one key never mix their blocks.
-        const { Readable } = await import("node:stream");
+        // memory, and concurrent puts of one key never mix their blocks. A
+        // retry would send the stream already read, so it gets one try.
         const source = Readable.fromWeb(
-          body as import("node:stream/web").ReadableStream<Uint8Array>,
+          payload as import("node:stream/web").ReadableStream<Uint8Array>,
         );
         // The request does not watch its body: a body that fails aborts it.
         const aborted = new AbortController();
@@ -255,7 +308,10 @@ export function azureBlobStorage(
           aborted.abort(error);
         });
         try {
-          await blob.upload(source, contentLength, {
+          await new BlockBlobClient(
+            blob.url,
+            newPipeline(blob.credential, { retryOptions: { maxTries: 1 } }),
+          ).upload(source, contentLength, {
             ...options,
             abortSignal: aborted.signal,
           });

@@ -88,7 +88,7 @@ describe("vercelBlobStorage", () => {
     );
     expect(blob.put).toHaveBeenCalledWith(
       "ota/bundle/manifest.json",
-      expect.any(ReadableStream),
+      Buffer.from("bundle"),
       expect.objectContaining({
         addRandomSuffix: false,
         allowOverwrite: true,
@@ -118,11 +118,11 @@ describe("vercelBlobStorage", () => {
     expect(blob.put).not.toHaveBeenCalled();
   });
 
-  it("uploads a body of unknown length in parts", async () => {
+  it("uploads a body over 16 MiB in parts", async () => {
     const storage = vercelBlobStorage({ token });
 
     await storage.put({
-      body: new Blob(["bundle"]).stream(),
+      body: new Blob([new Uint8Array(16 * 1024 * 1024 + 1)]).stream(),
       contentType: "application/octet-stream",
       key: "bundle.tar.br",
     });
