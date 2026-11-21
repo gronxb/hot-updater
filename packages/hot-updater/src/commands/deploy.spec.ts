@@ -273,6 +273,8 @@ import type {
 import {
   createMemoryAdapter,
   createStorageUri,
+  ReleaseCatalogCompilationError,
+  ReleaseCatalogMutationError,
 } from "@hot-updater/plugin-core";
 import isPortReachable from "is-port-reachable";
 import open from "open";
@@ -877,6 +879,58 @@ describe("deploy rollout wiring", () => {
     expect(await databaseHarness.releases()).toEqual([]);
     expect(refusingDatabase.dispose).toHaveBeenCalledOnce();
   });
+
+  it.each([
+    new ReleaseCatalogMutationError(
+      "CATALOG_FROM_LATER_RELEASE",
+      'The ios release catalog of channel "production" was written by a later Hot Updater.\nUpgrade hot-updater, then try again.',
+    ),
+    new ReleaseCatalogCompilationError(
+      "CATALOG_OVERSIZE",
+      'The ios release catalog of channel "production" would be over its 256 KiB limit.\nDisable or delete old bundles on that channel, then try again.',
+    ),
+  ])(
+    "ends a two-platform deployment core refuses in its own words with that message, without a stack: $code",
+    async (refusal) => {
+      const refusingDatabase: EngineDatabase & {
+        readonly core: HotUpdaterCoreApi;
+      } = {
+        ...harnessDatabase,
+        core: {
+          ...databaseHarness.core,
+          deploy: async () => {
+            throw refusal;
+          },
+        },
+      };
+      mockLoadServer.mockResolvedValue(
+        testServer({ database: refusingDatabase, storage: mockStorageAdapter }),
+      );
+      mockBuildAdapter.build.mockImplementation(async ({ platform }) => ({
+        buildPath: "/mock/build",
+        bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
+        stdout: null,
+      }));
+
+      try {
+        await expect(
+          deploy({
+            channel: "production",
+            forceUpdate: false,
+            interactive: false,
+            targetAppVersion: "1.0.x",
+          }),
+        ).resolves.toBeUndefined();
+        expect(process.exitCode).toBe(1);
+      } finally {
+        process.exitCode = undefined;
+      }
+      expect(mockCli.p.log.error).toHaveBeenCalledWith(refusal.message);
+      expect(mockCli.p.outro).not.toHaveBeenCalled();
+      expect(await databaseHarness.releases()).toEqual([]);
+      expect(refusingDatabase.dispose).toHaveBeenCalledOnce();
+    },
+  );
 
   it("rejects platforms whose configs name different databases before building, and closes them", async () => {
     const databases = {
