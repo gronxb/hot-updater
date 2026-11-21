@@ -101,6 +101,7 @@ describe("supabaseStorage", () => {
     expect(createClient).toHaveBeenCalledWith(
       "https://example.supabase.co",
       "service-role-key",
+      { global: { fetch: expect.any(Function) } },
     );
     expect(bucket.download).toHaveBeenCalledWith("logo@2x.json");
   });
@@ -164,12 +165,11 @@ describe("supabaseStorage", () => {
     });
     expect(bucket.upload).toHaveBeenCalledWith(
       "bundles/bundle.zip",
-      expect.any(ReadableStream),
+      new TextEncoder().encode("bundle"),
       {
         cacheControl: "max-age=31536000",
         contentType: "application/zip",
         upsert: true,
-        duplex: "half",
         headers: { "content-length": "6" },
       },
     );
@@ -231,7 +231,7 @@ describe("supabaseStorage", () => {
 
       expect(bucket.upload).toHaveBeenLastCalledWith(
         name,
-        expect.any(ReadableStream),
+        expect.any(Uint8Array),
         expect.any(Object),
       );
       expect(bucket.remove).toHaveBeenLastCalledWith([name]);
