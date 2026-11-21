@@ -32,6 +32,8 @@ import {
   assertStorageOperations,
   createBundleStorageKey,
   createStorageRootUriWithPath,
+  ReleaseCatalogCompilationError,
+  ReleaseCatalogMutationError,
   semverSatisfies,
   targetBaseCandidateKey,
 } from "@hot-updater/plugin-core";
@@ -1385,9 +1387,19 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
 
     p.outro(summarizeDeploymentResults(results));
   } catch (error) {
-    if (!(error instanceof DeployAbortedError)) {
-      throw error;
+    if (error instanceof DeployAbortedError) return;
+    // A refusal core words for the user, such as a catalog a later Hot
+    // Updater wrote: its message, without a stack.
+    if (
+      error instanceof ReleaseCatalogMutationError ||
+      (error instanceof ReleaseCatalogCompilationError &&
+        error.code === "CATALOG_OVERSIZE")
+    ) {
+      p.log.error(error.message);
+      process.exitCode = 1;
+      return;
     }
+    throw error;
   } finally {
     await server.dispose();
   }

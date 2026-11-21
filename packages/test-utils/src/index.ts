@@ -1,4 +1,5 @@
 export * from "./adminApiTestClient";
+export * from "./catalogFromLaterRelease";
 export * from "./setupBundleMethodsTestSuite";
 export * from "./setupCoreAdminTestSuite";
 export * from "./setupReleaseLabelEngineTestSuite";

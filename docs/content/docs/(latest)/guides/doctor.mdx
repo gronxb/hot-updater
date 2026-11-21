@@ -455,6 +455,12 @@ npx hot-updater bundle update <id> --message "<message>"
 Then retry **Check and apply update** in the app and
 [verify that it applies](/docs/get-started/test-ota#3-apply-it-in-the-app).
 
+A catalog that a later Hot Updater compiled can carry fields this version
+doesn't write. Doctor compares only the fields this version writes, so such a
+catalog is `verified`. This version refuses any release change in its scope,
+since the rewrite would drop the later fields. Upgrade hot-updater to deploy to
+that scope.
+
 When doctor cannot reach the database, for example because the server's
 credentials are not available where it runs, it warns
 `RELEASE_CATALOGS_UNCHECKED` with the reason and does not fail: `success` stays

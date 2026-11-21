@@ -9,6 +9,10 @@ import {
 } from "@hot-updater/plugin-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import {
+  LATER_RELEASE_CATALOG_FIELD,
+  writeCatalogFromLaterRelease,
+} from "./catalogFromLaterRelease";
 import { createMeasuredDatabase } from "./createMeasuredDatabase";
 import { createBundleFixture } from "./databaseTestFixtures";
 import type { ReadBudgetSuiteOptions } from "./setupReadBudgetTestSuite";
@@ -29,8 +33,10 @@ const NATIVE_PAGE_SIZE = 2;
  * concurrent fills and a deploy included, rebuilding the catalogs compiled
  * without them; and the label index, which refuses a second row with a label
  * and holds any number without one. Rows are written as an earlier server
- * wrote them through a second engine on the same adapter. Register it beside
- * `setupReadBudgetTestSuite`, with the same options.
+ * wrote them through a second engine on the same adapter. It also writes a
+ * catalog as a later release compiles it, with a field this one does not
+ * know, which core verifies, never rewrites, and refuses to change. Register
+ * it beside `setupReadBudgetTestSuite`, with the same options.
  */
 export const setupReleaseLabelEngineTestSuite = (
   options: ReleaseLabelEngineSuiteOptions,
@@ -157,6 +163,63 @@ export const setupReleaseLabelEngineTestSuite = (
         catalogs: 0,
       });
       await expect(deploy("fill")).resolves.toMatchObject({ label: 5 });
+    });
+
+    it("verifies a catalog a later release compiled with a field this one doesn't know, and refuses to rewrite it without that field", async () => {
+      namespace += 1;
+      const first = await deploy("later");
+      await deploy("later");
+      const scopeKey = first.scope_key;
+      const payload = await writeCatalogFromLaterRelease(raw, scopeKey);
+      const counter = async () =>
+        (await raw.findOne("label_sequences", {
+          id: `releases/ios/${first.channel_id}`,
+        }))!.last_label;
+      const before = await counter();
+      const stored = async () => (await core.getReleaseCatalogRow(scopeKey))!;
+      const generation = (await stored()).generation;
+
+      await expect(
+        core.preflightReleaseCatalogRebuild(scopeKey),
+      ).resolves.toMatchObject({ changed: false, labelsOnly: false });
+      await expect(core.rebuildReleaseCatalog(scopeKey)).resolves.toMatchObject(
+        { changed: false },
+      );
+      await expect(core.fillReleaseLabels()).resolves.toMatchObject({
+        catalogs: 0,
+      });
+
+      const refusal = {
+        code: "CATALOG_FROM_LATER_RELEASE",
+        message:
+          'The ios release catalog of channel "later-' +
+          String(namespace) +
+          '" was written by a later Hot Updater.\nUpgrade hot-updater, then try again.',
+      };
+      await expect(deploy("later")).rejects.toMatchObject(refusal);
+      await expect(
+        core.updateReleasePolicy({
+          releaseId: first.id,
+          patch: { message: "changed" },
+        }),
+      ).rejects.toMatchObject(refusal);
+      await expect(
+        core.preflightReleasePolicy({
+          releaseId: first.id,
+          patch: { message: "changed" },
+        }),
+      ).rejects.toMatchObject(refusal);
+
+      expect(await stored()).toMatchObject({ generation, payload });
+      expect(payload).toContain(LATER_RELEASE_CATALOG_FIELD);
+      expect(await counter()).toBe(before);
+      await expect(
+        core.listReleases({
+          filter: { kind: "scope", scopeKey },
+          limit: 10,
+        }),
+      ).resolves.toHaveLength(2);
+      expect((await core.getRelease(first.id))?.message).toBeNull();
     });
 
     it("labels each release once when fills run beside a deploy that needs one", async () => {

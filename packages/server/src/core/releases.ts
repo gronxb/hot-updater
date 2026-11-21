@@ -3,6 +3,7 @@ import {
   createUUIDv7,
   createUUIDv7After,
   isUUIDv7,
+  readCompiledCatalogPayload,
   releaseRowToRelease,
   ReleaseCatalogCompilationError,
   ReleaseCatalogMutationError,
@@ -221,6 +222,25 @@ export const readCatalog = async (tx: CoreTransaction, scopeKey: string) => {
   };
 };
 
+/**
+ * Refuses to rewrite a catalog a later release compiled: this release's
+ * compiler would drop the fields that release added.
+ */
+const refuseLaterCatalog = (
+  scope: ReleaseCatalogScope,
+  catalog: ReleaseCatalogRow | null,
+) => {
+  if (
+    catalog !== null &&
+    readCompiledCatalogPayload(catalog.payload).fromLaterRelease
+  ) {
+    fail(
+      "CATALOG_FROM_LATER_RELEASE",
+      `The ${scope.platform} release catalog of channel "${scope.channelName}" was written by a later Hot Updater.\nUpgrade hot-updater, then try again.`,
+    );
+  }
+};
+
 /** A scope with releases and no compiled catalog lost its history. */
 const assertHistory = (
   stored: Awaited<ReturnType<typeof readCatalog>>,
@@ -247,6 +267,7 @@ export const changeRelease = async (
 ): Promise<ReleaseChangeResult> => {
   checkScope(scope);
   const stored = await readCatalog(tx, scope.scopeKey);
+  refuseLaterCatalog(scope, stored.catalog);
   let enabled = await enabledReleases(tx, scope.scopeKey);
   if (bundle !== undefined) {
     insertBundle(tx, bundle.row);
@@ -363,18 +384,31 @@ export const changeReleases = (
   });
 };
 
-/** Whether `current` is what the scope's enabled releases compile to. */
+/**
+ * Whether `current` is what the scope's enabled releases compile to, in the
+ * fields this release compiles: a later release's catalog may add others.
+ */
 const isCurrent = (
   scope: ReleaseCatalogScope,
   current: ReleaseCatalogRow,
   compilation: ReleaseCatalogCompilation,
-) =>
-  current.strategy === scope.strategy &&
-  current.channel_id === scope.channelId &&
-  current.channel_key === encodeChannelKey(scope.channelName) &&
-  current.platform === scope.platform &&
-  current.fingerprint_hash === scope.fingerprintHash &&
-  current.catalog_hash === compilation.catalogHash;
+) => {
+  if (
+    current.strategy !== scope.strategy ||
+    current.channel_id !== scope.channelId ||
+    current.channel_key !== encodeChannelKey(scope.channelName) ||
+    current.platform !== scope.platform ||
+    current.fingerprint_hash !== scope.fingerprintHash
+  ) {
+    return false;
+  }
+  if (current.catalog_hash === compilation.catalogHash) return true;
+  const read = readCompiledCatalogPayload(current.payload);
+  return (
+    read.fromLaterRelease &&
+    read.canonicalPayload === compilation.canonicalPayload
+  );
+};
 
 /** A compiled payload with its descriptors' labels left out. */
 const withoutLabels = (payload: string): string => {
@@ -486,6 +520,7 @@ export const rebuildScope = async (
       diagnostics: compilation.diagnostics,
     };
   }
+  refuseLaterCatalog(scope, current);
   const written = await writeCatalog(tx, scope, stored, enabled, updatedAtMs);
   return {
     catalog: written.catalog,

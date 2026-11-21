@@ -603,6 +603,93 @@ function canonicalStringify(value: unknown): string {
     .join(",")}}`;
 }
 
+/** Where each key this release's compiler writes sits; null for a value. */
+interface CatalogShape {
+  readonly [key: string]: CatalogShape | null;
+}
+
+const BOUND_SHAPE: CatalogShape = { inclusive: null, version: null };
+
+/**
+ * Every key this release's compiler writes in a catalog payload, where it
+ * writes it: the envelope's, a segment's and its bounds', and a release
+ * descriptor's. A key outside it was written by a later release.
+ */
+const COMPILED_CATALOG_SHAPE: CatalogShape = {
+  fallbackPolicy: null,
+  schemaVersion: null,
+  strategy: null,
+  releaseIndexes: null,
+  rollbackReleaseIndexes: null,
+  segments: {
+    lower: BOUND_SHAPE,
+    upper: BOUND_SHAPE,
+    releaseIndexes: null,
+    rollbackReleaseIndexes: null,
+  },
+  releaseDescriptors: {
+    releaseId: null,
+    kind: null,
+    bundleId: null,
+    rolloutCohortCount: null,
+    targetCohorts: null,
+    shouldForceUpdate: null,
+    message: null,
+    label: null,
+  },
+};
+
+/**
+ * A stored catalog payload as this release reads it: canonical, with the
+ * keys a later release added left out, and whether it had any, a later
+ * schema version included. Server core compares a catalog by the fields
+ * its compiler writes, and refuses to rewrite one a later release wrote,
+ * which would drop what that release added.
+ */
+export function readCompiledCatalogPayload(payload: string): {
+  readonly canonicalPayload: string;
+  readonly fromLaterRelease: boolean;
+} {
+  let fromLaterRelease = false;
+  const known = (value: unknown, shape: CatalogShape): unknown => {
+    if (Array.isArray(value)) return value.map((item) => known(item, shape));
+    if (value === null || typeof value !== "object") return value;
+    const entries = Object.entries(value).filter(([key]) => {
+      if (Object.hasOwn(shape, key)) return true;
+      fromLaterRelease = true;
+      return false;
+    });
+    return Object.fromEntries(
+      entries.map(([key, entry]) => {
+        const inner = shape[key]!;
+        return [key, inner === null ? entry : known(entry, inner)];
+      }),
+    );
+  };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    parsed = null;
+  }
+  // A payload that isn't a catalog is no later release's: it is stale, and
+  // a release change rewrites it.
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { canonicalPayload: payload, fromLaterRelease: false };
+  }
+  if (
+    "schemaVersion" in parsed &&
+    typeof parsed.schemaVersion === "number" &&
+    parsed.schemaVersion > RELEASE_CATALOG_SCHEMA_VERSION
+  ) {
+    fromLaterRelease = true;
+  }
+  return {
+    canonicalPayload: canonicalStringify(known(parsed, COMPILED_CATALOG_SHAPE)),
+    fromLaterRelease,
+  };
+}
+
 export async function compileReleaseCatalog(input: {
   readonly strategy: ReleaseStrategy;
   readonly releases: readonly Release[];

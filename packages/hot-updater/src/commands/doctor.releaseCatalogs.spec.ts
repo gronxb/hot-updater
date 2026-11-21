@@ -4,6 +4,7 @@ import { stripVTControlCharacters } from "node:util";
 
 import { loadConfig, p, readPackageUp } from "@hot-updater/cli-tools";
 import { createEngine } from "@hot-updater/plugin-core";
+import { writeCatalogFromLaterRelease } from "@hot-updater/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadServer } from "../utils/loadServer";
@@ -172,6 +173,24 @@ describe("doctor's release catalog check", () => {
 
   it("verifies each scope's catalog against its releases", async () => {
     const scopeKey = await deploy();
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: true,
+      details: {
+        releaseCatalogs: {
+          scopes: [{ scopeKey, state: "verified", generation: 1 }],
+          issues: [],
+        },
+      },
+    });
+  });
+
+  it("verifies a catalog a later Hot Updater compiled with a field this one doesn't know", async () => {
+    const scopeKey = await deploy();
+    await writeCatalogFromLaterRelease(
+      createEngine(harness.database).core,
+      scopeKey,
+    );
 
     await expect(doctor()).resolves.toMatchObject({
       success: true,
