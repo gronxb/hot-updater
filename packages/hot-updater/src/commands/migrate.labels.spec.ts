@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from "node:util";
+
 import { PGlite } from "@electric-sql/pglite";
 import { assembleServer, loadConfig, p } from "@hot-updater/cli-tools";
 import {
@@ -283,8 +285,15 @@ describe("db migrate without a server file", () => {
     });
 
     expect(exits[0]).toBe(1);
-    expect(vi.mocked(p.log.error).mock.calls.flat().join("\n")).toContain(
-      "`npx hot-updater init --provider cloudflare --build expo --from-env-file <env file>`",
+    // The command on a line of its own, whole, as people copy it.
+    const printed = stripVTControlCharacters(
+      String(vi.mocked(p.log.error).mock.calls[0]?.[0]),
+    );
+    expect(printed).toBe(
+      [
+        "The schema is behind this CLI; migrate it with its server:",
+        "npx hot-updater init --provider cloudflare --build expo --from-env-file <env file>",
+      ].join("\n"),
     );
     const { rows } = await pglite.query<{ value: string }>(
       `SELECT "value" FROM "${SETTINGS_TABLE.name}" WHERE "key" = 'schema.core'`,
@@ -380,8 +389,12 @@ describe("db migrate on a database without a migrator", () => {
 
     await expect(runMigrate()).resolves.toBe(1);
 
-    expect(log.error.mock.calls.flat()).toContain(
-      "The supabaseDatabase database applies its schema from migration files: run `hot-updater db generate`, then apply the file with the provider's tooling.",
+    expect(stripVTControlCharacters(String(log.error.mock.calls[0]?.[0]))).toBe(
+      [
+        "The supabaseDatabase database applies its schema from migration files:",
+        "run hot-updater db generate, then apply the file with the provider's",
+        "tooling.",
+      ].join("\n"),
     );
     expect(log.info).not.toHaveBeenCalled();
   });

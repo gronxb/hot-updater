@@ -273,9 +273,9 @@ const deployedServerPending = async ({
   database,
   plugins,
 }: MigrationServer): Promise<string> => {
-  if (isRemoteDatabase(database)) return SERVER_MIGRATES_ITSELF;
+  if (isRemoteDatabase(database)) return ui.prose(SERVER_MIGRATES_ITSELF);
   const cwd = process.cwd();
-  const { resolution } = pendingResolution(
+  const { resolution, commands } = pendingResolution(
     { database },
     {
       managed: await readManagedDeployment(cwd, database, plugins),
@@ -284,12 +284,17 @@ const deployedServerPending = async ({
       ),
     },
   );
-  return `The schema is behind this CLI, and its server must migrate with it. ${resolution}`;
+  const lead = "The schema is behind this CLI; migrate it with its server:";
+  // The one command on its own, whole, as people copy it; several need the
+  // resolution that tells them apart.
+  return commands.length === 1
+    ? ui.withCommand(lead, commands[0]!)
+    : ui.prose(`The schema is behind this CLI. ${resolution}`);
 };
 
 /**
  * The release labels, once the schema is current; otherwise `pending`'s
- * next step: a database whose migration files apply its schema, such as
+ * next step, as printed: a database whose migration files apply its schema, such as
  * Supabase's, or a server deployed apart from this project.
  */
 async function fillLabels(
@@ -305,7 +310,8 @@ async function fillLabels(
       error instanceof Error &&
       error.name === "HotUpdaterSchemaMigrationRequiredError"
     ) {
-      throw new Error(await pending());
+      p.log.error(await pending());
+      process.exit(1);
     }
     throw error;
   }
@@ -326,7 +332,9 @@ async function migrateWithMigrator(
   const { database, plugins } = hotUpdater;
   // A self-hosted server, through its admin API, migrates its own database.
   if (isRemoteDatabase(database)) {
-    return fillLabels(hotUpdater, s, async () => SERVER_MIGRATES_ITSELF);
+    return fillLabels(hotUpdater, s, async () =>
+      ui.prose(SERVER_MIGRATES_ITSELF),
+    );
   }
   let migrator: ReturnType<typeof createHotUpdaterMigrator>;
   try {
@@ -334,7 +342,7 @@ async function migrateWithMigrator(
   } catch (error) {
     if (!(error instanceof ServerDefinitionError)) throw error;
     const { message } = error;
-    return fillLabels(hotUpdater, s, async () => message);
+    return fillLabels(hotUpdater, s, async () => ui.prose(message));
   }
 
   // Get current version
