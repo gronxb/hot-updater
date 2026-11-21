@@ -1,3 +1,6 @@
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+
 import {
   createStorageAdapter,
   createStorageKeyBuilder,
@@ -28,6 +31,97 @@ export interface FirebaseStorageConfig extends AppOptions {
 const MAX_CACHED_SIGNED_URLS = 10_000;
 /** Objects deleted at once: Cloud Storage deletes one object a request. */
 const DELETE_CONCURRENCY = 16;
+
+/**
+ * Attempts at an upload a transient failure ends, as the AWS SDK's standard
+ * retry mode makes for `s3Storage`.
+ */
+const UPLOAD_ATTEMPTS = 3;
+/** The upper bound of the first retry's delay, doubled for each retry. */
+const UPLOAD_RETRY_DELAY_MS = 500;
+/**
+ * The largest body `put` holds in memory to send it again. A larger one,
+ * such as a native build, is streamed once.
+ */
+const REPLAYABLE_UPLOAD_BYTES = 16 * 1024 * 1024;
+
+/**
+ * `body` read into memory when it has at most REPLAYABLE_UPLOAD_BYTES, so a
+ * failed upload can send it again, or else a stream of the same bytes.
+ */
+const readReplayableBody = async (
+  body: ReadableStream<Uint8Array>,
+  contentLength: number | undefined,
+): Promise<Uint8Array | ReadableStream<Uint8Array>> => {
+  if (contentLength !== undefined && contentLength > REPLAYABLE_UPLOAD_BYTES) {
+    return body;
+  }
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  while (byteLength <= REPLAYABLE_UPLOAD_BYTES) {
+    const { done, value } = await reader.read();
+    if (done) {
+      const bytes = new Uint8Array(byteLength);
+      let offset = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      return bytes;
+    }
+    chunks.push(value);
+    byteLength += value.byteLength;
+  }
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks.splice(0)) controller.enqueue(chunk);
+    },
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) controller.close();
+      else controller.enqueue(value);
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
+};
+
+/** The HTTP status Cloud Storage failed a request with. */
+const failedStatusOf = (error: unknown) => {
+  const code: unknown =
+    typeof error === "object" && error !== null
+      ? Reflect.get(error, "code")
+      : undefined;
+  return typeof code === "number" ? code : undefined;
+};
+
+/** One line that says how an upload of `key` failed. */
+const uploadError = (key: string, error: unknown, transient: boolean) => {
+  const status = failedStatusOf(error);
+  if (status === undefined) {
+    return transient
+      ? new Error(
+          `Firebase Storage did not answer while uploading ${key}: ${(error as Error).message}`,
+          { cause: error },
+        )
+      : error;
+  }
+  // A gateway answers some failures, such as a 502, with an HTML page.
+  const detail =
+    transient || status >= 500 ? "" : `: ${(error as Error).message}`;
+  return new Error(
+    `Firebase Storage answered HTTP ${status} while uploading ${key}${detail}`,
+    { cause: error },
+  );
+};
+
+const waitBeforeRetry = (retry: number) =>
+  new Promise((resolve) =>
+    setTimeout(
+      resolve,
+      UPLOAD_RETRY_DELAY_MS * 2 ** (retry - 1) * (0.5 + Math.random() / 2),
+    ),
+  );
 
 export const firebaseStorage = (
   config: FirebaseStorageConfig,
@@ -100,26 +194,49 @@ export const firebaseStorage = (
   return createStorageAdapter({
     name: "firebaseStorage",
     protocol: "gs",
-    async put({ key, body, contentType }) {
+    async put({ key, body, contentLength, contentType }) {
       const storageKey = getStorageKey(key);
-      // Streamed, so a native build artifact never sits in memory.
-      const [{ Readable }, { pipeline }] = await Promise.all([
-        import("node:stream"),
-        import("node:stream/promises"),
-      ]);
-      await pipeline(
-        Readable.fromWeb(
-          body as import("node:stream/web").ReadableStream<Uint8Array>,
-        ),
-        bucket()
-          .file(storageKey)
-          .createWriteStream({
-            metadata: {
-              contentType,
-              cacheControl: "public, max-age=31536000, immutable",
-            },
-          }),
-      );
+      const file = bucket().file(storageKey);
+      const payload = await readReplayableBody(body, contentLength);
+      const replayable = payload instanceof Uint8Array;
+      // One request, which the SDK sends once: it retries an upload only
+      // under a generation precondition, which would fail concurrent puts of
+      // one key. An attempt that fails after Storage kept the object is
+      // overwritten with the same bytes, so `put` sends it again itself.
+      const upload = () => {
+        const destination = file.createWriteStream({
+          resumable: false,
+          metadata: {
+            contentType,
+            cacheControl: "public, max-age=31536000, immutable",
+          },
+        });
+        return replayable
+          ? new Promise<void>((resolve, reject) => {
+              destination.once("error", reject).once("finish", resolve);
+              destination.end(payload);
+            })
+          : pipeline(
+              Readable.fromWeb(
+                payload as import("node:stream/web").ReadableStream<Uint8Array>,
+              ),
+              destination,
+            );
+      };
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await upload();
+          break;
+        } catch (error) {
+          const transient =
+            file.storage.retryOptions.retryableErrorFn?.(error as never) ===
+            true;
+          if (!transient || !replayable || attempt === UPLOAD_ATTEMPTS) {
+            throw uploadError(storageKey, error, transient);
+          }
+          await waitBeforeRetry(attempt);
+        }
+      }
       return {
         storageUri: createStorageUri({
           bucket: config.storageBucket,

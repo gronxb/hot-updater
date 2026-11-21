@@ -65,7 +65,7 @@ describe("firebaseStorage", () => {
     await expect(response?.text()).resolves.toBe("manifest");
   });
 
-  it("streams a Web stream and returns an encoded object URI", async () => {
+  it("uploads a Web stream and returns an encoded object URI", async () => {
     const chunks: Buffer[] = [];
     file.createWriteStream.mockImplementation(
       () =>
@@ -89,6 +89,7 @@ describe("firebaseStorage", () => {
     });
     expect(bucket.file).toHaveBeenCalledWith("releases/한글@2x #%.zip");
     expect(file.createWriteStream).toHaveBeenCalledWith({
+      resumable: false,
       metadata: {
         cacheControl: "public, max-age=31536000, immutable",
         contentType: "application/zip",
