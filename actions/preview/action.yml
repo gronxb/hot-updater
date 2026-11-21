@@ -106,7 +106,8 @@ outputs:
   previews:
     description: >-
       JSON of each platform's preview: platform, target, nativeBuild (id,
-      artifactKind), built, bundleId, installUrl, downloadUrl (null when
+      artifactKind), built, bundleId, bundleLabel (its release's vN, null
+      before 1.2), installUrl, downloadUrl (null when
       android-download-url or ios-download-url is empty), with android-submit
       or ios-submit, store (destination, url, version, state, expiresAtMs,
       reusable), and on a sandbox build, sandbox (appId, urlScheme, link,

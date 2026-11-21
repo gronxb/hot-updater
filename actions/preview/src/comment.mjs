@@ -25,6 +25,8 @@ const CREDIT = "Preview by [hot-updater](https://hot-updater.dev)";
  * @property {string | null} bundleId The bundle deployed to the pull
  *   request's channel; null for a build-only lane's build that no lane
  *   deployed a bundle to.
+ * @property {number | null} [bundleLabel] Its release's label, `vN` on the
+ *   channel and platform; null when the project's CLI lists none.
  * @property {import("../../shared/nativeBuild.mjs").StoreStatus | null} [store]
  *   The store a sandbox build went to, which installs it instead of a download.
  * @property {SandboxPreview} [sandbox] Present when a sandbox build runs the bundle.
@@ -315,6 +317,15 @@ const installCommands = (allPreviews, channel) => {
 };
 
 /**
+ * The deployed bundle, after its label as the Console shows it.
+ * @param {Pick<PlatformPreview, "bundleId" | "bundleLabel">} preview
+ */
+const bundleCell = ({ bundleId, bundleLabel }) =>
+  bundleId === null
+    ? "—"
+    : `${typeof bundleLabel === "number" ? `${code(`v${bundleLabel}`)} · ` : ""}${code(bundleId)}`;
+
+/**
  * The rows of the collapsed Builds table: each platform's native build, the
  * fingerprint or app version it was matched by, and the deployed bundle.
  * @param {PlatformPreview[]} previews
@@ -340,7 +351,7 @@ const buildsTable = (previews) => {
           preview.target.fingerprintHash === null
             ? String(preview.target.appVersion)
             : preview.target.fingerprintHash.slice(0, 12),
-        )} | ${preview.bundleId === null ? "—" : code(preview.bundleId)} |`,
+        )} | ${bundleCell(preview)} |`,
     ),
     "",
     "</details>",

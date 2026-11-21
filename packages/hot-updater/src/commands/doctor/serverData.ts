@@ -229,7 +229,7 @@ const checkReleaseCatalogs = async (
       type: "warning",
       code: "RELEASE_CATALOGS_WITHOUT_LABELS",
       message: `${withoutLabels} release catalog${withoutLabels === 1 ? " lacks" : "s lack"} the labels of ${withoutLabels === 1 ? "its" : "their"} releases, so apps don't get them.`,
-      resolution: "Migrating the database again rebuilds them:",
+      resolution: "Rebuild them with their labels:",
       commands: [repair],
     });
   }
@@ -271,8 +271,7 @@ const checkReleaseLabels = async (
     type: "warning",
     code: "RELEASE_LABELS_MISSING",
     message: `${releases} release${releases === 1 ? " has" : "s have"} no label.`,
-    resolution:
-      "Migrating the database again labels them in the order they were created:",
+    resolution: "Label them in the order they were created:",
     commands: [repair],
   };
 };
@@ -289,12 +288,13 @@ export interface LabelSchemaRepair {
 
 /**
  * The server's release catalogs, each against a rebuild from its releases,
- * and its releases' labels. `repair` is the command that migrates the
- * database: init's for a deployment init created, else `db migrate`'s.
+ * and its releases' labels. `repair` is the command that labels the
+ * releases and rebuilds the catalogs that lack them: `db migrate`, which
+ * deploys nothing.
  */
 export const checkServerData = async (
   core: HotUpdaterCoreApi,
-  repair = "npx hot-updater db migrate <server file>",
+  repair = "npx hot-updater db migrate",
   labelSchemaRepair?: LabelSchemaRepair,
 ): Promise<ReleaseCatalogStatus> => {
   let catalogs: { scopeKey: string; tombstone: boolean }[];

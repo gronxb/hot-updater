@@ -113,8 +113,9 @@ through it, the path the server's own writes take:
   [`hot-updater doctor`](/docs/guides/doctor#check-the-database-schema) in
   this project: it names the command that migrates the database. In the
   server's project, that is `hot-updater db migrate`, or `hot-updater db
-  generate` for a database migrated from files: the `db` commands load the server file,
-  such as `src/hotUpdater.ts`, and don't read `hot-updater.config.ts`. A
+generate` for a database migrated from files: the `db` commands load the server file,
+  such as `src/hotUpdater.ts`. Without one, `db migrate` runs over `database`
+  and `plugins` in `hot-updater.config.ts`. A
   plugin the server doesn't run has no settings row, so listing one stops
   these commands too.
 - When a retention pass is due, a write first deletes expired rows of plugins'

@@ -1,12 +1,20 @@
 import {
+  type AssembledServer,
+  assembleServer,
   createMigrator as createHotUpdaterMigrator,
   fillReleaseLabels,
+  loadConfig,
   p,
+  ServerDefinitionError,
 } from "@hot-updater/cli-tools";
+import { isRemoteDatabase } from "@hot-updater/plugin-core";
 
 import { ui } from "../utils/cli-ui";
 import { canPrompt } from "../utils/prompt";
-import { loadHotUpdater } from "./utils/load-hot-updater";
+import {
+  findDefaultConfigPaths,
+  loadHotUpdater,
+} from "./utils/load-hot-updater";
 
 export interface MigrateOptions {
   configPath: string;
@@ -193,13 +201,13 @@ export async function migrate(options: MigrateOptions) {
     const s = p.spinner();
     s.start("Loading configuration and analyzing schema");
 
-    // Load hotUpdater instance from config file
-    const { hotUpdater } = await loadHotUpdater(configPath);
+    const hotUpdater = await loadMigrationServer(configPath);
 
     // Every database on the storage engine migrates through its migrator:
     // drizzle-kit and Prisma apply their tables, so theirs set what the ORM
     // cannot declare and write the settings rows; any other adapter creates
-    // core's tables and the plugins' tables itself.
+    // core's tables and the plugins' tables itself. A database without one,
+    // whose migration files apply the schema, gets only its release labels.
     await migrateWithMigrator(hotUpdater, skipConfirm, s);
   } catch (error) {
     p.log.error("Failed to run migration");
@@ -213,16 +221,78 @@ export async function migrate(options: MigrateOptions) {
   }
 }
 
+type MigrationServer = Pick<AssembledServer, "core" | "database" | "plugins">;
+
+/**
+ * The server whose database to migrate: the server file given, else a server
+ * project's `src/hotUpdater.*` or `src/db.*`, else the database and plugins
+ * in hot-updater.config.ts, as the CLI runs them: a managed or agent
+ * infrastructure project has no server file.
+ */
+const loadMigrationServer = async (
+  configPath: string,
+): Promise<MigrationServer> => {
+  if (
+    configPath.trim() === "" &&
+    findDefaultConfigPaths(process.cwd()).length === 0
+  ) {
+    const { database, plugins } = await loadConfig(null);
+    if (database !== undefined) return assembleServer({ database, plugins });
+  }
+  return (await loadHotUpdater(configPath)).hotUpdater;
+};
+
+/**
+ * A database without a migrator, such as Supabase's, whose migration files
+ * apply the schema: once its schema is current, only the release labels.
+ */
+async function fillWithoutMigrator(
+  hotUpdater: MigrationServer,
+  applySchema: string,
+  s: ReturnType<typeof p.spinner>,
+) {
+  try {
+    await hotUpdater.core.ready();
+  } catch (error) {
+    s.stop("Analysis complete");
+    if (
+      error instanceof Error &&
+      error.name === "HotUpdaterSchemaMigrationRequiredError"
+    ) {
+      throw new Error(applySchema);
+    }
+    throw error;
+  }
+  s.stop("Analysis complete");
+  p.log.success("Schema is up to date.");
+  await fillReleaseLabels(hotUpdater);
+  process.exit(0);
+}
+
 /**
  * Run migrations using createMigrator (for kysely/mongodb)
  */
 async function migrateWithMigrator(
-  hotUpdater: Awaited<ReturnType<typeof loadHotUpdater>>["hotUpdater"],
+  hotUpdater: MigrationServer,
   skipConfirm: boolean,
   s: ReturnType<typeof p.spinner>,
 ) {
-  // Create migrator
-  const migrator = createHotUpdaterMigrator(hotUpdater);
+  const { database, plugins } = hotUpdater;
+  // A self-hosted server, through its admin API, migrates its own database.
+  if (isRemoteDatabase(database)) {
+    return fillWithoutMigrator(
+      hotUpdater,
+      "The server migrates its own database: run `hot-updater db migrate` in its project as you deploy it.",
+      s,
+    );
+  }
+  let migrator: ReturnType<typeof createHotUpdaterMigrator>;
+  try {
+    migrator = createHotUpdaterMigrator({ database, plugins });
+  } catch (error) {
+    if (!(error instanceof ServerDefinitionError)) throw error;
+    return fillWithoutMigrator(hotUpdater, error.message, s);
+  }
 
   // Get current version
   const currentVersion = await migrator.getVersion();

@@ -253,7 +253,7 @@ Doctor writes nothing. Each issue's `resolution` says what resolves it, and
 | `ORPHAN_PUBLIC_KEY`                                                                   | Your choice: `npx hot-updater keys remove`, or enable signing. Removing the key turns off signature verification in the app, which is wrong when signing is set up where this machine cannot see it, such as a variable only CI sets |
 | `RELEASE_CATALOG_STALE`                                                               | Any release change in the scope, such as a deploy or `bundle update`, which recompiles its catalog. See [Check Release Catalogs](#check-release-catalogs)                                                                         |
 | `RELEASE_CATALOG_IDENTITY_MISSING`                                                    | Restore the scope's catalog row from a backup                                                                                                                                                                                     |
-| `RELEASE_LABELS_MISSING`, `RELEASE_CATALOGS_WITHOUT_LABELS`                           | Migrate the database again, as for `SCHEMA_MIGRATION_PENDING`: it labels the bundles that have none and rebuilds the catalogs that lack their labels. See [Check Release Catalogs](#check-release-catalogs)                       |
+| `RELEASE_LABELS_MISSING`, `RELEASE_CATALOGS_WITHOUT_LABELS`                           | `npx hot-updater db migrate`, which deploys nothing: it labels the bundles that have none and rebuilds the catalogs that lack their labels. See [Check Release Catalogs](#check-release-catalogs)                                |
 
 Issues that need a code edit, such as the bundle provider or a client plugin,
 name the edit. Infrastructure issues name the command that upgrades the server.
@@ -489,9 +489,11 @@ Doctor also counts the bundles without a label: ones deployed before labels,
 or by a server of an earlier release still running after the migration. It
 warns `RELEASE_LABELS_MISSING`, and `RELEASE_CATALOGS_WITHOUT_LABELS` for a
 catalog that differs from its releases only by their labels, which apps read.
-Migrating the database again labels those bundles in the order they were
-created and rebuilds those catalogs; the next deploy to a channel and platform
-labels them too. `RELEASE_LABELS_UNCHECKED` says why the check couldn't run,
+`npx hot-updater db migrate`, run in this project without a server file,
+labels those bundles in the order they were created and rebuilds those
+catalogs over the database `hot-updater.config.ts` names, without deploying
+anything, whichever deployment serves it; the next deploy to a channel and
+platform labels them too. `RELEASE_LABELS_UNCHECKED` says why the check couldn't run,
 such as a self-hosted server older than the CLI, or a database a 1.2
 prerelease migrated, which lacks the label column: doctor then names the
 repair that adds it.

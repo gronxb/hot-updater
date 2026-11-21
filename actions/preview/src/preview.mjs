@@ -620,19 +620,23 @@ const resolveScheme = async (deps, inputs, platform, scheme) => {
  * @param {Inputs} inputs
  * @param {Platform} platform
  * @param {ResolvedScheme} resolved
- * @param {string | null} bundleId Null when the run deploys no bundle.
+ * @param {{ id: string, label: number | null } | null} bundle The release
+ *   the run deployed; null when it deploys none.
  * @returns {PlatformPreview & { installUrl: string }}
  */
 const previewOf = (
   inputs,
   platform,
   { build, target, built, sandbox, reported, expiresAtMs },
-  bundleId,
+  bundle,
 ) => {
+  const bundleId = bundle?.id ?? null;
+  const bundleLabel = bundle?.label ?? null;
   if (reported !== undefined) {
     return {
       ...reported,
       bundleId,
+      bundleLabel,
       // A store build installs from its store, as the store path says.
       installUrl: reported.store
         ? (reported.store.url ??
@@ -665,6 +669,7 @@ const previewOf = (
     nativeBuild,
     built,
     bundleId,
+    bundleLabel,
     installUrl: nativeBuildInstallUrl(
       inputs.consoleUrl,
       nativeBuild,
@@ -711,7 +716,7 @@ const previewPlatform = async (
         scheme,
         submit,
       );
-    const bundleId = inputs.deploy
+    const bundle = inputs.deploy
       ? await deployBundle(deps, {
           platform,
           channel: inputs.channel,
@@ -734,7 +739,8 @@ const previewPlatform = async (
       },
       nativeBuild,
       built,
-      bundleId,
+      bundleId: bundle?.id ?? null,
+      bundleLabel: bundle?.label ?? null,
       store,
       ...sandboxOf(inputs, platform, sandbox, target, build, built),
       installUrl:
@@ -742,7 +748,7 @@ const previewPlatform = async (
     };
   }
   const resolved = await resolveScheme(deps, inputs, platform, scheme);
-  const bundleId = inputs.deploy
+  const bundle = inputs.deploy
     ? await deployBundle(deps, {
         platform,
         channel: inputs.channel,
@@ -751,7 +757,7 @@ const previewPlatform = async (
         onDeployed,
       })
     : null;
-  return previewOf(inputs, platform, resolved, bundleId);
+  return previewOf(inputs, platform, resolved, bundle);
 };
 
 /**
@@ -820,7 +826,7 @@ const previewSchemes = async (
   }
   let deployed = false;
   try {
-    const bundleId = await deployBundle(deps, {
+    const bundle = await deployBundle(deps, {
       platform,
       channel: inputs.channel,
       target: first.target,
@@ -833,7 +839,7 @@ const previewSchemes = async (
     return {
       previews: resolved.map((scheme) => ({
         scheme: scheme.scheme,
-        ...previewOf(inputs, platform, scheme, bundleId),
+        ...previewOf(inputs, platform, scheme, bundle),
       })),
       failures,
     };
@@ -1187,6 +1193,7 @@ const publicPreview = ({
   nativeBuild,
   built,
   bundleId,
+  bundleLabel,
   store,
   sandbox,
 }) => ({
@@ -1207,6 +1214,7 @@ const publicPreview = ({
   },
   built: Boolean(built),
   bundleId: bundleId ?? null,
+  bundleLabel: typeof bundleLabel === "number" ? bundleLabel : null,
   ...(store
     ? {
         store: {

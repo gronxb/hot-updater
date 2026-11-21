@@ -202,6 +202,9 @@ npx hot-updater apple login          # = secrets issue asc-api-key
 
 # Migrate a server's database (in the server project)
 npx hot-updater db migrate src/hotUpdater.ts
+
+# Label existing releases over hot-updater.config.ts's database (deploys nothing)
+npx hot-updater db migrate
 ```
 
 ## Development Notes
