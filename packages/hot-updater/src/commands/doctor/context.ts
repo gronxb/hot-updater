@@ -48,6 +48,32 @@ export interface DoctorContext {
   dispose(): Promise<void>;
 }
 
+/**
+ * The scaffold upgrade of a configured database's provider, when a scaffold
+ * records its deployment: it takes the place of init's command.
+ */
+export const scaffoldUpgradeOf = async (
+  { database, plugins }: Pick<LoadedServer, "database" | "plugins">,
+  records: () => Promise<ScaffoldDeployment[]>,
+): Promise<ScaffoldUpgrade | null> => {
+  if (isRemoteDatabase(database)) return null;
+  const provider = providerOfDatabase(database.name);
+  // The scaffold's server runs only the official plugins: a config with
+  // another keeps its own server's path, as for init.
+  if (
+    provider === undefined ||
+    plugins.some((plugin) => Reflect.get(plugin, OFFICIAL) !== true)
+  ) {
+    return null;
+  }
+  const target: unknown = Reflect.get(database, DATABASE_TARGET);
+  return scaffoldUpgradeFor(
+    await records(),
+    provider,
+    typeof target === "string" ? target : undefined,
+  );
+};
+
 export const createDoctorContext = (cwd: string): DoctorContext => {
   let server: Promise<LoadedServer | null> | undefined;
   let fingerprints: Promise<Fingerprints> | undefined;
@@ -72,22 +98,9 @@ export const createDoctorContext = (cwd: string): DoctorContext => {
     scaffolds: scaffoldRecords,
     scaffoldUpgrade: async () => {
       const loaded = await loadedServer().catch(() => null);
-      if (loaded === null || isRemoteDatabase(loaded.database)) return null;
-      const provider = providerOfDatabase(loaded.database.name);
-      // The scaffold's server runs only the official plugins: a config with
-      // another keeps its own server's path, as for init.
-      if (
-        provider === undefined ||
-        loaded.plugins.some((plugin) => Reflect.get(plugin, OFFICIAL) !== true)
-      ) {
-        return null;
-      }
-      const target: unknown = Reflect.get(loaded.database, DATABASE_TARGET);
-      return scaffoldUpgradeFor(
-        await scaffoldRecords(),
-        provider,
-        typeof target === "string" ? target : undefined,
-      );
+      return loaded === null
+        ? null
+        : scaffoldUpgradeOf(loaded, scaffoldRecords);
     },
     fingerprints: () => (fingerprints ??= generateFingerprints()),
     dispose: async () => {

@@ -1476,7 +1476,7 @@ dbCommand
   .description("Run database migration (creates tables directly in database)")
   .argument(
     "[configPath]",
-    "path to the server definition that exports hotUpdater (default: src/hotUpdater.ts or src/db.ts, else the database in hot-updater.config.ts)",
+    "path to the server definition that exports hotUpdater (default: src/hotUpdater.ts or src/db.ts; without one, labels the releases of hot-updater.config.ts's database once its schema is current)",
   )
   .option("-y, --yes", "skip confirmation prompt", false)
   .action(async (configPath: string | undefined, options: { yes: boolean }) => {

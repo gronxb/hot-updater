@@ -235,6 +235,64 @@ describe("db migrate on a database a 1.1 server wrote", () => {
   });
 });
 
+describe("db migrate without a server file", () => {
+  let pglite: PGlite;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(p.log, "error").mockImplementation(() => {});
+    vi.spyOn(p.log, "info").mockImplementation(() => {});
+    vi.spyOn(p.log, "message").mockImplementation(() => {});
+    vi.spyOn(p.log, "success").mockImplementation(() => {});
+    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      exits.push(code);
+      throw new Exit(code);
+    }) as never);
+    pglite = new PGlite();
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    await pglite.close();
+  });
+
+  it("refuses a pending schema on the database init's server reads, naming init, and migrates nothing", async () => {
+    // A deployment init manages: its Worker reads this database, and an
+    // older Worker answers 503 once the schema is migrated without it.
+    vi.stubEnv("HOT_UPDATER_INIT_PROVIDER", "cloudflare");
+    vi.stubEnv("HOT_UPDATER_INIT_BUILD", "expo");
+    vi.stubEnv("HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID", "database");
+    const adapter = createSqlAdapter({ executor: pgliteExecutor(pglite) });
+    await migrateCoreSchema(adapter, "d1Database", []);
+    await pglite.query(
+      `UPDATE "${SETTINGS_TABLE.name}" SET "value" = '1.0.0' WHERE "key" = 'schema.core'`,
+    );
+    vi.mocked(findDefaultConfigPaths).mockReturnValue([]);
+    vi.mocked(loadConfig).mockResolvedValue({
+      database: {
+        ...createEngineDatabase({ name: "d1Database", adapter }),
+        [Symbol.for("@hot-updater/database-target")]: "d1/database",
+      },
+      plugins: [],
+    } as never);
+
+    exits.length = 0;
+    await migrate({ configPath: "", skipConfirm: true }).catch((error) => {
+      if (!(error instanceof Exit)) throw error;
+    });
+
+    expect(exits[0]).toBe(1);
+    expect(vi.mocked(p.log.error).mock.calls.flat().join("\n")).toContain(
+      "`npx hot-updater init --provider cloudflare --build expo --from-env-file <env file>`",
+    );
+    const { rows } = await pglite.query<{ value: string }>(
+      `SELECT "value" FROM "${SETTINGS_TABLE.name}" WHERE "key" = 'schema.core'`,
+    );
+    expect(rows).toEqual([{ value: "1.0.0" }]);
+  });
+});
+
 describe("db migrate on a database without a migrator", () => {
   let pglite: PGlite;
   let server: ReturnType<typeof assembleServer>;
