@@ -10,6 +10,7 @@ import {
   compileReleaseCatalog,
   projectCompiledCatalog,
   projectCompiledRollbackCatalog,
+  readCompiledCatalogPayload,
   referenceCompatibleReleases,
 } from "./releaseCatalogCompiler";
 
@@ -372,5 +373,67 @@ describe("compileReleaseCatalog", () => {
       code: "INVALID_RELEASE",
       message: `Release ${releaseId(1)} has no Bundle`,
     });
+  });
+});
+
+describe("readCompiledCatalogPayload", () => {
+  const compiled = () =>
+    Promise.all([
+      compileReleaseCatalog({
+        releases: [
+          release(1, { targetAppVersion: ">=1.0.0 <2.0.0", label: 1 }),
+          release(2, {
+            targetAppVersion: "1.2.x",
+            targetCohorts: ["beta"],
+            message: "fixes",
+            label: 2,
+          }),
+          release(3, { targetAppVersion: "3.0.0", rolloutCohortCount: 10 }),
+        ],
+        strategy: "APP_VERSION",
+      }),
+      compileReleaseCatalog({
+        releases: [
+          fingerprintRelease(1, { label: 4, shouldForceUpdate: true }),
+          fingerprintRelease(2, { message: "m" }),
+        ],
+        strategy: "FINGERPRINT",
+      }),
+    ]);
+
+  it("reads every catalog this release compiles as its own, unchanged", async () => {
+    for (const compilation of await compiled()) {
+      expect(readCompiledCatalogPayload(compilation.canonicalPayload)).toEqual({
+        canonicalPayload: compilation.canonicalPayload,
+        fromLaterRelease: false,
+      });
+    }
+  });
+
+  it("leaves out a key a later release added at any depth, and names the catalog a later release's", async () => {
+    const [appVersion] = await compiled();
+    const payload = JSON.parse(appVersion!.canonicalPayload) as {
+      releaseDescriptors: Record<string, unknown>[];
+      segments: { lower: Record<string, unknown> | null }[];
+    };
+    payload.releaseDescriptors[0]!.channelNote = "later";
+    payload.segments.find(({ lower }) => lower !== null)!.lower!.note = 1;
+    const later = { ...payload, publishedAtMs: 1 };
+
+    expect(readCompiledCatalogPayload(JSON.stringify(later))).toEqual({
+      canonicalPayload: appVersion!.canonicalPayload,
+      fromLaterRelease: true,
+    });
+  });
+
+  it("names a catalog of a later schema version a later release's", async () => {
+    const [, fingerprint] = await compiled();
+    const payload = JSON.parse(fingerprint!.canonicalPayload) as object;
+
+    expect(
+      readCompiledCatalogPayload(
+        JSON.stringify({ ...payload, schemaVersion: 2 }),
+      ).fromLaterRelease,
+    ).toBe(true);
   });
 });

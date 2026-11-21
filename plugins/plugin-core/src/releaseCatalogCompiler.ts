@@ -603,6 +603,70 @@ function canonicalStringify(value: unknown): string {
     .join(",")}}`;
 }
 
+/**
+ * Every key this release's compiler writes in a catalog payload, at any
+ * depth: the envelope's, a segment's and its bounds', and a descriptor's.
+ * A key outside it was written by a later release.
+ */
+const COMPILED_CATALOG_KEYS: ReadonlySet<string> = new Set([
+  "fallbackPolicy",
+  "schemaVersion",
+  "strategy",
+  "releaseDescriptors",
+  "segments",
+  "releaseIndexes",
+  "rollbackReleaseIndexes",
+  "lower",
+  "upper",
+  "inclusive",
+  "version",
+  "releaseId",
+  "kind",
+  "bundleId",
+  "rolloutCohortCount",
+  "targetCohorts",
+  "shouldForceUpdate",
+  "message",
+  "label",
+]);
+
+/**
+ * A stored catalog payload as this release reads it: canonical, with the
+ * keys a later release added left out, and whether it had any, a later
+ * schema version included. Server core compares a catalog by the fields
+ * its compiler writes, and refuses to rewrite one a later release wrote,
+ * which would drop what that release added.
+ */
+export function readCompiledCatalogPayload(payload: string): {
+  readonly canonicalPayload: string;
+  readonly fromLaterRelease: boolean;
+} {
+  let fromLaterRelease = false;
+  const known = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(known);
+    if (value === null || typeof value !== "object") return value;
+    const entries = Object.entries(value).filter(([key]) => {
+      if (COMPILED_CATALOG_KEYS.has(key)) return true;
+      fromLaterRelease = true;
+      return false;
+    });
+    return Object.fromEntries(
+      entries.map(([key, entry]) => [key, known(entry)]),
+    );
+  };
+  const parsed = JSON.parse(payload) as { readonly schemaVersion?: unknown };
+  if (
+    typeof parsed.schemaVersion === "number" &&
+    parsed.schemaVersion > RELEASE_CATALOG_SCHEMA_VERSION
+  ) {
+    fromLaterRelease = true;
+  }
+  return {
+    canonicalPayload: canonicalStringify(known(parsed)),
+    fromLaterRelease,
+  };
+}
+
 export async function compileReleaseCatalog(input: {
   readonly strategy: ReleaseStrategy;
   readonly releases: readonly Release[];
