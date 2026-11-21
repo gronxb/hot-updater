@@ -1,5 +1,23 @@
 # @hot-updater/react-native
 
+## 1.2.0-rc.51
+
+### Patch Changes
+
+- eaaffed: fix(react-native): on Android, a download that another update check made stale keeps its files for the next install of the same bundle.
+  - When a newer check replaces the selection while a bundle downloads, as the sandbox's **Open latest** does while the app's own launch check downloads the same bundle, Android now refuses the install before it moves the files into place. The verified files stay staged, and the next install of that bundle reuses them instead of downloading everything again. Before, Android moved them into place, then deleted them, so the second install downloaded every file again and failed if a file request failed. iOS already worked this way.
+
+- c01ee70: feat(react-native): the app can show the label of the release it runs.
+  - `hotUpdater.getReleaseLabel()` returns the label of the release the app runs, such as `12` for `v12`, or `null` for the built-in bundle and a release without one. Native keeps it with the installed bundle, so it reads the same after a restart and offline. The native `HotUpdaterInstance` has `getReleaseLabel()` too, and its update has `label`.
+  - `checkForUpdate()`'s result has `label`, the label of the release it offers.
+  - Older servers send no labels, and the getters return `null`. An app on native code from an earlier SDK also gets `null`; nothing else changes for it.
+
+- Updated dependencies [c01ee70]
+- Updated dependencies [e833260]
+  - @hot-updater/protocol@1.2.0-rc.51
+  - @hot-updater/plugin-insights@1.2.0-rc.51
+  - @hot-updater/plugin-remote-config@1.2.0-rc.51
+
 ## 1.2.0-rc.50
 
 ### Patch Changes

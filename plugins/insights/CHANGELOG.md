@@ -1,5 +1,13 @@
 # @hot-updater/plugin-insights
 
+## 1.2.0-rc.51
+
+### Patch Changes
+
+- Updated dependencies [c01ee70]
+- Updated dependencies [e833260]
+  - @hot-updater/protocol@1.2.0-rc.51
+
 ## 1.2.0-rc.50
 
 ### Patch Changes
