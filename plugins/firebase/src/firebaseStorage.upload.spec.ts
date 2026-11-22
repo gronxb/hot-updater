@@ -41,14 +41,15 @@ beforeAll(async () => {
       return;
     }
     uploads.push(Buffer.concat(chunks));
-    const json = status < 500;
+    // Google's front end answers a timeout and a 5xx with an HTML page.
+    const json = status < 500 && status !== 408;
     response.writeHead(status, {
       "content-type": json ? "application/json" : "text/html",
     });
     response.end(
       json
         ? JSON.stringify({ error: { code: status, message: "Forbidden" } })
-        : `<!DOCTYPE html><html><body>${status} Service Unavailable</body></html>`,
+        : `<!DOCTYPE html><html><body>${status} That’s an error.</body></html>`,
     );
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -133,6 +134,15 @@ describe("firebaseStorage put", () => {
 
     await expect(put(1024)).rejects.toThrow(
       /^Firebase Storage answered HTTP 403 while uploading bundles\/bundle\.zip: Forbidden$/,
+    );
+    expect(uploads).toHaveLength(1);
+  });
+
+  it("leaves out the HTML page Storage answers a timed-out upload with", async () => {
+    status = 408;
+
+    await expect(put(1024)).rejects.toThrow(
+      /^Firebase Storage answered HTTP 408 while uploading bundles\/bundle\.zip$/,
     );
     expect(uploads).toHaveLength(1);
   });

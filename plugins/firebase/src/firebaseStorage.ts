@@ -125,8 +125,10 @@ export const firebaseStorage = (
       } catch (error) {
         const status: unknown = Reflect.get(Object(error), "code");
         if (typeof status !== "number") throw error;
-        // A gateway answers some failures, such as a 502, with an HTML page.
-        const detail = status < 500 ? `: ${(error as Error).message}` : "";
+        // Google's front end answers a timeout or a 5xx with an HTML page,
+        // which says nothing the status doesn't.
+        const message = (error as Error).message;
+        const detail = /<html|<!doctype/i.test(message) ? "" : `: ${message}`;
         throw new Error(
           `Firebase Storage answered HTTP ${status} while uploading ${storageKey}${detail}`,
           { cause: error },
