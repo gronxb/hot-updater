@@ -65,7 +65,7 @@ describe("firebaseStorage", () => {
     await expect(response?.text()).resolves.toBe("manifest");
   });
 
-  it("uploads a Web stream and returns an encoded object URI", async () => {
+  it("streams a Web stream and returns an encoded object URI", async () => {
     const chunks: Buffer[] = [];
     file.createWriteStream.mockImplementation(
       () =>
