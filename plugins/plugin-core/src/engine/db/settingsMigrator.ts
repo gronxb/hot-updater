@@ -1,5 +1,6 @@
 import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
 import {
+  compareVersions,
   ENGINE_SCHEMA_KEY,
   isMissingSchemaError,
   SETTINGS_TABLE,
@@ -66,19 +67,6 @@ export const refuseV0Database = (
   const version = stored.get("version");
   if (typeof version !== "string" || stored.has(ENGINE_SCHEMA_KEY)) return;
   throw new HotUpdaterSchemaMigrationRequiredError(adapterName, version);
-};
-
-/** Compares dotted numeric versions, such as "1" and "1.2.0"; NaN when either is not one. */
-const compareVersions = (left: string, right: string): number => {
-  const parse = (version: string) =>
-    /^\d+(?:\.\d+)*$/u.test(version) ? version.split(".").map(Number) : [NaN];
-  const [a, b] = [parse(left), parse(right)];
-  if ([...a, ...b].some(Number.isNaN)) return Number.NaN;
-  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
-    const difference = (a[index] ?? 0) - (b[index] ?? 0);
-    if (difference !== 0) return difference;
-  }
-  return 0;
 };
 
 /**

@@ -128,6 +128,7 @@ import {
 import { handleUploadKeyIssue } from "./commands/uploadKey";
 import { ui } from "./utils/cli-ui";
 import { exitWhenFlushed } from "./utils/exitWhenFlushed";
+import { endAtSchemaFence } from "./utils/schemaFenceRefusal";
 
 const DEFAULT_CHANNEL = "production";
 const parseBooleanOption = (value: string) => {
@@ -1559,4 +1560,4 @@ program.hook("preAction", (_command, actionCommand) => {
   ensureNoConflicts();
 });
 
-program.parse(process.argv);
+program.parseAsync(process.argv).catch(endAtSchemaFence);

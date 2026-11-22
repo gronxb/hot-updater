@@ -109,6 +109,33 @@ describe("schema fence", () => {
     });
   });
 
+  it("names the upgrade for a database a newer release migrated, and the migration for an older one", async () => {
+    const memory = createMemoryAdapter();
+    await migrateSchema(memory, "memory", [], {
+      ...settings,
+      "schema.core": "1.3.0",
+    });
+    await expect(
+      checkSchemaFence(memory, "memory", {
+        ...settings,
+        "schema.insights": "1.0.0",
+      }),
+    ).rejects.toMatchObject({
+      setting: { key: "schema.core", expected: "1.0.0", found: "1.3.0" },
+      message:
+        'Hot Updater schema setting "schema.core" for memory is "1.3.0"; expected "1.0.0". The database was migrated by Hot Updater 1.3.0: upgrade hot-updater and the @hot-updater packages to 1.3.0 or later.',
+    });
+    await expect(
+      checkSchemaFence(memory, "memory", {
+        ...settings,
+        "schema.core": "1.10.0",
+      }),
+    ).rejects.toMatchObject({
+      message:
+        'Hot Updater schema setting "schema.core" for memory is "1.3.0"; expected "1.10.0". Run `npx hot-updater doctor` in the project whose hot-updater.config.ts names this database: it names the command that migrates it. In a server project, `hot-updater db migrate` migrates the database its server file names.',
+    });
+  });
+
   it("asks for a new database only for a v0 schema, which it cannot migrate in place", () => {
     expect(
       new HotUpdaterSchemaMigrationRequiredError("memory", "0.21.0").message,
