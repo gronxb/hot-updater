@@ -56,12 +56,13 @@ export const prismaAdapter = (config: PrismaConfig): ToolingDatabase => {
         path: "prisma/schema.prisma",
       };
     }) satisfies SchemaGenerator,
-    createMigrator: ({ schema, settings } = coreTarget) => {
+    createMigrator: ({ schema, settings, ordered } = coreTarget) => {
       const collations = prismaCollationStatements(provider, schema);
       return createSettingsMigrator({
         adapterName: "prisma",
         executor,
         settings,
+        ordered,
         applyTables: "`prisma db push` (or `prisma migrate`)",
         ...(collations.length === 0
           ? {}

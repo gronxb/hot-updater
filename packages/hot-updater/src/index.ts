@@ -38,6 +38,7 @@ import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";
 import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
+import { isSchemaFenceRefusal } from "@/utils/schemaFenceRefusal";
 
 import {
   handleApiKeyCreate,
@@ -998,4 +999,9 @@ program.hook("preAction", (_command, actionCommand) => {
   ensureNoConflicts();
 });
 
-program.parse(process.argv);
+program.parseAsync(process.argv).catch((error: unknown) => {
+  // Any other failure keeps Node's report.
+  if (!isSchemaFenceRefusal(error)) throw error;
+  p.log.error(error.message);
+  process.exit(1);
+});
