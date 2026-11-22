@@ -1,5 +1,27 @@
 # @hot-updater/plugin-core
 
+## 1.2.0-rc.52
+
+### Patch Changes
+
+- 610f038: fix(server): never call a release catalog stale, or rewrite it without its fields, because a later Hot Updater compiled fields this one doesn't know
+  - An rc.50 CLI against catalogs rc.51 compiled with labels reported `RELEASE_CATALOG_STALE` on every labeled scope, and its deploy or `bundle update` rewrote the scope's catalog without labels, so apps read `getReleaseLabel()` as null until a newer CLI rebuilt it. From this release on, an older Hot Updater handles a later one's catalogs safely.
+  - Core compares a stored catalog by the fields its compiler writes. A catalog that matches in those, with keys only a later release writes, is verified: doctor reports no issue, and a rebuild or the label fill leaves it as it is.
+  - A release change in such a scope, such as a deploy, `bundle update`, or enabling or disabling a bundle, is refused with `CATALOG_FROM_LATER_RELEASE` before anything is written: "The ios release catalog of channel "production" was written by a later Hot Updater. Upgrade hot-updater, then try again." A standalone server's refusal reaches its CLI with the same code.
+  - `hot-updater deploy` to both platforms ends a refusal core words for the user, this one or a catalog over its size limit, with that message and exit code 1. Before, it printed a stack trace.
+
+- f35618e: fix(cli): name the upgrade when a newer release migrated the database
+
+  When a newer Hot Updater already migrated the database, the schema fence no longer says to run `hot-updater db migrate`, which refuses to move a schema back. It names the upgrade:
+
+  ```
+  Hot Updater schema setting "schema.core" for kysely is "1.3.0"; expected "1.2.0". The database was migrated by Hot Updater 1.3.0: upgrade hot-updater and the @hot-updater packages to 1.3.0 or later.
+  ```
+
+  Commands that stop at the fence, such as `deploy` and `bundle list`, print its message as one line on stderr, without a stack trace, and exit 1. An older or missing schema setting keeps its message, and the server still answers 503.
+
+- @hot-updater/protocol@1.2.0-rc.52
+
 ## 1.2.0-rc.51
 
 ### Patch Changes

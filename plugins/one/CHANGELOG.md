@@ -1,5 +1,15 @@
 # @hot-updater/one
 
+## 1.2.0-rc.52
+
+### Patch Changes
+
+- Updated dependencies [610f038]
+- Updated dependencies [f35618e]
+  - @hot-updater/plugin-core@1.2.0-rc.52
+  - @hot-updater/cli-tools@1.2.0-rc.52
+  - @hot-updater/bare@1.2.0-rc.52
+
 ## 1.2.0-rc.51
 
 ### Patch Changes

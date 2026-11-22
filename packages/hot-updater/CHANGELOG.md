@@ -1,5 +1,43 @@
 # hot-updater
 
+## 1.2.0-rc.52
+
+### Patch Changes
+
+- 610f038: fix(server): never call a release catalog stale, or rewrite it without its fields, because a later Hot Updater compiled fields this one doesn't know
+  - An rc.50 CLI against catalogs rc.51 compiled with labels reported `RELEASE_CATALOG_STALE` on every labeled scope, and its deploy or `bundle update` rewrote the scope's catalog without labels, so apps read `getReleaseLabel()` as null until a newer CLI rebuilt it. From this release on, an older Hot Updater handles a later one's catalogs safely.
+  - Core compares a stored catalog by the fields its compiler writes. A catalog that matches in those, with keys only a later release writes, is verified: doctor reports no issue, and a rebuild or the label fill leaves it as it is.
+  - A release change in such a scope, such as a deploy, `bundle update`, or enabling or disabling a bundle, is refused with `CATALOG_FROM_LATER_RELEASE` before anything is written: "The ios release catalog of channel "production" was written by a later Hot Updater. Upgrade hot-updater, then try again." A standalone server's refusal reaches its CLI with the same code.
+  - `hot-updater deploy` to both platforms ends a refusal core words for the user, this one or a catalog over its size limit, with that message and exit code 1. Before, it printed a stack trace.
+
+- 6615af6: fix(cli): label existing releases with `db migrate` on any deployment, name the D1 database in doctor's label schema repair, and show release labels in the preview comment
+  - `hot-updater db migrate` without a server file, in a project with neither `src/hotUpdater.*` nor `src/db.*`, labels the releases of the database `hot-updater.config.ts` names once its schema is current. It never migrates that database, whose server is deployed apart from the project: a pending schema stops it with doctor's next step, such as init's command or the agent infrastructure upgrade, since an older server answers 503 on a migrated database.
+  - With a server file, `db migrate` on a database without a migrator, such as Supabase's or a self-hosted server's through `standaloneRepository`, checks the schema, then labels the releases, instead of stopping before the label fill.
+  - Doctor's `RELEASE_LABELS_MISSING` and `RELEASE_CATALOGS_WITHOUT_LABELS` name `npx hot-updater db migrate`, which deploys nothing, instead of `hot-updater init`, which redeployed a server that an agent infrastructure scaffold keeps.
+  - Doctor's label schema repair names the D1 database from `HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME`, and the Supabase project from `HOT_UPDATER_SUPABASE_PROJECT_ID`, when the environment's saved database is the configured one, instead of `<database-name>` and `<project-ref>`.
+  - The preview action's comment shows each bundle's label, `vN`, before its ID in the Builds table, and its `previews` output carries `bundleLabel`.
+
+- f35618e: fix(cli): name the upgrade when a newer release migrated the database
+
+  When a newer Hot Updater already migrated the database, the schema fence no longer says to run `hot-updater db migrate`, which refuses to move a schema back. It names the upgrade:
+
+  ```
+  Hot Updater schema setting "schema.core" for kysely is "1.3.0"; expected "1.2.0". The database was migrated by Hot Updater 1.3.0: upgrade hot-updater and the @hot-updater packages to 1.3.0 or later.
+  ```
+
+  Commands that stop at the fence, such as `deploy` and `bundle list`, print its message as one line on stderr, without a stack trace, and exit 1. An older or missing schema setting keeps its message, and the server still answers 503.
+
+- Updated dependencies [610f038]
+- Updated dependencies [f35618e]
+  - @hot-updater/plugin-core@1.2.0-rc.52
+  - @hot-updater/server@1.2.0-rc.52
+  - @hot-updater/android-helper@1.2.0-rc.52
+  - @hot-updater/apple-helper@1.2.0-rc.52
+  - @hot-updater/cli-tools@1.2.0-rc.52
+  - @hot-updater/console@1.2.0-rc.52
+  - @hot-updater/bsdiff@1.2.0-rc.52
+  - @hot-updater/protocol@1.2.0-rc.52
+
 ## 1.2.0-rc.51
 
 ### Patch Changes

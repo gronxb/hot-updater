@@ -1,5 +1,7 @@
 # @hot-updater/test-utils
 
+## 1.2.0-rc.52
+
 ## 1.2.0-rc.51
 
 ### Patch Changes
