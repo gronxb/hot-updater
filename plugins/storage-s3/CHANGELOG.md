@@ -1,5 +1,12 @@
 # @hot-updater/storage-s3
 
+## 1.1.18
+
+### Patch Changes
+
+- Updated dependencies [fd9bc70]
+  - @hot-updater/plugin-core@1.1.18
+
 ## 1.1.17
 
 ### Patch Changes

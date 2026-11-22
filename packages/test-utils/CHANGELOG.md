@@ -1,5 +1,7 @@
 # @hot-updater/test-utils
 
+## 1.1.18
+
 ## 1.1.17
 
 ## 1.1.16

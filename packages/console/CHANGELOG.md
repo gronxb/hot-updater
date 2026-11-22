@@ -1,5 +1,15 @@
 # @hot-updater/console
 
+## 1.1.18
+
+### Patch Changes
+
+- Updated dependencies [fd9bc70]
+  - @hot-updater/plugin-core@1.1.18
+  - @hot-updater/server@1.1.18
+  - @hot-updater/bsdiff@1.1.18
+  - @hot-updater/protocol@1.1.18
+
 ## 1.1.17
 
 ### Patch Changes
