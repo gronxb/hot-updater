@@ -6,6 +6,7 @@ import { type EngineSqlOptions, generateEngineSql } from "./engineSql";
 import { getEmptyMigrationResult } from "./fixedMigratorShared";
 import {
   readStoredSettings,
+  refuseNewerSchema,
   refuseV0Database,
   storedSchemaVersion,
 } from "./settingsMigrator";
@@ -16,6 +17,8 @@ export interface EngineSqlMigratorOptions extends EngineSqlOptions {
   readonly executor: SqlExecutor;
   readonly schema: ResolvedSchema;
   readonly settings: SchemaSettings;
+  /** The settings whose versions only move forward; `ToolingTarget.ordered`. */
+  readonly ordered?: readonly string[];
 }
 
 /** Runs the statements in one transaction where the dialect's DDL is transactional. */
@@ -31,7 +34,7 @@ const run = async (executor: SqlExecutor, statements: readonly string[]) => {
 /**
  * `hot-updater db migrate` and `db generate` for an SQL provider on the
  * engine: the generated SQL schema, applied when a settings row is missing or
- * different, and refused on a v0 database. A SQL adapter's `createMigrator`
+ * different, and refused on a v0 database or one a newer release migrated. A SQL adapter's `createMigrator`
  * returns it, as `kyselyAdapter`'s does.
  */
 export const createEngineSqlMigrator = (
@@ -48,6 +51,12 @@ export const createEngineSqlMigrator = (
   ): Promise<MigrationResult> => {
     const stored = await read();
     refuseV0Database(options.adapterName, stored);
+    refuseNewerSchema(
+      options.adapterName,
+      stored,
+      options.settings,
+      options.ordered,
+    );
     if (
       Object.entries(options.settings).every(
         ([key, value]) => stored.get(key) === value,

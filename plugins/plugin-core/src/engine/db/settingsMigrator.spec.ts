@@ -63,3 +63,27 @@ describe("the settings-only migrator", () => {
     );
   });
 });
+
+describe("the settings-only migrator's guard", () => {
+  it("refuses a database a newer release migrated, and writes nothing", async () => {
+    const database = new DatabaseSync(":memory:");
+    database.exec(createTableStatements("sqlite", [SETTINGS_TABLE]).join(";"));
+    database.exec(
+      "INSERT INTO private_hot_updater_settings VALUES ('schema.engine', '1', 0), ('schema.core', '1.3.0', 0)",
+    );
+    for (const updateSettings of [true, false]) {
+      await expect(
+        migratorOver(database).migrateToLatest({ updateSettings }),
+      ).rejects.toThrow(
+        'orm: the database was migrated by Hot Updater 1.3.0 (schema.core "1.3.0", this CLI\'s "1.0.0"). Upgrade hot-updater to 1.3.0 or later; nothing was written.',
+      );
+    }
+    expect(
+      database
+        .prepare(
+          "SELECT value FROM private_hot_updater_settings WHERE key = 'schema.core'",
+        )
+        .get(),
+    ).toEqual({ value: "1.3.0" });
+  });
+});

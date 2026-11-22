@@ -52,11 +52,12 @@ export const drizzleAdapter = (config: DrizzleConfig): ToolingDatabase => {
         path: "hot-updater-schema.ts",
       };
     }) satisfies SchemaGenerator,
-    createMigrator: ({ settings } = coreTarget) =>
+    createMigrator: ({ settings, ordered } = coreTarget) =>
       createSettingsMigrator({
         adapterName: "drizzle",
         executor,
         settings,
+        ordered,
         applyTables: "`drizzle-kit push` (or your drizzle-kit migrations)",
       }),
   };

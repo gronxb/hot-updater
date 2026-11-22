@@ -4,7 +4,11 @@ import type { SchemaSettings } from "../database/fence";
 import type { ResolvedSchema } from "../database/resolveSchema";
 import { getEmptyMigrationResult } from "./fixedMigratorShared";
 import { migrateSchema } from "./schemaSettings";
-import { refuseV0Database, storedSchemaVersion } from "./settingsMigrator";
+import {
+  refuseNewerSchema,
+  refuseV0Database,
+  storedSchemaVersion,
+} from "./settingsMigrator";
 import type { MigrateOptions, MigrationResult, Migrator } from "./types";
 
 export interface EngineMigratorOptions {
@@ -13,6 +17,8 @@ export interface EngineMigratorOptions {
   readonly adapter: DatabaseAdapter;
   readonly schema: ResolvedSchema;
   readonly settings: SchemaSettings;
+  /** The settings whose versions only move forward; `ToolingTarget.ordered`. */
+  readonly ordered?: readonly string[];
   /** Every settings row by key and value, whatever the layout, so a v0 database is recognized. */
   readonly readSettings: () => Promise<ReadonlyMap<string, unknown>>;
 }
@@ -21,7 +27,7 @@ export interface EngineMigratorOptions {
  * `hot-updater db migrate` for a store whose adapter creates its own tables
  * (MongoDB and the key-value stores): the tables and indexes, then the
  * settings rows, applied when a setting is missing or different, and refused
- * on a v0 database.
+ * on a v0 database or one a newer release migrated.
  */
 export const createEngineMigrator = (
   options: EngineMigratorOptions,
@@ -34,6 +40,12 @@ export const createEngineMigrator = (
   ): Promise<MigrationResult> => {
     const stored = await options.readSettings();
     refuseV0Database(options.adapterName, stored);
+    refuseNewerSchema(
+      options.adapterName,
+      stored,
+      options.settings,
+      options.ordered,
+    );
     if (
       Object.entries(options.settings).every(
         ([key, value]) => stored.get(key) === value,
@@ -70,6 +82,7 @@ export const createEngineMigrator = (
           options.adapterName,
           options.schema.tables,
           options.settings,
+          options.ordered,
         ),
     };
   };

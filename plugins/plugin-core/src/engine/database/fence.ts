@@ -34,6 +34,37 @@ export interface SchemaSettingMismatch {
 
 const CORE_SCHEMA_KEY = "schema.core";
 
+/** Compares dotted numeric versions, such as "1" and "1.2.0"; NaN when either is not one. */
+export const compareVersions = (left: string, right: string): number => {
+  const parse = (version: string) =>
+    /^\d+(?:\.\d+)*$/u.test(version) ? version.split(".").map(Number) : [NaN];
+  const [a, b] = [parse(left), parse(right)];
+  if ([...a, ...b].some(Number.isNaN)) return Number.NaN;
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const difference = (a[index] ?? 0) - (b[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+};
+
+/**
+ * The `schema.core` a newer release recorded, which `hot-updater db migrate`
+ * never moves back: the fix is to upgrade, not to migrate.
+ */
+const newerCore = (settings: readonly SchemaSettingMismatch[]) =>
+  settings.find(
+    ({ key, expected, found }) =>
+      key === CORE_SCHEMA_KEY &&
+      found !== null &&
+      compareVersions(found, expected) > 0,
+  );
+
+const newerMessage = (
+  adapterName: string,
+  { key, expected, found }: SchemaSettingMismatch,
+) =>
+  `Hot Updater schema setting "${key}" for ${adapterName} is "${found}"; expected "${expected}". The database was migrated by Hot Updater ${found}: upgrade hot-updater and the @hot-updater packages to ${found} or later.`;
+
 const stored = ({ key, expected, found }: SchemaSettingMismatch) =>
   `"${key}" is ${found === null ? "missing" : `"${found}"`}; expected "${expected}"`;
 
@@ -68,7 +99,10 @@ const pluginsMessage = (
 ) =>
   `The tables of ${plugins.length === 1 ? "plugin" : "plugins"} ${listed(plugins.map((id) => `"${id}"`))} are not migrated on ${adapterName}: schema ${settings.length === 1 ? "setting" : "settings"} ${settings.map(stored).join(", and ")}. ${fix}`;
 
-/** The database needs `hot-updater db migrate`, or a new database; the handler answers 503. */
+/**
+ * The database needs `hot-updater db migrate`, a new database, or a newer
+ * Hot Updater; the handler answers 503.
+ */
 export class HotUpdaterSchemaMigrationRequiredError extends Error {
   /** Every setting the fence found missing or different; `setting` is the first. */
   readonly settings: readonly SchemaSettingMismatch[];
@@ -92,19 +126,22 @@ export class HotUpdaterSchemaMigrationRequiredError extends Error {
     const settings =
       options?.settings ?? (setting === undefined ? [] : [setting]);
     const plugins = settings.flatMap((mismatch) => pluginOf(mismatch) ?? []);
+    const newer = newerCore(settings);
     super(
-      setting === undefined
-        ? currentVersion === undefined
-          ? `Hot Updater database schema is not initialized for ${adapterName}. Run \`hot-updater db migrate\` before using this adapter.`
-          : `Hot Updater v1 cannot migrate schema ${currentVersion} in place. Create a new empty database and run \`hot-updater db migrate\`.`
-        : plugins.length > 0 && plugins.length === settings.length
-          ? pluginsMessage(
-              adapterName,
-              plugins,
-              settings,
-              options?.fix ?? PLUGIN_TABLES_FIX,
-            )
-          : settingMessage(adapterName, setting),
+      newer !== undefined
+        ? newerMessage(adapterName, newer)
+        : setting === undefined
+          ? currentVersion === undefined
+            ? `Hot Updater database schema is not initialized for ${adapterName}. Run \`hot-updater db migrate\` before using this adapter.`
+            : `Hot Updater v1 cannot migrate schema ${currentVersion} in place. Create a new empty database and run \`hot-updater db migrate\`.`
+          : plugins.length > 0 && plugins.length === settings.length
+            ? pluginsMessage(
+                adapterName,
+                plugins,
+                settings,
+                options?.fix ?? PLUGIN_TABLES_FIX,
+              )
+            : settingMessage(adapterName, setting),
       options?.cause === undefined ? undefined : { cause: options.cause },
     );
     this.name = "HotUpdaterSchemaMigrationRequiredError";
