@@ -1,5 +1,24 @@
 # @hot-updater/server
 
+## 1.1.18
+
+### Patch Changes
+
+- fd9bc70: fix(db): `hot-updater db migrate` no longer moves a database back to an older schema. If a newer Hot Updater (such as 1.2) already migrated the database, `db migrate` changes nothing and exits 1:
+
+  ```
+  kysely: the database was migrated by Hot Updater 1.2.0 (schema.core "1.2.0", this CLI's "1.0.0"). Upgrade hot-updater to 1.2.0 or later; nothing was written.
+  ```
+
+  Before, it rewrote the schema version, and every server of the newer release answered 503. Commands such as `deploy` now stop on such a database with one line that names the upgrade, instead of a stack trace and a `db migrate` hint.
+
+- Updated dependencies [fd9bc70]
+  - @hot-updater/plugin-core@1.1.18
+  - @hot-updater/plugin-api-keys@1.1.18
+  - @hot-updater/plugin-insights@1.1.18
+  - @hot-updater/plugin-remote-config@1.1.18
+  - @hot-updater/protocol@1.1.18
+
 ## 1.1.17
 
 ### Patch Changes
