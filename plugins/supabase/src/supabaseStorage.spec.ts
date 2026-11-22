@@ -165,11 +165,12 @@ describe("supabaseStorage", () => {
     });
     expect(bucket.upload).toHaveBeenCalledWith(
       "bundles/bundle.zip",
-      new TextEncoder().encode("bundle"),
+      expect.any(ReadableStream),
       {
         cacheControl: "max-age=31536000",
         contentType: "application/zip",
         upsert: true,
+        duplex: "half",
         headers: { "content-length": "6" },
       },
     );
@@ -231,7 +232,7 @@ describe("supabaseStorage", () => {
 
       expect(bucket.upload).toHaveBeenLastCalledWith(
         name,
-        expect.any(Uint8Array),
+        expect.any(ReadableStream),
         expect.any(Object),
       );
       expect(bucket.remove).toHaveBeenLastCalledWith([name]);

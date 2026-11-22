@@ -91,114 +91,6 @@ const storageFetch: typeof fetch = async (input, init) => {
   }
 };
 
-/**
- * Attempts at an upload a transient failure ends, as the AWS SDK's standard
- * retry mode makes for `s3Storage`.
- */
-const UPLOAD_ATTEMPTS = 3;
-/** The upper bound of the first retry's delay, doubled for each retry. */
-const UPLOAD_RETRY_DELAY_MS = 500;
-/**
- * The largest body `put` holds in memory to send it again. A larger one,
- * such as a native build, is streamed once.
- */
-const REPLAYABLE_UPLOAD_BYTES = 16 * 1024 * 1024;
-
-/**
- * `body` read into memory when it has at most REPLAYABLE_UPLOAD_BYTES, so a
- * failed upload can send it again, or else a stream of the same bytes.
- */
-const readReplayableBody = async (
-  body: ReadableStream<Uint8Array>,
-  contentLength: number | undefined,
-): Promise<Uint8Array | ReadableStream<Uint8Array>> => {
-  if (contentLength !== undefined && contentLength > REPLAYABLE_UPLOAD_BYTES) {
-    return body;
-  }
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let byteLength = 0;
-  while (byteLength <= REPLAYABLE_UPLOAD_BYTES) {
-    const { done, value } = await reader.read();
-    if (done) {
-      const bytes = new Uint8Array(byteLength);
-      let offset = 0;
-      for (const chunk of chunks) {
-        bytes.set(chunk, offset);
-        offset += chunk.byteLength;
-      }
-      return bytes;
-    }
-    chunks.push(value);
-    byteLength += value.byteLength;
-  }
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const chunk of chunks.splice(0)) controller.enqueue(chunk);
-    },
-    async pull(controller) {
-      const { done, value } = await reader.read();
-      if (done) controller.close();
-      else controller.enqueue(value);
-    },
-    cancel: (reason) => reader.cancel(reason),
-  });
-};
-
-/** The HTTP status of a request Storage answered with an error. */
-const failedStatusOf = (error: unknown) => {
-  if (
-    typeof error !== "object" ||
-    error === null ||
-    Reflect.get(error, "name") !== "StorageApiError"
-  ) {
-    return undefined;
-  }
-  const status: unknown = Reflect.get(error, "status");
-  return typeof status === "number" ? status : undefined;
-};
-
-/** A request supabase-js sent that Storage never answered. */
-const isUnansweredError = (error: unknown) =>
-  typeof error === "object" &&
-  error !== null &&
-  Reflect.get(error, "name") === "StorageUnknownError" &&
-  failedResponseOf(error) === undefined &&
-  !(Reflect.get(error, "originalError") instanceof SyntaxError);
-
-const isTransientStatus = (status: number) => status === 429 || status >= 500;
-
-/** One line that says how an upload of `key` failed. */
-const uploadError = (key: string, error: unknown) => {
-  const status = failedStatusOf(error);
-  if (status !== undefined) {
-    const message = (error as Error).message;
-    const detail =
-      isTransientStatus(status) || message === answeredHttp(status)
-        ? ""
-        : `: ${message}`;
-    return new Error(
-      `${answeredHttp(status)} while uploading ${key}${detail}`,
-      { cause: error },
-    );
-  }
-  if (isUnansweredError(error)) {
-    return new Error(
-      `Supabase Storage did not answer while uploading ${key}: ${(error as Error).message}`,
-      { cause: error },
-    );
-  }
-  return error;
-};
-
-const waitBeforeRetry = (retry: number) =>
-  new Promise((resolve) =>
-    setTimeout(
-      resolve,
-      UPLOAD_RETRY_DELAY_MS * 2 ** (retry - 1) * (0.5 + Math.random() / 2),
-    ),
-  );
-
 /** A character Storage rejects in an object name, `?`, or `!`. */
 const ESCAPED_CHARACTER = /[^A-Za-z0-9_/.*'() &$=@;:+,-]/gu;
 const ESCAPE_SEQUENCE = /!([0-9A-F]{2})/gu;
@@ -315,35 +207,26 @@ export const supabaseStorage = (
     protocol: "supabase-storage",
     async put({ key, body, contentLength, contentType }) {
       const storageKey = getStorageKey(key);
-      const storage = await bucket();
-      const payload = await readReplayableBody(body, contentLength);
-      const replayable = payload instanceof Uint8Array;
-      // `upsert` makes the upload safe to send again: an attempt Storage
-      // stored before it failed is overwritten with the same bytes.
-      for (let attempt = 1; ; attempt++) {
-        const { error } = await storage.upload(
-          toObjectName(storageKey),
-          payload,
-          {
-            contentType,
-            cacheControl: "max-age=31536000",
-            upsert: true,
-            ...(replayable ? {} : { duplex: "half" }),
-            ...(contentLength === undefined
-              ? {}
-              : { headers: { "content-length": String(contentLength) } }),
-          },
+      const { error } = await (
+        await bucket()
+      ).upload(toObjectName(storageKey), body, {
+        contentType,
+        cacheControl: "max-age=31536000",
+        upsert: true,
+        duplex: "half",
+        ...(contentLength === undefined
+          ? {}
+          : { headers: { "content-length": String(contentLength) } }),
+      });
+      if (error) {
+        const status: unknown = Reflect.get(error, "status");
+        if (typeof status !== "number") throw error;
+        const detail =
+          error.message === answeredHttp(status) ? "" : `: ${error.message}`;
+        throw new Error(
+          `${answeredHttp(status)} while uploading ${storageKey}${detail}`,
+          { cause: error },
         );
-        if (!error) break;
-        const status = failedStatusOf(error);
-        const transient =
-          status === undefined
-            ? isUnansweredError(error)
-            : isTransientStatus(status);
-        if (!transient || !replayable || attempt === UPLOAD_ATTEMPTS) {
-          throw uploadError(storageKey, error);
-        }
-        await waitBeforeRetry(attempt);
       }
       return {
         storageUri: createStorageUri({

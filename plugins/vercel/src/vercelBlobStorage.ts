@@ -48,12 +48,8 @@ type VercelBlobStorageOperations =
 
 const PROTOCOL = "vercel-blob";
 const ONE_YEAR_IN_SECONDS = 31_536_000;
-/**
- * The largest body `put` holds in memory, so @vercel/blob's retry of a failed
- * upload sends it again. A larger one is uploaded in 8 MiB parts, which
- * @vercel/blob holds in memory and retries each on its own.
- */
-const REPLAYABLE_UPLOAD_BYTES = 16 * 1024 * 1024;
+/** Above this, `put` uploads in parts. */
+const MULTIPART_THRESHOLD_BYTES = 100 * 1024 * 1024;
 /** One delegation presigns every private download URL for a day. */
 const DELEGATION_LIFETIME_MS = 24 * 60 * 60 * 1000;
 /** Vercel's limit on a delegation, and so on a presigned URL. */
@@ -111,47 +107,6 @@ const fromPathname = (pathname: string): string | null => {
   parts.push(pathname.slice(index));
   const key = parts.join("");
   return toPathname(key) === pathname ? key : null;
-};
-
-/**
- * `body` read into memory when it has at most REPLAYABLE_UPLOAD_BYTES, or
- * else a stream of the same bytes.
- */
-const readReplayableBody = async (
-  body: ReadableStream<Uint8Array>,
-  contentLength: number | undefined,
-): Promise<Uint8Array | ReadableStream<Uint8Array>> => {
-  if (contentLength !== undefined && contentLength > REPLAYABLE_UPLOAD_BYTES) {
-    return body;
-  }
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let byteLength = 0;
-  while (byteLength <= REPLAYABLE_UPLOAD_BYTES) {
-    const { done, value } = await reader.read();
-    if (done) {
-      const bytes = new Uint8Array(byteLength);
-      let offset = 0;
-      for (const chunk of chunks) {
-        bytes.set(chunk, offset);
-        offset += chunk.byteLength;
-      }
-      return bytes;
-    }
-    chunks.push(value);
-    byteLength += value.byteLength;
-  }
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const chunk of chunks.splice(0)) controller.enqueue(chunk);
-    },
-    async pull(controller) {
-      const { done, value } = await reader.read();
-      if (done) controller.close();
-      else controller.enqueue(value);
-    },
-    cancel: (reason) => reader.cancel(reason),
-  });
 };
 
 /** The store ID a read-write token belongs to, as Vercel's CLI reads it. */
@@ -261,25 +216,31 @@ export const vercelBlobStorage = (
         bucket: storeId,
         key: storageKey,
       });
-      // @vercel/blob retries a failed request with the same body, which a
-      // stream it has read cannot give again.
-      const payload = await readReplayableBody(body, contentLength);
-      const replayable = payload instanceof Uint8Array;
-      await put(
-        toPathname(storageKey),
-        replayable
-          ? Buffer.from(payload.buffer, payload.byteOffset, payload.byteLength)
-          : payload,
-        {
+      const multipart =
+        contentLength === undefined ||
+        contentLength > MULTIPART_THRESHOLD_BYTES;
+      try {
+        await put(toPathname(storageKey), body, {
           access,
           token,
           addRandomSuffix: false,
           allowOverwrite: true,
           cacheControlMaxAge: ONE_YEAR_IN_SECONDS,
           contentType,
-          multipart: !replayable,
-        },
-      );
+          multipart,
+        });
+      } catch (error) {
+        // @vercel/blob retries a 5xx, an error body it can't read, or a
+        // dropped connection with the stream a single request has already
+        // read, which fails as a TypeError. It keeps the status to itself.
+        if (!multipart && error instanceof TypeError && body.locked) {
+          throw new Error(
+            `Vercel Blob failed while uploading ${storageKey}: it answered an error or the connection dropped`,
+            { cause: error },
+          );
+        }
+        throw error;
+      }
       return { storageUri };
     },
     async get({ storageUri }) {
