@@ -624,12 +624,11 @@ describe("E2E remote asset proxy URLs", () => {
         manifestDelayMs: 50,
         reset: true,
       });
-      // Without a link handed out, there is nothing to wait for.
-      const emptyJobId = controller.startWaitForLinkExpiryJob();
-      await vi.waitFor(() => {
-        expect(controller.getJob(emptyJobId)).toMatchObject({
-          status: "failed",
-        });
+      // The wait may start before the app asks for the artifact.
+      const waitJobId = controller.startWaitForLinkExpiryJob();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(controller.getJob(waitJobId)).toMatchObject({
+        status: "running",
       });
 
       const { manifestUrl } = (await (
@@ -640,7 +639,6 @@ describe("E2E remote asset proxy URLs", () => {
           ),
         )
       ).json()) as { manifestUrl: string };
-      const waitJobId = controller.startWaitForLinkExpiryJob();
       const manifestStartedAt = Date.now();
       const manifest = await controller.handleProxyRemoteAssetRequest(
         new Request(manifestUrl),

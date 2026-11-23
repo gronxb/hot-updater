@@ -693,6 +693,7 @@ type ExpiredLinkRequest = {
 };
 const expiredLinkRequests: ExpiredLinkRequest[] = [];
 let linkLifetimeSetAt = 0;
+const LINK_MINT_WAIT_MS = 30_000;
 // A hold keeps artifact responses back until a scenario releases it, so it
 // can order a download after a launch; the limit keeps a forgotten hold from
 // hanging the run.
@@ -8776,8 +8777,17 @@ async function waitForLinkExpiry(signal?: AbortSignal) {
         .map((target) => target.mintedAt)
         .filter((mintedAt) => mintedAt >= linkLifetimeSetAt),
     );
-  if (lastMintedAt() === 0) {
-    throw createEndpointError("The proxy handed out no link", {});
+  // The app may ask for the update's artifact after the scenario starts
+  // this wait, as the update starts once the app leaves the foreground.
+  const mintDeadline = Date.now() + LINK_MINT_WAIT_MS;
+  while (lastMintedAt() === 0) {
+    if (Date.now() >= mintDeadline) {
+      throw createEndpointError("The proxy handed out no link", {
+        waitedMs: LINK_MINT_WAIT_MS,
+      });
+    }
+    throwIfAborted(signal);
+    await sleep(E2E_POLL_INTERVAL_MS, undefined, { signal });
   }
   while (Date.now() <= lastMintedAt() + lifetimeMs) {
     throwIfAborted(signal);
