@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/console",
   "type": "module",
-  "version": "1.2.0-rc.53",
+  "version": "1.2.0-rc.54",
   "files": [
     ".output",
     "lib",
