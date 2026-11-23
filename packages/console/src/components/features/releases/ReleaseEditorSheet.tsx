@@ -86,6 +86,7 @@ import {
   useReleaseQuery,
   useUpdateReleaseMutation,
 } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 interface Draft {
   enabled: boolean;
@@ -366,7 +367,15 @@ export function ReleaseEditorSheet({
                 </div>
                 <div className="flex flex-wrap items-start gap-2">
                   <span className="font-medium text-muted-foreground">ID</span>
-                  <span className="min-w-0 basis-full sm:basis-auto">
+                  {/* A full ID takes its own row on a phone; a label and its ID tail fit beside "ID". */}
+                  <span
+                    className={cn(
+                      "min-w-0",
+                      typeof release.label === "number"
+                        ? null
+                        : "basis-full sm:basis-auto",
+                    )}
+                  >
                     <BundleIdDisplay
                       bundleId={release.id}
                       fullOnMobile

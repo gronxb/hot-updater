@@ -3,6 +3,7 @@
   "overrides": [
     {
       "files": [
+        "packages/console/src/components/BundleIdDisplay.tsx",
         "packages/console/src/components/ChannelBadge.tsx",
         "packages/console/src/components/ChannelPicker.tsx",
         "packages/console/src/components/FoldedRows.tsx",
