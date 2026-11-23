@@ -1,5 +1,14 @@
 # @hot-updater/expo
 
+## 1.2.0-rc.53
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.53
+  - hot-updater@1.2.0-rc.53
+  - @hot-updater/bare@1.2.0-rc.53
+  - @hot-updater/plugin-core@1.2.0-rc.53
+
 ## 1.2.0-rc.52
 
 ### Patch Changes
