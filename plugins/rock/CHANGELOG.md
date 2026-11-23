@@ -1,5 +1,12 @@
 # @hot-updater/rnef
 
+## 1.2.0-rc.56
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.56
+  - @hot-updater/plugin-core@1.2.0-rc.56
+
 ## 1.2.0-rc.55
 
 ### Patch Changes
