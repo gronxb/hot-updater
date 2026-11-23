@@ -1,5 +1,7 @@
 # @hot-updater/protocol
 
+## 1.2.0-rc.56
+
 ## 1.2.0-rc.55
 
 ## 1.2.0-rc.54
