@@ -387,6 +387,38 @@ describe("createHandlers client routes", () => {
     expect(getArtifactInfo).toHaveBeenCalledWith("target", "current", 1);
   });
 
+  it("logs why authentication failed when it answers 503", async () => {
+    const failure = new Error("credential storage unavailable");
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      const handler = createHotUpdaterHandlers({
+        api: createApi(),
+        clientPolicy: {
+          authenticate: async () => {
+            throw failure;
+          },
+          varyHeaders: ["x-api-key"],
+        },
+      }).client;
+
+      const response = await handler(
+        new Request("http://localhost/artifacts/v1/target/from/current", {
+          headers: { "x-api-key": "any" },
+        }),
+      );
+
+      expect(response.status).toBe(503);
+      expect(consoleError).toHaveBeenCalledWith(
+        "Hot Updater client authentication failed:",
+        failure,
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it.each([
     [
       "a channel name where its key belongs",
