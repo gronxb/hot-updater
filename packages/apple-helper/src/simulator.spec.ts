@@ -16,9 +16,15 @@ vi.mock("execa", () => ({ execa: vi.fn() }));
 
 const run = vi.mocked(execa) as unknown as ReturnType<typeof vi.fn>;
 
-const simulator = (udid: string, state: string, name = `iPhone ${udid}`) => ({
+const simulator = (
+  udid: string,
+  state: string,
+  name = `iPhone ${udid}`,
+  os = "iOS 26.4",
+) => ({
   udid,
   name,
+  os,
   state,
 });
 
@@ -31,17 +37,19 @@ describe("listSimulators", () => {
     run.mockResolvedValue({
       stdout: JSON.stringify({
         devices: {
-          "iOS-26-4": [
+          "com.apple.CoreSimulator.SimRuntime.iOS-26-4": [
             { udid: "A", name: "iPhone A", state: "Booted", isAvailable: true },
           ],
-          "iOS-27-0": [{ udid: "B", name: "iPhone B", state: "Shutdown" }],
+          "com.apple.CoreSimulator.SimRuntime.iOS-27-0": [
+            { udid: "B", name: "iPhone B", state: "Shutdown" },
+          ],
         },
       }),
     });
 
     await expect(listSimulators()).resolves.toEqual([
       simulator("A", "Booted"),
-      simulator("B", "Shutdown"),
+      simulator("B", "Shutdown", "iPhone B", "iOS 27.0"),
     ]);
     expect(run).toHaveBeenCalledWith("xcrun", [
       "simctl",

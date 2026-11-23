@@ -8,6 +8,8 @@ import { extractAppBundle } from "./utils/extractBuiltInBundle";
 export interface Simulator {
   readonly udid: string;
   readonly name: string;
+  /** The runtime it runs, such as `iOS 26.4`. */
+  readonly os: string;
   /** `Booted`, `Shutdown`, and the states between them, as `simctl` says. */
   readonly state: string;
 }
@@ -30,14 +32,32 @@ const simctl = async (args: readonly string[]): Promise<string> => {
   }
 };
 
+/** `iOS 26.4` of `simctl`'s `com.apple.CoreSimulator.SimRuntime.iOS-26-4`. */
+const osOf = (runtime: string): string => {
+  const [, platform, version] =
+    /(?:^|\.)([A-Za-z]+)-([\d-]+)$/u.exec(runtime) ?? [];
+  return platform === undefined || version === undefined
+    ? runtime
+    : `${platform} ${version.replaceAll("-", ".")}`;
+};
+
 /** Every simulator on this Mac, booted or not. */
 export const listSimulators = async (): Promise<readonly Simulator[]> => {
   const { devices } = JSON.parse(
     await simctl(["list", "devices", "--json"]),
-  ) as { readonly devices: Readonly<Record<string, readonly Simulator[]>> };
-  return Object.values(devices)
-    .flat()
-    .map(({ udid, name, state }) => ({ udid, name, state }));
+  ) as {
+    readonly devices: Readonly<
+      Record<string, readonly Omit<Simulator, "os">[]>
+    >;
+  };
+  return Object.entries(devices).flatMap(([runtime, simulators]) =>
+    simulators.map(({ udid, name, state }) => ({
+      udid,
+      name,
+      os: osOf(runtime),
+      state,
+    })),
+  );
 };
 
 /**

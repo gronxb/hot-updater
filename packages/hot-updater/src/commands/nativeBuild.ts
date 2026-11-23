@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 
 import {
+  type AdbDevice,
   installOnAndroidDevice,
   listAdbDevices,
   selectAdbDevice,
@@ -11,9 +12,15 @@ import {
   extractSimulatorApp,
   installOnSimulator,
   listSimulators,
+  type Simulator,
   selectSimulator,
 } from "@hot-updater/apple-helper";
-import { fitText, loadConfig, p } from "@hot-updater/cli-tools";
+import {
+  fitText,
+  loadConfig,
+  nonInteractiveReason,
+  p,
+} from "@hot-updater/cli-tools";
 import {
   assertStorageOperations,
   type NativeBuildArtifactKind,
@@ -532,11 +539,81 @@ const previewLinkOf = (build: NativeBuildRow, channel: string, appId: string) =>
       });
 
 /**
+ * Asks which of several devices to install on, when someone at a terminal can
+ * answer: never under `--json`, in CI, or without a terminal, where the
+ * caller's selection refuses several. Null when it doesn't ask.
+ */
+const pickDevice = async (
+  noun: string,
+  options: readonly { readonly value: string; readonly label: string }[],
+  json: boolean | undefined,
+): Promise<string | null> => {
+  if (json || options.length < 2 || nonInteractiveReason() !== undefined) {
+    return null;
+  }
+  const picked = await p.select({
+    message: `Which ${noun} do you install on?`,
+    options: [...options],
+  });
+  if (p.isCancel(picked)) throw new Error(`No ${noun} was picked.`);
+  return picked;
+};
+
+/** The booted simulator `--simulator` names, or one picked in a terminal. */
+const resolveSimulator = async (
+  udid: string | undefined,
+  json: boolean | undefined,
+): Promise<Simulator> => {
+  const simulators = await listSimulators();
+  const picked =
+    udid ??
+    (await pickDevice(
+      "iOS Simulator",
+      simulators
+        .filter(({ state }) => state === "Booted")
+        .map((simulator) => ({
+          value: simulator.udid,
+          label: ui.line([
+            simulator.name,
+            ui.muted(simulator.os),
+            ui.muted(simulator.udid.slice(0, 8)),
+          ]),
+        })),
+      json,
+    ));
+  return selectSimulator(simulators, picked ?? undefined);
+};
+
+/**
+ * The device `--device` or `ANDROID_SERIAL` names, or one picked in a
+ * terminal.
+ */
+const resolveAdbDevice = async (
+  serial: string | undefined,
+  json: boolean | undefined,
+): Promise<AdbDevice> => {
+  const devices = await listAdbDevices();
+  const named = serial ?? (process.env["ANDROID_SERIAL"] || undefined);
+  const picked =
+    named ??
+    (await pickDevice(
+      "Android device",
+      devices
+        .filter(({ state }) => state === "device")
+        .map(({ serial }) => ({ value: serial, label: serial })),
+      json,
+    ));
+  return selectAdbDevice(devices, picked ?? undefined);
+};
+
+/**
  * Downloads a registered simulator `.app` or `.apk`, installs it on a booted
  * simulator or a connected Android device, and opens it. The app is the one
  * the artifact itself names, so a build with an application ID of its own,
  * such as a sandbox build's `.sandbox`, installs beside the store app the same
  * way. The device is checked first, so one that isn't there costs no download.
+ * With several, a terminal asks which; elsewhere `--simulator` or `--device`
+ * names it.
  */
 export const handleNativeBuildInstall = async (
   id: string,
@@ -566,8 +643,8 @@ export const handleNativeBuildInstall = async (
         );
       }
       const target = isSimulatorApp
-        ? selectSimulator(await listSimulators(), options.simulator)
-        : selectAdbDevice(await listAdbDevices(), options.device);
+        ? await resolveSimulator(options.simulator, options.json)
+        : await resolveAdbDevice(options.device, options.json);
       const targetId = "udid" in target ? target.udid : target.serial;
 
       directory = await fs.promises.mkdtemp(
