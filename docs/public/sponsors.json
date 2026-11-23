@@ -14,7 +14,7 @@
       "avatarUrl": "https://avatars.githubusercontent.com/u/56547421?u=2a7ead7e22a551021e26e41aef6c7c4b89216ffc&v=4",
       "name": "Valerio Belli",
       "url": "https://github.com/valeriobelli",
-      "weight": 0.5
+      "weight": 0.524
     },
     {
       "id": 47789084,
@@ -49,20 +49,20 @@
       "weight": 0.19
     },
     {
+      "id": 5436405,
+      "login": "soonoo",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/5436405?u=5d0b4aa955c87e30e6bda7f0cccae5402da99528&v=4",
+      "name": "soonoo",
+      "url": "https://github.com/soonoo",
+      "weight": 0.143
+    },
+    {
       "id": 290142700,
       "login": "timid-dogs",
       "avatarUrl": "https://avatars.githubusercontent.com/u/290142700?v=4",
       "name": null,
       "url": "https://github.com/timid-dogs",
       "weight": 0.143
-    },
-    {
-      "id": 5436405,
-      "login": "soonoo",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/5436405?u=5d0b4aa955c87e30e6bda7f0cccae5402da99528&v=4",
-      "name": "soonoo",
-      "url": "https://github.com/soonoo",
-      "weight": 0.119
     },
     {
       "id": 22442088,
@@ -83,7 +83,7 @@
     {
       "id": 13411810,
       "login": "lillyadev",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/13411810?u=9ccec54ec26d43f895665e0d39f584f07d8bb310&v=4",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/13411810?u=71030931b8b1dcccfac07d0264ae22962bf61883&v=4",
       "name": "Diệp Quỳnh",
       "url": "https://github.com/lillyadev",
       "weight": 0.048
@@ -107,7 +107,7 @@
     {
       "id": 54518925,
       "login": "l2hyunwoo",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/54518925?u=06f75ad98f38d016ad611511247fcbc3fdc9bb12&v=4",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/54518925?u=f0296bf9ea13364654c8429a8709364d4118a868&v=4",
       "name": "HyunWoo Lee (Nunu Lee)",
       "url": "https://github.com/l2hyunwoo",
       "weight": 0.024
@@ -161,5 +161,5 @@
       "weight": 0.005
     }
   ],
-  "updatedAt": "2026-11-03T05:30:10Z"
+  "updatedAt": "2026-11-23T05:56:45Z"
 }

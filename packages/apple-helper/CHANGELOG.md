@@ -784,6 +784,97 @@
   - @hot-updater/cli-tools@1.2.0-rc.0
   - @hot-updater/plugin-core@1.2.0-rc.0
 
+## 1.1.20
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.1.20
+  - @hot-updater/plugin-core@1.1.20
+
+## 1.1.19
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.1.19
+  - @hot-updater/plugin-core@1.1.19
+
+## 1.1.18
+
+### Patch Changes
+
+- Updated dependencies [fd9bc70]
+  - @hot-updater/plugin-core@1.1.18
+  - @hot-updater/cli-tools@1.1.18
+
+## 1.1.17
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.1.17
+  - @hot-updater/plugin-core@1.1.17
+
+## 1.1.16
+
+### Patch Changes
+
+- Updated dependencies [df8792a]
+  - @hot-updater/plugin-core@1.1.16
+  - @hot-updater/cli-tools@1.1.16
+
+## 1.1.15
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.1.15
+  - @hot-updater/plugin-core@1.1.15
+
+## 1.1.14
+
+### Patch Changes
+
+- Updated dependencies [a250d09]
+- Updated dependencies [d58dcfa]
+  - @hot-updater/plugin-core@1.1.14
+  - @hot-updater/cli-tools@1.1.14
+
+## 1.1.13
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.1.13
+  - @hot-updater/plugin-core@1.1.13
+
+## 1.1.12
+
+### Patch Changes
+
+- Updated dependencies [ab5d8b7]
+  - @hot-updater/cli-tools@1.1.12
+  - @hot-updater/plugin-core@1.1.12
+
+## 1.1.11
+
+### Patch Changes
+
+- Updated dependencies [06b6564]
+  - @hot-updater/cli-tools@1.1.11
+  - @hot-updater/plugin-core@1.1.11
+
+## 1.1.10
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.1.10
+  - @hot-updater/plugin-core@1.1.10
+
+## 1.1.9
+
+### Patch Changes
+
+- Updated dependencies [949c024]
+  - @hot-updater/cli-tools@1.1.9
+  - @hot-updater/plugin-core@1.1.9
+
 ## 1.1.8
 
 ### Patch Changes

@@ -118,6 +118,34 @@ describe("private HotUpdater HTTP client", () => {
     });
   });
 
+  it("passes the instance's fetch to catalog and artifact requests", async () => {
+    const customFetch = vi.fn<typeof fetch>();
+    const session = await createHttpClient(
+      "https://updates.example.com/hot-updater",
+      undefined,
+      customFetch,
+    ).createSession();
+
+    await session.fetchReleaseCatalog({
+      appVersion: "1.2.0",
+      channel: "production",
+      fingerprintHash: null,
+      platform: "ios",
+      updateStrategy: "appVersion",
+    });
+    await session.resolveArtifact({
+      currentBundleId: "current",
+      targetBundleId: "target",
+    });
+
+    expect(mocks.fetchCatalog).toHaveBeenCalledWith(
+      expect.objectContaining({ fetch: customFetch }),
+    );
+    expect(mocks.fetchJSON).toHaveBeenCalledWith(
+      expect.objectContaining({ fetch: customFetch }),
+    );
+  });
+
   it("resolves a functional baseURL once per session and captures it for a deferred artifact", async () => {
     const resolveBaseURL = vi
       .fn()

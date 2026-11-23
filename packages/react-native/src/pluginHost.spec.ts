@@ -269,6 +269,29 @@ describe("client plugin host", () => {
       expect(headers.get("x-shared")).toBe("plugin");
     });
 
+    it("uses the instance's fetch instead of the global one", async () => {
+      const globalFetch = vi.fn<typeof fetch>();
+      vi.stubGlobal("fetch", globalFetch);
+      const customFetch = vi.fn<typeof fetch>(
+        async () => new Response(null, { status: 204 }),
+      );
+      const { configurePlugins } = (
+        await import("./pluginHost")
+      ).createAppPluginHost(customFetch);
+      const plugin = capture();
+      configurePlugins([plugin.plugin], {
+        baseURL: "https://updates.example.com/hot-updater",
+      });
+
+      await plugin.context().fetch("events");
+
+      expect(customFetch).toHaveBeenCalledOnce();
+      expect(customFetch.mock.calls[0]![0]).toBe(
+        "https://updates.example.com/hot-updater/events",
+      );
+      expect(globalFetch).not.toHaveBeenCalled();
+    });
+
     it("rejects with Request timed out after the SDK's timeout", async () => {
       vi.useFakeTimers();
       vi.stubGlobal(

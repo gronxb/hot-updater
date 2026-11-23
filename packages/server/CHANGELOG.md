@@ -1023,6 +1023,138 @@
   - @hot-updater/plugin-insights@1.2.0-rc.0
   - @hot-updater/plugin-remote-config@1.2.0-rc.0
 
+## 1.1.20
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.20
+  - @hot-updater/plugin-api-keys@1.1.20
+  - @hot-updater/plugin-insights@1.1.20
+  - @hot-updater/plugin-core@1.1.20
+  - @hot-updater/plugin-remote-config@1.1.20
+
+## 1.1.19
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.19
+  - @hot-updater/plugin-api-keys@1.1.19
+  - @hot-updater/plugin-insights@1.1.19
+  - @hot-updater/plugin-core@1.1.19
+  - @hot-updater/plugin-remote-config@1.1.19
+
+## 1.1.18
+
+### Patch Changes
+
+- fd9bc70: fix(db): `hot-updater db migrate` no longer moves a database back to an older schema. If a newer Hot Updater (such as 1.2) already migrated the database, `db migrate` changes nothing and exits 1:
+
+  ```
+  kysely: the database was migrated by Hot Updater 1.2.0 (schema.core "1.2.0", this CLI's "1.0.0"). Upgrade hot-updater to 1.2.0 or later; nothing was written.
+  ```
+
+  Before, it rewrote the schema version, and every server of the newer release answered 503. Commands such as `deploy` now stop on such a database with one line that names the upgrade, instead of a stack trace and a `db migrate` hint.
+
+- Updated dependencies [fd9bc70]
+  - @hot-updater/plugin-core@1.1.18
+  - @hot-updater/plugin-api-keys@1.1.18
+  - @hot-updater/plugin-insights@1.1.18
+  - @hot-updater/plugin-remote-config@1.1.18
+  - @hot-updater/protocol@1.1.18
+
+## 1.1.17
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.17
+  - @hot-updater/plugin-api-keys@1.1.17
+  - @hot-updater/plugin-insights@1.1.17
+  - @hot-updater/plugin-core@1.1.17
+  - @hot-updater/plugin-remote-config@1.1.17
+
+## 1.1.16
+
+### Patch Changes
+
+- Updated dependencies [df8792a]
+  - @hot-updater/plugin-core@1.1.16
+  - @hot-updater/plugin-api-keys@1.1.16
+  - @hot-updater/plugin-insights@1.1.16
+  - @hot-updater/plugin-remote-config@1.1.16
+  - @hot-updater/protocol@1.1.16
+
+## 1.1.15
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.15
+  - @hot-updater/plugin-api-keys@1.1.15
+  - @hot-updater/plugin-insights@1.1.15
+  - @hot-updater/plugin-core@1.1.15
+  - @hot-updater/plugin-remote-config@1.1.15
+
+## 1.1.14
+
+### Patch Changes
+
+- Updated dependencies [a250d09]
+- Updated dependencies [d58dcfa]
+  - @hot-updater/plugin-core@1.1.14
+  - @hot-updater/plugin-api-keys@1.1.14
+  - @hot-updater/plugin-insights@1.1.14
+  - @hot-updater/plugin-remote-config@1.1.14
+  - @hot-updater/protocol@1.1.14
+
+## 1.1.13
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.13
+  - @hot-updater/plugin-api-keys@1.1.13
+  - @hot-updater/plugin-insights@1.1.13
+  - @hot-updater/plugin-core@1.1.13
+  - @hot-updater/plugin-remote-config@1.1.13
+
+## 1.1.12
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.12
+  - @hot-updater/plugin-api-keys@1.1.12
+  - @hot-updater/plugin-insights@1.1.12
+  - @hot-updater/plugin-core@1.1.12
+  - @hot-updater/plugin-remote-config@1.1.12
+
+## 1.1.11
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.11
+  - @hot-updater/plugin-api-keys@1.1.11
+  - @hot-updater/plugin-insights@1.1.11
+  - @hot-updater/plugin-core@1.1.11
+  - @hot-updater/plugin-remote-config@1.1.11
+
+## 1.1.10
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.10
+  - @hot-updater/plugin-api-keys@1.1.10
+  - @hot-updater/plugin-insights@1.1.10
+  - @hot-updater/plugin-core@1.1.10
+  - @hot-updater/plugin-remote-config@1.1.10
+
+## 1.1.9
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.9
+  - @hot-updater/plugin-api-keys@1.1.9
+  - @hot-updater/plugin-insights@1.1.9
+  - @hot-updater/plugin-core@1.1.9
+  - @hot-updater/plugin-remote-config@1.1.9
+
 ## 1.1.8
 
 ### Patch Changes
