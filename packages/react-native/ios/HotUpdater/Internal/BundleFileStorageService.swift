@@ -377,19 +377,13 @@ public extension BundleStorageService {
 /// Whether an update may still start downloads. Once its background time ran
 /// out, it starts none.
 final class UpdateDownloads {
-    // Recursive: a download that completes at once may stop the downloads
-    // from its completion.
-    private let lock = NSRecursiveLock()
+    private let lock = NSLock()
     private var stopped = false
 
-    /// Runs `startDownload` unless stopped, and tells whether it ran. A stop
-    /// waits for a download being started, so it can cancel that one too.
-    func start(_ startDownload: () -> Void) -> Bool {
+    var isStopped: Bool {
         lock.lock()
         defer { lock.unlock() }
-        guard !stopped else { return false }
-        startDownload()
-        return true
+        return stopped
     }
 
     func stop() {
@@ -1946,20 +1940,24 @@ class BundleFileStorageService: BundleStorageService {
         runningUpdateLock.lock()
         let downloads = runningUpdateDownloads
         runningUpdateLock.unlock()
-        let started = (downloads ?? UpdateDownloads()).start {
-            _ = downloadService.downloadFile(
-                from: url,
-                to: destination,
-                fileSizeHandler: nil,
-                progressHandler: progressHandler
-            ) { result in
-                finalResult = result
-                semaphore.signal()
-            }
-        }
-        guard started else {
+        if downloads?.isStopped == true {
             NSLog("[BundleStorage] Not downloading \(url.lastPathComponent): the update's background time ran out")
             return .failure(URLError(.cancelled))
+        }
+
+        _ = downloadService.downloadFile(
+            from: url,
+            to: destination,
+            fileSizeHandler: nil,
+            progressHandler: progressHandler
+        ) { result in
+            finalResult = result
+            semaphore.signal()
+        }
+        // The background time ran out while this download started, after
+        // the stop cancelled the ones running.
+        if downloads?.isStopped == true {
+            downloadService.cancelInProcessTransfers()
         }
 
         semaphore.wait()

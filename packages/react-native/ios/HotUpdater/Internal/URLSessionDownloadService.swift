@@ -272,6 +272,8 @@ class URLSessionDownloadService: NSObject, DownloadService {
     private var completionHandlers: [URLSessionTask: (Result<URL, Error>) -> Void] = [:]
     private var destinations: [URLSessionTask: String] = [:]
     private var fileSizeHandlers: [URLSessionTask: (Int64) -> Void] = [:]
+    /// Tasks of `session`, which stop when the system suspends the app.
+    private var inProcessTasks: Set<URLSessionTask> = []
 
     /// Each instance passes its own `backgroundSessionIdentifier`: a process
     /// must not create two background sessions with one identifier.
@@ -307,10 +309,13 @@ class URLSessionDownloadService: NSObject, DownloadService {
         return configuration
     }
 
+    /// Cancels at once: UIKit suspends the app as soon as an expiration
+    /// handler returns.
     func cancelInProcessTransfers() {
-        session.getAllTasks { tasks in
-            tasks.forEach { $0.cancel() }
-        }
+        stateLock.lock()
+        let tasks = inProcessTasks
+        stateLock.unlock()
+        tasks.forEach { $0.cancel() }
     }
 
     func downloadFile(from url: URL, to destination: String, fileSizeHandler: ((Int64) -> Void)?, progressHandler: @escaping (DownloadProgress) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
@@ -351,6 +356,9 @@ class URLSessionDownloadService: NSObject, DownloadService {
         if let handler = fileSizeHandler {
             fileSizeHandlers[task] = handler
         }
+        if !useBackgroundSession {
+            inProcessTasks.insert(task)
+        }
 
         task.resume()
         return task
@@ -369,6 +377,7 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             completionHandlers.removeValue(forKey: downloadTask)
             destinations.removeValue(forKey: downloadTask)
             fileSizeHandlers.removeValue(forKey: downloadTask)
+            inProcessTasks.remove(downloadTask)
         }
 
         guard let destination = destination else {
@@ -429,6 +438,7 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             completionHandlers.removeValue(forKey: task)
             destinations.removeValue(forKey: task)
             fileSizeHandlers.removeValue(forKey: task)
+            inProcessTasks.remove(task)
         }
 
         if let error = error {
