@@ -887,6 +887,93 @@
 - Updated dependencies [ed37acf]
   - @hot-updater/protocol@1.2.0-rc.0
 
+## 1.1.20
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.20
+
+## 1.1.19
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.19
+
+## 1.1.18
+
+### Patch Changes
+
+- fd9bc70: fix(db): `hot-updater db migrate` no longer moves a database back to an older schema. If a newer Hot Updater (such as 1.2) already migrated the database, `db migrate` changes nothing and exits 1:
+
+  ```
+  kysely: the database was migrated by Hot Updater 1.2.0 (schema.core "1.2.0", this CLI's "1.0.0"). Upgrade hot-updater to 1.2.0 or later; nothing was written.
+  ```
+
+  Before, it rewrote the schema version, and every server of the newer release answered 503. Commands such as `deploy` now stop on such a database with one line that names the upgrade, instead of a stack trace and a `db migrate` hint.
+
+- @hot-updater/protocol@1.1.18
+
+## 1.1.17
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.17
+
+## 1.1.16
+
+### Patch Changes
+
+- df8792a: perf(plugin-core): aggregate compactions on DynamoDB, Firestore, and Cosmos DB no longer read again what they already read.
+  - After a rollback to a release without one of an aggregate's tables, the newer release's log rows waited for a process that could apply them, and every Insights read compacted again to find none. Reads now step past such rows once they are 5 minutes old; the rows still wait for a process that can apply them.
+  - A compaction reads each aggregate row once per group, where it read them again each time a group halved to fit one write.
+  - The rows a group leaves for the next are not read again.
+
+- @hot-updater/protocol@1.1.16
+
+## 1.1.15
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.15
+
+## 1.1.14
+
+### Patch Changes
+
+- a250d09: fix(plugin-core): insert a row without deleting its index table entries first. A new row has none, and on SQL databases that delete read the whole index table, so every stored Insights event scanned `bundle_events__byBundle` (billed as rows read on D1).
+- d58dcfa: fix(plugin-core): prune a multi-valued index's entries on SQLite (Cloudflare D1) by the expired rows' keys. Each retention pass read the whole index table, such as `bundle_events__byBundle`, and every expired row on SQLite, instead of the rows it deletes.
+- @hot-updater/protocol@1.1.14
+
+## 1.1.13
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.13
+
+## 1.1.12
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.12
+
+## 1.1.11
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.11
+
+## 1.1.10
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.10
+
+## 1.1.9
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.9
+
 ## 1.1.8
 
 ### Patch Changes

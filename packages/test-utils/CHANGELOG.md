@@ -413,6 +413,34 @@
   - @hot-updater/protocol@1.2.0-rc.0
   - @hot-updater/plugin-insights@1.2.0-rc.0
 
+## 1.1.20
+
+## 1.1.19
+
+## 1.1.18
+
+## 1.1.17
+
+## 1.1.16
+
+## 1.1.15
+
+## 1.1.14
+
+## 1.1.13
+
+## 1.1.12
+
+## 1.1.11
+
+### Patch Changes
+
+- 06b6564: Bundle tar 7.5.22 and workspace-tools 0.42.3 (js-yaml 4.3.2), leave out workspace-tools' lockfile parsers and their minimatch 3.0.4 copy, and regenerate the `inlinedDependencies` field on every build so it lists what dist bundles.
+
+## 1.1.10
+
+## 1.1.9
+
 ## 1.1.8
 
 ## 1.1.7

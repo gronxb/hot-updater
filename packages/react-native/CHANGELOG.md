@@ -622,6 +622,120 @@
   - @hot-updater/plugin-insights@1.2.0-rc.0
   - @hot-updater/plugin-remote-config@1.2.0-rc.0
 
+## 1.1.20
+
+### Patch Changes
+
+- 3dca98a: **React Native.** A release whose download fails verification is no longer downloaded again on every launch. When a file or the manifest fails its hash or signature, or can't be decoded, update checks skip that bundle for 24 hours, so a bad release costs each device at most one download a day instead of one per launch. After a day the bundle may be selected again, because a proxy, a block page, or a body cut short can make good bytes fail. `getCrashHistory()` lists these bundles next to crashed ones while they're skipped (up to 10, never as crashes), `clearCrashHistory()` clears them, and installing another native build forgets them. Network, HTTP and local storage errors keep retrying as before. Released JavaScript benefits without an update, because it already skips what `getCrashHistory()` returns. Crash history is now written atomically, so an app killed mid-write keeps the previous history.
+- @hot-updater/protocol@1.1.20
+  - @hot-updater/plugin-insights@1.1.20
+  - @hot-updater/plugin-remote-config@1.1.20
+
+## 1.1.19
+
+### Patch Changes
+
+- 50db394: fix: download an update right after the server signs its links, even when the user leaves the app
+
+  Storage download links are signed for an hour. Some updates failed with HTTP 403 `ExpiredRequest` because their requests went out long after signing:
+  - iOS: a download that started while the app was in the background went to the system's background URLSession. iOS always runs such a transfer at its own discretion, ignoring `isDiscretionary = false`; Apple documents that a discretionary transfer waits for conditions such as Wi-Fi and power, so it could go out hours later with the link fixed when it started. It now starts at once in the app's own session.
+  - iOS: an update now holds background time until it finishes, so the rest of its downloads go out right away when the user leaves the app mid-update. If iOS ends that time first, the update fails then as a cancelled network transfer, and the next check gets new links, instead of sending a request with an old link once the app runs again.
+  - iOS: a download that starts while the app is inactive, as when the user is leaving it, still uses the background session and keeps going after the app is suspended. The system's retries of such a transfer now stop after 30 minutes instead of seven days.
+  - Android: React Native's `fetch` resolves in a JavaScript timer, and Android runs none while the app is in the background, so an update response that arrived after the user left reached the app, and its links native, only once the user came back. The SDK's update requests on Android now use XMLHttpRequest, which answers from the network event. This part is JavaScript, so it also reaches apps on earlier native code through an OTA update. A `fetch` passed to `HotUpdater.init` is still used as given.
+
+  No API change.
+
+- @hot-updater/protocol@1.1.19
+  - @hot-updater/plugin-insights@1.1.19
+  - @hot-updater/plugin-remote-config@1.1.19
+
+## 1.1.18
+
+### Patch Changes
+
+- 7e95e1c: fix(ios, android): the launch status no longer rarely reports `UNCHANGED` for a launch that applied an update. When JavaScript read the status at the moment first content verified the new bundle, it could see the bundle verified but no launch report yet, and answer a final `UNCHANGED` instead of `UPDATE_APPLIED` (Insights then recorded the launch as unchanged). The read now waits for the verification to finish writing. Takes effect with the next native build.
+- @hot-updater/plugin-insights@1.1.18
+  - @hot-updater/plugin-remote-config@1.1.18
+  - @hot-updater/protocol@1.1.18
+
+## 1.1.17
+
+### Patch Changes
+
+- f4bcae0: fix(android): the first OTA after a store install downloads XML drawables instead of reusing them from the APK. AAPT2 compiles XML under `res/` to binary XML, so the packaged file was copied into the bundle in place of its source, and anything reading that file (such as an XML vector icon loaded by its `file://` URI) got binary XML (#1984). Takes effect with the next native build.
+- @hot-updater/protocol@1.1.17
+  - @hot-updater/plugin-insights@1.1.17
+  - @hot-updater/plugin-remote-config@1.1.17
+
+## 1.1.16
+
+### Patch Changes
+
+- @hot-updater/plugin-insights@1.1.16
+  - @hot-updater/plugin-remote-config@1.1.16
+  - @hot-updater/protocol@1.1.16
+
+## 1.1.15
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.15
+  - @hot-updater/plugin-insights@1.1.15
+  - @hot-updater/plugin-remote-config@1.1.15
+
+## 1.1.14
+
+### Patch Changes
+
+- @hot-updater/plugin-insights@1.1.14
+  - @hot-updater/plugin-remote-config@1.1.14
+  - @hot-updater/protocol@1.1.14
+
+## 1.1.13
+
+### Patch Changes
+
+- 412883b: Add a `fetch` option to `HotUpdater.init` so an instance's JavaScript requests (release catalogs, artifact lookups, and client plugins such as `insights()`) can use a fetch other than the global one, such as `react-native-nitro-fetch`. It defaults to the global `fetch`; native downloads and the native recovery check don't use it.
+- @hot-updater/protocol@1.1.13
+  - @hot-updater/plugin-insights@1.1.13
+  - @hot-updater/plugin-remote-config@1.1.13
+
+## 1.1.12
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.12
+  - @hot-updater/plugin-insights@1.1.12
+  - @hot-updater/plugin-remote-config@1.1.12
+
+## 1.1.11
+
+### Patch Changes
+
+- 395a17a: Resolve React Native's directory with `providers.exec` on Android, so apps can build with Gradle's configuration cache.
+- @hot-updater/protocol@1.1.11
+  - @hot-updater/plugin-insights@1.1.11
+  - @hot-updater/plugin-remote-config@1.1.11
+
+## 1.1.10
+
+### Patch Changes
+
+- 1f1087e: The Android fingerprint Gradle task locates the hot-updater CLI by running `resolve-hot-updater-cli.js`, a file the package ships, instead of an inline `node -e` script, so no code passes through the command line, whose quoting differs on Windows.
+- @hot-updater/protocol@1.1.10
+  - @hot-updater/plugin-insights@1.1.10
+  - @hot-updater/plugin-remote-config@1.1.10
+
+## 1.1.9
+
+### Patch Changes
+
+- ca32215: Keep what Android crash recovery reads by reflection from R8: `BridgelessReactContext`'s host, and `ReactRootViewTagGenerator` with its root view tag counter. In a minified release build of an app with named instances, R8 renamed them, so a named instance's fatal JavaScript error on the New Architecture skipped crash recovery, and a crash couldn't be attributed to the instance on screen. Apps need no ProGuard rules of their own: the library's consumer rules cover everything it reads by reflection.
+- 949c024: Fix two Windows failures: the Android fingerprint Gradle task no longer passes node an inline script with double quotes, which `ProcessBuilder` broke (#1853), and the CLI finds `AndroidManifest.xml` with a `/` glob pattern, so `keys export-public`, `channel set`, and `doctor` see Android manifests again (#1854).
+- @hot-updater/protocol@1.1.9
+  - @hot-updater/plugin-insights@1.1.9
+  - @hot-updater/plugin-remote-config@1.1.9
+
 ## 1.1.8
 
 ### Patch Changes

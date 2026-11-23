@@ -6,6 +6,8 @@ export interface UpdateRequest {
   readonly resource: UpdateHttpResponse["resource"];
   readonly requestHeaders?: Record<string, string>;
   readonly requestTimeout?: number;
+  /** Defaults to the global `fetch`. */
+  readonly fetch?: typeof fetch;
   readonly onResponse?: (response: UpdateHttpResponse) => void;
 }
 
@@ -73,6 +75,7 @@ const requestWithoutTimers = (
   });
 
 const fetchWithFetch = async (
+  fetchImpl: typeof fetch,
   url: string,
   headers: Headers,
   signal: AbortSignal,
@@ -80,7 +83,7 @@ const fetchWithFetch = async (
   response: UpdateResponse;
   read: () => Promise<string>;
 }> => {
-  const response = await fetch(url, { headers, signal });
+  const response = await fetchImpl(url, { headers, signal });
   return { response, read: () => response.text() };
 };
 
@@ -90,6 +93,7 @@ export const fetchUpdateResponse = async ({
   resource,
   requestHeaders,
   requestTimeout = DEFAULT_REQUEST_TIMEOUT_MS,
+  fetch: fetchImpl,
   onResponse,
 }: UpdateRequest): Promise<{
   response: UpdateResponse;
@@ -104,12 +108,20 @@ export const fetchUpdateResponse = async ({
   try {
     const headers = new Headers(requestHeaders);
     if (!headers.has("Accept")) headers.set("Accept", "application/json");
+    // A `fetch` the app passed to `HotUpdater.init` is always used.
     const { response, read } =
-      Platform.OS === "android" && typeof XMLHttpRequest === "function"
+      fetchImpl === undefined &&
+      Platform.OS === "android" &&
+      typeof XMLHttpRequest === "function"
         ? await requestWithoutTimers(url, headers, controller.signal).then(
             ({ response, body }) => ({ response, read: async () => body }),
           )
-        : await fetchWithFetch(url, headers, controller.signal);
+        : await fetchWithFetch(
+            fetchImpl ?? fetch,
+            url,
+            headers,
+            controller.signal,
+          );
     let body: string | null = null;
     try {
       body = await read();

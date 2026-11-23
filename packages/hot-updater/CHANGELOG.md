@@ -1735,6 +1735,179 @@
   - @hot-updater/protocol@1.2.0-rc.0
   - @hot-updater/bsdiff@1.2.0-rc.0
 
+## 1.1.20
+
+### Patch Changes
+
+- @hot-updater/android-helper@1.1.20
+  - @hot-updater/apple-helper@1.1.20
+  - @hot-updater/bsdiff@1.1.20
+  - @hot-updater/cli-tools@1.1.20
+  - @hot-updater/console@1.1.20
+  - @hot-updater/protocol@1.1.20
+  - @hot-updater/server@1.1.20
+  - @hot-updater/plugin-core@1.1.20
+
+## 1.1.19
+
+### Patch Changes
+
+- @hot-updater/android-helper@1.1.19
+  - @hot-updater/apple-helper@1.1.19
+  - @hot-updater/bsdiff@1.1.19
+  - @hot-updater/cli-tools@1.1.19
+  - @hot-updater/console@1.1.19
+  - @hot-updater/protocol@1.1.19
+  - @hot-updater/server@1.1.19
+  - @hot-updater/plugin-core@1.1.19
+
+## 1.1.18
+
+### Patch Changes
+
+- fd9bc70: fix(db): `hot-updater db migrate` no longer moves a database back to an older schema. If a newer Hot Updater (such as 1.2) already migrated the database, `db migrate` changes nothing and exits 1:
+
+  ```
+  kysely: the database was migrated by Hot Updater 1.2.0 (schema.core "1.2.0", this CLI's "1.0.0"). Upgrade hot-updater to 1.2.0 or later; nothing was written.
+  ```
+
+  Before, it rewrote the schema version, and every server of the newer release answered 503. Commands such as `deploy` now stop on such a database with one line that names the upgrade, instead of a stack trace and a `db migrate` hint.
+
+- Updated dependencies [fd9bc70]
+  - @hot-updater/plugin-core@1.1.18
+  - @hot-updater/server@1.1.18
+  - @hot-updater/android-helper@1.1.18
+  - @hot-updater/apple-helper@1.1.18
+  - @hot-updater/cli-tools@1.1.18
+  - @hot-updater/console@1.1.18
+  - @hot-updater/bsdiff@1.1.18
+  - @hot-updater/protocol@1.1.18
+
+## 1.1.17
+
+### Patch Changes
+
+- Updated dependencies [f6beea5]
+- Updated dependencies [745ed5f]
+  - @hot-updater/console@1.1.17
+  - @hot-updater/android-helper@1.1.17
+  - @hot-updater/apple-helper@1.1.17
+  - @hot-updater/bsdiff@1.1.17
+  - @hot-updater/cli-tools@1.1.17
+  - @hot-updater/protocol@1.1.17
+  - @hot-updater/server@1.1.17
+  - @hot-updater/plugin-core@1.1.17
+
+## 1.1.16
+
+### Patch Changes
+
+- Updated dependencies [df8792a]
+  - @hot-updater/plugin-core@1.1.16
+  - @hot-updater/android-helper@1.1.16
+  - @hot-updater/apple-helper@1.1.16
+  - @hot-updater/cli-tools@1.1.16
+  - @hot-updater/console@1.1.16
+  - @hot-updater/server@1.1.16
+  - @hot-updater/bsdiff@1.1.16
+  - @hot-updater/protocol@1.1.16
+
+## 1.1.15
+
+### Patch Changes
+
+- @hot-updater/android-helper@1.1.15
+  - @hot-updater/apple-helper@1.1.15
+  - @hot-updater/bsdiff@1.1.15
+  - @hot-updater/cli-tools@1.1.15
+  - @hot-updater/console@1.1.15
+  - @hot-updater/protocol@1.1.15
+  - @hot-updater/server@1.1.15
+  - @hot-updater/plugin-core@1.1.15
+
+## 1.1.14
+
+### Patch Changes
+
+- Updated dependencies [a250d09]
+- Updated dependencies [d58dcfa]
+  - @hot-updater/plugin-core@1.1.14
+  - @hot-updater/android-helper@1.1.14
+  - @hot-updater/apple-helper@1.1.14
+  - @hot-updater/cli-tools@1.1.14
+  - @hot-updater/console@1.1.14
+  - @hot-updater/server@1.1.14
+  - @hot-updater/bsdiff@1.1.14
+  - @hot-updater/protocol@1.1.14
+
+## 1.1.13
+
+### Patch Changes
+
+- @hot-updater/android-helper@1.1.13
+  - @hot-updater/apple-helper@1.1.13
+  - @hot-updater/bsdiff@1.1.13
+  - @hot-updater/cli-tools@1.1.13
+  - @hot-updater/console@1.1.13
+  - @hot-updater/protocol@1.1.13
+  - @hot-updater/server@1.1.13
+  - @hot-updater/plugin-core@1.1.13
+
+## 1.1.12
+
+### Patch Changes
+
+- Updated dependencies [ab5d8b7]
+  - @hot-updater/cli-tools@1.1.12
+  - @hot-updater/android-helper@1.1.12
+  - @hot-updater/apple-helper@1.1.12
+  - @hot-updater/bsdiff@1.1.12
+  - @hot-updater/console@1.1.12
+  - @hot-updater/protocol@1.1.12
+  - @hot-updater/server@1.1.12
+  - @hot-updater/plugin-core@1.1.12
+
+## 1.1.11
+
+### Patch Changes
+
+- Updated dependencies [06b6564]
+  - @hot-updater/cli-tools@1.1.11
+  - @hot-updater/console@1.1.11
+  - @hot-updater/android-helper@1.1.11
+  - @hot-updater/apple-helper@1.1.11
+  - @hot-updater/bsdiff@1.1.11
+  - @hot-updater/protocol@1.1.11
+  - @hot-updater/server@1.1.11
+  - @hot-updater/plugin-core@1.1.11
+
+## 1.1.10
+
+### Patch Changes
+
+- @hot-updater/android-helper@1.1.10
+  - @hot-updater/apple-helper@1.1.10
+  - @hot-updater/bsdiff@1.1.10
+  - @hot-updater/cli-tools@1.1.10
+  - @hot-updater/console@1.1.10
+  - @hot-updater/protocol@1.1.10
+  - @hot-updater/server@1.1.10
+  - @hot-updater/plugin-core@1.1.10
+
+## 1.1.9
+
+### Patch Changes
+
+- Updated dependencies [949c024]
+  - @hot-updater/cli-tools@1.1.9
+  - @hot-updater/android-helper@1.1.9
+  - @hot-updater/apple-helper@1.1.9
+  - @hot-updater/bsdiff@1.1.9
+  - @hot-updater/console@1.1.9
+  - @hot-updater/protocol@1.1.9
+  - @hot-updater/server@1.1.9
+  - @hot-updater/plugin-core@1.1.9
+
 ## 1.1.8
 
 ### Patch Changes

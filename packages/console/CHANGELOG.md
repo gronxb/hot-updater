@@ -1144,6 +1144,121 @@
   - @hot-updater/protocol@1.2.0-rc.0
   - @hot-updater/bsdiff@1.2.0-rc.0
 
+## 1.1.20
+
+### Patch Changes
+
+- @hot-updater/bsdiff@1.1.20
+  - @hot-updater/protocol@1.1.20
+  - @hot-updater/server@1.1.20
+  - @hot-updater/plugin-core@1.1.20
+
+## 1.1.19
+
+### Patch Changes
+
+- @hot-updater/bsdiff@1.1.19
+  - @hot-updater/protocol@1.1.19
+  - @hot-updater/server@1.1.19
+  - @hot-updater/plugin-core@1.1.19
+
+## 1.1.18
+
+### Patch Changes
+
+- Updated dependencies [fd9bc70]
+  - @hot-updater/plugin-core@1.1.18
+  - @hot-updater/server@1.1.18
+  - @hot-updater/bsdiff@1.1.18
+  - @hot-updater/protocol@1.1.18
+
+## 1.1.17
+
+### Patch Changes
+
+- f6beea5: Show the `console.gitUrl` setup hint in the git commit hash's tooltip instead of a separate info icon, and keep it readable and open on click.
+- 745ed5f: Show a hint in bundle metadata when a git commit is present but `console.gitUrl` is not configured, with a link to the Git URL setup docs.
+- @hot-updater/bsdiff@1.1.17
+  - @hot-updater/protocol@1.1.17
+  - @hot-updater/server@1.1.17
+  - @hot-updater/plugin-core@1.1.17
+
+## 1.1.16
+
+### Patch Changes
+
+- Updated dependencies [df8792a]
+  - @hot-updater/plugin-core@1.1.16
+  - @hot-updater/server@1.1.16
+  - @hot-updater/bsdiff@1.1.16
+  - @hot-updater/protocol@1.1.16
+
+## 1.1.15
+
+### Patch Changes
+
+- @hot-updater/bsdiff@1.1.15
+  - @hot-updater/protocol@1.1.15
+  - @hot-updater/server@1.1.15
+  - @hot-updater/plugin-core@1.1.15
+
+## 1.1.14
+
+### Patch Changes
+
+- Updated dependencies [a250d09]
+- Updated dependencies [d58dcfa]
+  - @hot-updater/plugin-core@1.1.14
+  - @hot-updater/server@1.1.14
+  - @hot-updater/bsdiff@1.1.14
+  - @hot-updater/protocol@1.1.14
+
+## 1.1.13
+
+### Patch Changes
+
+- @hot-updater/bsdiff@1.1.13
+  - @hot-updater/protocol@1.1.13
+  - @hot-updater/server@1.1.13
+  - @hot-updater/plugin-core@1.1.13
+
+## 1.1.12
+
+### Patch Changes
+
+- @hot-updater/bsdiff@1.1.12
+  - @hot-updater/protocol@1.1.12
+  - @hot-updater/server@1.1.12
+  - @hot-updater/plugin-core@1.1.12
+
+## 1.1.11
+
+### Patch Changes
+
+- 06b6564: Bundle tar 7.5.22 and workspace-tools 0.42.3 (js-yaml 4.3.2), leave out workspace-tools' lockfile parsers and their minimatch 3.0.4 copy, and regenerate the `inlinedDependencies` field on every build so it lists what dist bundles.
+- @hot-updater/bsdiff@1.1.11
+  - @hot-updater/protocol@1.1.11
+  - @hot-updater/server@1.1.11
+  - @hot-updater/plugin-core@1.1.11
+
+## 1.1.10
+
+### Patch Changes
+
+- @hot-updater/bsdiff@1.1.10
+  - @hot-updater/protocol@1.1.10
+  - @hot-updater/server@1.1.10
+  - @hot-updater/plugin-core@1.1.10
+
+## 1.1.9
+
+### Patch Changes
+
+- @hot-updater/bsdiff@1.1.9
+  - @hot-updater/protocol@1.1.9
+  - @hot-updater/server@1.1.9
+  - @hot-updater/plugin-core@1.1.9
+
 ## 1.1.8
 
 ### Patch Changes

@@ -771,6 +771,109 @@
   - @hot-updater/server@1.2.0-rc.0
   - @hot-updater/protocol@1.2.0-rc.0
 
+## 1.1.20
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.20
+  - @hot-updater/server@1.1.20
+  - @hot-updater/plugin-core@1.1.20
+
+## 1.1.19
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.19
+  - @hot-updater/server@1.1.19
+  - @hot-updater/plugin-core@1.1.19
+
+## 1.1.18
+
+### Patch Changes
+
+- Updated dependencies [fd9bc70]
+  - @hot-updater/plugin-core@1.1.18
+  - @hot-updater/server@1.1.18
+  - @hot-updater/protocol@1.1.18
+
+## 1.1.17
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.17
+  - @hot-updater/server@1.1.17
+  - @hot-updater/plugin-core@1.1.17
+
+## 1.1.16
+
+### Patch Changes
+
+- Updated dependencies [df8792a]
+  - @hot-updater/plugin-core@1.1.16
+  - @hot-updater/server@1.1.16
+  - @hot-updater/protocol@1.1.16
+
+## 1.1.15
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.15
+  - @hot-updater/server@1.1.15
+  - @hot-updater/plugin-core@1.1.15
+
+## 1.1.14
+
+### Patch Changes
+
+- Updated dependencies [a250d09]
+- Updated dependencies [d58dcfa]
+  - @hot-updater/plugin-core@1.1.14
+  - @hot-updater/server@1.1.14
+  - @hot-updater/protocol@1.1.14
+
+## 1.1.13
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.13
+  - @hot-updater/server@1.1.13
+  - @hot-updater/plugin-core@1.1.13
+
+## 1.1.12
+
+### Patch Changes
+
+- ab5d8b7: Let tsdown generate the package's `exports` map instead of a hand-written copy. `import` and `require` still resolve `dist/index.mjs`, and its types still resolve `dist/index.d.mts`.
+- @hot-updater/protocol@1.1.12
+  - @hot-updater/server@1.1.12
+  - @hot-updater/plugin-core@1.1.12
+
+## 1.1.11
+
+### Patch Changes
+
+- 06b6564: Bundle tar 7.5.22 and workspace-tools 0.42.3 (js-yaml 4.3.2), leave out workspace-tools' lockfile parsers and their minimatch 3.0.4 copy, and regenerate the `inlinedDependencies` field on every build so it lists what dist bundles.
+- @hot-updater/protocol@1.1.11
+  - @hot-updater/server@1.1.11
+  - @hot-updater/plugin-core@1.1.11
+
+## 1.1.10
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.10
+  - @hot-updater/server@1.1.10
+  - @hot-updater/plugin-core@1.1.10
+
+## 1.1.9
+
+### Patch Changes
+
+- 949c024: Fix two Windows failures: the Android fingerprint Gradle task no longer passes node an inline script with double quotes, which `ProcessBuilder` broke (#1853), and the CLI finds `AndroidManifest.xml` with a `/` glob pattern, so `keys export-public`, `channel set`, and `doctor` see Android manifests again (#1854).
+- @hot-updater/protocol@1.1.9
+  - @hot-updater/server@1.1.9
+  - @hot-updater/plugin-core@1.1.9
+
 ## 1.1.8
 
 ### Patch Changes
