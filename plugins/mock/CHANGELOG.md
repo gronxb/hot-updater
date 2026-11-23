@@ -1,5 +1,12 @@
 # @hot-updater/mock
 
+## 1.2.0-rc.55
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.55
+  - @hot-updater/plugin-core@1.2.0-rc.55
+
 ## 1.2.0-rc.54
 
 ### Patch Changes
