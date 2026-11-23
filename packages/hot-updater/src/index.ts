@@ -369,11 +369,11 @@ nativeBuildCommand
   .argument("<id>", "the native build's ID, as native-build find prints it")
   .option(
     "--simulator <udid>",
-    "the booted iOS Simulator (default: the only one booted)",
+    "the booted iOS Simulator (default: the only one booted, or one you pick in a terminal)",
   )
   .option(
     "--device <serial>",
-    "the Android device or emulator, as adb devices lists it (default: ANDROID_SERIAL, or the only one connected)",
+    "the Android device or emulator, as adb devices lists it (default: ANDROID_SERIAL, the only one connected, or one you pick in a terminal)",
   )
   .option(
     "--open <channel>",

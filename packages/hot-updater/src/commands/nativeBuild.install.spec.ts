@@ -23,6 +23,8 @@ const {
   loadConfig,
   loadServer,
   log,
+  nonInteractiveReason,
+  select,
 } = vi.hoisted(() => ({
   installOnAndroidDevice: vi.fn(),
   installOnSimulator: vi.fn(),
@@ -30,6 +32,8 @@ const {
   listSimulators: vi.fn(),
   loadConfig: vi.fn(),
   loadServer: vi.fn(),
+  nonInteractiveReason: vi.fn(),
+  select: vi.fn(),
   log: {
     error: vi.fn(),
     info: vi.fn(),
@@ -42,7 +46,12 @@ const {
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   loadConfig,
-  p: { log },
+  nonInteractiveReason,
+  p: {
+    isCancel: (value: unknown) => typeof value === "symbol",
+    log,
+    select,
+  },
 }));
 // What reaches xcrun and adb has its own specs; selecting a device stays real.
 vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
@@ -159,8 +168,10 @@ describe("native-build download and install", () => {
     delete process.env["ANDROID_SERIAL"];
     directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "download-"));
     loadConfig.mockResolvedValue({});
+    // No terminal, as in CI, unless a test says otherwise.
+    nonInteractiveReason.mockReturnValue("without a terminal");
     listSimulators.mockResolvedValue([
-      { udid: "SIM-A", name: "iPhone A", state: "Booted" },
+      { udid: "SIM-A", name: "iPhone A", os: "iOS 26.4", state: "Booted" },
     ]);
     listAdbDevices.mockResolvedValue([
       { serial: "emulator-5560", state: "device" },
@@ -365,8 +376,8 @@ describe("native-build download and install", () => {
       it("opens the channel's preview link on the selected simulator, instead of launching the app", async () => {
         await registerSandbox();
         listSimulators.mockResolvedValue([
-          { udid: "SIM-A", name: "iPhone A", state: "Booted" },
-          { udid: "SIM-B", name: "iPhone B", state: "Booted" },
+          { udid: "SIM-A", name: "iPhone A", os: "iOS 26.4", state: "Booted" },
+          { udid: "SIM-B", name: "iPhone B", os: "iOS 26.5", state: "Booted" },
         ]);
         const { handleNativeBuildInstall } = await import("./nativeBuild");
 
@@ -388,8 +399,8 @@ describe("native-build download and install", () => {
       it("keeps the refusal of several booted simulators and none selected", async () => {
         const get = await registerSandbox();
         listSimulators.mockResolvedValue([
-          { udid: "SIM-A", name: "iPhone A", state: "Booted" },
-          { udid: "SIM-B", name: "iPhone B", state: "Booted" },
+          { udid: "SIM-A", name: "iPhone A", os: "iOS 26.4", state: "Booted" },
+          { udid: "SIM-B", name: "iPhone B", os: "iOS 26.5", state: "Booted" },
         ]);
         const { handleNativeBuildInstall } = await import("./nativeBuild");
 
@@ -432,8 +443,8 @@ describe("native-build download and install", () => {
       it("installs and launches a build of an app version on the selected simulator, which no link can open on the channel", async () => {
         await registerSandbox({ fingerprintHash: null, appVersion: "1.2.0" });
         listSimulators.mockResolvedValue([
-          { udid: "SIM-A", name: "iPhone A", state: "Booted" },
-          { udid: "SIM-B", name: "iPhone B", state: "Booted" },
+          { udid: "SIM-A", name: "iPhone A", os: "iOS 26.4", state: "Booted" },
+          { udid: "SIM-B", name: "iPhone B", os: "iOS 26.5", state: "Booted" },
         ]);
         const { handleNativeBuildInstall } = await import("./nativeBuild");
 
@@ -468,6 +479,210 @@ describe("native-build download and install", () => {
           "--open opens a channel in a Simulator build.",
         );
         expect(get).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("with several devices", () => {
+      const BOOTED = [
+        {
+          udid: "AAAAAAAA-1111-4111-8111-111111111111",
+          name: "iPhone 17 Pro",
+          os: "iOS 26.4",
+          state: "Booted",
+        },
+        {
+          udid: "BBBBBBBB-2222-4222-8222-222222222222",
+          name: "iPhone 16",
+          os: "iOS 26.5",
+          state: "Booted",
+        },
+        {
+          udid: "CCCCCCCC-3333-4333-8333-333333333333",
+          name: "iPhone Air",
+          os: "iOS 26.5",
+          state: "Shutdown",
+        },
+      ];
+      const [first, second] = BOOTED as [
+        (typeof BOOTED)[number],
+        (typeof BOOTED)[number],
+      ];
+
+      /** A sandbox Simulator build, as `--open` installs from a preview. */
+      const registerSandbox = async () => {
+        const bytes = await simulatorApp();
+        await register("app", bytes.byteLength, "App.app.zip", {
+          fingerprintHash: "fingerprint-a",
+          appVersion: null,
+          isSandbox: true,
+          sandboxAppId: "com.example.app",
+          sandboxUrlScheme: "acme-preview",
+        } as Partial<NativeBuildRegistration>);
+        return useStorage(bytes);
+      };
+
+      beforeEach(() => {
+        listSimulators.mockResolvedValue(BOOTED);
+      });
+
+      it("asks which booted simulator in a terminal, then installs there as --simulator does", async () => {
+        await registerSandbox();
+        nonInteractiveReason.mockReturnValue(undefined);
+        select.mockResolvedValue(second.udid);
+        const { handleNativeBuildInstall } = await import("./nativeBuild");
+
+        await handleNativeBuildInstall(BUILD_ID, { open: "pr-134" });
+
+        expect(select).toHaveBeenCalledTimes(1);
+        const [{ message, options }] = select.mock.calls[0] as [
+          {
+            message: string;
+            options: { value: string; label: string }[];
+          },
+        ];
+        expect(message).toBe("Which iOS Simulator do you install on?");
+        // Only the booted ones, each with its name, OS and short UDID.
+        expect(options.map(({ value }) => value)).toEqual([
+          first.udid,
+          second.udid,
+        ]);
+        for (const [index, simulator] of [first, second].entries()) {
+          const label = options[index]?.label ?? "";
+          expect(label).toContain(simulator.name);
+          expect(label).toContain(simulator.os);
+          expect(label).toContain(simulator.udid.slice(0, 8));
+          expect(label).not.toContain(simulator.udid);
+        }
+        expect(installOnSimulator).toHaveBeenCalledWith({
+          udid: second.udid,
+          appPath: "/extracted/App.app",
+          appId: "com.example.app",
+          url: "acme-preview://hot-updater/preview?channel=pr-134&fingerprint=fingerprint-a&platform=ios",
+        });
+        expect(log.success.mock.calls[0]?.[0]).toContain(
+          `iPhone 16 (${second.udid})`,
+        );
+      });
+
+      it.each([
+        ["without a terminal", "without a terminal", {}],
+        ["under --json, even in a terminal", undefined, { json: true }],
+      ] as const)(
+        "keeps the refusal %s, and downloads nothing",
+        async (_, reason, options) => {
+          const get = await registerSandbox();
+          nonInteractiveReason.mockReturnValue(reason);
+          const { handleNativeBuildInstall } = await import("./nativeBuild");
+
+          await expect(
+            handleNativeBuildInstall(BUILD_ID, { ...options, open: "pr-134" }),
+          ).rejects.toThrow("process.exit");
+
+          expect(select).not.toHaveBeenCalled();
+          expect(errorMessage()).toBe(
+            [
+              "2 iOS Simulators are booted:",
+              `  ${first.udid}  iPhone 17 Pro`,
+              `  ${second.udid}  iPhone 16`,
+              "Pick one with --simulator <udid>.",
+            ].join("\n"),
+          );
+          expect(get).not.toHaveBeenCalled();
+          expect(installOnSimulator).not.toHaveBeenCalled();
+        },
+      );
+
+      it("asks nothing when only one is booted, or --simulator names one", async () => {
+        await registerSandbox();
+        nonInteractiveReason.mockReturnValue(undefined);
+        const { handleNativeBuildInstall } = await import("./nativeBuild");
+
+        listSimulators.mockResolvedValue([first]);
+        await handleNativeBuildInstall(BUILD_ID, { json: true });
+        listSimulators.mockResolvedValue(BOOTED);
+        await handleNativeBuildInstall(BUILD_ID, {
+          json: false,
+          simulator: second.udid,
+        });
+
+        expect(select).not.toHaveBeenCalled();
+        expect(installOnSimulator.mock.calls.map(([{ udid }]) => udid)).toEqual(
+          [first.udid, second.udid],
+        );
+      });
+
+      it("downloads nothing when the question is cancelled", async () => {
+        const get = await registerSandbox();
+        nonInteractiveReason.mockReturnValue(undefined);
+        select.mockResolvedValue(Symbol("clack:cancel"));
+        const { handleNativeBuildInstall } = await import("./nativeBuild");
+
+        await expect(
+          handleNativeBuildInstall(BUILD_ID, { open: "pr-134" }),
+        ).rejects.toThrow("process.exit");
+
+        expect(errorMessage()).toBe("No iOS Simulator was picked.");
+        expect(get).not.toHaveBeenCalled();
+        expect(installOnSimulator).not.toHaveBeenCalled();
+      });
+
+      describe("on Android", () => {
+        beforeEach(async () => {
+          const bytes = await apk();
+          await register("apk", bytes.byteLength, "app-release.apk");
+          useStorage(bytes);
+          listAdbDevices.mockResolvedValue([
+            { serial: "emulator-5554", state: "device" },
+            { serial: "emulator-5556", state: "offline" },
+            { serial: "R5CT", state: "device" },
+          ]);
+        });
+
+        it("asks which connected device in a terminal, by its serial", async () => {
+          nonInteractiveReason.mockReturnValue(undefined);
+          select.mockResolvedValue("R5CT");
+          const { handleNativeBuildInstall } = await import("./nativeBuild");
+
+          await handleNativeBuildInstall(BUILD_ID, {});
+
+          expect(select).toHaveBeenCalledWith({
+            message: "Which Android device do you install on?",
+            options: [
+              { value: "emulator-5554", label: "emulator-5554" },
+              { value: "R5CT", label: "R5CT" },
+            ],
+          });
+          expect(installOnAndroidDevice).toHaveBeenCalledWith(
+            expect.objectContaining({ serial: "R5CT" }),
+          );
+        });
+
+        it("asks nothing when ANDROID_SERIAL names one", async () => {
+          nonInteractiveReason.mockReturnValue(undefined);
+          process.env["ANDROID_SERIAL"] = "emulator-5554";
+          const { handleNativeBuildInstall } = await import("./nativeBuild");
+
+          await handleNativeBuildInstall(BUILD_ID, {});
+
+          expect(select).not.toHaveBeenCalled();
+          expect(installOnAndroidDevice).toHaveBeenCalledWith(
+            expect.objectContaining({ serial: "emulator-5554" }),
+          );
+        });
+
+        it("keeps the refusal without a terminal", async () => {
+          const { handleNativeBuildInstall } = await import("./nativeBuild");
+
+          await expect(handleNativeBuildInstall(BUILD_ID, {})).rejects.toThrow(
+            "process.exit",
+          );
+
+          expect(select).not.toHaveBeenCalled();
+          expect(errorMessage()).toBe(
+            "2 Android devices are connected:\n  emulator-5554\n  R5CT\nPick one with --device <serial>.",
+          );
+          expect(installOnAndroidDevice).not.toHaveBeenCalled();
+        });
       });
     });
 

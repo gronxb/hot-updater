@@ -729,14 +729,16 @@ application ID of its own, such as a sandbox build's `.sandbox`, installs beside
 the app you already have.
 
 - **iOS Simulator**: it uses the only booted simulator. With several booted,
+  it asks which in a terminal; in CI, under `--json`, or without a terminal,
   `--simulator <udid>` picks one. None booted is an error that says how to boot
   one. It needs Xcode on a Mac.
-- **Android**: it uses the only connected device or emulator. With several,
-  `--device <serial>`, as `adb devices` lists it, picks one, or adb's own
-  `ANDROID_SERIAL`. It finds `adb` in `ANDROID_HOME` or `ANDROID_SDK_ROOT`, then
-  on your `PATH`. When an installed app signed with another key stands in the
-  way, the error gives the `adb uninstall` command; it doesn't uninstall anything
-  by itself, because that erases the app's data.
+- **Android**: it uses the only connected device or emulator. With several, it
+  asks which in a terminal; elsewhere `--device <serial>`, as `adb devices`
+  lists it, picks one, or adb's own `ANDROID_SERIAL`. It finds `adb` in
+  `ANDROID_HOME` or `ANDROID_SDK_ROOT`, then on your `PATH`. When an installed
+  app signed with another key stands in the way, the error gives the
+  `adb uninstall` command; it doesn't uninstall anything by itself, because
+  that erases the app's data.
 
 A sandbox Simulator build opens a channel's latest bundle with
 `--open <channel>`, as its QR code does on a phone, which is how a
