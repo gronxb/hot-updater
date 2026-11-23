@@ -1,5 +1,17 @@
 # @hot-updater/apple-helper
 
+## 1.2.0-rc.54
+
+### Patch Changes
+
+- f7ea63d: feat(cli): `native-build install` asks which device to install on when several are booted
+
+  With several booted iOS Simulators or connected Android devices, `npx hot-updater native-build install <id>` lists them in a terminal and installs on the one you pick, as `--simulator <udid>` or `--device <serial>` would. Each simulator shows its name, OS, and short UDID. In CI, under `--json`, or without a terminal, it still refuses and names the flag.
+
+- @hot-updater/cli-tools@1.2.0-rc.54
+  - @hot-updater/protocol@1.2.0-rc.54
+  - @hot-updater/plugin-core@1.2.0-rc.54
+
 ## 1.2.0-rc.53
 
 ### Patch Changes
