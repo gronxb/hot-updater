@@ -25,6 +25,25 @@ public enum SignatureVerificationError: Error, CustomNSError {
         return 0
     }
 
+    /// Whether this failure is the verified file's own: its hash or signature
+    /// fails, or it carries none where one is required. A missing or invalid
+    /// public key, a read failure, or a platform error says nothing about it.
+    var provesFileBad: Bool {
+        switch self {
+        case .fileHashMismatch,
+             .missingFileHash,
+             .invalidSignatureFormat,
+             .signatureVerificationFailed,
+             .unsignedNotAllowed:
+            return true
+        case .publicKeyNotConfigured,
+             .invalidPublicKeyFormat,
+             .fileReadFailed,
+             .securityFrameworkError:
+            return false
+        }
+    }
+
     public var errorCodeString: String {
         switch self {
         case .publicKeyNotConfigured: return "PUBLIC_KEY_NOT_CONFIGURED"
@@ -209,6 +228,11 @@ public class SignatureVerifier {
     public static func verifyHash(fileURL: URL, expectedHash: String) -> Result<Void, SignatureVerificationError> {
         NSLog("[SignatureVerifier] Verifying hash for file: \(fileURL.lastPathComponent)")
 
+        // A file that can't be read is a local failure, not a mismatch.
+        guard HashUtils.calculateSHA256(fileURL: fileURL) != nil else {
+            NSLog("[SignatureVerifier] Failed to calculate file hash")
+            return .failure(.fileReadFailed)
+        }
         guard HashUtils.verifyHash(fileURL: fileURL, expectedHash: expectedHash) else {
             NSLog("[SignatureVerifier] Hash mismatch!")
             return .failure(.fileHashMismatch)

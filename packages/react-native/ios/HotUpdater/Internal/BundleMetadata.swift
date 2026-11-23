@@ -230,6 +230,28 @@ public struct CrashedBundleEntry: Codable {
     }
 }
 
+// MARK: - RejectedBundleEntry
+
+/// A bundle whose download was refused because its files failed verification:
+/// a hash or signature that fails, or a manifest or file that can't be decoded.
+/// Update checks skip it for `CrashedHistory.rejectionWindowMs` after
+/// `rejectedAt`, then may select it again: the bytes failed here, but nothing
+/// proves they arrived as stored (a proxy, a block page, or a body cut short
+/// without a length), so a bad release costs at most one download a day.
+/// `nativeBuildId` is the refusing build's MIN_BUNDLE_ID: another build, with
+/// its own key and checks, decides again.
+public struct RejectedBundleEntry: Codable {
+    let bundleId: String
+    var rejectedAt: Double
+    let nativeBuildId: String
+
+    init(bundleId: String, nativeBuildId: String, rejectedAt: Double) {
+        self.bundleId = bundleId
+        self.nativeBuildId = nativeBuildId
+        self.rejectedAt = rejectedAt
+    }
+}
+
 // MARK: - InterruptedLaunch
 
 /// A bundle whose launch ended before first content without a crash, waiting
@@ -263,29 +285,37 @@ public struct InterruptedLaunch: Codable {
 
 // MARK: - CrashedHistory
 
-/// History of crashed bundles
+/// History of crashed bundles, and of bundles whose files were refused
 public struct CrashedHistory: Codable {
     static let defaultMaxHistorySize = 10
+    static let maxRejectedBundles = 10
+    /// How long a refused download keeps its bundle out of update checks.
+    static let rejectionWindowMs: Double = 24 * 60 * 60 * 1000
     static let crashedHistoryFilename = "crashed-history.json"
 
     var bundles: [CrashedBundleEntry]
     var maxHistorySize: Int
     var interruptedLaunch: InterruptedLaunch?
+    /// Kept apart from `bundles`, so refused downloads never evict a crash.
+    var rejectedBundles: [RejectedBundleEntry]
 
     enum CodingKeys: String, CodingKey {
         case bundles
         case maxHistorySize
         case interruptedLaunch
+        case rejectedBundles
     }
 
     init(
         bundles: [CrashedBundleEntry] = [],
         maxHistorySize: Int = CrashedHistory.defaultMaxHistorySize,
-        interruptedLaunch: InterruptedLaunch? = nil
+        interruptedLaunch: InterruptedLaunch? = nil,
+        rejectedBundles: [RejectedBundleEntry] = []
     ) {
         self.bundles = bundles
         self.maxHistorySize = maxHistorySize
         self.interruptedLaunch = interruptedLaunch
+        self.rejectedBundles = rejectedBundles
     }
 
     public init(from decoder: Decoder) throws {
@@ -294,6 +324,18 @@ public struct CrashedHistory: Codable {
         maxHistorySize = try values.decode(Int.self, forKey: .maxHistorySize)
         // A malformed retry record must not drop the crash history.
         interruptedLaunch = try? values.decodeIfPresent(InterruptedLaunch.self, forKey: .interruptedLaunch)
+        // Neither must a malformed refusal record.
+        rejectedBundles = (try? values.decodeIfPresent([RejectedBundleEntry].self, forKey: .rejectedBundles)) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(bundles, forKey: .bundles)
+        try container.encode(maxHistorySize, forKey: .maxHistorySize)
+        try container.encodeIfPresent(interruptedLaunch, forKey: .interruptedLaunch)
+        if !rejectedBundles.isEmpty {
+            try container.encode(rejectedBundles, forKey: .rejectedBundles)
+        }
     }
 
     static func load(from file: URL) -> CrashedHistory {
@@ -325,7 +367,8 @@ public struct CrashedHistory: Codable {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             }
 
-            try data.write(to: file)
+            // Replaced whole: a process killed mid-write keeps the previous history.
+            try data.write(to: file, options: .atomic)
             print("[CrashedHistory] Saved crashed history to file: \(file.path)")
             return true
         } catch {
@@ -355,9 +398,35 @@ public struct CrashedHistory: Codable {
         }
     }
 
+    /// The refusals `nativeBuildId` made within `rejectionWindowMs` of `now`
+    /// (milliseconds). One dated after `now`, as after the clock was set back,
+    /// has expired.
+    func activeRejections(nativeBuildId: String, now: Double) -> [RejectedBundleEntry] {
+        rejectedBundles.filter {
+            let age = now - $0.rejectedAt
+            return $0.nativeBuildId == nativeBuildId && age >= 0 && age < Self.rejectionWindowMs
+        }
+    }
+
+    func isRejected(_ bundleId: String, nativeBuildId: String, now: Double) -> Bool {
+        activeRejections(nativeBuildId: nativeBuildId, now: now).contains { $0.bundleId == bundleId }
+    }
+
+    /// Records that `nativeBuildId` refused `bundleId`'s download at `now`
+    /// (milliseconds). Another build's records are dropped, and the oldest
+    /// past the cap.
+    mutating func addRejectedBundle(_ bundleId: String, nativeBuildId: String, now: Double) {
+        rejectedBundles.removeAll { $0.bundleId == bundleId || $0.nativeBuildId != nativeBuildId }
+        rejectedBundles.append(RejectedBundleEntry(bundleId: bundleId, nativeBuildId: nativeBuildId, rejectedAt: now))
+        if rejectedBundles.count > Self.maxRejectedBundles {
+            rejectedBundles.removeFirst(rejectedBundles.count - Self.maxRejectedBundles)
+        }
+    }
+
     mutating func clear() {
         bundles.removeAll()
         interruptedLaunch = nil
+        rejectedBundles.removeAll()
     }
 }
 

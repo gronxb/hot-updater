@@ -175,6 +175,7 @@ app.post("/e2e/proxy-control", async (c) => {
     artifactFailures?: number;
     catalogDelayMs?: number;
     catalogMode?: "freeze" | "live" | "replay";
+    corruptPlatformBundle?: boolean;
     holdArtifacts?: boolean;
     linkLifetimeMs?: number | null;
     manifestDelayMs?: number;
@@ -186,6 +187,12 @@ app.post("/e2e/proxy-control", async (c) => {
     typeof payload.holdArtifacts !== "boolean"
   ) {
     return c.json({ error: "holdArtifacts must be a boolean" }, 400);
+  }
+  if (
+    payload.corruptPlatformBundle !== undefined &&
+    typeof payload.corruptPlatformBundle !== "boolean"
+  ) {
+    return c.json({ error: "corruptPlatformBundle must be a boolean" }, 400);
   }
   if (
     payload.archiveAvailable !== undefined &&
@@ -258,7 +265,9 @@ app.post("/e2e/assert-proxy", async (c) => {
     artifactFailuresRemaining?: number;
     artifactRequests?: number;
     catalogRequests?: number;
+    platformBundleRequests?: number;
     maxPathCardinality?: number;
+    minCatalogRequests?: number;
   };
   return c.json(handleAssertProxy(payload));
 });

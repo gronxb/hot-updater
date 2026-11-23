@@ -6,6 +6,7 @@ import os from "os";
 import path from "path";
 import { setTimeout as sleep } from "timers/promises";
 import { fileURLToPath } from "url";
+import { brotliCompressSync } from "zlib";
 
 import type {
   AnyHotUpdaterPlugin,
@@ -562,6 +563,8 @@ const jobs = createControlJobs({
 type RemoteAssetKind = "archive" | "file" | "manifest" | "patch";
 type RemoteAssetProxyTarget = {
   readonly assetPath?: string;
+  /** How the file is stored, as the update response names it, such as `br`. */
+  readonly compression?: string;
   readonly kind: RemoteAssetKind;
   /** When the proxy handed the app this link, as storage signs one. */
   readonly mintedAt: number;
@@ -610,6 +613,11 @@ const remoteAssetTransfers = new Map<
   { requests: number; bytes: number }
 >();
 let artifactFailuresRemaining = 0;
+/**
+ * Serve the platform bundle as bytes that don't match its manifest hash, on
+ * every request, as storage that holds a bad copy of the file would.
+ */
+let corruptPlatformBundle = false;
 let archiveAvailable = true;
 let archiveFailureMode: ArchiveFailureMode | null = null;
 let archiveFailuresRemaining = 0;
@@ -3528,6 +3536,11 @@ function rewriteRemoteAssetUrl(
   return value;
 }
 
+function compressionOf(file: object): { compression?: string } {
+  const compression = (file as { compression?: unknown }).compression;
+  return typeof compression === "string" ? { compression } : {};
+}
+
 function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
   if (!payload || typeof payload !== "object") {
     return payload;
@@ -3566,6 +3579,7 @@ function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
                 ...assetInfo.file,
                 url: rewriteRemoteAssetUrl(assetInfo.file.url, {
                   assetPath,
+                  ...compressionOf(assetInfo.file),
                   kind: "file",
                 }),
               }
@@ -3611,6 +3625,7 @@ function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
                 ...file,
                 url: rewriteRemoteAssetUrl((file as { url?: unknown }).url, {
                   assetPath,
+                  ...compressionOf(file),
                   kind: "file",
                 }),
               }
@@ -3956,6 +3971,7 @@ export function handleProxyState() {
       ]),
     ),
     artifactFailuresRemaining,
+    corruptPlatformBundle,
     capturedArtifactSelections: [...capturedArtifactSelections],
     capturedCatalogGenerations: Object.fromEntries(
       [...capturedCatalogResponses].map(([pathname, generations]) => [
@@ -3999,6 +4015,7 @@ export function handleConfigureProxy(input: {
   artifactFailures?: number;
   catalogDelayMs?: number;
   catalogMode?: "freeze" | "live" | "replay";
+  corruptPlatformBundle?: boolean;
   holdArtifacts?: boolean;
   linkLifetimeMs?: number | null;
   manifestDelayMs?: number;
@@ -4018,6 +4035,7 @@ export function handleConfigureProxy(input: {
     remoteAssetTransfers.clear();
     capturedCatalogResponses.clear();
     artifactFailuresRemaining = 0;
+    corruptPlatformBundle = false;
     archiveAvailable = true;
     archiveFailureMode = null;
     archiveFailuresRemaining = 0;
@@ -4045,6 +4063,9 @@ export function handleConfigureProxy(input: {
   }
   if (input.artifactFailures !== undefined) {
     artifactFailuresRemaining = input.artifactFailures;
+  }
+  if (input.corruptPlatformBundle !== undefined) {
+    corruptPlatformBundle = input.corruptPlatformBundle;
   }
   if (input.archiveFailureMode !== undefined) {
     archiveFailureMode = input.archiveFailureMode;
@@ -4321,17 +4342,46 @@ export class ProxyAssertionError extends Error {
   }
 }
 
+/**
+ * Requests for the platform bundle's own file or patch, across every update
+ * response that named it.
+ */
+function countPlatformBundleRequests() {
+  const assetPath = getPrimaryBundleAssetPath();
+  let requests = 0;
+  for (const [targetId, target] of remoteAssetProxyTargets) {
+    if (target.assetPath !== assetPath) continue;
+    if (target.kind !== "file" && target.kind !== "patch") continue;
+    requests +=
+      remoteAssetTransfers.get(`/e2e/proxy-url/${targetId}`)?.requests ?? 0;
+  }
+  return requests;
+}
+
 export function handleAssertProxy(input: {
   artifactFailuresRemaining?: number;
   artifactRequests?: number;
   catalogRequests?: number;
+  platformBundleRequests?: number;
   maxPathCardinality?: number;
+  minCatalogRequests?: number;
 }) {
+  const platformBundleRequests = countPlatformBundleRequests();
   const observed = {
     artifactFailuresRemaining,
+    platformBundleRequests,
     pathCardinality: proxyPathCounts.size,
     requestCounts: { ...proxyRequestCounts },
   };
+  if (
+    input.minCatalogRequests !== undefined &&
+    proxyRequestCounts.catalog < input.minCatalogRequests
+  ) {
+    throw new ProxyAssertionError("Too few catalog requests", {
+      expectedMinimum: input.minCatalogRequests,
+      observed,
+    });
+  }
   if (
     input.artifactFailuresRemaining !== undefined &&
     artifactFailuresRemaining !== input.artifactFailuresRemaining
@@ -4347,6 +4397,15 @@ export function handleAssertProxy(input: {
   ) {
     throw new ProxyAssertionError("Unexpected artifact request count", {
       expected: input.artifactRequests,
+      observed,
+    });
+  }
+  if (
+    input.platformBundleRequests !== undefined &&
+    platformBundleRequests !== input.platformBundleRequests
+  ) {
+    throw new ProxyAssertionError("Unexpected platform bundle request count", {
+      expected: input.platformBundleRequests,
       observed,
     });
   }
@@ -4593,6 +4652,23 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
 
   let response: Response;
   if (
+    corruptPlatformBundle &&
+    (target.kind === "file" || target.kind === "patch") &&
+    target.assetPath === getPrimaryBundleAssetPath()
+  ) {
+    // Whole, well-formed bytes of the wrong content: a patch that fails, or a
+    // file (encoded as stored) whose hash doesn't match the manifest.
+    const wrong = Buffer.from("corrupt e2e platform bundle\n");
+    response = new Response(
+      target.kind === "file" && target.compression === "br"
+        ? brotliCompressSync(wrong)
+        : wrong,
+      {
+        headers: { "content-type": "application/octet-stream" },
+        status: 200,
+      },
+    );
+  } else if (
     target.kind === "archive" &&
     (archiveFailureMode === "corrupt" || archiveFailureMode === "not-found") &&
     archiveFailuresRemaining > 0

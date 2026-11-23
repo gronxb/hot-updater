@@ -37,7 +37,8 @@ need to confirm that no rejected artifacts remain.
 
 The method is synchronous and does not make a network request.
 
-An artifact that caused a crash can be selected again after clearing history.
+An artifact that caused a crash, or whose download failed verification, can be
+selected again after clearing history.
 Use this for a controlled retry after investigating the failure; calling it at
 every startup removes the protection provided by the rejection history.
 

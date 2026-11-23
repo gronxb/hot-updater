@@ -26,6 +26,7 @@
   "stale-catalog-after-newer-generation",
   "slow-old-artifact-after-newer-install",
   "failed-download-same-generation-retry",
+  "failed-verification-not-redownloaded",
   "resumed-background-archive-download",
   "download-before-link-expiry",
   "republished-crashed-bundle-skipped",

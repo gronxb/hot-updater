@@ -71,6 +71,19 @@ sealed class SignatureVerificationException(
     ) : SignatureVerificationException(
             "Security framework error during verification: ${cause.message}",
         )
+
+    /**
+     * Whether this failure is the verified file's own: its hash or signature
+     * fails, or it carries none where one is required. A missing or invalid
+     * public key, a read failure, or a platform error says nothing about it.
+     */
+    val provesFileBad: Boolean
+        get() =
+            this is FileHashMismatch ||
+                this is MissingFileHash ||
+                this is InvalidSignatureFormat ||
+                this is SignatureVerificationFailed ||
+                this is UnsignedNotAllowed
 }
 
 /**

@@ -1,6 +1,6 @@
 ---
 title: "getCrashHistory"
-description: "Read the artifact IDs rejected after a crash and automatic rollback."
+description: "Read the artifact IDs this device refuses: after a crash and automatic rollback, or a failed verification."
 icon: AlertTriangle
 ---
 
@@ -34,6 +34,14 @@ clears that rejection history for a controlled retry.
 The list also holds an artifact whose launch ended before the first render,
 until a later session retries it once. See
 [automatic rollback](/docs/concepts/automatic-rollback#what-counts-as-a-failed-launch).
+
+It also holds up to 10 artifacts whose download failed verification in the
+last 24 hours: a file or manifest whose hash or signature fails, or that can't
+be decoded. The device doesn't download such an artifact again during those 24
+hours. After that, it can be selected again, since a proxy or a cut-off
+download can make good files fail. Network and HTTP errors are retried as
+usual. These artifacts never count as crashes, and installing another native
+build clears them.
 
 Native bundle loading starts crash detection. Configure
 [`init`](/docs/react-native-api/init) to observe the completed launch through
