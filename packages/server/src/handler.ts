@@ -119,7 +119,8 @@ const createRequestHandler =
         let authenticated: boolean;
         try {
           authenticated = await clientPolicy.authenticate(request);
-        } catch {
+        } catch (error) {
+          console.error("Hot Updater client authentication failed:", error);
           return errorResponse("Service unavailable", 503);
         }
         if (!authenticated) {
