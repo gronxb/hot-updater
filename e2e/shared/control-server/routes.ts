@@ -31,11 +31,13 @@ import {
   handleLaunchStartupHang,
   handleLaunchUninstrumentedApp,
   handleMismatchPatchBaseFileHash,
+  handleOpenAnotherApp,
   handlePrepareAppLaunch,
   handleProxyRemoteAssetRequest,
   handleProxyState,
   handleProxyUpdateRequest,
   handlePublishRemoteConfig,
+  handleReadAppProcessState,
   handleReleaseRemoteConfigLock,
   handleResetLocalAppState,
   handleResetRemoteBundles,
@@ -266,6 +268,7 @@ app.post("/e2e/proxy-control", async (c) => {
     catalogDelayMs?: number;
     catalogMode?: "freeze" | "live" | "replay";
     corruptPlatformBundle?: boolean;
+    downloadDurationMs?: number;
     holdArtifacts?: boolean;
     linkLifetimeMs?: number | null;
     manifestDelayMs?: number;
@@ -293,6 +296,7 @@ app.post("/e2e/proxy-control", async (c) => {
   for (const value of [
     payload.artifactDelayMs,
     payload.catalogDelayMs,
+    payload.downloadDurationMs,
     payload.manifestDelayMs,
   ]) {
     if (value !== undefined && (!Number.isFinite(value) || value < 0)) {
@@ -973,6 +977,14 @@ app.post("/e2e/reset-remote-bundles", async (c) => {
 
 app.post("/e2e/reset-local-app-state", async (c) => {
   return c.json(await handleResetLocalAppState());
+});
+
+app.post("/e2e/open-another-app", (c) => {
+  return c.json(handleOpenAnotherApp());
+});
+
+app.post("/e2e/app-process-state", (c) => {
+  return c.json(handleReadAppProcessState());
 });
 
 app.post("/e2e/capture-state", async (c) => {

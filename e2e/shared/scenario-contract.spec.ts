@@ -1906,11 +1906,13 @@ describe("E2E scenario contract", () => {
         })),
     );
 
+    // Only a wait that checks the update installs while the app stays in
+    // the background, which a relaunch would bring back.
     expect(
       scenarioSources
         .filter(({ source }) => source.includes("relaunchLimit: 0"))
         .map(({ entry }) => entry),
-    ).toEqual([]);
+    ).toEqual(["download-before-link-expiry.ts"]);
   });
 
   it("keeps install actions inline instead of routing through UI-start helpers", async () => {

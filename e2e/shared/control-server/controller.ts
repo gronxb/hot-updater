@@ -47,6 +47,7 @@ import {
   readWithRetries,
   waitSync,
 } from "./android-file-read.ts";
+import { parseAndroidProcessState } from "./android-process-state.ts";
 import {
   advanceAndroidRestartWait,
   hasNativeRestartEvidenceAfterMarker,
@@ -118,6 +119,7 @@ import {
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
 } from "./screen-state.ts";
+import { spreadDownloadBody } from "./spread-download.ts";
 import { terminateApp } from "./terminate-app.ts";
 import {
   shouldProbeUpdateCheckVisibility,
@@ -680,6 +682,11 @@ let replayCatalogGeneration: number | null = null;
 let catalogResponseDelayMs = 0;
 let artifactResponseDelayMs = 0;
 let manifestResponseDelayMs = 0;
+/**
+ * How long each file, patch, and archive download takes: the proxy spreads
+ * the body over this long, as a slow network does. Zero sends it at once.
+ */
+let downloadDurationMs = 0;
 /**
  * How long a link the proxy hands the app stays valid, as a presigned storage
  * URL does: a request that arrives later is answered 403 `ExpiredRequest`.
@@ -2905,6 +2912,7 @@ function readAndroidWaitForMetadataDiagnostics(instance: AppInstance = "main") {
       "wait-for-metadata-metadata.json",
       instance,
     ),
+    process: readAndroidAppProcessState(),
   };
 }
 
@@ -4163,6 +4171,7 @@ export function handleProxyState() {
     delays: {
       artifactMs: artifactResponseDelayMs,
       catalogMs: catalogResponseDelayMs,
+      downloadMs: downloadDurationMs,
       manifestMs: manifestResponseDelayMs,
     },
     expiredLinkRequests: [...expiredLinkRequests],
@@ -4201,6 +4210,7 @@ export function handleConfigureProxy(input: {
   catalogDelayMs?: number;
   catalogMode?: "freeze" | "live" | "replay";
   corruptPlatformBundle?: boolean;
+  downloadDurationMs?: number;
   holdArtifacts?: boolean;
   linkLifetimeMs?: number | null;
   manifestDelayMs?: number;
@@ -4210,6 +4220,7 @@ export function handleConfigureProxy(input: {
   if (input.reset) {
     expiredLinkRequests.length = 0;
     manifestResponseDelayMs = 0;
+    downloadDurationMs = 0;
     remoteLinkLifetimeMs = null;
     proxyRequestCounts.artifact = 0;
     proxyRequestCounts.catalog = 0;
@@ -4244,6 +4255,9 @@ export function handleConfigureProxy(input: {
   }
   if (input.manifestDelayMs !== undefined) {
     manifestResponseDelayMs = input.manifestDelayMs;
+  }
+  if (input.downloadDurationMs !== undefined) {
+    downloadDurationMs = input.downloadDurationMs;
   }
   if (input.linkLifetimeMs !== undefined) {
     remoteLinkLifetimeMs = input.linkLifetimeMs;
@@ -4978,7 +4992,14 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
   headersToApp.delete("content-encoding");
   headersToApp.delete("content-length");
 
-  const observedBody = response.body?.pipeThrough(
+  const body =
+    downloadDurationMs > 0 && target.kind !== "manifest" && response.ok
+      ? spreadDownloadBody(
+          new Uint8Array(await response.arrayBuffer()),
+          downloadDurationMs,
+        )
+      : response.body;
+  const observedBody = body?.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
         transfer.bytes += chunk.byteLength;
@@ -5841,6 +5862,62 @@ function getAndroidFocusedPackage() {
     { allowFailure: true },
   );
   return parseAndroidFocusedPackage(activityOutput);
+}
+
+/** The app's process as Android's activity manager sees it. */
+function readAndroidAppProcessState() {
+  return parseAndroidProcessState(
+    captureCommand(
+      "adb",
+      [
+        "-s",
+        deviceId as string,
+        "shell",
+        "dumpsys",
+        "activity",
+        "processes",
+        fixtureSession.appId,
+      ],
+      { allowFailure: true, maxBuffer: 8 * 1024 * 1024 },
+    ),
+  );
+}
+
+/**
+ * Opens the system settings over the app the scenario sent to the
+ * background. Android keeps the app the user left last out of its cache, so
+ * only once another app takes that place does the app become a cached
+ * process, which the cached apps freezer freezes.
+ */
+export function handleOpenAnotherApp() {
+  if (fixtureSession.platform !== "android") {
+    throw createEndpointError("Only Android opens another app", {
+      platform: fixtureSession.platform,
+    });
+  }
+  captureCommand("adb", [
+    "-s",
+    deviceId as string,
+    "shell",
+    "am",
+    "start",
+    "-W",
+    "-a",
+    "android.settings.SETTINGS",
+  ]);
+  return { process: readAndroidAppProcessState() };
+}
+
+/** The app's process state, for a scenario's log. */
+export function handleReadAppProcessState() {
+  if (fixtureSession.platform !== "android") {
+    throw createEndpointError("Only Android reports its process state", {
+      platform: fixtureSession.platform,
+    });
+  }
+  const process = readAndroidAppProcessState();
+  logE2eFixture("android app process", process);
+  return { process };
 }
 
 function getAndroidProcessId() {
