@@ -15,6 +15,7 @@ import { catalogOnlyNoUpdateScenario } from "./scenarios/catalog-only-no-update.
 import { crashThenNextSafeUpdateScenario } from "./scenarios/crash-then-next-safe-update.ts";
 import { disabledBundleRollbackToBuiltinScenario } from "./scenarios/disabled-bundle-rollback-to-builtin.ts";
 import { disabledBundleRollbackToPreviousOtaScenario } from "./scenarios/disabled-bundle-rollback-to-previous-ota.ts";
+import { downloadBeforeLinkExpiryScenario } from "./scenarios/download-before-link-expiry.ts";
 import { failedDownloadSameGenerationRetryScenario } from "./scenarios/failed-download-same-generation-retry.ts";
 import { fingerprintInitialInstallScenario } from "./scenarios/fingerprint-initial-install.ts";
 import { forceUpdateAutoReloadScenario } from "./scenarios/force-update-auto-reload.ts";
@@ -77,6 +78,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   slowOldArtifactAfterNewerInstallScenario,
   failedDownloadSameGenerationRetryScenario,
   resumedBackgroundArchiveDownloadScenario,
+  downloadBeforeLinkExpiryScenario,
   republishedCrashedBundleSkippedScenario,
   crashThenNextSafeUpdateScenario,
   postContentCrashNativeRecoveryScenario,
