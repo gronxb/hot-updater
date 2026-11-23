@@ -1,5 +1,14 @@
 # @hot-updater/cli-tools
 
+## 1.2.0-rc.57
+
+### Patch Changes
+
+- Updated dependencies [4f7650b]
+  - @hot-updater/server@1.2.0-rc.57
+  - @hot-updater/protocol@1.2.0-rc.57
+  - @hot-updater/plugin-core@1.2.0-rc.57
+
 ## 1.2.0-rc.56
 
 ### Patch Changes
