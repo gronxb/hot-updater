@@ -581,6 +581,120 @@ describe("E2E remote asset proxy URLs", () => {
     }
   });
 
+  it("refuses a link used after its lifetime and waits for the newest link to expire", async () => {
+    const resultsDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-link-lifetime-"),
+    );
+    const baseUrl = "https://provider.example.com/hot-updater";
+    const manifestPath = "/storage/bundles/manifest.json?token=manifest";
+    const assetPath = "/storage/assets/sha256/asset?token=asset";
+    vi.resetModules();
+    vi.stubEnv("HOT_UPDATER_E2E_APP_BASE_URL", baseUrl);
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.example");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "booted");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_POLL_INTERVAL_MS", "10");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", resultsDir);
+    vi.stubEnv("PORT", "3107");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = new URL(input instanceof Request ? input.url : input);
+        if (url.pathname.endsWith("/files")) {
+          return Response.json({
+            files: { "assets/example.bmp": { url: assetPath } },
+          });
+        }
+        if (url.pathname.startsWith("/hot-updater/artifacts/v2/")) {
+          return Response.json({
+            artifactProtocolVersion: 2,
+            manifestFileHash: "manifest-hash",
+            manifestUrl: manifestPath,
+          });
+        }
+        return new Response("bytes");
+      }),
+    );
+
+    try {
+      const controller = await import("./control-server/controller.ts");
+      const lifetimeMs = 300;
+      controller.handleConfigureProxy({
+        linkLifetimeMs: lifetimeMs,
+        manifestDelayMs: 50,
+        reset: true,
+      });
+      // The wait may start before the app asks for the artifact.
+      const waitJobId = controller.startWaitForLinkExpiryJob();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(controller.getJob(waitJobId)).toMatchObject({
+        status: "running",
+      });
+
+      const { manifestUrl } = (await (
+        await controller.handleProxyUpdateRequest(
+          new Request(
+            "http://localhost:3107/hot-updater/artifacts/v2/target/from/current",
+            { method: "POST" },
+          ),
+        )
+      ).json()) as { manifestUrl: string };
+      const manifestStartedAt = Date.now();
+      const manifest = await controller.handleProxyRemoteAssetRequest(
+        new Request(manifestUrl),
+      );
+      expect(manifest.status).toBe(200);
+      expect(Date.now() - manifestStartedAt).toBeGreaterThanOrEqual(50);
+      // The files route mints its link after the manifest, while the wait
+      // runs, so the wait ends only once that newer link expires too.
+      const { files } = (await (
+        await controller.handleProxyUpdateRequest(
+          new Request(
+            "http://localhost:3107/hot-updater/artifacts/v2/target/files",
+            { method: "POST", body: JSON.stringify({ paths: [] }) },
+          ),
+        )
+      ).json()) as { files: Record<string, { url: string }> };
+      const fileUrl = files["assets/example.bmp"]!.url;
+      const fileMintedAt = Date.now();
+      await vi.waitFor(
+        () => {
+          expect(controller.getJob(waitJobId)).toMatchObject({
+            status: "succeeded",
+          });
+        },
+        { timeout: 5_000 },
+      );
+      expect(Date.now() - fileMintedAt).toBeGreaterThanOrEqual(lifetimeMs);
+
+      const expired = await controller.handleProxyRemoteAssetRequest(
+        new Request(fileUrl),
+      );
+      expect(expired.status).toBe(403);
+      expect(await expired.text()).toContain("<Code>ExpiredRequest</Code>");
+      expect(controller.handleProxyState()).toMatchObject({
+        expiredLinkRequests: [
+          { assetPath: "assets/example.bmp", kind: "file" },
+        ],
+        linkLifetimeMs: lifetimeMs,
+      });
+
+      controller.handleConfigureProxy({ reset: true });
+      expect(
+        (await controller.handleProxyRemoteAssetRequest(new Request(fileUrl)))
+          .status,
+      ).toBe(200);
+      expect(controller.handleProxyState()).toMatchObject({
+        expiredLinkRequests: [],
+        linkLifetimeMs: null,
+      });
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
+  });
+
   it("serves a prefetched artifact, manifest, and interrupted archive without upstream requests", async () => {
     const resultsDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-prefetch-proxy-url-"),

@@ -15,6 +15,7 @@ import { catalogOnlyNoUpdateScenario } from "./scenarios/catalog-only-no-update.
 import { crashThenNextSafeUpdateScenario } from "./scenarios/crash-then-next-safe-update.ts";
 import { disabledBundleRollbackToBuiltinScenario } from "./scenarios/disabled-bundle-rollback-to-builtin.ts";
 import { disabledBundleRollbackToPreviousOtaScenario } from "./scenarios/disabled-bundle-rollback-to-previous-ota.ts";
+import { downloadBeforeLinkExpiryScenario } from "./scenarios/download-before-link-expiry.ts";
 import { failedDownloadSameGenerationRetryScenario } from "./scenarios/failed-download-same-generation-retry.ts";
 import { failedVerificationNotRedownloadedScenario } from "./scenarios/failed-verification-not-redownloaded.ts";
 import { fingerprintInitialInstallScenario } from "./scenarios/fingerprint-initial-install.ts";
@@ -89,6 +90,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   failedDownloadSameGenerationRetryScenario,
   failedVerificationNotRedownloadedScenario,
   resumedBackgroundArchiveDownloadScenario,
+  downloadBeforeLinkExpiryScenario,
   republishedCrashedBundleSkippedScenario,
   crashThenNextSafeUpdateScenario,
   postContentCrashNativeRecoveryScenario,

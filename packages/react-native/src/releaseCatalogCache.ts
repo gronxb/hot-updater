@@ -6,7 +6,11 @@ import {
   type ReleaseCatalog,
 } from "@hot-updater/protocol";
 
-import { fetchUpdateResponse, type UpdateRequest } from "./fetchUpdateResponse";
+import {
+  fetchUpdateResponse,
+  type UpdateRequest,
+  type UpdateResponse,
+} from "./fetchUpdateResponse";
 import { InvalidUpdateResponseError, UpdateHttpError } from "./updateError";
 
 const CACHE_FORMAT_VERSION = "1";
@@ -115,7 +119,7 @@ export const createReleaseCatalogCachePartition = (
     version: 2,
   });
 
-const isEmptyCatalogResponse = (response: Response) =>
+const isEmptyCatalogResponse = (response: UpdateResponse) =>
   response.status === 404 &&
   response.headers.get("x-hot-updater-catalog")?.trim().toLowerCase() ===
     "none";
