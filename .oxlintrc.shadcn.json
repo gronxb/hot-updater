@@ -13,7 +13,8 @@
         "packages/console/src/components/TargetDisplay.tsx",
         "packages/console/src/components/features/insights/**/*.tsx",
         "packages/console/src/components/features/native-builds/**/*.tsx",
-        "packages/console/src/components/features/remote-config/**/*.tsx"
+        "packages/console/src/components/features/remote-config/**/*.tsx",
+        "packages/console/src/routes/index.tsx"
       ],
       "rules": {
         "shadcn/no-raw-colors": "error",

@@ -521,7 +521,9 @@ export function InsightsOverview({
                               />
                             </svg>
                             <div className="flex min-w-0 flex-col">
-                              <span className="flex min-w-0 items-center gap-2">
+                              {/* A label and its ID tail don't shrink, so on a
+                                  phone "Disabled" moves under them instead of over. */}
+                              <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                                 <BundleIdDisplay
                                   bundleId={release.releaseId}
                                   className="min-w-0"

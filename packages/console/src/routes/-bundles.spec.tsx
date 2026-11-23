@@ -383,6 +383,38 @@ describe("BundlesPage", () => {
     expect(mocks.navigate).not.toHaveBeenCalled();
   });
 
+  it("moves a labeled Bundle's badges under its name when the row has no room beside it", () => {
+    releases = [
+      {
+        ...release,
+        currentlyUnreachable: true,
+        label: 4,
+        operation: "PROMOTE",
+      },
+    ];
+
+    render(<BundlesPage />);
+    const row = screen.getByRole("row", {
+      name: "Open bundle release-1",
+    });
+    const open = within(row).getByRole("button", {
+      name: "Open details for ID release-1",
+    });
+    const promoted = within(row).getByText("Promoted");
+    const unreachable = within(row).getByRole("button", {
+      name: /^Unreachable/,
+    });
+
+    // The label and its ID tail don't shrink, so on a phone card the badges
+    // have to wrap under them, or they are drawn over the tail.
+    expect(promoted.parentElement).toBe(open.parentElement);
+    expect(unreachable.parentElement).toBe(open.parentElement);
+    expect(open.parentElement!.className).toContain("flex-wrap");
+    // Stacked under the ID, the reason's touch area stays out of it.
+    expect(unreachable.className).toContain("after:-top-2");
+    expect(unreachable.className).toContain("after:-bottom-5");
+  });
+
   it("expands the base-to-patch relationship from the Bundle row", () => {
     render(<BundlesPage />);
     const row = screen.getByRole("row", {

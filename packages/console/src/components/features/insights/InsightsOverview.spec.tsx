@@ -201,6 +201,22 @@ describe("Release health", () => {
     ).toBeNull();
   });
 
+  it("moves Disabled under a labeled bundle's name when the row has no room beside it", () => {
+    const disabled = { ...previous, label: 6, enabled: false, live: false };
+    renderCard({
+      health: {
+        releases: [bundles[0]!, { ...bundles[1]!, release: disabled }],
+      },
+    });
+    const table = screen.getByRole("table", { name: "Compared bundles" });
+    const badge = within(table).getByText("Disabled");
+    const name = within(table).getByTitle(disabled.releaseId);
+    // The label and its ID tail don't shrink: in a phone's narrow column the
+    // badge has to wrap under them, or it is drawn over the tail.
+    expect(badge.parentElement).toBe(name.parentElement);
+    expect(badge.parentElement!.className).toContain("flex-wrap");
+  });
+
   it("charts a bundle downloaded but not launched yet, and waits for both counts", () => {
     const waiting = [
       {
