@@ -43,6 +43,7 @@ const expectedScenarioModuleFiles = [
   "crash-then-next-safe-update.ts",
   "disabled-bundle-rollback-to-builtin.ts",
   "disabled-bundle-rollback-to-previous-ota.ts",
+  "download-before-link-expiry.ts",
   "failed-download-same-generation-retry.ts",
   "failed-verification-not-redownloaded.ts",
   "fingerprint-initial-install.ts",

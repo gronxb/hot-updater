@@ -602,6 +602,8 @@ type RemoteAssetProxyTarget = {
   /** How the file is stored, as the update response names it, such as `br`. */
   readonly compression?: string;
   readonly kind: RemoteAssetKind;
+  /** When the proxy handed the app this link, as storage signs one. */
+  readonly mintedAt: number;
   readonly url: string;
 };
 const remoteAssetProxyTargets = new Map<string, RemoteAssetProxyTarget>();
@@ -677,6 +679,20 @@ let updateServerUnreachable = false;
 let replayCatalogGeneration: number | null = null;
 let catalogResponseDelayMs = 0;
 let artifactResponseDelayMs = 0;
+let manifestResponseDelayMs = 0;
+/**
+ * How long a link the proxy hands the app stays valid, as a presigned storage
+ * URL does: a request that arrives later is answered 403 `ExpiredRequest`.
+ * Null keeps every link valid.
+ */
+let remoteLinkLifetimeMs: number | null = null;
+type ExpiredLinkRequest = {
+  readonly ageMs: number;
+  readonly assetPath: string | null;
+  readonly kind: RemoteAssetKind;
+};
+const expiredLinkRequests: ExpiredLinkRequest[] = [];
+let linkLifetimeSetAt = 0;
 // A hold keeps artifact responses back until a scenario releases it, so it
 // can order a download after a launch; the limit keeps a forgotten hold from
 // hanging the run.
@@ -3570,16 +3586,20 @@ export function handleRuntimeConfig() {
 
 function toAppReachableProxyUrl(
   url: string,
-  metadata: Omit<RemoteAssetProxyTarget, "url">,
+  metadata: Omit<RemoteAssetProxyTarget, "mintedAt" | "url">,
 ) {
   const targetId = randomUUID();
-  remoteAssetProxyTargets.set(targetId, { ...metadata, url });
+  remoteAssetProxyTargets.set(targetId, {
+    ...metadata,
+    mintedAt: Date.now(),
+    url,
+  });
   return `${getAppReachableControlBaseUrl()}/e2e/proxy-url/${targetId}`;
 }
 
 function rewriteRemoteAssetUrl(
   value: unknown,
-  metadata: Omit<RemoteAssetProxyTarget, "url">,
+  metadata: Omit<RemoteAssetProxyTarget, "mintedAt" | "url">,
 ): unknown {
   if (typeof value !== "string") {
     return value;
@@ -4142,7 +4162,10 @@ export function handleProxyState() {
     delays: {
       artifactMs: artifactResponseDelayMs,
       catalogMs: catalogResponseDelayMs,
+      manifestMs: manifestResponseDelayMs,
     },
+    expiredLinkRequests: [...expiredLinkRequests],
+    linkLifetimeMs: remoteLinkLifetimeMs,
     pathCardinality: proxyPathCounts.size,
     pathCounts: Object.fromEntries(proxyPathCounts),
     prefetched: {
@@ -4178,10 +4201,15 @@ export function handleConfigureProxy(input: {
   catalogMode?: "freeze" | "live" | "replay";
   corruptPlatformBundle?: boolean;
   holdArtifacts?: boolean;
+  linkLifetimeMs?: number | null;
+  manifestDelayMs?: number;
   replayGeneration?: number | null;
   reset?: boolean;
 }) {
   if (input.reset) {
+    expiredLinkRequests.length = 0;
+    manifestResponseDelayMs = 0;
+    remoteLinkLifetimeMs = null;
     proxyRequestCounts.artifact = 0;
     proxyRequestCounts.catalog = 0;
     proxyRequestCounts.files = 0;
@@ -4212,6 +4240,13 @@ export function handleConfigureProxy(input: {
   }
   if (input.artifactDelayMs !== undefined) {
     artifactResponseDelayMs = input.artifactDelayMs;
+  }
+  if (input.manifestDelayMs !== undefined) {
+    manifestResponseDelayMs = input.manifestDelayMs;
+  }
+  if (input.linkLifetimeMs !== undefined) {
+    remoteLinkLifetimeMs = input.linkLifetimeMs;
+    linkLifetimeSetAt = Date.now();
   }
   if (input.reset || input.holdArtifacts !== undefined) {
     setArtifactHold(input.holdArtifacts === true);
@@ -4801,6 +4836,28 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
   };
   transfer.requests += 1;
   remoteAssetTransfers.set(requestUrl.pathname, transfer);
+  const linkAgeMs = Date.now() - target.mintedAt;
+  if (remoteLinkLifetimeMs !== null && linkAgeMs > remoteLinkLifetimeMs) {
+    // Storage checks a presigned URL's expiry when the request arrives.
+    expiredLinkRequests.push({
+      ageMs: linkAgeMs,
+      assetPath: target.assetPath ?? null,
+      kind: target.kind,
+    });
+    logE2eFixture("refused expired remote asset link", {
+      ageMs: linkAgeMs,
+      kind: target.kind,
+      lifetimeMs: remoteLinkLifetimeMs,
+      source: requestUrl.pathname,
+    });
+    return new Response(
+      '<?xml version="1.0" encoding="UTF-8"?><Error><Code>ExpiredRequest</Code><Message>Request has expired</Message></Error>',
+      { headers: { "content-type": "application/xml" }, status: 403 },
+    );
+  }
+  if (target.kind === "manifest" && manifestResponseDelayMs > 0) {
+    await sleep(manifestResponseDelayMs);
+  }
   if (artifactFailuresRemaining > 0) {
     artifactFailuresRemaining -= 1;
     return new Response("Injected E2E artifact download failure", {
@@ -8700,6 +8757,40 @@ async function waitForArchiveResume(signal?: AbortSignal) {
 
 export function startWaitForArchiveResumeJob() {
   return createJob((context) => waitForArchiveResume(context.signal));
+}
+
+/**
+ * Waits until every link the proxy handed out since the link lifetime was set
+ * has outlived it, so any later request with one of them is refused as
+ * expired. A link minted while waiting moves the end.
+ */
+async function waitForLinkExpiry(signal?: AbortSignal) {
+  const lifetimeMs = remoteLinkLifetimeMs;
+  if (lifetimeMs === null) {
+    throw createEndpointError("No link lifetime is set on the proxy", {});
+  }
+  const lastMintedAt = () =>
+    Math.max(
+      0,
+      ...[...remoteAssetProxyTargets.values()]
+        .map((target) => target.mintedAt)
+        .filter((mintedAt) => mintedAt >= linkLifetimeSetAt),
+    );
+  if (lastMintedAt() === 0) {
+    throw createEndpointError("The proxy handed out no link", {});
+  }
+  while (Date.now() <= lastMintedAt() + lifetimeMs) {
+    throwIfAborted(signal);
+    await sleep(E2E_POLL_INTERVAL_MS, undefined, { signal });
+  }
+  return {
+    expiredLinkRequests: [...expiredLinkRequests],
+    lifetimeMs,
+  };
+}
+
+export function startWaitForLinkExpiryJob() {
+  return createJob((context) => waitForLinkExpiry(context.signal));
 }
 
 export function startWaitForAndroidRestartJob(

@@ -374,6 +374,31 @@ public extension BundleStorageService {
     func resetChannelIfSelectionCurrent(catalogId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Result<Bool, Error> { .success(false) }
 }
 
+/// Whether an update may still start downloads. Once its background time ran
+/// out, it starts none.
+final class UpdateDownloads {
+    // Recursive: a download that completes at once may stop the downloads
+    // from its completion.
+    private let lock = NSRecursiveLock()
+    private var stopped = false
+
+    /// Runs `startDownload` unless stopped, and tells whether it ran. A stop
+    /// waits for a download being started, so it can cancel that one too.
+    func start(_ startDownload: () -> Void) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !stopped else { return false }
+        startDownload()
+        return true
+    }
+
+    func stop() {
+        lock.lock()
+        stopped = true
+        lock.unlock()
+    }
+}
+
 class BundleFileStorageService: BundleStorageService {
     private static let maximumSafeByteSize: Int64 = 9_007_199_254_740_991
     private static let nilUUID = "00000000-0000-0000-0000-000000000000"
@@ -411,6 +436,11 @@ class BundleFileStorageService: BundleStorageService {
 
     private let fileSystem: FileSystemService
     private let downloadService: DownloadService
+    private let backgroundExecution: BackgroundExecution
+    /// The downloads of the update that runs, one at a time on
+    /// `fileOperationQueue`.
+    private let runningUpdateLock = NSLock()
+    private var runningUpdateDownloads: UpdateDownloads?
     /// The wait before a download's second attempt; it doubles for each later one.
     private let downloadRetryDelay: TimeInterval
     private let preferences: PreferencesService
@@ -931,8 +961,10 @@ class BundleFileStorageService: BundleStorageService {
                 metadataWriter: @escaping (BundleMetadata, URL) -> Bool = { metadata, file in
                     metadata.save(to: file)
                 },
-                now: @escaping () -> Date = Date.init) {
+                now: @escaping () -> Date = Date.init,
+                backgroundExecution: BackgroundExecution = SystemBackgroundExecution()) {
         self.now = now
+        self.backgroundExecution = backgroundExecution
 
         self.fileSystem = fileSystem
         self.downloadRetryDelay = downloadRetryDelay
@@ -1911,18 +1943,33 @@ class BundleFileStorageService: BundleStorageService {
         let semaphore = DispatchSemaphore(value: 0)
         var finalResult: Result<URL, Error> = .failure(BundleStorageError.unknown(nil))
 
-        _ = downloadService.downloadFile(
-            from: url,
-            to: destination,
-            fileSizeHandler: nil,
-            progressHandler: progressHandler
-        ) { result in
-            finalResult = result
-            semaphore.signal()
+        runningUpdateLock.lock()
+        let downloads = runningUpdateDownloads
+        runningUpdateLock.unlock()
+        let started = (downloads ?? UpdateDownloads()).start {
+            _ = downloadService.downloadFile(
+                from: url,
+                to: destination,
+                fileSizeHandler: nil,
+                progressHandler: progressHandler
+            ) { result in
+                finalResult = result
+                semaphore.signal()
+            }
+        }
+        guard started else {
+            NSLog("[BundleStorage] Not downloading \(url.lastPathComponent): the update's background time ran out")
+            return .failure(URLError(.cancelled))
         }
 
         semaphore.wait()
         return finalResult
+    }
+
+    private func setRunningUpdateDownloads(_ downloads: UpdateDownloads?) {
+        runningUpdateLock.lock()
+        runningUpdateDownloads = downloads
+        runningUpdateLock.unlock()
     }
     
     // MARK: - Bundle File Operations
@@ -2397,7 +2444,24 @@ class BundleFileStorageService: BundleStorageService {
      * @param completion Callback with result of the operation
      */
     func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL? = nil, assets: [String: ChangedAssetDescriptor], fileResolver: ArtifactFileResolver? = nil, selection: PersistedSelection? = nil, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<UpdateDelivery, Error>) -> Void) {
+        // The app keeps running while the update downloads, so its requests go
+        // out while the links the server just signed are valid. When the
+        // system suspends the app anyway, the update fails now: a request it
+        // sent once the app runs again could carry an expired link.
+        let downloads = UpdateDownloads()
+        let backgroundTime = backgroundExecution.begin(name: "HotUpdater update") { [weak self] in
+            NSLog("[BundleStorage] Background time ran out; stopping the downloads of \(bundleId)")
+            downloads.stop()
+            guard let self else { return }
+            self.runningUpdateLock.lock()
+            let isRunning = self.runningUpdateDownloads === downloads
+            self.runningUpdateLock.unlock()
+            if isRunning {
+                self.downloadService.cancelInProcessTransfers()
+            }
+        }
         let completion: (Result<UpdateDelivery, Error>) -> Void = { result in
+            defer { backgroundTime.end() }
             if case .failure(let error) = result,
                (error as? UpdateFailureError)?.rejectsArtifact == true {
                 self.recordRejectedBundle(bundleId)
@@ -2406,6 +2470,8 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         fileOperationQueue.async(flags: .barrier) {
+            self.setRunningUpdateDownloads(downloads)
+            defer { self.setRunningUpdateDownloads(nil) }
             // Checked in turn: an install queued behind one that refused this
             // bundle's files sees that refusal.
             if self.getCrashHistory().contains(bundleId) {

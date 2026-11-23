@@ -1,6 +1,6 @@
 # End-to-end tests
 
-Run the same 42 OTA, Remote Config, Console Insights, and bundle signing scenarios locally and in the E2E bot
+Run the same 43 OTA, Remote Config, Console Insights, and bundle signing scenarios locally and in the E2E bot
 with `pnpm -w e2e`. Local mode prepares the example app, a PGlite provider and
 real S3-compatible storage. It requires no provider account, private bot setup,
 or model credentials: the scenarios are deterministic `e2e` tests, described in
@@ -121,6 +121,21 @@ secret, and the installed update proves the key read from the secret is the
 one the app embeds. The control server fails either deploy unless its bundle
 carries a signature, and restores the config and the key file when the
 deploy ends.
+
+## Download links that expire
+
+`download-before-link-expiry` checks that an update requests each storage link
+while it is valid, the way a presigned URL expects, when the user leaves the
+app as the update starts. `/e2e/proxy-control` with `linkLifetimeMs` makes the
+proxy answer 403 `ExpiredRequest`, with an S3 error body, to any storage
+request that arrives later than that after the proxy handed the app the link.
+`manifestDelayMs` holds the manifest response long enough for iOS to suspend
+the app first, so the update's next download starts while the app is in the
+background. `/e2e/jobs/wait-for-link-expiry` keeps the app in the background
+until every link handed out since the lifetime was set has expired, including
+links minted during the wait. The update installs only if every request went
+out in time. A transfer iOS holds until the app returns to the foreground gets
+403, and the app reports the failed download.
 
 ## Targets
 

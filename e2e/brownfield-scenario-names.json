@@ -25,6 +25,7 @@
   "failed-download-same-generation-retry",
   "failed-verification-not-redownloaded",
   "resumed-background-archive-download",
+  "download-before-link-expiry",
   "republished-crashed-bundle-skipped",
   "crash-then-next-safe-update",
   "runtime-channel-crash-restore",

@@ -65,6 +65,7 @@ import {
   startWaitForAndroidRestartJob,
   startSetNativeCheckJob,
   startWaitForArchiveResumeJob,
+  startWaitForLinkExpiryJob,
   startWaitForMetadataJob,
   startWaitForNativeCheckJob,
 } from "./controller.ts";
@@ -266,6 +267,8 @@ app.post("/e2e/proxy-control", async (c) => {
     catalogMode?: "freeze" | "live" | "replay";
     corruptPlatformBundle?: boolean;
     holdArtifacts?: boolean;
+    linkLifetimeMs?: number | null;
+    manifestDelayMs?: number;
     replayGeneration?: number | null;
     reset?: boolean;
   };
@@ -287,10 +290,25 @@ app.post("/e2e/proxy-control", async (c) => {
   ) {
     return c.json({ error: "archiveAvailable must be a boolean" }, 400);
   }
-  for (const value of [payload.artifactDelayMs, payload.catalogDelayMs]) {
+  for (const value of [
+    payload.artifactDelayMs,
+    payload.catalogDelayMs,
+    payload.manifestDelayMs,
+  ]) {
     if (value !== undefined && (!Number.isFinite(value) || value < 0)) {
       return c.json({ error: "proxy delays must be non-negative" }, 400);
     }
+  }
+  if (
+    payload.linkLifetimeMs !== undefined &&
+    payload.linkLifetimeMs !== null &&
+    (!Number.isSafeInteger(payload.linkLifetimeMs) ||
+      payload.linkLifetimeMs <= 0)
+  ) {
+    return c.json(
+      { error: "linkLifetimeMs must be a positive integer or null" },
+      400,
+    );
   }
   if (
     payload.artifactFailures !== undefined &&
@@ -786,6 +804,10 @@ app.post("/e2e/jobs/prefetch-update-artifact", async (c) => {
 
 app.post("/e2e/jobs/wait-for-archive-resume", (c) => {
   return c.json({ jobId: startWaitForArchiveResumeJob() });
+});
+
+app.post("/e2e/jobs/wait-for-link-expiry", (c) => {
+  return c.json({ jobId: startWaitForLinkExpiryJob() });
 });
 
 app.post("/e2e/jobs/wait-for-metadata", async (c) => {
