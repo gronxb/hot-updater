@@ -212,6 +212,12 @@ class HotUpdaterException(
     message: String,
     cause: Throwable? = null,
     val failure: UpdateFailure? = null,
+    /**
+     * Whether the failure proves the bundle's files bad: bytes that arrived
+     * whole failed their hash or signature, or could not be decoded. Such a
+     * bundle fails the same way on every attempt, so it is not downloaded again.
+     */
+    val rejectsArtifact: Boolean = false,
 ) : Exception(message, cause) {
     /**
      * This failure with [resource] as what was being fetched or applied,
@@ -222,10 +228,20 @@ class HotUpdaterException(
         if (resource == null || failure == null || failure.resource != null) {
             return this
         }
-        return HotUpdaterException(code, message.orEmpty(), cause, failure.copy(resource = resource)).also {
+        return HotUpdaterException(code, message.orEmpty(), cause, failure.copy(resource = resource), rejectsArtifact).also {
             it.stackTrace = stackTrace
         }
     }
+
+    /** This failure, marked as proving the bundle's files bad. */
+    fun rejectingArtifact(): HotUpdaterException =
+        if (rejectsArtifact) {
+            this
+        } else {
+            HotUpdaterException(code, message.orEmpty(), cause, failure, rejectsArtifact = true).also {
+                it.stackTrace = stackTrace
+            }
+        }
 
     companion object {
         private val invalidResponse = UpdateFailure.download(UpdateFailureReason.INVALID_RESPONSE)
@@ -317,11 +333,21 @@ class HotUpdaterException(
                 failure = storageFailure,
             )
 
-        fun bundleInCrashedHistory(bundleId: String) =
-            HotUpdaterException(
-                "BUNDLE_IN_CRASHED_HISTORY",
-                "Bundle '$bundleId' is in crashed history and cannot be applied",
-            )
+        /**
+         * [rejected] names a bundle whose files failed verification on this
+         * device rather than one that crashed; both keep this code.
+         */
+        fun bundleInCrashedHistory(
+            bundleId: String,
+            rejected: Boolean = false,
+        ) = HotUpdaterException(
+            "BUNDLE_IN_CRASHED_HISTORY",
+            if (rejected) {
+                "Bundle '$bundleId' failed verification on this device and cannot be applied"
+            } else {
+                "Bundle '$bundleId' is in crashed history and cannot be applied"
+            },
+        )
 
         // Signature verification errors
         fun publicKeyNotConfigured() =

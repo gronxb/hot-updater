@@ -17,6 +17,7 @@ import { disabledBundleRollbackToBuiltinScenario } from "./scenarios/disabled-bu
 import { disabledBundleRollbackToPreviousOtaScenario } from "./scenarios/disabled-bundle-rollback-to-previous-ota.ts";
 import { downloadBeforeLinkExpiryScenario } from "./scenarios/download-before-link-expiry.ts";
 import { failedDownloadSameGenerationRetryScenario } from "./scenarios/failed-download-same-generation-retry.ts";
+import { failedVerificationNotRedownloadedScenario } from "./scenarios/failed-verification-not-redownloaded.ts";
 import { fingerprintInitialInstallScenario } from "./scenarios/fingerprint-initial-install.ts";
 import { forceUpdateAutoReloadScenario } from "./scenarios/force-update-auto-reload.ts";
 import { headlessLaunchKeepsStagedBundleScenario } from "./scenarios/headless-launch-keeps-staged-bundle.ts";
@@ -77,6 +78,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   staleCatalogAfterNewerGenerationScenario,
   slowOldArtifactAfterNewerInstallScenario,
   failedDownloadSameGenerationRetryScenario,
+  failedVerificationNotRedownloadedScenario,
   resumedBackgroundArchiveDownloadScenario,
   downloadBeforeLinkExpiryScenario,
   republishedCrashedBundleSkippedScenario,

@@ -3,6 +3,10 @@ import Foundation
 
 enum BrotliFileDecompressor {
     private static let bufferSize = 64 * 1024
+    static let errorDomain = "BrotliFileDecompressor"
+    /// The codes of failures the compressed input causes: a truncated,
+    /// malformed, stalled, oversized, or trailing stream.
+    static let inputErrorCodes: Set<Int> = [3, 4, 5, 6, 7]
 
     static func decompress(
         from sourcePath: String,
@@ -159,7 +163,7 @@ enum BrotliFileDecompressor {
 
     private static func error(_ code: Int, _ message: String) -> NSError {
         NSError(
-            domain: "BrotliFileDecompressor",
+            domain: errorDomain,
             code: code,
             userInfo: [NSLocalizedDescriptionKey: message]
         )
