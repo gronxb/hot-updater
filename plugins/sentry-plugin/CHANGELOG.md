@@ -1,5 +1,13 @@
 # @hot-updater/sentry-plugin
 
+## 1.1.20
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.1.20
+  - @hot-updater/protocol@1.1.20
+  - @hot-updater/plugin-core@1.1.20
+
 ## 1.1.19
 
 ### Patch Changes
