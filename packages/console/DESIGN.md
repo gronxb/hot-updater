@@ -34,7 +34,9 @@ stays subordinate to exact values and actions.
   the label in medium `text-sm`, then its ID in muted monospace `text-xs`,
   clipped from the left to the last 12 characters. The whole ID stays in the
   text, so hover, screen readers, and a copy get all of it. A release without
-  a label shows its full ID.
+  a label shows its full ID. The label and tail don't shrink, so a badge
+  beside them (Promoted, Unreachable, Disabled) shares a `flex-wrap` row with
+  them and moves under them on a narrow screen rather than over the tail.
 - Page headings use `text-base` or `text-lg` with semibold weight. Operational
   card titles use `text-sm` with medium or semibold weight.
 - Body and control text use `text-sm`; dense metadata and table content use
