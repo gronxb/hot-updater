@@ -1,5 +1,16 @@
 # @hot-updater/server
 
+## 1.2.0-rc.57
+
+### Patch Changes
+
+- 4f7650b: A client request that answers 503 because the API key check threw now logs the error, so a Worker or function log shows why.
+- @hot-updater/protocol@1.2.0-rc.57
+  - @hot-updater/plugin-api-keys@1.2.0-rc.57
+  - @hot-updater/plugin-insights@1.2.0-rc.57
+  - @hot-updater/plugin-core@1.2.0-rc.57
+  - @hot-updater/plugin-remote-config@1.2.0-rc.57
+
 ## 1.2.0-rc.56
 
 ### Patch Changes
