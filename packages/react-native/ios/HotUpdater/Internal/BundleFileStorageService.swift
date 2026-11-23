@@ -358,6 +358,25 @@ public extension BundleStorageService {
     func commitReleaseSelection(_: PersistedSelection) -> Bool { false }
 }
 
+/// Whether an update may still start downloads. Once its background time ran
+/// out, it starts none.
+final class UpdateDownloads {
+    private let lock = NSLock()
+    private var stopped = false
+
+    var isStopped: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return stopped
+    }
+
+    func stop() {
+        lock.lock()
+        stopped = true
+        lock.unlock()
+    }
+}
+
 class BundleFileStorageService: BundleStorageService {
     private static let maximumSafeByteSize: Int64 = 9_007_199_254_740_991
     /// Files downloaded at once when the archive is not used.
@@ -394,6 +413,11 @@ class BundleFileStorageService: BundleStorageService {
 
     private let fileSystem: FileSystemService
     private let downloadService: DownloadService
+    private let backgroundExecution: BackgroundExecution
+    /// The downloads of the update that runs, one at a time on
+    /// `fileOperationQueue`.
+    private let runningUpdateLock = NSLock()
+    private var runningUpdateDownloads: UpdateDownloads?
     /// The wait before a download's second attempt; it doubles for each later one.
     private let downloadRetryDelay: TimeInterval
     private let preferences: PreferencesService
@@ -791,7 +815,9 @@ class BundleFileStorageService: BundleStorageService {
                 downloadRetryDelay: TimeInterval = 1,
                 metadataWriter: @escaping (BundleMetadata, URL) -> Bool = { metadata, file in
                     metadata.save(to: file)
-                }) {
+                },
+                backgroundExecution: BackgroundExecution = SystemBackgroundExecution()) {
+        self.backgroundExecution = backgroundExecution
 
         self.fileSystem = fileSystem
         self.downloadRetryDelay = downloadRetryDelay
@@ -1755,6 +1781,14 @@ class BundleFileStorageService: BundleStorageService {
         let semaphore = DispatchSemaphore(value: 0)
         var finalResult: Result<URL, Error> = .failure(BundleStorageError.unknown(nil))
 
+        runningUpdateLock.lock()
+        let downloads = runningUpdateDownloads
+        runningUpdateLock.unlock()
+        if downloads?.isStopped == true {
+            NSLog("[BundleStorage] Not downloading \(url.lastPathComponent): the update's background time ran out")
+            return .failure(URLError(.cancelled))
+        }
+
         _ = downloadService.downloadFile(
             from: url,
             to: destination,
@@ -1764,9 +1798,20 @@ class BundleFileStorageService: BundleStorageService {
             finalResult = result
             semaphore.signal()
         }
+        // The background time ran out while this download started, after
+        // the stop cancelled the ones running.
+        if downloads?.isStopped == true {
+            downloadService.cancelInProcessTransfers()
+        }
 
         semaphore.wait()
         return finalResult
+    }
+
+    private func setRunningUpdateDownloads(_ downloads: UpdateDownloads?) {
+        runningUpdateLock.lock()
+        runningUpdateDownloads = downloads
+        runningUpdateLock.unlock()
     }
     
     // MARK: - Bundle File Operations
@@ -2193,6 +2238,27 @@ class BundleFileStorageService: BundleStorageService {
      * @param completion Callback with result of the operation
      */
     func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL? = nil, assets: [String: ChangedAssetDescriptor], fileResolver: ArtifactFileResolver? = nil, selection: PersistedSelection? = nil, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<UpdateDelivery, Error>) -> Void) {
+        // The app keeps running while the update downloads, so its requests go
+        // out while the links the server just signed are valid. When the
+        // system suspends the app anyway, the update fails now: a request it
+        // sent once the app runs again could carry an expired link.
+        let downloads = UpdateDownloads()
+        let backgroundTime = backgroundExecution.begin(name: "HotUpdater update") { [weak self] in
+            NSLog("[BundleStorage] Background time ran out; stopping the downloads of \(bundleId)")
+            downloads.stop()
+            guard let self else { return }
+            self.runningUpdateLock.lock()
+            let isRunning = self.runningUpdateDownloads === downloads
+            self.runningUpdateLock.unlock()
+            if isRunning {
+                self.downloadService.cancelInProcessTransfers()
+            }
+        }
+        let completion: (Result<UpdateDelivery, Error>) -> Void = { result in
+            defer { backgroundTime.end() }
+            completion(result)
+        }
+
         // Check if bundle is in crashed history
         if getCrashHistory().contains(bundleId) {
             NSLog("[BundleStorage] Bundle '\(bundleId)' is in crashed history, rejecting update")
@@ -2201,6 +2267,8 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         fileOperationQueue.async(flags: .barrier) {
+            self.setRunningUpdateDownloads(downloads)
+            defer { self.setRunningUpdateDownloads(nil) }
             let storeDirResult = self.bundleStoreDir()
             guard case .success(let storeDir) = storeDirResult else {
                 completion(.failure(UpdateFailureError.classifying(

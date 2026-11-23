@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// These requests go through fetch, which the spec stubs.
+vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
+
 const store = vi.hoisted(() => new Map<string, string>());
 
 vi.mock("./native", () => ({

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { StaleReleaseCatalogError } from "./error";
 import { FetchJSONResponseError } from "./fetchJSON";
@@ -7,6 +7,9 @@ import {
   InvalidUpdateResponseError,
   UpdateHttpError,
 } from "./updateError";
+
+// fetchJSON imports react-native, which Node cannot load.
+vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
 
 const nativeRejection = (userInfo?: Record<string, unknown>) =>
   Object.assign(new Error("native failure"), {

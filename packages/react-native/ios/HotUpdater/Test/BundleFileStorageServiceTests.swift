@@ -52,6 +52,94 @@ struct BundleFileStorageServiceTests {
         #expect(try Data(contentsOf: root.appendingPathComponent("bundle-store/target/index.ios.bundle")) == targetBytes)
     }
 
+    // The app is suspended once its background time runs out, so a download
+    // the update starts later would go out whenever the app runs again,
+    // possibly after the links the server signed expired.
+    @Test
+    func updateStartsNoDownloadAfterItsBackgroundTimeRanOut() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("new verified hermes".utf8)
+        let fileHash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": fileHash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let backgroundTime = RecordingBackgroundExecution()
+        let downloads = MappingDownloadService(contents: [manifestURL: manifest, fileURL: bytes])
+        let expiring = ExpiringDownloadService(downloads, expiresDuring: manifestURL, backgroundTime: backgroundTime)
+        let service = makeStorageService(documentsDirectory: root, downloadService: expiring,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]), backgroundExecution: backgroundTime)
+
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: fileHash)])
+
+        #expect(downloads.requestedURLs == [manifestURL])
+        #expect(expiring.inProcessCancellations >= 1)
+        let failure = (result.failureError as? UpdateFailureError)?.failure
+        #expect(failure?.reason == .network)
+        #expect(failure?.transport == .cancelled)
+        #expect(backgroundTime.begun == 1)
+        #expect(backgroundTime.ended == 1)
+    }
+
+    // UIKit ends background time on the main thread, which a download that
+    // is starting may be waiting for (it reads the app state there), so the
+    // end must not wait for that download.
+    @Test
+    func backgroundTimeEndsWhileADownloadIsStarting() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("new verified hermes".utf8)
+        let fileHash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": fileHash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let backgroundTime = RecordingBackgroundExecution()
+        let downloads = MappingDownloadService(contents: [manifestURL: manifest, fileURL: bytes])
+        let expiring = ExpiringWhileStartingDownloadService(downloads, backgroundTime: backgroundTime)
+        let service = makeStorageService(documentsDirectory: root, downloadService: expiring,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]), backgroundExecution: backgroundTime)
+
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: fileHash)])
+
+        #expect(expiring.expirationsReturned == [true])
+        // The download that was starting is cancelled, and none starts later.
+        #expect(expiring.inProcessCancellations >= 1)
+        #expect(downloads.requestedURLs == [manifestURL])
+        #expect((result.failureError as? UpdateFailureError)?.failure.transport == .cancelled)
+    }
+
+    @Test
+    func updateHoldsBackgroundTimeUntilItCompletes() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("new verified hermes".utf8)
+        let fileHash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": fileHash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let backgroundTime = RecordingBackgroundExecution()
+        let downloads = HeldTimeDownloadService(
+            MappingDownloadService(contents: [manifestURL: manifest, fileURL: bytes]),
+            backgroundTime: backgroundTime
+        )
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]), backgroundExecution: backgroundTime)
+
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: fileHash)])
+
+        #expect(result.failureError == nil)
+        // Each download started while the update held background time.
+        #expect(downloads.startedWhileHeld == [true, true])
+        #expect(backgroundTime.begun == 1)
+        #expect(backgroundTime.ended == 1)
+    }
+
     @Test
     func patchForAnotherBaseIsNotAFallback() throws {
         let root = try makeWorkingDirectory()
@@ -3874,7 +3962,8 @@ private func makeStorageService(
     downloadService: DownloadService = UnusedDownloadService(),
     builtInAssetResolver: BuiltInAssetResolver? = nil,
     builtInBundleId: String = "builtin-bundle",
-    metadataWriter: @escaping (BundleMetadata, URL) -> Bool = { metadata, file in metadata.save(to: file) }
+    metadataWriter: @escaping (BundleMetadata, URL) -> Bool = { metadata, file in metadata.save(to: file) },
+    backgroundExecution: BackgroundExecution = SystemBackgroundExecution()
 ) -> BundleFileStorageService {
     BundleFileStorageService(
         fileSystem: fileSystem ?? TestFileSystemService(
@@ -3886,7 +3975,8 @@ private func makeStorageService(
         builtInBundleIdProvider: { builtInBundleId },
         builtInAssetResolver: builtInAssetResolver,
         downloadRetryDelay: 0,
-        metadataWriter: metadataWriter
+        metadataWriter: metadataWriter,
+        backgroundExecution: backgroundExecution
     )
 }
 
@@ -4308,6 +4398,164 @@ private final class UnusedDownloadService: DownloadService {
     ) -> URLSessionDownloadTask? {
         Issue.record("downloadFile should not be called")
         return nil
+    }
+}
+
+/// Background time the test ends, as the system does before it suspends an
+/// app that left the foreground.
+private final class RecordingBackgroundExecution: BackgroundExecution {
+    private let lock = NSLock()
+    private var held: [(expiration: () -> Void, token: BackgroundExecutionToken)] = []
+    private var begunCount = 0
+    private var endedCount = 0
+
+    var begun: Int { locked(lock) { begunCount } }
+    var ended: Int { locked(lock) { endedCount } }
+    /// Whether some background time is held and not ended.
+    var isHeld: Bool { locked(lock) { begunCount > endedCount } }
+
+    func begin(name: String, expiration: @escaping () -> Void) -> BackgroundExecutionToken {
+        let token = BackgroundExecutionToken { [weak self] in
+            guard let self else { return }
+            locked(self.lock) { self.endedCount += 1 }
+        }
+        locked(lock) {
+            begunCount += 1
+            held.append((expiration, token))
+        }
+        return token
+    }
+
+    func expire() {
+        let current = locked(lock) { held }
+        for entry in current {
+            entry.expiration()
+            entry.token.end()
+        }
+    }
+}
+
+/// Runs out the update's background time while `url` downloads.
+private final class ExpiringDownloadService: DownloadService {
+    private let downloads: DownloadService
+    private let url: URL
+    private let backgroundTime: RecordingBackgroundExecution
+    private let lock = NSLock()
+    private var cancellations = 0
+
+    init(_ downloads: DownloadService, expiresDuring url: URL, backgroundTime: RecordingBackgroundExecution) {
+        self.downloads = downloads
+        self.url = url
+        self.backgroundTime = backgroundTime
+    }
+
+    var inProcessCancellations: Int { locked(lock) { cancellations } }
+
+    func downloadFile(
+        from url: URL,
+        to destination: String,
+        fileSizeHandler: ((Int64) -> Void)?,
+        progressHandler: @escaping (DownloadProgress) -> Void,
+        completion: @escaping (Result<URL, Error>) -> Void
+    ) -> URLSessionDownloadTask? {
+        downloads.downloadFile(
+            from: url,
+            to: destination,
+            fileSizeHandler: fileSizeHandler,
+            progressHandler: progressHandler
+        ) { result in
+            if url == self.url {
+                self.backgroundTime.expire()
+            }
+            completion(result)
+        }
+    }
+
+    func cancelInProcessTransfers() {
+        locked(lock) { cancellations += 1 }
+    }
+}
+
+/// Ends the update's background time from another thread while the first
+/// download starts, as UIKit does on the main thread, and waits for the end
+/// to return as that download waits for the main thread.
+private final class ExpiringWhileStartingDownloadService: DownloadService {
+    private let downloads: DownloadService
+    private let backgroundTime: RecordingBackgroundExecution
+    private let lock = NSLock()
+    private var returned: [Bool] = []
+    private var cancellations = 0
+
+    init(_ downloads: DownloadService, backgroundTime: RecordingBackgroundExecution) {
+        self.downloads = downloads
+        self.backgroundTime = backgroundTime
+    }
+
+    var expirationsReturned: [Bool] { locked(lock) { returned } }
+    var inProcessCancellations: Int { locked(lock) { cancellations } }
+
+    func downloadFile(
+        from url: URL,
+        to destination: String,
+        fileSizeHandler: ((Int64) -> Void)?,
+        progressHandler: @escaping (DownloadProgress) -> Void,
+        completion: @escaping (Result<URL, Error>) -> Void
+    ) -> URLSessionDownloadTask? {
+        if locked(lock, { returned.isEmpty }) {
+            let ended = DispatchSemaphore(value: 0)
+            // A thread of its own: the global queue may have no thread free
+            // while tests run in parallel.
+            Thread {
+                self.backgroundTime.expire()
+                ended.signal()
+            }.start()
+            let didReturn = ended.wait(timeout: .now() + 2) == .success
+            locked(lock) { returned.append(didReturn) }
+        }
+        return downloads.downloadFile(
+            from: url,
+            to: destination,
+            fileSizeHandler: fileSizeHandler,
+            progressHandler: progressHandler,
+            completion: completion
+        )
+    }
+
+    func cancelInProcessTransfers() {
+        locked(lock) { cancellations += 1 }
+    }
+}
+
+/// Records whether the update held background time as each download started.
+private final class HeldTimeDownloadService: DownloadService {
+    private let downloads: DownloadService
+    private let backgroundTime: RecordingBackgroundExecution
+    private let lock = NSLock()
+    private var held: [Bool] = []
+
+    init(_ downloads: DownloadService, backgroundTime: RecordingBackgroundExecution) {
+        self.downloads = downloads
+        self.backgroundTime = backgroundTime
+    }
+
+    var startedWhileHeld: [Bool] { locked(lock) { held } }
+
+    func downloadFile(
+        from url: URL,
+        to destination: String,
+        fileSizeHandler: ((Int64) -> Void)?,
+        progressHandler: @escaping (DownloadProgress) -> Void,
+        completion: @escaping (Result<URL, Error>) -> Void
+    ) -> URLSessionDownloadTask? {
+        let isHeld = backgroundTime.isHeld
+        locked(lock) { held.append(isHeld) }
+        return downloads.downloadFile(
+            from: url,
+            to: destination,
+            fileSizeHandler: fileSizeHandler,
+            progressHandler: progressHandler,
+            completion: completion
+        )
     }
 }
 
@@ -4776,4 +5024,9 @@ private final class FailingFinalPromotionFileSystem: TestFileSystemService {
     }
 }
 
+private func locked<T>(_ lock: NSLock, _ body: () -> T) -> T {
+    lock.lock()
+    defer { lock.unlock() }
+    return body()
+}
 #endif
