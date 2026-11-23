@@ -1,6 +1,6 @@
 # End-to-end tests
 
-Run the same 35 OTA, Remote Config, and Console Insights scenarios locally and in the E2E bot
+Run the same 36 OTA, Remote Config, and Console Insights scenarios locally and in the E2E bot
 with `pnpm -w e2e`. Local mode prepares the example app, a PGlite provider and
 real S3-compatible storage. It requires no provider account, private bot setup,
 or model credentials: the scenarios are deterministic `e2e` tests, described in
@@ -62,6 +62,23 @@ Repeat `--scenario` to select several. With no selection, `--suite default`
 runs all scenarios. `HOT_UPDATER_E2E_SCENARIOS` also accepts a comma-separated
 selection. Results include the normalized `hot-updater-result.json`, SDK report,
 scenario diagnostics and Console Insights evidence.
+
+## Download links that expire
+
+`download-before-link-expiry` checks that an update requests each storage link
+while it is valid, the way a presigned URL expects, when the user leaves the
+app as the update starts. `/e2e/proxy-control` with `linkLifetimeMs` makes the
+proxy answer 403 `ExpiredRequest`, with an S3 error body, to any storage
+request that arrives later than that after the proxy handed the app the link.
+On iOS, `manifestDelayMs` holds the manifest response long enough for iOS to
+suspend the app first, so the update's next download starts while the app is
+in the background. Android runs no JavaScript timer while the app is in the
+background, so an update request the SDK made through React Native's `fetch`
+would resolve only when the user comes back. `/e2e/jobs/wait-for-link-expiry`
+keeps the app in the background until every link handed out since the
+lifetime was set has expired, including links minted during the wait. The update installs only if every request went
+out in time. A transfer iOS holds until the app returns to the foreground gets
+403, and the app reports the failed download.
 
 ## Targets
 
