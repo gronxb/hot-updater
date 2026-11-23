@@ -13,6 +13,9 @@ import {
   MAX_RELEASE_CATALOG_CACHE_ENTRY_BYTES,
 } from "./releaseCatalogCache";
 
+// These requests go through fetch, which the spec stubs.
+vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
+
 const cache = vi.hoisted(() => new Map<string, string>());
 const nativeMocks = vi.hoisted(() => ({
   read: vi.fn(async (partition: string) => cache.get(partition) ?? null),

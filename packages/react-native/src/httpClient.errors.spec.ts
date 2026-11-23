@@ -7,6 +7,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchUpdateResponse } from "./fetchUpdateResponse";
 import { createHttpClient } from "./httpClient";
 
+// These requests go through fetch, which the spec stubs.
+vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
+
 vi.mock("./catalogCacheNative", () => ({
   readNativeReleaseCatalogCache: async () => null,
   removeNativeReleaseCatalogCache: async () => {},

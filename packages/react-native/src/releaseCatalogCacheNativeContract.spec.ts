@@ -13,6 +13,9 @@ vi.mock("./specs/NativeHotUpdater", () => ({ default: nativeModule }));
 
 import { fetchReleaseCatalogWithCache } from "./releaseCatalogCache";
 
+// These requests go through fetch, which the spec stubs.
+vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
+
 const catalogId = "project-a";
 const scopeKey = createReleaseCatalogScopeKey({
   channelKey: encodeChannelKey("production"),

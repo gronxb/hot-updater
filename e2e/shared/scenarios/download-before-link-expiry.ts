@@ -33,14 +33,16 @@ export const downloadBeforeLinkExpiryScenario: ScenarioDefinition = {
       "captured-update -> Release $linkExpiryReleaseId",
       { exactText: true },
     );
-    // The manifest answers after iOS has suspended an app that left the
-    // foreground, about a second after it leaves, so the update's next
-    // download starts while the app is in the background.
-    await app.control(
-      "expire links and slow the manifest",
-      "/e2e/proxy-control",
-      { linkLifetimeMs: LINK_LIFETIME_MS, manifestDelayMs: 5_000, reset: true },
-    );
+    // On iOS the manifest answers after iOS has suspended an app that left
+    // the foreground, about a second after it leaves, so the update's next
+    // download starts while the app is in the background. Android keeps the
+    // app running until it freezes it, about 10 s after it leaves, but runs
+    // no JavaScript timer meanwhile.
+    await app.control("expire links", "/e2e/proxy-control", {
+      linkLifetimeMs: LINK_LIFETIME_MS,
+      ...(app.platform === "ios" ? { manifestDelayMs: 5_000 } : {}),
+      reset: true,
+    });
     await app.tap(
       "apply the update once the app leaves the foreground",
       "action-apply-captured-update-in-background",

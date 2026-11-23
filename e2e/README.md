@@ -129,9 +129,11 @@ while it is valid, the way a presigned URL expects, when the user leaves the
 app as the update starts. `/e2e/proxy-control` with `linkLifetimeMs` makes the
 proxy answer 403 `ExpiredRequest`, with an S3 error body, to any storage
 request that arrives later than that after the proxy handed the app the link.
-`manifestDelayMs` holds the manifest response long enough for iOS to suspend
-the app first, so the update's next download starts while the app is in the
-background. `/e2e/jobs/wait-for-link-expiry` keeps the app in the background
+On iOS, `manifestDelayMs` holds the manifest response long enough for iOS to
+suspend the app first, so the update's next download starts while the app is
+in the background. Android runs no JavaScript timer while the app is in the
+background, so an update request the SDK made through React Native's `fetch`
+would resolve only when the user comes back. `/e2e/jobs/wait-for-link-expiry` keeps the app in the background
 until every link handed out since the lifetime was set has expired, including
 links minted during the wait. The update installs only if every request went
 out in time. A transfer iOS holds until the app returns to the foreground gets
