@@ -31,9 +31,10 @@ stays subordinate to exact values and actions.
 - Inter Variable is the UI typeface, with the platform stack as the initial
   fallback and the existing monospace stack for identifiers.
 - A labeled release reads `v12 · <ID tail>` everywhere (`BundleIdDisplay`):
-  the label in medium `text-sm`, then the ID's last 12 characters in muted
-  monospace `text-xs`. The full ID shows on hover and is what screen readers
-  read and a copy takes. A release without a label shows its full ID.
+  the label in medium `text-sm`, then its ID in muted monospace `text-xs`,
+  clipped from the left to the last 12 characters. The whole ID stays in the
+  text, so hover, screen readers, and a copy get all of it. A release without
+  a label shows its full ID.
 - Page headings use `text-base` or `text-lg` with semibold weight. Operational
   card titles use `text-sm` with medium or semibold weight.
 - Body and control text use `text-sm`; dense metadata and table content use

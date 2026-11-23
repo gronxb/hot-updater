@@ -8,7 +8,7 @@ const id = "01a13d86-86f7-7830-952d-21238207019f";
 afterEach(cleanup);
 
 describe("BundleIdDisplay", () => {
-  it("shows a label and its ID tail, and reads and copies the full ID", () => {
+  it("clips a labeled release's ID to its tail, and reads and copies all of it", () => {
     render(
       <a href="#bundle">
         <BundleIdDisplay bundleId={id} label={14} />
@@ -17,11 +17,23 @@ describe("BundleIdDisplay", () => {
 
     const link = screen.getByRole("link", { name: `v14 ${id}` });
     expect(link.querySelector("[title]")?.getAttribute("title")).toBe(id);
-    const shown = [...link.querySelectorAll("[aria-hidden=true]")].map(
-      (part) => part.textContent,
+    expect(link.textContent).toBe(`v14 ${id}·`);
+    const shown = screen.getByText(id);
+    expect(shown.className).toContain("w-[12ch]");
+    expect(shown.className).toContain("overflow-hidden");
+    expect(
+      [...link.querySelectorAll("[aria-hidden=true]")].map(
+        (part) => part.textContent,
+      ),
+    ).toEqual(["·"]);
+  });
+
+  it("shows a short ID whole beside its label", () => {
+    render(<BundleIdDisplay bundleId="release-1" label={3} />);
+
+    expect(screen.getByText("release-1").className).not.toContain(
+      "overflow-hidden",
     );
-    expect(shown).toEqual(["·", "21238207019f"]);
-    expect(link.textContent).toMatch(new RegExp(`^v14 ${id}`));
   });
 
   it("shows the full ID of a release without a label", () => {

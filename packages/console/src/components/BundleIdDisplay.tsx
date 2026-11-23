@@ -11,9 +11,9 @@ interface BundleIdDisplayProps {
   bundleId: string;
   /**
    * The release's label, shown `v12 · <ID tail>`: the name people use for
-   * it, then the end of its ID, with the full ID on hover and in what is read
-   * aloud or copied. Left out, or null for a release without one, shows the
-   * full ID alone.
+   * it, then the end of its ID. The full ID shows on hover, and is what
+   * screen readers read and a selection copies. Left out, or null for a
+   * release without one, shows the full ID alone.
    */
   label?: number | null;
   maxLength?: number;
@@ -35,8 +35,6 @@ export function BundleIdDisplay({
       </span>
     );
   }
-  const tail =
-    bundleId.length > LABELED_ID_TAIL ? bundleId.slice(-LABELED_ID_TAIL) : null;
   return (
     <span
       className={cn(
@@ -52,24 +50,24 @@ export function BundleIdDisplay({
         v{label}
       </span>
       {/* Read and copied as "v12 <id>"; the flex gap draws the space. */}{" "}
-      {tail === null ? null : (
-        // The full ID, for screen readers and copy; the tail stands in for it.
-        <span className="sr-only" translate="no">
-          {bundleId}
-        </span>
-      )}
-      <span aria-hidden="true" className="select-none text-muted-foreground">
-        ·
-      </span>
+      {/* The whole ID stays in the text, clipped to its tail from the left
+          (one `ch` per monospace character), so selecting it copies all of it. */}
       <span
-        aria-hidden={tail === null ? undefined : true}
         translate="no"
         className={cn(
-          "font-mono text-xs text-muted-foreground tabular-nums",
-          tail === null ? null : "select-none",
+          "order-2 font-mono text-xs text-muted-foreground tabular-nums",
+          bundleId.length > LABELED_ID_TAIL &&
+            "inline-flex w-[12ch] shrink-0 justify-end overflow-hidden",
         )}
       >
-        {tail ?? bundleId}
+        {bundleId}
+      </span>
+      {/* Drawn between the label and the ID, but after the ID in the text. */}
+      <span
+        aria-hidden="true"
+        className="order-1 select-none text-muted-foreground"
+      >
+        ·
       </span>
     </span>
   );
