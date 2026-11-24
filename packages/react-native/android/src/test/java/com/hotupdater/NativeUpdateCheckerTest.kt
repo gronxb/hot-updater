@@ -1822,7 +1822,7 @@ class NativeUpdateCheckerTest {
                         activeBundleId = MIN_BUNDLE_ID,
                         activeReleaseId = null,
                         cohort = "500",
-                        minimumReleaseId = "00000000-0000-0000-0000-000000000000",
+                        minBundleId = "00000000-0000-0000-0000-000000000000",
                         strategy = ReleaseStrategy.APP_VERSION,
                         strategyValue = "1.2.0",
                         crashedBundleIds = emptyList(),

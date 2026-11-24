@@ -2240,7 +2240,7 @@ extension NativeUpdateCheckTests {
             activeBundleId: builtInBundleId,
             activeReleaseId: nil,
             cohort: "1",
-            minimumReleaseId: "00000000-0000-0000-0000-000000000000",
+            minBundleId: "00000000-0000-0000-0000-000000000000",
             strategy: .appVersion,
             strategyValue: canonicalizeAppVersion("1.0.0")!,
             crashedBundleIds: []

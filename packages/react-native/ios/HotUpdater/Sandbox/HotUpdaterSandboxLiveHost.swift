@@ -295,7 +295,7 @@ func hotUpdaterSandboxChannelHasBundle(
         activeReleaseId: nil,
         runningReleaseId: .some(nil),
         // No bundle ID sorts below it.
-        minimumReleaseId: "00000000-0000-0000-0000-000000000000",
+        minBundleId: "00000000-0000-0000-0000-000000000000",
         cohort: normalizeCohortValue(cohort),
         crashedBundleIds: crashedBundleIds
     ))

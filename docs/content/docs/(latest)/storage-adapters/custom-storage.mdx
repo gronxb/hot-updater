@@ -143,7 +143,7 @@ export const myStorage = ({ client, bucket, basePath }: MyStorageOptions) => {
   Bundles use it, and a server registers one adapter per protocol. Choose one
   that names your provider.
 - `put` receives a key relative to the adapter's base path, such as
-  `bundles/<bundle-id>/manifest.json` or `assets/sha256/ab/<hash>.png`, and a
+  `bundles/<artifact-id>/manifest.json` or `assets/sha256/ab/<hash>.png`, and a
   one-shot `ReadableStream`. Consume or cancel the stream before the promise
   settles. `contentLength` is set when the consumer knows the size.
 - `put` returns the URI of that key below the base path, from

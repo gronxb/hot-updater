@@ -180,7 +180,7 @@ async function checkForReleaseCatalogUpdate(input: {
   readonly platform: "ios" | "android";
   readonly currentAppVersion: string;
   readonly currentBundleId: string;
-  readonly minimumReleaseId: string;
+  readonly minBundleId: string;
   readonly defaultChannel: string;
   readonly currentChannel: string;
   readonly targetChannel: string;
@@ -263,13 +263,13 @@ async function checkForReleaseCatalogUpdate(input: {
     activeInTargetScope !== null ||
     (!hasAuthenticatedActive && !explicitScopeSwitch)
       ? input.currentBundleId
-      : input.minimumReleaseId;
+      : input.minBundleId;
   const selectionContextHash = createReleaseSelectionContextHash({
     activeBundleId: selectorCurrentBundleId,
     activeReleaseId: activeInTargetScope?.releaseId ?? null,
     cohort: input.cohort,
     crashedBundleIds,
-    minimumReleaseId: input.minimumReleaseId,
+    minBundleId: input.minBundleId,
     strategy,
     strategyValue:
       strategy === "APP_VERSION"
@@ -322,17 +322,17 @@ async function checkForReleaseCatalogUpdate(input: {
       [activeInTargetScope, stableInTargetScope].find(
         (selection) => selection?.bundleId === selectorCurrentBundleId,
       )?.releaseId ?? null,
-    builtInBundleId: input.minimumReleaseId,
+    builtInBundleId: input.minBundleId,
     cohort: input.cohort,
     crashedBundleIds,
     currentBundleId: selectorCurrentBundleId,
-    minimumReleaseId: input.minimumReleaseId,
+    minBundleId: input.minBundleId,
   });
   if (desired === null) return null;
 
   if (
     desired.kind === "BUILTIN" &&
-    input.currentBundleId === input.minimumReleaseId &&
+    input.currentBundleId === input.minBundleId &&
     (active === null || active.kind === "BUILTIN")
   ) {
     return null;
@@ -542,16 +542,16 @@ function leaveSwitchedChannel(
     readonly options: InternalCheckForUpdateOptions;
     readonly currentBundleId: string;
     readonly currentChannel: string;
-    readonly minimumReleaseId: string;
+    readonly minBundleId: string;
   },
   guard: Parameters<typeof isReleaseSelectionCurrent>[0],
 ): CheckForUpdateResult {
   const { options } = input;
-  const shouldForceUpdate = input.currentBundleId !== input.minimumReleaseId;
+  const shouldForceUpdate = input.currentBundleId !== input.minBundleId;
   const errorScope = {
     bundleId: input.currentBundleId,
     channel: input.currentChannel,
-    targetBundleId: input.minimumReleaseId,
+    targetBundleId: input.minBundleId,
     targetReleaseId: null,
     updateStrategy: options.updateStrategy,
   };
@@ -563,7 +563,7 @@ function leaveSwitchedChannel(
       input.currentBundleId,
       input.currentChannel,
     ),
-    toBundleId: input.minimumReleaseId,
+    toBundleId: input.minBundleId,
     toReleaseId: null,
     transitionKind: "USE_BUILTIN",
     updateStatus: "ROLLBACK",
@@ -578,7 +578,7 @@ function leaveSwitchedChannel(
     guard.selectionContextHash,
   ]);
   const result: CheckForUpdateResult = {
-    id: input.minimumReleaseId,
+    id: input.minBundleId,
     label: null,
     message: null,
     releaseId: null,
@@ -649,7 +649,7 @@ export async function checkForUpdate(
   const currentAppVersion = getAppVersion();
   const platform = Platform.OS as "ios" | "android";
   const currentBundleId = getBundleId();
-  const minimumReleaseId = getMinBundleId();
+  const minBundleId = getMinBundleId();
   const defaultChannel = getDefaultChannel();
   const isSwitched = isChannelSwitched();
   const currentChannel = isSwitched ? getChannel() : defaultChannel;
@@ -682,7 +682,7 @@ export async function checkForUpdate(
       explicitChannel,
       fingerprintHash,
       isSwitched,
-      minimumReleaseId,
+      minBundleId,
       options,
       platform,
       targetChannel,

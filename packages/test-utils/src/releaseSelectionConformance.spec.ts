@@ -224,7 +224,7 @@ const hashInputs = [
   {
     cohort: "42",
     crashedBundleIds: [],
-    minimumReleaseId: NIL,
+    minBundleId: NIL,
     strategy: "APP_VERSION",
     strategyValue: "1.4.0",
   },
@@ -233,7 +233,7 @@ const hashInputs = [
     activeReleaseId: uuid(4),
     cohort: " QA ",
     crashedBundleIds: [uuid(9), uuid(1), uuid(9), uuid(5)],
-    minimumReleaseId: uuid(0),
+    minBundleId: uuid(0),
     strategy: "FINGERPRINT",
     strategyValue: "bab42890eeae52e182f8eec84007bb3cbc94d227",
   },
@@ -244,14 +244,14 @@ const hashInputs = [
     crashedBundleIds: Array.from({ length: 14 }, (_, index) =>
       uuid(20 - index),
     ),
-    minimumReleaseId: uuid(0),
+    minBundleId: uuid(0),
     strategy: "APP_VERSION",
     strategyValue: "2.0.0",
   },
   {
     cohort: 'quote"back\\slash/solidus\u0001\n\t emoji🚀é',
     crashedBundleIds: ['id"with"quotes', "\u001f", "Ω"],
-    minimumReleaseId: "\u007f\u0080",
+    minBundleId: "\u007f\u0080",
     strategy: "FINGERPRINT",
     strategyValue: "\ud83d\ude80",
   },
@@ -259,7 +259,7 @@ const hashInputs = [
     activeBundleId: "é",
     cohort: " Beta ",
     crashedBundleIds: ["B", "a", "A", "b"],
-    minimumReleaseId: NIL,
+    minBundleId: NIL,
     strategy: "APP_VERSION",
     strategyValue: "0.0.1",
   },
@@ -570,17 +570,13 @@ const selectionCases = Array.from({ length: 400 }, (_, index) => {
     schemaVersion: 1,
     scopeKey: "v1:app-version:ios:cHJvZHVjdGlvbg",
   };
-  const minimumReleaseId = pick([
-    bundleIdOf(0),
-    bundleIdOf(1),
-    bundleIdOf(1015),
-  ]);
+  const minBundleId = pick([bundleIdOf(0), bundleIdOf(1), bundleIdOf(1015)]);
   const bundleIds = pool
     .map((release) => release.bundleId)
     .filter((bundleId): bundleId is string => bundleId !== null);
   const currentBundleId =
     selectionRandom() < 0.3
-      ? minimumReleaseId
+      ? minBundleId
       : pick([...bundleIds, ...bundleIds, bundleIdOf(5000)]);
   const releaseIds = pool.map((release) => release.releaseId);
   const activeReleaseId =
@@ -595,11 +591,11 @@ const selectionCases = Array.from({ length: 400 }, (_, index) => {
   ]);
   const input: ReleaseSelectionInput = {
     activeReleaseId,
-    builtInBundleId: minimumReleaseId,
+    builtInBundleId: minBundleId,
     cohort: pick([null, "1", "42", "500", "1000", "qa", "beta", " QA "]),
     crashedBundleIds: subset(bundleIds).slice(0, 2),
     currentBundleId,
-    minimumReleaseId,
+    minBundleId,
     ...(runningReleaseChoice === "absent"
       ? {}
       : {

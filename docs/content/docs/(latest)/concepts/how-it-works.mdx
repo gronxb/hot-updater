@@ -36,8 +36,8 @@ Start with [agent setup](/docs/guides/ai-agents) or
 [manual setup](/docs/get-started/basic-usage), then
 [verify an OTA update](/docs/get-started/test-ota).
 
-Internally, Hot Updater can reuse one immutable artifact across multiple public
-Bundle IDs. This avoids copying uploaded bytes during promotion and lets policy changes
+Internally, Hot Updater can reuse one immutable artifact across multiple bundle
+IDs. This avoids copying uploaded bytes during promotion and lets policy changes
 recompile the delivery catalog without rebuilding artifact files. The internal
 artifact identity is shown only as **Artifact ID** in Advanced diagnostics and
 artifact commands.
@@ -45,7 +45,7 @@ artifact commands.
 ## Deployment and selection
 
 1. `hot-updater deploy` builds and uploads an immutable artifact.
-2. The database creates the public Bundle ID and compiles its delivery catalog.
+2. The database creates the bundle ID and compiles its delivery catalog.
 3. The app requests the catalog for its channel, platform, and app-version or
    fingerprint scope.
 4. The client evaluates compatibility, chronology, rollout, and target cohorts,
@@ -70,5 +70,5 @@ Affected installations select a previous compatible enabled Bundle or
 
 Automatic crash rollback is a separate native safety mechanism. It rejects an
 artifact that failed startup and restores the last safe local Bundle. Crash
-history therefore records Artifact IDs. See
+history therefore records artifact IDs. See
 [Automatic Rollback](/docs/concepts/automatic-rollback) for that lifecycle.

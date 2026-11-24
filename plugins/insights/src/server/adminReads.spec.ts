@@ -16,13 +16,13 @@ describe("createInsightsAdminReads", () => {
       platform: "ios",
       channel: "production",
       window: "7d",
-      bundleId: "bundle-1",
+      releaseId: "release-1",
     });
     await reads.listEvents({
       bundle: {
         platform: "android",
         channel: "beta",
-        bundleId: "bundle-2",
+        releaseId: "release-2",
         outcome: "recovered",
       },
       limit: 5,
@@ -36,11 +36,43 @@ describe("createInsightsAdminReads", () => {
     });
 
     expect(fetchAdmin.mock.calls.map(([path]) => path)).toEqual([
-      "/overview?platform=ios&channel=production&window=7d&bundleId=bundle-1",
-      "/events?limit=5&platform=android&channel=beta&bundleId=bundle-2&outcome=recovered",
+      // The HTTP API calls a release ID bundleId, as users do.
+      "/overview?platform=ios&channel=production&window=7d&bundleId=release-1",
+      "/events?limit=5&platform=android&channel=beta&bundleId=release-2&outcome=recovered",
       "/installations/install%2F1/events",
       "/failures?platform=ios&channel=production&releaseId=release-1&start=0&end=3600000",
     ]);
+  });
+
+  it("reads the overview's bundleId on the wire as its release ID", async () => {
+    const counts = { count: 1, measuredAtMs: 10 };
+    const reads = createInsightsAdminReads(
+      answering(200, {
+        platform: "ios",
+        channel: "production",
+        window: "24h",
+        sinceMs: 0,
+        beforeReceivedAtMs: 10,
+        reportingInstallations: counts,
+        bundle: {
+          bundleId: "release-1",
+          reportingInstallations: counts,
+          downloadedReports: counts,
+          appliedReports: counts,
+          recoveredReports: counts,
+          failedReports: counts,
+        },
+      }),
+    );
+
+    const overview = await reads.getReportingOverview({
+      platform: "ios",
+      channel: "production",
+      window: "24h",
+      releaseId: "release-1",
+    });
+    expect(overview.bundle?.releaseId).toBe("release-1");
+    expect(overview.bundle).not.toHaveProperty("bundleId");
   });
 
   it("throws the route's error, or one naming its status", async () => {

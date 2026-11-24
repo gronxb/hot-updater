@@ -157,20 +157,20 @@ const bundleFilter = (
   input: InsightsBundleSelection,
 ): InsightsBundleEventFilter => {
   const scope = readScope(input);
-  const bundleId = requireString(
-    input.bundleId,
+  const releaseId = requireString(
+    input.releaseId,
     "bundle ID",
     MAX_EVENT_ID_LENGTH,
   );
   switch (input.outcome) {
     case "downloaded":
-      return { ...scope, type: "UPDATE_DOWNLOADED", toReleaseId: bundleId };
+      return { ...scope, type: "UPDATE_DOWNLOADED", toReleaseId: releaseId };
     case "applied":
-      return { ...scope, type: "UPDATE_APPLIED", toReleaseId: bundleId };
+      return { ...scope, type: "UPDATE_APPLIED", toReleaseId: releaseId };
     case "recovered":
-      return { ...scope, type: "RECOVERED", fromReleaseId: bundleId };
+      return { ...scope, type: "RECOVERED", fromReleaseId: releaseId };
     case "failed":
-      return { ...scope, type: "UPDATE_FAILED", toReleaseId: bundleId };
+      return { ...scope, type: "UPDATE_FAILED", toReleaseId: releaseId };
     default:
       throw new InsightsBadRequestError("Invalid Insights outcome.");
   }
@@ -686,11 +686,11 @@ export const createInsightsProvider = (
         }
         return { count: value, measuredAtMs: Date.now() };
       };
-      const bundleId =
-        input.bundleId === undefined
+      const releaseId =
+        input.releaseId === undefined
           ? undefined
-          : requireString(input.bundleId, "bundle ID", MAX_EVENT_ID_LENGTH);
-      if (bundleId === undefined) {
+          : requireString(input.releaseId, "bundle ID", MAX_EVENT_ID_LENGTH);
+      if (releaseId === undefined) {
         return {
           ...scope,
           window,
@@ -704,7 +704,7 @@ export const createInsightsProvider = (
       // The scope's installations and the bundle's, from one read of the
       // distribution rows.
       const installations = model
-        .countReleaseInstallations({ ...scope, sinceMs, releaseId: bundleId })
+        .countReleaseInstallations({ ...scope, sinceMs, releaseId })
         .then(
           async (counts) =>
             [
@@ -715,7 +715,7 @@ export const createInsightsProvider = (
       const countOutcome = (outcome: InsightsBundleSelection["outcome"]) =>
         measure(
           model.countEvents({
-            filter: bundleFilter({ ...scope, bundleId, outcome }),
+            filter: bundleFilter({ ...scope, releaseId, outcome }),
             sinceMs,
             beforeReceivedAtMs,
           }),
@@ -740,7 +740,7 @@ export const createInsightsProvider = (
         beforeReceivedAtMs,
         reportingInstallations,
         bundle: {
-          bundleId,
+          releaseId,
           reportingInstallations: bundleInstallations,
           downloadedReports,
           appliedReports,

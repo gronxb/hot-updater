@@ -113,12 +113,12 @@ For v0, use the [migration workflow](/docs/guides/upgrade-to-v1).
 ```text
 $hot-updater Deploy the current iOS app version to the staging channel and verify the result.
 $hot-updater List iOS Bundles on the production channel.
-$hot-updater Inspect this Bundle ID and its affected scope, then disable it and verify rollback.
+$hot-updater Inspect this bundle ID and its affected scope, then disable it and verify rollback.
 $hot-updater Run doctor for this project's configured server and fix local setup issues.
 ```
 
 Use [Doctor](/docs/guides/doctor) for structured `--json` diagnostics. Its
 `auto`, `command` and `blocked` labels describe repair prerequisites; the agent
 can continue an authorized infrastructure repair when the necessary access is
-available. Public Bundle IDs drive normal operations; Artifact IDs are for
-advanced storage and native crash diagnostics.
+available. Bundle IDs drive normal operations; artifact IDs are for advanced
+storage and native crash diagnostics.

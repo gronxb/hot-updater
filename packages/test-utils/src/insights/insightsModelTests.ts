@@ -645,7 +645,7 @@ export const registerInsightsModelTests = (
             platform: "ios",
             channel: "production",
             type: "RECOVERED",
-            fromReleaseId: createBundleEventRowFixture("1", 0).to_bundle_id,
+            fromReleaseId: "00000000-0000-7000-8000-000000003001",
           },
           sinceMs: 0,
           beforeReceivedAtMs: 100,

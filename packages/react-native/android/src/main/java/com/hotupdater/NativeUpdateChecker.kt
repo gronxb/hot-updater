@@ -411,7 +411,7 @@ internal class NativeUpdateChecker(
         val builtInBundleId = state.getMinBundleId()
         // The floor is the built-in bundle's ID, except for the sandbox's
         // explicit channel open, which takes any Release of the scope.
-        val minimumReleaseId = if (options.allowsOlderThanBuiltIn) NIL_UUID else builtInBundleId
+        val minBundleId = if (options.allowsOlderThanBuiltIn) NIL_UUID else builtInBundleId
         val defaultChannel = state.getDefaultChannel()
         val runtimeChannel = state.getChannel()
         val isSwitched = runtimeChannel != defaultChannel
@@ -441,7 +441,7 @@ internal class NativeUpdateChecker(
                 currentAppVersion = currentAppVersion,
                 currentBundleId = currentBundleId,
                 builtInBundleId = builtInBundleId,
-                minimumReleaseId = minimumReleaseId,
+                minBundleId = minBundleId,
                 currentChannel = currentChannel,
                 isSwitched = isSwitched,
                 targetChannel = targetChannel,
@@ -529,7 +529,7 @@ internal class NativeUpdateChecker(
         val currentBundleId: String,
         val builtInBundleId: String,
         /** The selection floor: [builtInBundleId], or nil for [NativeCheckRequest.allowsOlderThanBuiltIn]. */
-        val minimumReleaseId: String,
+        val minBundleId: String,
         val currentChannel: String,
         val isSwitched: Boolean,
         val targetChannel: String,
@@ -632,7 +632,7 @@ internal class NativeUpdateChecker(
                     activeBundleId = selectorCurrentBundleId,
                     activeReleaseId = activeInTargetScope?.releaseId,
                     cohort = input.cohort,
-                    minimumReleaseId = input.minimumReleaseId,
+                    minBundleId = input.minBundleId,
                     strategy = strategy,
                     strategyValue = strategyValue,
                     crashedBundleIds = crashedBundleIds,
@@ -679,7 +679,7 @@ internal class NativeUpdateChecker(
                                 .firstOrNull { it?.bundleId == selectorCurrentBundleId }
                                 ?.releaseId,
                         ),
-                    minimumReleaseId = input.minimumReleaseId,
+                    minBundleId = input.minBundleId,
                     cohort = input.cohort,
                     crashedBundleIds = crashedBundleIds,
                 ),

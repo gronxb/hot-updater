@@ -65,8 +65,8 @@ function modularInverse(value: number, modulus: number): number {
   return positiveMod(t, modulus);
 }
 
-function getRolloutShuffleParameters(bundleId: string) {
-  let multiplier = positiveMod(hashString(`${bundleId}:multiplier`), 997);
+function getRolloutShuffleParameters(releaseId: string) {
+  let multiplier = positiveMod(hashString(`${releaseId}:multiplier`), 997);
 
   if (multiplier === 0) {
     multiplier = 1;
@@ -80,7 +80,7 @@ function getRolloutShuffleParameters(bundleId: string) {
   }
 
   const offset = positiveMod(
-    hashString(`${bundleId}:offset`),
+    hashString(`${releaseId}:offset`),
     NUMERIC_COHORT_SIZE,
   );
 
@@ -151,14 +151,14 @@ export function getDefaultNumericCohort(identifier: string): string {
 }
 
 export function getNumericCohortRolloutPosition(
-  bundleId: string,
+  releaseId: string,
   cohortValue: number,
 ): number {
   if (cohortValue < 1 || cohortValue > NUMERIC_COHORT_SIZE) {
     throw new Error(`Invalid numeric cohort: ${cohortValue}`);
   }
 
-  const { offset, inverseMultiplier } = getRolloutShuffleParameters(bundleId);
+  const { offset, inverseMultiplier } = getRolloutShuffleParameters(releaseId);
   const zeroBasedCohort = cohortValue - 1;
 
   return positiveMod(
@@ -168,7 +168,7 @@ export function getNumericCohortRolloutPosition(
 }
 
 export function getRolledOutNumericCohorts(
-  bundleId: string,
+  releaseId: string,
   rolloutCohortCount: number | null | undefined,
 ): number[] {
   const normalizedRolloutCount =
@@ -182,7 +182,7 @@ export function getRolledOutNumericCohorts(
     return Array.from({ length: NUMERIC_COHORT_SIZE }, (_, index) => index + 1);
   }
 
-  const { multiplier, offset } = getRolloutShuffleParameters(bundleId);
+  const { multiplier, offset } = getRolloutShuffleParameters(releaseId);
   return Array.from({ length: normalizedRolloutCount }, (_, position) =>
     positiveMod(multiplier * position + offset, NUMERIC_COHORT_SIZE),
   )
@@ -191,7 +191,7 @@ export function getRolledOutNumericCohorts(
 }
 
 export function isCohortEligibleForUpdate(
-  bundleId: string,
+  releaseId: string,
   cohort: string | null | undefined,
   rolloutCohortCount: number | null | undefined,
   targetCohorts: readonly string[] | null | undefined,
@@ -232,7 +232,7 @@ export function isCohortEligibleForUpdate(
   }
 
   return (
-    getNumericCohortRolloutPosition(bundleId, numericCohort) <
+    getNumericCohortRolloutPosition(releaseId, numericCohort) <
     normalizedRolloutCount
   );
 }

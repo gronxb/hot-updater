@@ -298,12 +298,12 @@ describe("createConsoleRuntime for a self-hosted server", () => {
       bundle: {
         platform: "ios",
         channel: "production",
-        bundleId: "bundle-1",
+        releaseId: "release-1",
         outcome: "applied",
       },
     });
     expect(fetchAdmin).toHaveBeenLastCalledWith(
-      "/events?beforeReceivedAtMs=2&limit=20&platform=ios&channel=production&bundleId=bundle-1&outcome=applied",
+      "/events?beforeReceivedAtMs=2&limit=20&platform=ios&channel=production&bundleId=release-1&outcome=applied",
     );
     await expect(
       reads.getInstallation({ installId: "install 1" }),

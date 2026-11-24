@@ -99,7 +99,7 @@ directory, which is configured separately.
 ### Deployment Result
 
 After its database commit succeeds, each single-platform deploy prints its
-public Bundle ID and its label:
+bundle ID and its label:
 
 ```text
 Deployment successful
@@ -122,9 +122,11 @@ of the ID, with its channel and platform:
 
 ```bash
 npx hot-updater bundle show v12 -c production -p ios
-``` The advanced `patch` command takes the Artifact ID shown in
-Advanced diagnostics. Given an Artifact ID, the `bundle` commands change
-nothing and name the bundle ID to use.
+```
+
+The advanced `patch` command takes the artifact ID shown in Advanced
+diagnostics. Given an artifact ID, the `bundle` commands change nothing and
+name the bundle ID to use.
 
 ### Bundle Diffing
 

@@ -56,7 +56,7 @@ refuses one that holds the wrong thing.
 
 |                 | iOS                                 | Android                                |
 | --------------- | ----------------------------------- | -------------------------------------- |
-| App ID          | Same bundle ID by default           | `.sandbox` added to the application ID |
+| App ID          | Same bundle identifier by default   | `.sandbox` added to the application ID |
 | Default channel | The project's channel               | The project's channel                  |
 | URL scheme      | `hu-sandbox-<app ID>` by default    | `hu-sandbox-<package name>` by default |
 | First screen    | Before the app's JavaScript         | Before the app's JavaScript            |
@@ -74,8 +74,8 @@ both:
 - Firebase needs an Android app for the `.sandbox` ID. Add it to the project and
   download `google-services.json` again.
 
-On iOS, with the same bundle ID, the sandbox build replaces the store app on a
-device. [A separate app](#a-separate-app-on-ios) installs beside it.
+On iOS, with the same bundle identifier, the sandbox build replaces the store
+app on a device. [A separate app](#a-separate-app-on-ios) installs beside it.
 
 A sandbox build embeds the project's channel, like any build, or the one
 `native-build --channel` names, and registers on it. The registry records it as a sandbox build
@@ -154,7 +154,7 @@ After a launch that failed, a banner says what happened:
 A bundle that reached its first screen has passed its check, so a later crash doesn't
 roll it back. Opening it runs it again until you switch or reset.
 
-Every row names a bundle by its bundle ID, the ID `HotUpdater.getBundleId()` and
+Every row names a bundle by its bundle ID, the ID `hotUpdater.getBundleId()` and
 the Console show. Only a crashed bundle whose release the device no longer knows is
 named by its artifact ID, as in `getCrashHistory()`.
 
@@ -169,15 +169,15 @@ server:
 - Your app's update check finds nothing to install while it runs. Offline, that
   check fails as on any offline launch.
 - A crash in it never rolls back the current bundle.
-- `HotUpdater.getBundleId()` returns the bundle ID its row shows.
+- `hotUpdater.getBundleId()` returns the bundle ID its row shows.
 
 Press and hold a row for **Open latest** on its channel, or to delete it. The
 copies live in the app's cache, so the system may remove them. A row whose copy is
 gone checks its channel instead.
 
-On iOS, only a sandbox with its own bundle ID, ending in `.sandbox`, keeps copies,
-so nothing stays in the store app. With the store app's ID, every row checks its
-channel. See [A separate app](#a-separate-app-on-ios).
+On iOS, only a sandbox with its own bundle identifier, ending in `.sandbox`, keeps
+copies, so nothing stays in the store app. With the store app's identifier, every
+row checks its channel. See [A separate app](#a-separate-app-on-ios).
 
 ### Links
 
@@ -325,8 +325,8 @@ run these uploads from a pull request.
 
 ### A separate app on iOS
 
-The bundle ID comes from your Xcode build settings, and `bundleIdentifier` names
-it. To sit beside the store app, give the sandbox scheme a configuration of its
+The bundle identifier comes from your Xcode build settings, and
+`bundleIdentifier` names it. To sit beside the store app, give the sandbox scheme a configuration of its
 own:
 
 1. In Xcode, duplicate the `Release` configuration as `Sandbox`, and set the app

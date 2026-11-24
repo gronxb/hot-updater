@@ -9,6 +9,11 @@ import type {
 } from "./reads";
 import type { InsightsRetention } from "./schema";
 import type { InsightsEventPageInput, InsightsProvider } from "./types";
+import {
+  fromWireOverview,
+  RELEASE_ID_PARAM,
+  type WireReportingOverview,
+} from "./wire";
 
 /**
  * The Insights reads tooling shows, the Console and the CLI: the routes'
@@ -100,8 +105,17 @@ export const createInsightsAdminReads = (
   };
 
   return {
-    getReportingOverview: ({ platform, channel, window, bundleId }) =>
-      required(withQuery("/overview", { platform, channel, window, bundleId })),
+    getReportingOverview: async ({ platform, channel, window, releaseId }) =>
+      fromWireOverview(
+        await required<WireReportingOverview>(
+          withQuery("/overview", {
+            platform,
+            channel,
+            window,
+            [RELEASE_ID_PARAM]: releaseId,
+          }),
+        ),
+      ),
     listEvents: ({ bundle, ...input }) =>
       required(
         withQuery("/events", {
@@ -111,7 +125,7 @@ export const createInsightsAdminReads = (
             : {
                 platform: bundle.platform,
                 channel: bundle.channel,
-                bundleId: bundle.bundleId,
+                [RELEASE_ID_PARAM]: bundle.releaseId,
                 outcome: bundle.outcome,
               }),
         }),

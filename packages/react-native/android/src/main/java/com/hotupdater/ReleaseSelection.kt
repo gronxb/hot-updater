@@ -38,7 +38,7 @@ internal data class ReleaseSelectionInput(
     val currentBundleId: String,
     val activeReleaseId: String?,
     val runningReleaseId: RunningReleaseId = RunningReleaseId.SameAsActive,
-    val minimumReleaseId: String,
+    val minBundleId: String,
     val cohort: String?,
     val crashedBundleIds: List<String>,
 )
@@ -47,7 +47,7 @@ internal data class ReleaseSelectionContextInput(
     val activeBundleId: String?,
     val activeReleaseId: String?,
     val cohort: String?,
-    val minimumReleaseId: String,
+    val minBundleId: String,
     val strategy: ReleaseStrategy,
     val strategyValue: String,
     val crashedBundleIds: List<String>,
@@ -110,7 +110,7 @@ internal object ReleaseSelector {
     }
 
     fun isCohortEligibleForUpdate(
-        bundleId: String,
+        releaseId: String,
         cohort: String?,
         rolloutCohortCount: Double?,
         targetCohorts: List<String>?,
@@ -129,7 +129,7 @@ internal object ReleaseSelector {
         val numericCohort = parseNumericCohortValue(normalizeCohortValue(normalizedCohort)) ?: return false
         if (normalizedRolloutCount >= NUMERIC_COHORT_SIZE) return true
 
-        return getNumericCohortRolloutPosition(bundleId, numericCohort) < normalizedRolloutCount
+        return getNumericCohortRolloutPosition(releaseId, numericCohort) < normalizedRolloutCount
     }
 
     fun isReleaseEligibleForCohort(
@@ -178,8 +178,10 @@ internal object ReleaseSelector {
                     if (index > 0) append(',')
                     appendJsonString(bundleId)
                 }
+                // The key predates the minBundleId rename: receipts keep this
+                // hash, and JavaScript and native from other patches hash it.
                 append("],\"minimumReleaseId\":")
-                appendJsonString(input.minimumReleaseId)
+                appendJsonString(input.minBundleId)
                 append(",\"selectorSchemaVersion\":")
                 append(ReleaseCatalogs.SCHEMA_VERSION)
                 append(",\"strategy\":")
@@ -201,7 +203,7 @@ internal object ReleaseSelector {
 
         fun isSafeBundleRelease(release: ReleaseCatalogDescriptor): Boolean {
             val bundleId = release.bundleId ?: return false
-            return !crashedBundleIds.contains(bundleId) && bundleId >= input.minimumReleaseId
+            return !crashedBundleIds.contains(bundleId) && bundleId >= input.minBundleId
         }
 
         val running = input.runningReleaseId
@@ -222,7 +224,7 @@ internal object ReleaseSelector {
                 val bundleId = passed.bundleId
                 passed.shouldForceUpdate &&
                     bundleId != null &&
-                    bundleId >= input.minimumReleaseId &&
+                    bundleId >= input.minBundleId &&
                     bundleId != input.currentBundleId &&
                     passed.releaseId <= selected.releaseId &&
                     isNewerThanRunning(passed) &&
@@ -283,7 +285,7 @@ internal object ReleaseSelector {
                 return desiredBundle(rollback, DesiredReleaseStatus.ROLLBACK)
             }
 
-            if (input.currentBundleId <= input.minimumReleaseId) {
+            if (input.currentBundleId <= input.minBundleId) {
                 return null
             }
         }
@@ -393,18 +395,18 @@ internal object ReleaseSelector {
     }
 
     private fun getNumericCohortRolloutPosition(
-        bundleId: String,
+        releaseId: String,
         cohortValue: Int,
     ): Int {
         require(cohortValue in 1..NUMERIC_COHORT_SIZE) { "Invalid numeric cohort: $cohortValue" }
 
-        var multiplier = positiveMod(hashString("$bundleId:multiplier"), 997)
+        var multiplier = positiveMod(hashString("$releaseId:multiplier"), 997)
         if (multiplier == 0) multiplier = 1
         while (gcd(multiplier, NUMERIC_COHORT_SIZE) != 1) {
             multiplier = positiveMod(multiplier + 1, NUMERIC_COHORT_SIZE)
             if (multiplier == 0) multiplier = 1
         }
-        val offset = positiveMod(hashString("$bundleId:offset"), NUMERIC_COHORT_SIZE)
+        val offset = positiveMod(hashString("$releaseId:offset"), NUMERIC_COHORT_SIZE)
         val inverseMultiplier = modularInverse(multiplier, NUMERIC_COHORT_SIZE)
 
         return positiveMod(inverseMultiplier * (cohortValue - 1 - offset), NUMERIC_COHORT_SIZE)

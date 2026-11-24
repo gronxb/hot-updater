@@ -266,6 +266,7 @@ export const handleChannelDelete = (
             {
               channel,
               ...result,
+              // oxlint-disable-next-line hot-updater/id-naming -- public JSON key: users call release IDs bundle IDs
               deletedBundleIds: deletedReleaseIds,
               ...(options.nativeBuilds ? { deletedNativeBuildIds } : {}),
             },

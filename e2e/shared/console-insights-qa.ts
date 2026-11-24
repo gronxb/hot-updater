@@ -1,8 +1,14 @@
 import type {
   InsightsBundleSelection,
   InsightsScope,
-  ReportingOverview,
+  WireReportingOverview,
 } from "@hot-updater/plugin-insights/server";
+
+// The HTTP API calls a release ID bundleId, the word users have for it.
+type ReportingOverview = WireReportingOverview;
+type BundleSelection = Omit<InsightsBundleSelection, "releaseId"> & {
+  readonly bundleId: string;
+};
 
 type InsightsEvent = {
   readonly channel: string;
@@ -113,7 +119,7 @@ export type ConsoleInsightsQaClient = {
     readonly installId: string;
   }) => Promise<Installation | null>;
   readonly listEvents: (
-    input?: PageInput & { readonly bundle?: InsightsBundleSelection },
+    input?: PageInput & { readonly bundle?: BundleSelection },
   ) => Promise<EventCursorPage>;
   readonly listInstallationEvents: (
     input: PageInput & { readonly installId: string },
@@ -324,7 +330,7 @@ export const verifyConsoleInsights = async (
         : observedOutcome.type === "UPDATE_DOWNLOADED"
           ? "downloaded"
           : "applied";
-    const bundle: InsightsBundleSelection = {
+    const bundle: BundleSelection = {
       bundleId,
       channel: observedOutcome.channel,
       outcome,

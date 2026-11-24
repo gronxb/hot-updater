@@ -1009,7 +1009,7 @@ describe("insights event list ranges", () => {
       bundle: {
         platform: "ios",
         channel: "production",
-        bundleId: "release-b",
+        releaseId: "release-b",
         outcome: "applied",
       },
       beforeReceivedAtMs: before,
@@ -1126,7 +1126,7 @@ describe("insights event list ranges", () => {
                 bundle: {
                   platform: "ios",
                   channel: "production",
-                  bundleId: "release-b",
+                  releaseId: "release-b",
                   outcome,
                 },
               }),
