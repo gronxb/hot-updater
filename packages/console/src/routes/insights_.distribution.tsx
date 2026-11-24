@@ -78,19 +78,27 @@ function DistributionRelease({
   const label = useReleaseLabelQuery(releaseId);
   return (
     <div className="flex min-h-11 min-w-0 items-center md:min-h-9">
-      <ReleaseIdDisplay
-        releaseId={releaseId}
-        className="min-w-0"
-        label={label.data ?? null}
-        labelAs={
-          <Link
-            to="/"
-            search={{ releaseId }}
-            aria-label={`Review bundle ${releaseId} for app version ${appVersion}`}
-            className="min-w-0 underline-offset-4 hover:underline"
-          />
-        }
-      />
+      {/* Its label first: the ID alone would show, then shrink to its tail. */}
+      {label.isPending ? (
+        <Skeleton
+          aria-label={`Loading bundle ${releaseId}`}
+          className="h-4 w-24"
+        />
+      ) : (
+        <ReleaseIdDisplay
+          releaseId={releaseId}
+          className="min-w-0"
+          label={label.data ?? null}
+          labelAs={
+            <Link
+              to="/"
+              search={{ releaseId }}
+              aria-label={`Review bundle ${releaseId} for app version ${appVersion}`}
+              className="min-w-0 underline-offset-4 hover:underline"
+            />
+          }
+        />
+      )}
     </div>
   );
 }

@@ -214,9 +214,10 @@ describe("Distribution details", () => {
         name: `Built-in bundle ${builtin} share in 1.0.0 on ios`,
       }),
     ).toBeDefined();
-    // A release that selected the built-in bundle links to it and still says so.
+    // A release that selected the built-in bundle links to it and still says
+    // so, once its label is read.
     expect(
-      within(adopted!).getByRole("link", {
+      await within(adopted!).findByRole("link", {
         name: "Review bundle release-rollback for app version 1.0.0",
       }),
     ).toBeDefined();
