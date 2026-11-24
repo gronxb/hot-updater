@@ -14,6 +14,7 @@ import type {
   InsightsCountEventsInput,
   InsightsCountEventSeriesInput,
   InsightsCountLatestEventsInput,
+  InsightsCountReleaseInstallationsInput,
   InsightsFindLatestEventsInput,
   InsightsGetAppUsageInput,
   InsightsGetReleaseActivityInput,
@@ -25,6 +26,7 @@ import {
   countEvents,
   countEventSeries,
   countLatestEvents,
+  countReleaseInstallations,
   findLatestEvents,
   getAppUsage,
   getReleaseActivity,
@@ -91,6 +93,8 @@ const createInsightsApi = (
     findLatestEvents(db, input),
   countLatestEvents: (input: InsightsCountLatestEventsInput) =>
     countLatestEvents(db, input),
+  countReleaseInstallations: (input: InsightsCountReleaseInstallationsInput) =>
+    countReleaseInstallations(db, input),
   countEvents: (input: InsightsCountEventsInput) => countEvents(db, input),
   countEventSeries: (input: InsightsCountEventSeriesInput) =>
     countEventSeries(db, input),
@@ -103,8 +107,9 @@ const createInsightsApi = (
     getUpdateFailures(db, input, now, retention),
   /**
    * Moves the stored events a 1.1 server keyed by artifact, and their
-   * outcome counts, to their release: `hot-updater db migrate` and
-   * `hot-updater init` run it, and it can run again.
+   * outcome counts, to their release, reading every stored event of the
+   * raw period: `hot-updater db migrate` and `hot-updater init` run it once
+   * a database, and an interrupted run can run again.
    */
   backfillReleaseRefs: (options?: { readonly dryRun?: boolean }) =>
     backfillReleaseRefs(db, now, retention, options),

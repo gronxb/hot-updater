@@ -61,14 +61,26 @@ export type InsightsFindLatestEventsInput =
 export interface InsightsCountLatestEventsInput extends InsightsScope {
   /** A UTC day's start: latest events are counted by the day they fall in. */
   readonly sinceMs: number;
+}
+
+export interface InsightsCountReleaseInstallationsInput extends InsightsCountLatestEventsInput {
   /**
-   * Only installations whose latest event leaves them running this release:
-   * the source of a download, the target of anything else. An ID that names
-   * no release, as a report from the built-in bundle names it, counts the
-   * installations running that built-in bundle outside any release, as event
-   * filters match the bundle ID such a report names.
+   * The release whose installations to count: those whose latest event
+   * leaves them running it, the source of a download, the target of
+   * anything else. An ID that names no release, as a report from the
+   * built-in bundle names it, counts the installations running that
+   * built-in bundle outside any release, as event filters match the bundle
+   * ID such a report names.
    */
-  readonly releaseId?: string;
+  readonly releaseId: string;
+}
+
+/** `countReleaseInstallations`' counts, read together. */
+export interface InsightsReleaseInstallations {
+  /** Installations whose latest event falls in the window, as `countLatestEvents`. */
+  readonly installations: number;
+  /** Of those, the ones running the release. */
+  readonly release: number;
 }
 
 export interface InsightsCountEventsInput {
@@ -199,8 +211,15 @@ export interface InsightsModel {
   findLatestEvents(
     input: InsightsFindLatestEventsInput,
   ): Promise<readonly BundleEventRow[]>;
-  /** Count latest events once per installation, of one release with `releaseId`. */
+  /** Count latest events once per installation. */
   countLatestEvents(input: InsightsCountLatestEventsInput): Promise<number>;
+  /**
+   * `countLatestEvents`, and of those one release's installations, from
+   * one read of the same rows.
+   */
+  countReleaseInstallations(
+    input: InsightsCountReleaseInstallationsInput,
+  ): Promise<InsightsReleaseInstallations>;
   /** Count accepted reports in [sinceMs, beforeReceivedAtMs), across all pages. */
   countEvents(input: InsightsCountEventsInput): Promise<number>;
   /**

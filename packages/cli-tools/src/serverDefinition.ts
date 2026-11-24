@@ -1,5 +1,6 @@
 import {
   type AnyHotUpdaterPlugin,
+  type DatabaseAdapter,
   type HotUpdaterCoreApi,
   type Migrator,
   type PluginClientCredential,
@@ -7,6 +8,7 @@ import {
   type ReleaseLabelFill,
   type SchemaGenerator,
   type ToolingDatabase,
+  SETTINGS_TABLE,
   toolingTargetOf,
 } from "@hot-updater/plugin-core";
 
@@ -278,19 +280,50 @@ const insightsBackfillOf = (api: unknown): InsightsBackfill | undefined => {
 };
 
 /**
+ * The settings row that records the backfill ran, beside the `schema.*`
+ * rows and retention's lease: its value is when, in epoch ms.
+ */
+const INSIGHTS_BACKFILL_KEY = "insights.releaseRefs";
+
+/** A database the CLI reaches directly: `standaloneRepository` has none. */
+const adapterOf = (database: unknown): DatabaseAdapter | undefined => {
+  const adapter = isRecord(database) ? database.adapter : undefined;
+  return isRecord(adapter) && typeof adapter.get === "function"
+    ? (adapter as unknown as DatabaseAdapter)
+    : undefined;
+};
+
+/**
  * Moves the Insights events a 1.1 server keyed by artifact, and their
  * counts, to their releases, once the schema is migrated: `hot-updater
- * init` and `db migrate` run it after the label fill. It runs on a database
- * the CLI reaches directly; a server deployed apart from the project runs
- * it from its own `db migrate`. It prints one line when it moved something,
- * and nothing otherwise.
+ * init` and `db migrate` run it after the label fill. It runs once a
+ * database: it then records the settings row `insights.releaseRefs`, so a
+ * later run reads that row and no event. Events a 1.1 process still running
+ * records after it stay keyed by artifact until the raw period drops them.
+ * It runs on a database the CLI reaches directly; a server deployed apart
+ * from the project runs it from its own `db migrate`. It prints one line
+ * when it moved something, and nothing otherwise.
  */
 export const backfillInsightsReleaseRefs = async (definition: {
   readonly api?: Readonly<Record<string, unknown>> | undefined;
+  readonly database?: unknown;
 }): Promise<number> => {
   const insights = insightsBackfillOf(definition.api);
-  if (insights === undefined) return 0;
+  const adapter = adapterOf(definition.database);
+  if (insights === undefined || adapter === undefined) return 0;
+  const [done = null] = await adapter.get(SETTINGS_TABLE, [
+    [INSIGHTS_BACKFILL_KEY],
+  ]);
+  if (done !== null) return 0;
   const { events } = await insights.backfillReleaseRefs();
+  // A concurrent run that recorded it first leaves this insert refused.
+  await adapter.write([
+    {
+      type: "insert",
+      table: SETTINGS_TABLE,
+      row: { key: INSIGHTS_BACKFILL_KEY, value: String(Date.now()), _v: 0 },
+    },
+  ]);
   if (events > 0) {
     p.log.info(
       `Moved ${events} Insights event${events === 1 ? "" : "s"} from ${events === 1 ? "its artifact to its release" : "their artifacts to their releases"}.`,

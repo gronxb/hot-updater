@@ -106,9 +106,37 @@ const health = (api: InsightsApi, releaseId: string) => {
   ]).then(([launched, crashed]) => ({ launched, crashed }));
 };
 
+/**
+ * The adapter, counting the reads of each physical table: an Insights
+ * event's are `bundle_events` and its index tables.
+ */
+const countingReads = (adapter: DatabaseAdapter) => {
+  const reads = new Map<string, number>();
+  const count = (table: { readonly name: string }) =>
+    reads.set(table.name, (reads.get(table.name) ?? 0) + 1);
+  // Own members, as `createEngineDatabase` copies them.
+  const counted: DatabaseAdapter = {
+    ...adapter,
+    get: (...args: Parameters<DatabaseAdapter["get"]>) => {
+      count(args[0]);
+      return adapter.get(...args);
+    },
+    query: (...args: Parameters<DatabaseAdapter["query"]>) => {
+      count(args[0]);
+      return adapter.query(...args);
+    },
+  };
+  const eventReads = () =>
+    [...reads]
+      .filter(([name]) => name.startsWith("bundle_events"))
+      .reduce((sum, [, n]) => sum + n, 0);
+  return { adapter: counted, reads, eventReads };
+};
+
 describe("db migrate on a database a 1.1 server's Insights wrote", () => {
   let pglite: PGlite;
   let adapter: DatabaseAdapter;
+  let counter: ReturnType<typeof countingReads>;
   let log: Record<"info" | "success", ReturnType<typeof vi.fn>>;
 
   /** A server over the database, as one run of the CLI assembles it. */
@@ -142,7 +170,10 @@ describe("db migrate on a database a 1.1 server's Insights wrote", () => {
       throw new Exit(code);
     }) as never);
     pglite = new PGlite();
-    adapter = createSqlAdapter({ executor: pgliteExecutor(pglite) });
+    counter = countingReads(
+      createSqlAdapter({ executor: pgliteExecutor(pglite) }),
+    );
+    adapter = counter.adapter;
     await migrateCoreSchema(adapter, "postgres", [insights()]);
   });
 
@@ -215,14 +246,19 @@ describe("db migrate on a database a 1.1 server's Insights wrote", () => {
       }),
     ).resolves.toBe(1);
 
+    // It ran once: the first run read the events, the second reads only
+    // the settings row that records it.
+    expect(counter.eventReads()).toBeGreaterThan(0);
     log.info.mockClear();
+    counter.reads.clear();
     serve(createEngineDatabase({ name: "postgres", adapter }));
     await expect(runMigrate()).resolves.toBe(0);
     expect(log.success.mock.calls.at(-1)).toEqual(["Schema is up to date."]);
     expect(log.info).not.toHaveBeenCalled();
+    expect(counter.eventReads()).toBe(0);
   });
 
-  it("moves what a 1.1 server still running recorded after the migration when db migrate runs again", async () => {
+  it("leaves what a 1.1 server still running records after the backfill keyed by artifact, and reads no event again", async () => {
     await asWrittenByOneDotOne();
     const server = serve(createEngineDatabase({ name: "postgres", adapter }));
     const api = server.api["insights"] as InsightsApi;
@@ -233,13 +269,15 @@ describe("db migrate on a database a 1.1 server's Insights wrote", () => {
     await expect(health(api, v5)).resolves.toEqual({ launched: 3, crashed: 0 });
     log.info.mockClear();
 
+    counter.reads.clear();
     serve(createEngineDatabase({ name: "postgres", adapter }));
     await expect(runMigrate()).resolves.toBe(0);
 
-    expect(log.info.mock.calls).toEqual([
-      ["Moved 1 Insights event from its artifact to its release."],
-    ]);
-    await expect(health(api, v5)).resolves.toEqual({ launched: 4, crashed: 0 });
+    // The backfill ran once: Release health leaves that event out until
+    // the raw period drops it.
+    expect(log.info).not.toHaveBeenCalled();
+    expect(counter.eventReads()).toBe(0);
+    await expect(health(api, v5)).resolves.toEqual({ launched: 3, crashed: 0 });
   });
 
   it("moves them on a database without a migrator, whose schema its provider applies", async () => {

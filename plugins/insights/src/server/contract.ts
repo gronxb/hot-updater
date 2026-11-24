@@ -269,13 +269,29 @@ export const createValidatedInsightsModel = (
   async countLatestEvents(input) {
     if (
       !isRecord(input) ||
-      !hasOnlyKeys(input, ["platform", "channel", "sinceMs", "releaseId"]) ||
+      !hasOnlyKeys(input, ["platform", "channel", "sinceMs"]) ||
       !hasScope(input) ||
-      !isTimestamp(input.sinceMs) ||
-      (input.releaseId !== undefined && !isText(input.releaseId))
+      !isTimestamp(input.sinceMs)
     )
       invalidQuery();
     return validateCount(await model.countLatestEvents(input));
+  },
+  async countReleaseInstallations(input) {
+    if (
+      !isRecord(input) ||
+      !hasOnlyKeys(input, ["platform", "channel", "sinceMs", "releaseId"]) ||
+      !hasScope(input) ||
+      !isTimestamp(input.sinceMs) ||
+      !isText(input.releaseId)
+    )
+      invalidQuery();
+    const counts = await model.countReleaseInstallations(input);
+    if (!isRecord(counts) || !hasOnlyKeys(counts, ["installations", "release"]))
+      invalidResult();
+    return {
+      installations: validateCount(counts.installations as number),
+      release: validateCount(counts.release as number),
+    };
   },
   async countEvents(input) {
     if (

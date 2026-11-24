@@ -523,13 +523,17 @@ export const registerInsightsModelTests = (
       };
       await record(model, applied);
       await record(model, downloaded);
+      const scope = {
+        platform: "ios",
+        channel: "production",
+        sinceMs: 0,
+      } as const;
       const count = (releaseId?: string) =>
-        model.countLatestEvents({
-          platform: "ios",
-          channel: "production",
-          sinceMs: 0,
-          ...(releaseId === undefined ? {} : { releaseId }),
-        });
+        releaseId === undefined
+          ? model.countLatestEvents(scope)
+          : model
+              .countReleaseInstallations({ ...scope, releaseId })
+              .then(({ release }) => release);
       await expectInsightsIndex(() => count(releaseA), 2);
       await expectInsightsIndex(() => count(releaseB), 0);
       await expectInsightsIndex(() => count(), 2);
@@ -607,7 +611,9 @@ export const registerInsightsModelTests = (
       await expectInsightsIndex(() => series(crashed(v3)), [2]);
       // Each release's installations: the two that crashed on v3 went to v4.
       const installations = (releaseId: string) =>
-        model.countLatestEvents({ ...scope, sinceMs: 0, releaseId });
+        model
+          .countReleaseInstallations({ ...scope, sinceMs: 0, releaseId })
+          .then(({ release }) => release);
       await expectInsightsIndex(() => installations(v5), 3);
       await expectInsightsIndex(() => installations(v4), 2);
       await expectInsightsIndex(() => installations(v3), 0);
@@ -816,12 +822,14 @@ export const registerInsightsModelTests = (
       // ID, as event filters match a report without a release; an unknown
       // bundle's, by no ID.
       const installations = (releaseId: string) =>
-        model.countLatestEvents({
-          channel,
-          platform: "ios",
-          sinceMs: 0,
-          releaseId,
-        });
+        model
+          .countReleaseInstallations({
+            channel,
+            platform: "ios",
+            sinceMs: 0,
+            releaseId,
+          })
+          .then(({ release }) => release);
       await expectInsightsIndex(() => installations(builtin), 2);
       await expect(
         installations(createBundleEventRowFixture("9905", 0).id),

@@ -68,9 +68,10 @@ const namesArtifact = (row: StoredEvent): boolean => {
  * the bundle ID it reports, as new events do.
  *
  * It reads every stored event once and writes only those still to move, so
- * it can run again: after an interrupted run, or after a 1.1 server still
- * running wrote more. `hot-updater db migrate` and `hot-updater init` run
- * it. Installation gauges need nothing: they name releases already.
+ * an interrupted run can run again. `hot-updater db migrate` and `hot-updater
+ * init` run it once a database: when it completes they record the settings
+ * row `insights.releaseRefs`, and later runs read no event. Installation
+ * gauges need nothing: they name releases already.
  */
 export const backfillReleaseRefs = async (
   db: HotUpdaterDatabase<InsightsSchema>,

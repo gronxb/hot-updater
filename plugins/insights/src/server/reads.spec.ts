@@ -114,13 +114,17 @@ describe("insights latest events by bundle", () => {
         event(n, { ...moved, received_at_ms: halfPast }),
       );
     }
+    const scope = {
+      platform: "ios",
+      channel: "production",
+      sinceMs: T0,
+    } as const;
     const count = (releaseId?: string) =>
-      harness.api.countLatestEvents({
-        platform: "ios",
-        channel: "production",
-        sinceMs: T0,
-        ...(releaseId === undefined ? {} : { releaseId }),
-      });
+      releaseId === undefined
+        ? harness.api.countLatestEvents(scope)
+        : harness.api
+            .countReleaseInstallations({ ...scope, releaseId })
+            .then(({ release }) => release);
     await expect(count("R1")).resolves.toBe(3);
     await expect(count("R2")).resolves.toBe(1);
     await expect(count("R3")).resolves.toBe(0);
@@ -274,7 +278,8 @@ describe("insights read budgets", () => {
     expect(latest.result).toBe(1);
     expect(Object.keys(latest.tables)).toEqual(["insights_distribution"]);
 
-    // A release's installations: the same distribution rows, filtered.
+    // A release's installations and the scope's: one read of the same
+    // distribution rows the scope count reads alone.
     const all = await read(() =>
       api.countLatestEvents({
         platform: "ios",
@@ -283,14 +288,14 @@ describe("insights read budgets", () => {
       }),
     );
     const byRelease = await read(() =>
-      api.countLatestEvents({
+      api.countReleaseInstallations({
         platform: "ios",
         channel: "production",
         sinceMs: T0,
         releaseId: "release-b",
       }),
     );
-    expect(byRelease.result).toBe(24);
+    expect(byRelease.result).toEqual({ installations: 24, release: 24 });
     expect(all.result).toBe(24);
     expect(byRelease.tables).toEqual(all.tables);
     expect(Object.keys(byRelease.tables)).toEqual(["insights_distribution"]);

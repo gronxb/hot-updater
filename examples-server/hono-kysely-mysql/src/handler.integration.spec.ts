@@ -281,11 +281,11 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     // one that moved to it from A, the launch, and the superseded one, whose
     // later report leaves it on B.
     await expect(
-      insights.countLatestEvents({ ...scope, releaseId: releaseA }),
-    ).resolves.toBe(2);
+      insights.countReleaseInstallations({ ...scope, releaseId: releaseA }),
+    ).resolves.toEqual({ installations: 5, release: 2 });
     await expect(
-      insights.countLatestEvents({ ...scope, releaseId: releaseB }),
-    ).resolves.toBe(3);
+      insights.countReleaseInstallations({ ...scope, releaseId: releaseB }),
+    ).resolves.toEqual({ installations: 5, release: 3 });
   });
 
   it("rejects in-place upgrade from a v0 MySQL schema", async () => {

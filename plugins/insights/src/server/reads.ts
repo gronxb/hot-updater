@@ -13,6 +13,8 @@ import type {
   InsightsCountEventsInput,
   InsightsCountEventSeriesInput,
   InsightsCountLatestEventsInput,
+  InsightsCountReleaseInstallationsInput,
+  InsightsReleaseInstallations,
   InsightsEventSeriesPoint,
   InsightsFindLatestEventsInput,
   InsightsGetAppUsageInput,
@@ -310,23 +312,15 @@ export const countEventSeries = async (
   }));
 };
 
-/**
- * Latest events at or after `sinceMs`, a UTC day's start: the gauges count
- * each installation in the UTC day of its latest event, so they answer whole
- * days only, and a later start is rejected rather than rounded. With
- * `releaseId`, only the installations it leaves running that release, from
- * the same distribution rows, which name the release each one runs; for an
- * ID no row names as a release, those running it as their built-in bundle.
- */
-export const countLatestEvents = async (
+/** The distribution rows at or after `start`, a UTC day's start. */
+const distributionRows = (
   db: Db,
-  input: InsightsCountLatestEventsInput,
-): Promise<number> => {
-  const { platform, channel, sinceMs: start, releaseId } = input;
+  { platform, channel, sinceMs: start }: InsightsCountLatestEventsInput,
+) => {
   if (start % DAY_MS !== 0) {
     throw new DatabaseAdapterInputError("invalid-query");
   }
-  const rows = await drain((page) =>
+  return drain((page) =>
     db.findAggregates("insights_distribution", {
       index: "byScope",
       where: { channel, platform },
@@ -335,18 +329,51 @@ export const countLatestEvents = async (
       ...page,
     }),
   );
+};
+
+// Batched gauges sum signed shard rows, which a lost change can leave below
+// zero: an installation count never is.
+const installations = (count: number) => Math.max(0, count);
+
+/**
+ * Latest events at or after `sinceMs`, a UTC day's start: the gauges count
+ * each installation in the UTC day of its latest event, so they answer whole
+ * days only, and a later start is rejected rather than rounded.
+ */
+export const countLatestEvents = async (
+  db: Db,
+  input: InsightsCountLatestEventsInput,
+): Promise<number> =>
+  installations(
+    (await distributionRows(db, input)).reduce(
+      (sum, row) => sum + row.latest_installations,
+      0,
+    ),
+  );
+
+/**
+ * `countLatestEvents`, and of those the installations it leaves running
+ * `releaseId`, from the same distribution rows in one read: each names the
+ * release its installations run. An ID no row names as a release may be a
+ * built-in bundle's, which a report without a release names, as event
+ * counts match it: its installations outside any release are in the
+ * built-in rows, read only then. Release and bundle IDs never coincide.
+ */
+export const countReleaseInstallations = async (
+  db: Db,
+  input: InsightsCountReleaseInstallationsInput,
+): Promise<InsightsReleaseInstallations> => {
+  const { platform, channel, sinceMs: start, releaseId } = input;
   let total = 0;
+  let release = 0;
   let named = false;
-  for (const row of rows) {
-    if (releaseId !== undefined && row.release_id !== releaseId) continue;
-    named = true;
+  for (const row of await distributionRows(db, input)) {
     total += row.latest_installations;
+    if (row.release_id !== releaseId) continue;
+    named = true;
+    release += row.latest_installations;
   }
-  // An ID no row names as a release may be a built-in bundle's, which a
-  // report without a release names, as event counts match it: its
-  // installations outside any release are in the built-in rows, read only
-  // then. Release and bundle IDs never coincide.
-  if (releaseId !== undefined && !named) {
+  if (!named) {
     const builtin = await drain((page) =>
       db.findAggregates("insights_builtin_distribution", {
         index: "byScope",
@@ -358,13 +385,14 @@ export const countLatestEvents = async (
     );
     for (const row of builtin) {
       if (row.release_id === "" && row.builtin_bundle_id === releaseId) {
-        total += row.latest_installations;
+        release += row.latest_installations;
       }
     }
   }
-  // Batched gauges sum signed shard rows, which a lost change can leave
-  // below zero: an installation count never is.
-  return Math.max(0, total);
+  return {
+    installations: installations(total),
+    release: installations(release),
+  };
 };
 
 /** The oldest whole hour and UTC day that hourly and daily rows still hold. */

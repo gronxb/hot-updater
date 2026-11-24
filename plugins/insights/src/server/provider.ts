@@ -690,16 +690,28 @@ export const createInsightsProvider = (
         input.bundleId === undefined
           ? undefined
           : requireString(input.bundleId, "bundle ID", MAX_EVENT_ID_LENGTH);
-      const reporting = measure(model.countLatestEvents({ ...scope, sinceMs }));
       if (bundleId === undefined) {
         return {
           ...scope,
           window,
           sinceMs,
           beforeReceivedAtMs,
-          reportingInstallations: await reporting,
+          reportingInstallations: await measure(
+            model.countLatestEvents({ ...scope, sinceMs }),
+          ),
         };
       }
+      // The scope's installations and the bundle's, from one read of the
+      // distribution rows.
+      const installations = model
+        .countReleaseInstallations({ ...scope, sinceMs, releaseId: bundleId })
+        .then(
+          async (counts) =>
+            [
+              await measure(Promise.resolve(counts.installations)),
+              await measure(Promise.resolve(counts.release)),
+            ] as const,
+        );
       const countOutcome = (outcome: InsightsBundleSelection["outcome"]) =>
         measure(
           model.countEvents({
@@ -709,17 +721,13 @@ export const createInsightsProvider = (
           }),
         );
       const [
-        reportingInstallations,
-        bundleInstallations,
+        [reportingInstallations, bundleInstallations],
         downloadedReports,
         appliedReports,
         recoveredReports,
         failedReports,
       ] = await Promise.all([
-        reporting,
-        measure(
-          model.countLatestEvents({ ...scope, sinceMs, releaseId: bundleId }),
-        ),
+        installations,
         countOutcome("downloaded"),
         countOutcome("applied"),
         countOutcome("recovered"),

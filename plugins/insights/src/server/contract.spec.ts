@@ -36,6 +36,7 @@ const emptyModel: InsightsModel = {
   listEvents: async () => [],
   findLatestEvents: async () => [],
   countLatestEvents: async () => 0,
+  countReleaseInstallations: async () => ({ installations: 0, release: 0 }),
   countEvents: async () => 0,
   countEventSeries: async ({ timeRange: { start, end }, intervalMs }) =>
     Array.from({ length: (end - start) / intervalMs }, (_, index) => ({
@@ -346,24 +347,38 @@ describe("public Insights validation", () => {
     ).rejects.toMatchObject({ code: "invalid-result" });
   });
 
-  it("passes a release to the installation count, and rejects any other bundle predicate", async () => {
+  it("passes a release to the installation counts, and rejects any other bundle predicate", async () => {
     const countLatestEvents = vi.fn(async () => 1);
-    const model = createModel({ countLatestEvents });
-    const input = {
+    const countReleaseInstallations = vi.fn(async () => ({
+      installations: 3,
+      release: 1,
+    }));
+    const model = createModel({ countLatestEvents, countReleaseInstallations });
+    const scope = {
       platform: "ios",
       channel: "production",
       sinceMs: 0,
-      releaseId: "R",
     } as const;
-    await expect(model.countLatestEvents(input)).resolves.toBe(1);
-    expect(countLatestEvents).toHaveBeenCalledWith(input);
+    const input = { ...scope, releaseId: "R" } as const;
+    await expect(model.countReleaseInstallations(input)).resolves.toEqual({
+      installations: 3,
+      release: 1,
+    });
+    expect(countReleaseInstallations).toHaveBeenCalledWith(input);
     for (const invalid of [
       { ...input, releaseId: "" },
       { ...input, releaseId: 1 },
+      scope,
+    ]) {
+      await expect(
+        model.countReleaseInstallations(invalid as never),
+      ).rejects.toMatchObject({ code: "invalid-query" });
+    }
+    expect(countReleaseInstallations).toHaveBeenCalledTimes(1);
+    for (const invalid of [
+      input,
       {
-        platform: "ios",
-        channel: "production",
-        sinceMs: 0,
+        ...scope,
         bundle: [{ field: "to_bundle_id", value: "B", types: ["UNCHANGED"] }],
       },
     ]) {
@@ -371,7 +386,19 @@ describe("public Insights validation", () => {
         model.countLatestEvents(invalid as never),
       ).rejects.toMatchObject({ code: "invalid-query" });
     }
-    expect(countLatestEvents).toHaveBeenCalledTimes(1);
+    expect(countLatestEvents).not.toHaveBeenCalled();
+    for (const counts of [
+      { installations: -1, release: 0 },
+      { installations: 1, release: 1.5 },
+      { installations: 1 },
+      { installations: 1, release: 1, extra: 1 },
+    ]) {
+      await expect(
+        createModel({
+          countReleaseInstallations: async () => counts as never,
+        }).countReleaseInstallations(input),
+      ).rejects.toMatchObject({ code: "invalid-result" });
+    }
   });
 
   it("propagates native failures and rejects invalid scalar counts", async () => {

@@ -76,6 +76,9 @@ const createModel = () => {
     listEvents: vi.fn<InsightsModel["listEvents"]>(async () => []),
     findLatestEvents: vi.fn<InsightsModel["findLatestEvents"]>(async () => []),
     countLatestEvents: vi.fn<InsightsModel["countLatestEvents"]>(async () => 0),
+    countReleaseInstallations: vi.fn<
+      InsightsModel["countReleaseInstallations"]
+    >(async () => ({ installations: 0, release: 0 })),
     countEvents: vi.fn<InsightsModel["countEvents"]>(async () => 0),
     countEventSeries: vi.fn<InsightsModel["countEventSeries"]>(async () => []),
     getReleaseActivity: vi.fn<InsightsModel["getReleaseActivity"]>(
@@ -434,7 +437,10 @@ describe("createInsightsProvider", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));
     const fixture = createModel();
-    fixture.countLatestEvents.mockResolvedValueOnce(1).mockResolvedValueOnce(2);
+    fixture.countReleaseInstallations.mockResolvedValueOnce({
+      installations: 1,
+      release: 2,
+    });
     fixture.countEvents
       .mockResolvedValueOnce(7)
       .mockResolvedValueOnce(5)
@@ -450,8 +456,9 @@ describe("createInsightsProvider", () => {
     expect(result.reportingInstallations.count).toBe(1);
     // Independent live measurements are never clamped or turned into a share.
     expect(result.bundle?.reportingInstallations.count).toBe(2);
-    expect(fixture.countLatestEvents).toHaveBeenCalledTimes(2);
-    expect(fixture.countLatestEvents.mock.calls[1]?.[0]).toEqual({
+    // Both installation counts come from one read of the distribution.
+    expect(fixture.countLatestEvents).not.toHaveBeenCalled();
+    expect(fixture.countReleaseInstallations).toHaveBeenCalledExactlyOnceWith({
       ...scope,
       sinceMs: Date.now() - 24 * 60 * 60 * 1_000,
       releaseId: "B",

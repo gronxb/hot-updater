@@ -210,12 +210,14 @@ describe("Insights rollout gate on DynamoDB Local", () => {
     // installations never conflict.
     if (ENFORCE_RETRIED_BOUND) expect(retried).toBeLessThanOrEqual(0.01);
     const latest = (releaseId: string) =>
-      rollout.countLatestEvents({
-        platform: "ios",
-        channel: "production",
-        sinceMs: start - (start % 86_400_000),
-        releaseId,
-      });
+      rollout
+        .countReleaseInstallations({
+          platform: "ios",
+          channel: "production",
+          sinceMs: start - (start % 86_400_000),
+          releaseId,
+        })
+        .then(({ release }) => release);
     expect(await latest("release-b")).toBe(INSTALLS);
     expect(await latest("release-a")).toBe(0);
   }, 600_000);

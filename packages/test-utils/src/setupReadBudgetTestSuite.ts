@@ -13,6 +13,8 @@ import type {
   InsightsCountEventsInput,
   InsightsCountEventSeriesInput,
   InsightsCountLatestEventsInput,
+  InsightsCountReleaseInstallationsInput,
+  InsightsReleaseInstallations,
   InsightsEventSeriesPoint,
   InsightsFindLatestEventsInput,
   InsightsGetAppUsageInput,
@@ -74,6 +76,9 @@ interface ReadBudgetInsights {
     input: InsightsFindLatestEventsInput,
   ): Promise<readonly BundleEventRow[]>;
   countLatestEvents(input: InsightsCountLatestEventsInput): Promise<number>;
+  countReleaseInstallations(
+    input: InsightsCountReleaseInstallationsInput,
+  ): Promise<InsightsReleaseInstallations>;
   countEvents(input: InsightsCountEventsInput): Promise<number>;
   countEventSeries(
     input: InsightsCountEventSeriesInput,
@@ -1086,11 +1091,11 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     check: (count) => expect(count).toBe(24),
   }),
   budget({
-    api: "countLatestEvents of a release: the same rows, filtered",
+    api: "countReleaseInstallations: the scope's rows, read once for both counts",
     // The distribution rows of days 0 and 2, as without a release: 14
-    // shards and 1.
+    // shards and 1, which name release-b, so no built-in row is read.
     read: ({ insights }) =>
-      insights.countLatestEvents({
+      insights.countReleaseInstallations({
         platform: "ios",
         channel: "production",
         sinceMs: T0,
@@ -1098,7 +1103,8 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       }),
     adapter: reads(0, 0, 1, 15),
     engine: { calls: 1, rows: 2 },
-    check: (count) => expect(count).toBe(24),
+    check: (counts) =>
+      expect(counts).toEqual({ installations: 24, release: 24 }),
   }),
   budget({
     api: "release activity: buckets × shards, all used",
