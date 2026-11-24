@@ -1,5 +1,35 @@
 # @hot-updater/console
 
+## 1.2.0-rc.58
+
+### Patch Changes
+
+- 3ed0a52: fix(console,cli): show release IDs as bundle IDs and name artifacts as artifacts
+
+  A bundle ID is a release's ID, the one `getBundleId()` returns and `bundle show` takes. A few Console and CLI surfaces showed an artifact's ID as a bundle instead.
+  - Console: a native build's **Patches from this build** names and dates each target by the release serving it, its label and release ID, and shows a target its scope no longer serves as "Artifact" with its ID. **Served now**'s Created column dates a release by the release, so a promoted release shows when it was promoted.
+  - Console: the Bundles list's artifact filter is `?artifactId=`; `?bundleId=` is no longer read. The manifest download moved to `/api/artifacts/:artifactId/download`.
+  - CLI: `native-build mark` names the OTA missing a patch by its label and release ID. Its `--json` `missingPatch` holds `releaseId`, `label`, `artifactId`, and `command`, in place of `bundleId`.
+  - CLI: `patch`, `deploy`, and `storage prune` call an artifact an artifact in their messages.
+
+- 58ac8ef: fix(console): fit the Insights compared-bundles table on phones
+
+  On a phone, Release health's compared-bundles table left its Bundle column about 50 px wide: a release's label and ID tail ran past the cell, and "Deployed" broke mid-word. When the card is narrower than the table needs, each compared bundle now shows as a row of its own, with its label, badges, and deployment on top and its counts underneath, each named as in the table. Wider cards keep the table as it was.
+
+- db95c49: Console: a labeled release reads `vN` and the last 6 characters of its ID in one size, without a dot. Hovering or focusing the ID shows the full ID, and a click, Enter or tap copies it. Advanced artifact diagnostics label the base and target artifacts by the releases that serve them.
+- e7ae1dc: Insights keys Release health by release instead of by artifact, so two releases of one artifact in one channel and platform, as a promote back into the channel makes them, count their downloads, launches and crashes apart, and Roll back names the release that crashed. A release's installation count comes from the distribution rows, which already name the release, and `insights_latest_by_bundle` is no longer written. `hot-updater init` and `hot-updater db migrate` move the events a 1.1 server keyed by artifact in the raw period, with their hourly counts, to the release each names (`api.insights.backfillReleaseRefs()`), once a database: they then record the settings row `insights.releaseRefs`, so a later run reads no event. Events a 1.1 server still running records after that stay keyed by artifact until the raw period drops them. The overview of one bundle reads the distribution rows once for both its installation counts (`countReleaseInstallations`).
+
+  The Insights model's bundle filters take `toReleaseId` and `fromReleaseId`, and `countLatestEvents` drops its `bundle` predicates for `countReleaseInstallations`. Event rows add `fromReleaseId`, and installation rows `lastKnownReleaseId`. The Console's event and installation views, the CLI's `insights events`, `installations` and `overview` (and their `--json`), and the distribution show the release ID, the bundle ID apps report; the distribution and the filter chips show its label too. The Insights release picker no longer matches artifact IDs.
+
+- Updated dependencies [7709b2b]
+- Updated dependencies [e7ae1dc]
+- Updated dependencies [8e77373]
+  - @hot-updater/protocol@1.2.0-rc.58
+  - @hot-updater/server@1.2.0-rc.58
+  - @hot-updater/cli-tools@1.2.0-rc.58
+  - @hot-updater/plugin-core@1.2.0-rc.58
+  - @hot-updater/bsdiff@1.2.0-rc.58
+
 ## 1.2.0-rc.57
 
 ### Patch Changes
