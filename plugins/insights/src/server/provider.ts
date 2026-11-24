@@ -157,9 +157,8 @@ const bundleFilter = (
   input: InsightsBundleSelection,
 ): InsightsBundleEventFilter => {
   const scope = readScope(input);
-  // The bundle ID users see is a release ID.
   const releaseId = requireString(
-    input.bundleId,
+    input.releaseId,
     "bundle ID",
     MAX_EVENT_ID_LENGTH,
   );
@@ -687,11 +686,10 @@ export const createInsightsProvider = (
         }
         return { count: value, measuredAtMs: Date.now() };
       };
-      // The bundle ID users see is a release ID.
       const releaseId =
-        input.bundleId === undefined
+        input.releaseId === undefined
           ? undefined
-          : requireString(input.bundleId, "bundle ID", MAX_EVENT_ID_LENGTH);
+          : requireString(input.releaseId, "bundle ID", MAX_EVENT_ID_LENGTH);
       if (releaseId === undefined) {
         return {
           ...scope,
@@ -717,12 +715,7 @@ export const createInsightsProvider = (
       const countOutcome = (outcome: InsightsBundleSelection["outcome"]) =>
         measure(
           model.countEvents({
-            filter: bundleFilter({
-              ...scope,
-              // oxlint-disable-next-line hot-updater/id-naming -- public API: bundleId is the bundle ID users see, a release ID
-              bundleId: releaseId,
-              outcome,
-            }),
+            filter: bundleFilter({ ...scope, releaseId, outcome }),
             sinceMs,
             beforeReceivedAtMs,
           }),
@@ -747,8 +740,7 @@ export const createInsightsProvider = (
         beforeReceivedAtMs,
         reportingInstallations,
         bundle: {
-          // oxlint-disable-next-line hot-updater/id-naming -- public API: bundleId is the bundle ID users see, a release ID
-          bundleId: releaseId,
+          releaseId,
           reportingInstallations: bundleInstallations,
           downloadedReports,
           appliedReports,

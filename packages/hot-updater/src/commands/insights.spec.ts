@@ -197,15 +197,14 @@ describe("hot-updater insights over hot-updater.config.ts", () => {
     expect(database.dispose).toHaveBeenCalledOnce();
     expect(process.exitCode).toBeUndefined();
 
-    // Its JSON names the bundle by its release ID, as --bundle takes it.
+    // Its JSON calls the release ID the bundle ID, as --bundle takes it.
     await handleInsightsOverview({ bundle: release.id, json: true });
     expect(jsonOutput()).toMatchObject({
-      bundle: {
-        // oxlint-disable-next-line hot-updater/id-naming -- public API: bundleId is the bundle ID users see, a release ID
-        bundleId: release.id,
-        reportingInstallations: { count: 1 },
-      },
+      bundle: { reportingInstallations: { count: 1 } },
     });
+    const { bundle } = jsonOutput() as { bundle: Record<string, unknown> };
+    expect(bundle["bundleId"]).toBe(release.id);
+    expect(bundle).not.toHaveProperty("releaseId");
 
     await handleInsightsOverview({
       json: true,

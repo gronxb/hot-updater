@@ -78,6 +78,7 @@ export {
   type InsightsSchema,
 } from "./schema";
 export type * from "./types";
+export { toWireOverview, type WireReportingOverview } from "./wire";
 
 const createInsightsApi = (
   db: HotUpdaterDatabase<InsightsSchema>,

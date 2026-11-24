@@ -14,7 +14,7 @@ const cutoff = Date.UTC(2026, 8, 20, 9, 30);
 const bundle = {
   platform: "ios",
   channel: "production",
-  bundleId: "bundle-after",
+  releaseId: "release-after",
   outcome: "applied",
 } as const;
 
@@ -45,7 +45,7 @@ const eventRow = (
   received_at_ms: receivedAtMs,
 
   to_bundle_id: "bundle-after",
-  to_release_id: null,
+  to_release_id: "release-after",
   type: "UPDATE_APPLIED",
 
   user_id: "user-1",
@@ -451,7 +451,7 @@ describe("createInsightsProvider", () => {
     const result = await provider.getReportingOverview({
       ...scope,
       window: "24h",
-      bundleId: "B",
+      releaseId: "B",
     });
     expect(result.reportingInstallations.count).toBe(1);
     // Independent live measurements are never clamped or turned into a share.
@@ -481,13 +481,13 @@ describe("createInsightsProvider", () => {
       provider.listEvents({
         bundle: {
           ...scope,
-          bundleId: "B",
+          releaseId: "B",
           outcome: "unchanged" as "applied",
         },
       }),
     ).toThrow(InsightsBadRequestError);
     await provider.listEvents({
-      bundle: { ...scope, bundleId: "B", outcome: "recovered" },
+      bundle: { ...scope, releaseId: "B", outcome: "recovered" },
       sinceMs: result.sinceMs,
       beforeReceivedAtMs: result.beforeReceivedAtMs,
     });
@@ -513,7 +513,7 @@ describe("createInsightsProvider", () => {
     for (const change of [
       { bundle: { ...bundle, outcome: "recovered" as const } },
       { bundle: { ...bundle, channel: "beta" } },
-      { bundle: { ...bundle, bundleId: "another" } },
+      { bundle: { ...bundle, releaseId: "another" } },
       { sinceMs: 101 },
       { beforeReceivedAtMs: 1_001 },
     ]) {
@@ -560,7 +560,7 @@ describe("createInsightsProvider", () => {
         platform: "ios",
         channel: "production",
         window: "24h",
-        bundleId: "B",
+        releaseId: "B",
       }),
     ).rejects.toThrow("database unavailable");
   });

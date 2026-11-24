@@ -9,6 +9,7 @@ import {
   createInsightsReads,
   type InsightsReads,
   type InstallationRow,
+  toWireOverview,
 } from "@hot-updater/server/plugins";
 
 import { printBanner } from "@/utils/printBanner";
@@ -150,14 +151,10 @@ export const handleInsightsOverview = (
       platform: scope.platform,
       channel: scope.channel,
       window,
-      ...(scope.releaseId === undefined
-        ? {}
-        : {
-            // oxlint-disable-next-line hot-updater/id-naming -- public API: bundleId is the bundle ID users see, a release ID
-            bundleId: scope.releaseId,
-          }),
+      ...(scope.releaseId === undefined ? {} : { releaseId: scope.releaseId }),
     });
-    if (options.json) return printJson(overview);
+    // Its JSON names the bundle as the HTTP API does, by `bundleId`.
+    if (options.json) return printJson(toWireOverview(overview));
     const bundle = overview.bundle;
     p.log.message(
       [
@@ -401,8 +398,7 @@ export const handleInsightsEvents = (
         bundle: {
           platform: scope.platform,
           channel: scope.channel,
-          // oxlint-disable-next-line hot-updater/id-naming -- public API: bundleId is the bundle ID users see, a release ID
-          bundleId: scope.releaseId!,
+          releaseId: scope.releaseId!,
           outcome: INSIGHTS_OUTCOMES[options.outcome],
         },
         ...page,

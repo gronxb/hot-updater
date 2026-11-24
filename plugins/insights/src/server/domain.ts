@@ -207,8 +207,8 @@ export type EventCursorPage<T extends EventHistoryRow> = CursorPage<T> & {
 };
 
 export type InsightsBundleSelection = InsightsScope & {
-  /** The bundle ID users see: a release ID. */
-  readonly bundleId: string;
+  /** The bundle users see, by its release ID. */
+  readonly releaseId: string;
   /** `failed`: update failures that targeted the bundle. */
   readonly outcome: "downloaded" | "applied" | "recovered" | "failed";
 };
@@ -224,8 +224,8 @@ export type ReportingOverview = InsightsScope & {
   readonly beforeReceivedAtMs: number;
   readonly reportingInstallations: InsightsCountMeasurement;
   readonly bundle?: {
-    /** The bundle ID users see: a release ID. */
-    readonly bundleId: string;
+    /** The bundle users see, by its release ID. */
+    readonly releaseId: string;
     /**
      * Installations whose latest report leaves them running the release;
      * for a built-in bundle's ID, those running it outside any release.

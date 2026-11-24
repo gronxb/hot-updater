@@ -17,7 +17,7 @@ export type InsightsWindow = ActiveInstallationWindow;
 export type ReportingInstallations = ReportingOverview;
 export type InsightsOverviewInput = InsightsScope & {
   readonly window: InsightsWindow;
-  readonly bundleId?: string;
+  readonly releaseId?: string;
 };
 
 type EventsPageInput = InsightsEventPageInput;

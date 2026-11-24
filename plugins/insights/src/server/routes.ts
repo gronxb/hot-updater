@@ -11,6 +11,7 @@ import {
   parseUserInstallationPageInput,
 } from "./queryInput";
 import type { InsightsProvider } from "./types";
+import { toWireOverview } from "./wire";
 
 /** Seconds a client waits before it resends a request the busy database refused. */
 const RETRY_AFTER_SECONDS = 5;
@@ -120,8 +121,12 @@ export const createInsightsRouteHandlers = (
       return new Response(null, { status: 204 });
     }),
   getReportingOverview: (_params, request) =>
-    query(() =>
-      provider.getReportingOverview(parseReportingOverviewInput(request)),
+    query(async () =>
+      toWireOverview(
+        await provider.getReportingOverview(
+          parseReportingOverviewInput(request),
+        ),
+      ),
     ),
   getInstallation: (params) =>
     run(async () => {
