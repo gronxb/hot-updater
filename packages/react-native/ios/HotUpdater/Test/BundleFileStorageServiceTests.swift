@@ -318,6 +318,66 @@ struct BundleFileStorageServiceTests {
         #expect(loadMetadata(documentsDirectory: root)?.stableSelection?.label == 12)
     }
 
+    /// The native instance's getBundleId() names the running release, as
+    /// JavaScript's names the selected one: the built-in bundle is
+    /// MIN_BUNDLE_ID, and nothing runs before a launch.
+    @Test
+    func theRunningReleaseIdOfTheBuiltInBundleIsTheMinBundleId() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let service = makeStorageService(documentsDirectory: root)
+        let selections = LaunchSelections()
+        #expect(selections.runningReleaseId(in: service, minBundleId: runningMinBundleId) == nil)
+
+        selections.launch(service.prepareLaunch(bundle: .main, pendingRecovery: nil))
+
+        #expect(selections.runningReleaseId(in: service, minBundleId: runningMinBundleId) == runningMinBundleId)
+    }
+
+    @Test
+    func theRunningReleaseIdOfADeployedReleaseIsItsReleaseNotItsArtifact() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let service = try launchableStorage(root, receipt: runningReceipt(releaseId: "release-1"))
+        let selections = LaunchSelections()
+
+        selections.launch(service.prepareLaunch(bundle: .main, pendingRecovery: nil))
+
+        #expect(selections.runningReleaseId(in: service, minBundleId: runningMinBundleId) == "release-1")
+    }
+
+    /// ADOPT_RELEASE: a promote that reuses the running artifact is a
+    /// metadata-only commit, and names the new release without a relaunch.
+    @Test
+    func theRunningReleaseIdFollowsAPromoteThatReusesTheRunningArtifact() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let service = try launchableStorage(root, receipt: runningReceipt(releaseId: "release-1"))
+        let selections = LaunchSelections()
+        selections.launch(service.prepareLaunch(bundle: .main, pendingRecovery: nil))
+        #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-production",
+            generation: 2, catalogHash: "hash-2", channel: "production", selectionContextHash: "context-2"))
+
+        #expect(service.commitReleaseSelection(runningReceipt(releaseId: "release-2", generation: 2)))
+
+        #expect(selections.runningReleaseId(in: service, minBundleId: runningMinBundleId) == "release-2")
+        #expect(selections.runningBundleId == "artifact-a")
+    }
+
+    /// A receipt an SDK before releases wrote names no release: the artifact
+    /// stands in, as JavaScript's getBundleId() falls back to it.
+    @Test
+    func theRunningReleaseIdOfAReceiptWithoutAReleaseIsTheArtifact() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let service = try launchableStorage(root, receipt: runningReceipt(releaseId: nil))
+        let selections = LaunchSelections()
+
+        selections.launch(service.prepareLaunch(bundle: .main, pendingRecovery: nil))
+
+        #expect(selections.runningReleaseId(in: service, minBundleId: runningMinBundleId) == "artifact-a")
+    }
+
     @Test
     func theRunningReceiptKeepsItsLabelWhileABuiltInRollbackWaitsForARestart() throws {
         let root = try makeWorkingDirectory()
@@ -4696,6 +4756,35 @@ struct BundleFileStorageServiceTests {
 
 private let testIsolationKey = "test-isolation-key"
 private let widgetIsolationKey = "widget-isolation-key"
+private let runningMinBundleId = "0190a1b2-0000-7000-8000-000000000000"
+
+/// `artifact-a`'s receipt, as a check's commit records it.
+private func runningReceipt(releaseId: String?, generation: Int64 = 1) -> PersistedSelection {
+    PersistedSelection(
+        kind: SelectionKind.bundle.rawValue,
+        releaseId: releaseId,
+        bundleId: "artifact-a",
+        catalogId: "project-a",
+        scopeKey: "scope-production",
+        generation: generation,
+        catalogHash: "hash-\(generation)",
+        channel: "production",
+        selectionContextHash: "context-\(generation)"
+    )
+}
+
+/// Storage whose stable bundle is `artifact-a`, with `receipt` as its receipt.
+private func launchableStorage(_ root: URL, receipt: PersistedSelection) throws -> BundleFileStorageService {
+    let directory = try createBundleDirectory(documentsDirectory: root, bundleId: "artifact-a")
+    try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+    try writeManifest(in: directory, bundleId: "artifact-a")
+    try writeMetadata(documentsDirectory: root, BundleMetadata(
+        isolationKey: testIsolationKey,
+        stableBundleId: "artifact-a",
+        stableSelection: receipt
+    ))
+    return makeStorageService(documentsDirectory: root)
+}
 
 private let originalKey = "original-key"
 

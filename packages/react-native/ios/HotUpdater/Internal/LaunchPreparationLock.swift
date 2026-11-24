@@ -138,6 +138,36 @@ final class LaunchSelections: @unchecked Sendable {
         running?.launchedBundleId
     }
 
+    /// The ID of the release this launch runs, as JavaScript's getBundleId()
+    /// names a release: the receipt's release ID, a promote that reuses the
+    /// running artifact included; the artifact ID for a receipt without one;
+    /// and `minBundleId` for the built-in bundle. Nil before React Native
+    /// launches one.
+    func runningReleaseId(in storage: BundleStorageService, minBundleId: String) -> String? {
+        guard let running else { return nil }
+        guard let bundleId = running.launchedBundleId else { return minBundleId }
+        return runningReceipt(of: bundleId, in: storage)?["releaseId"] as? String ?? bundleId
+    }
+
+    /// The receipt of `bundleId`, the bundle this launch runs: the one its
+    /// launch recorded, which a commit of the next launch's selection leaves;
+    /// before a launch, the next launch's receipt of that bundle.
+    func runningReceipt(of bundleId: String, in storage: BundleStorageService) -> [String: Any]? {
+        let state = storage.getActiveUpdateState()
+        let keys = state.keys.contains("runningSelection")
+            ? ["runningSelection"]
+            : ["activeSelection", "stableSelection"]
+        for key in keys {
+            guard let selection = state[key] as? [String: Any],
+                  (selection["kind"] as? String) == SelectionKind.bundle.rawValue,
+                  (selection["bundleId"] as? String) == bundleId else {
+                continue
+            }
+            return selection
+        }
+        return nil
+    }
+
     /// The running bundle's directory as a file:// URL, nil for the built-in
     /// bundle or before React Native launches one.
     func runningBaseURL(in storage: BundleStorageService) -> String? {

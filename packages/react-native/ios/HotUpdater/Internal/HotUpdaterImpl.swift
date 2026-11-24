@@ -946,22 +946,16 @@ private func hotUpdaterGetMinBundleId() -> String {
     /// the built-in bundle, a release without one, and before `bundleURL()` is
     /// read.
     func runningReleaseLabel() -> Int64? {
-        guard let bundleId = runningBundleId() else { return nil }
-        let state = bundleStorage.getActiveUpdateState()
-        // The receipt the launch recorded, which a commit of the next launch's
-        // selection leaves; before a launch, the next launch's receipts.
-        let keys = state.keys.contains("runningSelection")
-            ? ["runningSelection"]
-            : ["activeSelection", "stableSelection"]
-        for key in keys {
-            guard let selection = state[key] as? [String: Any],
-                  (selection["kind"] as? String) == SelectionKind.bundle.rawValue,
-                  (selection["bundleId"] as? String) == bundleId else {
-                continue
-            }
-            return releaseLabel(selection["label"])
-        }
-        return nil
+        guard let bundleId = runningBundleId(),
+              let receipt = launchSelections.runningReceipt(of: bundleId, in: bundleStorage) else { return nil }
+        return releaseLabel(receipt["label"])
+    }
+
+    /// The ID of the release this launch runs: the receipt's release ID, the
+    /// artifact ID for a receipt without one, and MIN_BUNDLE_ID for the
+    /// built-in bundle. Nil before `bundleURL()` is read.
+    func runningReleaseId() -> String? {
+        launchSelections.runningReleaseId(in: bundleStorage, minBundleId: Self.minBundleId())
     }
 
     /**

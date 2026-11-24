@@ -597,6 +597,28 @@ class HotUpdaterImpl {
      */
     fun getRunningReleaseLabel(): Long? {
         val bundleId = getRunningBundleId() ?: return null
+        return runningReceipt(bundleId)?.let { releaseLabel(it["label"]) }
+    }
+
+    /**
+     * The ID of the release this launch runs, as JavaScript's `getBundleId()`
+     * names a release: the receipt's release ID, a promote that reuses the
+     * running artifact included; the artifact ID for a receipt without one;
+     * and MIN_BUNDLE_ID for the built-in bundle. Null before the launch's
+     * bundle is read.
+     */
+    fun getRunningReleaseId(): String? {
+        val launchSelection = currentLaunchSelection ?: runningLaunchSelection ?: return null
+        val bundleId = launchSelection.launchedBundleId ?: return getMinBundleId()
+        return runningReceipt(bundleId)?.get("releaseId") as? String ?: bundleId
+    }
+
+    /**
+     * The receipt of [bundleId], the bundle this launch runs: the one its
+     * launch recorded, which a commit of the next launch's selection leaves,
+     * or before a launch, the active or stable receipt of that bundle.
+     */
+    private fun runningReceipt(bundleId: String): Map<*, *>? {
         val state = getActiveUpdateState()
         val receipts =
             if (state.containsKey("runningSelection")) {
@@ -607,7 +629,6 @@ class HotUpdaterImpl {
         return receipts
             .mapNotNull { state[it] as? Map<*, *> }
             .firstOrNull { it["kind"] == SelectionKind.BUNDLE.name && it["bundleId"] == bundleId }
-            ?.let { releaseLabel(it["label"]) }
     }
 
     /** Takes the queued native update events for JavaScript's `takeNativeUpdateEvents`. */
