@@ -1427,8 +1427,8 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     // The event and install 2's head; then, in one batch get per aggregate,
     // the event's 4 sketch rows (its platform's usage of every app version
     // and of its own by hour, and by day, which keeps its own retention) and
-    // the gauge rows its head leaves and enters as it moves on to bundle-c:
-    // 2 of the distribution, and 6 by bundle, for its from, to and pair.
+    // the 2 distribution gauge rows its head leaves and enters as it moves
+    // on to release-c, the only installation gauge it keeps.
     read: ({ insights }) =>
       insights.recordEvent(
         eventOf(27, {
@@ -1441,7 +1441,7 @@ const READ_BUDGETS: readonly ReadBudget[] = [
           received_at_ms: T0 + 3 * HOUR,
         }),
       ),
-    adapter: reads(6, 14, 0, 0),
+    adapter: reads(5, 8, 0, 0),
     engine: { calls: 2, rows: 1 },
     writes: 1,
   }),
