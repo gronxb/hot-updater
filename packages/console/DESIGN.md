@@ -148,6 +148,10 @@ stays subordinate to exact values and actions.
   row. Inside a control that can't hold a button (a combobox option, a chart
   tooltip), pass `copyable={false}`: the tail is text, and the full ID shows
   on hover from `title`.
+  The tail clips inside the button, so its phone touch area stays 44 px
+  tall. A dialog that names a release with it, such as Roll back, gives
+  first focus to Cancel, so no tooltip opens over it. Being a button, the
+  tail doesn't take a text selection; the click copies.
 
 Primitive states are default, hover/focus for interactive controls, disabled
 while submitting/loading when relevant, loading, empty, error, and success.

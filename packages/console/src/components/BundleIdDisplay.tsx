@@ -115,7 +115,7 @@ export function BundleIdDisplay({
           v{label}
         </span>
       )}
-      {/* Read and copied as "v12 <id>"; the flex gap draws the space. */}{" "}
+      {/* Read as "v12 <id>"; the flex gap draws the space. */}{" "}
       {copyable ? (
         <CopyableTail bundleId={bundleId} clipped={clipped} />
       ) : (
@@ -145,11 +145,9 @@ function PlatformPrefix({
  * The tail: the whole ID stays in the text, clipped to its last characters
  * from the left (one `ch` per monospace character), in the label's size.
  */
-const tailClass = (clipped: boolean) =>
-  cn(
-    "font-mono text-sm text-muted-foreground tabular-nums",
-    clipped && "inline-flex w-[6ch] shrink-0 justify-end overflow-hidden",
-  );
+const TAIL_CLASS = "font-mono text-sm text-muted-foreground tabular-nums";
+const CLIP_CLASS = "inline-flex w-[6ch] shrink-0 justify-end overflow-hidden";
+const tailClass = (clipped: boolean) => cn(TAIL_CLASS, clipped && CLIP_CLASS);
 
 /** The tail as a button: the full ID in a popover, and a click copies it. */
 function CopyableTail({
@@ -202,15 +200,16 @@ function CopyableTail({
               aria-label={`Copy ID ${bundleId}`}
               translate="no"
               className={cn(
-                tailClass(clipped),
-                // A 44 px tall touch target on a phone, as an ID copy is.
-                "relative cursor-copy touch-manipulation rounded-sm outline-none transition-colors after:absolute after:inset-x-0 after:-inset-y-3 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:after:hidden motion-reduce:transition-none",
+                TAIL_CLASS,
+                // A 44 px tall touch target on a phone, as an ID copy is: the
+                // button stays unclipped so its touch area reaches past it.
+                "relative inline-flex shrink-0 cursor-copy touch-manipulation rounded-sm outline-none transition-colors after:absolute after:inset-x-0 after:-inset-y-3 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:after:hidden motion-reduce:transition-none",
               )}
               onClick={onClick}
             />
           }
         >
-          {bundleId}
+          <span className={clipped ? CLIP_CLASS : undefined}>{bundleId}</span>
         </TooltipTrigger>
         <TooltipContent
           className="max-w-80 flex-col items-start gap-0.5"

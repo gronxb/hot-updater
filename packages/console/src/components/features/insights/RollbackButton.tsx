@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Undo2 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
@@ -46,6 +46,9 @@ export function RollbackButton({
   readonly showPlatform?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  // The dialog names the release with a copy button; first focus goes to
+  // Cancel instead, so a keyboard opens no tooltip and Enter rolls nothing back.
+  const cancel = useRef<HTMLButtonElement>(null);
   const [error, setError] = useState("");
   const queryClient = useQueryClient();
   const preflight = usePreflightReleaseMutation();
@@ -92,7 +95,7 @@ export function RollbackButton({
         <Undo2 aria-hidden="true" data-icon="inline-start" />
         Roll back
       </Button>
-      <AlertDialogContent>
+      <AlertDialogContent initialFocus={cancel}>
         <AlertDialogHeader>
           <AlertDialogTitle>Roll back this bundle?</AlertDialogTitle>
           <BundleIdDisplay
@@ -114,7 +117,9 @@ export function RollbackButton({
           </p>
         ) : null}
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel ref={cancel} disabled={busy}>
+            Cancel
+          </AlertDialogCancel>
           <AlertDialogAction
             variant="destructive"
             disabled={busy}

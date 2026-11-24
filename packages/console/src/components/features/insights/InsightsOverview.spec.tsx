@@ -466,6 +466,13 @@ describe("Release health", () => {
     fireEvent.click(within(alert).getByRole("button", { name: "Roll back" }));
     const dialog = await screen.findByRole("alertdialog");
     expect(within(dialog).getByText("Roll back this bundle?")).toBeDefined();
+    // First focus is Cancel, not the release's copy button: no tooltip pops
+    // open over the dialog, and Enter rolls nothing back.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(dialog).getByRole("button", { name: "Cancel" }),
+      ),
+    );
     expect(within(dialog).getByText("release-b")).toBeDefined();
     await act(async () => {
       fireEvent.click(

@@ -34,8 +34,12 @@ describe("BundleIdDisplay", () => {
     const copy = screen.getByRole("button", { name: `Copy ID ${id}` });
     // The whole ID is in the text, clipped to its tail in the label's size.
     expect(copy.textContent).toBe(id);
-    expect(copy.className).toContain("w-[6ch]");
-    expect(copy.className).toContain("overflow-hidden");
+    const clip = copy.firstElementChild!;
+    expect(clip.className).toContain("w-[6ch]");
+    expect(clip.className).toContain("overflow-hidden");
+    // The button itself isn't clipped, so its 44 px touch area reaches past it.
+    expect(copy.className).not.toContain("overflow-hidden");
+    expect(copy.className).toContain("after:-inset-y-3");
     expect(copy.className).toContain("text-sm");
     expect(copy.className).toContain("font-mono");
     const display = copy.parentElement!;
