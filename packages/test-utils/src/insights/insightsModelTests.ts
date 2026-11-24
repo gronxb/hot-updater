@@ -812,6 +812,20 @@ export const registerInsightsModelTests = (
         ]),
       );
       expect(usage.bundleDistribution).toHaveLength(2);
+      // The built-in bundle names no release: its installations count by its
+      // ID, as event filters match a report without a release; an unknown
+      // bundle's, by no ID.
+      const installations = (releaseId: string) =>
+        model.countLatestEvents({
+          channel,
+          platform: "ios",
+          sinceMs: 0,
+          releaseId,
+        });
+      await expectInsightsIndex(() => installations(builtin), 2);
+      await expect(
+        installations(createBundleEventRowFixture("9905", 0).id),
+      ).resolves.toBe(0);
     });
     it("pages insights events newest first with a stable cursor", async () => {
       const model = state.getDatabase();

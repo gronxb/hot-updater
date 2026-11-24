@@ -34,7 +34,7 @@ is what the Insights routes, the Console, and the e2e harness read through:
 | `recordEvent({ event })`                                               | One transaction: store the event (an `UNCHANGED` only when it changes what its installation runs), move the installation's head when the event is newer and not late (an update failure moves none), and update counters, gauges, and sketches. A repeated ID changes nothing, whichever installation sends it |
 | `listEvents({ filter, sinceMs, beforeReceivedAtMs, after, limit })`    | Newest-first global, installation-movement, or bundle-outcome history                                                                                                                             |
 | `findLatestEvents({ installId } or { userId, afterInstallId, limit })` | An installation's head, or a user's installations in install ID order                                                                                                                             |
-| `countLatestEvents({ platform, channel, sinceMs, bundle })`            | Heads in the window: gauges for whole hours, heads for a partial first hour                                                                                                                       |
+| `countLatestEvents({ platform, channel, sinceMs, releaseId? })`        | Installations whose latest report falls in the window, from the distribution gauges; with `releaseId`, those it leaves running that release, or for a built-in bundle's ID those running it outside any release |
 | `countEvents({ filter, sinceMs, beforeReceivedAtMs })`                 | Reports of one bundle outcome: hourly counters, raw events for partial hours at either edge                                                                                                       |
 | `countEventSeries({ filter, timeRange, intervalMs })`                  | Reports of one bundle outcome in each interval of whole hours, over at most 90 days: the hourly counters `countEvents` reads, every interval present                                              |
 | `getReleaseActivity({ releases })`                                     | Each release's downloads, launches (`applies`), and failed launches since its first report, from its lifetime counters                                                                                         |
@@ -71,6 +71,12 @@ Each scalar has `count` and `measuredAtMs`. The response also includes `sinceMs`
 and `beforeReceivedAtMs`, which bind outcome drill-down pages. The admin HTTP
 route is `GET /overview` relative to the admin handler mount. The global event
 method is `listEvents`; exact installation lookup takes `{ installId }`.
+
+Bundle counts and drill-downs name a bundle by its release ID, the bundle ID
+apps report, so two releases of one artifact in one channel and platform, as a
+promote back into the channel makes them, count apart. A report without a
+release, such as one from the built-in bundle, is named by the bundle ID it
+reports.
 
 Recovery from B to A contributes a recovered-from report to B, while the latest
 installation response names A. Selecting another Release for the same running

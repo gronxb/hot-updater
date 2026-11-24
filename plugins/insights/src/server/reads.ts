@@ -315,7 +315,8 @@ export const countEventSeries = async (
  * each installation in the UTC day of its latest event, so they answer whole
  * days only, and a later start is rejected rather than rounded. With
  * `releaseId`, only the installations it leaves running that release, from
- * the same distribution rows, which name the release each one runs.
+ * the same distribution rows, which name the release each one runs; for an
+ * ID no row names as a release, those running it as their built-in bundle.
  */
 export const countLatestEvents = async (
   db: Db,
@@ -334,13 +335,33 @@ export const countLatestEvents = async (
       ...page,
     }),
   );
-  const total = rows.reduce(
-    (sum, row) =>
-      releaseId === undefined || row.release_id === releaseId
-        ? sum + row.latest_installations
-        : sum,
-    0,
-  );
+  let total = 0;
+  let named = false;
+  for (const row of rows) {
+    if (releaseId !== undefined && row.release_id !== releaseId) continue;
+    named = true;
+    total += row.latest_installations;
+  }
+  // An ID no row names as a release may be a built-in bundle's, which a
+  // report without a release names, as event counts match it: its
+  // installations outside any release are in the built-in rows, read only
+  // then. Release and bundle IDs never coincide.
+  if (releaseId !== undefined && !named) {
+    const builtin = await drain((page) =>
+      db.findAggregates("insights_builtin_distribution", {
+        index: "byScope",
+        where: { channel, platform },
+        range: { gte: start },
+        limit: PAGE,
+        ...page,
+      }),
+    );
+    for (const row of builtin) {
+      if (row.release_id === "" && row.builtin_bundle_id === releaseId) {
+        total += row.latest_installations;
+      }
+    }
+  }
   // Batched gauges sum signed shard rows, which a lost change can leave
   // below zero: an installation count never is.
   return Math.max(0, total);

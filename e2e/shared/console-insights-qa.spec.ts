@@ -130,7 +130,7 @@ describe("console insights E2E QA", () => {
     ).toBeNull();
   });
 
-  it("checks an installation on the built-in bundle, which runs no release, by its scope only", async () => {
+  it("checks an installation on the built-in bundle, which runs no release, by the built-in bundle's ID", async () => {
     const builtin = "00000000-0000-0000-0000-000000000000";
     const launch = {
       ...observedTransition,
@@ -158,13 +158,14 @@ describe("console insights E2E QA", () => {
     });
 
     expect(client.getReportingOverview).toHaveBeenCalledExactlyOnceWith({
+      bundleId: builtin,
       channel: event.channel,
       platform: event.platform,
       window: "24h",
     });
     expect(evidence).toMatchObject({
       reportingInstallations: 1,
-      selectedBundleInstallations: null,
+      selectedBundleInstallations: 1,
       outcomes: [],
     });
   });

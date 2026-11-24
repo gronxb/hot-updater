@@ -267,20 +267,20 @@ export const verifyConsoleInsights = async (
     );
   }
 
-  // Installation gauges count releases: one on the built-in bundle, which
-  // is no release, counts only in its scope.
-  const runningRelease = installation.lastKnownReleaseId ?? null;
+  // The bundle ID users see: the release it runs, or the built-in bundle's
+  // ID, which names no release.
+  const running =
+    installation.lastKnownReleaseId ?? installation.lastKnownBundleId;
   const overview = await client.getReportingOverview({
-    ...(runningRelease === null ? {} : { bundleId: runningRelease }),
+    bundleId: running,
     channel: installation.channel,
     platform: installation.platform,
     window: "24h",
   });
   if (
     !(overview.reportingInstallations.count >= 1) ||
-    (runningRelease !== null &&
-      (overview.bundle?.bundleId !== runningRelease ||
-        !(overview.bundle.reportingInstallations.count >= 1)))
+    overview.bundle?.bundleId !== running ||
+    !(overview.bundle.reportingInstallations.count >= 1)
   ) {
     throw new ConsoleInsightsQaError(
       "inconsistent-data",
@@ -288,20 +288,12 @@ export const verifyConsoleInsights = async (
     );
   }
 
-  const overviews = new Map<string, ReportingOverview>(
-    runningRelease === null
-      ? []
-      : [
-          [
-            JSON.stringify([
-              installation.platform,
-              installation.channel,
-              runningRelease,
-            ]),
-            overview,
-          ],
-        ],
-  );
+  const overviews = new Map([
+    [
+      JSON.stringify([installation.platform, installation.channel, running]),
+      overview,
+    ],
+  ]);
   const outcomePages = new Map<string, EventCursorPage>();
   const outcomeEvidence = [];
   // A report that arrived after its installation already ran its bundle,
@@ -390,8 +382,7 @@ export const verifyConsoleInsights = async (
 
   return {
     reportingInstallations: overview.reportingInstallations.count,
-    selectedBundleInstallations:
-      overview.bundle?.reportingInstallations.count ?? null,
+    selectedBundleInstallations: overview.bundle.reportingInstallations.count,
     outcomes: outcomeEvidence,
     eventId: event?.id ?? null,
     eventType: event?.type ?? observed.type,

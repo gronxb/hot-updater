@@ -63,7 +63,10 @@ export interface InsightsCountLatestEventsInput extends InsightsScope {
   readonly sinceMs: number;
   /**
    * Only installations whose latest event leaves them running this release:
-   * the source of a download, the target of anything else.
+   * the source of a download, the target of anything else. An ID that names
+   * no release, as a report from the built-in bundle names it, counts the
+   * installations running that built-in bundle outside any release, as event
+   * filters match the bundle ID such a report names.
    */
   readonly releaseId?: string;
 }
