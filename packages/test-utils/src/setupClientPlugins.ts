@@ -64,7 +64,11 @@ export interface ClientPluginTestOptions {
   readonly sdkVersion?: string;
   /** Default: false. */
   readonly isDebugBuild?: boolean;
-  /** The running bundle. Default: `00000000-0000-0000-0000-000000000000`. */
+  /**
+   * What `context.getBundleId()` returns: the selected release's ID, as
+   * `hotUpdater.getBundleId()` returns it. Default:
+   * `00000000-0000-0000-0000-000000000000`.
+   */
   readonly bundleId?: TestValue<string>;
   /**
    * The native build's built-in bundle. Default:

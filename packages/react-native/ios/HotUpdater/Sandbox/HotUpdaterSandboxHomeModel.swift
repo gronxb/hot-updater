@@ -83,7 +83,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
     ) {
         let history = state.downloaded
         let selection = state.selection
-        banner = state.lastLaunch.flatMap { Self.banner(of: $0, selection: selection, builtInBundleId: state.details?.builtInBundleId, history: history) }
+        banner = state.lastLaunch.map { Self.banner(of: $0, state: state) }
         bigRow = Self.bigRow(
             state: state,
             isOverApp: isOverApp,
@@ -139,10 +139,23 @@ struct HotUpdaterSandboxHomeModel: Equatable {
         history.first { $0.bundleId == bundleId }?.shownId ?? bundleId
     }
 
+    /// The release a row names the bundle `bundleId` by, the ID
+    /// `HotUpdater.getBundleId()` and the Console show: the SDK's receipt of
+    /// it, else the Downloaded list's. Nil when neither knows its release.
+    static func releaseId(of bundleId: String, in state: HotUpdaterSandboxState) -> String? {
+        state.details?.releaseIds[bundleId] ?? state.downloaded.first { $0.bundleId == bundleId }?.releaseId
+    }
+
+    /// What a row calls the bundle `bundleId`: its release's ID, as the
+    /// Downloaded rows do, or the artifact's for a bundle with no release.
+    static func shownId(of bundleId: String, in state: HotUpdaterSandboxState) -> String {
+        releaseId(of: bundleId, in: state) ?? bundleId
+    }
+
     /// `019a3f…c2`, or the whole ID when it's short.
-    static func shortId(_ bundleId: String) -> String {
-        guard bundleId.count > 10 else { return bundleId }
-        return "\(bundleId.prefix(6))…\(bundleId.suffix(2))"
+    static func shortId(_ id: String) -> String {
+        guard id.count > 10 else { return id }
+        return "\(id.prefix(6))…\(id.suffix(2))"
     }
 
     private static func bigRow(
@@ -176,11 +189,14 @@ struct HotUpdaterSandboxHomeModel: Equatable {
             )
         }
         if isOverApp {
+            let running = state.runningBundleId ?? selection.bundleId
             return runningRow(
                 next: selection,
-                running: state.runningBundleId ?? selection.bundleId,
+                running: running,
                 builtIn: state.details?.builtInBundleId,
-                message: state.runningMessage
+                message: state.runningMessage,
+                runningShown: shortId(shownId(of: running, in: state)),
+                nextShown: shortId(shownId(of: selection.bundleId, in: state))
             )
         }
         if selection.isBuiltIn {
@@ -196,17 +212,20 @@ struct HotUpdaterSandboxHomeModel: Equatable {
             caption: "Current bundle",
             title: "Open \(selection.channel)",
             subtitle: state.selectedMessage,
-            detail: "Bundle \(shortId(selection.bundleId))",
+            detail: "Bundle \(shortId(shownId(of: selection.bundleId, in: state)))",
             action: .open
         )
     }
 
     /// Running is what this process's launch runs, and the selection is the next one.
+    /// Both are compared as artifacts and shown as `runningShown` and `nextShown`.
     private static func runningRow(
         next: HotUpdaterSandboxSelection,
         running: String,
         builtIn: String?,
-        message: String?
+        message: String?,
+        runningShown: String,
+        nextShown: String
     ) -> BigRow {
         let runsBuiltIn = running == builtIn
         if next.bundleId == running {
@@ -214,7 +233,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
                 caption: "Running",
                 title: "Reload",
                 subtitle: runsBuiltIn ? "Running the built-in bundle" : "Running \(next.channel)",
-                detail: runsBuiltIn ? "Channel \(next.channel)" : message ?? "Bundle \(shortId(running))",
+                detail: runsBuiltIn ? "Channel \(next.channel)" : message ?? "Bundle \(runningShown)",
                 action: .reloadApp
             )
         }
@@ -224,31 +243,39 @@ struct HotUpdaterSandboxHomeModel: Equatable {
                 caption: "Current bundle",
                 title: "Open built-in bundle",
                 subtitle: "The bundle this build shipped with",
-                detail: "Running bundle \(shortId(running))",
+                detail: "Running bundle \(runningShown)",
                 action: .openOverApp
             )
         }
         return BigRow(
             caption: "Running",
             title: "Reload",
-            subtitle: runsBuiltIn ? "Running the built-in bundle" : "Running bundle \(shortId(running))",
-            detail: "Next launch: \(next.isBuiltIn ? "the built-in bundle" : "bundle \(shortId(next.bundleId))")",
+            subtitle: runsBuiltIn ? "Running the built-in bundle" : "Running bundle \(runningShown)",
+            detail: "Next launch: \(next.isBuiltIn ? "the built-in bundle" : "bundle \(nextShown)")",
             action: .reloadApp
         )
     }
 
     private static func banner(
         of lastLaunch: HotUpdaterSandboxLastLaunch,
-        selection: HotUpdaterSandboxSelection?,
-        builtInBundleId: String?,
-        history: [HotUpdaterSandboxShelfEntry]
-    ) -> Banner? {
+        state: HotUpdaterSandboxState
+    ) -> Banner {
+        let selection = state.selection
+        let history = state.downloaded
         let selectedId = selection?.bundleId
-        /// A channel only when this device recorded that bundle on it.
+        /// The release the launch report named, else what the SDK and the list know.
+        func releaseId(_ bundleId: String) -> String? {
+            if bundleId == lastLaunch.bundleId, let releaseId = lastLaunch.releaseId { return releaseId }
+            if bundleId == lastLaunch.rolledBackToBundleId, let releaseId = lastLaunch.rolledBackToReleaseId { return releaseId }
+            return Self.releaseId(of: bundleId, in: state)
+        }
+        /// A channel only when this device recorded that bundle on it, else its
+        /// release. A crash with no release known names the artifact that crashed.
         func name(_ bundleId: String) -> String {
-            if bundleId == builtInBundleId { return "the built-in bundle" }
+            if bundleId == state.details?.builtInBundleId { return "the built-in bundle" }
             if let channel = history.first(where: { $0.bundleId == bundleId })?.channel { return channel }
-            return "bundle \(shortId(bundleId))"
+            if let releaseId = releaseId(bundleId) { return "bundle \(shortId(releaseId))" }
+            return bundleId == lastLaunch.bundleId ? "artifact \(shortId(bundleId))" : "bundle \(shortId(bundleId))"
         }
         /// A channel keeps its spelling at the start of a sentence.
         func subject(_ bundleId: String) -> String {
@@ -309,6 +336,10 @@ struct HotUpdaterSandboxDetails: Equatable {
     let fingerprintHash: String?
     /// A staged bundle no launch has verified yet.
     let pendingBundleId: String?
+    /// The release of each bundle the SDK's receipts name: the running launch's
+    /// receipt over the next launch's, over the stable one. A promote that reuses
+    /// an artifact commits the running receipt too, so they agree.
+    var releaseIds: [String: String] = [:]
 }
 
 /// The Info tab's rows.
@@ -344,14 +375,18 @@ struct HotUpdaterSandboxInfoModel: Equatable {
             current = "Stored \(HotUpdaterSandboxHomeModel.shortId(HotUpdaterSandboxHomeModel.shownId(of: stored, in: state.downloaded)))"
         // Over the app, what it runs. Before it starts, what opens: the selection.
         } else if let shown = (isOverApp ? state.runningBundleId : nil) ?? selection?.bundleId {
-            current = shown == details?.builtInBundleId ? "Built-in" : HotUpdaterSandboxHomeModel.shortId(shown)
+            current = shown == details?.builtInBundleId
+                ? "Built-in"
+                : HotUpdaterSandboxHomeModel.shortId(HotUpdaterSandboxHomeModel.shownId(of: shown, in: state))
         } else {
             current = ""
         }
         bundle = [
             Row(name: "Channel", value: selection?.channel ?? ""),
             Row(name: "Current", value: current),
-            Row(name: "Pending", value: details?.pendingBundleId.map(HotUpdaterSandboxHomeModel.shortId) ?? "None"),
+            Row(name: "Pending", value: details?.pendingBundleId.map {
+                HotUpdaterSandboxHomeModel.shortId(HotUpdaterSandboxHomeModel.shownId(of: $0, in: state))
+            } ?? "None"),
         ]
     }
 

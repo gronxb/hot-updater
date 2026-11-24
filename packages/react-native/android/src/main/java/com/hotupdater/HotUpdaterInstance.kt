@@ -87,8 +87,15 @@ class HotUpdaterInstance internal constructor(
 
     fun getAppVersion(): String? = HotUpdaterImpl.getAppVersion(context)
 
-    /** The bundle this launch runs, or null for the built-in bundle or before [getJSBundleFile] is read. */
-    fun getBundleId(): String? = impl.getRunningBundleId()
+    /**
+     * The ID of the release this launch runs, the ID the Console and
+     * JavaScript's `getBundleId()` show: MIN_BUNDLE_ID for the built-in
+     * bundle, and the artifact ID only for a bundle installed without a
+     * release. Null before [getJSBundleFile] is read. A staged update changes
+     * it once it launches, as [getReleaseLabel]; JavaScript's names a staged
+     * update right away.
+     */
+    fun getBundleId(): String? = impl.getRunningReleaseId()
 
     /**
      * The label of the release this launch runs, shown `v<label>`: null for

@@ -164,7 +164,9 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
         if report["status"] as? String == "RECOVERED", let from = report["fromBundleId"] as? String {
             evidence.rollback = HotUpdaterSandboxRollback(
                 fromBundleId: from,
-                toBundleId: report["toBundleId"] as? String ?? builtIn
+                toBundleId: report["toBundleId"] as? String ?? builtIn,
+                fromReleaseId: report["fromReleaseId"] as? String,
+                toReleaseId: report["toReleaseId"] as? String
             )
             // A JavaScript crash can recover inside this process, whose marker came and
             // went after the start. Crash history then names the bundle, where a launch
@@ -189,10 +191,20 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
         let builtIn = HotUpdaterImpl.minBundleId()
         let state = impl.getActiveUpdateState()
         let active = (state["activeSelection"] as? [String: Any])?["bundleId"] as? String ?? builtIn
+        // Later receipts win: the running launch's over the next launch's, over the stable one.
+        var releaseIds: [String: String] = [:]
+        for key in ["stableSelection", "activeSelection", "runningSelection"] {
+            guard let receipt = state[key] as? [String: Any],
+                  receipt["kind"] as? String == SelectionKind.bundle.rawValue,
+                  let bundleId = receipt["bundleId"] as? String,
+                  let releaseId = receipt["releaseId"] as? String else { continue }
+            releaseIds[bundleId] = releaseId
+        }
         return HotUpdaterSandboxDetails(
             builtInBundleId: builtIn,
             fingerprintHash: impl.getFingerprintHash(),
-            pendingBundleId: state["verificationPending"] as? Bool == true ? active : nil
+            pendingBundleId: state["verificationPending"] as? Bool == true ? active : nil,
+            releaseIds: releaseIds
         )
     }
 

@@ -14,6 +14,9 @@ internal data class HotUpdaterSandboxCrashMarker(
 internal data class HotUpdaterSandboxRollback(
     val fromBundleId: String,
     val toBundleId: String,
+    /** The releases the report names, null for a bundle installed without one. */
+    val fromReleaseId: String? = null,
+    val toReleaseId: String? = null,
 )
 
 internal data class HotUpdaterSandboxLaunchEvidence(
@@ -30,6 +33,12 @@ internal data class HotUpdaterSandboxLastLaunch(
     val bundleId: String,
     /** Where a rollback went, only when one happened. */
     val rolledBackToBundleId: String?,
+    /**
+     * The releases the rollback's report names, which the banner shows. Null
+     * for a crash with no rollback, and in what an earlier build stored.
+     */
+    val releaseId: String? = null,
+    val rolledBackToReleaseId: String? = null,
 ) {
     enum class Kind {
         /** It crashed before first content, and the device rolled back. */
@@ -62,6 +71,8 @@ internal data class HotUpdaterSandboxLastLaunch(
                         },
                     bundleId = rollback.fromBundleId,
                     rolledBackToBundleId = rollback.toBundleId,
+                    releaseId = rollback.fromReleaseId,
+                    rolledBackToReleaseId = rollback.toReleaseId,
                 )
             }
             val marker = evidence.marker ?: return null

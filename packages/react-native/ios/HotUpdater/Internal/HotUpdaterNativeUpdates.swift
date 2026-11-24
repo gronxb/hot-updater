@@ -370,9 +370,13 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
 
     @objc public func getAppVersion() -> String? { HotUpdaterImpl.appVersion }
 
-    /// The bundle this launch runs, or nil for the built-in bundle or before
-    /// `bundleURL()` is read.
-    @objc public func getBundleId() -> String? { impl.runningBundleId() }
+    /// The ID of the release this launch runs, the ID the Console and
+    /// JavaScript's `getBundleId()` show: MIN_BUNDLE_ID for the built-in
+    /// bundle, and the artifact ID only for a bundle installed without a
+    /// release. Nil before `bundleURL()` is read. A staged update changes it
+    /// once it launches, as `getReleaseLabel()`; JavaScript's names a staged
+    /// update right away.
+    @objc public func getBundleId() -> String? { impl.runningReleaseId() }
 
     /// The label of the release this launch runs, shown `v<label>`: nil for
     /// the built-in bundle, a release without one, or before `bundleURL()` is

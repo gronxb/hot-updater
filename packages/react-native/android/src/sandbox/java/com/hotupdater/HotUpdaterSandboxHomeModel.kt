@@ -6,6 +6,12 @@ internal data class HotUpdaterSandboxDetails(
     val fingerprintHash: String?,
     /** A staged bundle no launch has verified yet. */
     val pendingBundleId: String?,
+    /**
+     * The release of each bundle the SDK's receipts name: the running launch's
+     * receipt over the next launch's, over the stable one. A promote that
+     * reuses an artifact commits the running receipt too, so they agree.
+     */
+    val releaseIds: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -150,7 +156,23 @@ internal data class HotUpdaterSandboxHomeModel(
         }
 
         /** `019a3f…c2`, or the whole ID when it's short. */
-        fun shortId(bundleId: String): String = if (bundleId.length > 10) "${bundleId.take(6)}…${bundleId.takeLast(2)}" else bundleId
+        fun shortId(id: String): String = if (id.length > 10) "${id.take(6)}…${id.takeLast(2)}" else id
+
+        /**
+         * The release a row names the bundle [bundleId] by, the ID
+         * `HotUpdater.getBundleId()` and the Console show: the SDK's receipt of
+         * it, else the Downloaded list's. Null when neither knows its release.
+         */
+        fun releaseId(
+            bundleId: String,
+            state: HotUpdaterSandboxState,
+        ): String? = state.details?.releaseIds?.get(bundleId) ?: state.downloaded.firstOrNull { it.bundleId == bundleId }?.releaseId
+
+        /** What a row calls the bundle [bundleId]: its release's ID, as the Downloaded rows do, or the artifact's for a bundle with no release. */
+        fun shownId(
+            bundleId: String,
+            state: HotUpdaterSandboxState,
+        ): String = releaseId(bundleId, state) ?: bundleId
 
         private fun bigRow(
             state: HotUpdaterSandboxState,
@@ -178,11 +200,14 @@ internal data class HotUpdaterSandboxHomeModel(
                         if (isOverApp) Action.RELOAD_APP else Action.OPEN,
                     )
             if (isOverApp) {
+                val running = state.runningBundleId ?: selection.bundleId
                 return runningRow(
                     selection,
-                    state.runningBundleId ?: selection.bundleId,
+                    running,
                     state.details?.builtInBundleId,
                     state.runningMessage,
+                    runningShown = shortId(running?.let { shownId(it, state) }.orEmpty()),
+                    nextShown = shortId(selection.bundleId?.let { shownId(it, state) }.orEmpty()),
                 )
             }
             val bundleId = selection.bundleId
@@ -199,17 +224,22 @@ internal data class HotUpdaterSandboxHomeModel(
                 "Current bundle",
                 "Open ${selection.channel}",
                 state.selectedMessage,
-                "Bundle ${shortId(bundleId)}",
+                "Bundle ${shortId(shownId(bundleId, state))}",
                 Action.OPEN,
             )
         }
 
-        /** Running is what this process's launch runs, and the selection is the next one. */
+        /**
+         * Running is what this process's launch runs, and the selection is the next one.
+         * Both are compared as artifacts and shown as [runningShown] and [nextShown].
+         */
         private fun runningRow(
             next: HotUpdaterSandboxSelection,
             running: String?,
             builtIn: String?,
             message: String?,
+            runningShown: String,
+            nextShown: String,
         ): BigRow {
             val runsBuiltIn = running == builtIn
             if (next.bundleId == running) {
@@ -217,7 +247,7 @@ internal data class HotUpdaterSandboxHomeModel(
                     "Running",
                     "Reload",
                     if (runsBuiltIn) "Running the built-in bundle" else "Running ${next.channel}",
-                    if (runsBuiltIn) "Channel ${next.channel}" else message ?: "Bundle ${shortId(running.orEmpty())}",
+                    if (runsBuiltIn) "Channel ${next.channel}" else message ?: "Bundle $runningShown",
                     Action.RELOAD_APP,
                 )
             }
@@ -227,15 +257,15 @@ internal data class HotUpdaterSandboxHomeModel(
                     "Current bundle",
                     "Open built-in bundle",
                     "The bundle this build shipped with",
-                    "Running bundle ${shortId(running.orEmpty())}",
+                    "Running bundle $runningShown",
                     Action.OPEN_OVER_APP,
                 )
             }
             return BigRow(
                 "Running",
                 "Reload",
-                if (runsBuiltIn) "Running the built-in bundle" else "Running bundle ${shortId(running.orEmpty())}",
-                "Next launch: ${if (next.isBuiltIn) "the built-in bundle" else "bundle ${shortId(next.bundleId.orEmpty())}"}",
+                if (runsBuiltIn) "Running the built-in bundle" else "Running bundle $runningShown",
+                "Next launch: ${if (next.isBuiltIn) "the built-in bundle" else "bundle $nextShown"}",
                 Action.RELOAD_APP,
             )
         }
@@ -247,12 +277,25 @@ internal data class HotUpdaterSandboxHomeModel(
             val selection = state.selection
             val selectedId = selection?.bundleId
 
-            /** A channel only when this device recorded that bundle on it. */
-            fun name(bundleId: String): String =
-                when {
-                    bundleId == state.details?.builtInBundleId -> "the built-in bundle"
-                    else -> state.downloaded.firstOrNull { it.bundleId == bundleId }?.channel ?: "bundle ${shortId(bundleId)}"
-                }
+            /** The release the launch report named, else what the SDK and the list know. */
+            fun knownReleaseId(bundleId: String): String? =
+                lastLaunch.releaseId.takeIf { bundleId == lastLaunch.bundleId }
+                    ?: lastLaunch.rolledBackToReleaseId.takeIf { bundleId == lastLaunch.rolledBackToBundleId }
+                    ?: releaseId(bundleId, state)
+
+            /**
+             * A channel only when this device recorded that bundle on it, else its
+             * release. A crash with no release known names the artifact that crashed.
+             */
+            fun name(bundleId: String): String {
+                if (bundleId == state.details?.builtInBundleId) return "the built-in bundle"
+                state.downloaded
+                    .firstOrNull { it.bundleId == bundleId }
+                    ?.channel
+                    ?.let { return it }
+                knownReleaseId(bundleId)?.let { return "bundle ${shortId(it)}" }
+                return if (bundleId == lastLaunch.bundleId) "artifact ${shortId(bundleId)}" else "bundle ${shortId(bundleId)}"
+            }
 
             /** A channel keeps its spelling at the start of a sentence. */
             fun subject(bundleId: String): String {
@@ -372,7 +415,7 @@ internal data class HotUpdaterSandboxInfoModel(
                     }
                     shown == null -> ""
                     shown == details?.builtInBundleId -> "Built-in"
-                    else -> HotUpdaterSandboxHomeModel.shortId(shown)
+                    else -> HotUpdaterSandboxHomeModel.shortId(HotUpdaterSandboxHomeModel.shownId(shown, state))
                 }
             return HotUpdaterSandboxInfoModel(
                 build =
@@ -387,7 +430,12 @@ internal data class HotUpdaterSandboxInfoModel(
                     listOf(
                         Row("Channel", selection?.channel.orEmpty()),
                         Row("Current", current),
-                        Row("Pending", details?.pendingBundleId?.let(HotUpdaterSandboxHomeModel::shortId) ?: "None"),
+                        Row(
+                            "Pending",
+                            details?.pendingBundleId?.let {
+                                HotUpdaterSandboxHomeModel.shortId(HotUpdaterSandboxHomeModel.shownId(it, state))
+                            } ?: "None",
+                        ),
                     ),
             )
         }

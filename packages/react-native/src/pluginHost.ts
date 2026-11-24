@@ -7,13 +7,13 @@ import { Platform } from "react-native";
 
 import {
   getAppVersion,
-  getBundleId,
   getChannel,
   getCohort,
   getFingerprintHash,
   getInstallId,
   getMinBundleId,
   getStorageItem,
+  getUpdateId,
   setStorageItem,
 } from "./native";
 import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
@@ -37,7 +37,8 @@ const createEnvironment = (
   getInstallId: () => getInstallId(),
   getAppVersion: () => getAppVersion(),
   getMinBundleId: () => getMinBundleId(),
-  getBundleId: () => getBundleId(),
+  // The release hotUpdater.getBundleId() names, not the artifact native runs.
+  getBundleId: () => getUpdateId(),
   getChannel: () => getChannel(),
   getCohort: () => getCohort(),
   getFingerprintHash: () => getFingerprintHash(),
