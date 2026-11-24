@@ -570,6 +570,89 @@ export const registerInsightsModelTests = (
       );
     });
 
+    it("keeps two releases of one artifact in one scope apart, as a promote back into the channel makes them", async () => {
+      const model = state.getDatabase();
+      // v3 served artifact A, v4 artifact B, and v5 promoted A back: two
+      // releases of A in one channel and platform.
+      const artifactA = createBundleEventRowFixture("9750", 0).to_bundle_id;
+      const artifactB = createBundleEventRowFixture("9751", 0).to_bundle_id;
+      const v3 = "00000000-0000-7000-8000-000000009753";
+      const v4 = "00000000-0000-7000-8000-000000009754";
+      const v5 = "00000000-0000-7000-8000-000000009755";
+      const event = (
+        suffix: string,
+        receivedAtMs: number,
+        installId: string,
+        fields: Partial<BundleEventRow>,
+      ): BundleEventRow =>
+        ({
+          ...createBundleEventRowFixture(suffix, receivedAtMs),
+          install_id: installId,
+          ...fields,
+        }) as BundleEventRow;
+      const onV3 = { to_bundle_id: artifactA, to_release_id: v3 };
+      const onV5 = { to_bundle_id: artifactA, to_release_id: v5 };
+      const events = [
+        // Two installations launched v3, and both crashed on it.
+        event("9760", 100, "abba-1", onV3),
+        event("9761", 110, "abba-2", onV3),
+        event("9762", 120, "abba-1", {
+          type: "RECOVERED",
+          from_bundle_id: artifactA,
+          from_release_id: v3,
+          to_bundle_id: artifactB,
+          to_release_id: v4,
+        }),
+        event("9763", 130, "abba-2", {
+          type: "RECOVERED",
+          from_bundle_id: artifactA,
+          from_release_id: v3,
+          to_bundle_id: artifactB,
+          to_release_id: v4,
+        }),
+        // Three launched v5 later, and none crashed.
+        event("9764", 200, "abba-3", onV5),
+        event("9765", 210, "abba-4", onV5),
+        event("9766", 220, "abba-5", onV5),
+      ];
+      for (const row of events) await record(model, row);
+      const scope = { platform: "ios", channel: "production" } as const;
+      const count = (filter: InsightsBundleEventFilter) =>
+        model.countEvents({ filter, sinceMs: 0, beforeReceivedAtMs: 1_000 });
+      const series = (filter: InsightsBundleEventFilter) =>
+        model
+          .countEventSeries({
+            filter,
+            timeRange: { start: 0, end: 3_600_000 },
+            intervalMs: 3_600_000,
+          })
+          .then((points) => points.map(({ events }) => events));
+      const launched = (release: string) =>
+        ({ ...scope, type: "UPDATE_APPLIED", toBundleId: release }) as const;
+      const crashed = (release: string) =>
+        ({ ...scope, type: "RECOVERED", fromBundleId: release }) as const;
+      // Each release has its own launches and crashes: v3 crashed for both
+      // of its installations, v5 for none of its three.
+      await expectInsightsIndex(() => count(launched(v3)), 2);
+      await expectInsightsIndex(() => count(launched(v5)), 3);
+      await expectInsightsIndex(() => count(crashed(v3)), 2);
+      await expectInsightsIndex(() => count(crashed(v5)), 0);
+      await expectInsightsIndex(() => series(launched(v5)), [3]);
+      await expectInsightsIndex(() => series(crashed(v5)), [0]);
+      await expectInsightsIndex(() => series(crashed(v3)), [2]);
+      await expectInsightsIndex(
+        () =>
+          model
+            .listEvents({
+              filter: { kind: "bundle", ...crashed(v3) },
+              beforeReceivedAtMs: 1_000,
+              limit: 10,
+            })
+            .then((rows) => rows.map(({ install_id }) => install_id)),
+        ["abba-2", "abba-1"],
+      );
+    });
+
     it("returns zero for successful empty scalar queries", async () => {
       const model = state.getDatabase();
       await expect(
