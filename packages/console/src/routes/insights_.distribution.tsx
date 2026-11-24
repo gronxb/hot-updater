@@ -45,7 +45,7 @@ import {
   validateDistributionSearch,
   validateInsightsSearch,
 } from "@/lib/insights-search";
-import type { BundleDistribution } from "@/lib/insights-usage";
+import type { ReleaseDistribution } from "@/lib/insights-usage";
 import { getAppUsageReportRpc } from "@/lib/insights-usage-rpc";
 
 const PAGE_SIZE = 20;
@@ -56,7 +56,7 @@ const dates = new Intl.DateTimeFormat("en", {
 });
 
 /** How a distribution row's bundle reads aloud. */
-const bundleName = (row: BundleDistribution): string =>
+const bundleName = (row: ReleaseDistribution): string =>
   row.releaseId ??
   (row.builtinBundleId
     ? `Built-in bundle ${row.builtinBundleId}`

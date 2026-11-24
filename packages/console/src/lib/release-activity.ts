@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 
 import type { RecoveryInput } from "./insights-recovery";
-import { getBundleActivityRpc } from "./insights-recovery-rpc";
+import { getReleaseActivityRpc } from "./insights-recovery-rpc";
 
-export type BundleActivityInput = Pick<
+export type ReleaseActivityInput = Pick<
   RecoveryInput,
   "platform" | "channel"
 > & {
@@ -12,7 +12,7 @@ export type BundleActivityInput = Pick<
   readonly builtIn?: boolean;
 };
 
-export type BundleActivityReport = {
+export type ReleaseActivityReport = {
   /** Installations that downloaded the release. */
   readonly downloads: number;
   /** Installations that reported running it, once each at the first such report. */
@@ -23,7 +23,9 @@ export type BundleActivityReport = {
 };
 
 /** Release activity for bundle rows; mounted only where the console reads it. */
-export function useBundleActivityQuery(inputs: readonly BundleActivityInput[]) {
+export function useReleaseActivityQuery(
+  inputs: readonly ReleaseActivityInput[],
+) {
   // The server reads only what names a release.
   const sorted = inputs
     .map(({ releaseId, platform, channel }) => ({
@@ -33,8 +35,8 @@ export function useBundleActivityQuery(inputs: readonly BundleActivityInput[]) {
     }))
     .sort((a, b) => a.releaseId.localeCompare(b.releaseId));
   return useQuery({
-    queryKey: ["bundle-activity", sorted],
-    queryFn: () => getBundleActivityRpc({ data: sorted }),
+    queryKey: ["release-activity", sorted],
+    queryFn: () => getReleaseActivityRpc({ data: sorted }),
     enabled: sorted.length > 0,
     staleTime: 30_000,
   });

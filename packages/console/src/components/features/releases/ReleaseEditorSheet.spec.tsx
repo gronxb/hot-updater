@@ -21,7 +21,7 @@ const recovery = vi.fn();
 const failures = vi.fn();
 
 vi.mock("@/components/features/insights/ReleaseActivity", () => ({
-  BundleInsightsSummary: (props: unknown) => {
+  ReleaseInsightsSummary: (props: unknown) => {
     recovery(props);
     return <div>Activity · 24 hours</div>;
   },

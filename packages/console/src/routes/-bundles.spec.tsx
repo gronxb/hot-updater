@@ -30,8 +30,8 @@ const mocks = vi.hoisted(() => ({
   ] as { id: string; name: string }[] | undefined,
 }));
 
-vi.mock("@/lib/bundle-activity", () => ({
-  useBundleActivityQuery: mocks.activity,
+vi.mock("@/lib/release-activity", () => ({
+  useReleaseActivityQuery: mocks.activity,
 }));
 vi.mock("@/lib/console-features-api", () => ({
   useConsoleFeatures: () => ({

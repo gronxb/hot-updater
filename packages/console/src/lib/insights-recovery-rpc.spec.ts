@@ -38,13 +38,13 @@ vi.mock("./server/releaseAdoption", () => ({
   getBundleEvents: mocks.events,
 }));
 
-vi.mock("./server/bundleActivity", () => ({
-  getBundleActivity: mocks.activity,
+vi.mock("./server/releaseActivity", () => ({
+  getReleaseActivity: mocks.activity,
 }));
 
 import {
-  getBundleActivityRpc,
-  readBundleActivityInput,
+  getReleaseActivityRpc,
+  readReleaseActivityInput,
 } from "./insights-recovery-rpc";
 import { getBundleEventsRpc } from "./release-adoption-rpc";
 
@@ -114,7 +114,7 @@ describe("bundle activity access", () => {
   it("authenticates batch requests and uses the console database", async () => {
     const model = await withInsights();
     mocks.activity.mockResolvedValue({});
-    await expect(getBundleActivityRpc({ data: [...data] })).resolves.toEqual(
+    await expect(getReleaseActivityRpc({ data: [...data] })).resolves.toEqual(
       {},
     );
     expect(mocks.activity).toHaveBeenCalledWith(model, data);
@@ -123,21 +123,21 @@ describe("bundle activity access", () => {
     );
     mocks.activity.mockClear();
     await expect(
-      getBundleActivityRpc({ data: [...data] }),
+      getReleaseActivityRpc({ data: [...data] }),
     ).rejects.toMatchObject({ status: 401 });
     expect(mocks.activity).not.toHaveBeenCalled();
   });
   it("bounds the batch and rejects an absent ID before querying", () => {
     expect(() =>
-      readBundleActivityInput(Array.from({ length: 21 }, () => data[0])),
+      readReleaseActivityInput(Array.from({ length: 21 }, () => data[0])),
     ).toThrow("up to 20");
     expect(() =>
-      readBundleActivityInput([{ ...data[0], releaseId: "" }]),
+      readReleaseActivityInput([{ ...data[0], releaseId: "" }]),
     ).toThrow();
     expect(() =>
-      readBundleActivityInput([{ ...data[0], channel: "" }]),
+      readReleaseActivityInput([{ ...data[0], channel: "" }]),
     ).toThrow();
-    expect(readBundleActivityInput(data)).toEqual(data);
+    expect(readReleaseActivityInput(data)).toEqual(data);
   });
 });
 
@@ -183,7 +183,7 @@ describe("activity the console does not serve", () => {
         message: expect.stringContaining(message),
       });
       await expect(
-        getBundleActivityRpc({
+        getReleaseActivityRpc({
           data: [{ platform: "ios", channel: "production", releaseId: "r" }],
         }),
       ).rejects.toMatchObject({ feature: "insightsAnalytics" });

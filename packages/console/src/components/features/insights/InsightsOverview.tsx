@@ -48,7 +48,7 @@ import {
   recommendsRollback,
 } from "@/lib/release-adoption";
 import type {
-  ComparedBundle,
+  ComparedRelease,
   ReleaseHealthState,
 } from "@/lib/release-adoption-api";
 import { cn } from "@/lib/utils";
@@ -77,7 +77,7 @@ const cadenceOf = (intervalMs: number) =>
       : `Every ${intervalMs / HOUR} hours`;
 
 /** A bundle's crash numbers over the period, once both counts are read. */
-const crashesOf = ({ release, launched, recovered }: ComparedBundle) =>
+const crashesOf = ({ release, launched, recovered }: ComparedRelease) =>
   launched === undefined || recovered === undefined
     ? undefined
     : {
@@ -121,7 +121,7 @@ const METRICS = {
 
 /** A bundle's counts on a chart, in the order of `METRICS`. */
 function metricsOf(
-  bundle: ComparedBundle,
+  bundle: ComparedRelease,
   chart: HealthChart,
 ): readonly [Metric, Metric] {
   if (chart === "adoption") {
@@ -200,7 +200,7 @@ function ComparedBundleName({
   release,
   showPlatform,
 }: {
-  readonly release: ComparedBundle["release"];
+  readonly release: ComparedRelease["release"];
   /** Whether the report mixes platforms, so its label needs its platform. */
   readonly showPlatform: boolean;
 }) {
@@ -242,7 +242,7 @@ function RemoveButton({
   className,
   onRemove,
 }: {
-  readonly release: ComparedBundle["release"];
+  readonly release: ComparedRelease["release"];
   readonly className: string;
   readonly onRemove: (releaseId: string) => void;
 }) {
@@ -311,7 +311,7 @@ export function InsightsOverview({
   );
   // Adoption draws each bundle's launches solid and its downloads dashed;
   // Crashes draws its crashes.
-  const seriesOf = (bundle: ComparedBundle) =>
+  const seriesOf = (bundle: ComparedRelease) =>
     chart === "adoption" ? bundle.launched : bundle.recovered;
   const loaded = (releases ?? []).filter(
     (bundle) =>

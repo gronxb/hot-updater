@@ -124,7 +124,7 @@ export const Route = createFileRoute("/")({
   validateSearch: validateReleaseSearch,
 });
 
-function BundleFilterToolbar({
+function ReleaseFilterToolbar({
   channels,
   clearable,
   onChange,
@@ -284,7 +284,7 @@ function BundleFilterToolbar({
   );
 }
 
-function BundleEntry({
+function ReleaseEntry({
   expanded,
   onOpen,
   onToggleExpand,
@@ -715,7 +715,7 @@ function BundlesPage() {
           onClick={openOutsideControls(() => select(release))}
         >
           <div className="flex items-start justify-between gap-3">
-            <BundleEntry
+            <ReleaseEntry
               expanded={isExpanded}
               onOpen={() => select(release)}
               onToggleExpand={() =>
@@ -800,7 +800,7 @@ function BundlesPage() {
           onOpen={() => select(release)}
         >
           <TableCell>
-            <BundleEntry
+            <ReleaseEntry
               expanded={isExpanded}
               onOpen={() => select(release)}
               onToggleExpand={() =>
@@ -981,7 +981,7 @@ function BundlesPage() {
 
   return (
     <div className="flex h-svh min-h-0 min-w-0 flex-col">
-      <BundleFilterToolbar
+      <ReleaseFilterToolbar
         channels={channels}
         clearable={clearable}
         onChange={changeFilters}

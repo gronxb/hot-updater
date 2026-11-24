@@ -18,8 +18,8 @@ vi.mock("@/lib/api-rpc", () => ({
   getReleaseFold: vi.fn(),
   getReleases: vi.fn(),
 }));
-vi.mock("@/lib/bundle-activity", () => ({
-  useBundleActivityQuery: () => ({ data: {} }),
+vi.mock("@/lib/release-activity", () => ({
+  useReleaseActivityQuery: () => ({ data: {} }),
 }));
 vi.mock("@/lib/console-features-api", () => ({
   useConsoleFeatures: () => ({
