@@ -431,7 +431,10 @@ const formatInstallations = (rows: readonly InstallationRow[]): string =>
               "Bundle",
               ui.id(row.lastKnownReleaseId ?? row.lastKnownBundleId),
             ),
-            ui.kv("Pending", ui.id(row.pendingReleaseId ?? row.pendingBundleId)),
+            ui.kv(
+              "Pending",
+              ui.id(row.pendingReleaseId ?? row.pendingBundleId),
+            ),
             ui.kv("Latest", EVENT_LABELS[row.latestStatus]),
             ui.kv("Reported", dateText(row.receivedAtMs)),
           ]),

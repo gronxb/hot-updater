@@ -126,7 +126,9 @@ before it.
 Release health follows the newest bundle deployments on a timeline, up to four
 at a time; **Add a bundle** compares another, found by its label, such as
 `v12`, its ID, or its app version. Each bundle is named by its label, such as
-`v12`, before its ID.
+`v12`, before its ID. Each counts its own release's reports, so a release
+promoted back into a channel where its artifact already served counts apart
+from the earlier one.
 
 - **Adoption** draws each bundle's downloads (dashed) and launches (solid) per
   interval. Launches follow downloads as apps restart; after a forced update

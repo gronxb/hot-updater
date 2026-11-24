@@ -261,15 +261,8 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
   };
 
   it("records the event with derived keys, the head, gauges, counters, and sketches", async () => {
-    const {
-      api,
-      db,
-      overview,
-      sketch,
-      distribution,
-      outcomes,
-      everyEvent,
-    } = await setup();
+    const { api, db, overview, sketch, distribution, outcomes, everyEvent } =
+      await setup();
     await api.recordEvent(event(1));
 
     await expect(
@@ -816,14 +809,14 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     });
     // The download series holds the one download, in the hour of the apply
     // that implied it; the late report adds none.
-    await expect(outcomes("UPDATE_DOWNLOADED", "to:release-2")).resolves.toEqual(
-      [
-        expect.objectContaining({
-          bucket_start_ms: T + HOUR - ((T + HOUR) % HOUR),
-          events: 1,
-        }),
-      ],
-    );
+    await expect(
+      outcomes("UPDATE_DOWNLOADED", "to:release-2"),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        bucket_start_ms: T + HOUR - ((T + HOUR) % HOUR),
+        events: 1,
+      }),
+    ]);
     // A late apply of the bundle already running counts nothing either.
     await api.recordEvent(event(4, { received_at_ms: T + 3 * HOUR }));
     await expect(
@@ -857,9 +850,11 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       crashes: 1,
     });
     const hourOfCrash = T + HOUR - ((T + HOUR) % HOUR);
-    await expect(outcomes("UPDATE_DOWNLOADED", "to:release-2")).resolves.toEqual(
-      [expect.objectContaining({ bucket_start_ms: hourOfCrash, events: 1 })],
-    );
+    await expect(
+      outcomes("UPDATE_DOWNLOADED", "to:release-2"),
+    ).resolves.toEqual([
+      expect.objectContaining({ bucket_start_ms: hourOfCrash, events: 1 }),
+    ]);
     await expect(outcomes("RECOVERED", "from:release-2")).resolves.toEqual([
       expect.objectContaining({ bucket_start_ms: hourOfCrash, events: 1 }),
     ]);
@@ -975,9 +970,9 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       crashes: 0,
     });
     // One download hour: the first report's.
-    await expect(outcomes("UPDATE_DOWNLOADED", "to:release-2")).resolves.toEqual(
-      [expect.objectContaining({ events: 1 })],
-    );
+    await expect(
+      outcomes("UPDATE_DOWNLOADED", "to:release-2"),
+    ).resolves.toEqual([expect.objectContaining({ events: 1 })]);
   });
 
   it("launches a release with no implied download when it runs the native build's built-in bundle, and keeps a native build change", async () => {
@@ -1172,7 +1167,9 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-2" }),
     ).resolves.toBeNull();
-    await expect(outcomes("UPDATE_FAILED", "to:release-2")).resolves.toEqual([]);
+    await expect(outcomes("UPDATE_FAILED", "to:release-2")).resolves.toEqual(
+      [],
+    );
     await expect(everyEvent()).resolves.toMatchObject([{ events: 1 }]);
     const scope = { platform: "ios", channel: "production" } as const;
     await expect(

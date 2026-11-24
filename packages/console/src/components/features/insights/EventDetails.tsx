@@ -443,9 +443,7 @@ export function EventBundleTransition({
     EventHistoryRow,
     "type" | "fromBundleId" | "toBundleId" | "failure" | "minBundleId"
   > &
-    Partial<
-      Pick<EventHistoryRow, "change" | "fromReleaseId" | "toReleaseId">
-    >;
+    Partial<Pick<EventHistoryRow, "change" | "fromReleaseId" | "toReleaseId">>;
   readonly touch?: boolean;
 }) {
   const downloaded = event.type === "UPDATE_DOWNLOADED";

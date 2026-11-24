@@ -1203,7 +1203,11 @@ export const registerInsightsModelTests = (
         // A failed check names the running bundle, which it did not target.
         [check.to_bundle_id, []],
       ] as const) {
-        const filter = { ...scope, type: "UPDATE_FAILED", toReleaseId } as const;
+        const filter = {
+          ...scope,
+          type: "UPDATE_FAILED",
+          toReleaseId,
+        } as const;
         await expectInsightsIndex(
           () =>
             model.listEvents({

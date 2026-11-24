@@ -419,9 +419,7 @@ describe("Insights dashboard", () => {
           ([{ data }]) => `${data.releaseId} ${data.platform}`,
         ),
       ),
-    ).toEqual(
-      new Set(["release-old ios", "release-android android"]),
-    );
+    ).toEqual(new Set(["release-old ios", "release-android android"]));
     expect(
       new Set(mocks.events.mock.calls.map(([{ data }]) => data.endMs)).size,
     ).toBe(1);
