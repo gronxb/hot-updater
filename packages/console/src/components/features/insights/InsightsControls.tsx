@@ -1,9 +1,9 @@
 import { RotateCcw, X } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelPicker, FilterChip } from "@/components/ChannelPicker";
 import { PlatformIcon } from "@/components/PlatformIcon";
+import { ReleaseIdDisplay } from "@/components/ReleaseIdDisplay";
 import { Button } from "@/components/ui/button";
 import { ComboboxTrigger } from "@/components/ui/combobox";
 import {
@@ -262,8 +262,8 @@ function PickedRelease({
 }) {
   return typeof release?.label === "number" ? (
     // Inside the chip's button, so the ID tail is text, not a copy button.
-    <BundleIdDisplay
-      bundleId={releaseId}
+    <ReleaseIdDisplay
+      releaseId={releaseId}
       copyable={false}
       label={release.label}
       platform={showPlatform ? release.platform : undefined}

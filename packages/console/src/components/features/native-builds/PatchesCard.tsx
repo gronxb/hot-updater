@@ -8,6 +8,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 
+import { ArtifactIdDisplay } from "@/components/ArtifactIdDisplay";
+import { ReleaseIdDisplay } from "@/components/ReleaseIdDisplay";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
 import {
   Alert,
@@ -44,6 +46,67 @@ import type {
 const BUNDLE_DIFFING_GUIDE_URL =
   "https://hot-updater.dev/docs/guides/bundle-diffing#first-ota-update";
 
+type ServedRelease = NativeBuildDetail["servedNow"][number];
+
+/**
+ * The release each artifact is served by in the build's scope now: the
+ * newest, where a promote serves one artifact twice. Patches belong to
+ * artifacts, and the page names them by the release people know, read from
+ * the catalog the build's page already holds.
+ */
+const servingReleases = (
+  servedNow: readonly ServedRelease[],
+): ReadonlyMap<string, ServedRelease> => {
+  const serving = new Map<string, ServedRelease>();
+  for (const release of servedNow) {
+    if (release.bundleId !== null && !serving.has(release.bundleId)) {
+      serving.set(release.bundleId, release);
+    }
+  }
+  return serving;
+};
+
+/**
+ * A patch's target: the release serving it, named by its label and its
+ * release ID, as on the Bundles page. A target the scope no longer serves
+ * shows as the artifact it is, linking to the releases of that artifact.
+ */
+function PatchTarget({
+  artifactId,
+  release,
+}: {
+  readonly artifactId: string;
+  readonly release: ServedRelease | undefined;
+}) {
+  if (release !== undefined) {
+    return (
+      <ReleaseIdDisplay
+        releaseId={release.releaseId}
+        label={release.label}
+        labelAs={
+          <Link
+            className="underline-offset-4 hover:underline"
+            search={{ releaseId: release.releaseId }}
+            to="/"
+          />
+        }
+      />
+    );
+  }
+  return (
+    <span className="flex min-w-0 flex-col items-start gap-0.5">
+      <span className="text-xs text-muted-foreground">Artifact</span>
+      <Link
+        className="block min-w-0 underline-offset-4 hover:underline"
+        search={{ artifactId }}
+        to="/"
+      >
+        <ArtifactIdDisplay artifactId={artifactId} />
+      </Link>
+    </span>
+  );
+}
+
 /**
  * The bundles that patch from the build's built-in bundle, newest first, a
  * page at a time: the newest page comes with the build's page, and others
@@ -68,6 +131,7 @@ export function PatchesCard({
     ? query.data
     : detail.patches;
   const { next, previous } = patches ?? {};
+  const serving = servingReleases(detail.servedNow);
 
   return (
     <Card className="overflow-hidden shadow-sm" id="patches">
@@ -162,7 +226,7 @@ export function PatchesCard({
           >
             <TableHeader>
               <TableRow>
-                <TableHead>Target bundle</TableHead>
+                <TableHead>Target</TableHead>
                 <TableHead className="w-28">Patch size</TableHead>
                 <TableHead className="hidden w-32 sm:table-cell">
                   Created
@@ -173,15 +237,10 @@ export function PatchesCard({
               {patches.data.map((patch) => (
                 <TableRow key={patch.bundleId}>
                   <TableCell className="py-3 whitespace-normal">
-                    <Link
-                      className="block font-mono text-xs [overflow-wrap:anywhere] underline-offset-4 hover:underline"
-                      search={{ bundleId: patch.bundleId }}
-                      title={patch.bundleId}
-                      to="/"
-                      translate="no"
-                    >
-                      {patch.bundleId}
-                    </Link>
+                    <PatchTarget
+                      artifactId={patch.bundleId}
+                      release={serving.get(patch.bundleId)}
+                    />
                   </TableCell>
                   <TableCell className="text-xs tabular-nums">
                     {formatByteSize(patch.byteSize)}

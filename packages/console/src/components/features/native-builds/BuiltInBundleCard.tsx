@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, CircleCheck, CircleSlash, History } from "lucide-react";
 import { toast } from "sonner";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { ArtifactIdDisplay } from "@/components/ArtifactIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import { BuildKeyDisplay, TargetDisplay } from "@/components/TargetDisplay";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
@@ -164,7 +164,7 @@ export function BuiltInBundleCard({
       <CardContent className="flex flex-col gap-4 p-4 sm:p-6">
         <dl className="flex flex-col gap-3">
           <Row label="Bundle ID">
-            <BundleIdDisplay bundleId={build.min_bundle_id} />
+            <ArtifactIdDisplay artifactId={build.min_bundle_id} />
           </Row>
           <Row label="OTAs patching from it">
             <span className="tabular-nums">

@@ -1,7 +1,8 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { ArrowRight } from "lucide-react";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { ArtifactIdDisplay } from "@/components/ArtifactIdDisplay";
+import { ReleaseIdDisplay } from "@/components/ReleaseIdDisplay";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,11 +50,11 @@ function ArtifactId({
 }) {
   return (
     <span className="flex min-w-0 flex-col items-start gap-1">
-      <BundleIdDisplay bundleId={id} />
+      <ArtifactIdDisplay artifactId={id} />
       {release ? (
         <span className="inline-flex items-baseline gap-1.5 text-xs text-muted-foreground">
           Release
-          <BundleIdDisplay bundleId={release.id} label={release.label} />
+          <ReleaseIdDisplay releaseId={release.id} label={release.label} />
         </span>
       ) : null}
     </span>
@@ -69,9 +70,9 @@ function ArtifactName({
   readonly release: ServingRelease | null;
 }) {
   return release ? (
-    <BundleIdDisplay bundleId={release.id} label={release.label} />
+    <ReleaseIdDisplay releaseId={release.id} label={release.label} />
   ) : (
-    <BundleIdDisplay bundleId={id} />
+    <ArtifactIdDisplay artifactId={id} />
   );
 }
 

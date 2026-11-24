@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { Fragment, type ReactNode, useEffect, useState } from "react";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import { ChannelPicker } from "@/components/ChannelPicker";
 import {
@@ -50,6 +49,7 @@ import {
 } from "@/components/FoldedRows";
 import { PlatformIcon, PlatformLabel } from "@/components/PlatformIcon";
 import { RelativeTime } from "@/components/RelativeTime";
+import { ReleaseIdDisplay } from "@/components/ReleaseIdDisplay";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { RowReason } from "@/components/RowReason";
 import { TargetDisplay } from "@/components/TargetDisplay";
@@ -243,13 +243,13 @@ function BundleFilterToolbar({
       >
         <Tags />
       </Button>
-      {search.bundleId ? (
+      {search.artifactId ? (
         <Badge className="max-w-48 gap-1 max-sm:order-3" variant="secondary">
           Artifact filter
           <button
             aria-label="Clear artifact filter"
             className="relative rounded-sm after:absolute after:-inset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:after:hidden"
-            onClick={() => onChange({ bundleId: undefined })}
+            onClick={() => onChange({ artifactId: undefined })}
             type="button"
           >
             <X className="size-3" />
@@ -330,9 +330,8 @@ function BundleEntry({
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
         {/* The label opens the Bundle; its ID tail is a copy button of its
             own beside it, not inside it. */}
-        <BundleIdDisplay
-          bundleId={release.id}
-          fullOnMobile
+        <ReleaseIdDisplay
+          releaseId={release.id}
           label={release.label}
           labelAs={
             <button
@@ -661,7 +660,7 @@ function BundlesPage() {
       go({ ...search, releaseId: childRelease.id }, false);
       return;
     }
-    changeFilters({ bundleId: bundle.id });
+    changeFilters({ artifactId: bundle.id });
   };
   // Pages go by key: newer or older than an edge release, never by number.
   const onLaterPage =

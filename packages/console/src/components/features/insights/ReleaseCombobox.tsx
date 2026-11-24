@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CircleOff } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { ReleaseIdDisplay } from "@/components/ReleaseIdDisplay";
 import { Badge } from "@/components/ui/badge";
 import {
   Combobox,
@@ -51,8 +51,8 @@ export function ReleaseOption({
     <span className="flex min-w-0 flex-col gap-0.5">
       <span className="flex min-w-0 items-center gap-1.5">
         {/* An option holds no button: picking it takes every click. */}
-        <BundleIdDisplay
-          bundleId={release.releaseId}
+        <ReleaseIdDisplay
+          releaseId={release.releaseId}
           className="min-w-0"
           copyable={false}
           label={release.label}

@@ -82,6 +82,15 @@ vi.mock("@tanstack/react-router", () => ({
 const id = (n: number) =>
   `019a0000-0000-7000-8000-${String(n).padStart(12, "0")}`;
 
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+/** A UUIDv7 made at `ms`, so a time read from it is that time. */
+const uuidAt = (ms: number, n: number) => {
+  const time = ms.toString(16).padStart(12, "0");
+  return `${time.slice(0, 8)}-${time.slice(8)}-7000-8000-${String(n).padStart(12, "0")}`;
+};
+
 const build = (overrides: Partial<NativeBuildRow> = {}): NativeBuildRow => ({
   id: id(1),
   scope_key: "scope",
@@ -2138,6 +2147,24 @@ describe("ServedNowCard", () => {
     ).toHaveProperty("href", expect.stringContaining("scopeKey="));
   });
 
+  it("dates each release by its own ID, not its artifact's", () => {
+    const now = Date.now();
+    // An artifact deployed a month ago, promoted into the scope two hours ago.
+    const artifactId = uuidAt(now - 30 * DAY_MS, 21);
+    const releaseId = uuidAt(now - 2 * HOUR_MS, 121);
+    render(
+      <ServedNowCard
+        detail={detail({
+          servedNow: [{ ...release(artifactId, releaseId), label: 3 }],
+        })}
+      />,
+    );
+
+    const row = screen.getAllByRole("row")[1]!;
+    expect(row.textContent).toContain("2 hours ago");
+    expect(row.textContent).not.toContain("a month ago");
+  });
+
   it("offers the scope's releases when the build is served nothing", () => {
     render(<ServedNowCard detail={detail()} />);
 
@@ -2176,11 +2203,53 @@ describe("PatchesCard", () => {
       />,
     );
 
-    expect(screen.getByRole("link", { name: id(40) })).toHaveProperty(
+    // No release on the page serves it, so it shows as the artifact it is.
+    const link = screen.getByRole("link", { name: id(40) });
+    expect(link).toHaveProperty(
       "href",
-      expect.stringContaining(`/?bundleId=${id(40)}`),
+      expect.stringContaining(`/?artifactId=${id(40)}`),
     );
+    expect(link.closest("td")!.textContent).toBe(`Artifact${id(40)}`);
+    expect(screen.queryByText(/v\d/)).toBeNull();
     expect(patchesQuery).toHaveBeenCalledWith(id(2), {}, false);
+  });
+
+  it("names a patch's target by the label and release ID serving it", () => {
+    patchesQuery.mockReturnValue({ data: undefined });
+    render(
+      <PatchesCard
+        detail={detail({
+          servedNow: [
+            {
+              releaseId: id(140),
+              kind: "BUNDLE",
+              bundleId: id(40),
+              label: 5,
+              rolloutCohortCount: 1000,
+              targetCohorts: [],
+              shouldForceUpdate: false,
+              message: null,
+            },
+          ],
+          patches: patchPage([id(40)]),
+        })}
+        onPage={vi.fn()}
+        page={{}}
+      />,
+    );
+
+    // The label opens the release; its tail is the release's ID, never the
+    // artifact's, so `v5` reads the same as on the Bundles page.
+    const link = screen.getByRole("link", { name: "v5" });
+    expect(link).toHaveProperty(
+      "href",
+      expect.stringContaining(`/?releaseId=${id(140)}`),
+    );
+    expect(link.parentElement!.textContent).toBe(`v5 ${id(140)}`);
+    expect(
+      screen.getByRole("button", { name: `Copy ID ${id(140)}` }),
+    ).toBeTruthy();
+    expect(screen.queryByText(id(40))).toBeNull();
   });
 
   it("says what adds a patch when there is none", () => {

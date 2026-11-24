@@ -8,7 +8,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { ReleaseIdDisplay } from "@/components/ReleaseIdDisplay";
 import {
   ChartContainer,
   ChartTooltip,
@@ -181,8 +181,8 @@ export function ComparedBundlesChart({
   const labelOf = (release: AdoptionRelease, name: string | undefined) => (
     <span className="flex items-center gap-1.5 whitespace-nowrap">
       {/* The chart's tooltip takes no pointer, so it holds no button. */}
-      <BundleIdDisplay
-        bundleId={release.releaseId}
+      <ReleaseIdDisplay
+        releaseId={release.releaseId}
         className="whitespace-nowrap"
         copyable={false}
         label={release.label}

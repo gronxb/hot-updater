@@ -330,7 +330,8 @@ build's page, `/native-builds/<build id>`:
   build now, newer than its built-in bundle, and whether each one's first OTA
   downloads as a patch or as the full bundle.
 - **Patches from this build**: the bundles with a patch from its built-in
-  bundle, and each patch's size.
+  bundle, each named by its label and bundle ID, and each patch's size. A
+  patch target the scope no longer serves shows as its artifact ID.
 
 **Import a build**, beside the refresh button and in an empty list, shows
 the command that tracks a build made elsewhere, such as by another build
@@ -809,9 +810,13 @@ no patch from the build, the command says so and prints the command that adds
 one:
 
 ```txt
-▲  OTA 01a1f3c2 has no patch from it, so fresh installs download all of it.
+▲  Bundle v8 01a1f3d7-… has no patch from it, so fresh installs download all of it.
    npx hot-updater patch -p ios -c production -b 01a1f3c2-… --base-artifact-id 019a…
 ```
+
+The warning names the OTA by its label and bundle ID, as `bundle show` takes
+it. The patch command names the artifact that bundle serves, since a patch
+belongs to the artifact.
 
 That OTA is the newest release of the scope that serves anyone; one at 0% with
 no cohort is passed over. The next deploy patches from the mark by itself.
@@ -823,7 +828,9 @@ npx hot-updater native-build mark <build id> --clear
 ```
 
 Both succeed when run again, so a CI job can retry them. Add `--json` to print
-`nativeBuild`, `previous`, and `missingPatch`, the OTA and the command, or null. A sandbox build can't be
+`nativeBuild`, `previous`, and `missingPatch`, or null. `missingPatch` holds the
+OTA's `releaseId` (its bundle ID) and `label`, the `artifactId` it serves, and
+the `command`. A sandbox build can't be
 marked, since no store sells it. Deleting a marked build deletes its mark, and
 deploys go back to the newest build.
 

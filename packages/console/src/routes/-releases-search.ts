@@ -7,7 +7,11 @@ export interface ReleaseSearch {
   afterReleaseId?: string;
   /** Releases older than this id: the next page. */
   beforeReleaseId?: string;
-  bundleId?: string;
+  /**
+   * Releases of one artifact. Users call a release ID a bundle ID, so the
+   * URL names the artifact by its own name; no `?bundleId=` is read.
+   */
+  artifactId?: string;
   channelId?: string;
   /** Every channel, where the list would open on the default one. */
   channels?: typeof ALL_CHANNELS;
@@ -25,7 +29,7 @@ const optionalString = (value: unknown) =>
 
 /**
  * The search a URL holds, reduced to one of the filter sets the release
- * indexes serve: a bundle, a scope (with enabled), or a channel with its
+ * indexes serve: an artifact, a scope (with enabled), or a channel with its
  * platform (with enabled). A channel without a platform lists iOS.
  */
 export function validateReleaseSearch(
@@ -41,10 +45,10 @@ export function validateReleaseSearch(
       : search.enabled === false || search.enabled === "false"
         ? false
         : undefined;
-  const bundleId = optionalString(search.bundleId);
-  const scopeKey = bundleId ? undefined : optionalString(search.scopeKey);
+  const artifactId = optionalString(search.artifactId);
+  const scopeKey = artifactId ? undefined : optionalString(search.scopeKey);
   const channelId =
-    bundleId || scopeKey ? undefined : optionalString(search.channelId);
+    artifactId || scopeKey ? undefined : optionalString(search.channelId);
   const platform =
     channelId === undefined
       ? undefined
@@ -52,14 +56,14 @@ export function validateReleaseSearch(
         ? "android"
         : "ios";
   const channels =
-    !bundleId && !scopeKey && !channelId && search.channels === ALL_CHANNELS
+    !artifactId && !scopeKey && !channelId && search.channels === ALL_CHANNELS
       ? ALL_CHANNELS
       : undefined;
 
   return {
     afterReleaseId,
+    artifactId,
     beforeReleaseId,
-    bundleId,
     channelId,
     channels,
     enabled: scopeKey || channelId ? enabled : undefined,
@@ -72,7 +76,9 @@ export function validateReleaseSearch(
 export function releaseFilterOf(search: ReleaseSearch): ReleaseFilter {
   const enabled =
     search.enabled === undefined ? {} : { enabled: search.enabled };
-  if (search.bundleId) return { kind: "bundle", bundleId: search.bundleId };
+  if (search.artifactId) {
+    return { kind: "bundle", bundleId: search.artifactId };
+  }
   if (search.scopeKey) {
     return { kind: "scope", scopeKey: search.scopeKey, ...enabled };
   }
@@ -92,7 +98,7 @@ export function hasReleaseFilters(search: ReleaseSearch): boolean {
 }
 
 /**
- * The search the list shows. A URL that names no channel, bundle, or scope
+ * The search the list shows. A URL that names no channel, artifact, or scope
  * opens on the default channel's iOS releases, or on every channel when the
  * project has no such channel; undefined until the channel list, which the
  * page reads anyway, arrives. A link to one release that names no channel
@@ -103,7 +109,7 @@ export function resolveReleaseSearch(
   channels: readonly Pick<ChannelRow, "id" | "name">[] | undefined,
 ): ReleaseSearch | undefined {
   if (
-    search.bundleId ||
+    search.artifactId ||
     search.scopeKey ||
     search.channelId ||
     search.channels === ALL_CHANNELS
@@ -119,7 +125,7 @@ export function resolveReleaseSearch(
 }
 
 /**
- * A new filter starts from the first page. A bundle or scope filter replaces
+ * A new filter starts from the first page. An artifact or scope filter replaces
  * the others, and choosing a channel or platform clears them.
  */
 export function updateReleaseFilters(
@@ -127,7 +133,7 @@ export function updateReleaseFilters(
   filters: Partial<
     Pick<
       ReleaseSearch,
-      | "bundleId"
+      | "artifactId"
       | "channelId"
       | "channels"
       | "enabled"
@@ -137,8 +143,8 @@ export function updateReleaseFilters(
   >,
 ): ReleaseSearch {
   const next = { ...current, ...filters };
-  if (filters.bundleId)
-    return validateReleaseSearch({ bundleId: next.bundleId });
+  if (filters.artifactId)
+    return validateReleaseSearch({ artifactId: next.artifactId });
   if (filters.scopeKey) {
     return validateReleaseSearch({
       scopeKey: next.scopeKey,
@@ -154,7 +160,7 @@ export function updateReleaseFilters(
     });
   }
   return validateReleaseSearch({
-    bundleId: next.bundleId,
+    artifactId: next.artifactId,
     channelId: next.channelId,
     channels: next.channels,
     enabled: next.enabled,

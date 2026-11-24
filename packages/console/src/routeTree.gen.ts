@@ -24,7 +24,7 @@ import { Route as HotUpdaterDevicesReceiptRouteImport } from './routes/[_]hot-up
 import { Route as HotUpdaterDevicesRequestRouteImport } from './routes/[_]hot-updater/devices/request'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as HotUpdaterNativeBuildsBuildIdManifestDotplistRouteImport } from './routes/[_]hot-updater/native-builds/$buildId/manifest[.]plist'
-import { Route as ApiBundlesBundleIdDownloadRouteImport } from './routes/api/bundles/$bundleId/download'
+import { Route as ApiArtifactsArtifactIdDownloadRouteImport } from './routes/api/artifacts/$artifactId/download'
 import { Route as ApiNativeBuildsBuildIdDownloadRouteImport } from './routes/api/native-builds/$buildId/download'
 
 const IndexRoute = IndexRouteImport.update({
@@ -107,10 +107,10 @@ const HotUpdaterNativeBuildsBuildIdManifestDotplistRoute =
     path: '/_hot-updater/native-builds/$buildId/manifest.plist',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiBundlesBundleIdDownloadRoute =
-  ApiBundlesBundleIdDownloadRouteImport.update({
-    id: '/api/bundles/$bundleId/download',
-    path: '/api/bundles/$bundleId/download',
+const ApiArtifactsArtifactIdDownloadRoute =
+  ApiArtifactsArtifactIdDownloadRouteImport.update({
+    id: '/api/artifacts/$artifactId/download',
+    path: '/api/artifacts/$artifactId/download',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiNativeBuildsBuildIdDownloadRoute =
@@ -136,7 +136,7 @@ export interface FileRoutesByFullPath {
   '/_hot-updater/devices/request': typeof HotUpdaterDevicesRequestRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/native-builds/$buildId/manifest.plist': typeof HotUpdaterNativeBuildsBuildIdManifestDotplistRoute
-  '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
+  '/api/artifacts/$artifactId/download': typeof ApiArtifactsArtifactIdDownloadRoute
   '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
 }
 export interface FileRoutesByTo {
@@ -155,7 +155,7 @@ export interface FileRoutesByTo {
   '/_hot-updater/devices/request': typeof HotUpdaterDevicesRequestRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/native-builds/$buildId/manifest.plist': typeof HotUpdaterNativeBuildsBuildIdManifestDotplistRoute
-  '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
+  '/api/artifacts/$artifactId/download': typeof ApiArtifactsArtifactIdDownloadRoute
   '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
 }
 export interface FileRoutesById {
@@ -175,7 +175,7 @@ export interface FileRoutesById {
   '/_hot-updater/devices/request': typeof HotUpdaterDevicesRequestRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/native-builds/$buildId/manifest.plist': typeof HotUpdaterNativeBuildsBuildIdManifestDotplistRoute
-  '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
+  '/api/artifacts/$artifactId/download': typeof ApiArtifactsArtifactIdDownloadRoute
   '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
 }
 export interface FileRouteTypes {
@@ -196,7 +196,7 @@ export interface FileRouteTypes {
     | '/_hot-updater/devices/request'
     | '/api/auth/$'
     | '/_hot-updater/native-builds/$buildId/manifest.plist'
-    | '/api/bundles/$bundleId/download'
+    | '/api/artifacts/$artifactId/download'
     | '/api/native-builds/$buildId/download'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -215,7 +215,7 @@ export interface FileRouteTypes {
     | '/_hot-updater/devices/request'
     | '/api/auth/$'
     | '/_hot-updater/native-builds/$buildId/manifest.plist'
-    | '/api/bundles/$bundleId/download'
+    | '/api/artifacts/$artifactId/download'
     | '/api/native-builds/$buildId/download'
   id:
     | '__root__'
@@ -234,7 +234,7 @@ export interface FileRouteTypes {
     | '/_hot-updater/devices/request'
     | '/api/auth/$'
     | '/_hot-updater/native-builds/$buildId/manifest.plist'
-    | '/api/bundles/$bundleId/download'
+    | '/api/artifacts/$artifactId/download'
     | '/api/native-builds/$buildId/download'
   fileRoutesById: FileRoutesById
 }
@@ -254,7 +254,7 @@ export interface RootRouteChildren {
   HotUpdaterDevicesRequestRoute: typeof HotUpdaterDevicesRequestRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   HotUpdaterNativeBuildsBuildIdManifestDotplistRoute: typeof HotUpdaterNativeBuildsBuildIdManifestDotplistRoute
-  ApiBundlesBundleIdDownloadRoute: typeof ApiBundlesBundleIdDownloadRoute
+  ApiArtifactsArtifactIdDownloadRoute: typeof ApiArtifactsArtifactIdDownloadRoute
   ApiNativeBuildsBuildIdDownloadRoute: typeof ApiNativeBuildsBuildIdDownloadRoute
 }
 
@@ -365,11 +365,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HotUpdaterNativeBuildsBuildIdManifestDotplistRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/bundles/$bundleId/download': {
-      id: '/api/bundles/$bundleId/download'
-      path: '/api/bundles/$bundleId/download'
-      fullPath: '/api/bundles/$bundleId/download'
-      preLoaderRoute: typeof ApiBundlesBundleIdDownloadRouteImport
+    '/api/artifacts/$artifactId/download': {
+      id: '/api/artifacts/$artifactId/download'
+      path: '/api/artifacts/$artifactId/download'
+      fullPath: '/api/artifacts/$artifactId/download'
+      preLoaderRoute: typeof ApiArtifactsArtifactIdDownloadRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/native-builds/$buildId/download': {
@@ -400,7 +400,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   HotUpdaterNativeBuildsBuildIdManifestDotplistRoute:
     HotUpdaterNativeBuildsBuildIdManifestDotplistRoute,
-  ApiBundlesBundleIdDownloadRoute: ApiBundlesBundleIdDownloadRoute,
+  ApiArtifactsArtifactIdDownloadRoute: ApiArtifactsArtifactIdDownloadRoute,
   ApiNativeBuildsBuildIdDownloadRoute: ApiNativeBuildsBuildIdDownloadRoute,
 }
 export const routeTree = rootRouteImport

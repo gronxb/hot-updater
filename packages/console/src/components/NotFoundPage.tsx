@@ -5,7 +5,7 @@ import { buttonVariants } from "@/components/ui/button";
 const homeSearch = {
   afterReleaseId: undefined,
   beforeReleaseId: undefined,
-  bundleId: undefined,
+  artifactId: undefined,
   channelId: undefined,
   enabled: undefined,
   platform: undefined,

@@ -9,8 +9,8 @@ import {
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { InfoTooltip } from "@/components/InfoTooltip";
+import { ReleaseIdDisplay } from "@/components/ReleaseIdDisplay";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -209,8 +209,8 @@ function ComparedBundleName({
       {/* A label and its ID tail don't shrink, so on a
           phone "Disabled" moves under them instead of over. */}
       <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-        <BundleIdDisplay
-          bundleId={release.releaseId}
+        <ReleaseIdDisplay
+          releaseId={release.releaseId}
           className="min-w-0"
           label={release.label}
           platform={showPlatform ? release.platform : undefined}
@@ -585,8 +585,8 @@ export function InsightsOverview({
                   <TriangleAlert aria-hidden="true" />
                   <AlertTitle>
                     Roll back{" "}
-                    <BundleIdDisplay
-                      bundleId={bundle.release.releaseId}
+                    <ReleaseIdDisplay
+                      releaseId={bundle.release.releaseId}
                       className="text-sm"
                       label={bundle.release.label}
                       platform={mixed ? bundle.release.platform : undefined}

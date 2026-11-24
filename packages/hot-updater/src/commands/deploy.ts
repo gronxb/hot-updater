@@ -474,12 +474,12 @@ const resolveCommittedDeployments = (
     }
     if (commit.catalog.scope_key !== release.scope_key) {
       throw new Error(
-        `Deployment commit result for Bundle ${release.bundle_id} has mismatched Release and Catalog scopes.`,
+        `Deployment commit result for artifact ${release.bundle_id} has mismatched Release and Catalog scopes.`,
       );
     }
     if (commitsByBundleId.has(release.bundle_id)) {
       throw new Error(
-        `Deployment commit returned duplicate results for Bundle ${release.bundle_id}.`,
+        `Deployment commit returned duplicate results for artifact ${release.bundle_id}.`,
       );
     }
     commitsByBundleId.set(release.bundle_id, {
@@ -493,7 +493,7 @@ const resolveCommittedDeployments = (
     const matched = commitsByBundleId.get(prepared.bundleId);
     if (!matched) {
       throw new Error(
-        `Deployment commit did not return a Release for Bundle ${prepared.bundleId}.`,
+        `Deployment commit did not return a Release for artifact ${prepared.bundleId}.`,
       );
     }
     const release = matched.commit.release!;
@@ -502,7 +502,7 @@ const resolveCommittedDeployments = (
       matched.commit.catalog.platform !== prepared.platform
     ) {
       throw new Error(
-        `Deployment commit result for Bundle ${prepared.bundleId} has the wrong platform.`,
+        `Deployment commit result for artifact ${prepared.bundleId} has the wrong platform.`,
       );
     }
     commitsByBundleId.delete(prepared.bundleId);
@@ -516,7 +516,7 @@ const resolveCommittedDeployments = (
   const unexpectedBundleId = commitsByBundleId.keys().next().value;
   if (unexpectedBundleId !== undefined) {
     throw new Error(
-      `Deployment commit returned an unexpected result for Bundle ${unexpectedBundleId}.`,
+      `Deployment commit returned an unexpected result for artifact ${unexpectedBundleId}.`,
     );
   }
   return results;
@@ -1202,7 +1202,7 @@ const deployPlatform = async ({
         }
         for (const failure of patchSummary.failures) {
           p.log.warn(
-            `Partial update skipped for file ${failure.baseBundleId.slice(0, 8)}: ${failure.message}`,
+            `Partial update skipped for ${failure.baseBundleId === "built-in" ? "the built-in bundle" : `base artifact ${failure.baseBundleId}`}: ${failure.message}`,
           );
         }
       };

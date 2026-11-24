@@ -197,7 +197,7 @@ async function fetchManifest(
 ): Promise<BundleManifest> {
   const manifestStorageUri = getManifestStorageUri(bundle);
   if (!manifestStorageUri) {
-    throw new Error(`Bundle ${bundle.id} does not have manifest metadata`);
+    throw new Error(`Artifact ${bundle.id} does not have manifest metadata`);
   }
 
   const manifestBytes = await downloadStorageBytes(
@@ -240,7 +240,9 @@ async function fetchAssetBytes(
 ) {
   const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
   if (!assetBaseStorageUri) {
-    throw new Error(`Bundle ${bundle.id} does not have asset storage metadata`);
+    throw new Error(
+      `Artifact ${bundle.id} does not have asset storage metadata`,
+    );
   }
   const asset = manifest.assets[assetPath];
   if (!asset) {
@@ -360,7 +362,9 @@ export async function createBundleDiff(
   }
 
   if (baseBundleId === bundleId) {
-    throw new Error("Base bundle must be different from the target bundle");
+    throw new Error(
+      "The base artifact must be different from the target artifact",
+    );
   }
 
   const [baseBundle, targetBundle] = (
@@ -370,15 +374,17 @@ export async function createBundleDiff(
   );
 
   if (!baseBundle || !targetBundle) {
-    throw new Error("Bundle not found");
+    throw new Error("Artifact not found");
   }
 
   if (baseBundle.platform !== targetBundle.platform) {
-    throw new Error("Base bundle platform must match the target bundle");
+    throw new Error(
+      "The base artifact's platform must match the target artifact's",
+    );
   }
 
   if (baseBundle.id.localeCompare(targetBundle.id) >= 0) {
-    throw new Error("Base bundle must be older than the target bundle");
+    throw new Error("The base artifact must be older than the target artifact");
   }
 
   const [baseManifest, targetManifest] = await Promise.all([

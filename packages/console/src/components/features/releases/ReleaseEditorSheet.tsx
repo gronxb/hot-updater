@@ -14,13 +14,13 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { normalizeRange } from "verkit";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { BundleMetadata } from "@/components/features/bundles/BundleMetadata";
 import { RolloutCohortsDialog } from "@/components/features/bundles/RolloutCohortsDialog";
 import { ReleaseSections } from "@/components/features/FeatureSlots";
 import { ReleaseNativeBuildLink } from "@/components/features/native-builds/ReleaseNativeBuildLink";
 import { InfoTooltip } from "@/components/InfoTooltip";
 import { PlatformIcon } from "@/components/PlatformIcon";
+import { ReleaseIdDisplay } from "@/components/ReleaseIdDisplay";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -376,11 +376,9 @@ export function ReleaseEditorSheet({
                         : "basis-full sm:basis-auto",
                     )}
                   >
-                    <BundleIdDisplay
-                      bundleId={release.id}
-                      fullOnMobile
+                    <ReleaseIdDisplay
+                      releaseId={release.id}
                       label={release.label}
-                      maxLength={18}
                     />
                     {!release.bundle_id ? (
                       <span className="text-xs text-foreground">
@@ -649,11 +647,11 @@ export function ReleaseEditorSheet({
                       disabled={busy}
                       onClick={() => {
                         window.open(
-                          `/api/bundles/${encodeURIComponent(release.bundle_id!)}/download`,
+                          `/api/artifacts/${encodeURIComponent(release.bundle_id!)}/download`,
                           "_blank",
                           "noopener,noreferrer",
                         );
-                        toast.success("Bundle download started");
+                        toast.success("Manifest download started");
                       }}
                       size="sm"
                       variant="outline"

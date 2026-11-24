@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, ArrowUpRight, RotateCw } from "lucide-react";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { ArtifactIdDisplay } from "@/components/ArtifactIdDisplay";
 import { ConsoleFeatureUnavailable } from "@/components/ConsoleFeatureUnavailable";
 import { BuiltinBundleBadge } from "@/components/features/insights/BuiltinBundle";
 import { InsightsErrorAlert } from "@/components/features/insights/InsightsErrorAlert";
@@ -67,7 +67,10 @@ function BuiltinBundle({ bundleId }: { readonly bundleId: string }) {
   return (
     <div className="flex min-h-11 min-w-0 flex-wrap items-center gap-2 md:min-h-9">
       <BuiltinBundleBadge />
-      <BundleIdDisplay bundleId={bundleId} className="text-muted-foreground" />
+      <ArtifactIdDisplay
+        artifactId={bundleId}
+        className="text-muted-foreground"
+      />
     </div>
   );
 }
