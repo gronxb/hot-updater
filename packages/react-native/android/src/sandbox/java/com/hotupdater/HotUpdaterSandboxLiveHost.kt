@@ -133,7 +133,12 @@ internal class HotUpdaterSandboxLiveHost(
                 },
             rollback =
                 if (report["status"] == "RECOVERED" && from != null) {
-                    HotUpdaterSandboxRollback(from, report["toBundleId"] as? String ?: builtIn)
+                    HotUpdaterSandboxRollback(
+                        from,
+                        report["toBundleId"] as? String ?: builtIn,
+                        fromReleaseId = report["fromReleaseId"] as? String,
+                        toReleaseId = report["toReleaseId"] as? String,
+                    )
                 } else {
                     null
                 },
@@ -145,10 +150,19 @@ internal class HotUpdaterSandboxLiveHost(
         // A session's own view holds nothing pending, and the normal selection's may.
         val state = (if (isInSession) HotUpdaterSandboxDev.normalActiveState() else null) ?: impl.getActiveUpdateState()
         val active = (state["activeSelection"] as? Map<*, *>)?.get("bundleId") as? String ?: builtIn
+        // Later receipts win: the running launch's over the next launch's, over the stable one.
+        val releaseIds = mutableMapOf<String, String>()
+        for (key in listOf("stableSelection", "activeSelection", "runningSelection")) {
+            val receipt = state[key] as? Map<*, *> ?: continue
+            if (receipt["kind"] != SelectionKind.BUNDLE.name) continue
+            val bundleId = receipt["bundleId"] as? String ?: continue
+            releaseIds[bundleId] = receipt["releaseId"] as? String ?: continue
+        }
         return HotUpdaterSandboxDetails(
             builtInBundleId = builtIn,
             fingerprintHash = impl.getFingerprintHash(),
             pendingBundleId = active.takeIf { state["verificationPending"] == true },
+            releaseIds = releaseIds,
         )
     }
 
@@ -293,6 +307,8 @@ internal class HotUpdaterSandboxPreferences(
                     kind = HotUpdaterSandboxLastLaunch.Kind.valueOf(item.getString("kind")),
                     bundleId = item.getString("bundleId"),
                     rolledBackToBundleId = item.optString("rolledBackToBundleId").takeIf { item.has("rolledBackToBundleId") },
+                    releaseId = item.optString("releaseId").takeIf { item.has("releaseId") },
+                    rolledBackToReleaseId = item.optString("rolledBackToReleaseId").takeIf { item.has("rolledBackToReleaseId") },
                 )
             }.getOrNull()
         }
@@ -303,6 +319,8 @@ internal class HotUpdaterSandboxPreferences(
                         .put("kind", it.kind.name)
                         .put("bundleId", it.bundleId)
                         .put("rolledBackToBundleId", it.rolledBackToBundleId)
+                        .put("releaseId", it.releaseId)
+                        .put("rolledBackToReleaseId", it.rolledBackToReleaseId)
                         .toString()
                 }
             preferences.edit().putString(LAST_LAUNCH, item).commit()

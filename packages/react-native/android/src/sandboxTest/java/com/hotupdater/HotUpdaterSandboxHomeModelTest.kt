@@ -44,6 +44,19 @@ class HotUpdaterSandboxLastLaunchTest {
     }
 
     @Test
+    fun `a rollback keeps the releases its report names`() {
+        val evidence =
+            HotUpdaterSandboxLaunchEvidence(
+                HotUpdaterSandboxCrashMarker("ota", true),
+                HotUpdaterSandboxRollback("ota", "stable", fromReleaseId = "release-ota", toReleaseId = "release-stable"),
+            )
+        assertEquals(
+            HotUpdaterSandboxLastLaunch(kindCrashedBefore, "ota", "stable", "release-ota", "release-stable"),
+            HotUpdaterSandboxLastLaunch.derive(evidence, "stable"),
+        )
+    }
+
+    @Test
     fun `a verified crash did not roll back`() {
         val evidence = HotUpdaterSandboxLaunchEvidence(HotUpdaterSandboxCrashMarker("ota", false))
         assertEquals(
@@ -376,12 +389,14 @@ class HotUpdaterSandboxHomeModelTest {
         history: List<HotUpdaterSandboxShelfEntry> = emptyList(),
         storedSession: String? = null,
         message: String? = null,
+        pending: String? = null,
+        releaseIds: Map<String, String> = emptyMap(),
     ) = HotUpdaterSandboxState(
         selection = selection,
         hasServerConfig = hasServerConfig,
         phase = phase,
         queuedLinks = 0,
-        details = HotUpdaterSandboxDetails("built-in", "abc", null),
+        details = HotUpdaterSandboxDetails("built-in", "abc", pending, releaseIds),
         lastLaunch = lastLaunch,
         downloaded = history,
         storedSessionBundleId = storedSession,
@@ -506,7 +521,7 @@ class HotUpdaterSandboxHomeModelTest {
                     lastLaunch = HotUpdaterSandboxLastLaunch(HotUpdaterSandboxLastLaunch.Kind.CRASHED, "ota", null),
                 ),
             ).banner
-        assertEquals("Bundle ota crashed on its last launch, and it's still selected.", verified?.text)
+        assertEquals("Artifact ota crashed on its last launch, and it's still selected.", verified?.text)
         assertEquals(true, verified?.offersReset)
         assertFalse(verified?.text.orEmpty().contains("rolled back"))
 
@@ -517,7 +532,7 @@ class HotUpdaterSandboxHomeModelTest {
                     lastLaunch = HotUpdaterSandboxLastLaunch(HotUpdaterSandboxLastLaunch.Kind.ENDED_BEFORE_CONTENT, "ota", "built-in"),
                 ),
             ).banner
-        assertEquals("Bundle ota didn't reach its first screen. The device rolled back to the built-in bundle.", left?.text)
+        assertEquals("Artifact ota didn't reach its first screen. The device rolled back to the built-in bundle.", left?.text)
         assertFalse(left?.text.orEmpty().contains("crashed"))
     }
 
@@ -543,8 +558,82 @@ class HotUpdaterSandboxHomeModelTest {
                     lastLaunch = HotUpdaterSandboxLastLaunch(HotUpdaterSandboxLastLaunch.Kind.CRASHED, "ota", null),
                 ),
             ).banner
-        assertEquals("Bundle ota crashed on its last launch. Bundle newer is selected now.", banner?.text)
+        assertEquals("Artifact ota crashed on its last launch. Bundle newer is selected now.", banner?.text)
         assertEquals(false, banner?.offersReset)
+    }
+
+    /**
+     * Every row names a bundle by its release, the ID `HotUpdater.getBundleId()`
+     * and the Console show, as the Downloaded rows do; artifacts stay identity.
+     */
+    @Test
+    fun `every row names a bundle by its release`() {
+        val artifactA = "01a1deed-0000-7000-8000-00000000000a"
+        val artifactB = "01a1deed-0000-7000-8000-00000000000b"
+        val releases =
+            mapOf(
+                artifactA to "01b2c3d4-0000-7000-8000-0000000000r1",
+                artifactB to "01b2c3d4-0000-7000-8000-0000000000r2",
+            )
+
+        assertEquals("Bundle 01b2c3…r1", home(state(selection(bundleId = artifactA), releaseIds = releases)).bigRow.detail)
+
+        val running = home(state(selection(bundleId = artifactA), running = artifactA, releaseIds = releases), isOverApp = true).bigRow
+        assertEquals("Bundle 01b2c3…r1", running.detail)
+
+        val staged = home(state(selection(bundleId = artifactB), running = artifactA, releaseIds = releases), isOverApp = true).bigRow
+        assertEquals("Running bundle 01b2c3…r1", staged.subtitle)
+        assertEquals("Next launch: bundle 01b2c3…r2", staged.detail)
+
+        val builtInNext = home(state(selection(bundleId = "built-in"), running = artifactA, releaseIds = releases), isOverApp = true).bigRow
+        assertEquals("Running bundle 01b2c3…r1", builtInNext.detail)
+
+        val info =
+            HotUpdaterSandboxInfoModel.of(
+                state(selection(bundleId = artifactB), running = artifactA, pending = artifactB, releaseIds = releases),
+                "1.0 (1)",
+                "Release",
+                isOverApp = true,
+            )
+        assertEquals("01b2c3…r1", info.bundle.first { it.name == "Current" }.value)
+        assertEquals("01b2c3…r2", info.bundle.first { it.name == "Pending" }.value)
+
+        // A rollback names the releases its report names.
+        val rolledBack =
+            home(
+                state(
+                    selection(bundleId = artifactA),
+                    lastLaunch =
+                        HotUpdaterSandboxLastLaunch(
+                            HotUpdaterSandboxLastLaunch.Kind.CRASHED_BEFORE_CONTENT,
+                            artifactB,
+                            artifactA,
+                            releaseId = "01b2c3d4-0000-7000-8000-0000000000r2",
+                            rolledBackToReleaseId = "01b2c3d4-0000-7000-8000-0000000000r1",
+                        ),
+                ),
+            ).banner
+        assertEquals(
+            "Bundle 01b2c3…r2 crashed before its first screen. The device rolled back to bundle 01b2c3…r1.",
+            rolledBack?.text,
+        )
+
+        // A crash the receipts still name: the selected release.
+        val stillSelected =
+            home(
+                state(
+                    selection(bundleId = artifactA),
+                    lastLaunch = HotUpdaterSandboxLastLaunch(HotUpdaterSandboxLastLaunch.Kind.CRASHED, artifactA, null),
+                    releaseIds = releases,
+                ),
+            ).banner
+        assertEquals("Bundle 01b2c3…r1 crashed on its last launch, and it's still selected.", stillSelected?.text)
+    }
+
+    /** A receipt without a release: the artifact's ID, as `HotUpdater.getBundleId()` falls back to it. */
+    @Test
+    fun `a bundle without a release keeps its artifact's ID`() {
+        assertEquals("Bundle 019a3f…c2", home(state(selection(bundleId = "019a3f00aabbc2"))).bigRow.detail)
     }
 
     @Test

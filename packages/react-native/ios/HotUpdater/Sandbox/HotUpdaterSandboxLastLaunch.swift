@@ -13,6 +13,9 @@ struct HotUpdaterSandboxCrashMarker: Equatable {
 struct HotUpdaterSandboxRollback: Equatable {
     let fromBundleId: String
     let toBundleId: String
+    /// The releases the report names, nil for a bundle installed without one.
+    var fromReleaseId: String? = nil
+    var toReleaseId: String? = nil
 }
 
 struct HotUpdaterSandboxLaunchEvidence: Equatable {
@@ -38,6 +41,10 @@ struct HotUpdaterSandboxLastLaunch: Equatable, Codable {
     let bundleId: String
     /// Where a rollback went, only when one happened.
     let rolledBackToBundleId: String?
+    /// The releases the rollback's report names, which the banner shows. Nil
+    /// for a crash with no rollback, and in what an earlier build stored.
+    var releaseId: String? = nil
+    var rolledBackToReleaseId: String? = nil
 
     static func derive(
         evidence: HotUpdaterSandboxLaunchEvidence,
@@ -48,7 +55,9 @@ struct HotUpdaterSandboxLastLaunch: Equatable, Codable {
             return HotUpdaterSandboxLastLaunch(
                 kind: evidence.marker?.bundleId == rollback.fromBundleId ? .crashedBeforeContent : .endedBeforeContent,
                 bundleId: rollback.fromBundleId,
-                rolledBackToBundleId: rollback.toBundleId
+                rolledBackToBundleId: rollback.toBundleId,
+                releaseId: rollback.fromReleaseId,
+                rolledBackToReleaseId: rollback.toReleaseId
             )
         }
         guard let marker = evidence.marker else { return nil }

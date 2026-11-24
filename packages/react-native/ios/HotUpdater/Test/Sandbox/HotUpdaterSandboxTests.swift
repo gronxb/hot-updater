@@ -1775,6 +1775,34 @@ struct HotUpdaterSandboxLastLaunchTests {
     }
 
     @Test
+    func aRollbackKeepsTheReleasesItsReportNames() {
+        let evidence = HotUpdaterSandboxLaunchEvidence(
+            marker: HotUpdaterSandboxCrashMarker(bundleId: "ota", shouldRollback: true),
+            rollback: HotUpdaterSandboxRollback(
+                fromBundleId: "ota",
+                toBundleId: "stable",
+                fromReleaseId: "release-ota",
+                toReleaseId: "release-stable"
+            )
+        )
+        #expect(LastLaunch.derive(evidence: evidence, launchBundleId: "stable") == LastLaunch(
+            kind: .crashedBeforeContent,
+            bundleId: "ota",
+            rolledBackToBundleId: "stable",
+            releaseId: "release-ota",
+            rolledBackToReleaseId: "release-stable"
+        ))
+    }
+
+    /// What an earlier build stored decodes, with no releases.
+    @Test
+    func aStoredLastLaunchWithoutReleasesDecodes() throws {
+        let stored = #"{"kind":"crashed","bundleId":"ota"}"#
+        let decoded = try JSONDecoder().decode(LastLaunch.self, from: Data(stored.utf8))
+        #expect(decoded == LastLaunch(kind: .crashed, bundleId: "ota", rolledBackToBundleId: nil))
+    }
+
+    @Test
     func aVerifiedCrashDidNotRollBack() {
         let evidence = HotUpdaterSandboxLaunchEvidence(
             marker: HotUpdaterSandboxCrashMarker(bundleId: "ota", shouldRollback: false)
@@ -2369,7 +2397,9 @@ struct HotUpdaterSandboxHomeModelTests {
         lastLaunch: HotUpdaterSandboxLastLaunch? = nil,
         history: [HotUpdaterSandboxShelfEntry] = [],
         storedSession: String? = nil,
-        message: String? = nil
+        message: String? = nil,
+        pending: String? = nil,
+        releaseIds: [String: String] = [:]
     ) -> HotUpdaterSandboxState {
         HotUpdaterSandboxState(
             selection: selection,
@@ -2379,7 +2409,8 @@ struct HotUpdaterSandboxHomeModelTests {
             details: HotUpdaterSandboxDetails(
                 builtInBundleId: "built-in",
                 fingerprintHash: "abc",
-                pendingBundleId: nil
+                pendingBundleId: pending,
+                releaseIds: releaseIds
             ),
             lastLaunch: lastLaunch,
             downloaded: history,
@@ -2512,7 +2543,7 @@ struct HotUpdaterSandboxHomeModelTests {
             selection: selection(bundleId: "ota"),
             lastLaunch: HotUpdaterSandboxLastLaunch(kind: .crashed, bundleId: "ota", rolledBackToBundleId: nil)
         )).banner
-        #expect(verified?.text == "Bundle ota crashed on its last launch, and it's still selected.")
+        #expect(verified?.text == "Artifact ota crashed on its last launch, and it's still selected.")
         #expect(verified?.offersReset == true)
         #expect(verified?.text.contains("rolled back") == false)
 
@@ -2520,7 +2551,7 @@ struct HotUpdaterSandboxHomeModelTests {
             selection: selection(bundleId: "built-in"),
             lastLaunch: HotUpdaterSandboxLastLaunch(kind: .endedBeforeContent, bundleId: "ota", rolledBackToBundleId: "built-in")
         )).banner
-        #expect(left?.text == "Bundle ota didn't reach its first screen. The device rolled back to the built-in bundle.")
+        #expect(left?.text == "Artifact ota didn't reach its first screen. The device rolled back to the built-in bundle.")
         #expect(left?.text.contains("crashed") == false)
     }
 
@@ -2540,8 +2571,70 @@ struct HotUpdaterSandboxHomeModelTests {
             selection: selection(bundleId: "newer"),
             lastLaunch: HotUpdaterSandboxLastLaunch(kind: .crashed, bundleId: "ota", rolledBackToBundleId: nil)
         )).banner
-        #expect(banner?.text == "Bundle ota crashed on its last launch. Bundle newer is selected now.")
+        #expect(banner?.text == "Artifact ota crashed on its last launch. Bundle newer is selected now.")
         #expect(banner?.offersReset == false)
+    }
+
+    /// Every row names a bundle by its release, the ID `HotUpdater.getBundleId()`
+    /// and the Console show, as the Downloaded rows do; artifacts stay identity.
+    @Test
+    func everyRowNamesABundleByItsRelease() {
+        let releases = [
+            "01a1deed-0000-7000-8000-00000000000a": "01b2c3d4-0000-7000-8000-0000000000r1",
+            "01a1deed-0000-7000-8000-00000000000b": "01b2c3d4-0000-7000-8000-0000000000r2",
+        ]
+        let artifactA = "01a1deed-0000-7000-8000-00000000000a"
+        let artifactB = "01a1deed-0000-7000-8000-00000000000b"
+
+        let current = home(state(selection: selection(bundleId: artifactA), releaseIds: releases)).bigRow
+        #expect(current.detail == "Bundle 01b2c3…r1")
+
+        let running = home(state(selection: selection(bundleId: artifactA), running: artifactA, releaseIds: releases), isOverApp: true).bigRow
+        #expect(running.detail == "Bundle 01b2c3…r1")
+
+        let staged = home(state(selection: selection(bundleId: artifactB), running: artifactA, releaseIds: releases), isOverApp: true).bigRow
+        #expect(staged.subtitle == "Running bundle 01b2c3…r1")
+        #expect(staged.detail == "Next launch: bundle 01b2c3…r2")
+
+        let builtInNext = home(state(selection: selection(bundleId: "built-in"), running: artifactA, releaseIds: releases), isOverApp: true).bigRow
+        #expect(builtInNext.detail == "Running bundle 01b2c3…r1")
+
+        let info = HotUpdaterSandboxInfoModel(
+            state: state(selection: selection(bundleId: artifactB), running: artifactA, pending: artifactB, releaseIds: releases),
+            version: "1.0 (1)",
+            configuration: "Release",
+            isOverApp: true
+        )
+        #expect(info.bundle.first { $0.name == "Current" }?.value == "01b2c3…r1")
+        #expect(info.bundle.first { $0.name == "Pending" }?.value == "01b2c3…r2")
+
+        // A rollback names the releases its report names.
+        let rolledBack = home(state(
+            selection: selection(bundleId: artifactA),
+            lastLaunch: HotUpdaterSandboxLastLaunch(
+                kind: .crashedBeforeContent,
+                bundleId: artifactB,
+                rolledBackToBundleId: artifactA,
+                releaseId: "01b2c3d4-0000-7000-8000-0000000000r2",
+                rolledBackToReleaseId: "01b2c3d4-0000-7000-8000-0000000000r1"
+            )
+        )).banner
+        #expect(rolledBack?.text == "Bundle 01b2c3…r2 crashed before its first screen. The device rolled back to bundle 01b2c3…r1.")
+
+        // A crash the receipts still name: the selected release.
+        let stillSelected = home(state(
+            selection: selection(bundleId: artifactA),
+            lastLaunch: HotUpdaterSandboxLastLaunch(kind: .crashed, bundleId: artifactA, rolledBackToBundleId: nil),
+            releaseIds: releases
+        )).banner
+        #expect(stillSelected?.text == "Bundle 01b2c3…r1 crashed on its last launch, and it's still selected.")
+    }
+
+    /// A receipt without a release: the artifact's ID, as `HotUpdater.getBundleId()` falls back to it.
+    @Test
+    func aBundleWithoutAReleaseKeepsItsArtifactsId() {
+        let row = home(state(selection: selection(bundleId: "019a3f00aabbc2"))).bigRow
+        #expect(row.detail == "Bundle 019a3f…c2")
     }
 
     @Test
