@@ -1,4 +1,7 @@
-import type { HotUpdaterDatabase } from "@hot-updater/plugin-core";
+import {
+  DatabaseConstraintError,
+  type HotUpdaterDatabase,
+} from "@hot-updater/plugin-core";
 
 import {
   bundleRefsOf,
@@ -16,7 +19,12 @@ export interface ReleaseRefBackfill {
   readonly events: number;
 }
 
-/** Stored events read a page, and rewritten a transaction. */
+/**
+ * Stored events read a page, and rewritten up to `BATCH` a transaction. A
+ * store that takes fewer physical writes a transaction, as DynamoDB's 100
+ * items hold fewer than 25 rewrites with their index copies and counts,
+ * refuses the batch before writing anything; it is then rewritten in halves.
+ */
 const PAGE = 500;
 const BATCH = 25;
 
@@ -72,12 +80,29 @@ export const backfillReleaseRefs = async (
 ): Promise<ReleaseRefBackfill> => {
   const today = now() - (now() % DAY_MS);
   let events = 0;
-  const move = async (candidates: readonly StoredEvent[]) => {
+  const move = async (candidates: readonly StoredEvent[]): Promise<void> => {
     if (dryRun) {
       events += candidates.length;
       return;
     }
-    events += await db.transaction(async (tx) => {
+    // Read before adding: a split adds its halves' events meanwhile.
+    const moved = await rewrite(candidates).catch(async (error: unknown) => {
+      if (
+        !(error instanceof DatabaseConstraintError) ||
+        error.reason !== "too_large" ||
+        candidates.length === 1
+      ) {
+        throw error;
+      }
+      const half = Math.ceil(candidates.length / 2);
+      await move(candidates.slice(0, half));
+      await move(candidates.slice(half));
+      return 0;
+    });
+    events += moved;
+  };
+  const rewrite = (candidates: readonly StoredEvent[]) =>
+    db.transaction(async (tx) => {
       const rows = await Promise.all(
         candidates.map(({ id }) => tx.findOne("bundle_events", { id })),
       );
@@ -107,7 +132,6 @@ export const backfillReleaseRefs = async (
       }
       return moved;
     });
-  };
   // Oldest day first; days past the raw period hold no events.
   for (let day = today - rawDays * DAY_MS; day <= today; day += DAY_MS) {
     let cursor: string | undefined;

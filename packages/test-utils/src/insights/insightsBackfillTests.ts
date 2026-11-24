@@ -148,5 +148,50 @@ export const registerInsightsBackfillTests = (context: {
       await expectInsightsIndex(() => count(launched(v5)), 4);
       await expectInsightsIndex(() => count(launched(artifactA)), 0);
     });
+
+    it("moves a day of more stale events than one transaction of the store holds", async () => {
+      const database = context.getDatabase();
+      const legacy = context.createApi(
+        database,
+        insights11TestPlugin(),
+      ) as Insights11TestApi;
+      const api = context.createApi(database) as InsightsApi;
+      const base = Date.now() - (Date.now() % HOUR) - 2 * HOUR;
+      const release = "00000000-0000-7000-8000-000000009880";
+      const artifact = createBundleEventRowFixture("9881", 0).to_bundle_id;
+      // More than one batch, and more rewrites than DynamoDB's 100 items
+      // take in one transaction with their index copies and counts.
+      const count = 40;
+      for (let n = 0; n < count; n += 1) {
+        await legacy.record({
+          ...createBundleEventRowFixture(String(9900 + n), base + n),
+          install_id: `backfill-day-${n}`,
+          to_bundle_id: artifact,
+          to_release_id: release,
+        } as BundleEventRow);
+      }
+
+      await expect(api.backfillReleaseRefs()).resolves.toEqual({
+        events: count,
+      });
+
+      await expectInsightsIndex(
+        () =>
+          api.countEvents({
+            filter: {
+              platform: "ios",
+              channel: "production",
+              type: "UPDATE_APPLIED",
+              toReleaseId: release,
+            },
+            sinceMs: base - DAY,
+            beforeReceivedAtMs: base + DAY,
+          }),
+        count,
+      );
+      await expect(api.backfillReleaseRefs({ dryRun: true })).resolves.toEqual({
+        events: 0,
+      });
+    });
   });
 };
