@@ -289,7 +289,10 @@ internal data class HotUpdaterSandboxHomeModel(
              */
             fun name(bundleId: String): String {
                 if (bundleId == state.details?.builtInBundleId) return "the built-in bundle"
-                state.downloaded.firstOrNull { it.bundleId == bundleId }?.channel?.let { return it }
+                state.downloaded
+                    .firstOrNull { it.bundleId == bundleId }
+                    ?.channel
+                    ?.let { return it }
                 knownReleaseId(bundleId)?.let { return "bundle ${shortId(it)}" }
                 return if (bundleId == lastLaunch.bundleId) "artifact ${shortId(bundleId)}" else "bundle ${shortId(bundleId)}"
             }
