@@ -25,6 +25,8 @@ type Installation = {
   readonly channel: string;
   readonly installId: string;
   readonly lastKnownBundleId: string;
+  /** The release it runs; null on the built-in bundle, which is none. */
+  readonly lastKnownReleaseId?: string | null;
   readonly platform: "ios" | "android";
   readonly userId: string | null;
 };
@@ -41,6 +43,9 @@ type EventCursorPage = CursorPage<InsightsEvent> & {
 export type ObservedInsightsEvent = {
   readonly channel: string;
   readonly fromBundleId: string | null;
+  /** The releases the report names, which Insights counts by. */
+  readonly fromReleaseId?: string;
+  readonly toReleaseId?: string;
   readonly installId: string;
   readonly observedAtMs: number;
   readonly platform: "ios" | "android";
@@ -79,6 +84,12 @@ export const readObservedInsightsEvent = (
     observedAtMs,
     platform: event.platform,
     toBundleId: event.toBundleId,
+    ...(typeof event.fromReleaseId === "string"
+      ? { fromReleaseId: event.fromReleaseId }
+      : {}),
+    ...(typeof event.toReleaseId === "string"
+      ? { toReleaseId: event.toReleaseId }
+      : {}),
     type: event.type,
     userId: event.userId,
   };
@@ -256,16 +267,20 @@ export const verifyConsoleInsights = async (
     );
   }
 
+  // Installation gauges count releases: one on the built-in bundle, which
+  // is no release, counts only in its scope.
+  const runningRelease = installation.lastKnownReleaseId ?? null;
   const overview = await client.getReportingOverview({
-    bundleId: installation.lastKnownBundleId,
+    ...(runningRelease === null ? {} : { bundleId: runningRelease }),
     channel: installation.channel,
     platform: installation.platform,
     window: "24h",
   });
   if (
     !(overview.reportingInstallations.count >= 1) ||
-    overview.bundle?.bundleId !== installation.lastKnownBundleId ||
-    !(overview.bundle.reportingInstallations.count >= 1)
+    (runningRelease !== null &&
+      (overview.bundle?.bundleId !== runningRelease ||
+        !(overview.bundle.reportingInstallations.count >= 1)))
   ) {
     throw new ConsoleInsightsQaError(
       "inconsistent-data",
@@ -273,16 +288,20 @@ export const verifyConsoleInsights = async (
     );
   }
 
-  const overviews = new Map([
-    [
-      JSON.stringify([
-        installation.platform,
-        installation.channel,
-        installation.lastKnownBundleId,
-      ]),
-      overview,
-    ],
-  ]);
+  const overviews = new Map<string, ReportingOverview>(
+    runningRelease === null
+      ? []
+      : [
+          [
+            JSON.stringify([
+              installation.platform,
+              installation.channel,
+              runningRelease,
+            ]),
+            overview,
+          ],
+        ],
+  );
   const outcomePages = new Map<string, EventCursorPage>();
   const outcomeEvidence = [];
   // A report that arrived after its installation already ran its bundle,
@@ -301,10 +320,12 @@ export const verifyConsoleInsights = async (
       )
     )?.late === true;
   for (const observedOutcome of storedEvents) {
+    // The bundle ID users see: the release the report names, or for a side
+    // with none the bundle ID it reports, which Insights counts it by.
     const bundleId =
       observedOutcome.type === "RECOVERED"
-        ? observedOutcome.fromBundleId!
-        : observedOutcome.toBundleId;
+        ? (observedOutcome.fromReleaseId ?? observedOutcome.fromBundleId!)
+        : (observedOutcome.toReleaseId ?? observedOutcome.toBundleId);
     const outcome =
       observedOutcome.type === "RECOVERED"
         ? "recovered"
@@ -369,7 +390,8 @@ export const verifyConsoleInsights = async (
 
   return {
     reportingInstallations: overview.reportingInstallations.count,
-    selectedBundleInstallations: overview.bundle.reportingInstallations.count,
+    selectedBundleInstallations:
+      overview.bundle?.reportingInstallations.count ?? null,
     outcomes: outcomeEvidence,
     eventId: event?.id ?? null,
     eventType: event?.type ?? observed.type,

@@ -1,4 +1,7 @@
-import { fillReleaseLabels } from "@hot-updater/cli-tools";
+import {
+  backfillInsightsReleaseRefs,
+  fillReleaseLabels,
+} from "@hot-updater/cli-tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
@@ -106,6 +109,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     ...actual,
     confirmInitInputPersistence: mocks.confirmInitInputPersistence,
     // Labels releases over the assembled server; its database is mocked.
+    backfillInsightsReleaseRefs: vi.fn(async () => 0),
     fillReleaseLabels: vi.fn(async () => ({ releases: 0, catalogs: 0 })),
     // The managed server's plugins, over the D1 database init set up.
     provisionClientCredential: mocks.provisionClientCredential,
@@ -706,6 +710,9 @@ describe("Cloudflare init discovery", () => {
     expect(input).toEqual({ env: {}, name: "Cloudflare init" });
     // The releases an earlier release wrote are labeled on that server first.
     expect(vi.mocked(fillReleaseLabels).mock.calls).toEqual([[server]]);
+    expect(vi.mocked(backfillInsightsReleaseRefs).mock.calls).toEqual([
+      [server],
+    ]);
     expect(mocks.makeEnv).toHaveBeenLastCalledWith({
       HOT_UPDATER_API_KEY: "app-api-key",
     });
