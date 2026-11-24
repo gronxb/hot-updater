@@ -169,11 +169,11 @@ does: an Android variant or iOS configuration whose name ends in `Debug`.
 A release build's min bundle ID is the UUIDv7 of the millisecond it started,
 with zero random bits, as the native SDK's build step makes it, so OTAs
 deployed before the build are older than its built-in bundle and those
-deployed after it are newer. Bundle IDs share one space across platforms:
-when the registry already holds a bundle at that ID, the build steps it 1 ms
-forward. Two builds that start in the same millisecond, such as an iOS and an
-Android job of one CI run, can still get the same ID, and the second one to
-finish is refused when it is tracked. Build it again for a new ID.
+deployed after it are newer. Built-in bundle IDs and artifact IDs share one
+space across platforms: when the registry already holds a bundle at that ID,
+the build steps it 1 ms forward. Two builds that start in the same millisecond,
+such as an iOS and an Android job of one CI run, can still get the same ID, and
+the second one to finish is refused when it is tracked. Build it again for a new ID.
 
 [Install a tracked build](#install-a-build) with
 `npx hot-updater native-build install <build id>`. An untracked one installs

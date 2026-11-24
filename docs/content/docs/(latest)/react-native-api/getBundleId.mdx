@@ -1,12 +1,12 @@
 ---
 title: "getBundleId"
-description: "Read the current update ID shown in the console."
+description: "Read the current bundle ID shown in the console."
 icon: Tag
 ---
 
 ## Usage
 
-`hotUpdater.getBundleId()` returns the currently selected update's ID,
+`hotUpdater.getBundleId()` returns the currently selected bundle's ID,
 matching the ID shown in the console. Use it in support logs or a settings
 screen to find the update selected on a device.
 
@@ -48,4 +48,4 @@ settings does not require uploading the files again.
 For the selected artifact ID and native verification state, use
 [`getActiveUpdateState()`](/docs/react-native-api/getActiveUpdateState).
 [`getCrashHistory()`](/docs/react-native-api/getCrashHistory) returns artifact
-IDs, which differ from the Console update ID.
+IDs, which differ from the bundle ID the Console shows.

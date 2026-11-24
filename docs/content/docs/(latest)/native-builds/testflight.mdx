@@ -67,9 +67,9 @@ the prebuild writes is checked after the prebuild, before the build.
 
 After the build is tracked, the CLI:
 
-1. Reads the bundle ID, version (`CFBundleShortVersionString`) and build
-   number (`CFBundleVersion`) from the `.ipa`'s `Info.plist`.
-2. Finds the App Store Connect app with that bundle ID. Create the app in
+1. Reads the bundle identifier, version (`CFBundleShortVersionString`) and
+   build number (`CFBundleVersion`) from the `.ipa`'s `Info.plist`.
+2. Finds the App Store Connect app with that bundle identifier. Create the app in
    App Store Connect first; the key must belong to its team.
 3. Uploads the `.ipa` with the App Store Connect API's build uploads.
 4. Waits up to 30 minutes for App Store Connect to accept the build, and

@@ -89,7 +89,7 @@ export default function App() {
   return (
     <View>
       <Text>OTA baseline</Text>
-      <Text>Update ID: {hotUpdater.getBundleId()}</Text>
+      <Text>Bundle ID: {hotUpdater.getBundleId()}</Text>
       <Button
         title={isUpdating ? "Updating…" : "Check and apply update"}
         disabled={isUpdating}
