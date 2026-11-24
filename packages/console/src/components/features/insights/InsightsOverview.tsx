@@ -7,7 +7,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { InfoTooltip } from "@/components/InfoTooltip";
@@ -113,6 +113,154 @@ function LineSample({ dashed }: { readonly dashed?: boolean }) {
   );
 }
 
+/** The counts each chart compares, named once for the table's column
+ * headers and the list's terms. */
+const METRICS = {
+  adoption: ["Downloaded", "Launched"],
+  crashes: ["Crashed", "Crash rate"],
+} as const satisfies Record<HealthChart, readonly [string, string]>;
+
+/** A bundle's counts on a chart, in the order of `METRICS`. */
+function metricsOf(
+  bundle: ComparedBundle,
+  chart: HealthChart,
+): readonly [Metric, Metric] {
+  if (chart === "adoption") {
+    return [
+      { value: bundle.downloaded?.total.toLocaleString() ?? "—" },
+      { value: bundle.launched?.total.toLocaleString() ?? "—", strong: true },
+    ];
+  }
+  const crashes = crashesOf(bundle);
+  return [
+    {
+      value:
+        crashes === undefined ? (
+          "—"
+        ) : crashes.crashes === 0 ? (
+          <span className="text-muted-foreground">0</span>
+        ) : (
+          crashes.crashes.toLocaleString()
+        ),
+    },
+    {
+      value:
+        crashes === undefined || crashes.attempts === 0 ? (
+          "—"
+        ) : crashes.recommended ? (
+          <span className="inline-flex items-center gap-1 font-medium text-destructive">
+            <TriangleAlert aria-hidden="true" className="size-3.5" />
+            {percent(crashes.rate)}
+            <span className="sr-only">, rollback recommended</span>
+          </span>
+        ) : (
+          <span
+            className={cn(
+              crashes.attempts < CRASH_MIN_ATTEMPTS && "text-muted-foreground",
+            )}
+            title={
+              crashes.attempts < CRASH_MIN_ATTEMPTS
+                ? `Only ${crashes.attempts} installations tried it`
+                : undefined
+            }
+          >
+            {percent(crashes.rate)}
+          </span>
+        ),
+    },
+  ];
+}
+interface Metric {
+  readonly value: ReactNode;
+  /** The count the chart draws solid. */
+  readonly strong?: boolean;
+}
+
+/** A bundle's line in the chart's color, as a key beside its name. */
+function SeriesSwatch({
+  color,
+  className,
+}: {
+  readonly color: string;
+  readonly className: string;
+}) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      viewBox="0 0 24 12"
+      preserveAspectRatio="none"
+    >
+      <line x1="0" y1="6" x2="24" y2="6" stroke={color} strokeWidth="3" />
+    </svg>
+  );
+}
+
+/** A compared bundle's name and badges, then where and when it was deployed. */
+function ComparedBundleName({
+  release,
+}: {
+  readonly release: ComparedBundle["release"];
+}) {
+  return (
+    <div className="flex min-w-0 flex-col">
+      {/* A label and its ID tail don't shrink, so on a
+          phone "Disabled" moves under them instead of over. */}
+      <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <BundleIdDisplay
+          bundleId={release.releaseId}
+          className="min-w-0"
+          label={release.label}
+        />
+        {release.enabled ? null : <Badge variant="outline">Disabled</Badge>}
+      </span>
+      <span className="text-xs break-words text-muted-foreground">
+        <PlatformIcon
+          platform={release.platform}
+          className="mr-1 inline size-3 align-[-1px]"
+        />
+        <span className="sr-only">{platformLabel(release.platform)} </span>
+        Deployed {formatDeployedAt(release.deployedAtMs)}
+        {release.targetAppVersion ? ` · ${release.targetAppVersion}` : ""}
+        {release.enabled && !release.live ? (
+          <>
+            {" · "}
+            <span
+              className="inline-flex items-center gap-1 align-middle"
+              title="No device gets this bundle with the current delivery settings."
+            >
+              <CircleOff aria-hidden="true" className="size-3" />
+              Unreachable
+            </span>
+          </>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+function RemoveButton({
+  release,
+  className,
+  onRemove,
+}: {
+  readonly release: ComparedBundle["release"];
+  readonly className: string;
+  readonly onRemove: (releaseId: string) => void;
+}) {
+  return (
+    <Button
+      aria-label={`Remove ${release.releaseId}`}
+      className={className}
+      variant="ghost"
+      size="icon-xs"
+      onClick={() => onRemove(release.releaseId)}
+    >
+      <X aria-hidden="true" />
+    </Button>
+  );
+}
+
 /**
  * Release health: how the live bundles fare after their deployment, on
  * one timeline, per interval. Adoption shows installations downloading each
@@ -174,6 +322,14 @@ export function InsightsOverview({
   const flagged = (releases ?? []).flatMap((bundle) => {
     const crashes = crashesOf(bundle);
     return crashes?.recommended ? [{ ...bundle, ...crashes }] : [];
+  });
+
+  // Hovering or focusing a bundle's row draws its line over the others.
+  const highlights = (releaseId: string) => ({
+    onMouseEnter: () => setActive(releaseId),
+    onMouseLeave: () => setActive(null),
+    onFocus: () => setActive(releaseId),
+    onBlur: () => setActive(null),
   });
 
   const remove = (releaseId: string) => {
@@ -466,174 +622,133 @@ export function InsightsOverview({
                   fallbackTitle="Some bundles could not be read"
                 />
               ) : null}
-              <Table aria-label="Compared bundles">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Bundle</TableHead>
-                    {chart === "adoption" ? (
-                      <>
-                        <TableHead className="text-right">Downloaded</TableHead>
-                        <TableHead className="text-right">Launched</TableHead>
-                      </>
-                    ) : (
-                      <>
-                        <TableHead className="text-right">Crashed</TableHead>
-                        <TableHead className="text-right">Crash rate</TableHead>
-                      </>
-                    )}
-                    <TableHead className="w-10">
-                      <span className="sr-only">Remove</span>
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              {/* A table when the card has room for its columns; a list of
+                  bundles, each with its counts under its name, when not. */}
+              <div className="@container/compared">
+                <ol
+                  aria-label="Compared bundles"
+                  className="divide-y border-y @[32rem]/compared:hidden"
+                >
                   {releases.map((bundle) => {
                     const { release } = bundle;
-                    const crashes = crashesOf(bundle);
+                    const values = metricsOf(bundle, chart);
                     return (
-                      <TableRow
+                      <li
                         key={release.releaseId}
+                        className="flex min-w-0 flex-col gap-2 py-3"
                         data-state={
                           active === release.releaseId ? "selected" : undefined
                         }
-                        onMouseEnter={() => setActive(release.releaseId)}
-                        onMouseLeave={() => setActive(null)}
-                        onFocus={() => setActive(release.releaseId)}
-                        onBlur={() => setActive(null)}
+                        {...highlights(release.releaseId)}
                       >
-                        {/* The bundle cell takes the room left, and wraps in it. */}
-                        <TableCell className="w-full max-w-0 whitespace-normal">
-                          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-                            {/* Narrower on a phone, so a bundle's ID keeps more of the row. */}
-                            <svg
-                              aria-hidden="true"
-                              className="h-3 w-4 shrink-0 sm:w-6"
-                              viewBox="0 0 24 12"
-                              preserveAspectRatio="none"
+                        <div
+                          data-cell="bundle"
+                          className="flex min-w-0 items-start gap-2"
+                        >
+                          <SeriesSwatch
+                            color={colorOf(release.releaseId)}
+                            className="mt-1.5 h-3 w-6 shrink-0"
+                          />
+                          <ComparedBundleName release={release} />
+                          {/* Its X sits on the name's first line; the 44 px
+                              target reaches into the row's padding. */}
+                          <RemoveButton
+                            release={release}
+                            className="-mt-2.5 -mr-3 -mb-3 ml-auto size-11 shrink-0"
+                            onRemove={remove}
+                          />
+                        </div>
+                        <dl className="grid grid-cols-2 gap-x-4 pl-8">
+                          {METRICS[chart].map((name, index) => (
+                            <div
+                              key={name}
+                              data-cell={name}
+                              className="flex min-w-0 flex-col gap-0.5"
                             >
-                              <line
-                                x1="0"
-                                y1="6"
-                                x2="24"
-                                y2="6"
-                                stroke={colorOf(release.releaseId)}
-                                strokeWidth="3"
-                              />
-                            </svg>
-                            <div className="flex min-w-0 flex-col">
-                              {/* A label and its ID tail don't shrink, so on a
-                                  phone "Disabled" moves under them instead of over. */}
-                              <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                                <BundleIdDisplay
-                                  bundleId={release.releaseId}
-                                  className="min-w-0"
-                                  label={release.label}
-                                />
-                                {release.enabled ? null : (
-                                  <Badge variant="outline">Disabled</Badge>
+                              <dt className="text-xs text-muted-foreground">
+                                {name}
+                              </dt>
+                              <dd
+                                className={cn(
+                                  "text-sm tabular-nums",
+                                  values[index].strong && "font-medium",
                                 )}
-                              </span>
-                              <span className="text-xs break-words text-muted-foreground">
-                                <PlatformIcon
-                                  platform={release.platform}
-                                  className="mr-1 inline size-3 align-[-1px]"
-                                />
-                                <span className="sr-only">
-                                  {platformLabel(release.platform)}{" "}
-                                </span>
-                                Deployed{" "}
-                                {formatDeployedAt(release.deployedAtMs)}
-                                {release.targetAppVersion
-                                  ? ` · ${release.targetAppVersion}`
-                                  : ""}
-                                {release.enabled && !release.live ? (
-                                  <>
-                                    {" · "}
-                                    <span
-                                      className="inline-flex items-center gap-1 align-middle"
-                                      title="No device gets this bundle with the current delivery settings."
-                                    >
-                                      <CircleOff
-                                        aria-hidden="true"
-                                        className="size-3"
-                                      />
-                                      Unreachable
-                                    </span>
-                                  </>
-                                ) : null}
-                              </span>
+                              >
+                                {values[index].value}
+                              </dd>
                             </div>
-                          </div>
-                        </TableCell>
-                        {chart === "adoption" ? (
-                          <>
-                            <TableCell className="text-right whitespace-nowrap tabular-nums">
-                              {bundle.downloaded?.total.toLocaleString() ?? "—"}
-                            </TableCell>
-                            <TableCell className="text-right font-medium whitespace-nowrap tabular-nums">
-                              {bundle.launched?.total.toLocaleString() ?? "—"}
-                            </TableCell>
-                          </>
-                        ) : (
-                          <>
-                            <TableCell className="text-right whitespace-nowrap tabular-nums">
-                              {crashes === undefined ? (
-                                "—"
-                              ) : crashes.crashes === 0 ? (
-                                <span className="text-muted-foreground">0</span>
-                              ) : (
-                                crashes.crashes.toLocaleString()
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right whitespace-nowrap tabular-nums">
-                              {crashes === undefined ||
-                              crashes.attempts === 0 ? (
-                                "—"
-                              ) : crashes.recommended ? (
-                                <span className="inline-flex items-center gap-1 font-medium text-destructive">
-                                  <TriangleAlert
-                                    aria-hidden="true"
-                                    className="size-3.5"
-                                  />
-                                  {percent(crashes.rate)}
-                                  <span className="sr-only">
-                                    , rollback recommended
-                                  </span>
-                                </span>
-                              ) : (
-                                <span
-                                  className={cn(
-                                    crashes.attempts < CRASH_MIN_ATTEMPTS &&
-                                      "text-muted-foreground",
-                                  )}
-                                  title={
-                                    crashes.attempts < CRASH_MIN_ATTEMPTS
-                                      ? `Only ${crashes.attempts} installations tried it`
-                                      : undefined
-                                  }
-                                >
-                                  {percent(crashes.rate)}
-                                </span>
-                              )}
-                            </TableCell>
-                          </>
-                        )}
-                        <TableCell>
-                          <Button
-                            aria-label={`Remove ${release.releaseId}`}
-                            className="max-md:size-11"
-                            variant="ghost"
-                            size="icon-xs"
-                            onClick={() => remove(release.releaseId)}
-                          >
-                            <X aria-hidden="true" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
+                          ))}
+                        </dl>
+                      </li>
                     );
                   })}
-                </TableBody>
-              </Table>
+                </ol>
+                <div className="hidden @[32rem]/compared:block">
+                  <Table aria-label="Compared bundles">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Bundle</TableHead>
+                        {METRICS[chart].map((name) => (
+                          <TableHead key={name} className="text-right">
+                            {name}
+                          </TableHead>
+                        ))}
+                        <TableHead className="w-10">
+                          <span className="sr-only">Remove</span>
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {releases.map((bundle) => {
+                        const { release } = bundle;
+                        return (
+                          <TableRow
+                            key={release.releaseId}
+                            data-state={
+                              active === release.releaseId
+                                ? "selected"
+                                : undefined
+                            }
+                            {...highlights(release.releaseId)}
+                          >
+                            {/* The bundle cell takes the room left, and wraps in it. */}
+                            <TableCell className="w-full max-w-0 whitespace-normal">
+                              <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                                {/* Narrower on a phone, so a bundle's ID keeps more of the row. */}
+                                <SeriesSwatch
+                                  color={colorOf(release.releaseId)}
+                                  className="h-3 w-4 shrink-0 sm:w-6"
+                                />
+                                <ComparedBundleName release={release} />
+                              </div>
+                            </TableCell>
+                            {metricsOf(bundle, chart).map(
+                              ({ value, strong }, index) => (
+                                <TableCell
+                                  key={METRICS[chart][index]}
+                                  className={cn(
+                                    "text-right whitespace-nowrap tabular-nums",
+                                    strong && "font-medium",
+                                  )}
+                                >
+                                  {value}
+                                </TableCell>
+                              ),
+                            )}
+                            <TableCell>
+                              <RemoveButton
+                                release={release}
+                                className="max-md:size-11"
+                                onRemove={remove}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
               {(candidates ?? []).length > 0 ? (
                 <ReleaseCombobox
                   scope={{ channel: input.channel, platform: input.platform }}
