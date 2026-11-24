@@ -38,6 +38,15 @@ stays subordinate to exact values and actions.
   shows its full ID. The label and tail don't shrink, so a badge beside them
   (Promoted, Unreachable, Disabled) shares a `flex-wrap` row with them and
   moves under them on a narrow screen rather than over the tail.
+- A label is unique only within a channel and platform: production iOS v14,
+  production Android v14, and beta iOS v14 are three releases. Where one
+  surface lists both platforms' releases, such as Insights with All
+  platforms, `BundleIdDisplay` gets `platform` and shows its muted icon
+  before the label, read as the platform's name. Where the screen fixes the
+  platform, or the row already shows it (a Bundles row's platform and channel
+  badge, the release sheet, a native build's served releases), nothing more
+  shows. No labeled surface mixes channels without a channel badge in the
+  row, so labels carry no channel prefix.
 - Every label that names an artifact, such as the advanced artifact
   diagnostics' base and target IDs, is the label of the release serving that
   artifact in the same channel and platform. Without one on the page, the

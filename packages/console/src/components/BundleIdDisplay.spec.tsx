@@ -133,6 +133,16 @@ describe("BundleIdDisplay", () => {
     expect(screen.getByText(id).className).toContain("w-[6ch]");
   });
 
+  it("puts the platform before the label where a list mixes platforms", () => {
+    render(<BundleIdDisplay bundleId={id} label={14} platform="android" />);
+
+    const display = screen.getByRole("button", {
+      name: `Copy ID ${id}`,
+    }).parentElement!;
+    expect(display.textContent).toBe(`Android v14 ${id}`);
+    expect(display.firstElementChild!.querySelector("svg")).not.toBeNull();
+  });
+
   it("shows a short ID whole beside its label", () => {
     render(<BundleIdDisplay bundleId="r-1" label={3} />);
 

@@ -200,7 +200,8 @@ describe("InsightsControls", () => {
     });
     const options = await screen.findAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual([
-      expect.stringMatching(/^iOSv12 01a13d86/),
+      // All platforms: the label's platform shows beside it.
+      expect.stringMatching(/^iOS v12 01a13d86/),
     ]);
     await choose(options[0]!);
     expect(onFiltersChange).toHaveBeenLastCalledWith({ releaseId: labeled });
@@ -219,9 +220,29 @@ describe("InsightsControls", () => {
         />
       </QueryClientProvider>,
     );
+    const chip = screen.getByRole("combobox", { name: `Release: ${labeled}` });
+    // Its platform too, as All platforms mixes both platforms' v12.
+    expect(chip.textContent).toBe(`ReleaseiOS v12 ${labeled}`);
+    expect(chip.querySelector("svg")).not.toBeNull();
+
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <InsightsControls
+          filters={{
+            channel: "production",
+            platform: "ios",
+            releaseId: labeled,
+          }}
+          appVersions={[]}
+          releases={[release(labeled, { label: 12 })]}
+          onFiltersChange={onFiltersChange}
+        />
+      </QueryClientProvider>,
+    );
+    // One platform: v12 names one release, and nothing more shows.
     expect(
       screen.getByRole("combobox", { name: `Release: ${labeled}` }).textContent,
-    ).toBe("Releasev12");
+    ).toBe(`Releasev12 ${labeled}`);
   });
 
   it("looks up a pasted release ID the list leaves out, in the filters' scope", async () => {

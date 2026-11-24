@@ -11,7 +11,6 @@ import { type ReactNode, useState } from "react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { InfoTooltip } from "@/components/InfoTooltip";
-import { PlatformIcon } from "@/components/PlatformIcon";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -199,8 +198,11 @@ function SeriesSwatch({
 /** A compared bundle's name and badges, then where and when it was deployed. */
 function ComparedBundleName({
   release,
+  showPlatform,
 }: {
   readonly release: ComparedBundle["release"];
+  /** Whether the report mixes platforms, so its label needs its platform. */
+  readonly showPlatform: boolean;
 }) {
   return (
     <div className="flex min-w-0 flex-col">
@@ -211,15 +213,11 @@ function ComparedBundleName({
           bundleId={release.releaseId}
           className="min-w-0"
           label={release.label}
+          platform={showPlatform ? release.platform : undefined}
         />
         {release.enabled ? null : <Badge variant="outline">Disabled</Badge>}
       </span>
       <span className="text-xs break-words text-muted-foreground">
-        <PlatformIcon
-          platform={release.platform}
-          className="mr-1 inline size-3 align-[-1px]"
-        />
-        <span className="sr-only">{platformLabel(release.platform)} </span>
         Deployed {formatDeployedAt(release.deployedAtMs)}
         {release.targetAppVersion ? ` · ${release.targetAppVersion}` : ""}
         {release.enabled && !release.live ? (
@@ -289,6 +287,9 @@ export function InsightsOverview({
 }) {
   const [active, setActive] = useState<string | null>(null);
   const { period, candidates, releases } = health;
+  // A label is unique within a channel and platform: the channel is the
+  // report's, but All platforms puts both platforms' v14 side by side.
+  const mixed = input.platform === "all";
   const ids = (releases ?? []).map(({ release }) => release.releaseId);
   const colorOf = useSeriesColors(ids);
   const full = ids.length >= MAX_ADOPTION_RELEASES;
@@ -481,6 +482,7 @@ export function InsightsOverview({
     return (
       <ComparedBundlesChart
         period={period}
+        showPlatform={mixed}
         lines={releases.map((bundle) => ({
           release: bundle.release,
           points: seriesOf(bundle)?.points,
@@ -587,6 +589,7 @@ export function InsightsOverview({
                       bundleId={bundle.release.releaseId}
                       className="text-sm"
                       label={bundle.release.label}
+                      platform={mixed ? bundle.release.platform : undefined}
                     />
                   </AlertTitle>
                   <AlertDescription className="flex flex-col items-start gap-3">
@@ -596,6 +599,7 @@ export function InsightsOverview({
                     {percent(CRASH_RATE_THRESHOLD)}.
                     <RollbackButton
                       release={bundle.release}
+                      showPlatform={mixed}
                       rate={bundle.rate}
                       crashes={bundle.crashes}
                       attempts={bundle.attempts}
@@ -649,7 +653,10 @@ export function InsightsOverview({
                             color={colorOf(release.releaseId)}
                             className="mt-1.5 h-3 w-6 shrink-0"
                           />
-                          <ComparedBundleName release={release} />
+                          <ComparedBundleName
+                            release={release}
+                            showPlatform={mixed}
+                          />
                           {/* Its X sits on the name's first line; the 44 px
                               target reaches into the row's padding. */}
                           <RemoveButton
@@ -719,7 +726,10 @@ export function InsightsOverview({
                                   color={colorOf(release.releaseId)}
                                   className="h-3 w-4 shrink-0 sm:w-6"
                                 />
-                                <ComparedBundleName release={release} />
+                                <ComparedBundleName
+                                  release={release}
+                                  showPlatform={mixed}
+                                />
                               </div>
                             </TableCell>
                             {metricsOf(bundle, chart).map(

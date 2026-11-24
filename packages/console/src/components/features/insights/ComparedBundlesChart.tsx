@@ -157,6 +157,7 @@ export function ComparedBundlesChart({
   active,
   label,
   names,
+  showPlatform = false,
 }: {
   readonly period: Period;
   readonly lines: readonly ChartLine[];
@@ -165,6 +166,8 @@ export function ComparedBundlesChart({
   readonly label: string;
   /** What the solid and dashed lines count, as the tooltip names them. */
   readonly names?: { readonly solid?: string; readonly dashed?: string };
+  /** Whether the lines mix platforms, so each label needs its platform. */
+  readonly showPlatform?: boolean;
 }) {
   const measuredAtMs = Math.max(
     0,
@@ -183,6 +186,7 @@ export function ComparedBundlesChart({
         className="whitespace-nowrap"
         copyable={false}
         label={release.label}
+        platform={showPlatform ? release.platform : undefined}
       />
       {name ? <span className="text-muted-foreground">{name}</span> : null}
     </span>

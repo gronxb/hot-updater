@@ -11,6 +11,7 @@ import {
 
 import { cn } from "@/lib/utils";
 
+import { PlatformIcon } from "./PlatformIcon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /**
@@ -49,6 +50,13 @@ interface BundleIdDisplayProps {
    * ID in it.
    */
   labelAs?: ReactElement<{ className?: string; children?: ReactNode }>;
+  /**
+   * The release's platform, shown as its icon before the label. A label is
+   * unique only within a channel and platform, so pass it where one surface
+   * lists both platforms' releases, and leave it out where the screen
+   * already fixes the platform or shows it beside the release.
+   */
+  platform?: "ios" | "android";
   maxLength?: number;
   className?: string;
   fullOnMobile?: boolean;
@@ -59,18 +67,33 @@ export function BundleIdDisplay({
   label,
   copyable = true,
   labelAs,
+  platform,
   className,
 }: BundleIdDisplayProps) {
+  const prefix = platform ? <PlatformPrefix platform={platform} /> : null;
   if (typeof label !== "number") {
     const id = (
       <span
         translate="no"
-        className={cn("break-all font-mono text-xs tabular-nums", className)}
+        className={cn(
+          "break-all font-mono text-xs tabular-nums",
+          !prefix && className,
+        )}
       >
         {bundleId}
       </span>
     );
-    return labelAs ? cloneElement(labelAs, { children: id }) : id;
+    const named = labelAs ? cloneElement(labelAs, { children: id }) : id;
+    return prefix ? (
+      <span
+        className={cn("inline-flex min-w-0 items-baseline gap-1.5", className)}
+      >
+        {prefix}
+        {named}
+      </span>
+    ) : (
+      named
+    );
   }
   const clipped = bundleId.length > LABELED_ID_TAIL;
   return (
@@ -81,6 +104,7 @@ export function BundleIdDisplay({
       )}
       title={copyable ? undefined : bundleId}
     >
+      {prefix}
       {labelAs ? (
         cloneElement(labelAs, {
           className: cn(LABEL_CLASS, labelAs.props.className),
@@ -99,6 +123,20 @@ export function BundleIdDisplay({
           {bundleId}
         </span>
       )}
+    </span>
+  );
+}
+
+/** A platform's icon, read as its name: the context a label needs on a mixed list. */
+function PlatformPrefix({
+  platform,
+}: {
+  readonly platform: "ios" | "android";
+}) {
+  return (
+    <span className="inline-flex shrink-0 self-center text-muted-foreground">
+      <PlatformIcon platform={platform} className="size-3.5" />
+      <span className="sr-only">{platform === "ios" ? "iOS" : "Android"} </span>
     </span>
   );
 }

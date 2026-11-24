@@ -34,6 +34,7 @@ export function RollbackButton({
   crashes,
   attempts,
   onRolledBack,
+  showPlatform = false,
 }: {
   readonly release: AdoptionRelease;
   readonly rate: number;
@@ -41,6 +42,8 @@ export function RollbackButton({
   readonly attempts: number;
   /** Runs once the release is disabled, before the bundle list reloads. */
   readonly onRolledBack?: () => void;
+  /** Whether the report mixes platforms, so the label needs its platform. */
+  readonly showPlatform?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
@@ -92,7 +95,11 @@ export function RollbackButton({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Roll back this bundle?</AlertDialogTitle>
-          <BundleIdDisplay bundleId={id} label={release.label} />
+          <BundleIdDisplay
+            bundleId={id}
+            label={release.label}
+            platform={showPlatform ? release.platform : undefined}
+          />
           <AlertDialogDescription>
             It crashed for {percent(rate)} of the installations that tried it (
             {crashes.toLocaleString()} of {attempts.toLocaleString()}). Rolling
