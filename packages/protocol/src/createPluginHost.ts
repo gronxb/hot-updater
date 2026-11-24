@@ -33,6 +33,7 @@ export interface PluginHostEnvironment {
   getInstallId(): string;
   getAppVersion(): string | null;
   getMinBundleId(): string;
+  /** The selected release's ID, as `hotUpdater.getBundleId()` returns it. */
   getBundleId(): string;
   getChannel(): string;
   getCohort(): string;

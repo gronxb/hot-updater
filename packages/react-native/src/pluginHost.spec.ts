@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => {
   Reflect.set(globalThis, "HotUpdater", { SDK_VERSION: "test-sdk-version" });
   return {
     getAppVersion: vi.fn<() => string | null>(() => "1.2.3"),
-    getBundleId: vi.fn(() => "bundle-id"),
+    getUpdateId: vi.fn(() => "release-id"),
     getChannel: vi.fn(() => "production"),
     getCohort: vi.fn(() => "123"),
     getFingerprintHash: vi.fn<() => string | null>(() => null),
@@ -229,7 +229,7 @@ describe("client plugin host", () => {
       sdkVersion: context.sdkVersion,
     }).toEqual({
       appVersion: "1.2.3",
-      bundleId: "bundle-id",
+      bundleId: "release-id",
       channel: "production",
       cohort: "123",
       fingerprintHash: null,
