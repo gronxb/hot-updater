@@ -2252,6 +2252,40 @@ describe("PatchesCard", () => {
     expect(screen.queryByText(id(40))).toBeNull();
   });
 
+  it("dates a patch's target as it names it: a release by its ID, else the artifact", () => {
+    patchesQuery.mockReturnValue({ data: undefined });
+    const now = Date.now();
+    // A month-old artifact promoted into the scope two hours ago, and an
+    // older artifact no release in the scope serves any more.
+    const promoted = uuidAt(now - 30 * DAY_MS, 41);
+    const unserved = uuidAt(now - 60 * DAY_MS, 40);
+    render(
+      <PatchesCard
+        detail={detail({
+          servedNow: [
+            {
+              releaseId: uuidAt(now - 2 * HOUR_MS, 141),
+              kind: "BUNDLE",
+              bundleId: promoted,
+              label: 5,
+              rolloutCohortCount: 1000,
+              targetCohorts: [],
+              shouldForceUpdate: false,
+              message: null,
+            },
+          ],
+          patches: patchPage([promoted, unserved]),
+        })}
+        onPage={vi.fn()}
+        page={{}}
+      />,
+    );
+
+    const [released, artifact] = screen.getAllByRole("row").slice(1);
+    expect(released!.textContent).toContain("2 hours ago");
+    expect(artifact!.textContent).toContain("2 months ago");
+  });
+
   it("says what adds a patch when there is none", () => {
     patchesQuery.mockReturnValue({ data: undefined });
     render(<PatchesCard detail={detail()} onPage={vi.fn()} page={{}} />);

@@ -234,22 +234,29 @@ export function PatchesCard({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {patches.data.map((patch) => (
-                <TableRow key={patch.bundleId}>
-                  <TableCell className="py-3 whitespace-normal">
-                    <PatchTarget
-                      artifactId={patch.bundleId}
-                      release={serving.get(patch.bundleId)}
-                    />
-                  </TableCell>
-                  <TableCell className="text-xs tabular-nums">
-                    {formatByteSize(patch.byteSize)}
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    <TimestampDisplay uuid={patch.bundleId} />
-                  </TableCell>
-                </TableRow>
-              ))}
+              {patches.data.map((patch) => {
+                const release = serving.get(patch.bundleId);
+                return (
+                  <TableRow key={patch.bundleId}>
+                    <TableCell className="py-3 whitespace-normal">
+                      <PatchTarget
+                        artifactId={patch.bundleId}
+                        release={release}
+                      />
+                    </TableCell>
+                    <TableCell className="text-xs tabular-nums">
+                      {formatByteSize(patch.byteSize)}
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {/* Dated as the row is named: a release by its own
+                          ID, as Served now dates it, else the artifact. */}
+                      <TimestampDisplay
+                        uuid={release?.releaseId ?? patch.bundleId}
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}

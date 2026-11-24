@@ -58,8 +58,9 @@ stays subordinate to exact values and actions.
   in the expanded Bundle's channel and platform. Without one on the page,
   the artifact ID shows alone, never another channel's label. A native
   build's patches name each target by the release serving it in the build's
-  scope now; an older target shows as "Artifact" and its ID, linking to the
-  Bundles list filtered to that artifact (`?artifactId=`).
+  scope now, and date it by that release, as Served now does; an older
+  target shows as "Artifact" and its ID, dated by the artifact, linking to
+  the Bundles list filtered to that artifact (`?artifactId=`).
 - Page headings use `text-base` or `text-lg` with semibold weight. Operational
   card titles use `text-sm` with medium or semibold weight.
 - Body and control text use `text-sm`; dense metadata and table content use
