@@ -132,6 +132,13 @@ while submitting/loading when relevant, loading, empty, error, and success.
 - **Reporting installations:** the leading card shows the unique latest-state
   installation count for the selected platform, channel, and period, with its
   independent measurement time.
+- **Compared bundles:** Release health compares its bundles in a table from
+  32 rem of card width. A narrower card lists them instead, one bundle per
+  item: its line color, label and ID tail with their badges, and deployment on
+  top, with the Remove button beside them at 44 px; then each count under the
+  name its table column has, in a `dl`. Both copies render the same name and
+  counts, so they can't drift, and only the card width picks one. Nothing in
+  either copy spills its cell or breaks mid-word, from 360 px up.
 - **Selected bundle:** when a bundle is selected, show its latest-state
   installation count and independent Applied reports, Recovered-from reports,
   and Adopted reports counts. Each outcome links to event history using the

@@ -217,6 +217,63 @@ describe("Release health", () => {
     expect(badge.parentElement!.className).toContain("flex-wrap");
   });
 
+  it.each(["adoption", "crashes"] as const)(
+    "lists each bundle with its %s counts under its name when the card is too narrow for the table",
+    (chart) => {
+      const disabled = { ...previous, label: 6, enabled: false, live: false };
+      const onReleasesChange = vi.fn();
+      renderCard({
+        chart,
+        onReleasesChange,
+        health: {
+          releases: [bundles[0]!, { ...bundles[1]!, release: disabled }],
+        },
+      });
+      const table = screen.getByRole("table", { name: "Compared bundles" });
+      const list = screen.getByRole("list", { name: "Compared bundles" });
+      // jsdom applies no CSS: the card's width shows one of the two, switching
+      // both at the same width. Below it, the table's Bundle column is too
+      // narrow for a label and its ID tail.
+      expect(list.parentElement!.className).toContain("@container/compared");
+      expect(list.parentElement!.contains(table)).toBe(true);
+      expect(list.className).toContain("@[32rem]/compared:hidden");
+      const wide = table.closest("div.hidden")!;
+      expect(wide.className).toContain("@[32rem]/compared:block");
+      expect(wide.contains(list)).toBe(false);
+
+      // Each bundle reads as its table row does: name, badges and deployment,
+      // then each count under the column header it has in the table.
+      const headers = within(table)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent)
+        .slice(1, -1);
+      const tableRows = within(table).getAllByRole("row").slice(1);
+      const items = within(list).getAllByRole("listitem");
+      expect(items).toHaveLength(tableRows.length);
+      items.forEach((item, index) => {
+        const cells = within(tableRows[index]!).getAllByRole("cell");
+        const terms = item.querySelectorAll("dt");
+        const values = item.querySelectorAll("dd");
+        expect([...terms].map((term) => term.textContent)).toEqual(headers);
+        expect([...values].map((value) => value.textContent)).toEqual(
+          cells.slice(1, -1).map((cell) => cell.textContent),
+        );
+        expect(item.textContent).toContain(cells[0]!.textContent);
+      });
+      // The badge wraps under the label and its tail, as in the table.
+      const badge = within(items[1]!).getByText("Disabled");
+      expect(badge.parentElement).toBe(
+        within(items[1]!).getByTitle(disabled.releaseId).parentElement,
+      );
+      expect(badge.parentElement!.className).toContain("flex-wrap");
+      // Removing from the list removes the bundle, as from the table.
+      fireEvent.click(
+        within(items[0]!).getByRole("button", { name: "Remove release-b" }),
+      );
+      expect(onReleasesChange).toHaveBeenLastCalledWith([disabled.releaseId]);
+    },
+  );
+
   it("charts a bundle downloaded but not launched yet, and waits for both counts", () => {
     const waiting = [
       {
@@ -247,7 +304,12 @@ describe("Release health", () => {
   it("adds, removes, and resets the compared bundles", async () => {
     const onReleasesChange = vi.fn();
     const { rerender } = renderCard({ onReleasesChange });
-    fireEvent.click(screen.getByRole("button", { name: "Remove release-b" }));
+    fireEvent.click(
+      within(screen.getByRole("table", { name: "Compared bundles" })).getByRole(
+        "button",
+        { name: "Remove release-b" },
+      ),
+    );
     expect(onReleasesChange).toHaveBeenLastCalledWith(["release-a"]);
 
     const add = screen.getByRole("combobox", { name: "Add a bundle" });
