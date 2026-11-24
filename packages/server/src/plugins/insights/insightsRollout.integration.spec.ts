@@ -168,29 +168,21 @@ describe("Insights rollout gate on PostgreSQL", () => {
     expect(report.committed).toBe(INSTALLS);
     if (ENFORCE_RETRIED_BOUND) expect(retried).toBeLessThanOrEqual(0.05);
 
-    const latest = await seeded.countLatestEvents({
+    // Every installation's latest event leaves it running release-b.
+    const latest = await seeded.countReleaseInstallations({
       platform: "ios",
       channel: "production",
       sinceMs: 0,
-      bundle: [
-        { field: "to_bundle_id", value: "bundle-b", types: ["UPDATE_APPLIED"] },
-        { field: "to_bundle_id", value: "bundle-a", types: ["UPDATE_APPLIED"] },
-      ],
+      releaseId: "release-b",
     });
-    expect(latest).toBe(INSTALLS);
+    expect(latest).toEqual({ installations: INSTALLS, release: INSTALLS });
     await expect(
-      seeded.countLatestEvents({
+      seeded.countReleaseInstallations({
         platform: "ios",
         channel: "production",
         sinceMs: 0,
-        bundle: [
-          {
-            field: "to_bundle_id",
-            value: "bundle-a",
-            types: ["UPDATE_APPLIED"],
-          },
-        ],
+        releaseId: "release-a",
       }),
-    ).resolves.toBe(0);
+    ).resolves.toEqual({ installations: INSTALLS, release: 0 });
   }, 300_000);
 });

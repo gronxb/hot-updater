@@ -192,14 +192,17 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     ).resolves.toEqual([event]);
   });
 
-  it("counts overlapping bundle predicates once, including nullable sources and moved installations", async () => {
+  it("counts each release's latest installations once, including nullable sources and moved installations", async () => {
     const { kysely } = await import("./db.js");
     const insights = insightsModelOf(kysely);
     // Latest events count by UTC day: these land on day 1, the too-old
     // installation's on day 0.
     const day = 86_400_000;
+    const releaseA = "00000000-0000-7000-8000-00000000980a";
+    const releaseB = "00000000-0000-7000-8000-00000000980b";
     const overlap = {
       ...createBundleEventRowFixture("9820", day + 100),
+      to_release_id: releaseA,
       channel: "mysql-count-test",
     };
     const nullable = {
@@ -215,12 +218,15 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       ...overlap,
       id: createBundleEventRowFixture("9822", 100).id,
       install_id: "mysql-count-from-only",
+      from_release_id: releaseA,
+      to_release_id: releaseB,
       to_bundle_id: otherBundle,
     };
     const neither = {
       ...nullable,
       id: createBundleEventRowFixture("9823", 100).id,
       install_id: "mysql-count-neither",
+      to_release_id: releaseB,
       to_bundle_id: otherBundle,
     };
     const superseded = {
@@ -270,30 +276,16 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       channel: overlap.channel,
       sinceMs: day,
     };
-    const from = {
-      field: "from_bundle_id" as const,
-      value: overlap.from_bundle_id,
-      types: ["UPDATE_APPLIED", "UNCHANGED"] as const,
-    };
-    const to = {
-      ...from,
-      field: "to_bundle_id" as const,
-      value: overlap.to_bundle_id,
-    };
     await expect(insights.countLatestEvents(scope)).resolves.toBe(5);
-    for (const bundle of [[from], [to], [from, from], [to, to]]) {
-      await expect(
-        insights.countLatestEvents({ ...scope, bundle }),
-      ).resolves.toBe(2);
-    }
-    for (const bundle of [
-      [from, to],
-      [to, from],
-    ]) {
-      await expect(
-        insights.countLatestEvents({ ...scope, bundle }),
-      ).resolves.toBe(3);
-    }
+    // Release A: the applied and the launched installation. Release B: the
+    // one that moved to it from A, the launch, and the superseded one, whose
+    // later report leaves it on B.
+    await expect(
+      insights.countReleaseInstallations({ ...scope, releaseId: releaseA }),
+    ).resolves.toEqual({ installations: 5, release: 2 });
+    await expect(
+      insights.countReleaseInstallations({ ...scope, releaseId: releaseB }),
+    ).resolves.toEqual({ installations: 5, release: 3 });
   });
 
   it("rejects in-place upgrade from a v0 MySQL schema", async () => {

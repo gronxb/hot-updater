@@ -49,6 +49,7 @@ export type InsightsProvider = {
   getReportingOverview(
     input: InsightsScope & {
       readonly window: ActiveInstallationWindow;
+      /** The bundle ID users see: a release ID. */
       readonly bundleId?: string;
     },
   ): Promise<ReportingOverview>;

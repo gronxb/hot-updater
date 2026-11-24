@@ -13,6 +13,8 @@ import type {
   InsightsCountEventsInput,
   InsightsCountEventSeriesInput,
   InsightsCountLatestEventsInput,
+  InsightsCountReleaseInstallationsInput,
+  InsightsReleaseInstallations,
   InsightsEventSeriesPoint,
   InsightsFindLatestEventsInput,
   InsightsGetAppUsageInput,
@@ -26,12 +28,7 @@ import type {
   ReleaseReference,
 } from "./modelTypes";
 import { EVENT_LIST_RANGE_MS } from "./provider";
-import {
-  bundlePairKey,
-  insightsIdentity,
-  PAIR_FIELD,
-  type InsightsIdentityParts,
-} from "./recordEvent";
+import { insightsIdentity, type InsightsIdentityParts } from "./recordEvent";
 import {
   bundleRefOfFilter,
   DAILY_EVENTS,
@@ -315,28 +312,28 @@ export const countEventSeries = async (
   }));
 };
 
-type Predicate = {
-  readonly field: "from_bundle_id" | "to_bundle_id";
-  readonly value: string;
-  readonly type: string;
+/** The distribution rows at or after `start`, a UTC day's start. */
+const distributionRows = (
+  db: Db,
+  { platform, channel, sinceMs: start }: InsightsCountLatestEventsInput,
+) => {
+  if (start % DAY_MS !== 0) {
+    throw new DatabaseAdapterInputError("invalid-query");
+  }
+  return drain((page) =>
+    db.findAggregates("insights_distribution", {
+      index: "byScope",
+      where: { channel, platform },
+      range: { gte: start },
+      limit: PAGE,
+      ...page,
+    }),
+  );
 };
 
-/** A bundle filter's distinct (field, value, type) predicates. */
-const latestPredicates = (
-  bundle: InsightsCountLatestEventsInput["bundle"],
-): readonly Predicate[] | undefined => {
-  if (bundle === undefined) return undefined;
-  return [
-    ...new Map(
-      bundle.flatMap(({ field, value, types }) =>
-        types.map((type) => [
-          JSON.stringify([field, value, type]),
-          { field, value, type },
-        ]),
-      ),
-    ).values(),
-  ];
-};
+// Batched gauges sum signed shard rows, which a lost change can leave below
+// zero: an installation count never is.
+const installations = (count: number) => Math.max(0, count);
 
 /**
  * Latest events at or after `sinceMs`, a UTC day's start: the gauges count
@@ -346,16 +343,39 @@ const latestPredicates = (
 export const countLatestEvents = async (
   db: Db,
   input: InsightsCountLatestEventsInput,
-): Promise<number> => {
-  const { platform, channel, sinceMs: start } = input;
-  if (start % DAY_MS !== 0) {
-    throw new DatabaseAdapterInputError("invalid-query");
-  }
-  const predicates = latestPredicates(input.bundle);
+): Promise<number> =>
+  installations(
+    (await distributionRows(db, input)).reduce(
+      (sum, row) => sum + row.latest_installations,
+      0,
+    ),
+  );
+
+/**
+ * `countLatestEvents`, and of those the installations it leaves running
+ * `releaseId`, from the same distribution rows in one read: each names the
+ * release its installations run. An ID no row names as a release may be a
+ * built-in bundle's, which a report without a release names, as event
+ * counts match it: its installations outside any release are in the
+ * built-in rows, read only then. Release and bundle IDs never coincide.
+ */
+export const countReleaseInstallations = async (
+  db: Db,
+  input: InsightsCountReleaseInstallationsInput,
+): Promise<InsightsReleaseInstallations> => {
+  const { platform, channel, sinceMs: start, releaseId } = input;
   let total = 0;
-  if (predicates === undefined) {
-    const rows = await drain((page) =>
-      db.findAggregates("insights_distribution", {
+  let release = 0;
+  let named = false;
+  for (const row of await distributionRows(db, input)) {
+    total += row.latest_installations;
+    if (row.release_id !== releaseId) continue;
+    named = true;
+    release += row.latest_installations;
+  }
+  if (!named) {
+    const builtin = await drain((page) =>
+      db.findAggregates("insights_builtin_distribution", {
         index: "byScope",
         where: { channel, platform },
         range: { gte: start },
@@ -363,51 +383,16 @@ export const countLatestEvents = async (
         ...page,
       }),
     );
-    total += rows.reduce((sum, row) => sum + row.latest_installations, 0);
-  } else {
-    const gauge = async (
-      bundleField: string,
-      bundleId: string,
-      type: string,
-    ) => {
-      const rows = await drain((page) =>
-        db.findAggregates("insights_latest_by_bundle", {
-          index: "byBundle",
-          where: {
-            platform,
-            channel,
-            bundle_field: bundleField,
-            bundle_id: bundleId,
-            type,
-          },
-          range: { gte: start },
-          limit: PAGE,
-          ...page,
-        }),
-      );
-      return rows.reduce((sum, row) => sum + row.installations, 0);
-    };
-    for (const { field, value, type } of predicates) {
-      total += await gauge(field, value, type);
-    }
-    // A head has one (from, to) pair, so it matches a `from` and a `to`
-    // predicate of one type only through that pair: subtract the pair's gauge
-    // to count it once.
-    for (const from of predicates) {
-      if (from.field !== "from_bundle_id") continue;
-      for (const to of predicates) {
-        if (to.field !== "to_bundle_id" || to.type !== from.type) continue;
-        total -= await gauge(
-          PAIR_FIELD,
-          bundlePairKey(from.value, to.value),
-          from.type,
-        );
+    for (const row of builtin) {
+      if (row.release_id === "" && row.builtin_bundle_id === releaseId) {
+        release += row.latest_installations;
       }
     }
   }
-  // Batched gauges sum signed shard rows, which a lost change can leave
-  // below zero: an installation count never is.
-  return Math.max(0, total);
+  return {
+    installations: installations(total),
+    release: installations(release),
+  };
 };
 
 /** The oldest whole hour and UTC day that hourly and daily rows still hold. */

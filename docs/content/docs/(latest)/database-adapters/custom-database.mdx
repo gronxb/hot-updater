@@ -667,6 +667,15 @@ setupDatabaseTestSuite({
             clientAccess: "public",
           }).api.insights,
         ),
+      // The same with another plugin in its place: the suite writes events
+      // as 1.1 keyed them, then checks that the backfill moves them.
+      createApi: (database, plugin = insights()) =>
+        createHotUpdater({
+          database,
+          storage: createReleaseCatalogTestStorage(),
+          plugins: [plugin],
+          clientAccess: "public",
+        }).api.insights,
     }),
   ],
 });

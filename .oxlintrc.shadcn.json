@@ -16,7 +16,9 @@
         "packages/console/src/components/features/insights/**/*.tsx",
         "packages/console/src/components/features/native-builds/**/*.tsx",
         "packages/console/src/components/features/remote-config/**/*.tsx",
-        "packages/console/src/routes/index.tsx"
+        "packages/console/src/routes/index.tsx",
+        "packages/console/src/routes/insights.tsx",
+        "packages/console/src/routes/insights_.distribution.tsx"
       ],
       "rules": {
         "shadcn/no-raw-colors": "error",

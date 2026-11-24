@@ -60,6 +60,48 @@ describe("Insights event details", () => {
     expect(screen.getByText(/It launches when the app restarts/)).toBeDefined();
   });
 
+  it("names each side by its release ID, the ID the app reports, and a side without one by its bundle ID", () => {
+    const view = render(
+      <EventBundleTransition
+        event={{
+          type: "RECOVERED",
+          fromBundleId: "file-a",
+          fromReleaseId: "rel-a",
+          toBundleId: "builtin-1",
+          minBundleId: "builtin-1",
+        }}
+      />,
+    );
+    expect(screen.getByText("rel-a")).toBeDefined();
+    expect(screen.getByText("builtin-1")).toBeDefined();
+    expect(screen.queryByText("file-a")).toBeNull();
+
+    // A kept launch's previous side by its release too.
+    view.rerender(
+      <EventBundleTransition
+        event={{
+          type: "UNCHANGED",
+          fromBundleId: null,
+          toBundleId: "file-b",
+          toReleaseId: "rel-b",
+          change: {
+            kinds: ["bundle", "release"],
+            previous: {
+              bundleId: "file-a",
+              releaseId: "rel-a",
+              appVersion: "1.0.0",
+              channel: "production",
+            },
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText("rel-a")).toBeDefined();
+    expect(screen.getByText("rel-b")).toBeDefined();
+    expect(screen.queryByText("file-a")).toBeNull();
+    expect(screen.queryByText("file-b")).toBeNull();
+  });
+
   it("shows no change without implying a file transition", () => {
     const type = "UNCHANGED";
     render(

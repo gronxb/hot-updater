@@ -20,6 +20,7 @@ import {
   type RunInitOptions,
   type RunInitResult,
   transformEnv,
+  backfillInsightsReleaseRefs,
   fillReleaseLabels,
 } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
@@ -642,6 +643,8 @@ export const runInit = async ({
     // The app's credential, through the managed server's plugins, on the tables they read.
     // Labels the releases written before labels, and rebuilds their catalogs.
     await fillReleaseLabels(server);
+    // Moves the Insights events a 1.1 server keyed by artifact to their releases.
+    await backfillInsightsReleaseRefs(server);
     clientCredential = await provisionClientCredential(server, {
       env: initInputEnv,
       name: "Firebase init",

@@ -86,7 +86,7 @@ describe("bundle events access", () => {
     channel: "production",
     window: "7d",
     endMs: 7_200_000,
-    bundleId: "bundle-a",
+    releaseId: "release-a",
     type: "LAUNCHED",
   } as const;
 
@@ -172,7 +172,7 @@ describe("activity the console does not serve", () => {
             channel: "production",
             window: "7d",
             endMs: 7_200_000,
-            bundleId: "bundle-a",
+            releaseId: "release-a",
             type: "LAUNCHED",
           },
         }),

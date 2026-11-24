@@ -52,9 +52,10 @@ export const isFailedCheck = (row: {
 
 type StoredRow = {
   readonly type: string;
+  readonly from_release_id: string | null;
   readonly from_bundle_id: string | null;
-  readonly to_bundle_id: string;
   readonly to_release_id: string | null;
+  readonly to_bundle_id: string;
   readonly metadata: unknown;
 };
 
@@ -62,6 +63,7 @@ const metadataOf = (row: { readonly metadata: unknown }) =>
   (row.metadata ?? {}) as {
     readonly change?: { readonly kinds?: readonly string[] };
     readonly late?: true;
+    readonly implied_download?: true;
   };
 
 /** A download or apply that arrived after its target ran: it counts nothing. */
@@ -88,32 +90,78 @@ export const isLaunch = (row: StoredRow): boolean => {
 };
 
 /**
+ * What a ref names a bundle by. `release`: its release ID, so two releases
+ * of one artifact in one channel and platform, as a promote back into the
+ * channel makes them, count apart; a row without one, such as a report from
+ * the built-in bundle, is named by the bundle ID it reports. `artifact`: the
+ * artifact ID, as 1.1 servers wrote refs, which only the backfill of their
+ * rows (`backfillReleaseRefs`) still reads.
+ */
+export type BundleRefKey = "release" | "artifact";
+
+const sideRef = (
+  key: BundleRefKey,
+  releaseId: string | null,
+  bundleId: string,
+): string => (key === "release" ? (releaseId ?? bundleId) : bundleId);
+
+/**
  * The bundle a stored row's bundle filter matches: `from:<bundle>` for a
  * recovery; `to:<bundle>` for a download, an apply, and an update failure;
  * `on:<bundle>` for an UNCHANGED row that launched a bundle (`isLaunch`), a
  * key no other row uses. None for a failed check, which targets no bundle, a
- * late row, or any other UNCHANGED row.
+ * late row, or any other UNCHANGED row. Each names its bundle by `key`.
  */
-export const bundleRefsOf = (row: StoredRow): string[] => {
+export const bundleRefsOf = (
+  row: StoredRow,
+  key: BundleRefKey = "release",
+): string[] => {
   if (isFailedCheck(row) || isLateEvent(row)) return [];
-  if (row.type === "RECOVERED") return [`from:${row.from_bundle_id}`];
-  if (row.type === "UNCHANGED") {
-    return isLaunch(row) ? [`on:${row.to_bundle_id}`] : [];
+  if (row.type === "RECOVERED") {
+    return [`from:${sideRef(key, row.from_release_id, row.from_bundle_id!)}`];
   }
-  return [`to:${row.to_bundle_id}`];
+  if (row.type === "UNCHANGED") {
+    return isLaunch(row)
+      ? [`on:${sideRef(key, row.to_release_id, row.to_bundle_id)}`]
+      : [];
+  }
+  return [`to:${sideRef(key, row.to_release_id, row.to_bundle_id)}`];
 };
+
+/**
+ * The hourly outcome rows a stored row counts in, as `[type, bundle ref]`:
+ * its bundle filter's (`bundleRefsOf`), and a download that a launch or
+ * crash implied, in its bundle's download hour, so the download series
+ * covers what the release's downloads count.
+ */
+export const outcomeRefsOf = (
+  row: StoredRow,
+  key: BundleRefKey = "release",
+): (readonly [type: string, ref: string])[] => [
+  ...bundleRefsOf(row, key).map((ref) => [row.type, ref] as const),
+  ...(metadataOf(row).implied_download === true
+    ? [
+        [
+          "UPDATE_DOWNLOADED",
+          row.type === "RECOVERED"
+            ? `to:${sideRef(key, row.from_release_id, row.from_bundle_id!)}`
+            : `to:${sideRef(key, row.to_release_id, row.to_bundle_id)}`,
+        ] as const,
+      ]
+    : []),
+];
 
 /** The key a bundle filter reads, as `bundleRefsOf` writes it. */
 export const bundleRefOfFilter = (filter: {
   readonly type: string;
-  readonly fromBundleId?: string;
-  readonly toBundleId?: string;
+  readonly fromReleaseId?: string;
+  readonly toReleaseId?: string;
 }): string =>
   filter.type === "RECOVERED"
-    ? `from:${filter.fromBundleId}`
+    ? `from:${filter.fromReleaseId}`
     : filter.type === "UNCHANGED"
-      ? `on:${filter.toBundleId}`
-      : `to:${filter.toBundleId}`;
+      ? `on:${filter.toReleaseId}`
+      : `to:${filter.toReleaseId}`;
 
 /**
  * Downloads, applies, recoveries, update failures, and the UNCHANGED
@@ -151,7 +199,11 @@ const bundleEvents = (days: number) =>
           type: "string",
           compute: (row) => (MOVEMENTS.has(row.type) ? row.install_id : null),
         },
-        /** The bundle a bundle filter matches (`bundleRefsOf`). */
+        /**
+         * The bundle a bundle filter matches (`bundleRefsOf`), by release.
+         * Rows a 1.1 server wrote name the artifact until
+         * `backfillReleaseRefs` rewrites them.
+         */
         bundle_ref: {
           type: "string",
           multi: true,
@@ -401,7 +453,13 @@ const insightsBuiltinDistribution = (retention: BucketRetention) =>
     },
   );
 
-/** Latest events by the bundle they came from or went to, bucketed like the distribution. */
+/**
+ * Latest events by the artifact they came from or went to, bucketed like
+ * the distribution, as 1.1 servers wrote them. Nothing writes or reads it
+ * since a bundle's installations come from `insights_distribution`, which
+ * names the release; it stays declared so retention still empties the rows
+ * a 1.1 server wrote.
+ */
 const insightsLatestByBundle = (retention: BucketRetention) =>
   defineAggregate(
     {
@@ -438,7 +496,9 @@ const insightsLatestByBundle = (retention: BucketRetention) =>
  * Stored events by outcome and the bundle a bundle filter matches, a row an
  * hour, which a failed check has none of; and every stored event, a row a UTC
  * day (`DAILY_EVENTS`). Bundle counts sum the hourly rows, and event lists
- * read either to skip days without events.
+ * read either to skip days without events. `bundle_ref` names the release
+ * (`outcomeRefsOf`); a 1.1 server's rows name the artifact until
+ * `backfillReleaseRefs` moves their counts.
  */
 const insightsOutcomes = (retention: BucketRetention) =>
   defineAggregate(

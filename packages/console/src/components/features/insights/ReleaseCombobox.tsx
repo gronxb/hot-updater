@@ -30,13 +30,25 @@ type ReleaseGroup = {
   readonly items: readonly AdoptionRelease[];
 };
 
-/** Whether a bundle deployment matches what was typed: its label, IDs or target app version. */
-const matches = (release: AdoptionRelease, typed: string) =>
-  typed === "" ||
-  (release.label !== null && `v${release.label}` === typed) ||
-  release.releaseId.includes(typed) ||
-  release.bundleId.toLowerCase().includes(typed) ||
-  (release.targetAppVersion ?? "").toLowerCase().includes(typed);
+/**
+ * Whether a bundle deployment matches what was typed, lowercased: each word
+ * its label (`v12`), part of its release ID, or part of its target app
+ * version, so `v12 · a1b2c3`, as the Console shows a bundle, matches it. An
+ * artifact ID matches nothing: apps report release IDs.
+ */
+export const matchesRelease = (
+  release: Pick<AdoptionRelease, "label" | "releaseId" | "targetAppVersion">,
+  typed: string,
+): boolean =>
+  typed
+    .split(/[\s·]+/)
+    .filter((word) => word !== "")
+    .every(
+      (word) =>
+        (release.label !== null && `v${release.label}` === word) ||
+        release.releaseId.includes(word) ||
+        (release.targetAppVersion ?? "").toLowerCase().includes(word),
+    );
 
 /** A bundle deployment as a picker names it: ID, platform, deployment, target, and state. */
 export function ReleaseOption({
@@ -84,7 +96,7 @@ export function ReleaseOption({
 
 /**
  * Picks one of a channel's bundle deployments: live ones first, searchable
- * by ID or target app version. A full release ID the list leaves out is
+ * by label, release ID or target app version. A full release ID the list leaves out is
  * looked up in the scope, with the read Release health uses for it.
  */
 export function ReleaseCombobox({
@@ -112,7 +124,7 @@ export function ReleaseCombobox({
   const typed = query.trim().toLowerCase();
   const offered = candidates.filter(
     (release) =>
-      !excluded.includes(release.releaseId) && matches(release, typed),
+      !excluded.includes(release.releaseId) && matchesRelease(release, typed),
   );
   const lookupId =
     offered.length === 0 &&

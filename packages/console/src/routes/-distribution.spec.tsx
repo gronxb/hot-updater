@@ -16,11 +16,16 @@ import type { AppUsageReport } from "@/lib/insights-usage";
 
 const mocks = vi.hoisted(() => ({
   usage: vi.fn(),
+  release: vi.fn(),
   navigate: vi.fn(),
   initialSearch: {} as Record<string, unknown>,
 }));
 vi.mock("@/lib/insights-usage-rpc", () => ({
   getAppUsageReportRpc: mocks.usage,
+}));
+vi.mock("@/lib/api-rpc", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api-rpc")>()),
+  getRelease: mocks.release,
 }));
 vi.mock("@/components/features/insights/InsightsPageHeader", () => ({
   InsightsPageHeader: () => null,
@@ -209,15 +214,47 @@ describe("Distribution details", () => {
         name: `Built-in bundle ${builtin} share in 1.0.0 on ios`,
       }),
     ).toBeDefined();
-    // A release that selected the built-in bundle links to it and still says so.
+    // A release that selected the built-in bundle links to it and still says
+    // so, once its label is read.
     expect(
-      within(adopted!).getByRole("link", {
+      await within(adopted!).findByRole("link", {
         name: "Review bundle release-rollback for app version 1.0.0",
       }),
     ).toBeDefined();
     expect(within(adopted!).getByText("Built-in bundle")).toBeDefined();
     expect(within(unknown!).getByText("Unknown bundle")).toBeDefined();
     expect(within(unknown!).queryByText("Built-in bundle")).toBeNull();
+    expect(mocks.release).toHaveBeenCalledWith({
+      data: { releaseId: "release-rollback" },
+    });
+  });
+
+  it("names each row's release by its label and ID, reading only the rows shown", async () => {
+    const releaseId = "019a0000-0000-7000-8000-00000000abcd";
+    mocks.release.mockResolvedValue({ id: releaseId, label: 7 });
+    mocks.usage.mockResolvedValue({
+      ...report,
+      versions: [{ name: "1.0.0", installations: 3 }],
+      bundleDistribution: [
+        {
+          appVersion: "1.0.0",
+          platform: "ios",
+          releaseId,
+          builtinBundleId: null,
+          installations: 3,
+        },
+      ],
+    });
+    renderPage();
+    const link = () =>
+      screen.getByRole("link", {
+        name: `Review bundle ${releaseId} for app version 1.0.0`,
+      });
+    await waitFor(() => expect(link().textContent).toBe("v7"));
+    expect(
+      screen.getByRole("button", { name: `Copy ID ${releaseId}` }),
+    ).toBeDefined();
+    expect(mocks.release).toHaveBeenCalledTimes(1);
   });
   it("keeps retry and empty states usable and labels partial counts", async () => {
     mocks.usage.mockRejectedValueOnce(new Error("Offline"));

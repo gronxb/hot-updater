@@ -22,6 +22,7 @@ import {
   type RunInitResult,
   shouldAutoSelectOnlyInitResource,
   writeHotUpdaterFiles,
+  backfillInsightsReleaseRefs,
   fillReleaseLabels,
 } from "@hot-updater/cli-tools";
 import { postgres } from "@hot-updater/postgres";
@@ -628,6 +629,8 @@ export const runInit = async ({
   try {
     // Labels the releases written before labels, and rebuilds their catalogs.
     await fillReleaseLabels(server);
+    // Moves the Insights events a 1.1 server keyed by artifact to their releases.
+    await backfillInsightsReleaseRefs(server);
     credential = await provisionClientCredential(server, {
       env: initInputEnv,
       name: "Vercel init",

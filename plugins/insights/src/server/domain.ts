@@ -111,7 +111,14 @@ export type EventHistoryChange = {
   };
 };
 
+/**
+ * An event as Insights lists it. `fromBundleId` and `toBundleId` are the
+ * artifact IDs the report names; `fromReleaseId` and `toReleaseId` the
+ * releases, the bundle IDs users see, absent for a side without one, such
+ * as the built-in bundle.
+ */
 export type EventHistoryRow = {
+  readonly fromReleaseId?: string;
   readonly toReleaseId?: string;
   readonly sdkVersion?: string;
   /** The native build's built-in bundle ID, when the SDK reported it. */
@@ -174,8 +181,13 @@ export type InstallationRow = {
   readonly minBundleId?: string;
   readonly installId: string;
   readonly userId: string | null;
+  /** The artifact the installation runs, or the built-in bundle's ID. */
   readonly lastKnownBundleId: string;
+  /** The release the installation runs, the bundle ID users see; null for none. */
+  readonly lastKnownReleaseId: string | null;
+  /** The artifact downloaded and not launched yet. */
   readonly pendingBundleId: string | null;
+  /** The release downloaded and not launched yet. */
   readonly pendingReleaseId: string | null;
   readonly latestStatus: EventHistoryRow["type"];
   readonly platform: "ios" | "android";
@@ -195,6 +207,7 @@ export type EventCursorPage<T extends EventHistoryRow> = CursorPage<T> & {
 };
 
 export type InsightsBundleSelection = InsightsScope & {
+  /** The bundle ID users see: a release ID. */
   readonly bundleId: string;
   /** `failed`: update failures that targeted the bundle. */
   readonly outcome: "downloaded" | "applied" | "recovered" | "failed";
@@ -211,7 +224,12 @@ export type ReportingOverview = InsightsScope & {
   readonly beforeReceivedAtMs: number;
   readonly reportingInstallations: InsightsCountMeasurement;
   readonly bundle?: {
+    /** The bundle ID users see: a release ID. */
     readonly bundleId: string;
+    /**
+     * Installations whose latest report leaves them running the release;
+     * for a built-in bundle's ID, those running it outside any release.
+     */
     readonly reportingInstallations: InsightsCountMeasurement;
     /**
      * Download reports of the bundle, and in whole hours the downloads a

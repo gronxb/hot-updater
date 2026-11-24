@@ -102,13 +102,11 @@ const platformName = (platform: "ios" | "android") =>
 interface ResolvedScope {
   readonly platform: "ios" | "android";
   readonly channel: string;
-  /** The bundle's release, which update failures key on. */
+  /** The bundle's release ID, which every Insights read keys on. */
   readonly releaseId?: string;
-  /** The bundle ID devices report, which the other reads key on. */
-  readonly bundleId?: string;
 }
 
-/** A bundle's platform, channel, and IDs; or the channel `-p` and `-c` name. */
+/** A bundle's platform, channel, and release ID; or the channel `-p` and `-c` name. */
 const resolveScope = async (
   core: HotUpdaterCoreApi,
   options: InsightsScopeOptions,
@@ -125,12 +123,7 @@ const resolveScope = async (
     }
     const [row] = await core.getChannels([release.channel_id]);
     const channel = row?.name ?? release.channel_id;
-    return {
-      platform: release.platform,
-      channel,
-      releaseId: release.id,
-      ...(release.bundle_id === null ? {} : { bundleId: release.bundle_id }),
-    };
+    return { platform: release.platform, channel, releaseId: release.id };
   }
   if (options.platform === undefined || !options.channel?.trim()) {
     throw new Error(
@@ -138,15 +131,6 @@ const resolveScope = async (
     );
   }
   return { platform: options.platform, channel: options.channel.trim() };
-};
-
-const requireBundleId = (scope: ResolvedScope, id: string): string => {
-  if (scope.bundleId === undefined) {
-    throw new Error(
-      `Bundle "${id}" rolls back to the built-in bundle, which devices never download, so it has no reports of its own.`,
-    );
-  }
-  return scope.bundleId;
 };
 
 const scopeHeading = (
@@ -166,9 +150,7 @@ export const handleInsightsOverview = (
       platform: scope.platform,
       channel: scope.channel,
       window,
-      ...(options.bundle === undefined
-        ? {}
-        : { bundleId: requireBundleId(scope, options.bundle) }),
+      ...(scope.releaseId === undefined ? {} : { bundleId: scope.releaseId }),
     });
     if (options.json) return printJson(overview);
     const bundle = overview.bundle;
@@ -343,6 +325,23 @@ const eventDetail = (event: EventHistoryRow): string =>
       ? (event.change?.kinds.join(", ") ?? "")
       : "";
 
+/**
+ * The bundle an event names on one side, as users know it: its release ID,
+ * or for a side with none, such as the built-in bundle, the bundle ID the
+ * report names.
+ */
+const sideOf = (releaseId: string | undefined, bundleId: string): string =>
+  releaseId ?? bundleId;
+
+const eventBundle = (event: EventHistoryRow): string => {
+  const to = sideOf(event.toReleaseId, event.toBundleId);
+  const from =
+    event.fromBundleId === null
+      ? null
+      : sideOf(event.fromReleaseId, event.fromBundleId);
+  return from === null || from === to ? to : `${from} → ${to}`;
+};
+
 const formatEvents = (events: readonly EventHistoryRow[]): string =>
   events.length === 0
     ? ui.muted("(no events)")
@@ -360,11 +359,7 @@ const formatEvents = (events: readonly EventHistoryRow[]): string =>
           received: dateText(event.receivedAtMs),
           type: EVENT_LABELS[event.type],
           install: event.installId,
-          bundle:
-            event.fromBundleId === null ||
-            event.fromBundleId === event.toBundleId
-              ? event.toBundleId
-              : `${event.fromBundleId} → ${event.toBundleId}`,
+          bundle: eventBundle(event),
           app: `${platformName(event.platform)} ${event.appVersion}`,
           channel: event.channel,
           detail: eventDetail(event),
@@ -401,7 +396,7 @@ export const handleInsightsEvents = (
         bundle: {
           platform: scope.platform,
           channel: scope.channel,
-          bundleId: requireBundleId(scope, options.bundle),
+          bundleId: scope.releaseId!,
           outcome: INSIGHTS_OUTCOMES[options.outcome],
         },
         ...page,
@@ -432,8 +427,14 @@ const formatInstallations = (rows: readonly InstallationRow[]): string =>
             ui.kv("App", `${platformName(row.platform)} ${row.appVersion}`),
             ui.kv("Channel", ui.channel(row.channel)),
             ui.kv("Cohort", row.cohort),
-            ui.kv("Bundle", ui.id(row.lastKnownBundleId)),
-            ui.kv("Pending", ui.id(row.pendingBundleId)),
+            ui.kv(
+              "Bundle",
+              ui.id(row.lastKnownReleaseId ?? row.lastKnownBundleId),
+            ),
+            ui.kv(
+              "Pending",
+              ui.id(row.pendingReleaseId ?? row.pendingBundleId),
+            ),
             ui.kv("Latest", EVENT_LABELS[row.latestStatus]),
             ui.kv("Reported", dateText(row.receivedAtMs)),
           ]),

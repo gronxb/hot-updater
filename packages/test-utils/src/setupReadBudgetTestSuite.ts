@@ -13,6 +13,8 @@ import type {
   InsightsCountEventsInput,
   InsightsCountEventSeriesInput,
   InsightsCountLatestEventsInput,
+  InsightsCountReleaseInstallationsInput,
+  InsightsReleaseInstallations,
   InsightsEventSeriesPoint,
   InsightsFindLatestEventsInput,
   InsightsGetAppUsageInput,
@@ -74,6 +76,9 @@ interface ReadBudgetInsights {
     input: InsightsFindLatestEventsInput,
   ): Promise<readonly BundleEventRow[]>;
   countLatestEvents(input: InsightsCountLatestEventsInput): Promise<number>;
+  countReleaseInstallations(
+    input: InsightsCountReleaseInstallationsInput,
+  ): Promise<InsightsReleaseInstallations>;
   countEvents(input: InsightsCountEventsInput): Promise<number>;
   countEventSeries(
     input: InsightsCountEventSeriesInput,
@@ -367,7 +372,7 @@ const bundleEvents = {
   platform: "ios",
   channel: "production",
   type: "UPDATE_APPLIED",
-  toBundleId: "bundle-b",
+  toReleaseId: "release-b",
 } as const;
 
 /** The target bundle's manifest, which artifact resolution reads from storage. */
@@ -1058,7 +1063,7 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "countEventSeries: buckets in the window × shards, all used",
-    // The hours with an apply to bundle-b: hours 0–4 of day 0, installs 1–24
+    // The hours with an apply to release-b: hours 0–4 of day 0, installs 1–24
     // on 24 outcome shard rows, and hour 0 of day 2, install 1's on 1.
     read: ({ insights }) =>
       insights.countEventSeries({
@@ -1086,24 +1091,20 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     check: (count) => expect(count).toBe(24),
   }),
   budget({
-    api: "countLatestEvents by bundle: buckets in the window × shards, all used",
-    // Days 0 and 2, like the distribution: 14 shards and 1.
+    api: "countReleaseInstallations: the scope's rows, read once for both counts",
+    // The distribution rows of days 0 and 2, as without a release: 14
+    // shards and 1, which name release-b, so no built-in row is read.
     read: ({ insights }) =>
-      insights.countLatestEvents({
+      insights.countReleaseInstallations({
         platform: "ios",
         channel: "production",
         sinceMs: T0,
-        bundle: [
-          {
-            field: "to_bundle_id",
-            value: "bundle-b",
-            types: ["UPDATE_APPLIED"],
-          },
-        ],
+        releaseId: "release-b",
       }),
     adapter: reads(0, 0, 1, 15),
     engine: { calls: 1, rows: 2 },
-    check: (count) => expect(count).toBe(24),
+    check: (counts) =>
+      expect(counts).toEqual({ installations: 24, release: 24 }),
   }),
   budget({
     api: "release activity: buckets × shards, all used",
@@ -1432,8 +1433,8 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     // The event and install 2's head; then, in one batch get per aggregate,
     // the event's 4 sketch rows (its platform's usage of every app version
     // and of its own by hour, and by day, which keeps its own retention) and
-    // the gauge rows its head leaves and enters as it moves on to bundle-c:
-    // 2 of the distribution, and 6 by bundle, for its from, to and pair.
+    // the 2 distribution gauge rows its head leaves and enters as it moves
+    // on to release-c, the only installation gauge it keeps.
     read: ({ insights }) =>
       insights.recordEvent(
         eventOf(27, {
@@ -1446,7 +1447,7 @@ const READ_BUDGETS: readonly ReadBudget[] = [
           received_at_ms: T0 + 3 * HOUR,
         }),
       ),
-    adapter: reads(6, 14, 0, 0),
+    adapter: reads(5, 8, 0, 0),
     engine: { calls: 2, rows: 1 },
     writes: 1,
   }),

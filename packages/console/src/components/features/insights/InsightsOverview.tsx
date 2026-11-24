@@ -45,11 +45,13 @@ import {
   CRASH_RATE_THRESHOLD,
   crashRateOf,
   MAX_ADOPTION_RELEASES,
+  bundleChip,
   recommendsRollback,
 } from "@/lib/release-adoption";
-import type {
-  ComparedRelease,
-  ReleaseHealthState,
+import {
+  type ComparedRelease,
+  knownReleases,
+  type ReleaseHealthState,
 } from "@/lib/release-adoption-api";
 import { cn } from "@/lib/utils";
 
@@ -517,7 +519,11 @@ export function InsightsOverview({
               <InsightsScope
                 channel={input.channel}
                 platform={input.platform}
-                narrower={input.releaseId ? [`Release ${input.releaseId}`] : []}
+                narrower={
+                  input.releaseId
+                    ? [bundleChip(input.releaseId, knownReleases(health))]
+                    : []
+                }
               />
             </div>
             <div className="flex items-center gap-2">

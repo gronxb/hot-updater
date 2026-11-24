@@ -26,7 +26,6 @@ const release = (
 ): AdoptionRelease => ({
   releaseId,
   label: null,
-  bundleId: `bundle-${releaseId}`,
   platform: "ios",
   deployedAtMs: 0,
   targetAppVersion: "1.6.x",
@@ -243,6 +242,43 @@ describe("InsightsControls", () => {
     expect(
       screen.getByRole("combobox", { name: `Release: ${labeled}` }).textContent,
     ).toBe(`Releasev12 ${labeled}`);
+  });
+
+  it("finds a release by its label and ID tail as the Console shows it, and never by its artifact ID", async () => {
+    const labeled = "01a13d86-86f7-7830-952d-21238207019f";
+    // The artifact v12 serves, which Insights never names.
+    const artifact = "01a13d80-0000-7000-8000-00000000a12f";
+    mocks.release.mockResolvedValue({ release: null });
+    renderControls({
+      releases: [
+        release("01a16ed8-85df-749f-8f9e-0e22532a5d87", { label: 11 }),
+        release(labeled, { label: 12 }),
+      ],
+    });
+    fireEvent.click(screen.getByRole("combobox", { name: /^Release/ }));
+    const search = await screen.findByRole("combobox", {
+      name: "Search releases",
+    });
+    act(() => search.focus());
+    const type = (value: string) =>
+      fireEvent.input(search, { inputType: "insertText", target: { value } });
+    type("V12 · 07019F");
+    expect(
+      (await screen.findAllByRole("option")).map(
+        (option) => option.textContent,
+      ),
+    ).toEqual([expect.stringMatching(/^iOS v12 01a13d86/)]);
+    type("v11 07019f");
+    expect(await screen.findByText("No matching bundles.")).toBeDefined();
+    type(artifact);
+    expect(
+      await screen.findByText(
+        "No bundle with this ID in production · All platforms.",
+      ),
+    ).toBeDefined();
+    expect(mocks.release).toHaveBeenLastCalledWith({
+      data: { channel: "production", platform: "all", releaseId: artifact },
+    });
   });
 
   it("looks up a pasted release ID the list leaves out, in the filters' scope", async () => {

@@ -45,7 +45,6 @@ const release = (
 ): AdoptionRelease => ({
   releaseId,
   label: null,
-  bundleId: `bundle-${releaseId}`,
   platform: "ios",
   deployedAtMs,
   targetAppVersion: "1.2.0",
@@ -61,7 +60,7 @@ const oldest = release("release-old", HOUR, { live: false });
 
 /** Counts of one type per hour of the period [6h, 30h). */
 const seriesOf = (
-  bundleId: string,
+  releaseId: string,
   type: "DOWNLOADED" | "LAUNCHED" | "RECOVERED",
   perHour: (hour: number) => number,
 ) => {
@@ -70,7 +69,7 @@ const seriesOf = (
     events: perHour(6 + index),
   }));
   return {
-    bundleId,
+    releaseId,
     type,
     measuredAtMs: 30 * HOUR - 30 * 60_000,
     points,
@@ -83,22 +82,22 @@ const seriesOf = (
 const bundles: readonly ComparedRelease[] = [
   {
     release: newest,
-    downloaded: seriesOf(newest.bundleId, "DOWNLOADED", (hour) =>
+    downloaded: seriesOf(newest.releaseId, "DOWNLOADED", (hour) =>
       hour >= 20 ? 4 : 0,
     ),
-    launched: seriesOf(newest.bundleId, "LAUNCHED", (hour) =>
+    launched: seriesOf(newest.releaseId, "LAUNCHED", (hour) =>
       hour >= 20 ? 3 : 0,
     ),
-    recovered: seriesOf(newest.bundleId, "RECOVERED", () => 0),
+    recovered: seriesOf(newest.releaseId, "RECOVERED", () => 0),
     error: null,
   },
   {
     release: previous,
-    downloaded: seriesOf(previous.bundleId, "DOWNLOADED", () => 0),
-    launched: seriesOf(previous.bundleId, "LAUNCHED", (hour) =>
+    downloaded: seriesOf(previous.releaseId, "DOWNLOADED", () => 0),
+    launched: seriesOf(previous.releaseId, "LAUNCHED", (hour) =>
       hour < 20 ? 1 : 0,
     ),
-    recovered: seriesOf(previous.bundleId, "RECOVERED", () => 0),
+    recovered: seriesOf(previous.releaseId, "RECOVERED", () => 0),
     error: null,
   },
 ];
@@ -318,7 +317,7 @@ describe("Release health", () => {
     const waiting = [
       {
         ...bundles[0]!,
-        launched: seriesOf(newest.bundleId, "LAUNCHED", () => 0),
+        launched: seriesOf(newest.releaseId, "LAUNCHED", () => 0),
       },
     ];
     const view = renderCard({ health: { releases: waiting } });
@@ -403,10 +402,10 @@ describe("Release health", () => {
           {
             ...bundles[0]!,
             // 1 crash of 9 attempts: 11.1%, too few to act on.
-            launched: seriesOf(newest.bundleId, "LAUNCHED", (hour) =>
+            launched: seriesOf(newest.releaseId, "LAUNCHED", (hour) =>
               hour === 21 ? 8 : 0,
             ),
-            recovered: seriesOf(newest.bundleId, "RECOVERED", (hour) =>
+            recovered: seriesOf(newest.releaseId, "RECOVERED", (hour) =>
               hour === 22 ? 1 : 0,
             ),
           },
@@ -442,10 +441,10 @@ describe("Release health", () => {
           {
             ...bundles[0]!,
             // 2 crashes of 20 attempts: 10%.
-            launched: seriesOf(newest.bundleId, "LAUNCHED", (hour) =>
+            launched: seriesOf(newest.releaseId, "LAUNCHED", (hour) =>
               hour === 21 ? 18 : 0,
             ),
-            recovered: seriesOf(newest.bundleId, "RECOVERED", (hour) =>
+            recovered: seriesOf(newest.releaseId, "RECOVERED", (hour) =>
               hour === 22 ? 2 : 0,
             ),
           },
@@ -494,8 +493,8 @@ describe("Release health", () => {
     const onWindowChange = vi.fn();
     const quiet = bundles.map((bundle) => ({
       ...bundle,
-      downloaded: seriesOf(bundle.release.bundleId, "DOWNLOADED", () => 0),
-      launched: seriesOf(bundle.release.bundleId, "LAUNCHED", () => 0),
+      downloaded: seriesOf(bundle.release.releaseId, "DOWNLOADED", () => 0),
+      launched: seriesOf(bundle.release.releaseId, "LAUNCHED", () => 0),
     }));
     renderCard({ onWindowChange, health: { releases: quiet } });
     expect(

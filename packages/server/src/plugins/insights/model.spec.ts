@@ -25,6 +25,8 @@ const onFreshAdapter = (adapter: () => DatabaseAdapter) => {
     listEvents: (input) => current().listEvents(input),
     findLatestEvents: (input) => current().findLatestEvents(input),
     countLatestEvents: (input) => current().countLatestEvents(input),
+    countReleaseInstallations: (input) =>
+      current().countReleaseInstallations(input),
     countEvents: (input) => current().countEvents(input),
     countEventSeries: (input) => current().countEventSeries(input),
     getReleaseActivity: (input) => current().getReleaseActivity(input),

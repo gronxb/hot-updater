@@ -41,21 +41,33 @@ const createClient = (): ConsoleInsightsQaClient => ({
     beforeReceivedAtMs: event.receivedAtMs + 1,
     sinceMs: event.receivedAtMs - 86_400_000,
     reportingInstallations: { count: 1, measuredAtMs: event.receivedAtMs + 1 },
-    bundle: {
-      bundleId: input.bundleId!,
-      reportingInstallations: {
-        count: 1,
-        measuredAtMs: event.receivedAtMs + 1,
-      },
-      appliedReports: { count: 1, measuredAtMs: event.receivedAtMs + 1 },
-      downloadedReports: { count: 0, measuredAtMs: event.receivedAtMs + 1 },
-      recoveredReports: { count: 0, measuredAtMs: event.receivedAtMs + 1 },
-    },
+    // The server reads a bundle's counts only when the input names one.
+    ...(input.bundleId === undefined
+      ? {}
+      : {
+          bundle: {
+            bundleId: input.bundleId!,
+            reportingInstallations: {
+              count: 1,
+              measuredAtMs: event.receivedAtMs + 1,
+            },
+            appliedReports: { count: 1, measuredAtMs: event.receivedAtMs + 1 },
+            downloadedReports: {
+              count: 0,
+              measuredAtMs: event.receivedAtMs + 1,
+            },
+            recoveredReports: {
+              count: 0,
+              measuredAtMs: event.receivedAtMs + 1,
+            },
+          },
+        }),
   })),
   getInstallation: vi.fn(async () => ({
     channel: event.channel,
     installId: observedTransition.installId,
     lastKnownBundleId: event.toBundleId,
+    lastKnownReleaseId: event.toBundleId,
     platform: event.platform,
     userId: observedTransition.userId,
   })),
@@ -75,6 +87,7 @@ const createClient = (): ConsoleInsightsQaClient => ({
         channel: event.channel,
         installId: observedTransition.installId,
         lastKnownBundleId: event.toBundleId,
+        lastKnownReleaseId: event.toBundleId,
         platform: event.platform,
         userId: observedTransition.userId,
       },
@@ -117,6 +130,46 @@ describe("console insights E2E QA", () => {
     ).toBeNull();
   });
 
+  it("checks an installation on the built-in bundle, which runs no release, by the built-in bundle's ID", async () => {
+    const builtin = "00000000-0000-0000-0000-000000000000";
+    const launch = {
+      ...observedTransition,
+      fromBundleId: null,
+      toBundleId: builtin,
+      type: "UNCHANGED",
+    } as const;
+    const installation = {
+      channel: event.channel,
+      installId: launch.installId,
+      lastKnownBundleId: builtin,
+      lastKnownReleaseId: null,
+      platform: event.platform,
+      userId: launch.userId,
+    };
+    const client = createClient();
+    vi.mocked(client.getInstallation).mockResolvedValue(installation);
+    vi.mocked(client.pageInstallationsByCurrentUserId).mockResolvedValue({
+      data: [installation],
+      nextCursor: null,
+    });
+
+    const evidence = await verifyConsoleInsights(client, {
+      observedEvents: [launch],
+    });
+
+    expect(client.getReportingOverview).toHaveBeenCalledExactlyOnceWith({
+      bundleId: builtin,
+      channel: event.channel,
+      platform: event.platform,
+      window: "24h",
+    });
+    expect(evidence).toMatchObject({
+      reportingInstallations: 1,
+      selectedBundleInstallations: 1,
+      outcomes: [],
+    });
+  });
+
   it("verifies ingestion and the lean Console queries with cursors", async () => {
     // Given: another shard fills the first event, user, and movement pages.
     const client = createClient();
@@ -134,6 +187,7 @@ describe("console insights E2E QA", () => {
             channel: event.channel,
             installId: observedTransition.installId,
             lastKnownBundleId: event.toBundleId,
+            lastKnownReleaseId: event.toBundleId,
             platform: event.platform,
             userId: observedTransition.userId,
           },
@@ -256,6 +310,7 @@ describe("console insights E2E QA", () => {
     vi.mocked(client.getInstallation).mockResolvedValue({
       ...installation!,
       lastKnownBundleId: downloaded.fromBundleId,
+      lastKnownReleaseId: downloaded.fromBundleId,
     });
     const overview = await client.getReportingOverview({
       bundleId,
