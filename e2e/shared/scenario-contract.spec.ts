@@ -1450,6 +1450,16 @@ describe("E2E scenario contract", () => {
         passedThrough.push(input);
         return "network";
       };
+      const opened: unknown[] = [];
+      // React Native's XMLHttpRequest, which the SDK sends its Android update
+      // requests with.
+      class FakeXMLHttpRequest {
+        open(method: string, url: string) {
+          opened.push({ method, url });
+        }
+        send() {}
+      }
+      const originalOpen = FakeXMLHttpRequest.prototype.open;
       const context: Record<string, unknown> = {
         console: { log: (line: unknown) => logs.push(line) },
         fetch: originalFetch,
@@ -1457,6 +1467,7 @@ describe("E2E scenario contract", () => {
         setTimeout: (callback: () => void, delayMs: number) => {
           timers.push({ callback, delayMs });
         },
+        XMLHttpRequest: FakeXMLHttpRequest,
       };
 
       // The bundle renders: nothing throws while its modules evaluate.
@@ -1465,8 +1476,33 @@ describe("E2E scenario contract", () => {
       if (!shouldCrash) {
         expect(timers).toEqual([]);
         expect(context.fetch).toBe(originalFetch);
+        expect(FakeXMLHttpRequest.prototype.open).toBe(originalOpen);
         return;
       }
+      // The SDK's Android update check: the constructor it reads when it
+      // sends, then `open` and `send` inside a promise.
+      const sendLikeTheSdk = (url: string) =>
+        new Promise<void>((resolve) => {
+          const xhr =
+            new (context.XMLHttpRequest as typeof FakeXMLHttpRequest)();
+          xhr.open("GET", url);
+          xhr.send();
+          resolve();
+        });
+      await expect(
+        sendLikeTheSdk(
+          "https://updates.example.com/hot-updater/release-catalogs/app-version/android/production/1.0.0",
+        ),
+      ).rejects.toThrow("hot-updater e2e broken update check");
+      await expect(
+        sendLikeTheSdk("https://updates.example.com/hot-updater/insights"),
+      ).resolves.toBeUndefined();
+      expect(opened).toEqual([
+        {
+          method: "GET",
+          url: "https://updates.example.com/hot-updater/insights",
+        },
+      ]);
       const fetch = context.fetch as (input: unknown) => unknown;
       // Its own update check fails; every other request goes out.
       await expect(
