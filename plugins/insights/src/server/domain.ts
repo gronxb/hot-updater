@@ -226,7 +226,11 @@ export type ReportingOverview = InsightsScope & {
   readonly bundle?: {
     /** The bundle ID users see: a release ID. */
     readonly bundleId: string;
-    /** Installations whose latest report leaves them running the release. */
+    /**
+     * Installations whose latest report leaves them running the release:
+     * none for a bundle ID that names no release, such as the built-in
+     * bundle's, whose installations count only in the scope's total.
+     */
     readonly reportingInstallations: InsightsCountMeasurement;
     /**
      * Download reports of the bundle, and in whole hours the downloads a
