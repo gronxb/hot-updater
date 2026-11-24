@@ -12,6 +12,7 @@ import { setupInsightsHttpTestSuite } from "./setupInsightsHttpTestSuite";
 
 export { expectInsightsIndex } from "./expectInsightsIndex";
 export { createBundleEventRowFixture } from "./fixtures";
+export { insights11TestPlugin, type Insights11TestApi } from "./insights11";
 export { setupInsightsHttpTestSuite } from "./setupInsightsHttpTestSuite";
 export { setupInsightsModelTestSuite } from "./setupInsightsModelTestSuite";
 
