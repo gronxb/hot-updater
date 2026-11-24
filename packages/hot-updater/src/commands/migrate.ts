@@ -2,6 +2,7 @@ import {
   type AssembledServer,
   assembleServer,
   createMigrator as createHotUpdaterMigrator,
+  backfillInsightsReleaseRefs,
   fillReleaseLabels,
   loadConfig,
   p,
@@ -236,7 +237,10 @@ export async function migrate(options: MigrateOptions) {
 const SERVER_MIGRATES_ITSELF =
   "The server migrates its own database: run `hot-updater db migrate` in its project as you deploy it.";
 
-type MigrationServer = Pick<AssembledServer, "core" | "database" | "plugins">;
+type MigrationServer = Pick<
+  AssembledServer,
+  "core" | "database" | "plugins" | "api"
+>;
 
 /**
  * The server whose database to migrate: the server file given, else a server
@@ -318,6 +322,7 @@ async function fillLabels(
   s.stop("Analysis complete");
   p.log.success("Schema is up to date.");
   await fillReleaseLabels(hotUpdater);
+  await backfillInsightsReleaseRefs(hotUpdater);
   process.exit(0);
 }
 
@@ -373,6 +378,7 @@ async function migrateWithMigrator(
     p.log.success("Schema is up to date.");
     // Releases a server of an earlier release still writes need labels too.
     await fillReleaseLabels(hotUpdater);
+    await backfillInsightsReleaseRefs(hotUpdater);
     process.exit(0);
   }
 
@@ -403,6 +409,7 @@ async function migrateWithMigrator(
   const newVersion = await migrator.getVersion();
   p.log.success(ui.line(["Migrated to", ui.version(newVersion)]));
   await fillReleaseLabels(hotUpdater);
+  await backfillInsightsReleaseRefs(hotUpdater);
 
   // Exit process to ensure all connections are closed
   // This is especially important for MongoDB and other databases

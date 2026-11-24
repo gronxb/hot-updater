@@ -26,7 +26,6 @@ const release = (
 ): AdoptionRelease => ({
   releaseId,
   label: null,
-  bundleId: `bundle-${releaseId}`,
   platform: "ios",
   deployedAtMs: 0,
   targetAppVersion: "1.6.x",

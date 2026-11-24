@@ -104,7 +104,6 @@ const release = (
   } = {},
 ) => ({
   releaseId,
-  bundleId: `bundle-${releaseId}`,
   platform: "ios" as const,
   deployedAtMs,
   targetAppVersion: "1.0.0",
@@ -116,17 +115,17 @@ const release = (
 type EventsCall = {
   data: {
     platform: string;
-    bundleId: string;
+    releaseId: string;
     type: string;
     window: string;
     endMs: number;
   };
 };
-/** Release health's reads so far, as "bundle type window". */
+/** Release health's reads so far, as "release type window". */
 const eventReads = () =>
   mocks.events.mock.calls.map((call) => {
     const { data } = (call as [EventsCall])[0];
-    return `${data.bundleId} ${data.type} ${data.window}`;
+    return `${data.releaseId} ${data.type} ${data.window}`;
   });
 function renderPage() {
   // Newest first: a rolled-back iOS bundle, then what devices get now, and
@@ -142,7 +141,7 @@ function renderPage() {
     previous: release("release-before-a", HOUR / 4),
   });
   mocks.events.mockImplementation(async ({ data }: EventsCall) => ({
-    bundleId: data.bundleId,
+    releaseId: data.releaseId,
     type: data.type,
     measuredAtMs: data.endMs,
     points: [{ startMs: data.endMs - HOUR, events: 3 }],
@@ -192,7 +191,7 @@ describe("Insights dashboard", () => {
     expect(
       screen.getAllByRole("tab", { name: "24 hours", selected: true }),
     ).toHaveLength(2);
-    expect(eventReads()).toContain("bundle-release-old LAUNCHED 24h");
+    expect(eventReads()).toContain("release-old LAUNCHED 24h");
     fireEvent.click(
       within(screen.getByRole("region", { name: "Release health" })).getByRole(
         "tab",
@@ -200,7 +199,7 @@ describe("Insights dashboard", () => {
       ),
     );
     await waitFor(() =>
-      expect(eventReads()).toContain("bundle-release-old LAUNCHED 7d"),
+      expect(eventReads()).toContain("release-old LAUNCHED 7d"),
     );
     expect(mocks.usage).toHaveBeenCalledTimes(1);
     expect(
@@ -298,8 +297,8 @@ describe("Insights dashboard", () => {
     await waitFor(() =>
       expect(eventReads()).toEqual(
         expect.arrayContaining([
-          "bundle-release-a LAUNCHED 7d",
-          "bundle-release-before-a LAUNCHED 7d",
+          "release-a LAUNCHED 7d",
+          "release-before-a LAUNCHED 7d",
         ]),
       ),
     );
@@ -409,19 +408,19 @@ describe("Insights dashboard", () => {
     // each read on its own platform, downloads and launches over the same
     // hours.
     expect(eventReads().sort()).toEqual([
-      "bundle-release-android DOWNLOADED 24h",
-      "bundle-release-android LAUNCHED 24h",
-      "bundle-release-old DOWNLOADED 24h",
-      "bundle-release-old LAUNCHED 24h",
+      "release-android DOWNLOADED 24h",
+      "release-android LAUNCHED 24h",
+      "release-old DOWNLOADED 24h",
+      "release-old LAUNCHED 24h",
     ]);
     expect(
       new Set(
         mocks.events.mock.calls.map(
-          ([{ data }]) => `${data.bundleId} ${data.platform}`,
+          ([{ data }]) => `${data.releaseId} ${data.platform}`,
         ),
       ),
     ).toEqual(
-      new Set(["bundle-release-old ios", "bundle-release-android android"]),
+      new Set(["release-old ios", "release-android android"]),
     );
     expect(
       new Set(mocks.events.mock.calls.map(([{ data }]) => data.endMs)).size,
@@ -434,8 +433,8 @@ describe("Insights dashboard", () => {
     });
     await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(6));
     expect(eventReads().slice(4).sort()).toEqual([
-      "bundle-release-android RECOVERED 24h",
-      "bundle-release-old RECOVERED 24h",
+      "release-android RECOVERED 24h",
+      "release-old RECOVERED 24h",
     ]);
 
     // Adding a bundle reads only it; the bundle list is not read again.
@@ -460,8 +459,8 @@ describe("Insights dashboard", () => {
     });
     await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(8));
     expect(eventReads().slice(6).sort()).toEqual([
-      "bundle-release-oldest LAUNCHED 24h",
-      "bundle-release-oldest RECOVERED 24h",
+      "release-oldest LAUNCHED 24h",
+      "release-oldest RECOVERED 24h",
     ]);
     expect(mocks.releases).toHaveBeenCalledOnce();
   });

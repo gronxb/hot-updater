@@ -23,6 +23,7 @@ import {
   resolvePackageVersion,
   transformEnv,
   writeHotUpdaterFiles,
+  backfillInsightsReleaseRefs,
   fillReleaseLabels,
 } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
@@ -1147,6 +1148,8 @@ const runInitWithoutCliMetadata = async ({
     try {
       // Labels the releases written before labels, and rebuilds their catalogs.
       await fillReleaseLabels(managedServer);
+      // Moves the Insights events a 1.1 server keyed by artifact to their releases.
+      await backfillInsightsReleaseRefs(managedServer);
       credential = await provisionClientCredential(managedServer, {
         env: initInputEnv,
         name: "Supabase init",

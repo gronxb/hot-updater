@@ -13,8 +13,9 @@ import { cn } from "@/lib/utils";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InsightsPagination } from "./InsightsPagination";
 
-const getLastKnownBundleId = (event: InsightsInstallationViewRow) =>
-  event.lastKnownBundleId;
+/** The bundle the installation runs: its release ID, or the bundle ID it reports for none. */
+const getLastKnownId = (event: InsightsInstallationViewRow) =>
+  event.lastKnownReleaseId ?? event.lastKnownBundleId;
 
 const getUserLabel = (event: InsightsInstallationViewRow) =>
   event.userId ?? "—";
@@ -92,7 +93,7 @@ export function InstallationMatchesCard({
         ) : results && results.data.length > 0 ? (
           <ul aria-label="Matching installations" className="divide-y">
             {results.data.map((event) => {
-              const currentBundleId = getLastKnownBundleId(event);
+              const currentBundleId = getLastKnownId(event);
               const isSelected = event.installId === selectedInstallId;
               return (
                 <li key={event.installId}>

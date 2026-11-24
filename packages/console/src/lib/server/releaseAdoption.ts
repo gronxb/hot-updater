@@ -54,7 +54,6 @@ const labelled = async (
   return bundles.map((release) => ({
     releaseId: release.id,
     label: release.label ?? null,
-    bundleId: release.bundle_id!,
     platform: release.platform,
     deployedAtMs: release.created_at_ms,
     targetAppVersion: release.target_app_version,
@@ -155,7 +154,7 @@ export async function getBundleEvents(
   input: BundleEventsInput,
   now = Date.now(),
 ): Promise<BundleEventsSeries> {
-  const { platform, channel, window, endMs, bundleId, type } =
+  const { platform, channel, window, endMs, releaseId, type } =
     readBundleEventsInput(input);
   const { durationMs, intervalMs } = recoveryWindows[window];
   const end = Math.min(endMs, insightsPeriodEnd(now));
@@ -164,26 +163,26 @@ export async function getBundleEvents(
     model.countEventSeries({ filter, timeRange, intervalMs });
   const points =
     type === "RECOVERED"
-      ? await series({ platform, channel, type, fromBundleId: bundleId })
+      ? await series({ platform, channel, type, fromReleaseId: releaseId })
       : type === "DOWNLOADED"
         ? await series({
             platform,
             channel,
             type: "UPDATE_DOWNLOADED",
-            toBundleId: bundleId,
+            toReleaseId: releaseId,
           })
         : await Promise.all([
             series({
               platform,
               channel,
               type: "UPDATE_APPLIED",
-              toBundleId: bundleId,
+              toReleaseId: releaseId,
             }),
             series({
               platform,
               channel,
               type: "UNCHANGED",
-              toBundleId: bundleId,
+              toReleaseId: releaseId,
             }),
           ]).then(([applied, moved]) =>
             applied.map((point, index) => ({
@@ -192,7 +191,7 @@ export async function getBundleEvents(
             })),
           );
   return {
-    bundleId,
+    releaseId,
     type,
     measuredAtMs: now,
     points,

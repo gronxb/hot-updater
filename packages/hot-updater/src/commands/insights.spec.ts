@@ -197,6 +197,12 @@ describe("hot-updater insights over hot-updater.config.ts", () => {
     expect(database.dispose).toHaveBeenCalledOnce();
     expect(process.exitCode).toBeUndefined();
 
+    // Its JSON names the bundle by its release ID, as --bundle takes it.
+    await handleInsightsOverview({ bundle: release.id, json: true });
+    expect(jsonOutput()).toMatchObject({
+      bundle: { bundleId: release.id, reportingInstallations: { count: 1 } },
+    });
+
     await handleInsightsOverview({
       json: true,
       platform: "ios",
@@ -316,11 +322,21 @@ describe("hot-updater insights over hot-updater.config.ts", () => {
       nextCursor: null,
     });
 
+    expect(jsonOutput()).toMatchObject({
+      data: [{ toReleaseId: release.id, toBundleId: BUNDLE_ID }],
+    });
+
     await handleInsightsEvents({ install: "install-1" });
     const printed = messages();
     expect(printed).toMatch(/Launched\s*│ install-1/u);
     expect(printed).toMatch(/Downloaded\s*│ install-1/u);
     expect(printed).not.toContain("install-2");
+    // The bundle column names the release, the ID --bundle takes back, and
+    // the built-in bundle it came from, which has none.
+    expect(printed).toContain(
+      `00000000-0000-0000-0000-000000000000 → ${release.id}`,
+    );
+    expect(printed).not.toContain(BUNDLE_ID);
 
     await handleInsightsEvents({ bundle: release.id });
     expect(log.error).toHaveBeenCalledWith(
@@ -342,12 +358,19 @@ describe("hot-updater insights over hot-updater.config.ts", () => {
   });
 
   it("finds installations by install ID or by user ID", async () => {
-    await seed(database);
+    const release = await seed(database);
 
     await handleInsightsInstallations("install-1");
     const printed = messages();
     expect(printed).toContain("install-1");
     expect(printed).toMatch(/^Latest {2,}Launched/mu);
+    expect(printed).toMatch(new RegExp(`^Bundle {2,}${release.id}`, "mu"));
+    expect(printed).not.toContain(BUNDLE_ID);
+
+    // install-2 downloaded the release and has not launched it yet.
+    log.message.mockClear();
+    await handleInsightsInstallations("install-2");
+    expect(messages()).toMatch(new RegExp(`^Pending {2,}${release.id}`, "mu"));
 
     await handleInsightsInstallations("user-1", { json: true });
     expect(

@@ -27,6 +27,7 @@ const ARTIFACT_A = "00000000-0000-7000-8000-00000000000a";
 const V3 = "00000000-0000-7000-8000-000000000003";
 const V5 = "00000000-0000-7000-8000-000000000005";
 
+/** A release of artifact A, as both are. */
 const release = (
   releaseId: string,
   label: number,
@@ -34,7 +35,6 @@ const release = (
 ): AdoptionRelease => ({
   releaseId,
   label,
-  bundleId: ARTIFACT_A,
   platform: "ios",
   deployedAtMs: label,
   targetAppVersion: "1.0.0",

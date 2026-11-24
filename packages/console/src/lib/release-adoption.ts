@@ -26,7 +26,6 @@ export type AdoptionRelease = {
   readonly releaseId: string;
   /** The release's label, shown `v12`; null for a release without one. */
   readonly label: number | null;
-  readonly bundleId: string;
   readonly platform: "ios" | "android";
   readonly deployedAtMs: number;
   readonly targetAppVersion: string | null;
@@ -69,7 +68,11 @@ export type BundleEventsInput = {
   readonly window: InsightsWindow;
   /** The end of an hour; every bundle of one chart reads the same one. */
   readonly endMs: number;
-  readonly bundleId: string;
+  /**
+   * The release, which its reports name: two releases of one artifact in
+   * one channel, as a promote back into it makes them, count apart.
+   */
+  readonly releaseId: string;
   readonly type: BundleEventType;
 };
 
@@ -80,7 +83,7 @@ export type BundleEventsInput = {
  * reports running it, or crashes on it; one that comes back counts again.
  */
 export type BundleEventsSeries = {
-  readonly bundleId: string;
+  readonly releaseId: string;
   readonly type: BundleEventType;
   readonly measuredAtMs: number;
   readonly points: readonly {
@@ -141,7 +144,7 @@ export function readBundleEventsInput(
     !Number.isSafeInteger(input.endMs) ||
     input.endMs <= 0 ||
     input.endMs % HOUR_MS !== 0 ||
-    !isText(input.bundleId) ||
+    !isText(input.releaseId) ||
     (input.type !== "DOWNLOADED" &&
       input.type !== "LAUNCHED" &&
       input.type !== "RECOVERED")
@@ -152,7 +155,7 @@ export function readBundleEventsInput(
     channel,
     window: input.window,
     endMs: input.endMs,
-    bundleId: input.bundleId,
+    releaseId: input.releaseId,
     type: input.type,
   };
 }
@@ -186,6 +189,25 @@ export const defaultAdoptionReleases = (
   return (live.length > 0 ? live : candidates)
     .slice(0, DEFAULT_ADOPTION_RELEASES)
     .map((release) => release.releaseId);
+};
+
+/** The characters of a release ID a chip shows after its label, as `ReleaseIdDisplay` does. */
+const CHIP_ID_TAIL = 6;
+
+/**
+ * How a filter chip names the bundle it narrows to: `Bundle v12 a1b2c3`,
+ * its label and the tail of its release ID, from the releases already read;
+ * the whole ID for one without a label or not among them.
+ */
+export const bundleChip = (
+  releaseId: string,
+  releases: readonly Pick<AdoptionRelease, "releaseId" | "label">[],
+): string => {
+  const label =
+    releases.find((release) => release.releaseId === releaseId)?.label ?? null;
+  return label === null
+    ? `Bundle ${releaseId}`
+    : `Bundle v${label} ${releaseId.slice(-CHIP_ID_TAIL)}`;
 };
 
 /** Whether a bundle's crashes call for rolling it back. */

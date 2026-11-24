@@ -22,7 +22,8 @@ import {
 } from "@/lib/insights-search";
 import type { AppUsageScope, UsageWindow } from "@/lib/insights-usage";
 import { getAppUsageReportRpc } from "@/lib/insights-usage-rpc";
-import { useReleaseHealth } from "@/lib/release-adoption-api";
+import { bundleChip } from "@/lib/release-adoption";
+import { knownReleases, useReleaseHealth } from "@/lib/release-adoption-api";
 
 export const Route = createFileRoute("/insights")({
   beforeLoad: ({ context }) =>
@@ -158,7 +159,9 @@ function InsightsPage() {
                 channel={channel}
                 platform={platform}
                 narrower={
-                  search.releaseId ? [`Release ${search.releaseId}`] : []
+                  search.releaseId
+                    ? [bundleChip(search.releaseId, knownReleases(health))]
+                    : []
                 }
               />
             }

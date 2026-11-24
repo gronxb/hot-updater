@@ -47,6 +47,42 @@ describe("InstallationHistoryCard", () => {
     expect(screen.getAllByText("bundle-new").length).toBeGreaterThan(0);
   });
 
+  it("names the running and the downloaded bundle by their release IDs", () => {
+    const installation = {
+      appVersion: "1.2.3",
+      channel: "production",
+      cohort: "1",
+      installId: "install-1",
+      lastKnownBundleId: "bundle-old",
+      lastKnownReleaseId: "rel-old",
+      pendingBundleId: "bundle-new",
+      pendingReleaseId: "rel-new",
+      latestStatus: "UPDATE_DOWNLOADED" as const,
+      platform: "ios" as const,
+      receivedAtMs: Date.UTC(2026, 6, 18),
+      userId: "user-1",
+    };
+    render(
+      <InstallationHistoryCard
+        error={null}
+        history={{ data: [], nextCursor: null }}
+        isLoading={false}
+        onNext={vi.fn()}
+        onPrevious={vi.fn()}
+        pageNumber={1}
+        selectedEvent={installation}
+        selectedInstallId="install-1"
+      />,
+    );
+    const latest = screen.getByRole("region", {
+      name: "Latest reported state",
+    });
+    expect(within(latest).getByText("rel-old")).toBeDefined();
+    expect(within(latest).getByText("rel-new")).toBeDefined();
+    expect(within(latest).queryByText("bundle-old")).toBeNull();
+    expect(within(latest).queryByText("bundle-new")).toBeNull();
+  });
+
   it("shows latest identity and paged movement history", () => {
     const onNext = vi.fn();
     render(

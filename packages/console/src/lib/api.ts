@@ -200,6 +200,20 @@ export function useReleaseQuery(releaseId: string) {
   });
 }
 
+/**
+ * A release's label, `null` for none: read once a page, since a label never
+ * changes once given, under the release's own key.
+ */
+export function useReleaseLabelQuery(releaseId: string) {
+  return useQuery({
+    enabled: releaseId.length > 0,
+    queryFn: () => getRelease({ data: { releaseId } }),
+    queryKey: queryKeys.release(releaseId),
+    select: (release) => release?.label ?? null,
+    staleTime: Infinity,
+  });
+}
+
 export function useReleaseCatalogDiagnosticsQuery(scopeKey: string) {
   return useQuery({
     enabled: scopeKey.length > 0,

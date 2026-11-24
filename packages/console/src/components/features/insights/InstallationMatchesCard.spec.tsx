@@ -11,6 +11,7 @@ const row: InsightsInstallationViewRow = {
   cohort: "1",
   installId: "install-1",
   lastKnownBundleId: "bundle-1",
+  lastKnownReleaseId: "release-1",
   pendingBundleId: null,
   pendingReleaseId: null,
   latestStatus: "UNCHANGED",
@@ -45,5 +46,8 @@ describe("InstallationMatchesCard", () => {
       }),
     );
     expect(onSelect).toHaveBeenCalledWith("install-2");
+    // Each names the bundle it runs by its release ID.
+    expect(screen.getAllByText("release-1")).toHaveLength(2);
+    expect(screen.queryByText("bundle-1")).toBeNull();
   });
 });

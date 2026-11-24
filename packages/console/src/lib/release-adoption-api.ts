@@ -54,6 +54,14 @@ export type ReleaseHealthState = {
   readonly refresh: () => void;
 };
 
+/** The releases Release health has read: the compared ones, then the candidates. */
+export const knownReleases = (
+  health: Pick<ReleaseHealthState, "releases" | "candidates">,
+): readonly AdoptionRelease[] => [
+  ...(health.releases ?? []).map(({ release }) => release),
+  ...(health.candidates ?? []),
+];
+
 /**
  * Release health's reads, each keyed by what it depends on: the newest
  * deployments by channel and platform, kept five minutes; a bundle the
@@ -154,7 +162,7 @@ export function useReleaseHealth({
         channel,
         window,
         endMs,
-        bundleId: release.bundleId,
+        releaseId: release.releaseId,
         type,
       };
       return {
@@ -165,15 +173,16 @@ export function useReleaseHealth({
         placeholderData: (
           previous: BundleEventsSeries | undefined,
         ): BundleEventsSeries | undefined =>
-          previous?.bundleId === release.bundleId && previous.type === type
+          previous?.releaseId === release.releaseId && previous.type === type
             ? previous
             : undefined,
       };
     }),
   });
-  const seriesOf = (bundleId: string, type: BundleEventType) => {
+  // By release: two releases of one artifact each read their own series.
+  const seriesOf = (releaseId: string, type: BundleEventType) => {
     const index = reads.findIndex(
-      (read) => read.release.bundleId === bundleId && read.type === type,
+      (read) => read.release.releaseId === releaseId && read.type === type,
     );
     return index === -1 ? undefined : seriesQueries[index];
   };
@@ -181,9 +190,9 @@ export function useReleaseHealth({
     period: { startMs: endMs - durationMs, endMs, durationMs, intervalMs },
     candidates,
     releases: releases?.map((release) => {
-      const downloaded = seriesOf(release.bundleId, "DOWNLOADED");
-      const launched = seriesOf(release.bundleId, "LAUNCHED");
-      const recovered = seriesOf(release.bundleId, "RECOVERED");
+      const downloaded = seriesOf(release.releaseId, "DOWNLOADED");
+      const launched = seriesOf(release.releaseId, "LAUNCHED");
+      const recovered = seriesOf(release.releaseId, "RECOVERED");
       return {
         release,
         downloaded: downloaded?.data,

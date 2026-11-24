@@ -443,7 +443,9 @@ export function EventBundleTransition({
     EventHistoryRow,
     "type" | "fromBundleId" | "toBundleId" | "failure" | "minBundleId"
   > &
-    Partial<Pick<EventHistoryRow, "change">>;
+    Partial<
+      Pick<EventHistoryRow, "change" | "fromReleaseId" | "toReleaseId">
+    >;
   readonly touch?: boolean;
 }) {
   const downloaded = event.type === "UPDATE_DOWNLOADED";
@@ -458,6 +460,12 @@ export function EventBundleTransition({
   const fromBundleId = moved
     ? event.change!.previous!.bundleId
     : event.fromBundleId;
+  // Each side shows its release ID, the ID the app reports; a side with no
+  // release, such as the built-in bundle, its bundle ID.
+  const fromId = moved
+    ? (event.change!.previous!.releaseId ?? fromBundleId)
+    : (event.fromReleaseId ?? fromBundleId);
+  const toId = event.toReleaseId ?? event.toBundleId;
   const changed =
     downloaded ||
     failed ||
@@ -466,14 +474,14 @@ export function EventBundleTransition({
     event.type === "RECOVERED";
   return (
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2">
-      {fromBundleId && changed ? (
+      {fromId && changed ? (
         <>
           <dt className="text-muted-foreground">
             {downloaded || failed ? "Running" : "From"}
           </dt>
           <dd className="flex min-w-0 flex-wrap items-center gap-2">
             <HashValueDisplay
-              value={fromBundleId}
+              value={fromId}
               buttonClassName={touch ? "min-h-11 px-3" : undefined}
             />
             {isBuiltinBundle(
@@ -498,7 +506,7 @@ export function EventBundleTransition({
           </dt>
           <dd className="flex min-w-0 flex-wrap items-center gap-2">
             <HashValueDisplay
-              value={event.toBundleId}
+              value={toId}
               buttonClassName={touch ? "min-h-11 px-3" : undefined}
             />
             {isBuiltinBundle(event.toBundleId, event.minBundleId) ? (

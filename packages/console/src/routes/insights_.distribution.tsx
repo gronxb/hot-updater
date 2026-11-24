@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, ArrowUpRight, RotateCw } from "lucide-react";
+import { ArrowLeft, RotateCw } from "lucide-react";
 
 import { ArtifactIdDisplay } from "@/components/ArtifactIdDisplay";
 import { ConsoleFeatureUnavailable } from "@/components/ConsoleFeatureUnavailable";
@@ -10,6 +10,7 @@ import { InsightsPageHeader } from "@/components/features/insights/InsightsPageH
 import { UsagePeriodSelector } from "@/components/features/insights/InsightsPeriodSelector";
 import { InfoTooltip } from "@/components/InfoTooltip";
 import { PlatformIcon } from "@/components/PlatformIcon";
+import { ReleaseIdDisplay } from "@/components/ReleaseIdDisplay";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -37,6 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useReleaseLabelQuery } from "@/lib/api";
 import { requireConsoleFeature } from "@/lib/console-features-api";
 import { DEFAULT_CHANNEL } from "@/lib/constants";
 import { useInsightsRetention } from "@/lib/insights-api";
@@ -61,6 +63,37 @@ const bundleName = (row: ReleaseDistribution): string =>
   (row.builtinBundleId
     ? `Built-in bundle ${row.builtinBundleId}`
     : "Unknown bundle");
+
+/**
+ * A row's release by its label and ID, the label linking to the bundle. Only
+ * the rows on the page read their release, one point read each, once.
+ */
+function DistributionRelease({
+  releaseId,
+  appVersion,
+}: {
+  readonly releaseId: string;
+  readonly appVersion: string;
+}) {
+  const label = useReleaseLabelQuery(releaseId);
+  return (
+    <div className="flex min-h-11 min-w-0 items-center md:min-h-9">
+      <ReleaseIdDisplay
+        releaseId={releaseId}
+        className="min-w-0"
+        label={label.data ?? null}
+        labelAs={
+          <Link
+            to="/"
+            search={{ releaseId }}
+            aria-label={`Review bundle ${releaseId} for app version ${appVersion}`}
+            className="min-w-0 underline-offset-4 hover:underline"
+          />
+        }
+      />
+    </div>
+  );
+}
 
 /** The bundle an app version's native build shipped, by its ID. */
 function BuiltinBundle({ bundleId }: { readonly bundleId: string }) {
@@ -342,20 +375,10 @@ function DistributionPage() {
                             </div>
                             <div className="col-span-2 row-start-2 min-w-0 md:col-span-1 md:row-auto">
                               {row.releaseId ? (
-                                <Link
-                                  to="/"
-                                  search={{ releaseId: row.releaseId }}
-                                  aria-label={`Review bundle ${row.releaseId} for app version ${row.appVersion}`}
-                                  className="flex min-h-11 min-w-0 items-center gap-2 text-xs underline-offset-4 hover:underline md:min-h-9"
-                                >
-                                  <span className="break-all font-mono">
-                                    {row.releaseId}
-                                  </span>
-                                  <ArrowUpRight
-                                    aria-hidden="true"
-                                    className="size-3.5 shrink-0"
-                                  />
-                                </Link>
+                                <DistributionRelease
+                                  releaseId={row.releaseId}
+                                  appVersion={row.appVersion}
+                                />
                               ) : row.builtinBundleId ? null : (
                                 <span className="text-sm text-muted-foreground">
                                   Unknown bundle

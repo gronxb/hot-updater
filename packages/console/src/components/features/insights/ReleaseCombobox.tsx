@@ -30,12 +30,11 @@ type ReleaseGroup = {
   readonly items: readonly AdoptionRelease[];
 };
 
-/** Whether a bundle deployment matches what was typed: its label, IDs or target app version. */
+/** Whether a bundle deployment matches what was typed: its label, ID or target app version. */
 const matches = (release: AdoptionRelease, typed: string) =>
   typed === "" ||
   (release.label !== null && `v${release.label}` === typed) ||
   release.releaseId.includes(typed) ||
-  release.bundleId.toLowerCase().includes(typed) ||
   (release.targetAppVersion ?? "").toLowerCase().includes(typed);
 
 /** A bundle deployment as a picker names it: ID, platform, deployment, target, and state. */
