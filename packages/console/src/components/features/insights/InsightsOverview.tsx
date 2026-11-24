@@ -9,8 +9,8 @@ import {
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { InfoTooltip } from "@/components/InfoTooltip";
+import { ReleaseIdDisplay } from "@/components/ReleaseIdDisplay";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -48,7 +48,7 @@ import {
   recommendsRollback,
 } from "@/lib/release-adoption";
 import type {
-  ComparedBundle,
+  ComparedRelease,
   ReleaseHealthState,
 } from "@/lib/release-adoption-api";
 import { cn } from "@/lib/utils";
@@ -77,7 +77,7 @@ const cadenceOf = (intervalMs: number) =>
       : `Every ${intervalMs / HOUR} hours`;
 
 /** A bundle's crash numbers over the period, once both counts are read. */
-const crashesOf = ({ release, launched, recovered }: ComparedBundle) =>
+const crashesOf = ({ release, launched, recovered }: ComparedRelease) =>
   launched === undefined || recovered === undefined
     ? undefined
     : {
@@ -121,7 +121,7 @@ const METRICS = {
 
 /** A bundle's counts on a chart, in the order of `METRICS`. */
 function metricsOf(
-  bundle: ComparedBundle,
+  bundle: ComparedRelease,
   chart: HealthChart,
 ): readonly [Metric, Metric] {
   if (chart === "adoption") {
@@ -200,7 +200,7 @@ function ComparedBundleName({
   release,
   showPlatform,
 }: {
-  readonly release: ComparedBundle["release"];
+  readonly release: ComparedRelease["release"];
   /** Whether the report mixes platforms, so its label needs its platform. */
   readonly showPlatform: boolean;
 }) {
@@ -209,8 +209,8 @@ function ComparedBundleName({
       {/* A label and its ID tail don't shrink, so on a
           phone "Disabled" moves under them instead of over. */}
       <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-        <BundleIdDisplay
-          bundleId={release.releaseId}
+        <ReleaseIdDisplay
+          releaseId={release.releaseId}
           className="min-w-0"
           label={release.label}
           platform={showPlatform ? release.platform : undefined}
@@ -242,7 +242,7 @@ function RemoveButton({
   className,
   onRemove,
 }: {
-  readonly release: ComparedBundle["release"];
+  readonly release: ComparedRelease["release"];
   readonly className: string;
   readonly onRemove: (releaseId: string) => void;
 }) {
@@ -311,7 +311,7 @@ export function InsightsOverview({
   );
   // Adoption draws each bundle's launches solid and its downloads dashed;
   // Crashes draws its crashes.
-  const seriesOf = (bundle: ComparedBundle) =>
+  const seriesOf = (bundle: ComparedRelease) =>
     chart === "adoption" ? bundle.launched : bundle.recovered;
   const loaded = (releases ?? []).filter(
     (bundle) =>
@@ -585,8 +585,8 @@ export function InsightsOverview({
                   <TriangleAlert aria-hidden="true" />
                   <AlertTitle>
                     Roll back{" "}
-                    <BundleIdDisplay
-                      bundleId={bundle.release.releaseId}
+                    <ReleaseIdDisplay
+                      releaseId={bundle.release.releaseId}
                       className="text-sm"
                       label={bundle.release.label}
                       platform={mixed ? bundle.release.platform : undefined}

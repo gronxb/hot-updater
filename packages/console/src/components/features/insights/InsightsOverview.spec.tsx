@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AdoptionRelease } from "@/lib/release-adoption";
 import type {
-  ComparedBundle,
+  ComparedRelease,
   ReleaseHealthState,
 } from "@/lib/release-adoption-api";
 
@@ -80,7 +80,7 @@ const seriesOf = (
 // The new bundle takes over: its downloads and launches start, the
 // previous one's launches stop. Each hour, one installation that downloaded
 // the new bundle has yet to restart into it.
-const bundles: readonly ComparedBundle[] = [
+const bundles: readonly ComparedRelease[] = [
   {
     release: newest,
     downloaded: seriesOf(newest.bundleId, "DOWNLOADED", (hour) =>

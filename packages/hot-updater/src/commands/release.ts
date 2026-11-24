@@ -14,20 +14,19 @@ import { canPrompt } from "../utils/prompt";
 import { failBundleCommand, notFoundError } from "../utils/publicBundleError";
 import {
   labelText,
-  resolveBundleId,
+  resolveReleaseId,
   type LabelScopeOptions,
 } from "./releaseLabel";
 
 const DEFAULT_LIMIT = 20;
 
 export interface ReleaseListOptions {
-  readonly bundleId?: string;
   readonly channel?: string;
   readonly json?: boolean;
   readonly limit?: number;
   readonly platform?: "ios" | "android";
   readonly targetAppVersion?: string;
-  /** Continues a list after this bundle ID, as a stopped scan printed it. */
+  /** Continues a list after this release ID, as a stopped scan printed it. */
   readonly cursor?: string;
 }
 
@@ -227,26 +226,22 @@ const listReleases = async (
       release.target_app_version === options.targetAppVersion);
   const scanning =
     options.targetAppVersion !== undefined ||
-    (options.platform !== undefined &&
-      channelId === undefined &&
-      options.bundleId === undefined);
+    (options.platform !== undefined && channelId === undefined);
   const pageSize = scanning ? PAGE : Math.min(PAGE, limit);
   const maxPages = scanning
     ? Math.max(SCAN_PAGES, Math.ceil(limit / PAGE))
     : Number.POSITIVE_INFINITY;
   const filters: ReleaseFilter[] =
-    options.bundleId !== undefined
-      ? [{ kind: "bundle", bundleId: options.bundleId }]
-      : channelId === undefined
-        ? [{ kind: "all" }]
-        : (options.platform === undefined
-            ? (["ios", "android"] as const)
-            : [options.platform]
-          ).map((platform) => ({
-            kind: "channelPlatform" as const,
-            channelId,
-            platform,
-          }));
+    channelId === undefined
+      ? [{ kind: "all" }]
+      : (options.platform === undefined
+          ? (["ios", "android"] as const)
+          : [options.platform]
+        ).map((platform) => ({
+          kind: "channelPlatform" as const,
+          channelId,
+          platform,
+        }));
   const walks = await Promise.all(
     filters.map(async (filter) => {
       const rows: ReleaseRow[] = [];
@@ -339,7 +334,7 @@ export const handleReleaseShow = async (
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
-    const releaseId = await resolveBundleId(core, idOrLabel, options);
+    const releaseId = await resolveReleaseId(core, idOrLabel, options);
     const release = await core.getRelease(releaseId);
     if (release === null) {
       p.log.error(`No bundle with ID ${releaseId}.`);
@@ -406,7 +401,7 @@ export const handleReleaseUpdate = async (
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
-    const releaseId = await resolveBundleId(core, idOrLabel, options);
+    const releaseId = await resolveReleaseId(core, idOrLabel, options);
     const target = {
       ...(options.expectedRevision === undefined
         ? {}
@@ -456,7 +451,7 @@ export const handleReleaseEnablement = async (
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
-    const releaseId = await resolveBundleId(core, idOrLabel, options);
+    const releaseId = await resolveReleaseId(core, idOrLabel, options);
     let expectedRevision = options.expectedRevision;
     if (!enabled) {
       const release = await core.getRelease(releaseId);
@@ -549,7 +544,7 @@ export const handleReleaseDelete = async (
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
-    const releaseId = await resolveBundleId(core, idOrLabel, options);
+    const releaseId = await resolveReleaseId(core, idOrLabel, options);
     const release = await core.getRelease(releaseId);
     if (release === null) {
       return await failBundleCommand(

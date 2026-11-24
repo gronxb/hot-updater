@@ -17,7 +17,7 @@ import {
   useUpdateFailuresQuery,
 } from "@/lib/insights-api";
 import {
-  comparedBundleIds,
+  comparedReleaseIds,
   validateInsightsSearch,
 } from "@/lib/insights-search";
 import type { AppUsageScope, UsageWindow } from "@/lib/insights-usage";
@@ -65,7 +65,7 @@ function InsightsPage() {
     platform,
     channel,
     window: bundleWindow,
-    releaseIds: comparedBundleIds(search.bundles),
+    releaseIds: comparedReleaseIds(search.bundles),
     focusReleaseId: search.releaseId,
     chart,
   });

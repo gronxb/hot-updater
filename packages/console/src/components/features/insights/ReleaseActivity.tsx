@@ -12,15 +12,15 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import type {
-  BundleActivityInput,
-  BundleActivityReport,
-} from "@/lib/bundle-activity";
-import { useBundleActivityQuery } from "@/lib/bundle-activity";
 import { useConsoleFeature } from "@/lib/console-features-api";
 import { useUpdateFailuresQuery } from "@/lib/insights-api";
 import { failureRate, formatRate } from "@/lib/insights-failures";
 import { adoptionWindow } from "@/lib/insights-search";
+import type {
+  ReleaseActivityInput,
+  ReleaseActivityReport,
+} from "@/lib/release-activity";
+import { useReleaseActivityQuery } from "@/lib/release-activity";
 import { cn } from "@/lib/utils";
 
 import type { ReleaseColumn } from "../FeatureSlots";
@@ -33,7 +33,7 @@ const activityStats = [
 
 // As Release health rates crashes: over launches plus crashes, since an
 // installation that crashes never reports running the bundle.
-const crashRate = (report: BundleActivityReport): string => {
+const crashRate = (report: ReleaseActivityReport): string => {
   const attempts = report.launched + report.failedLaunches;
   return attempts === 0
     ? "—"
@@ -41,7 +41,7 @@ const crashRate = (report: BundleActivityReport): string => {
 };
 
 /** Downloads that neither launched nor crashed yet: waiting for a restart, or passed over for a newer bundle. */
-const notLaunched = (report: BundleActivityReport) =>
+const notLaunched = (report: ReleaseActivityReport) =>
   Math.max(0, report.downloads - report.launched - report.failedLaunches);
 
 function ReleaseMetricsInfo() {
@@ -54,15 +54,15 @@ function ReleaseMetricsInfo() {
   );
 }
 
-export function BundleMovementSummary({
+export function ReleaseMovementSummary({
   report,
   loading = false,
   input,
   variant = "inline",
 }: {
-  readonly report?: BundleActivityReport;
+  readonly report?: ReleaseActivityReport;
   readonly loading?: boolean;
-  readonly input?: BundleActivityInput;
+  readonly input?: ReleaseActivityInput;
   readonly variant?: "inline" | "card";
 }) {
   if (!report) {
@@ -163,10 +163,10 @@ export function BundleMovementSummary({
 }
 
 /** The release's failed downloads and installs since its first report, and their rate. */
-export function BundleDownloadFailures({
+export function ReleaseDownloadFailures({
   input,
 }: {
-  readonly input: BundleActivityInput;
+  readonly input: ReleaseActivityInput;
 }) {
   const query = useUpdateFailuresQuery({
     platform: input.platform,
@@ -214,12 +214,12 @@ export function BundleDownloadFailures({
 }
 
 /** The bundle detail's Insights card, a section of the release editor: activity and download failures. */
-export function BundleInsightsSummary({
+export function ReleaseInsightsSummary({
   input,
 }: {
-  readonly input: BundleActivityInput;
+  readonly input: ReleaseActivityInput;
 }) {
-  const query = useBundleActivityQuery([input]);
+  const query = useReleaseActivityQuery([input]);
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between px-4 pt-4 pb-3">
@@ -227,14 +227,14 @@ export function BundleInsightsSummary({
         <ReleaseMetricsInfo />
       </CardHeader>
       <CardContent className="flex flex-col gap-3 px-4 pb-4">
-        <BundleMovementSummary
+        <ReleaseMovementSummary
           variant="card"
           input={input}
           loading={query.isFetching}
           report={query.data?.[input.releaseId]}
         />
         <Separator />
-        <BundleDownloadFailures input={input} />
+        <ReleaseDownloadFailures input={input} />
       </CardContent>
       <CardFooter className="px-4 pb-4">
         <Link
@@ -268,7 +268,7 @@ export function BundleInsightsSummary({
 export function ReleaseFailuresSection({
   input,
 }: {
-  readonly input: BundleActivityInput;
+  readonly input: ReleaseActivityInput;
 }) {
   const activity = useConsoleFeature("insightsAnalytics");
   if (activity) return null;
@@ -278,7 +278,7 @@ export function ReleaseFailuresSection({
         <CardTitle className="text-sm font-medium">Insights</CardTitle>
       </CardHeader>
       <CardContent className="px-4 pb-4">
-        <BundleDownloadFailures input={input} />
+        <ReleaseDownloadFailures input={input} />
       </CardContent>
     </Card>
   );
@@ -294,11 +294,11 @@ function ReleaseActivityCell({
   releases,
 }: {
   readonly releaseId: string;
-  readonly releases: readonly BundleActivityInput[];
+  readonly releases: readonly ReleaseActivityInput[];
 }) {
-  const query = useBundleActivityQuery(releases);
+  const query = useReleaseActivityQuery(releases);
   return (
-    <BundleMovementSummary
+    <ReleaseMovementSummary
       input={releases.find((release) => release.releaseId === releaseId)}
       loading={query.isFetching}
       report={query.data?.[releaseId]}

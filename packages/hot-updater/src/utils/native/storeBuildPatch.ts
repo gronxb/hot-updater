@@ -17,32 +17,47 @@ const shellWord = (value: string): string =>
     ? value
     : `'${value.replaceAll("'", `'\\''`)}'`;
 
-/** The command that adds a patch from a build's built-in bundle to an OTA. */
+/**
+ * The command that adds a patch from a build's built-in bundle to an OTA's
+ * artifact: `-b` is `--artifact-id`.
+ */
 export const storeBuildPatchCommand = (
   build: Pick<NativeBuildRow, "platform" | "min_bundle_id">,
   channel: string,
-  bundleId: string,
+  artifactId: string,
 ): string =>
   [
     "npx hot-updater patch",
     `-p ${build.platform}`,
     `-c ${shellWord(channel)}`,
-    `-b ${shellWord(bundleId)}`,
+    `-b ${shellWord(artifactId)}`,
     `--base-artifact-id ${shellWord(build.min_bundle_id)}`,
   ].join(" ");
+
+/** The OTA a fresh install gets first, which has no patch from the build. */
+export interface MissingStorePatch {
+  /** The OTA's bundle ID, as users know it: its release's ID. */
+  readonly releaseId: string;
+  /** The release's label, or null for one without. */
+  readonly label: number | null;
+  /** The artifact the release serves, which the patch updates to. */
+  readonly artifactId: string;
+  readonly command: string;
+}
 
 /**
  * The OTA a fresh install of a marked build gets first, when it has no patch
  * from the build, and the command that adds one: the newest release of the
  * build's scope that serves anyone, in its catalog at the build's app
  * version. A release at 0% with no cohort serves no install, so the one
- * before it is the OTA. Two reads: the scope's catalog and that OTA. Null
- * when the scope serves the build no OTA, or the OTA has the patch.
+ * before it is the OTA. Two reads: the scope's catalog and that OTA's
+ * artifact. Null when the scope serves the build no OTA, or the OTA has the
+ * patch.
  */
 export const findMissingStorePatch = async (
   core: Pick<HotUpdaterCoreApi, "getReleaseCatalogRow" | "getBundle">,
   build: NativeBuildRow,
-): Promise<{ readonly bundleId: string; readonly command: string } | null> => {
+): Promise<MissingStorePatch | null> => {
   const channelKey = build.channel_id.slice(CHANNEL_ID_PREFIX.length);
   const scopeKey =
     build.fingerprint_hash === null
@@ -66,10 +81,16 @@ export const findMissingStorePatch = async (
     ({ rolloutCohortCount, targetCohorts }) =>
       rolloutCohortCount > 0 || targetCohorts.length > 0,
   );
-  const bundleId = served?.bundleId ?? null;
+  const artifactId = served?.bundleId ?? null;
   // A rollback, or a release older than the build, gives a fresh install no OTA.
-  if (bundleId === null || bundleId <= build.min_bundle_id) return null;
-  const ota = await core.getBundle(bundleId);
+  if (
+    served === undefined ||
+    artifactId === null ||
+    artifactId <= build.min_bundle_id
+  ) {
+    return null;
+  }
+  const ota = await core.getBundle(artifactId);
   if (
     ota === null ||
     ota.patches.some(
@@ -79,11 +100,13 @@ export const findMissingStorePatch = async (
     return null;
   }
   return {
-    bundleId,
+    releaseId: served.releaseId,
+    label: served.label ?? null,
+    artifactId,
     command: storeBuildPatchCommand(
       build,
       decodeChannelKey(channelKey),
-      bundleId,
+      artifactId,
     ),
   };
 };

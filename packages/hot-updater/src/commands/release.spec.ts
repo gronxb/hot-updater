@@ -89,7 +89,7 @@ describe("Bundle commands", () => {
     }
   });
 
-  it("filters Releases by Bundle and includes creation time in the table", async () => {
+  it("lists releases with their creation time in the table", async () => {
     const first = deployment("01900000-0000-7000-8000-000000000001");
     const second = deployment("01900000-0000-7000-8000-000000000002");
     const [firstRelease, secondRelease] = await databaseHarness.seedDeployments(
@@ -98,14 +98,14 @@ describe("Bundle commands", () => {
     const output = vi.spyOn(console, "log").mockImplementation(() => {});
     const { handleReleaseList } = await import("./release");
 
-    await handleReleaseList({ bundleId: first.bundle.id });
+    await handleReleaseList({});
 
     const rendered = stripVTControlCharacters(
       String(output.mock.calls[0]?.[0]),
     );
     expect(rendered).toContain("Created");
     expect(rendered).toContain(firstRelease!.id);
-    expect(rendered).not.toContain(secondRelease!.id);
+    expect(rendered).toContain(secondRelease!.id);
   });
 
   it("shows console ID and policy without file or catalog internals", async () => {

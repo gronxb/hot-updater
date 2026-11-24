@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BundleIdDisplay } from "./BundleIdDisplay";
+import { ReleaseIdDisplay } from "./ReleaseIdDisplay";
 
 const id = "01a13d86-86f7-7830-952d-21238207019f";
 const writeText = vi.fn<(text: string) => Promise<void>>();
@@ -27,9 +27,9 @@ afterEach(() => {
   writeText.mockReset();
 });
 
-describe("BundleIdDisplay", () => {
+describe("ReleaseIdDisplay", () => {
   it("shows a labeled release as its label and the last 6 characters of its ID, and reads all of it", () => {
-    render(<BundleIdDisplay bundleId={id} label={14} />);
+    render(<ReleaseIdDisplay releaseId={id} label={14} />);
 
     const copy = screen.getByRole("button", { name: `Copy ID ${id}` });
     // The whole ID is in the text, clipped to its tail in the label's size.
@@ -51,7 +51,7 @@ describe("BundleIdDisplay", () => {
   });
 
   it("shows the full ID in a popover when the tail is hovered or focused", async () => {
-    render(<BundleIdDisplay bundleId={id} label={14} />);
+    render(<ReleaseIdDisplay releaseId={id} label={14} />);
     const copy = screen.getByRole("button", { name: `Copy ID ${id}` });
 
     fireEvent.mouseEnter(copy);
@@ -62,14 +62,14 @@ describe("BundleIdDisplay", () => {
     expect(within(hovered).getByText("Click to copy")).toBeTruthy();
 
     cleanup();
-    render(<BundleIdDisplay bundleId={id} label={14} />);
+    render(<ReleaseIdDisplay releaseId={id} label={14} />);
     act(() => screen.getByRole("button", { name: `Copy ID ${id}` }).focus());
     const focused = await screen.findByRole("tooltip", {}, { timeout: 2_000 });
     expect(within(focused).getByText(id)).toBeTruthy();
   });
 
   it("copies the full ID on a click and says so in the popover", async () => {
-    render(<BundleIdDisplay bundleId={id} label={14} />);
+    render(<ReleaseIdDisplay releaseId={id} label={14} />);
 
     fireEvent.click(screen.getByRole("button", { name: `Copy ID ${id}` }));
 
@@ -82,7 +82,7 @@ describe("BundleIdDisplay", () => {
 
   it("says when the ID couldn't be copied", async () => {
     writeText.mockRejectedValue(new Error("Denied"));
-    render(<BundleIdDisplay bundleId={id} label={14} />);
+    render(<ReleaseIdDisplay releaseId={id} label={14} />);
 
     fireEvent.click(screen.getByRole("button", { name: `Copy ID ${id}` }));
 
@@ -95,7 +95,7 @@ describe("BundleIdDisplay", () => {
     render(
       // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
       <div onClick={openRow}>
-        <BundleIdDisplay bundleId={id} label={14} />
+        <ReleaseIdDisplay releaseId={id} label={14} />
       </div>,
     );
 
@@ -108,8 +108,8 @@ describe("BundleIdDisplay", () => {
   it("renders the label as the caller's control, with the tail its own button beside it", () => {
     const open = vi.fn();
     render(
-      <BundleIdDisplay
-        bundleId={id}
+      <ReleaseIdDisplay
+        releaseId={id}
         label={14}
         labelAs={<button type="button" aria-label="Open" onClick={open} />}
       />,
@@ -127,7 +127,7 @@ describe("BundleIdDisplay", () => {
   it("holds no button inside another control, and shows the full ID on hover there", () => {
     render(
       <a href="#bundle">
-        <BundleIdDisplay bundleId={id} copyable={false} label={14} />
+        <ReleaseIdDisplay releaseId={id} copyable={false} label={14} />
       </a>,
     );
 
@@ -138,7 +138,7 @@ describe("BundleIdDisplay", () => {
   });
 
   it("puts the platform before the label where a list mixes platforms", () => {
-    render(<BundleIdDisplay bundleId={id} label={14} platform="android" />);
+    render(<ReleaseIdDisplay releaseId={id} label={14} platform="android" />);
 
     const display = screen.getByRole("button", {
       name: `Copy ID ${id}`,
@@ -148,13 +148,13 @@ describe("BundleIdDisplay", () => {
   });
 
   it("shows a short ID whole beside its label", () => {
-    render(<BundleIdDisplay bundleId="r-1" label={3} />);
+    render(<ReleaseIdDisplay releaseId="r-1" label={3} />);
 
     expect(screen.getByText("r-1").className).not.toContain("overflow-hidden");
   });
 
   it("shows the full ID of a release without a label", () => {
-    render(<BundleIdDisplay bundleId={id} label={null} />);
+    render(<ReleaseIdDisplay releaseId={id} label={null} />);
 
     expect(screen.getByText(id)).toBeTruthy();
     expect(screen.queryByRole("button")).toBeNull();

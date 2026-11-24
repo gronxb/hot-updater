@@ -60,14 +60,14 @@ const refusalMessage = (
 /**
  * Ends a bundle command core refused, such as for an ID no bundle has, with
  * the reason and no stack: on stdout as JSON under `--json`, with the
- * message on stderr. An artifact ID, which `native-build mark` and
- * `patch -b` print, names no bundle, so a missing ID costs one indexed read
- * for the newest bundle that ships it, only on this path. Anything but a
- * refusal is thrown on.
+ * message on stderr. `id` is what the user passed as a bundle ID, a
+ * release's. An artifact ID, which `patch -b` takes, names no bundle, so a
+ * missing ID costs one indexed read for the newest bundle that ships it as
+ * an artifact, only on this path. Anything but a refusal is thrown on.
  */
 export const failBundleCommand = async (
   core: HotUpdaterCoreApi,
-  releaseId: string,
+  id: string,
   error: unknown,
   { json, outcome }: { readonly json?: boolean; readonly outcome: string },
 ): Promise<void> => {
@@ -81,7 +81,7 @@ export const failBundleCommand = async (
   const [shipping = null] = notFound
     ? await core
         .listReleases({
-          filter: { kind: "bundle", bundleId: releaseId },
+          filter: { kind: "bundle", bundleId: id },
           limit: 1,
           order: "desc",
         })
@@ -89,16 +89,16 @@ export const failBundleCommand = async (
     : [];
   const message = notFound
     ? [
-        `No bundle with ID ${releaseId}.`,
+        `No bundle with ID ${id}.`,
         shipping !== null && `That's an artifact ID. Use bundle ${shipping.id}`,
       ]
         .filter(Boolean)
         .join("\n")
-    : refusalMessage(error, releaseId);
+    : refusalMessage(error, id);
   if (json) {
     console.log(
       JSON.stringify({
-        id: releaseId,
+        id,
         [outcome]: false,
         reason: notFound ? "not_found" : error.code.toLowerCase(),
         ...(shipping === null ? {} : { releaseId: shipping.id }),

@@ -22,7 +22,7 @@ describe("Release search state", () => {
     ).toEqual({
       afterReleaseId: undefined,
       beforeReleaseId: undefined,
-      bundleId: undefined,
+      artifactId: undefined,
       channelId: undefined,
       enabled: undefined,
       platform: undefined,
@@ -41,7 +41,10 @@ describe("Release search state", () => {
     });
     expect(
       releaseFilterOf(
-        validateReleaseSearch({ bundleId: "bundle-1", channelId: "channel-1" }),
+        validateReleaseSearch({
+          artifactId: "bundle-1",
+          channelId: "channel-1",
+        }),
       ),
     ).toEqual({ kind: "bundle", bundleId: "bundle-1" });
     expect(
@@ -50,6 +53,17 @@ describe("Release search state", () => {
       ),
     ).toEqual({ kind: "scope", scopeKey: "scope-1", enabled: false });
     expect(hasReleaseFilters(validateReleaseSearch({}))).toBe(false);
+  });
+
+  it("filters by an artifact under its own name, and reads no ?bundleId=", () => {
+    // A bundle ID is a release ID to users, so the artifact filter isn't
+    // named after it, and the old key opens the unfiltered list.
+    const old = validateReleaseSearch({ bundleId: "artifact-1" });
+    expect(Object.values(old).filter(Boolean)).toEqual([]);
+    expect(hasReleaseFilters(old)).toBe(false);
+    expect(
+      releaseFilterOf(validateReleaseSearch({ artifactId: " artifact-1 " })),
+    ).toEqual({ kind: "bundle", bundleId: "artifact-1" });
   });
 
   it("keeps only one cursor and starts over when a filter changes", () => {
@@ -66,7 +80,7 @@ describe("Release search state", () => {
     expect(updateReleaseFilters(parsed, { platform: "android" })).toEqual({
       afterReleaseId: undefined,
       beforeReleaseId: undefined,
-      bundleId: undefined,
+      artifactId: undefined,
       channelId: "channel-1",
       enabled: undefined,
       platform: "android",
@@ -81,7 +95,7 @@ describe("Release search state", () => {
       enabled: "true",
     });
 
-    const byBundle = updateReleaseFilters(channel, { bundleId: "bundle-1" });
+    const byBundle = updateReleaseFilters(channel, { artifactId: "bundle-1" });
     expect(releaseFilterOf(byBundle)).toEqual({
       kind: "bundle",
       bundleId: "bundle-1",
@@ -93,7 +107,9 @@ describe("Release search state", () => {
       releaseFilterOf(updateReleaseFilters(channel, { scopeKey: "scope-1" })),
     ).toEqual({ kind: "scope", scopeKey: "scope-1", enabled: true });
     expect(
-      releaseFilterOf(updateReleaseFilters(byBundle, { bundleId: undefined })),
+      releaseFilterOf(
+        updateReleaseFilters(byBundle, { artifactId: undefined }),
+      ),
     ).toEqual({ kind: "all" });
   });
 
@@ -147,7 +163,7 @@ describe("Release search state", () => {
         channelId: "channel-s",
         platform: "ios",
       });
-      expect(filterOf({ bundleId: "b" }, undefined)).toEqual({
+      expect(filterOf({ artifactId: "b" }, undefined)).toEqual({
         kind: "bundle",
         bundleId: "b",
       });

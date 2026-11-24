@@ -12,12 +12,13 @@ export const labelText = (release: Pick<ReleaseRow, "label">): string =>
   typeof release.label === "number" ? `v${release.label}` : "";
 
 /**
- * The bundle ID `idOrLabel` names: itself, or for `v<N>`, the bundle with
- * that label in `-c`'s channel and `-p`'s platform, one read. Exits with one
+ * The release ID `idOrLabel` names, which users call a bundle ID: itself,
+ * or for `v<N>`, the release with that label in `-c`'s channel and `-p`'s
+ * platform, one read. Exits with one
  * line when a flag is missing, no bundle has the label, or the server is
  * older than labels.
  */
-export const resolveBundleId = async (
+export const resolveReleaseId = async (
   core: HotUpdaterCoreApi,
   idOrLabel: string,
   { channel, platform }: LabelScopeOptions,

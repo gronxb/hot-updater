@@ -3,11 +3,11 @@ import type {
   ReleaseReference,
 } from "@hot-updater/server/plugins";
 
-import type { BundleActivityInput } from "../bundle-activity";
+import type { ReleaseActivityInput } from "../release-activity";
 
-export async function getBundleActivity(
+export async function getReleaseActivity(
   model: InsightsModel,
-  inputs: readonly BundleActivityInput[],
+  inputs: readonly ReleaseActivityInput[],
 ) {
   if (inputs.length === 0) return {};
   const releases: ReleaseReference[] = inputs.map((input) => ({

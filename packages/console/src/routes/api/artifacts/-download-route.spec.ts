@@ -17,10 +17,10 @@ vi.mock("@/lib/server/downloadBundle", () => ({
   downloadBundle: downloadBundleMock,
 }));
 
-import { Route } from "./$bundleId/download";
+import { Route } from "./$artifactId/download";
 
 type DownloadHandler = (input: {
-  readonly params: { readonly bundleId: string };
+  readonly params: { readonly artifactId: string };
   readonly request: Request;
 }) => Promise<Response>;
 
@@ -32,17 +32,17 @@ const handler = (
   }
 ).options.server.handlers.GET;
 
-describe("bundle download route authorization", () => {
+describe("artifact download route authorization", () => {
   it("does not touch bundle storage when console access is denied", async () => {
     const request = new Request(
-      "https://console.example.com/api/bundles/bundle-1/download",
+      "https://console.example.com/api/artifacts/bundle-1/download",
     );
     prepareConfigMock.mockRejectedValueOnce(
       new Response("Unauthorized", { status: 401 }),
     );
 
     await expect(
-      handler({ params: { bundleId: "bundle-1" }, request }),
+      handler({ params: { artifactId: "bundle-1" }, request }),
     ).rejects.toMatchObject({ status: 401 });
 
     expect(prepareConfigMock).toHaveBeenCalledWith(request);

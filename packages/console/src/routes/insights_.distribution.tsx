@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, ArrowUpRight, RotateCw } from "lucide-react";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { ArtifactIdDisplay } from "@/components/ArtifactIdDisplay";
 import { ConsoleFeatureUnavailable } from "@/components/ConsoleFeatureUnavailable";
 import { BuiltinBundleBadge } from "@/components/features/insights/BuiltinBundle";
 import { InsightsErrorAlert } from "@/components/features/insights/InsightsErrorAlert";
@@ -45,7 +45,7 @@ import {
   validateDistributionSearch,
   validateInsightsSearch,
 } from "@/lib/insights-search";
-import type { BundleDistribution } from "@/lib/insights-usage";
+import type { ReleaseDistribution } from "@/lib/insights-usage";
 import { getAppUsageReportRpc } from "@/lib/insights-usage-rpc";
 
 const PAGE_SIZE = 20;
@@ -56,7 +56,7 @@ const dates = new Intl.DateTimeFormat("en", {
 });
 
 /** How a distribution row's bundle reads aloud. */
-const bundleName = (row: BundleDistribution): string =>
+const bundleName = (row: ReleaseDistribution): string =>
   row.releaseId ??
   (row.builtinBundleId
     ? `Built-in bundle ${row.builtinBundleId}`
@@ -67,7 +67,10 @@ function BuiltinBundle({ bundleId }: { readonly bundleId: string }) {
   return (
     <div className="flex min-h-11 min-w-0 flex-wrap items-center gap-2 md:min-h-9">
       <BuiltinBundleBadge />
-      <BundleIdDisplay bundleId={bundleId} className="text-muted-foreground" />
+      <ArtifactIdDisplay
+        artifactId={bundleId}
+        className="text-muted-foreground"
+      />
     </div>
   );
 }

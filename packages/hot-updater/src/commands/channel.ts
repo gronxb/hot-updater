@@ -257,7 +257,8 @@ export const handleChannelDelete = (
           };
         }
       }
-      const deletedBundleIds = releases.map(({ id }) => id);
+      // Users call release IDs bundle IDs, so the JSON key says bundle.
+      const deletedReleaseIds = releases.map(({ id }) => id);
 
       if (options.json) {
         console.log(
@@ -265,7 +266,7 @@ export const handleChannelDelete = (
             {
               channel,
               ...result,
-              deletedBundleIds,
+              deletedBundleIds: deletedReleaseIds,
               ...(options.nativeBuilds ? { deletedNativeBuildIds } : {}),
             },
             null,
@@ -276,7 +277,7 @@ export const handleChannelDelete = (
         p.log.success(
           ui.block(result.deleted ? "Channel deleted" : "Bundles deleted", [
             ui.kv("Channel", ui.channel(channel)),
-            ui.kv("Bundles", String(deletedBundleIds.length)),
+            ui.kv("Bundles", String(deletedReleaseIds.length)),
             options.nativeBuilds &&
               ui.kv("Native builds", String(deletedNativeBuildIds.length)),
             "keptNativeBuildIds" in result &&

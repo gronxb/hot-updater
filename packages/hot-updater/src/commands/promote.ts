@@ -8,7 +8,7 @@ import { ui } from "../utils/cli-ui";
 import { failBundleCommand, notFoundError } from "../utils/publicBundleError";
 import {
   labelText,
-  resolveBundleId,
+  resolveReleaseId,
   type LabelScopeOptions,
 } from "./releaseLabel";
 
@@ -69,7 +69,7 @@ export const handlePromote = async (
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
-    const sourceReleaseId = await resolveBundleId(
+    const sourceReleaseId = await resolveReleaseId(
       core,
       sourceIdOrLabel,
       options,

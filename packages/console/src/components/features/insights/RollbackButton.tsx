@@ -3,7 +3,7 @@ import { Undo2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { ReleaseIdDisplay } from "@/components/ReleaseIdDisplay";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -98,8 +98,8 @@ export function RollbackButton({
       <AlertDialogContent initialFocus={cancel}>
         <AlertDialogHeader>
           <AlertDialogTitle>Roll back this bundle?</AlertDialogTitle>
-          <BundleIdDisplay
-            bundleId={id}
+          <ReleaseIdDisplay
+            releaseId={id}
             label={release.label}
             platform={showPlatform ? release.platform : undefined}
           />

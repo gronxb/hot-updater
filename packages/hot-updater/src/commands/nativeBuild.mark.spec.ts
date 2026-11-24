@@ -176,6 +176,15 @@ describe("handleNativeBuildMark", () => {
     `npx hot-updater patch -p ios -c ${channel} -b ${bundleId} --base-artifact-id ${builtInId(6)}`;
   const patchesOf = async (bundleId: string) =>
     (await databaseHarness.core.getBundle(bundleId))?.patches ?? [];
+  /** The release serving an artifact: what `bundle show` and the Console name. */
+  const releaseOf = async (artifactId: string) => {
+    const [release] = await databaseHarness.core.listReleases({
+      filter: { kind: "bundle", bundleId: artifactId },
+      limit: 1,
+      order: "desc",
+    });
+    return release!;
+  };
 
   it("names the patch the OTA a fresh install gets is missing, and changes no OTA", async () => {
     await register(6);
@@ -188,10 +197,16 @@ describe("handleNativeBuildMark", () => {
       update: vi.spyOn(databaseHarness.core, "updateBundle"),
     };
 
+    const ota = await releaseOf(otaId(2));
+    // A release has its own ID, apart from the artifact it serves.
+    expect(ota.id).not.toBe(otaId(2));
+
     await mark(buildId(6));
 
+    // Named by its bundle ID, the release's, which `bundle show` takes; the
+    // command patches its artifact.
     expect(lines("warn")).toEqual([
-      `OTA ${otaId(2).slice(0, 8)} has no patch from it, so fresh installs download all of it.\n${command(otaId(2))}`,
+      `Bundle v${ota.label} ${ota.id} has no patch from it, so fresh installs download all of it.\n${command(otaId(2))}`,
     ]);
     // Two reads: the scope's catalog and the OTA. No write but the mark.
     expect(reads.catalog).toHaveBeenCalledOnce();
@@ -311,13 +326,19 @@ describe("handleNativeBuildMark", () => {
     await register(6);
     await mark(buildId(2));
     await deployOta(otaId(1));
+    const ota = await releaseOf(otaId(1));
 
     await mark(buildId(6), { json: true });
 
     expect(output()).toMatchObject({
       nativeBuild: { id: buildId(6), is_store_build: true },
       previous: { id: buildId(2), is_store_build: false },
-      missingPatch: { bundleId: otaId(1), command: command(otaId(1)) },
+    });
+    expect(output().missingPatch).toEqual({
+      releaseId: ota.id,
+      label: ota.label,
+      artifactId: otaId(1),
+      command: command(otaId(1)),
     });
   });
 

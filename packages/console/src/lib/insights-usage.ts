@@ -11,7 +11,7 @@ export type UsageDistribution = {
   readonly installations: number;
 };
 
-export type BundleDistribution = {
+export type ReleaseDistribution = {
   readonly appVersion: string;
   readonly platform: "ios" | "android";
   readonly releaseId: string | null;
@@ -21,7 +21,7 @@ export type BundleDistribution = {
 };
 
 export type AppUsageReport = {
-  readonly bundleDistribution: readonly BundleDistribution[];
+  readonly bundleDistribution: readonly ReleaseDistribution[];
   readonly activeInstallations: number;
   readonly sinceMs: number;
   /**

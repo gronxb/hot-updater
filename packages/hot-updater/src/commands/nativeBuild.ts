@@ -930,8 +930,14 @@ export const handleNativeBuildMark = async (
               .join("\n"),
       );
       if (missingPatch !== null) {
+        const bundle = [
+          missingPatch.label === null ? null : `v${missingPatch.label}`,
+          missingPatch.releaseId,
+        ]
+          .filter(Boolean)
+          .join(" ");
         p.log.warn(
-          `OTA ${missingPatch.bundleId.slice(0, 8)} has no patch from it, so fresh installs download all of it.\n${missingPatch.command}`,
+          `Bundle ${bundle} has no patch from it, so fresh installs download all of it.\n${missingPatch.command}`,
         );
       }
     } finally {

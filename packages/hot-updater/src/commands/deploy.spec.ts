@@ -2546,7 +2546,7 @@ describe("deploy rollout wiring", () => {
     await deployWithFailingNativeBuildLookup(new Error("database unavailable"));
 
     expect(mockCli.p.log.warn).toHaveBeenCalledWith(
-      "Partial update skipped for file built-in: database unavailable",
+      "Partial update skipped for the built-in bundle: database unavailable",
     );
   });
 
@@ -2676,7 +2676,7 @@ describe("deploy rollout wiring", () => {
       expect.stringContaining("Deployment successful"),
     );
     expect(mockCli.p.log.warn).toHaveBeenCalledWith(
-      `Partial update skipped for file ${fixtureBundleId(122).slice(0, 8)}: storage unavailable`,
+      `Partial update skipped for base artifact ${fixtureBundleId(122)}: storage unavailable`,
     );
   });
 

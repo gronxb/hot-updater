@@ -80,7 +80,7 @@ export function adoptionWindow(releaseId: string, now = Date.now()) {
 }
 
 /** Release health's compared bundles from the `bundles` search value. */
-export const comparedBundleIds = (value: string | undefined) =>
+export const comparedReleaseIds = (value: string | undefined) =>
   value === undefined
     ? undefined
     : [...new Set(value.split(",").filter((id) => id.length > 0))];

@@ -26,8 +26,13 @@ const COPIED_MS = 1_500;
 
 const LABEL_CLASS = "shrink-0 font-medium text-sm text-foreground tabular-nums";
 
-interface BundleIdDisplayProps {
-  bundleId: string;
+interface ReleaseIdDisplayProps {
+  /**
+   * The release's ID: what users call its bundle ID, and what the app's
+   * `getBundleId()` returns. Never an artifact's ID, which
+   * `ArtifactIdDisplay` shows: a label's tail is always its release ID.
+   */
+  releaseId: string;
   /**
    * The release's label, shown `v12 <ID tail>`: the name people use for it,
    * then the end of its ID. The whole ID stays in the text, so screen readers
@@ -57,19 +62,21 @@ interface BundleIdDisplayProps {
    * already fixes the platform or shows it beside the release.
    */
   platform?: "ios" | "android";
-  maxLength?: number;
   className?: string;
-  fullOnMobile?: boolean;
 }
 
-export function BundleIdDisplay({
-  bundleId,
+/**
+ * A release, named the way people read it: `v12 <ID tail>`, or its full ID
+ * without a label. The only display that takes a label.
+ */
+export function ReleaseIdDisplay({
+  releaseId,
   label,
   copyable = true,
   labelAs,
   platform,
   className,
-}: BundleIdDisplayProps) {
+}: ReleaseIdDisplayProps) {
   const prefix = platform ? <PlatformPrefix platform={platform} /> : null;
   if (typeof label !== "number") {
     const id = (
@@ -80,7 +87,7 @@ export function BundleIdDisplay({
           !prefix && className,
         )}
       >
-        {bundleId}
+        {releaseId}
       </span>
     );
     const named = labelAs ? cloneElement(labelAs, { children: id }) : id;
@@ -95,14 +102,14 @@ export function BundleIdDisplay({
       named
     );
   }
-  const clipped = bundleId.length > LABELED_ID_TAIL;
+  const clipped = releaseId.length > LABELED_ID_TAIL;
   return (
     <span
       className={cn(
         "inline-flex min-w-0 items-baseline gap-1.5 whitespace-nowrap",
         className,
       )}
-      title={copyable ? undefined : bundleId}
+      title={copyable ? undefined : releaseId}
     >
       {prefix}
       {labelAs ? (
@@ -117,10 +124,10 @@ export function BundleIdDisplay({
       )}
       {/* Read as "v12 <id>"; the flex gap draws the space. */}{" "}
       {copyable ? (
-        <CopyableTail bundleId={bundleId} clipped={clipped} />
+        <CopyableTail releaseId={releaseId} clipped={clipped} />
       ) : (
         <span translate="no" className={tailClass(clipped)}>
-          {bundleId}
+          {releaseId}
         </span>
       )}
     </span>
@@ -151,10 +158,10 @@ const tailClass = (clipped: boolean) => cn(TAIL_CLASS, clipped && CLIP_CLASS);
 
 /** The tail as a button: the full ID in a popover, and a click copies it. */
 function CopyableTail({
-  bundleId,
+  releaseId,
   clipped,
 }: {
-  readonly bundleId: string;
+  readonly releaseId: string;
   readonly clipped: boolean;
 }) {
   const id = useId();
@@ -167,7 +174,7 @@ function CopyableTail({
     clearTimeout(timer.current);
     setOpen(true);
     try {
-      await navigator.clipboard.writeText(bundleId);
+      await navigator.clipboard.writeText(releaseId);
       setCopied("copied");
     } catch {
       setCopied("failed");
@@ -197,7 +204,7 @@ function CopyableTail({
             <button
               type="button"
               aria-describedby={open ? `${id}-full` : undefined}
-              aria-label={`Copy ID ${bundleId}`}
+              aria-label={`Copy ID ${releaseId}`}
               translate="no"
               className={cn(
                 TAIL_CLASS,
@@ -209,7 +216,7 @@ function CopyableTail({
             />
           }
         >
-          <span className={clipped ? CLIP_CLASS : undefined}>{bundleId}</span>
+          <span className={clipped ? CLIP_CLASS : undefined}>{releaseId}</span>
         </TooltipTrigger>
         <TooltipContent
           className="max-w-80 flex-col items-start gap-0.5"
@@ -220,7 +227,7 @@ function CopyableTail({
             translate="no"
             className="break-all font-mono text-xs tabular-nums"
           >
-            {bundleId}
+            {releaseId}
           </p>
           <p className="text-background/70">
             {copied === "copied"

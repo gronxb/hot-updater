@@ -24,7 +24,7 @@ const READS: Record<HealthChart, readonly BundleEventType[]> = {
 };
 
 /** One compared bundle and the counts read for it so far. */
-export type ComparedBundle = {
+export type ComparedRelease = {
   readonly release: AdoptionRelease;
   readonly downloaded?: BundleEventsSeries;
   readonly launched?: BundleEventsSeries;
@@ -46,7 +46,7 @@ export type ReleaseHealthState = {
    */
   readonly candidates: readonly AdoptionRelease[] | undefined;
   /** The compared bundles; undefined until they are known. */
-  readonly releases: readonly ComparedBundle[] | undefined;
+  readonly releases: readonly ComparedRelease[] | undefined;
   /** True when the bundles are the default, not a choice. */
   readonly isDefault: boolean;
   readonly error: Error | null;

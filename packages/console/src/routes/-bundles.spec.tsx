@@ -30,8 +30,8 @@ const mocks = vi.hoisted(() => ({
   ] as { id: string; name: string }[] | undefined,
 }));
 
-vi.mock("@/lib/bundle-activity", () => ({
-  useBundleActivityQuery: mocks.activity,
+vi.mock("@/lib/release-activity", () => ({
+  useReleaseActivityQuery: mocks.activity,
 }));
 vi.mock("@/lib/console-features-api", () => ({
   useConsoleFeatures: () => ({
@@ -620,7 +620,7 @@ describe("BundlesPage", () => {
       mocks.isMobile.mockReturnValue(mobile);
       releases = [];
 
-      mocks.search.mockReturnValue({ bundleId: "missing" });
+      mocks.search.mockReturnValue({ artifactId: "missing" });
       const { unmount } = render(<BundlesPage />);
       expect(screen.getByText("No bundles match these filters")).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
@@ -1222,7 +1222,10 @@ describe("BundlesPage", () => {
         { channelId: STAGING.id, platform: "ios" },
         { kind: "channelPlatform", channelId: STAGING.id, platform: "ios" },
       ],
-      [{ bundleId: "bundle-1" }, { kind: "bundle", bundleId: "bundle-1" }],
+      [
+        { artifactId: "artifact-1" },
+        { kind: "bundle", bundleId: "artifact-1" },
+      ],
       [{ scopeKey: "scope-1" }, { kind: "scope", scopeKey: "scope-1" }],
       // A link to one release, as Insights and a build's page give, shows it
       // in every channel's list, as before.

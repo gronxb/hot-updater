@@ -2,7 +2,7 @@ import { NUMERIC_COHORT_SIZE } from "@hot-updater/protocol";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, PackageOpen } from "lucide-react";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { ReleaseIdDisplay } from "@/components/ReleaseIdDisplay";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +30,7 @@ import { shellQuote } from "@/lib/shell";
 
 import { CopyableText } from "./CopyableText";
 
-/** How the first OTA to a bundle downloads on this build. */
+/** How the first OTA to an artifact downloads on this build. */
 export type FirstDownload =
   | { readonly kind: "patch"; readonly byteSize: number }
   | { readonly kind: "full" }
@@ -38,19 +38,22 @@ export type FirstDownload =
   | { readonly kind: "unknown" };
 
 /**
- * How an install of the build downloads `bundleId` as its first OTA: as the
- * patch from the built-in bundle when one exists, else the full bundle. The
- * newest page of patches decides it for every bundle down to the page's
- * oldest; an older bundle is unknown only when the page is full.
+ * How an install of the build downloads the artifact `artifactId` as its
+ * first OTA: as the patch from the built-in bundle when one exists, else the
+ * full bundle. Patches belong to artifacts, so a release reads its
+ * artifact's. The newest page of patches decides it for every artifact down
+ * to the page's oldest; an older one is unknown only when the page is full.
  */
 export const firstDownloadOf = (
   patches: NativeBuildDetail["patches"],
-  bundleId: string,
+  artifactId: string,
 ): FirstDownload => {
-  const patch = patches.data.find((row) => row.bundleId === bundleId);
+  const patch = patches.data.find((row) => row.bundleId === artifactId);
   if (patch !== undefined) return { kind: "patch", byteSize: patch.byteSize };
   const oldest = patches.data.at(-1)?.bundleId;
-  return patches.next !== undefined && oldest !== undefined && bundleId < oldest
+  return patches.next !== undefined &&
+    oldest !== undefined &&
+    artifactId < oldest
     ? { kind: "unknown" }
     : { kind: "full" };
 };
@@ -94,20 +97,20 @@ export function ServedNowCard({
   // A hosted Console runs no diff, so a marked build whose first OTA has no
   // patch from it gets the command that adds one. The first OTA is the newest
   // release that serves anyone: one at 0% with no cohort serves no install.
-  const firstOta = servedNow.find(
+  const firstOtaArtifact = servedNow.find(
     ({ rolloutCohortCount, targetCohorts }) =>
       rolloutCohortCount > 0 || targetCohorts.length > 0,
   )?.bundleId;
   const missingPatch =
     build.is_store_build &&
-    firstOta !== undefined &&
-    firstOta !== null &&
-    firstDownloadOf(patches, firstOta).kind === "full"
+    firstOtaArtifact !== undefined &&
+    firstOtaArtifact !== null &&
+    firstDownloadOf(patches, firstOtaArtifact).kind === "full"
       ? [
           "npx hot-updater patch",
           `-p ${build.platform}`,
           `-c ${shellQuote(channel)}`,
-          `-b ${shellQuote(firstOta)}`,
+          `-b ${shellQuote(firstOtaArtifact)}`,
           `--base-artifact-id ${shellQuote(build.min_bundle_id)}`,
         ].join(" ")
       : null;
@@ -174,7 +177,7 @@ export function ServedNowCard({
               </TableHeader>
               <TableBody>
                 {servedNow.map((release) => {
-                  const bundleId = release.bundleId!;
+                  const artifactId = release.bundleId!;
                   const percentage =
                     (release.rolloutCohortCount / NUMERIC_COHORT_SIZE) * 100;
                   return (
@@ -184,8 +187,8 @@ export function ServedNowCard({
                           {/* Named by its release ID, as the Bundles page
                               names it: the label links to the Bundle, and
                               its ID tail copies beside the link. */}
-                          <BundleIdDisplay
-                            bundleId={release.releaseId}
+                          <ReleaseIdDisplay
+                            releaseId={release.releaseId}
                             label={release.label}
                             labelAs={
                               <Link
@@ -219,11 +222,13 @@ export function ServedNowCard({
                         </div>
                       </TableCell>
                       <TableCell className="hidden sm:table-cell">
-                        <TimestampDisplay uuid={bundleId} />
+                        {/* When the release was made, which a promote
+                            makes later than its artifact. */}
+                        <TimestampDisplay uuid={release.releaseId} />
                       </TableCell>
                       <TableCell>
                         <FirstDownloadCell
-                          download={firstDownloadOf(patches, bundleId)}
+                          download={firstDownloadOf(patches, artifactId)}
                         />
                       </TableCell>
                     </TableRow>

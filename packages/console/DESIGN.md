@@ -30,7 +30,7 @@ stays subordinate to exact values and actions.
 
 - Inter Variable is the UI typeface, with the platform stack as the initial
   fallback and the existing monospace stack for identifiers.
-- A labeled release reads `v12 <ID tail>` everywhere (`BundleIdDisplay`),
+- A labeled release reads `v12 <ID tail>` everywhere (`ReleaseIdDisplay`),
   like a git short hash: the label in medium `text-sm`, then its ID in muted
   monospace `text-sm` on the same baseline, clipped from the left to the last
   6 characters, with a plain gap and no dot between them. The whole ID stays
@@ -41,7 +41,7 @@ stays subordinate to exact values and actions.
 - A label is unique only within a channel and platform: production iOS v14,
   production Android v14, and beta iOS v14 are three releases. Where one
   surface lists both platforms' releases, such as Insights with All
-  platforms, `BundleIdDisplay` gets `platform` and shows its muted icon
+  platforms, `ReleaseIdDisplay` gets `platform` and shows its muted icon
   before the label, read as the platform's name. Where the screen fixes the
   platform, or the row already shows it (a Bundles row's platform and channel
   badge, the release sheet, a native build's served releases), nothing more
@@ -50,10 +50,17 @@ stays subordinate to exact values and actions.
 - A label's tail is its release ID (what the app's `getBundleId()`
   returns): its tooltip shows and its copy copies that ID, never an
   artifact's, so `vN` reads the same on every screen.
+- "Bundle ID" in Console copy means the release ID. An artifact's ID shows
+  through `ArtifactIdDisplay`, which takes no label, and its copy says
+  "artifact". `ReleaseIdDisplay` is the only display that takes a label.
 - Where an artifact shows (advanced artifact diagnostics' base and target),
   its ID stays plain, then "Release" and the label of the release serving it
   in the expanded Bundle's channel and platform. Without one on the page,
-  the artifact ID shows alone, never another channel's label.
+  the artifact ID shows alone, never another channel's label. A native
+  build's patches name each target by the release serving it in the build's
+  scope now, and date it by that release, as Served now does; an older
+  target shows as "Artifact" and its ID, dated by the artifact, linking to
+  the Bundles list filtered to that artifact (`?artifactId=`).
 - Page headings use `text-base` or `text-lg` with semibold weight. Operational
   card titles use `text-sm` with medium or semibold weight.
 - Body and control text use `text-sm`; dense metadata and table content use
