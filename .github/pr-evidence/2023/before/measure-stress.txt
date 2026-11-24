@@ -1,8 +1,0 @@
-adoption 360 light: table ×4 card 328 bundleCell 56 tails [12,12,12] problems {"spill-cell":7,"midword":27,"midword-full-id":1} page 360/360 stressed 8
-crashes 360 light: table ×4 card 328 bundleCell 62 tails [12,12,12] problems {"spill-cell":4,"midword":23,"midword-full-id":1} page 360/360 stressed 7
-adoption 390 light: table ×4 card 358 bundleCell 83 tails [12,12,12] problems {"spill-cell":4,"midword":4,"midword-full-id":1} page 390/390 stressed 8
-crashes 390 light: table ×4 card 358 bundleCell 92 tails [12,12,12] problems {"spill-cell":4,"midword":4,"midword-full-id":1} page 390/390 stressed 7
-adoption 480 light: table ×4 card 448 bundleCell 173 tails [12,12,12] problems {"midword-full-id":1} page 480/480 stressed 8
-crashes 480 light: table ×4 card 448 bundleCell 182 tails [12,12,12] problems {"midword-full-id":1} page 480/480 stressed 7
-adoption 1280 light: table ×4 card 960 bundleCell 709 tails [12,12,12] problems {} page 1280/1280 stressed 8
-crashes 1280 light: table ×4 card 960 bundleCell 718 tails [12,12,12] problems {} page 1280/1280 stressed 7
