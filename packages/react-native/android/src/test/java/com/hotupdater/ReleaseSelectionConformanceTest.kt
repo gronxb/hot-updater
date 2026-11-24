@@ -99,7 +99,7 @@ class ReleaseSelectionConformanceTest {
                         activeBundleId = input.nullableString("activeBundleId"),
                         activeReleaseId = input.nullableString("activeReleaseId"),
                         cohort = input.nullableString("cohort"),
-                        minimumReleaseId = input.getString("minimumReleaseId"),
+                        minBundleId = input.getString("minBundleId"),
                         strategy = ReleaseStrategy.valueOf(input.getString("strategy")),
                         strategyValue = input.getString("strategyValue"),
                         crashedBundleIds = input.getJSONArray("crashedBundleIds").strings(),
@@ -151,7 +151,7 @@ class ReleaseSelectionConformanceTest {
                             } else {
                                 RunningReleaseId.SameAsActive
                             },
-                        minimumReleaseId = input.getString("minimumReleaseId"),
+                        minBundleId = input.getString("minBundleId"),
                         cohort = input.nullableString("cohort"),
                         crashedBundleIds = input.getJSONArray("crashedBundleIds").strings(),
                     ),

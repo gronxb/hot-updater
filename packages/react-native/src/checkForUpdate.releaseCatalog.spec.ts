@@ -12,7 +12,8 @@ import type { HotUpdaterClientHooks } from "./clientPlugin";
 import type { HotUpdaterHttpClient } from "./httpClient";
 import { InvalidUpdateResponseError, UpdateHttpError } from "./updateError";
 
-const MINIMUM_RELEASE_ID = "00000000-0000-7000-8000-000000000001";
+const MIN_BUNDLE_ID = "00000000-0000-7000-8000-000000000001";
+const OLD_RELEASE_ID = "00000000-0000-7000-8000-000000000000";
 const RELEASE_ID = "00000000-0000-7000-8000-000000000002";
 const ACTIVE_RELEASE_ID = "00000000-0000-7000-8000-000000000003";
 const CURRENT_BUNDLE_ID = "00000000-0000-7001-8000-000000000001";
@@ -46,7 +47,7 @@ const mocks = vi.hoisted(() => {
     getDefaultChannel: vi.fn(() => CHANNEL),
     getFingerprintHash: vi.fn((): string | null => null),
     getInstallId: vi.fn(() => "install-id"),
-    getMinBundleId: vi.fn(() => MINIMUM_RELEASE_ID),
+    getMinBundleId: vi.fn(() => MIN_BUNDLE_ID),
     isChannelSwitched: vi.fn(() => false),
     isReleaseSelectionCurrent: vi.fn(() => true),
     resetChannel: vi.fn(),
@@ -510,7 +511,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       channel: CHANNEL,
       generation: 1,
       kind: "BUNDLE",
-      releaseId: MINIMUM_RELEASE_ID,
+      releaseId: OLD_RELEASE_ID,
       scopeKey: SCOPE_KEY,
       selectionContextHash: "old-context",
     };
@@ -656,7 +657,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     mocks.getActiveUpdateState.mockReturnValueOnce({
       activeSelection: receipt(ACTIVE_RELEASE_ID, stagedBundleId),
       highestSeenCatalogs: {},
-      stableSelection: receipt(MINIMUM_RELEASE_ID, CURRENT_BUNDLE_ID),
+      stableSelection: receipt(MIN_BUNDLE_ID, CURRENT_BUNDLE_ID),
       verificationPending: false,
     });
     const { checkForUpdate } = await import("./checkForUpdate");
@@ -697,7 +698,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       channel: CHANNEL,
       generation: 1,
       kind: "BUNDLE",
-      releaseId: MINIMUM_RELEASE_ID,
+      releaseId: OLD_RELEASE_ID,
       scopeKey: SCOPE_KEY,
       selectionContextHash: "old-context",
     };
@@ -726,7 +727,7 @@ describe("checkForUpdate Release catalog protocol", () => {
         channel: CHANNEL,
         bundleId: TARGET_BUNDLE_ID,
         releaseId: RELEASE_ID,
-        previousReleaseId: MINIMUM_RELEASE_ID,
+        previousReleaseId: OLD_RELEASE_ID,
       },
     ]);
   });
@@ -739,7 +740,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       channel: CHANNEL,
       generation: 1,
       kind: "BUNDLE",
-      releaseId: MINIMUM_RELEASE_ID,
+      releaseId: OLD_RELEASE_ID,
       scopeKey: SCOPE_KEY,
       selectionContextHash: "old-context",
     };
@@ -996,7 +997,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       channel: CHANNEL,
       generation: 1,
       kind: "BUNDLE",
-      releaseId: MINIMUM_RELEASE_ID,
+      releaseId: OLD_RELEASE_ID,
       scopeKey: SCOPE_KEY,
       selectionContextHash: "old-context",
     };
@@ -1018,7 +1019,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
 
     expect(result).toMatchObject({
-      id: MINIMUM_RELEASE_ID,
+      id: MIN_BUNDLE_ID,
       releaseId: null,
       shouldForceUpdate: true,
       status: "ROLLBACK",
@@ -1028,7 +1029,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     expect(mocks.commitReleaseSelection).toHaveBeenCalledWith(
       expect.objectContaining({
         selection: expect.objectContaining({
-          bundleId: MINIMUM_RELEASE_ID,
+          bundleId: MIN_BUNDLE_ID,
           kind: "BUILTIN",
           releaseId: null,
         }),
@@ -1039,7 +1040,7 @@ describe("checkForUpdate Release catalog protocol", () => {
   });
 
   it("does not surface a rollback when the app already uses built-in bytes", async () => {
-    mocks.getBundleId.mockReturnValueOnce(MINIMUM_RELEASE_ID);
+    mocks.getBundleId.mockReturnValueOnce(MIN_BUNDLE_ID);
     const { checkForUpdate } = await import("./checkForUpdate");
     const { client } = createClient(
       createCatalog({ releases: [], rollbackReleases: [] }),
@@ -1167,7 +1168,7 @@ describe("checkForUpdate Release catalog protocol", () => {
   });
 
   it("reports a check that found nothing to install as UNCHANGED", async () => {
-    mocks.getBundleId.mockReturnValueOnce(MINIMUM_RELEASE_ID);
+    mocks.getBundleId.mockReturnValueOnce(MIN_BUNDLE_ID);
     const { checkForUpdate } = await import("./checkForUpdate");
     const events = await recordPluginEvents();
     const { client } = createClient(
@@ -1184,7 +1185,7 @@ describe("checkForUpdate Release catalog protocol", () => {
         {
           status: "UNCHANGED",
           channel: CHANNEL,
-          bundleId: MINIMUM_RELEASE_ID,
+          bundleId: MIN_BUNDLE_ID,
           releaseId: null,
           previousReleaseId: null,
         },
@@ -1468,7 +1469,7 @@ describe("checkForUpdate Release catalog protocol", () => {
         expect.objectContaining({ generation: 3, scopeKey: PR_SCOPE_KEY }),
       );
       expect(result).toMatchObject({
-        id: MINIMUM_RELEASE_ID,
+        id: MIN_BUNDLE_ID,
         releaseId: null,
         shouldForceUpdate: true,
         status: "ROLLBACK",
@@ -1624,7 +1625,7 @@ describe("checkForUpdate Release catalog protocol", () => {
 
     it("needs no reload when the device already runs the built-in bundle", async () => {
       switchToPr();
-      mocks.getBundleId.mockReturnValueOnce(MINIMUM_RELEASE_ID);
+      mocks.getBundleId.mockReturnValueOnce(MIN_BUNDLE_ID);
       const { checkForUpdate } = await import("./checkForUpdate");
       const { client } = createClient(deletedChannelCatalog);
 

@@ -66,7 +66,7 @@ describe("selectDesiredRelease", () => {
         cohort: includedCohort,
         crashedBundleIds: [],
         currentBundleId: bundleId(0),
-        minimumReleaseId: bundleId(1),
+        minBundleId: bundleId(1),
       },
     );
 
@@ -92,7 +92,7 @@ describe("selectDesiredRelease", () => {
         cohort: "qa",
         crashedBundleIds: [],
         currentBundleId: bundleId(0),
-        minimumReleaseId: bundleId(1),
+        minBundleId: bundleId(1),
       })?.releaseId,
     ).toBe(releaseId(3));
     expect(
@@ -101,7 +101,7 @@ describe("selectDesiredRelease", () => {
         cohort: "design",
         crashedBundleIds: [],
         currentBundleId: bundleId(0),
-        minimumReleaseId: bundleId(1),
+        minBundleId: bundleId(1),
       })?.releaseId,
     ).toBe(releaseId(2));
   });
@@ -119,7 +119,7 @@ describe("selectDesiredRelease", () => {
         cohort: "1",
         crashedBundleIds: [crashedBundleId],
         currentBundleId: bundleId(0),
-        minimumReleaseId: bundleId(1),
+        minBundleId: bundleId(1),
       },
     );
 
@@ -133,7 +133,7 @@ describe("selectDesiredRelease", () => {
       cohort: "1",
       crashedBundleIds: [],
       currentBundleId: bundleId(0),
-      minimumReleaseId: bundleId(2),
+      minBundleId: bundleId(2),
     });
 
     expect(desired).toEqual({
@@ -160,7 +160,7 @@ describe("selectDesiredRelease", () => {
         cohort: "not-targeted",
         crashedBundleIds: [],
         currentBundleId: bundleId(4),
-        minimumReleaseId: bundleId(1),
+        minBundleId: bundleId(1),
       },
     );
 
@@ -181,7 +181,7 @@ describe("selectDesiredRelease", () => {
         cohort: "1",
         crashedBundleIds: [],
         currentBundleId: bundleId(4),
-        minimumReleaseId: bundleId(4),
+        minBundleId: bundleId(4),
       },
     );
 
@@ -199,7 +199,7 @@ describe("selectDesiredRelease", () => {
         cohort: "1",
         crashedBundleIds: [],
         currentBundleId: bundleId(4),
-        minimumReleaseId: bundleId(1),
+        minBundleId: bundleId(1),
       },
     );
 
@@ -220,7 +220,7 @@ describe("selectDesiredRelease", () => {
         cohort: "1",
         crashedBundleIds: [],
         currentBundleId: bundleId(4),
-        minimumReleaseId: bundleId(3),
+        minBundleId: bundleId(3),
       },
     );
 
@@ -235,7 +235,7 @@ describe("selectDesiredRelease force update", () => {
     cohort: "1",
     crashedBundleIds: [] as string[],
     currentBundleId: bundleId(sequence),
-    minimumReleaseId: bundleId(0),
+    minBundleId: bundleId(0),
   });
 
   it("keeps a skipped forced Release's requirement on the newer selected Release", () => {
@@ -290,7 +290,7 @@ describe("selectDesiredRelease force update", () => {
         cohort: "1",
         crashedBundleIds: [],
         currentBundleId: bundleId(1),
-        minimumReleaseId: bundleId(1),
+        minBundleId: bundleId(1),
       },
     );
 
@@ -310,7 +310,7 @@ describe("selectDesiredRelease force update", () => {
         cohort: "1",
         crashedBundleIds: [],
         currentBundleId: bundleId(1),
-        minimumReleaseId: bundleId(1),
+        minBundleId: bundleId(1),
       },
     );
 
@@ -328,7 +328,7 @@ describe("selectDesiredRelease force update", () => {
         cohort: "1",
         crashedBundleIds: [],
         currentBundleId: bundleId(2),
-        minimumReleaseId: bundleId(2),
+        minBundleId: bundleId(2),
       },
     );
 
@@ -448,7 +448,7 @@ describe("selectDesiredRelease force update", () => {
         ...fromRelease(1),
         builtInBundleId: bundleId(2),
         currentBundleId: bundleId(2),
-        minimumReleaseId: bundleId(2),
+        minBundleId: bundleId(2),
       },
     );
 
@@ -477,7 +477,7 @@ describe("createReleaseSelectionContextHash", () => {
     const base = {
       cohort: " qa ",
       crashedBundleIds: ["bundle-b", "bundle-a", "bundle-a"],
-      minimumReleaseId: bundleId(1),
+      minBundleId: bundleId(1),
       strategy: "APP_VERSION" as const,
       strategyValue: "1.2.3",
     };
@@ -498,7 +498,7 @@ describe("createReleaseSelectionContextHash", () => {
     expect(
       createReleaseSelectionContextHash({
         ...base,
-        minimumReleaseId: bundleId(2),
+        minBundleId: bundleId(2),
       }),
     ).not.toBe(createReleaseSelectionContextHash(base));
     expect(
@@ -508,6 +508,22 @@ describe("createReleaseSelectionContextHash", () => {
         activeReleaseId: releaseId(2),
       }),
     ).not.toBe(createReleaseSelectionContextHash(base));
+  });
+
+  it("hashes the same canonical JSON every released SDK and native build hashes", () => {
+    // Receipts keep this hash on the device, and JavaScript and native from
+    // different patches compare it, so its keys never change with a rename.
+    expect(
+      createReleaseSelectionContextHash({
+        activeBundleId: "01900000-0000-7000-8000-000000000002",
+        activeReleaseId: "01900000-0000-7000-8000-000000000102",
+        cohort: "42",
+        crashedBundleIds: ["01900000-0000-7000-8000-000000000003"],
+        minBundleId: "01900000-0000-7000-8000-000000000001",
+        strategy: "APP_VERSION",
+        strategyValue: "1.2.3",
+      }),
+    ).toBe("v1:34df0c0a615b91b6");
   });
 });
 

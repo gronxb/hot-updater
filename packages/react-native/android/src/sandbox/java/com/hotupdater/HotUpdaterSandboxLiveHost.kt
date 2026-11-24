@@ -259,7 +259,7 @@ internal fun hotUpdaterSandboxChannelHasBundle(
                 currentBundleId = builtInBundleId,
                 activeReleaseId = null,
                 runningReleaseId = RunningReleaseId.Explicit(null),
-                minimumReleaseId = NO_FLOOR,
+                minBundleId = NO_FLOOR,
                 cohort = ReleaseSelector.normalizeCohortValue(cohort),
                 crashedBundleIds = crashedBundleIds,
             ),

@@ -112,7 +112,11 @@ export interface ReleaseSelectionInput {
    * Defaults to `activeReleaseId`; null compares by `currentBundleId`.
    */
   readonly runningReleaseId?: string | null;
-  readonly minimumReleaseId: string;
+  /**
+   * The selection floor: the built-in bundle's ID (MIN_BUNDLE_ID), or the
+   * nil UUID when bundles older than it may be selected.
+   */
+  readonly minBundleId: string;
   readonly cohort: string | null | undefined;
   readonly crashedBundleIds: readonly string[];
 }
@@ -121,7 +125,11 @@ export interface ReleaseSelectionContextInput {
   readonly activeBundleId?: string | null;
   readonly activeReleaseId?: string | null;
   readonly cohort: string | null | undefined;
-  readonly minimumReleaseId: string;
+  /**
+   * The selection floor: the built-in bundle's ID (MIN_BUNDLE_ID), or the
+   * nil UUID when bundles older than it may be selected.
+   */
+  readonly minBundleId: string;
   readonly strategy: ReleaseStrategy;
   readonly strategyValue: string;
   readonly crashedBundleIds: readonly string[];
@@ -153,7 +161,10 @@ export function createReleaseSelectionContextHash(
     activeReleaseId: input.activeReleaseId ?? null,
     cohort: normalizeCohortValue(input.cohort ?? ""),
     crashedBundleIds,
-    minimumReleaseId: input.minimumReleaseId,
+    // The key predates the rename: receipts keep this hash, and JavaScript
+    // and native from other patches hash the same JSON.
+    // oxlint-disable-next-line hot-updater/id-naming -- frozen hash key
+    minimumReleaseId: input.minBundleId,
     selectorSchemaVersion: RELEASE_CATALOG_SCHEMA_VERSION,
     strategy: input.strategy,
     strategyValue: input.strategyValue,
@@ -217,7 +228,7 @@ export function selectDesiredRelease(
   ): release is ReleaseCatalogDescriptor & { readonly bundleId: string } =>
     release.bundleId !== null &&
     !crashedBundleIds.has(release.bundleId) &&
-    release.bundleId >= input.minimumReleaseId;
+    release.bundleId >= input.minBundleId;
 
   const runningReleaseId =
     input.runningReleaseId === undefined
@@ -236,7 +247,7 @@ export function selectDesiredRelease(
       (passed) =>
         passed.shouldForceUpdate &&
         passed.bundleId !== null &&
-        passed.bundleId >= input.minimumReleaseId &&
+        passed.bundleId >= input.minBundleId &&
         passed.bundleId !== input.currentBundleId &&
         passed.releaseId <= selected.releaseId &&
         isNewerThanRunning(passed) &&
@@ -302,7 +313,7 @@ export function selectDesiredRelease(
       return desiredBundle(rollback, "ROLLBACK");
     }
 
-    if (input.currentBundleId <= input.minimumReleaseId) {
+    if (input.currentBundleId <= input.minBundleId) {
       return null;
     }
   }

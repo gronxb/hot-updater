@@ -33,11 +33,11 @@ export function setupReleaseCatalogLifecycleTests(options: {
   remove: (releaseId: string) => Promise<unknown>;
   request: HttpTestRequest;
 }): void {
-  const device = (minimumReleaseId = NIL_UUID): Device => ({
-    builtInBundleId: minimumReleaseId,
-    currentBundleId: minimumReleaseId,
+  const device = (minBundleId = NIL_UUID): Device => ({
+    builtInBundleId: minBundleId,
+    currentBundleId: minBundleId,
     activeReleaseId: null,
-    minimumReleaseId,
+    minBundleId,
     cohort: "1",
     crashedBundleIds: [],
   });

@@ -150,7 +150,12 @@ export const handleInsightsOverview = (
       platform: scope.platform,
       channel: scope.channel,
       window,
-      ...(scope.releaseId === undefined ? {} : { bundleId: scope.releaseId }),
+      ...(scope.releaseId === undefined
+        ? {}
+        : {
+            // oxlint-disable-next-line hot-updater/id-naming -- public API: bundleId is the bundle ID users see, a release ID
+            bundleId: scope.releaseId,
+          }),
     });
     if (options.json) return printJson(overview);
     const bundle = overview.bundle;
@@ -396,6 +401,7 @@ export const handleInsightsEvents = (
         bundle: {
           platform: scope.platform,
           channel: scope.channel,
+          // oxlint-disable-next-line hot-updater/id-naming -- public API: bundleId is the bundle ID users see, a release ID
           bundleId: scope.releaseId!,
           outcome: INSIGHTS_OUTCOMES[options.outcome],
         },

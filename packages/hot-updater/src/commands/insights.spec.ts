@@ -200,7 +200,11 @@ describe("hot-updater insights over hot-updater.config.ts", () => {
     // Its JSON names the bundle by its release ID, as --bundle takes it.
     await handleInsightsOverview({ bundle: release.id, json: true });
     expect(jsonOutput()).toMatchObject({
-      bundle: { bundleId: release.id, reportingInstallations: { count: 1 } },
+      bundle: {
+        // oxlint-disable-next-line hot-updater/id-naming -- public API: bundleId is the bundle ID users see, a release ID
+        bundleId: release.id,
+        reportingInstallations: { count: 1 },
+      },
     });
 
     await handleInsightsOverview({

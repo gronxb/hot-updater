@@ -1184,7 +1184,7 @@ final class NativeUpdateChecker {
         let builtInBundleId = host.minBundleId
         // The floor is the built-in bundle's ID, except for the sandbox's
         // explicit channel open, which takes any Release of the scope.
-        let minimumReleaseId = options.allowsOlderThanBuiltIn ? Self.nilUUID : builtInBundleId
+        let minBundleId = options.allowsOlderThanBuiltIn ? Self.nilUUID : builtInBundleId
         let defaultChannel = host.defaultChannel()
         let nativeChannel = host.channel()
         let isSwitched = nativeChannel != defaultChannel
@@ -1224,7 +1224,7 @@ final class NativeUpdateChecker {
                 currentAppVersion: currentAppVersion,
                 currentBundleId: currentBundleId,
                 builtInBundleId: builtInBundleId,
-                minimumReleaseId: minimumReleaseId,
+                minBundleId: minBundleId,
                 currentChannel: currentChannel,
                 isSwitched: isSwitched,
                 targetChannel: targetChannel,
@@ -1261,7 +1261,7 @@ final class NativeUpdateChecker {
         currentAppVersion: String,
         currentBundleId: String,
         builtInBundleId: String,
-        minimumReleaseId: String,
+        minBundleId: String,
         currentChannel: String,
         isSwitched: Bool,
         targetChannel: String,
@@ -1326,7 +1326,7 @@ final class NativeUpdateChecker {
             activeBundleId: selectorCurrentBundleId,
             activeReleaseId: activeInTargetScope?.releaseId,
             cohort: cohort,
-            minimumReleaseId: minimumReleaseId,
+            minBundleId: minBundleId,
             strategy: strategy,
             strategyValue: strategyValue,
             crashedBundleIds: crashedBundleIds
@@ -1369,7 +1369,7 @@ final class NativeUpdateChecker {
             currentBundleId: selectorCurrentBundleId,
             activeReleaseId: activeInTargetScope?.releaseId,
             runningReleaseId: .some(runningReleaseId),
-            minimumReleaseId: minimumReleaseId,
+            minBundleId: minBundleId,
             cohort: cohort,
             crashedBundleIds: crashedBundleIds
         )) else {
