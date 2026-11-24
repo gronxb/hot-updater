@@ -163,12 +163,13 @@ export interface Spec extends TurboModule {
   };
 
   /**
-   * Gets the list of bundle IDs this device refuses to install: bundles that
-   * crashed, and bundles whose download failed verification in the last
+   * Gets the artifact IDs this device refuses to install: artifacts that
+   * crashed, and artifacts whose download failed verification in the last
    * day (a hash or signature that fails, or files that can't be decoded).
-   * These bundles will be rejected if attempted to install again.
+   * Every release of such an artifact is rejected if attempted again. These
+   * are artifact IDs, not the release IDs `hotUpdater.getBundleId()` returns.
    *
-   * @returns Array of crashed bundle IDs
+   * @returns Array of artifact IDs
    */
   getCrashHistory(): string[];
 
@@ -207,11 +208,13 @@ export interface Spec extends TurboModule {
   getBaseURL: () => string | null;
 
   /**
-   * Gets the current active bundle ID from native bundle storage.
-   * Native reads it from the extracted bundle's manifest. Built-in bundle
-   * fallback is handled in JS.
+   * Gets the artifact ID of the next launch's selection: the bundle this
+   * launch selected, or the one a channel reset or built-in commit selects
+   * before React Native reloads. Native reads the launch selection, not a
+   * manifest. JavaScript maps null, the built-in bundle, to MIN_BUNDLE_ID,
+   * and reads the release ID from `getActiveUpdateState()`'s receipts.
    *
-   * @returns Active bundle ID from bundle storage, or null when unavailable
+   * @returns The selected artifact ID, or null for the built-in bundle
    */
   getBundleId: () => string | null;
 

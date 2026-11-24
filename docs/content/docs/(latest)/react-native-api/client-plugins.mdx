@@ -91,6 +91,11 @@ check that finds nothing calls `onUpdateCheck`; a check that fails calls
 `AppReadyResult`, `UpdateCheckResult`, `BundleDownloadedInfo`, and
 `UpdateError`, and `UpdateHttpResponse`.
 
+In these events, `bundleId`, `fromBundleId`, `toBundleId`, and `targetBundleId`
+are artifact IDs: the files a Release ships, which several Releases can share.
+`releaseId` and the other `*ReleaseId` fields are the IDs the Console shows and
+`context.getBundleId()` returns.
+
 ### `onAppReady`
 
 ```ts
@@ -98,7 +103,7 @@ type AppReadyResult =
   | {
       status: "UNCHANGED";
       channel: string;
-      bundleId: string; // The running bundle.
+      bundleId: string; // The running artifact.
       releaseId: string | null; // The Release it was selected as.
     }
   | {
@@ -196,7 +201,7 @@ interface UpdateError {
   targetBundleId?: string; // Absent for the check stage.
   targetReleaseId?: string;
   channel: string;
-  bundleId: string; // The running bundle.
+  bundleId: string; // The running artifact.
   releaseId: string | null;
   updateStrategy: "fingerprint" | "appVersion";
   cause: unknown; // The error the SDK caught.
@@ -243,21 +248,21 @@ Errors from a plugin's API, such as a failed request, reach whoever called it.
 
 `setup` receives the plugin's context:
 
-| Member                 | Description                                                                                                              |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `fetch(path, init?)`   | Requests a path relative to `baseURL`; see [send requests](#send-requests-to-your-server).                               |
-| `installId`            | The installation ID that [`getInstallId`](/docs/react-native-api/getInstallId) returns.                                  |
-| `platform`             | `"ios"` or `"android"`.                                                                                                  |
-| `appVersion`           | The native app version, or `null` when the build has none.                                                               |
-| `sdkVersion`           | The version of `@hot-updater/react-native`.                                                                              |
-| `minBundleId`          | The ID of the bundle the native build ships. `getBundleId()` returns it while the app runs that built-in bundle.         |
-| `isDebugBuild`         | `true` in a debug build, where `__DEV__` is `true`.                                                                      |
-| `getBundleId()`        | The bundle native reports as current. This is an artifact ID, not the update ID that `hotUpdater.getBundleId()` returns. |
-| `getChannel()`         | The effective channel.                                                                                                   |
-| `getCohort()`          | The rollout cohort.                                                                                                      |
-| `getFingerprintHash()` | The native fingerprint, or `null`.                                                                                       |
-| `storage`              | The plugin's [storage](#store-values-on-the-device).                                                                     |
-| `now()`                | The current time in milliseconds since the epoch.                                                                        |
+| Member                 | Description                                                                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `fetch(path, init?)`   | Requests a path relative to `baseURL`; see [send requests](#send-requests-to-your-server).                                                       |
+| `installId`            | The installation ID that [`getInstallId`](/docs/react-native-api/getInstallId) returns.                                                          |
+| `platform`             | `"ios"` or `"android"`.                                                                                                                          |
+| `appVersion`           | The native app version, or `null` when the build has none.                                                                                       |
+| `sdkVersion`           | The version of `@hot-updater/react-native`.                                                                                                      |
+| `minBundleId`          | The ID of the bundle the native build ships. `getBundleId()` returns it while the app runs that built-in bundle.                                 |
+| `isDebugBuild`         | `true` in a debug build, where `__DEV__` is `true`.                                                                                              |
+| `getBundleId()`        | The ID `hotUpdater.getBundleId()` returns: the selected Release, the ID the Console shows. For the artifact, read the hooks' `*BundleId` fields. |
+| `getChannel()`         | The effective channel.                                                                                                                           |
+| `getCohort()`          | The rollout cohort.                                                                                                                              |
+| `getFingerprintHash()` | The native fingerprint, or `null`.                                                                                                               |
+| `storage`              | The plugin's [storage](#store-values-on-the-device).                                                                                             |
+| `now()`                | The current time in milliseconds since the epoch.                                                                                                |
 
 Decide in `setup` whether the plugin runs in debug builds. The Insights
 plugin, for example, sends nothing when `isDebugBuild` is `true` unless it is
@@ -300,7 +305,7 @@ context.storage.set("lastLaunch", null); // Removes the key.
 
 This plugin pairs with the `feedback()`
 [server plugin example](/docs/custom/server-plugins#write-the-plugin), whose
-`POST /feedback` route opens a thread. It sends the running bundle and
+`POST /feedback` route opens a thread. It sends the selected Release and
 installation with each thread, and mentions the latest update failure:
 
 ```ts title="src/feedback.ts"
@@ -328,7 +333,7 @@ export const feedback = () =>
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 clientRef: `${context.installId}-${context.now()}`,
-                bundleId: context.getBundleId(),
+                releaseId: context.getBundleId(),
                 installId: context.installId,
                 title,
                 body:
@@ -396,7 +401,7 @@ a spec runs in plain Node under Vitest or Jest when the plugin imports only
 npm install @hot-updater/test-utils vitest --save-dev
 ```
 
-This spec checks that the feedback plugin above sends the running bundle and
+This spec checks that the feedback plugin above sends the selected Release and
 the last update failure:
 
 ```ts title="src/feedback.spec.ts"
@@ -405,11 +410,11 @@ import { expect, it } from "vitest";
 
 import { feedback } from "./feedback";
 
-const bundleId = "0199a0c3-6f6e-7c3a-9a3e-1b2c3d4e5f60";
+const releaseId = "0199a0c3-6f6e-7c3a-9a3e-1b2c3d4e5f60";
 
-it("sends the running bundle and the last update failure", async () => {
+it("sends the selected Release and the last update failure", async () => {
   const runtime = setupClientPlugin(feedback(), {
-    bundleId,
+    bundleId: releaseId, // What context.getBundleId() returns.
     requestHeaders: { "x-api-key": "test-key" },
     respond: () =>
       new Response(JSON.stringify({ id: "thread-1" }), { status: 201 }),
@@ -420,8 +425,8 @@ it("sends the running bundle and the last update failure", async () => {
     reason: "http",
     httpStatus: 403,
     channel: "production",
-    bundleId,
-    releaseId: null,
+    bundleId: "0199a0c3-0000-7000-8000-00000000000a", // The running artifact.
+    releaseId,
     updateStrategy: "appVersion",
     cause: new Error("Forbidden"),
   });
@@ -434,7 +439,7 @@ it("sends the running bundle and the last update failure", async () => {
   expect(request?.path).toBe("/feedback");
   expect(request?.headers["x-api-key"]).toBe("test-key");
   expect(request?.json()).toMatchObject({
-    bundleId,
+    releaseId,
     body: "Blank screen\n\nLast update error: download: http",
   });
   expect(runtime.errors).toEqual([]);
@@ -460,8 +465,9 @@ The options set up the server and the device:
   response slower than `requestTimeout` fails with `Request timed out`.
 - `baseURL`, `requestHeaders`, and `requestTimeout` are the ones `init` takes.
 - The device's values have fixed defaults: `installId`, `platform` (`ios`),
-  `appVersion` (`1.0.0`), `sdkVersion`, `isDebugBuild` (`false`), `bundleId`,
-  `minBundleId` (the same as `bundleId`, so the app runs its built-in bundle),
+  `appVersion` (`1.0.0`), `sdkVersion`, `isDebugBuild` (`false`), `bundleId`
+  (what `context.getBundleId()` returns), `minBundleId` (the same as
+  `bundleId`, so the app runs its built-in bundle),
   `channel` (`production`), `cohort` (`1`), `fingerprintHash` (`null`), and
   `now` (`Date.now`, so fake timers move it). `installId`, `appVersion`,
   `bundleId`, `channel`, `cohort`, and `fingerprintHash` also take a function,

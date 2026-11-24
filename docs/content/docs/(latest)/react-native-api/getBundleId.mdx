@@ -35,6 +35,13 @@ After an update is staged, this ID can change before the app reloads. It
 identifies the selected update; it does not confirm that its code is already
 running. Call `hotUpdater.reload()` to start a staged update.
 
+<Callout type="warn">
+  Between a download and the reload, `getBundleId()` names the staged release
+  while [`getReleaseLabel()`](/docs/react-native-api/getReleaseLabel) names the
+  running one, so the two can name different releases. Show or log them together
+  only after the app reloads.
+</Callout>
+
 Promoting the same files to another channel creates a new ID. Changing delivery
 settings does not require uploading the files again.
 

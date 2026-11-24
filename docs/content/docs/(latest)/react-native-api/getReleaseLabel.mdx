@@ -37,7 +37,9 @@ The getter is synchronous and makes no network request. Native keeps the
 label with the bundle it installed, so it reads the same after a restart and
 offline. It is the running release's: a staged update changes it once the app
 runs it, unlike [`getBundleId()`](/docs/react-native-api/getBundleId), which
-names a staged update right away.
+names a staged update right away. Between a download and the reload, the label
+and `getBundleId()` can therefore name different releases; show them together
+only after the app reloads.
 
 It returns `null` for the built-in bundle, and for a release that has no
 label: one installed from a server or native build that predates labels. Such
