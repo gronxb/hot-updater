@@ -1,0 +1,6 @@
+     × lists each bundle with its adoption counts under its name when the card is too narrow for the table 167ms
+     × lists each bundle with its crashes counts under its name when the card is too narrow for the table 55ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+TestingLibraryElementError: Unable to find an accessible element with the role "list" and name "Compared bundles"
+TestingLibraryElementError: Unable to find an accessible element with the role "list" and name "Compared bundles"
+      Tests  2 failed | 10 passed (12)
