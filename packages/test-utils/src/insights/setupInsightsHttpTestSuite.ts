@@ -62,6 +62,7 @@ export const setupInsightsHttpTestSuite = (options: {
         installId,
         latestStatus: "UNCHANGED",
         lastKnownBundleId: event.toBundleId,
+        lastKnownReleaseId: null,
         channel,
       });
       await expectInsightsIndex(async () => {

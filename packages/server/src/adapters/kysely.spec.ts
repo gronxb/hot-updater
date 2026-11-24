@@ -9,7 +9,11 @@ import {
   toolingTargetOf,
   quoteSql,
 } from "@hot-updater/plugin-core";
-import type { SqlDialect, ToolingDatabase } from "@hot-updater/plugin-core";
+import type {
+  AnyHotUpdaterPlugin,
+  SqlDialect,
+  ToolingDatabase,
+} from "@hot-updater/plugin-core";
 import {
   setupDatabaseTestSuite,
   startHttpTestServer,
@@ -68,16 +72,21 @@ const sqliteKysely = (database: DatabaseSync) =>
 const migrate = async (database: ToolingDatabase) =>
   (await database.createMigrator!(target).migrateToLatest()).execute();
 
+/** The Insights plugin's API over a database, on the server's tables. */
+const insightsApiOf = (
+  database: ToolingDatabase,
+  plugin: AnyHotUpdaterPlugin = insights(),
+) =>
+  createHotUpdater({
+    database,
+    storage: createReleaseCatalogTestStorage(),
+    plugins: [plugin],
+    clientAccess: "public",
+  }).api.insights;
+
 /** The Insights plugin's model over a database, on the server's tables. */
 const insightsOf = (database: ToolingDatabase) =>
-  createInsightsModel(
-    createHotUpdater({
-      database,
-      storage: createReleaseCatalogTestStorage(),
-      plugins: [insights()],
-      clientAccess: "public",
-    }).api.insights,
-  );
+  createInsightsModel(insightsApiOf(database));
 
 const backends = {
   postgresql: () => {
@@ -109,7 +118,9 @@ for (const provider of ["postgresql", "sqlite"] as const) {
           clientAccess: "public",
         }).handlers,
       ),
-    plugins: [insightsTestSuite({ createModel: insightsOf })],
+    plugins: [
+      insightsTestSuite({ createModel: insightsOf, createApi: insightsApiOf }),
+    ],
     name: `kyselyAdapter (${provider})`,
     migrate: async () => {
       backend = backends[provider]();

@@ -86,7 +86,7 @@ describe("public Insights validation", () => {
       platform: "ios" as const,
       channel: "production",
       type: "UPDATE_APPLIED" as const,
-      toBundleId: "bundle-1",
+      toReleaseId: "bundle-1",
     };
     const timeRange = { start: 0, end: day };
     for (const input of [
@@ -130,7 +130,7 @@ describe("public Insights validation", () => {
         platform: "ios" as const,
         channel: "production",
         type: "UPDATE_APPLIED" as const,
-        toBundleId: "bundle-1",
+        toReleaseId: "bundle-1",
       },
       timeRange: { start: 0, end: 3 * hour },
       intervalMs: hour,
@@ -279,8 +279,8 @@ describe("public Insights validation", () => {
           type: "RECOVERED",
           platform: "ios",
           channel: "production",
-          fromBundleId: "bundle-b",
-          toBundleId: "bundle-a",
+          fromReleaseId: "bundle-b",
+          toReleaseId: "bundle-a",
         },
       } as InsightsListEventsInput),
     ).rejects.toMatchObject({ code: "invalid-query" });
@@ -311,7 +311,7 @@ describe("public Insights validation", () => {
           platform: "ios",
           channel: "production",
           type: "RECOVERED",
-          fromBundleId: "bundle-b",
+          fromReleaseId: "bundle-b",
         },
       }),
     ).rejects.toMatchObject({ code: "invalid-result" });
@@ -346,24 +346,32 @@ describe("public Insights validation", () => {
     ).rejects.toMatchObject({ code: "invalid-result" });
   });
 
-  it("passes bundle predicates on both fields that share a type to the model", async () => {
+  it("passes a release to the installation count, and rejects any other bundle predicate", async () => {
     const countLatestEvents = vi.fn(async () => 1);
     const model = createModel({ countLatestEvents });
     const input = {
       platform: "ios",
       channel: "production",
       sinceMs: 0,
-      bundle: [
-        { field: "from_bundle_id", value: "A", types: ["UPDATE_DOWNLOADED"] },
-        {
-          field: "to_bundle_id",
-          value: "B",
-          types: ["UPDATE_APPLIED", "UPDATE_DOWNLOADED"],
-        },
-      ],
+      releaseId: "R",
     } as const;
     await expect(model.countLatestEvents(input)).resolves.toBe(1);
     expect(countLatestEvents).toHaveBeenCalledWith(input);
+    for (const invalid of [
+      { ...input, releaseId: "" },
+      { ...input, releaseId: 1 },
+      {
+        platform: "ios",
+        channel: "production",
+        sinceMs: 0,
+        bundle: [{ field: "to_bundle_id", value: "B", types: ["UNCHANGED"] }],
+      },
+    ]) {
+      await expect(
+        model.countLatestEvents(invalid as never),
+      ).rejects.toMatchObject({ code: "invalid-query" });
+    }
+    expect(countLatestEvents).toHaveBeenCalledTimes(1);
   });
 
   it("propagates native failures and rejects invalid scalar counts", async () => {

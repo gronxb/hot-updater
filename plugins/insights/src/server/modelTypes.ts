@@ -11,20 +11,22 @@ export interface InsightsScope {
 }
 
 /**
- * Raw event predicates; recovery is attributed to the source bundle. An
- * UNCHANGED filter matches the kept rows that moved an installation to the
- * bundle without an apply report.
+ * Raw event predicates, by release; recovery is attributed to the source
+ * release. An UNCHANGED filter matches the kept rows that moved an
+ * installation to the release without an apply report. An event that names
+ * no release on that side, such as one from the built-in bundle, matches by
+ * the bundle ID it reports instead.
  */
 export type InsightsBundleEventFilter = InsightsScope &
   (
-    | { readonly type: "RECOVERED"; readonly fromBundleId: string }
+    | { readonly type: "RECOVERED"; readonly fromReleaseId: string }
     | {
         readonly type:
           | "UPDATE_DOWNLOADED"
           | "UPDATE_APPLIED"
           | "UPDATE_FAILED"
           | "UNCHANGED";
-        readonly toBundleId: string;
+        readonly toReleaseId: string;
       }
   );
 
@@ -59,12 +61,11 @@ export type InsightsFindLatestEventsInput =
 export interface InsightsCountLatestEventsInput extends InsightsScope {
   /** A UTC day's start: latest events are counted by the day they fall in. */
   readonly sinceMs: number;
-  /** Optional OR of one or two fixed predicates; count a matching event once. */
-  readonly bundle?: readonly {
-    readonly field: "from_bundle_id" | "to_bundle_id";
-    readonly value: string;
-    readonly types: readonly BundleEventRow["type"][];
-  }[];
+  /**
+   * Only installations whose latest event leaves them running this release:
+   * the source of a download, the target of anything else.
+   */
+  readonly releaseId?: string;
 }
 
 export interface InsightsCountEventsInput {
@@ -195,7 +196,7 @@ export interface InsightsModel {
   findLatestEvents(
     input: InsightsFindLatestEventsInput,
   ): Promise<readonly BundleEventRow[]>;
-  /** Count latest events once per installation, then apply the supplied predicates. */
+  /** Count latest events once per installation, of one release with `releaseId`. */
   countLatestEvents(input: InsightsCountLatestEventsInput): Promise<number>;
   /** Count accepted reports in [sinceMs, beforeReceivedAtMs), across all pages. */
   countEvents(input: InsightsCountEventsInput): Promise<number>;

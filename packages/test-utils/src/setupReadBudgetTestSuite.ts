@@ -367,7 +367,7 @@ const bundleEvents = {
   platform: "ios",
   channel: "production",
   type: "UPDATE_APPLIED",
-  toBundleId: "bundle-b",
+  toReleaseId: "release-b",
 } as const;
 
 /** The target bundle's manifest, which artifact resolution reads from storage. */
@@ -1058,7 +1058,7 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "countEventSeries: buckets in the window × shards, all used",
-    // The hours with an apply to bundle-b: hours 0–4 of day 0, installs 1–24
+    // The hours with an apply to release-b: hours 0–4 of day 0, installs 1–24
     // on 24 outcome shard rows, and hour 0 of day 2, install 1's on 1.
     read: ({ insights }) =>
       insights.countEventSeries({
@@ -1086,20 +1086,15 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     check: (count) => expect(count).toBe(24),
   }),
   budget({
-    api: "countLatestEvents by bundle: buckets in the window × shards, all used",
-    // Days 0 and 2, like the distribution: 14 shards and 1.
+    api: "countLatestEvents of a release: the same rows, filtered",
+    // The distribution rows of days 0 and 2, as without a release: 14
+    // shards and 1.
     read: ({ insights }) =>
       insights.countLatestEvents({
         platform: "ios",
         channel: "production",
         sinceMs: T0,
-        bundle: [
-          {
-            field: "to_bundle_id",
-            value: "bundle-b",
-            types: ["UPDATE_APPLIED"],
-          },
-        ],
+        releaseId: "release-b",
       }),
     adapter: reads(0, 0, 1, 15),
     engine: { calls: 1, rows: 2 },

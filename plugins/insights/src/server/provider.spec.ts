@@ -454,14 +454,7 @@ describe("createInsightsProvider", () => {
     expect(fixture.countLatestEvents.mock.calls[1]?.[0]).toEqual({
       ...scope,
       sinceMs: Date.now() - 24 * 60 * 60 * 1_000,
-      bundle: [
-        { field: "from_bundle_id", value: "B", types: ["UPDATE_DOWNLOADED"] },
-        {
-          field: "to_bundle_id",
-          value: "B",
-          types: ["UNCHANGED", "UPDATE_APPLIED", "RECOVERED"],
-        },
-      ],
+      releaseId: "B",
     });
     expect(result.bundle?.downloadedReports.count).toBe(7);
     expect(result.bundle?.appliedReports.count).toBe(5);
@@ -472,10 +465,10 @@ describe("createInsightsProvider", () => {
     expect(
       fixture.countEvents.mock.calls.map(([input]) => input.filter),
     ).toEqual([
-      { ...scope, type: "UPDATE_DOWNLOADED", toBundleId: "B" },
-      { ...scope, type: "UPDATE_APPLIED", toBundleId: "B" },
-      { ...scope, type: "RECOVERED", fromBundleId: "B" },
-      { ...scope, type: "UPDATE_FAILED", toBundleId: "B" },
+      { ...scope, type: "UPDATE_DOWNLOADED", toReleaseId: "B" },
+      { ...scope, type: "UPDATE_APPLIED", toReleaseId: "B" },
+      { ...scope, type: "RECOVERED", fromReleaseId: "B" },
+      { ...scope, type: "UPDATE_FAILED", toReleaseId: "B" },
     ]);
     expect(() =>
       provider.listEvents({

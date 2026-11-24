@@ -26,12 +26,7 @@ import type {
   ReleaseReference,
 } from "./modelTypes";
 import { EVENT_LIST_RANGE_MS } from "./provider";
-import {
-  bundlePairKey,
-  insightsIdentity,
-  PAIR_FIELD,
-  type InsightsIdentityParts,
-} from "./recordEvent";
+import { insightsIdentity, type InsightsIdentityParts } from "./recordEvent";
 import {
   bundleRefOfFilter,
   DAILY_EVENTS,
@@ -315,96 +310,37 @@ export const countEventSeries = async (
   }));
 };
 
-type Predicate = {
-  readonly field: "from_bundle_id" | "to_bundle_id";
-  readonly value: string;
-  readonly type: string;
-};
-
-/** A bundle filter's distinct (field, value, type) predicates. */
-const latestPredicates = (
-  bundle: InsightsCountLatestEventsInput["bundle"],
-): readonly Predicate[] | undefined => {
-  if (bundle === undefined) return undefined;
-  return [
-    ...new Map(
-      bundle.flatMap(({ field, value, types }) =>
-        types.map((type) => [
-          JSON.stringify([field, value, type]),
-          { field, value, type },
-        ]),
-      ),
-    ).values(),
-  ];
-};
-
 /**
  * Latest events at or after `sinceMs`, a UTC day's start: the gauges count
  * each installation in the UTC day of its latest event, so they answer whole
- * days only, and a later start is rejected rather than rounded.
+ * days only, and a later start is rejected rather than rounded. With
+ * `releaseId`, only the installations it leaves running that release, from
+ * the same distribution rows, which name the release each one runs.
  */
 export const countLatestEvents = async (
   db: Db,
   input: InsightsCountLatestEventsInput,
 ): Promise<number> => {
-  const { platform, channel, sinceMs: start } = input;
+  const { platform, channel, sinceMs: start, releaseId } = input;
   if (start % DAY_MS !== 0) {
     throw new DatabaseAdapterInputError("invalid-query");
   }
-  const predicates = latestPredicates(input.bundle);
-  let total = 0;
-  if (predicates === undefined) {
-    const rows = await drain((page) =>
-      db.findAggregates("insights_distribution", {
-        index: "byScope",
-        where: { channel, platform },
-        range: { gte: start },
-        limit: PAGE,
-        ...page,
-      }),
-    );
-    total += rows.reduce((sum, row) => sum + row.latest_installations, 0);
-  } else {
-    const gauge = async (
-      bundleField: string,
-      bundleId: string,
-      type: string,
-    ) => {
-      const rows = await drain((page) =>
-        db.findAggregates("insights_latest_by_bundle", {
-          index: "byBundle",
-          where: {
-            platform,
-            channel,
-            bundle_field: bundleField,
-            bundle_id: bundleId,
-            type,
-          },
-          range: { gte: start },
-          limit: PAGE,
-          ...page,
-        }),
-      );
-      return rows.reduce((sum, row) => sum + row.installations, 0);
-    };
-    for (const { field, value, type } of predicates) {
-      total += await gauge(field, value, type);
-    }
-    // A head has one (from, to) pair, so it matches a `from` and a `to`
-    // predicate of one type only through that pair: subtract the pair's gauge
-    // to count it once.
-    for (const from of predicates) {
-      if (from.field !== "from_bundle_id") continue;
-      for (const to of predicates) {
-        if (to.field !== "to_bundle_id" || to.type !== from.type) continue;
-        total -= await gauge(
-          PAIR_FIELD,
-          bundlePairKey(from.value, to.value),
-          from.type,
-        );
-      }
-    }
-  }
+  const rows = await drain((page) =>
+    db.findAggregates("insights_distribution", {
+      index: "byScope",
+      where: { channel, platform },
+      range: { gte: start },
+      limit: PAGE,
+      ...page,
+    }),
+  );
+  const total = rows.reduce(
+    (sum, row) =>
+      releaseId === undefined || row.release_id === releaseId
+        ? sum + row.latest_installations
+        : sum,
+    0,
+  );
   // Batched gauges sum signed shard rows, which a lost change can leave
   // below zero: an installation count never is.
   return Math.max(0, total);

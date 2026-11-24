@@ -89,7 +89,7 @@ export const registerInsightsModelTests = (
             filter: {
               kind: "bundle",
               type: "UPDATE_DOWNLOADED",
-              toBundleId: download.to_bundle_id,
+              toReleaseId: download.to_release_id!,
               platform: "ios",
               channel: "production",
             },
@@ -345,7 +345,7 @@ export const registerInsightsModelTests = (
             platform: "ios",
             channel: "production",
             type: "UPDATE_APPLIED",
-            toBundleId: bundleB,
+            toReleaseId: bundleB,
           },
           applied,
         ],
@@ -354,7 +354,7 @@ export const registerInsightsModelTests = (
             platform: "ios",
             channel: "production",
             type: "RECOVERED",
-            fromBundleId: bundleB,
+            fromReleaseId: bundleB,
           },
           recovered,
         ],
@@ -410,7 +410,7 @@ export const registerInsightsModelTests = (
               platform: "ios",
               channel: "production",
               type: "UNCHANGED",
-              toBundleId: bundleB,
+              toReleaseId: bundleB,
             },
             sinceMs: 100,
             beforeReceivedAtMs: 200,
@@ -418,22 +418,6 @@ export const registerInsightsModelTests = (
         0,
       );
       // Latest events count whole UTC days: every head above lies in day 0.
-      await expectInsightsIndex(
-        () =>
-          model.countLatestEvents({
-            platform: "ios",
-            channel: "production",
-            sinceMs: 0,
-            bundle: [
-              {
-                field: "to_bundle_id",
-                value: bundleA,
-                types: ["UNCHANGED", "UPDATE_APPLIED", "RECOVERED"],
-              },
-            ],
-          }),
-        1,
-      );
       await expectInsightsIndex(
         () =>
           model.countLatestEvents({
@@ -522,52 +506,33 @@ export const registerInsightsModelTests = (
       ).resolves.toEqual([events[2]!]);
     });
 
-    it("counts overlapping bundle predicates once per latest installation", async () => {
+    it("counts one release's latest installations: a download's source, and the target of anything else", async () => {
       const model = state.getDatabase();
-      const event = createBundleEventRowFixture("9700", 100);
-      await record(model, event);
-      const predicate = {
-        field: "to_bundle_id" as const,
-        value: event.to_bundle_id,
-        types: [event.type],
+      const releaseA = "00000000-0000-7000-8000-000000009702";
+      const releaseB = "00000000-0000-7000-8000-000000009703";
+      const applied = {
+        ...createBundleEventRowFixture("9700", 100),
+        to_release_id: releaseA,
       };
-      await expectInsightsIndex(
-        () =>
-          model.countLatestEvents({
-            platform: event.platform,
-            channel: event.channel,
-            sinceMs: 0,
-            bundle: [predicate, predicate],
-          }),
-        1,
-      );
-    });
-
-    it("counts a latest installation once when a from and a to predicate both match it", async () => {
-      const model = state.getDatabase();
-      const moved = createBundleEventRowFixture("9701", 100);
-      await record(model, moved);
-      await expectInsightsIndex(
-        () =>
-          model.countLatestEvents({
-            platform: moved.platform,
-            channel: moved.channel,
-            sinceMs: 0,
-            bundle: [
-              {
-                field: "from_bundle_id",
-                value: moved.from_bundle_id,
-                types: [moved.type],
-              },
-              {
-                field: "to_bundle_id",
-                value: moved.to_bundle_id,
-                types: [moved.type],
-              },
-            ],
-          }),
-        1,
-      );
+      // Downloaded B, and still runs A until it launches B.
+      const downloaded: BundleEventRow = {
+        ...createBundleEventRowFixture("9701", 100),
+        type: "UPDATE_DOWNLOADED",
+        from_release_id: releaseA,
+        to_release_id: releaseB,
+      };
+      await record(model, applied);
+      await record(model, downloaded);
+      const count = (releaseId?: string) =>
+        model.countLatestEvents({
+          platform: "ios",
+          channel: "production",
+          sinceMs: 0,
+          ...(releaseId === undefined ? {} : { releaseId }),
+        });
+      await expectInsightsIndex(() => count(releaseA), 2);
+      await expectInsightsIndex(() => count(releaseB), 0);
+      await expectInsightsIndex(() => count(), 2);
     });
 
     it("keeps two releases of one artifact in one scope apart, as a promote back into the channel makes them", async () => {
@@ -628,9 +593,9 @@ export const registerInsightsModelTests = (
           })
           .then((points) => points.map(({ events }) => events));
       const launched = (release: string) =>
-        ({ ...scope, type: "UPDATE_APPLIED", toBundleId: release }) as const;
+        ({ ...scope, type: "UPDATE_APPLIED", toReleaseId: release }) as const;
       const crashed = (release: string) =>
-        ({ ...scope, type: "RECOVERED", fromBundleId: release }) as const;
+        ({ ...scope, type: "RECOVERED", fromReleaseId: release }) as const;
       // Each release has its own launches and crashes: v3 crashed for both
       // of its installations, v5 for none of its three.
       await expectInsightsIndex(() => count(launched(v3)), 2);
@@ -640,6 +605,12 @@ export const registerInsightsModelTests = (
       await expectInsightsIndex(() => series(launched(v5)), [3]);
       await expectInsightsIndex(() => series(crashed(v5)), [0]);
       await expectInsightsIndex(() => series(crashed(v3)), [2]);
+      // Each release's installations: the two that crashed on v3 went to v4.
+      const installations = (releaseId: string) =>
+        model.countLatestEvents({ ...scope, sinceMs: 0, releaseId });
+      await expectInsightsIndex(() => installations(v5), 3);
+      await expectInsightsIndex(() => installations(v4), 2);
+      await expectInsightsIndex(() => installations(v3), 0);
       await expectInsightsIndex(
         () =>
           model
@@ -668,7 +639,7 @@ export const registerInsightsModelTests = (
             platform: "ios",
             channel: "production",
             type: "RECOVERED",
-            fromBundleId: createBundleEventRowFixture("1", 0).to_bundle_id,
+            fromReleaseId: createBundleEventRowFixture("1", 0).to_bundle_id,
           },
           sinceMs: 0,
           beforeReceivedAtMs: 100,
@@ -746,7 +717,7 @@ export const registerInsightsModelTests = (
           hourly({
             ...scope,
             type: "UPDATE_APPLIED",
-            toBundleId: base.to_bundle_id,
+            toReleaseId: releaseB,
           }),
         points(2, 0, 0),
       );
@@ -755,7 +726,7 @@ export const registerInsightsModelTests = (
           hourly({
             ...scope,
             type: "RECOVERED",
-            fromBundleId: base.to_bundle_id,
+            fromReleaseId: releaseB,
           }),
         points(1, 0, 0),
       );
@@ -1029,7 +1000,7 @@ export const registerInsightsModelTests = (
               platform: "ios",
               channel: "production",
               type: "UNCHANGED",
-              toBundleId: base.to_bundle_id,
+              toReleaseId: releaseB,
             },
             sinceMs: 0,
             beforeReceivedAtMs: 2 * day,
@@ -1137,9 +1108,9 @@ export const registerInsightsModelTests = (
           (await count({
             ...scope,
             type: "UPDATE_APPLIED",
-            toBundleId: bundleB,
+            toReleaseId: releaseB,
           })) +
-          (await count({ ...scope, type: "UNCHANGED", toBundleId: bundleB })),
+          (await count({ ...scope, type: "UNCHANGED", toReleaseId: releaseB })),
         metrics!.applies,
       );
       // The download series counts the stored download rows and the
@@ -1155,7 +1126,7 @@ export const registerInsightsModelTests = (
       ).length;
       await expectInsightsIndex(
         () =>
-          count({ ...scope, type: "UPDATE_DOWNLOADED", toBundleId: bundleB }),
+          count({ ...scope, type: "UPDATE_DOWNLOADED", toReleaseId: releaseB }),
         metrics!.downloads,
       );
       expect(implied).toBe(2);
@@ -1227,12 +1198,12 @@ export const registerInsightsModelTests = (
         [check, download, applied],
       );
       const scope = { platform: "ios", channel: "production" } as const;
-      for (const [toBundleId, listed] of [
+      for (const [toReleaseId, listed] of [
         [download.to_bundle_id, [download]],
         // A failed check names the running bundle, which it did not target.
         [check.to_bundle_id, []],
       ] as const) {
-        const filter = { ...scope, type: "UPDATE_FAILED", toBundleId } as const;
+        const filter = { ...scope, type: "UPDATE_FAILED", toReleaseId } as const;
         await expectInsightsIndex(
           () =>
             model.listEvents({

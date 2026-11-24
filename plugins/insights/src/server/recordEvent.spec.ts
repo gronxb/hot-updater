@@ -195,24 +195,6 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
           limit: 100,
         })
       ).rows;
-    const byBundle = async (
-      field: "from_bundle_id" | "to_bundle_id",
-      bundleId: string,
-      type: string,
-    ) =>
-      (
-        await db.findAggregates("insights_latest_by_bundle", {
-          index: "byBundle",
-          where: {
-            platform: "ios",
-            channel: "production",
-            bundle_field: field,
-            bundle_id: bundleId,
-            type,
-          },
-          limit: 100,
-        })
-      ).rows;
     const outcomes = async (type: string, ref: string) =>
       (
         await db.findAggregates("insights_outcomes", {
@@ -259,6 +241,9 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
           )
         ).rows[0]?.failed_users,
       );
+    /** A release's installations: its distribution rows. */
+    const installationsOn = async (releaseId: string) =>
+      (await distribution()).filter((row) => row.release_id === releaseId);
     return {
       ...harness,
       db,
@@ -267,7 +252,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       applies,
       lifetime,
       distribution,
-      byBundle,
+      installationsOn,
       outcomes,
       everyEvent,
       failures,
@@ -282,7 +267,6 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       overview,
       sketch,
       distribution,
-      byBundle,
       outcomes,
       everyEvent,
     } = await setup();
@@ -293,7 +277,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     ).resolves.toMatchObject({
       day: T - (T % DAY),
       movement_install_id: "install-1",
-      bundle_ref: ["to:bundle-2"],
+      bundle_ref: ["to:release-2"],
     });
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-1" }),
@@ -309,16 +293,8 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
         latest_installations: 1,
       },
     ]);
-    for (const [field, bundle] of [
-      ["from_bundle_id", "bundle-1"],
-      ["to_bundle_id", "bundle-2"],
-    ] as const) {
-      await expect(
-        byBundle(field, bundle, "UPDATE_APPLIED"),
-      ).resolves.toMatchObject([{ installations: 1 }]);
-    }
     await expect(
-      outcomes("UPDATE_APPLIED", "to:bundle-2"),
+      outcomes("UPDATE_APPLIED", "to:release-2"),
     ).resolves.toMatchObject([{ bucket_start_ms: hour(T), events: 1 }]);
     // Every event's row is a UTC day's, not an hour's.
     await expect(everyEvent()).resolves.toEqual([
@@ -480,11 +456,11 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
 
     await expect(
       db.findOne("bundle_events", { id: uuid(2) }),
-    ).resolves.toMatchObject({ bundle_ref: ["from:bundle-1"] });
+    ).resolves.toMatchObject({ bundle_ref: ["from:release-1"] });
     const scope = { platform: "ios", channel: "production" } as const;
     for (const [n, filter] of [
-      [1, { ...scope, type: "UPDATE_APPLIED", toBundleId: "bundle-2" }],
-      [2, { ...scope, type: "RECOVERED", fromBundleId: "bundle-1" }],
+      [1, { ...scope, type: "UPDATE_APPLIED", toReleaseId: "release-2" }],
+      [2, { ...scope, type: "RECOVERED", fromReleaseId: "release-1" }],
     ] as const) {
       await expect(
         api.listEvents({
@@ -511,13 +487,13 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       db.findOne("bundle_event_heads", { install_id: "install-2" }),
     ).resolves.toBeNull();
     await expect(
-      outcomes("UPDATE_APPLIED", "to:bundle-2"),
+      outcomes("UPDATE_APPLIED", "to:release-2"),
     ).resolves.toMatchObject([{ events: 1 }]);
     await expect(everyEvent()).resolves.toMatchObject([{ events: 1 }]);
   });
 
   it("moves the head only for a newer event and deletes gauge rows that reach zero", async () => {
-    const { api, db, distribution, byBundle, outcomes } = await setup();
+    const { api, db, distribution, outcomes } = await setup();
     await api.recordEvent(event(1));
     await api.recordEvent(
       event(2, {
@@ -556,16 +532,10 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       },
     ]);
     await expect(
-      byBundle("to_bundle_id", "bundle-2", "UPDATE_APPLIED"),
-    ).resolves.toEqual([]);
-    await expect(
-      byBundle("to_bundle_id", "bundle-3", "UPDATE_DOWNLOADED"),
-    ).resolves.toMatchObject([{ installations: 1 }]);
-    await expect(
-      outcomes("UPDATE_APPLIED", "to:bundle-2"),
+      outcomes("UPDATE_APPLIED", "to:release-2"),
     ).resolves.toMatchObject([{ bucket_start_ms: hour(T), events: 1 }]);
     await expect(
-      outcomes("UPDATE_APPLIED", "to:bundle-4"),
+      outcomes("UPDATE_APPLIED", "to:release-4"),
     ).resolves.toMatchObject([{ bucket_start_ms: hour(T + HOUR), events: 1 }]);
 
     // The apply of the downloaded bundle ties the head's time and wins on id.
@@ -601,7 +571,8 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
   });
 
   it("keeps an installation's first UNCHANGED report as first seen, which launches nothing", async () => {
-    const { api, db, applies, outcomes, everyEvent, byBundle } = await setup();
+    const { api, db, applies, outcomes, everyEvent, installationsOn } =
+      await setup();
     await api.recordEvent(unchanged(1));
     const firstSeen = {
       ...unchanged(1),
@@ -623,12 +594,13 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     ).resolves.toEqual(firstSeen);
     // The installation is new to the server, not known to have launched
     // anything: no bundle list and no release counter count it.
-    await expect(outcomes("UNCHANGED", "to:bundle-2")).resolves.toEqual([]);
+    await expect(outcomes("UNCHANGED", "to:release-2")).resolves.toEqual([]);
     await expect(everyEvent()).resolves.toMatchObject([{ events: 1 }]);
     await expect(applies("release-2")).resolves.toBe(0);
-    await expect(
-      byBundle("to_bundle_id", "bundle-2", "UNCHANGED"),
-    ).resolves.toMatchObject([{ bucket_start_ms: day(T), installations: 1 }]);
+    // Its installation runs release-2, which counts it.
+    await expect(installationsOn("release-2")).resolves.toMatchObject([
+      { bucket_start_ms: day(T), latest_installations: 1 },
+    ]);
     await expect(
       api.listEvents({
         filter: { kind: "all" },
@@ -708,10 +680,10 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       },
     });
     // Launches go under their own key, which no older UNCHANGED row used.
-    await expect(outcomes("UNCHANGED", "on:bundle-3")).resolves.toMatchObject([
+    await expect(outcomes("UNCHANGED", "on:release-3")).resolves.toMatchObject([
       { bucket_start_ms: hour(T), events: 1 },
     ]);
-    await expect(outcomes("UNCHANGED", "to:bundle-3")).resolves.toEqual([]);
+    await expect(outcomes("UNCHANGED", "to:release-3")).resolves.toEqual([]);
 
     // A download's head still runs the bundle it came from.
     await api.recordEvent(
@@ -844,7 +816,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     });
     // The download series holds the one download, in the hour of the apply
     // that implied it; the late report adds none.
-    await expect(outcomes("UPDATE_DOWNLOADED", "to:bundle-2")).resolves.toEqual(
+    await expect(outcomes("UPDATE_DOWNLOADED", "to:release-2")).resolves.toEqual(
       [
         expect.objectContaining({
           bucket_start_ms: T + HOUR - ((T + HOUR) % HOUR),
@@ -885,10 +857,10 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       crashes: 1,
     });
     const hourOfCrash = T + HOUR - ((T + HOUR) % HOUR);
-    await expect(outcomes("UPDATE_DOWNLOADED", "to:bundle-2")).resolves.toEqual(
+    await expect(outcomes("UPDATE_DOWNLOADED", "to:release-2")).resolves.toEqual(
       [expect.objectContaining({ bucket_start_ms: hourOfCrash, events: 1 })],
     );
-    await expect(outcomes("RECOVERED", "from:bundle-2")).resolves.toEqual([
+    await expect(outcomes("RECOVERED", "from:release-2")).resolves.toEqual([
       expect.objectContaining({ bucket_start_ms: hourOfCrash, events: 1 }),
     ]);
   });
@@ -922,7 +894,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
   ] as const)(
     "keeps a launch report made before the apply late after %s replaced the apply head",
     async (_case, fields, later) => {
-      const { api, db, lifetime, byBundle } = await setup();
+      const { api, db, lifetime, distribution } = await setup();
       const applyMs = 2_000_000_000_000;
       // Apply bundle-1 → bundle-2.
       await api.recordEvent(event(1, { id: madeId(applyMs, 1) }));
@@ -938,11 +910,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       const head = () =>
         db.findOne("bundle_event_heads", { install_id: "install-1" });
       await expect(head()).resolves.toMatchObject({ id: later_.id });
-      const gauges = async () => [
-        ...(await byBundle("to_bundle_id", "bundle-1", "UNCHANGED")),
-        ...(await byBundle("to_bundle_id", "bundle-2", "UNCHANGED")),
-        ...(await byBundle("to_bundle_id", "bundle-2", "UPDATE_APPLIED")),
-      ];
+      const gauges = distribution;
       const before = await gauges();
       // Made on bundle-1 before the apply, delivered last.
       const stale = unchanged(3, {
@@ -1007,7 +975,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       crashes: 0,
     });
     // One download hour: the first report's.
-    await expect(outcomes("UPDATE_DOWNLOADED", "to:bundle-2")).resolves.toEqual(
+    await expect(outcomes("UPDATE_DOWNLOADED", "to:release-2")).resolves.toEqual(
       [expect.objectContaining({ events: 1 })],
     );
   });
@@ -1072,7 +1040,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
         platform: "ios",
         channel: "production",
         type: "UNCHANGED",
-        toBundleId: "bundle-2",
+        toReleaseId: "bundle-2",
       }),
     ).toBe(false);
     expect(isLaunch(row)).toBe(false);
@@ -1103,13 +1071,13 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       db.findOne("bundle_events", { id: uuid(2) }),
     ).resolves.toMatchObject({
       movement_install_id: "install-2",
-      bundle_ref: ["to:bundle-3"],
+      bundle_ref: ["to:release-3"],
     });
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-2" }),
     ).resolves.toMatchObject({ id: uuid(1), type: "UPDATE_APPLIED" });
     await expect(
-      outcomes("UPDATE_FAILED", "to:bundle-3"),
+      outcomes("UPDATE_FAILED", "to:release-3"),
     ).resolves.toMatchObject([{ bucket_start_ms: hour(T), events: 1 }]);
     await expect(everyEvent()).resolves.toMatchObject([{ events: 2 }]);
     await expect(
@@ -1204,7 +1172,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-2" }),
     ).resolves.toBeNull();
-    await expect(outcomes("UPDATE_FAILED", "to:bundle-2")).resolves.toEqual([]);
+    await expect(outcomes("UPDATE_FAILED", "to:release-2")).resolves.toEqual([]);
     await expect(everyEvent()).resolves.toMatchObject([{ events: 1 }]);
     const scope = { platform: "ios", channel: "production" } as const;
     await expect(
@@ -1213,7 +1181,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
           kind: "bundle",
           ...scope,
           type: "UPDATE_FAILED",
-          toBundleId: "bundle-2",
+          toReleaseId: "release-2",
         },
         sinceMs: day(T),
         beforeReceivedAtMs: T + HOUR,
@@ -1321,7 +1289,6 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       "get insights_sketches",
       "get insights_sketches_daily",
       "get insights_distribution",
-      "get insights_latest_by_bundle",
       "write",
     ]);
   });
@@ -1372,7 +1339,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       db.findOne("bundle_event_heads", { install_id: "install-1" }),
     ).resolves.toMatchObject({ id: uuid(1), received_at_ms: T });
     await expect(
-      outcomes("UPDATE_APPLIED", "to:bundle-2"),
+      outcomes("UPDATE_APPLIED", "to:release-2"),
     ).resolves.toMatchObject([{ events: 1 }]);
 
     // The later writer reads the winner's row, at once or in the rerun after

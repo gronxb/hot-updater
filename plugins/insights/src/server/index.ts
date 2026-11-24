@@ -7,6 +7,7 @@ import {
   type PluginEndpoint,
 } from "@hot-updater/plugin-core";
 
+import { backfillReleaseRefs } from "./backfill";
 import type { BundleEventRow } from "./eventRow";
 import { createInsightsModel } from "./model";
 import type {
@@ -41,6 +42,7 @@ import {
   RAW_RETENTION_DAYS,
 } from "./schema";
 
+export type { ReleaseRefBackfill } from "./backfill";
 export {
   createInsightsAdminReads,
   createInsightsReads,
@@ -99,6 +101,13 @@ const createInsightsApi = (
   /** A release's or a channel's update failures, and their breakdown over a time range. */
   getUpdateFailures: (input: InsightsUpdateFailuresInput) =>
     getUpdateFailures(db, input, now, retention),
+  /**
+   * Moves the stored events a 1.1 server keyed by artifact, and their
+   * outcome counts, to their release: `hot-updater db migrate` and
+   * `hot-updater init` run it, and it can run again.
+   */
+  backfillReleaseRefs: (options?: { readonly dryRun?: boolean }) =>
+    backfillReleaseRefs(db, now, retention, options),
 });
 
 export type InsightsApi = ReturnType<typeof createInsightsApi>;

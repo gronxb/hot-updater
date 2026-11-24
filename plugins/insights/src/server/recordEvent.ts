@@ -16,19 +16,17 @@ import {
   runningBuiltinBundleId,
 } from "./eventRow";
 import {
-  insightsKey,
   insightsOverviewDeltas,
   insightsOverviewId,
   type InsightsOverviewIdentity,
 } from "./overview";
 import {
-  bundleRefOfFilter,
-  bundleRefsOf,
   DAILY_EVENTS,
   DAY_MS,
   HOUR_MS,
   type InsightsSchema,
   isLaunch,
+  outcomeRefsOf,
 } from "./schema";
 
 /** The head columns `countHead` and `repeatsHead` read. */
@@ -93,20 +91,10 @@ const gaugeSlot = (head: Head) => ({
 });
 
 /**
- * The `insights_latest_by_bundle` field of a head's (from, to) pair. A head
- * matches a `from` and a `to` predicate of one type at once only through its
- * pair, so this gauge is what a count subtracts to count it once.
- */
-export const PAIR_FIELD = "from_to";
-
-/** The pair gauge's `bundle_id`: a hash of the two bundle ids, which fit no single 36-character column. */
-export const bundlePairKey = (from: string, to: string): string =>
-  insightsKey(`${from.length}:${from}${to.length}:${to}`);
-
-/**
  * Moves a head's gauges: the distribution row, and the built-in one when it
- * runs its build's built-in bundle, one row per bundle it references, and
- * its pair; -1 takes back the head an event replaces.
+ * runs its build's built-in bundle; -1 takes back the head an event
+ * replaces. The distribution row names the release the head runs, so it is
+ * also each release's installation gauge.
  */
 const countHead = (
   tx: HotUpdaterTransaction<InsightsSchema>,
@@ -139,38 +127,6 @@ const countHead = (
         bucket_start_ms: bucket,
       },
       { latest_installations: delta },
-      { shardBy },
-    );
-  }
-  for (const field of ["from_bundle_id", "to_bundle_id"] as const) {
-    const bundleId = head[field];
-    if (bundleId === null) continue;
-    tx.aggregate(
-      "insights_latest_by_bundle",
-      {
-        platform: head.platform,
-        channel: head.channel,
-        bundle_field: field,
-        bundle_id: bundleId,
-        type: head.type,
-        bucket_start_ms: bucket,
-      },
-      { installations: delta },
-      { shardBy },
-    );
-  }
-  if (head.from_bundle_id !== null) {
-    tx.aggregate(
-      "insights_latest_by_bundle",
-      {
-        platform: head.platform,
-        channel: head.channel,
-        bundle_field: PAIR_FIELD,
-        bundle_id: bundlePairKey(head.from_bundle_id, head.to_bundle_id),
-        type: head.type,
-        bucket_start_ms: bucket,
-      },
-      { installations: delta },
       { shardBy },
     );
   }
@@ -263,18 +219,16 @@ const countEvent = (
 };
 
 /**
- * A stored event's outcome rows: its bundle filter's hour, when it has one
- * (`bundleRefsOf`), and every stored event's UTC day. A download that a
- * launch or crash implied counts in its bundle's download hour too, in the
- * hour of that launch or crash, so the download series covers what the
- * release's downloads count; the launch or crash is its row.
+ * A stored event's outcome rows: its bundle filter's hour, and the download
+ * hour of a download its launch or crash implied, each by release
+ * (`outcomeRefsOf`); and every stored event's UTC day.
  */
 const countOutcome = (
   tx: HotUpdaterTransaction<InsightsSchema>,
   event: BundleEventRow,
 ) => {
   const shardBy = event.install_id;
-  const hour = (type: string, bundleRef: string) =>
+  for (const [type, bundleRef] of outcomeRefsOf(event)) {
     tx.aggregate(
       "insights_outcomes",
       {
@@ -286,18 +240,6 @@ const countOutcome = (
       },
       { events: 1 },
       { shardBy },
-    );
-  for (const bundleRef of bundleRefsOf(event)) hour(event.type, bundleRef);
-  if (event.metadata.implied_download === true) {
-    hour(
-      "UPDATE_DOWNLOADED",
-      bundleRefOfFilter({
-        type: "UPDATE_DOWNLOADED",
-        toBundleId:
-          event.type === "RECOVERED"
-            ? event.from_bundle_id!
-            : event.to_bundle_id,
-      }),
     );
   }
   // The global event list reads only the days this row counts: a gap costs

@@ -81,94 +81,50 @@ describe("insights latest events by bundle", () => {
     createPluginTestHarness(insights(), { now: () => T0 + DAY });
   const halfPast = T0 + 30 * 60_000;
 
-  it("counts each latest event once for the overview's predicates, even from a bundle to itself", async () => {
+  it("counts a release's installations once each: a download's source, and the target of anything else", async () => {
     const harness = await setup();
     for (const [n, moved] of [
-      [31, { type: "UPDATE_APPLIED", from_bundle_id: "X", to_bundle_id: "X" }],
+      // Two releases of one artifact X: R1, then R2 promoted back.
+      [31, { type: "UPDATE_APPLIED", to_release_id: "R1", to_bundle_id: "X" }],
+      [32, { type: "UPDATE_APPLIED", to_release_id: "R2", to_bundle_id: "X" }],
+      // Still runs R1 until it launches what it downloaded.
       [
-        32,
-        { type: "UPDATE_DOWNLOADED", from_bundle_id: "X", to_bundle_id: "X" },
+        33,
+        {
+          type: "UPDATE_DOWNLOADED",
+          from_release_id: "R1",
+          from_bundle_id: "X",
+          to_release_id: "R3",
+          to_bundle_id: "Y",
+        },
       ],
-      [33, { type: "RECOVERED", from_bundle_id: "X", to_bundle_id: "X" }],
+      // Crashed on R3 and went back to R1.
       [
         34,
-        { type: "UPDATE_DOWNLOADED", from_bundle_id: "X", to_bundle_id: "Y" },
+        {
+          type: "RECOVERED",
+          from_release_id: "R3",
+          from_bundle_id: "Y",
+          to_release_id: "R1",
+          to_bundle_id: "X",
+        },
       ],
     ] as const) {
       await harness.api.recordEvent(
         event(n, { ...moved, received_at_ms: halfPast }),
       );
     }
-    const bundle = [
-      { field: "from_bundle_id", value: "X", types: ["UPDATE_DOWNLOADED"] },
-      {
-        field: "to_bundle_id",
-        value: "X",
-        types: ["UNCHANGED", "UPDATE_APPLIED", "RECOVERED"],
-      },
-    ] as const;
-    await expect(
+    const count = (releaseId?: string) =>
       harness.api.countLatestEvents({
         platform: "ios",
         channel: "production",
         sinceMs: T0,
-        bundle,
-      }),
-    ).resolves.toBe(4);
-  });
-
-  it("counts a head once when a from and a to predicate of one type both match it", async () => {
-    const harness = await setup();
-    for (const [n, moved] of [
-      [21, { from_bundle_id: "A", to_bundle_id: "B" }],
-      [22, { from_bundle_id: "A", to_bundle_id: "C" }],
-      [23, { from_bundle_id: "D", to_bundle_id: "B" }],
-      [24, { from_bundle_id: "B", to_bundle_id: "B" }],
-    ] as const) {
-      await harness.api.recordEvent(
-        event(n, {
-          ...moved,
-          type: "UPDATE_DOWNLOADED",
-          received_at_ms: halfPast,
-        }),
-      );
-    }
-    const types = ["UPDATE_DOWNLOADED"] as const;
-    const count = (
-      bundle: readonly {
-        readonly field: "from_bundle_id" | "to_bundle_id";
-        readonly value: string;
-        readonly types: readonly "UPDATE_DOWNLOADED"[];
-      }[],
-      sinceMs: number,
-    ) =>
-      harness.api.countLatestEvents({
-        platform: "ios",
-        channel: "production",
-        sinceMs,
-        bundle,
+        ...(releaseId === undefined ? {} : { releaseId }),
       });
-    // From A or to B: A→B, A→C, D→B, and B→B. The gauges alone say 5,
-    // counting A→B under both predicates.
-    await expect(
-      count(
-        [
-          { field: "from_bundle_id", value: "A", types },
-          { field: "to_bundle_id", value: "B", types },
-        ],
-        T0,
-      ),
-    ).resolves.toBe(4);
-    // B→B matches from B and to B through one pair: A→B, D→B, B→B.
-    await expect(
-      count(
-        [
-          { field: "from_bundle_id", value: "B", types },
-          { field: "to_bundle_id", value: "B", types },
-        ],
-        T0,
-      ),
-    ).resolves.toBe(3);
+    await expect(count("R1")).resolves.toBe(3);
+    await expect(count("R2")).resolves.toBe(1);
+    await expect(count("R3")).resolves.toBe(0);
+    await expect(count()).resolves.toBe(4);
   });
 
   it("counts whole UTC days only, and rejects a start inside one", async () => {
@@ -238,7 +194,7 @@ describe("insights read budgets", () => {
           platform: "ios",
           channel: "production",
           type: "UPDATE_APPLIED",
-          toBundleId: "bundle-b",
+          toReleaseId: "release-b",
         },
         sinceMs: T0,
         beforeReceivedAtMs: T0 + 3 * DAY,
@@ -278,7 +234,7 @@ describe("insights read budgets", () => {
           platform: "ios",
           channel: "production",
           type: "UPDATE_APPLIED",
-          toBundleId: "bundle-b",
+          toReleaseId: "release-b",
         },
         sinceMs: T0,
         beforeReceivedAtMs: T0 + 2 * HOUR,
@@ -294,7 +250,7 @@ describe("insights read budgets", () => {
           platform: "ios",
           channel: "production",
           type: "UPDATE_APPLIED",
-          toBundleId: "bundle-b",
+          toReleaseId: "release-b",
         },
         timeRange: { start: T0, end: T0 + 3 * DAY },
         intervalMs: DAY,
@@ -318,22 +274,26 @@ describe("insights read budgets", () => {
     expect(latest.result).toBe(1);
     expect(Object.keys(latest.tables)).toEqual(["insights_distribution"]);
 
-    const byBundle = await read(() =>
+    // A release's installations: the same distribution rows, filtered.
+    const all = await read(() =>
       api.countLatestEvents({
         platform: "ios",
         channel: "production",
         sinceMs: T0,
-        bundle: [
-          {
-            field: "to_bundle_id",
-            value: "bundle-b",
-            types: ["UPDATE_APPLIED"],
-          },
-        ],
       }),
     );
-    expect(byBundle.result).toBe(24);
-    expect(Object.keys(byBundle.tables)).toEqual(["insights_latest_by_bundle"]);
+    const byRelease = await read(() =>
+      api.countLatestEvents({
+        platform: "ios",
+        channel: "production",
+        sinceMs: T0,
+        releaseId: "release-b",
+      }),
+    );
+    expect(byRelease.result).toBe(24);
+    expect(all.result).toBe(24);
+    expect(byRelease.tables).toEqual(all.tables);
+    expect(Object.keys(byRelease.tables)).toEqual(["insights_distribution"]);
   });
 
   it("reads release activity from lifetime counters, and app usage from sketches and gauges only", async () => {
@@ -843,7 +803,7 @@ describe("insights event list ranges", () => {
     platform: "ios",
     channel: "production",
     type: "UPDATE_APPLIED",
-    toBundleId: "bundle-b",
+    toReleaseId: "release-b",
   } as const;
 
   const setup = async () => {
@@ -1031,7 +991,7 @@ describe("insights event list ranges", () => {
 
   it("crosses a bundle's gaps on its own outcome rows, whatever other bundles hold", async () => {
     const { record, pages } = await setup();
-    const bundleC = { to_bundle_id: "bundle-c" };
+    const bundleC = { to_bundle_id: "bundle-c", to_release_id: "release-c" };
     await record([
       [1, T0 - DAY],
       [2, T0 - 2 * DAY, bundleC],
@@ -1044,7 +1004,7 @@ describe("insights event list ranges", () => {
       bundle: {
         platform: "ios",
         channel: "production",
-        bundleId: "bundle-b",
+        bundleId: "release-b",
         outcome: "applied",
       },
       beforeReceivedAtMs: before,
@@ -1119,8 +1079,14 @@ describe("insights event list ranges", () => {
       event(index + 1, {
         received_at_ms: receivedAtMs,
         ...(index % 3 === 0
-          ? { type: "RECOVERED", from_bundle_id: "bundle-b" }
-          : { to_bundle_id: index % 3 === 1 ? "bundle-b" : "bundle-c" }),
+          ? {
+              type: "RECOVERED",
+              from_release_id: "release-b",
+              from_bundle_id: "bundle-b",
+            }
+          : index % 3 === 1
+            ? { to_bundle_id: "bundle-b" }
+            : { to_release_id: "release-c", to_bundle_id: "bundle-c" }),
       }),
     );
     for (const row of events) await harness.api.recordEvent(row);
@@ -1129,12 +1095,12 @@ describe("insights event list ranges", () => {
       [
         "applied",
         (row: BundleEventRow) =>
-          row.type === "UPDATE_APPLIED" && row.to_bundle_id === "bundle-b",
+          row.type === "UPDATE_APPLIED" && row.to_release_id === "release-b",
       ],
       [
         "recovered",
         (row: BundleEventRow) =>
-          row.type === "RECOVERED" && row.from_bundle_id === "bundle-b",
+          row.type === "RECOVERED" && row.from_release_id === "release-b",
       ],
     ] as const;
     for (const [outcome, matches] of selections) {
@@ -1155,7 +1121,7 @@ describe("insights event list ranges", () => {
                 bundle: {
                   platform: "ios",
                   channel: "production",
-                  bundleId: "bundle-b",
+                  bundleId: "release-b",
                   outcome,
                 },
               }),
