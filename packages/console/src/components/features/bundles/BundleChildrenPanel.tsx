@@ -70,7 +70,7 @@ export function BundleChildrenPanel({
           </div>
         ) : bundles.length > 0 ? (
           <div className="flex flex-col gap-2">
-            <div className="text-xs font-semibold uppercase text-muted-foreground/70">
+            <div className="text-xs font-medium text-muted-foreground">
               Patch artifacts from this base
             </div>
             {isMobile ? (
@@ -82,7 +82,7 @@ export function BundleChildrenPanel({
                   >
                     <div className="flex flex-col gap-3">
                       <div className="space-y-1">
-                        <div className="text-[11px] font-medium uppercase text-muted-foreground/70">
+                        <div className="text-xs font-medium text-muted-foreground">
                           Target artifact ID
                         </div>
                         <BundleIdDisplay
@@ -93,7 +93,7 @@ export function BundleChildrenPanel({
                         />
                       </div>
                       <div className="space-y-1">
-                        <div className="text-[11px] font-medium uppercase text-muted-foreground/70">
+                        <div className="text-xs font-medium text-muted-foreground">
                           Relation
                         </div>
                         <div className="flex flex-col items-start gap-1 text-sm">
@@ -114,13 +114,13 @@ export function BundleChildrenPanel({
                       </div>
                       <div className="flex items-center justify-between gap-3">
                         <div className="space-y-1">
-                          <div className="text-[11px] font-medium uppercase text-muted-foreground/70">
+                          <div className="text-xs font-medium text-muted-foreground">
                             Artifact
                           </div>
                           <Badge variant="secondary">bsdiff</Badge>
                         </div>
                         <div className="space-y-1 text-right">
-                          <div className="text-[11px] font-medium uppercase text-muted-foreground/70">
+                          <div className="text-xs font-medium text-muted-foreground">
                             Created
                           </div>
                           <div className="text-xs tabular-nums text-foreground">
@@ -135,7 +135,7 @@ export function BundleChildrenPanel({
                         type="button"
                         variant="outline"
                       >
-                        Detail
+                        Open bundle
                       </Button>
                     </div>
                   </div>
@@ -150,7 +150,9 @@ export function BundleChildrenPanel({
                       <TableHead>Relation</TableHead>
                       <TableHead>Artifact</TableHead>
                       <TableHead>Created</TableHead>
-                      <TableHead className="w-24 text-right">Detail</TableHead>
+                      <TableHead className="w-24 text-right">
+                        <span className="sr-only">Actions</span>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -194,7 +196,7 @@ export function BundleChildrenPanel({
                             type="button"
                             variant="outline"
                           >
-                            Detail
+                            Open bundle
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -206,7 +208,7 @@ export function BundleChildrenPanel({
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            <div className="text-xs font-semibold uppercase text-muted-foreground/70">
+            <div className="text-xs font-medium text-muted-foreground">
               Patch artifacts from this base
             </div>
             <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
