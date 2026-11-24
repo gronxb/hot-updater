@@ -8,12 +8,12 @@ import {
   type DatabaseAdapter,
   type ToolingDatabase,
 } from "@hot-updater/plugin-core";
-import type {
-  BundleEventRow,
-  InsightsApi,
-} from "@hot-updater/plugin-insights/server";
 import { createHotUpdater } from "@hot-updater/server";
-import { insights } from "@hot-updater/server/plugins";
+import {
+  type BundleEventRow,
+  type InsightsApi,
+  insights,
+} from "@hot-updater/server/plugins";
 import {
   createBundleEventRowFixture,
   createReleaseCatalogTestStorage,
@@ -127,7 +127,7 @@ describe("db migrate on a database a 1.1 server's Insights wrote", () => {
       storage: createReleaseCatalogTestStorage(),
       plugins: [insights11TestPlugin()],
       clientAccess: "public",
-    }).api.insights as unknown as Insights11TestApi;
+    }).api["insights"] as unknown as Insights11TestApi;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -197,7 +197,7 @@ describe("db migrate on a database a 1.1 server's Insights wrote", () => {
   it("migrates the schema, then moves the events and counts 1.1 keyed by artifact to their releases, once", async () => {
     await asWrittenByOneDotOne();
     const server = serve(createEngineDatabase({ name: "postgres", adapter }));
-    const api = server.api.insights as InsightsApi;
+    const api = server.api["insights"] as InsightsApi;
 
     await expect(runMigrate()).resolves.toBe(0);
 
@@ -225,7 +225,7 @@ describe("db migrate on a database a 1.1 server's Insights wrote", () => {
   it("moves what a 1.1 server still running recorded after the migration when db migrate runs again", async () => {
     await asWrittenByOneDotOne();
     const server = serve(createEngineDatabase({ name: "postgres", adapter }));
-    const api = server.api.insights as InsightsApi;
+    const api = server.api["insights"] as InsightsApi;
     await expect(runMigrate()).resolves.toBe(0);
 
     // A 1.1 process started before the migration keeps recording by artifact.
@@ -262,7 +262,7 @@ describe("db migrate on a database a 1.1 server's Insights wrote", () => {
       ["Moved 6 Insights events from their artifacts to their releases."],
     ]);
     await expect(
-      health(server.api.insights as InsightsApi, v3),
+      health(server.api["insights"] as InsightsApi, v3),
     ).resolves.toEqual({ launched: 2, crashed: 1 });
   });
 });
