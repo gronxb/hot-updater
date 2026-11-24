@@ -30,13 +30,30 @@ stays subordinate to exact values and actions.
 
 - Inter Variable is the UI typeface, with the platform stack as the initial
   fallback and the existing monospace stack for identifiers.
-- A labeled release reads `v12 · <ID tail>` everywhere (`BundleIdDisplay`):
-  the label in medium `text-sm`, then its ID in muted monospace `text-xs`,
-  clipped from the left to the last 12 characters. The whole ID stays in the
-  text, so hover, screen readers, and a copy get all of it. A release without
-  a label shows its full ID. The label and tail don't shrink, so a badge
-  beside them (Promoted, Unreachable, Disabled) shares a `flex-wrap` row with
-  them and moves under them on a narrow screen rather than over the tail.
+- A labeled release reads `v12 <ID tail>` everywhere (`BundleIdDisplay`),
+  like a git short hash: the label in medium `text-sm`, then its ID in muted
+  monospace `text-sm` on the same baseline, clipped from the left to the last
+  6 characters, with a plain gap and no dot between them. The whole ID stays
+  in the text, so screen readers read all of it. A release without a label
+  shows its full ID. The label and tail don't shrink, so a badge beside them
+  (Promoted, Unreachable, Disabled) shares a `flex-wrap` row with them and
+  moves under them on a narrow screen rather than over the tail.
+- A label is unique only within a channel and platform: production iOS v14,
+  production Android v14, and beta iOS v14 are three releases. Where one
+  surface lists both platforms' releases, such as Insights with All
+  platforms, `BundleIdDisplay` gets `platform` and shows its muted icon
+  before the label, read as the platform's name. Where the screen fixes the
+  platform, or the row already shows it (a Bundles row's platform and channel
+  badge, the release sheet, a native build's served releases), nothing more
+  shows. No labeled surface mixes channels without a channel badge in the
+  row, so labels carry no channel prefix.
+- A label's tail is its release ID (what the app's `getBundleId()`
+  returns): its tooltip shows and its copy copies that ID, never an
+  artifact's, so `vN` reads the same on every screen.
+- Where an artifact shows (advanced artifact diagnostics' base and target),
+  its ID stays plain, then "Release" and the label of the release serving it
+  in the expanded Bundle's channel and platform. Without one on the page,
+  the artifact ID shows alone, never another channel's label.
 - Page headings use `text-base` or `text-lg` with semibold weight. Operational
   card titles use `text-sm` with medium or semibold weight.
 - Body and control text use `text-sm`; dense metadata and table content use
@@ -123,6 +140,21 @@ stays subordinate to exact values and actions.
 - **Feedback:** shadcn `Skeleton` for loading and `Alert` for genuine errors;
   use a short state and direct action for empty lookup results, such as No
   matches / Edit search.
+
+- **Release ID copy:** a labeled release's ID tail is a button of its own.
+  Hover or keyboard focus opens a tooltip with the full ID and Click to copy;
+  a click, Enter, or a tap copies the full ID and the same tooltip says
+  Copied (Couldn't copy on failure), with a polite status for screen readers.
+  It never sits inside another control: where the label opens something (the
+  Bundles row's button, Served now's link), that control wraps only `vN`
+  through `labelAs`, and the tail stays beside it, keeping its click from the
+  row. Inside a control that can't hold a button (a combobox option, a chart
+  tooltip), pass `copyable={false}`: the tail is text, and the full ID shows
+  on hover from `title`.
+  The tail clips inside the button, so its phone touch area stays 44 px
+  tall. A dialog that names a release with it, such as Roll back, gives
+  first focus to Cancel, so no tooltip opens over it. Being a button, the
+  tail doesn't take a text selection; the click copies.
 
 Primitive states are default, hover/focus for interactive controls, disabled
 while submitting/loading when relevant, loading, empty, error, and success.

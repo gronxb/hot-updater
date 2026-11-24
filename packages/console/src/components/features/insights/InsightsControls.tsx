@@ -1,6 +1,7 @@
 import { RotateCcw, X } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelPicker, FilterChip } from "@/components/ChannelPicker";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { Button } from "@/components/ui/button";
@@ -220,11 +221,10 @@ export function InsightsControls({
               {filters.releaseId ? (
                 <PickedRelease
                   releaseId={filters.releaseId}
-                  label={
-                    releases.find(
-                      ({ releaseId }) => releaseId === filters.releaseId,
-                    )?.label ?? null
-                  }
+                  release={releases.find(
+                    ({ releaseId }) => releaseId === filters.releaseId,
+                  )}
+                  showPlatform={filters.platform === "all"}
                 />
               ) : (
                 "All"
@@ -247,21 +247,30 @@ export function InsightsControls({
   );
 }
 
-/** The picked release: its label when the loaded releases have it, else its ID. */
+/**
+ * The picked release: its label and ID tail when the loaded releases have
+ * it, with its platform when the filters list both, else its ID.
+ */
 function PickedRelease({
   releaseId,
-  label,
+  release,
+  showPlatform,
 }: {
   readonly releaseId: string;
-  readonly label: number | null;
+  readonly release: AdoptionRelease | undefined;
+  readonly showPlatform: boolean;
 }) {
-  return label === null ? (
+  return typeof release?.label === "number" ? (
+    // Inside the chip's button, so the ID tail is text, not a copy button.
+    <BundleIdDisplay
+      bundleId={releaseId}
+      copyable={false}
+      label={release.label}
+      platform={showPlatform ? release.platform : undefined}
+    />
+  ) : (
     <span className="max-w-36 truncate font-mono" translate="no">
       {releaseId}
-    </span>
-  ) : (
-    <span className="tabular-nums" title={releaseId} translate="no">
-      v{label}
     </span>
   );
 }

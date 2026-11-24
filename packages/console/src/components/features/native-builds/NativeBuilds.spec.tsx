@@ -2017,7 +2017,7 @@ describe("ServedNowCard", () => {
     message: `Release of ${bundleId}`,
   });
 
-  it("names each release by its label before its bundle ID", () => {
+  it("names each release by its label and release ID, as the Bundles page does", () => {
     render(
       <ServedNowCard
         detail={detail({
@@ -2030,8 +2030,17 @@ describe("ServedNowCard", () => {
       />,
     );
 
-    expect(screen.getByRole("link", { name: `v7 ${id(21)}` })).toBeTruthy();
-    expect(screen.getByRole("link", { name: id(20) })).toBeTruthy();
+    // The label links to the Bundle; its tail is the release's ID, as on
+    // the Bundles row, never the bundle's artifact ID, and copies beside
+    // the link.
+    const link = screen.getByRole("link", { name: "v7" });
+    const copy = screen.getByRole("button", { name: `Copy ID ${id(121)}` });
+    expect(link.contains(copy)).toBe(false);
+    expect(link.parentElement!.textContent).toBe(`v7 ${id(121)}`);
+    expect(
+      screen.queryByRole("button", { name: `Copy ID ${id(21)}` }),
+    ).toBeNull();
+    expect(screen.getByRole("link", { name: id(120) })).toBeTruthy();
   });
 
   it("gives a marked build the command for a newest OTA with no patch from it", () => {
@@ -2119,7 +2128,8 @@ describe("ServedNowCard", () => {
     expect(rows[0]!.textContent).toContain("Patch");
     expect(rows[0]!.textContent).toContain("40.0 KB");
     expect(rows[1]!.textContent).toContain("Full bundle");
-    expect(screen.getByRole("link", { name: id(20) })).toHaveProperty(
+    // Named by its release ID, as the Bundles page names it.
+    expect(screen.getByRole("link", { name: id(120) })).toHaveProperty(
       "href",
       expect.stringContaining(`/?releaseId=${id(120)}`),
     );

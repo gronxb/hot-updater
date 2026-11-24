@@ -405,14 +405,143 @@ describe("BundlesPage", () => {
       name: /^Unreachable/,
     });
 
+    // The label opens the Bundle, beside its ID tail.
+    const name = open.parentElement!;
+    expect(name.textContent).toBe("v4 release-1");
     // The label and its ID tail don't shrink, so on a phone card the badges
     // have to wrap under them, or they are drawn over the tail.
-    expect(promoted.parentElement).toBe(open.parentElement);
-    expect(unreachable.parentElement).toBe(open.parentElement);
-    expect(open.parentElement!.className).toContain("flex-wrap");
+    expect(promoted.parentElement).toBe(name.parentElement);
+    expect(unreachable.parentElement).toBe(name.parentElement);
+    expect(name.parentElement!.className).toContain("flex-wrap");
     // Stacked under the ID, the reason's touch area stays out of it.
     expect(unreachable.className).toContain("after:-top-2");
     expect(unreachable.className).toContain("after:-bottom-5");
+  });
+
+  it.each([false, true])(
+    "copies a labeled Bundle's full ID from its tail without opening it (mobile: %s)",
+    async (mobile) => {
+      mocks.isMobile.mockReturnValue(mobile);
+      const writeText = vi.fn(async (_text: string) => {});
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText },
+      });
+      releases = [{ ...release, label: 12 }];
+      render(<BundlesPage />);
+      const entry = mobile
+        ? screen.getByRole("article", { name: "Bundle release-1" })
+        : screen.getByRole("row", { name: "Open bundle release-1" });
+      const copy = within(entry).getByRole("button", {
+        name: "Copy ID release-1",
+      });
+      const open = within(entry).getByRole("button", {
+        name: "Open details for ID release-1",
+      });
+      // Valid HTML: the copy button sits beside the open button, not in it.
+      expect(open.contains(copy)).toBe(false);
+      expect(open.textContent).toBe("v12");
+
+      fireEvent.click(copy);
+      fireEvent.keyDown(copy, { key: "Enter" });
+
+      expect(writeText).toHaveBeenCalledWith("release-1");
+      expect(
+        within(await screen.findByRole("tooltip")).getByText("release-1"),
+      ).toBeTruthy();
+      expect(mocks.navigate).not.toHaveBeenCalled();
+
+      // The label, and the rest of the row, still open the Bundle.
+      fireEvent.click(open);
+      expect(mocks.navigate).toHaveBeenCalledWith({
+        resetScroll: false,
+        search: { releaseId: "release-1" },
+        to: "/",
+      });
+    },
+  );
+
+  it.each([false, true])(
+    "labels the artifacts in advanced diagnostics by the releases serving them in its channel (mobile: %s)",
+    (mobile) => {
+      mocks.isMobile.mockReturnValue(mobile);
+      releases = [
+        { ...release, label: 12 },
+        {
+          ...release,
+          id: "release-2",
+          bundle_id: childBundle.id,
+          label: 13,
+        },
+      ];
+      render(<BundlesPage />);
+      const entry = mobile
+        ? screen.getByRole("article", { name: "Bundle release-1" })
+        : screen.getByRole("row", { name: "Open bundle release-1" });
+      fireEvent.click(
+        within(entry).getByRole("button", {
+          name: "Show advanced artifact diagnostics",
+        }),
+      );
+      const panel = document.getElementById("bundle-lineage-panel-release-1")!;
+
+      // A label's tail is its release ID: v12 reads, hovers, and copies as
+      // on its own Bundle row, never with the artifact's ID.
+      const named = within(entry).getByRole("button", {
+        name: "Copy ID release-1",
+      }).parentElement!.textContent;
+      expect(named).toBe("v12 release-1");
+      const base = within(panel).getByText("Base artifact ID").parentElement!;
+      expect(base.textContent).toBe(
+        `Base artifact ID${baseBundle.id}Release${named}`,
+      );
+      // Target and both sides of Relation, by the serving release's label
+      // and copyable release ID; the artifact IDs stay plain beside them.
+      expect(
+        within(panel)
+          .getAllByRole("button", { name: /^Copy ID / })
+          .map((button) => [
+            button.parentElement!.textContent,
+            button.getAttribute("aria-label"),
+          ]),
+      ).toEqual([
+        [named, "Copy ID release-1"],
+        ["v13 release-2", "Copy ID release-2"],
+        [named, "Copy ID release-1"],
+        ["v13 release-2", "Copy ID release-2"],
+      ]);
+      expect(within(panel).getAllByText(baseBundle.id)).toHaveLength(1);
+      expect(within(panel).getAllByText(childBundle.id)).toHaveLength(1);
+      for (const button of within(panel).getAllByRole("button", {
+        name: /^Copy ID /,
+      })) {
+        expect(button.getAttribute("aria-label")).not.toMatch(/019ff64/);
+      }
+    },
+  );
+
+  it("labels a patch artifact only by a release in the same channel and platform", () => {
+    releases = [
+      { ...release, label: 12 },
+      {
+        ...release,
+        id: "release-2",
+        bundle_id: childBundle.id,
+        channel_id: "channel-2",
+        label: 99,
+      },
+    ];
+    render(<BundlesPage />);
+    fireEvent.click(
+      within(
+        screen.getByRole("row", { name: "Open bundle release-1" }),
+      ).getByRole("button", { name: "Show advanced artifact diagnostics" }),
+    );
+    const panel = document.getElementById("bundle-lineage-panel-release-1")!;
+
+    expect(within(panel).queryByText("v99")).toBeNull();
+    // Without a label of its channel, its full ID shows.
+    expect(within(panel).getAllByText(childBundle.id).length).toBe(2);
   });
 
   it("expands the base-to-patch relationship from the Bundle row", () => {

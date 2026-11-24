@@ -181,17 +181,20 @@ export function ServedNowCard({
                     <TableRow key={release.releaseId}>
                       <TableCell className="py-3 whitespace-normal">
                         <div className="flex min-w-0 flex-col gap-1">
-                          <Link
-                            className="underline-offset-4 hover:underline"
-                            search={{ releaseId: release.releaseId }}
-                            title={bundleId}
-                            to="/"
-                          >
-                            <BundleIdDisplay
-                              bundleId={bundleId}
-                              label={release.label}
-                            />
-                          </Link>
+                          {/* Named by its release ID, as the Bundles page
+                              names it: the label links to the Bundle, and
+                              its ID tail copies beside the link. */}
+                          <BundleIdDisplay
+                            bundleId={release.releaseId}
+                            label={release.label}
+                            labelAs={
+                              <Link
+                                className="underline-offset-4 hover:underline"
+                                search={{ releaseId: release.releaseId }}
+                                to="/"
+                              />
+                            }
+                          />
                           {release.message ? (
                             <span className="text-xs text-muted-foreground">
                               {release.message}

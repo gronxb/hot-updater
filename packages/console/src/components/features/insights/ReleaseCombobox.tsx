@@ -4,7 +4,6 @@ import { CircleOff } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
-import { PlatformIcon } from "@/components/PlatformIcon";
 import { Badge } from "@/components/ui/badge";
 import {
   Combobox,
@@ -42,18 +41,22 @@ const matches = (release: AdoptionRelease, typed: string) =>
 /** A bundle deployment as a picker names it: ID, platform, deployment, target, and state. */
 export function ReleaseOption({
   release,
+  showPlatform,
 }: {
   readonly release: AdoptionRelease;
+  /** Whether the picker lists both platforms, so a label needs its platform. */
+  readonly showPlatform: boolean;
 }) {
   return (
     <span className="flex min-w-0 flex-col gap-0.5">
       <span className="flex min-w-0 items-center gap-1.5">
-        <PlatformIcon platform={release.platform} className="size-3 shrink-0" />
-        <span className="sr-only">{platformLabel(release.platform)}</span>
+        {/* An option holds no button: picking it takes every click. */}
         <BundleIdDisplay
           bundleId={release.releaseId}
           className="min-w-0"
+          copyable={false}
           label={release.label}
+          platform={showPlatform ? release.platform : undefined}
         />
       </span>
       <span className="text-xs text-muted-foreground">
@@ -188,7 +191,10 @@ export function ReleaseCombobox({
                     key={release.releaseId}
                     value={release}
                   >
-                    <ReleaseOption release={release} />
+                    <ReleaseOption
+                      release={release}
+                      showPlatform={scope.platform === "all"}
+                    />
                   </ComboboxItem>
                 )}
               </ComboboxCollection>
