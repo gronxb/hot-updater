@@ -23,11 +23,56 @@ interface BundleChildrenPanelProps {
   loading: boolean;
   onDetailClick: (bundle: Bundle) => void;
   /**
-   * The label of the release that serves an artifact in the expanded
-   * Bundle's channel and platform, or null when none is known: its ID then
-   * shows whole.
+   * The labeled release that serves an artifact in the expanded Bundle's
+   * channel and platform, or null when none is known: the artifact then
+   * shows its ID alone.
    */
-  labelOf?: (bundleId: string) => number | null;
+  releaseOf?: (artifactId: string) => ServingRelease | null;
+}
+
+/** A release an artifact is served by: its label names it, with its own ID. */
+export interface ServingRelease {
+  readonly id: string;
+  readonly label: number;
+}
+
+/**
+ * An artifact's ID, then the release serving it. A label's tail is its
+ * release ID, never the artifact's, so `vN` reads the same as on its row.
+ */
+function ArtifactId({
+  id,
+  release,
+}: {
+  readonly id: string;
+  readonly release: ServingRelease | null;
+}) {
+  return (
+    <span className="flex min-w-0 flex-col items-start gap-1">
+      <BundleIdDisplay bundleId={id} />
+      {release ? (
+        <span className="inline-flex items-baseline gap-1.5 text-xs text-muted-foreground">
+          Release
+          <BundleIdDisplay bundleId={release.id} label={release.label} />
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/** One side of a patch: the release serving the artifact, else its ID. */
+function ArtifactName({
+  id,
+  release,
+}: {
+  readonly id: string;
+  readonly release: ServingRelease | null;
+}) {
+  return release ? (
+    <BundleIdDisplay bundleId={release.id} label={release.label} />
+  ) : (
+    <BundleIdDisplay bundleId={id} />
+  );
 }
 
 export function BundleChildrenPanel({
@@ -36,7 +81,7 @@ export function BundleChildrenPanel({
   bundles,
   loading,
   onDetailClick,
-  labelOf = () => null,
+  releaseOf = () => null,
 }: BundleChildrenPanelProps) {
   const isMobile = useIsMobile();
 
@@ -49,14 +94,11 @@ export function BundleChildrenPanel({
       <div className="flex flex-col gap-4">
         <h3 className="text-sm font-medium">Advanced artifact diagnostics</h3>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-2 text-sm sm:items-center">
-            <span className="text-muted-foreground">Base artifact ID</span>
-            <BundleIdDisplay
-              bundleId={bundle.id}
-              fullOnMobile
-              label={labelOf(bundle.id)}
-              maxLength={18}
-            />
+          <div className="flex min-w-0 items-start gap-2 text-sm">
+            <span className="shrink-0 text-muted-foreground">
+              Base artifact ID
+            </span>
+            <ArtifactId id={bundle.id} release={releaseOf(bundle.id)} />
           </div>
           <Badge variant="outline">
             {bundles.length} {bundles.length === 1 ? "patch" : "patches"}
@@ -85,11 +127,9 @@ export function BundleChildrenPanel({
                         <div className="text-xs font-medium text-muted-foreground">
                           Target artifact ID
                         </div>
-                        <BundleIdDisplay
-                          bundleId={childBundle.id}
-                          label={labelOf(childBundle.id)}
-                          fullOnMobile
-                          maxLength={18}
+                        <ArtifactId
+                          id={childBundle.id}
+                          release={releaseOf(childBundle.id)}
                         />
                       </div>
                       <div className="space-y-1">
@@ -97,18 +137,14 @@ export function BundleChildrenPanel({
                           Relation
                         </div>
                         <div className="flex flex-col items-start gap-1 text-sm">
-                          <BundleIdDisplay
-                            bundleId={bundle.id}
-                            label={labelOf(bundle.id)}
-                            fullOnMobile
-                            maxLength={12}
+                          <ArtifactName
+                            id={bundle.id}
+                            release={releaseOf(bundle.id)}
                           />
                           <ArrowRight className="size-4 rotate-90 text-muted-foreground" />
-                          <BundleIdDisplay
-                            bundleId={childBundle.id}
-                            label={labelOf(childBundle.id)}
-                            fullOnMobile
-                            maxLength={12}
+                          <ArtifactName
+                            id={childBundle.id}
+                            release={releaseOf(childBundle.id)}
                           />
                         </div>
                       </div>
@@ -159,27 +195,21 @@ export function BundleChildrenPanel({
                     {bundles.map((childBundle) => (
                       <TableRow key={childBundle.id}>
                         <TableCell>
-                          <BundleIdDisplay
-                            bundleId={childBundle.id}
-                            label={labelOf(childBundle.id)}
-                            fullOnMobile
-                            maxLength={18}
+                          <ArtifactId
+                            id={childBundle.id}
+                            release={releaseOf(childBundle.id)}
                           />
                         </TableCell>
                         <TableCell>
                           <div className="flex min-w-[280px] flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
-                            <BundleIdDisplay
-                              bundleId={bundle.id}
-                              label={labelOf(bundle.id)}
-                              fullOnMobile
-                              maxLength={12}
+                            <ArtifactName
+                              id={bundle.id}
+                              release={releaseOf(bundle.id)}
                             />
                             <ArrowRight className="size-4 shrink-0 rotate-90 text-muted-foreground sm:rotate-0" />
-                            <BundleIdDisplay
-                              bundleId={childBundle.id}
-                              label={labelOf(childBundle.id)}
-                              fullOnMobile
-                              maxLength={12}
+                            <ArtifactName
+                              id={childBundle.id}
+                              release={releaseOf(childBundle.id)}
                             />
                           </div>
                         </TableCell>

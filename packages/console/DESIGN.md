@@ -47,10 +47,13 @@ stays subordinate to exact values and actions.
   badge, the release sheet, a native build's served releases), nothing more
   shows. No labeled surface mixes channels without a channel badge in the
   row, so labels carry no channel prefix.
-- Every label that names an artifact, such as the advanced artifact
-  diagnostics' base and target IDs, is the label of the release serving that
-  artifact in the same channel and platform. Without one on the page, the
-  full ID shows, never another channel's label.
+- A label's tail is its release ID (what the app's `getBundleId()`
+  returns): its tooltip shows and its copy copies that ID, never an
+  artifact's, so `vN` reads the same on every screen.
+- Where an artifact shows (advanced artifact diagnostics' base and target),
+  its ID stays plain, then "Release" and the label of the release serving it
+  in the expanded Bundle's channel and platform. Without one on the page,
+  the artifact ID shows alone, never another channel's label.
 - Page headings use `text-base` or `text-lg` with semibold weight. Operational
   card titles use `text-sm` with medium or semibold weight.
 - Body and control text use `text-sm`; dense metadata and table content use

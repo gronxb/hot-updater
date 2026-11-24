@@ -383,16 +383,20 @@ function ReleaseBundleChildrenPanel({
   releases: readonly ReleaseRow[];
 }) {
   const bundleId = release.bundle_id ?? "";
-  // Labels count per channel and platform, so an artifact is labeled only by
-  // a release of the expanded one's, never by another channel's; one off the
-  // page shows its full ID.
-  const labelOf = (id: string) =>
-    [release, ...releases].find(
+  // Labels count per channel and platform, so an artifact is named only by a
+  // release of the expanded one's, never another channel's; one off the page
+  // shows its artifact ID alone.
+  const releaseOf = (id: string) => {
+    const serving = [release, ...releases].find(
       (row) =>
         row.bundle_id === id &&
         row.channel_id === release.channel_id &&
         row.platform === release.platform,
-    )?.label ?? null;
+    );
+    return typeof serving?.label === "number"
+      ? { id: serving.id, label: serving.label }
+      : null;
+  };
   const bundleQuery = useBundleQuery(bundleId);
   const childrenQuery = useBundleChildrenQuery(bundleId);
 
@@ -437,7 +441,7 @@ function ReleaseBundleChildrenPanel({
     <BundleChildrenPanel
       bundle={bundleQuery.data}
       bundles={childrenQuery.data ?? []}
-      labelOf={labelOf}
+      releaseOf={releaseOf}
       loading={childrenQuery.isPending}
       onDetailClick={onDetailClick}
       panelId={panelId}

@@ -485,9 +485,18 @@ describe("BundlesPage", () => {
       );
       const panel = document.getElementById("bundle-lineage-panel-release-1")!;
 
+      // A label's tail is its release ID: v12 reads, hovers, and copies as
+      // on its own Bundle row, never with the artifact's ID.
+      const named = within(entry).getByRole("button", {
+        name: "Copy ID release-1",
+      }).parentElement!.textContent;
+      expect(named).toBe("v12 release-1");
       const base = within(panel).getByText("Base artifact ID").parentElement!;
-      expect(base.textContent).toBe(`Base artifact IDv12 ${baseBundle.id}`);
-      // Target and both sides of Relation, by label and copyable ID.
+      expect(base.textContent).toBe(
+        `Base artifact ID${baseBundle.id}Release${named}`,
+      );
+      // Target and both sides of Relation, by the serving release's label
+      // and copyable release ID; the artifact IDs stay plain beside them.
       expect(
         within(panel)
           .getAllByRole("button", { name: /^Copy ID / })
@@ -496,11 +505,18 @@ describe("BundlesPage", () => {
             button.getAttribute("aria-label"),
           ]),
       ).toEqual([
-        [`v12 ${baseBundle.id}`, `Copy ID ${baseBundle.id}`],
-        [`v13 ${childBundle.id}`, `Copy ID ${childBundle.id}`],
-        [`v12 ${baseBundle.id}`, `Copy ID ${baseBundle.id}`],
-        [`v13 ${childBundle.id}`, `Copy ID ${childBundle.id}`],
+        [named, "Copy ID release-1"],
+        ["v13 release-2", "Copy ID release-2"],
+        [named, "Copy ID release-1"],
+        ["v13 release-2", "Copy ID release-2"],
       ]);
+      expect(within(panel).getAllByText(baseBundle.id)).toHaveLength(1);
+      expect(within(panel).getAllByText(childBundle.id)).toHaveLength(1);
+      for (const button of within(panel).getAllByRole("button", {
+        name: /^Copy ID /,
+      })) {
+        expect(button.getAttribute("aria-label")).not.toMatch(/019ff64/);
+      }
     },
   );
 

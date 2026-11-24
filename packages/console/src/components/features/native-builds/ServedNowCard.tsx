@@ -181,10 +181,11 @@ export function ServedNowCard({
                     <TableRow key={release.releaseId}>
                       <TableCell className="py-3 whitespace-normal">
                         <div className="flex min-w-0 flex-col gap-1">
-                          {/* The label links to the Bundle; its ID tail
-                              copies, beside the link rather than in it. */}
+                          {/* Named by its release ID, as the Bundles page
+                              names it: the label links to the Bundle, and
+                              its ID tail copies beside the link. */}
                           <BundleIdDisplay
-                            bundleId={bundleId}
+                            bundleId={release.releaseId}
                             label={release.label}
                             labelAs={
                               <Link
