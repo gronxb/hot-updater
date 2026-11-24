@@ -135,7 +135,8 @@ type JobResult = Record<string, unknown>;
 
 // "slow-start" holds JavaScript before the first render, then renders: a healthy
 // bundle that a user can leave before it shows anything.
-// "crash-after-content" renders, fails its own JavaScript update check, and
+// "crash-after-content" renders, fails its own JavaScript update check (over
+// `fetch` and XMLHttpRequest, the SDK's Android transport), and
 // throws a fatal long after its first content, once main's launch monitoring
 // (first content + 10 s) has ended: only a native check can reach a fix.
 type DeployMode =
@@ -1336,6 +1337,8 @@ async function renderAppScenario({
               ? [
                   // Its own update check fails, as a bundle whose update flow
                   // is broken: a fix reaches it only through a native check.
+                  // The SDK sends it with `fetch`, or on Android with
+                  // XMLHttpRequest, so both refuse the catalog request.
                   "    const E2E_FETCH = globalThis.fetch;",
                   "    globalThis.fetch = (input, init) => {",
                   '      const url = typeof input === "string" ? input : String(input && input.url ? input.url : input);',
@@ -1344,6 +1347,15 @@ async function renderAppScenario({
                   "      }",
                   "      return E2E_FETCH(input, init);",
                   "    };",
+                  '    if (typeof globalThis.XMLHttpRequest === "function") {',
+                  "      const E2E_XHR_OPEN = globalThis.XMLHttpRequest.prototype.open;",
+                  "      globalThis.XMLHttpRequest.prototype.open = function (method, url, ...rest) {",
+                  '        if (String(url).includes("/release-catalogs/")) {',
+                  '          throw new Error("hot-updater e2e broken update check");',
+                  "        }",
+                  "        return E2E_XHR_OPEN.call(this, method, url, ...rest);",
+                  "      };",
+                  "    }",
                   // A timer's fatal leaves React and promises; the log line
                   // goes out first, so the exit wait can tell it apart.
                   "    setTimeout(() => {",
