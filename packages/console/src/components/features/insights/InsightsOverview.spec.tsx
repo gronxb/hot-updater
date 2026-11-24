@@ -210,7 +210,9 @@ describe("Release health", () => {
     });
     const table = screen.getByRole("table", { name: "Compared bundles" });
     const badge = within(table).getByText("Disabled");
-    const name = within(table).getByTitle(disabled.releaseId);
+    const name = within(table).getByRole("button", {
+      name: `Copy ID ${disabled.releaseId}`,
+    }).parentElement!;
     // The label and its ID tail don't shrink: in a phone's narrow column the
     // badge has to wrap under them, or it is drawn over the tail.
     expect(badge.parentElement).toBe(name.parentElement);
@@ -263,7 +265,9 @@ describe("Release health", () => {
       // The badge wraps under the label and its tail, as in the table.
       const badge = within(items[1]!).getByText("Disabled");
       expect(badge.parentElement).toBe(
-        within(items[1]!).getByTitle(disabled.releaseId).parentElement,
+        within(items[1]!).getByRole("button", {
+          name: `Copy ID ${disabled.releaseId}`,
+        }).parentElement!.parentElement,
       );
       expect(badge.parentElement!.className).toContain("flex-wrap");
       // Removing from the list removes the bundle, as from the table.

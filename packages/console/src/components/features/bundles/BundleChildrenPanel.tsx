@@ -22,6 +22,12 @@ interface BundleChildrenPanelProps {
   bundles: Bundle[];
   loading: boolean;
   onDetailClick: (bundle: Bundle) => void;
+  /**
+   * The label of the release that serves an artifact in the expanded
+   * Bundle's channel and platform, or null when none is known: its ID then
+   * shows whole.
+   */
+  labelOf?: (bundleId: string) => number | null;
 }
 
 export function BundleChildrenPanel({
@@ -30,6 +36,7 @@ export function BundleChildrenPanel({
   bundles,
   loading,
   onDetailClick,
+  labelOf = () => null,
 }: BundleChildrenPanelProps) {
   const isMobile = useIsMobile();
 
@@ -44,7 +51,12 @@ export function BundleChildrenPanel({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2 text-sm sm:items-center">
             <span className="text-muted-foreground">Base artifact ID</span>
-            <BundleIdDisplay bundleId={bundle.id} fullOnMobile maxLength={18} />
+            <BundleIdDisplay
+              bundleId={bundle.id}
+              fullOnMobile
+              label={labelOf(bundle.id)}
+              maxLength={18}
+            />
           </div>
           <Badge variant="outline">
             {bundles.length} {bundles.length === 1 ? "patch" : "patches"}
@@ -75,6 +87,7 @@ export function BundleChildrenPanel({
                         </div>
                         <BundleIdDisplay
                           bundleId={childBundle.id}
+                          label={labelOf(childBundle.id)}
                           fullOnMobile
                           maxLength={18}
                         />
@@ -86,12 +99,14 @@ export function BundleChildrenPanel({
                         <div className="flex flex-col items-start gap-1 text-sm">
                           <BundleIdDisplay
                             bundleId={bundle.id}
+                            label={labelOf(bundle.id)}
                             fullOnMobile
                             maxLength={12}
                           />
                           <ArrowRight className="size-4 rotate-90 text-muted-foreground" />
                           <BundleIdDisplay
                             bundleId={childBundle.id}
+                            label={labelOf(childBundle.id)}
                             fullOnMobile
                             maxLength={12}
                           />
@@ -144,6 +159,7 @@ export function BundleChildrenPanel({
                         <TableCell>
                           <BundleIdDisplay
                             bundleId={childBundle.id}
+                            label={labelOf(childBundle.id)}
                             fullOnMobile
                             maxLength={18}
                           />
@@ -152,12 +168,14 @@ export function BundleChildrenPanel({
                           <div className="flex min-w-[280px] flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
                             <BundleIdDisplay
                               bundleId={bundle.id}
+                              label={labelOf(bundle.id)}
                               fullOnMobile
                               maxLength={12}
                             />
                             <ArrowRight className="size-4 shrink-0 rotate-90 text-muted-foreground sm:rotate-0" />
                             <BundleIdDisplay
                               bundleId={childBundle.id}
+                              label={labelOf(childBundle.id)}
                               fullOnMobile
                               maxLength={12}
                             />

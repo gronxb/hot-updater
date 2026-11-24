@@ -177,9 +177,11 @@ export function ComparedBundlesChart({
   // The ID that names the bundle across the Console, and what the line counts.
   const labelOf = (release: AdoptionRelease, name: string | undefined) => (
     <span className="flex items-center gap-1.5 whitespace-nowrap">
+      {/* The chart's tooltip takes no pointer, so it holds no button. */}
       <BundleIdDisplay
         bundleId={release.releaseId}
         className="whitespace-nowrap"
+        copyable={false}
         label={release.label}
       />
       {name ? <span className="text-muted-foreground">{name}</span> : null}

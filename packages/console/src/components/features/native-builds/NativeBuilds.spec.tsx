@@ -2030,7 +2030,11 @@ describe("ServedNowCard", () => {
       />,
     );
 
-    expect(screen.getByRole("link", { name: `v7 ${id(21)}` })).toBeTruthy();
+    // The label links to the Bundle; its ID tail copies, beside the link.
+    const link = screen.getByRole("link", { name: "v7" });
+    const copy = screen.getByRole("button", { name: `Copy ID ${id(21)}` });
+    expect(link.contains(copy)).toBe(false);
+    expect(link.parentElement!.textContent).toBe(`v7 ${id(21)}`);
     expect(screen.getByRole("link", { name: id(20) })).toBeTruthy();
   });
 

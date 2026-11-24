@@ -328,24 +328,26 @@ function BundleEntry({
       {/* A label and its ID tail don't shrink, so when a narrow card has no
           room beside them the badges move under the ID instead of over it. */}
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-        <button
-          aria-label={`Open details for ID ${release.id}`}
-          className="min-w-0 rounded-sm text-left text-foreground transition-colors underline-offset-4 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={onOpen}
-          title={release.id}
-          type="button"
-        >
-          <BundleIdDisplay
-            bundleId={release.id}
-            fullOnMobile
-            label={release.label}
-          />
-          {!release.bundle_id ? (
-            <span className="inline-flex items-center gap-1.5 text-sm">
-              <RotateCcw className="size-3.5" /> Built-in bundle
-            </span>
-          ) : null}
-        </button>
+        {/* The label opens the Bundle; its ID tail is a copy button of its
+            own beside it, not inside it. */}
+        <BundleIdDisplay
+          bundleId={release.id}
+          fullOnMobile
+          label={release.label}
+          labelAs={
+            <button
+              aria-label={`Open details for ID ${release.id}`}
+              className="min-w-0 rounded-sm text-left text-foreground transition-colors underline-offset-4 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={onOpen}
+              type="button"
+            />
+          }
+        />
+        {!release.bundle_id ? (
+          <span className="inline-flex items-center gap-1.5 text-sm">
+            <RotateCcw className="size-3.5" /> Built-in bundle
+          </span>
+        ) : null}
         {operationLabel ? (
           <Badge className="shrink-0 font-normal" variant="secondary">
             {operationLabel}
@@ -372,12 +374,25 @@ function ReleaseBundleChildrenPanel({
   onDetailClick,
   panelId,
   release,
+  releases,
 }: {
   onDetailClick: (bundle: Bundle) => void;
   panelId: string;
   release: ReleaseRow;
+  /** The page's releases, which label the patch artifacts they serve. */
+  releases: readonly ReleaseRow[];
 }) {
   const bundleId = release.bundle_id ?? "";
+  // Labels count per channel and platform, so an artifact is labeled only by
+  // a release of the expanded one's, never by another channel's; one off the
+  // page shows its full ID.
+  const labelOf = (id: string) =>
+    [release, ...releases].find(
+      (row) =>
+        row.bundle_id === id &&
+        row.channel_id === release.channel_id &&
+        row.platform === release.platform,
+    )?.label ?? null;
   const bundleQuery = useBundleQuery(bundleId);
   const childrenQuery = useBundleChildrenQuery(bundleId);
 
@@ -422,6 +437,7 @@ function ReleaseBundleChildrenPanel({
     <BundleChildrenPanel
       bundle={bundleQuery.data}
       bundles={childrenQuery.data ?? []}
+      labelOf={labelOf}
       loading={childrenQuery.isPending}
       onDetailClick={onDetailClick}
       panelId={panelId}
@@ -757,6 +773,7 @@ function BundlesPage() {
             onDetailClick={openChildBundle}
             panelId={panelId}
             release={release}
+            releases={releases}
           />
         ) : null}
       </Fragment>
@@ -864,6 +881,7 @@ function BundlesPage() {
                 onDetailClick={openChildBundle}
                 panelId={panelId}
                 release={release}
+                releases={releases}
               />
             </TableCell>
           </TableRow>

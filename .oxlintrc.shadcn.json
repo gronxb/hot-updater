@@ -11,6 +11,7 @@
         "packages/console/src/components/RelativeTime.tsx",
         "packages/console/src/components/RowReason.tsx",
         "packages/console/src/components/TargetDisplay.tsx",
+        "packages/console/src/components/features/bundles/BundleChildrenPanel.tsx",
         "packages/console/src/components/features/insights/**/*.tsx",
         "packages/console/src/components/features/native-builds/**/*.tsx",
         "packages/console/src/components/features/remote-config/**/*.tsx",

@@ -50,9 +50,11 @@ export function ReleaseOption({
       <span className="flex min-w-0 items-center gap-1.5">
         <PlatformIcon platform={release.platform} className="size-3 shrink-0" />
         <span className="sr-only">{platformLabel(release.platform)}</span>
+        {/* An option holds no button: picking it takes every click. */}
         <BundleIdDisplay
           bundleId={release.releaseId}
           className="min-w-0"
+          copyable={false}
           label={release.label}
         />
       </span>
