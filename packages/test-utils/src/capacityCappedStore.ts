@@ -43,7 +43,11 @@ const unitsOf = (op: KvOp): number => {
  */
 export const createCapacityCappedStore = (
   store: KeyValueStore,
-  { unitsPerSecond, writeMs = 300, throttledMs = 3_000 }: CapacityCappedStoreOptions,
+  {
+    unitsPerSecond,
+    writeMs = 300,
+    throttledMs = 3_000,
+  }: CapacityCappedStoreOptions,
 ): KeyValueStore & {
   /** Writes refused for capacity so far. */
   readonly throttles: () => number;

@@ -317,14 +317,14 @@ export const backfillInsightsReleaseRefs = async (definition: {
     [INSIGHTS_BACKFILL_KEY],
   ]);
   if (done !== null) return 0;
-  const { events } = await insights.backfillReleaseRefs().catch(
-    (error: unknown) => {
+  const { events } = await insights
+    .backfillReleaseRefs()
+    .catch((error: unknown) => {
       throw new Error(
         `Moving Insights events to their releases stopped: ${error instanceof Error ? error.message : String(error)} Run the command again to resume it.`,
         { cause: error },
       );
-    },
-  );
+    });
   // A concurrent run that recorded it first, or a busy store, leaves this
   // insert refused: the next run reads the events again and moves none.
   await adapter.write([

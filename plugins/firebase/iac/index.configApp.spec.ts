@@ -3,6 +3,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { backfillInsightsReleaseRefs } from "@hot-updater/cli-tools";
+import { execa } from "execa";
 import {
   type App,
   type AppOptions,
@@ -11,8 +13,6 @@ import {
   getApps,
   initializeApp,
 } from "firebase-admin/app";
-import { backfillInsightsReleaseRefs } from "@hot-updater/cli-tools";
-import { execa } from "execa";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({

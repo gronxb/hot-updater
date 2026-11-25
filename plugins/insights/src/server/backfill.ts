@@ -104,7 +104,10 @@ export const backfillReleaseRefs = async (
         const tooLarge =
           error instanceof DatabaseConstraintError &&
           error.reason === "too_large";
-        if (candidates.length === 1 || !(tooLarge || isDatabaseBusyError(error)))
+        if (
+          candidates.length === 1 ||
+          !(tooLarge || isDatabaseBusyError(error))
+        )
           throw error;
         size = Math.ceil(candidates.length / 2);
       }

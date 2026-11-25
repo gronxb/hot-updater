@@ -297,14 +297,14 @@ describe("AWS init", () => {
     ]);
     const [backfill] =
       mocks.backfillInsightsReleaseRefs.mock.invocationCallOrder;
-    expect(backfill).toBeGreaterThan(
-      mocks.deploy.mock.invocationCallOrder[0]!,
-    );
+    expect(backfill).toBeGreaterThan(mocks.deploy.mock.invocationCallOrder[0]!);
     expect(backfill).toBeGreaterThan(
       mocks.createOrUpdateDistribution.mock.invocationCallOrder[0]!,
     );
     expect(mocks.dispose).toHaveBeenCalledTimes(2);
-    expect(mocks.dispose.mock.invocationCallOrder[1]).toBeGreaterThan(backfill!);
+    expect(mocks.dispose.mock.invocationCallOrder[1]).toBeGreaterThan(
+      backfill!,
+    );
   });
 
   it("keeps the deployed server when the Insights backfill stops", async () => {
@@ -318,7 +318,9 @@ describe("AWS init", () => {
     expect(mocks.createOrUpdateDistribution).toHaveBeenCalledOnce();
     // What a rerun replays is saved.
     expect(mocks.makeEnv).toHaveBeenCalledWith(
-      expect.objectContaining({ HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: "dist-id" }),
+      expect.objectContaining({
+        HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: "dist-id",
+      }),
     );
     expect(mocks.writeHotUpdaterFiles).toHaveBeenCalledOnce();
     expect(mocks.printAppSetup).not.toHaveBeenCalled();

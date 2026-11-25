@@ -349,9 +349,10 @@ describe("release labels", () => {
     await asBeforeLabels(context);
     store = capped;
 
-    await expect(core.fillReleaseLabels({ catalogs: false })).resolves.toEqual(
-      { releases: 30, catalogs: 0 },
-    );
+    await expect(core.fillReleaseLabels({ catalogs: false })).resolves.toEqual({
+      releases: 30,
+      catalogs: 0,
+    });
 
     expect(capped.throttles()).toBeGreaterThan(0);
     store = inner;

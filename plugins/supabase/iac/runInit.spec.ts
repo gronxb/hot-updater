@@ -317,7 +317,8 @@ describe("Supabase init", () => {
     await runInit({ build: "bare", envFile: ".env.hotupdater" });
 
     expect(mocks.backfillInsightsReleaseRefs).toHaveBeenCalledOnce();
-    const [server] = mocks.backfillInsightsReleaseRefs.mock.calls[0] as never as [
+    const [server] = mocks.backfillInsightsReleaseRefs.mock
+      .calls[0] as never as [
       { readonly plugins: readonly { readonly id: string }[] },
     ];
     expect(server.plugins.map(({ id }) => id)).toEqual([

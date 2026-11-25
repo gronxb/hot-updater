@@ -43,9 +43,7 @@ const serve = <T>(store: KeyValueStore, plugin: AnyHotUpdaterPlugin): T => {
 
 /** `count` events a 1.1 server keyed by their artifact, in one recent day. */
 const seed = async (store: KeyValueStore, count: number) => {
-  await migrateCoreSchema(createKvAdapter({ store }), "dynamoDB", [
-    insights(),
-  ]);
+  await migrateCoreSchema(createKvAdapter({ store }), "dynamoDB", [insights()]);
   const legacy = serve<Insights11TestApi>(store, insights11TestPlugin());
   const base = Date.now() - (Date.now() % HOUR) - 2 * HOUR;
   for (let n = 0; n < count; n += 1) {
