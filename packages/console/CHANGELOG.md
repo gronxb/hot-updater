@@ -1,5 +1,15 @@
 # @hot-updater/console
 
+## 1.1.21
+
+### Patch Changes
+
+- Updated dependencies [ccd81c9]
+  - @hot-updater/server@1.1.21
+  - @hot-updater/bsdiff@1.1.21
+  - @hot-updater/protocol@1.1.21
+  - @hot-updater/plugin-core@1.1.21
+
 ## 1.1.20
 
 ### Patch Changes
