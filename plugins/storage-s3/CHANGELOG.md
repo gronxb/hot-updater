@@ -1,5 +1,12 @@
 # @hot-updater/storage-s3
 
+## 1.2.0-rc.59
+
+### Patch Changes
+
+- Updated dependencies [ef2db86]
+  - @hot-updater/plugin-core@1.2.0-rc.59
+
 ## 1.2.0-rc.58
 
 ### Patch Changes

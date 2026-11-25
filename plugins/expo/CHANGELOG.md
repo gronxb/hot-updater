@@ -1,5 +1,15 @@
 # @hot-updater/expo
 
+## 1.2.0-rc.59
+
+### Patch Changes
+
+- Updated dependencies [ef2db86]
+  - @hot-updater/plugin-core@1.2.0-rc.59
+  - @hot-updater/cli-tools@1.2.0-rc.59
+  - hot-updater@1.2.0-rc.59
+  - @hot-updater/bare@1.2.0-rc.59
+
 ## 1.2.0-rc.58
 
 ### Patch Changes
