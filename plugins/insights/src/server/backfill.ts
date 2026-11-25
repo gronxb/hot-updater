@@ -29,12 +29,21 @@ export interface ReleaseRefBackfill {
  * - as busy through the transaction's retries: a write-capacity cap, such as
  *   the 100 write units a second `hot-updater init` gives a DynamoDB table,
  *   throttles a transaction that costs more than the cap admits, about 13
- *   rewrites of 2 KB events there.
- * A one-event transaction the store refuses fails the run, which an
- * interrupted run's rerun resumes.
+ *   rewrites of 2 KB events there, and refuses every write for seconds once
+ *   the run has spent it.
+ * After a busy refusal the run also waits before it writes again, `PAUSE_MS`
+ * and twice as long after each further one, so the cap refills; a commit
+ * starts the waits over. A batch the store still refuses after the
+ * `MAX_PAUSE_MS` wait, or a one-event batch too large to write, fails the
+ * run, which a rerun resumes.
  */
 const PAGE = 500;
 const BATCH = 25;
+const PAUSE_MS = 1_000;
+const MAX_PAUSE_MS = 32_000;
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 type StoredEvent = Parameters<typeof bundleRefsOf>[0] & {
   readonly id: string;
@@ -90,6 +99,8 @@ export const backfillReleaseRefs = async (
   const today = now() - (now() % DAY_MS);
   let events = 0;
   let size = BATCH;
+  // The last wait after a busy refusal since the last commit; 0 after one.
+  let paused = 0;
   const move = async (stale: readonly StoredEvent[]): Promise<void> => {
     if (dryRun) {
       events += stale.length;
@@ -100,16 +111,22 @@ export const backfillReleaseRefs = async (
       try {
         events += await rewrite(candidates);
         start += candidates.length;
+        paused = 0;
       } catch (error) {
-        const tooLarge =
-          error instanceof DatabaseConstraintError &&
-          error.reason === "too_large";
         if (
-          candidates.length === 1 ||
-          !(tooLarge || isDatabaseBusyError(error))
-        )
+          error instanceof DatabaseConstraintError &&
+          error.reason === "too_large" &&
+          candidates.length > 1
+        ) {
+          size = Math.ceil(candidates.length / 2);
+          continue;
+        }
+        if (!isDatabaseBusyError(error) || paused >= MAX_PAUSE_MS) {
           throw error;
+        }
         size = Math.ceil(candidates.length / 2);
+        paused = paused === 0 ? PAUSE_MS : paused * 2;
+        await sleep(paused);
       }
     }
   };
