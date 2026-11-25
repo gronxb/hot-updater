@@ -1,5 +1,12 @@
 # @hot-updater/datadog-plugin
 
+## 1.1.21
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.21
+  - @hot-updater/plugin-core@1.1.21
+
 ## 1.1.20
 
 ### Patch Changes
