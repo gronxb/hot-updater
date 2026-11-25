@@ -281,6 +281,38 @@ describe("createHandlers client routes", () => {
     expect(getArtifactInfo).toHaveBeenCalledWith("target", "current", 1);
   });
 
+  it("logs why authentication failed before answering 503", async () => {
+    const failure = new Error("D1_ERROR: storage operation exceeded timeout");
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const handler = createHotUpdaterHandlers({
+      api: createApi(),
+      clientPolicy: {
+        authenticate: () => Promise.reject(failure),
+        varyHeaders: ["x-api-key"],
+      },
+    }).client;
+
+    const response = await handler(
+      new Request(
+        "http://localhost/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
+        { headers: { "x-api-key": "valid" } },
+      ),
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    await expect(response.json()).resolves.toEqual({
+      error: "Service unavailable",
+    });
+    expect(consoleError).toHaveBeenCalledWith(
+      "Hot Updater client authentication error:",
+      failure,
+    );
+    consoleError.mockRestore();
+  });
+
   it.each([
     [
       "a channel name where its key belongs",
