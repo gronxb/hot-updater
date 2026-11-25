@@ -302,7 +302,9 @@ const adapterOf = (database: unknown): DatabaseAdapter | undefined => {
  * records after it stay keyed by artifact until the raw period drops them.
  * It runs on a database the CLI reaches directly; a server deployed apart
  * from the project runs it from its own `db migrate`. It prints one line
- * when it moved something, and nothing otherwise.
+ * when it moved something, and nothing otherwise. Init runs it once the new
+ * server is deployed, since it is the longest step and a run that stops
+ * keeps what it moved.
  */
 export const backfillInsightsReleaseRefs = async (definition: {
   readonly api?: Readonly<Record<string, unknown>> | undefined;
@@ -315,8 +317,16 @@ export const backfillInsightsReleaseRefs = async (definition: {
     [INSIGHTS_BACKFILL_KEY],
   ]);
   if (done !== null) return 0;
-  const { events } = await insights.backfillReleaseRefs();
-  // A concurrent run that recorded it first leaves this insert refused.
+  const { events } = await insights.backfillReleaseRefs().catch(
+    (error: unknown) => {
+      throw new Error(
+        `Moving Insights events to their releases stopped: ${error instanceof Error ? error.message : String(error)} Run the command again to resume it.`,
+        { cause: error },
+      );
+    },
+  );
+  // A concurrent run that recorded it first, or a busy store, leaves this
+  // insert refused: the next run reads the events again and moves none.
   await adapter.write([
     {
       type: "insert",

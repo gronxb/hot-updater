@@ -643,8 +643,6 @@ export const runInit = async ({
     // The app's credential, through the managed server's plugins, on the tables they read.
     // Labels the releases written before labels, and rebuilds their catalogs.
     await fillReleaseLabels(server);
-    // Moves the Insights events a 1.1 server keyed by artifact to their releases.
-    await backfillInsightsReleaseRefs(server);
     clientCredential = await provisionClientCredential(server, {
       env: initInputEnv,
       name: "Firebase init",
@@ -741,6 +739,18 @@ export const runInit = async ({
     p.log.error("Region is not set");
     await removeTmpDir();
     process.exit(1);
+  }
+  // Moves the Insights events a 1.1 server keyed by artifact to their
+  // releases, once the new functions answer: a run that stops leaves a
+  // working deployment, and init's rerun resumes it.
+  const backfillDatabase = firebaseDatabase(databaseConfig);
+  try {
+    await backfillInsightsReleaseRefs(
+      assembleServer({ database: backfillDatabase, plugins: server.plugins }),
+    );
+  } finally {
+    await backfillDatabase.dispose?.();
+    await Promise.all(getApps().map((app) => deleteApp(app)));
   }
   await printTemplate(
     clientCredential,

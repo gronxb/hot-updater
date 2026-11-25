@@ -542,6 +542,9 @@ export const createTransactions = ({
       let failures = 0;
       // The aggregate row versions a resent write lost on.
       let lost: string | undefined;
+      // Whether the last failed round was the store's transient refusal,
+      // such as a throttle, rather than a conflict with another writer.
+      let busy = false;
       for (let round = 0; ; round += 1) {
         const delay =
           round && Math.min(maxDelayMs, baseDelayMs * 2 ** (round - 1));
@@ -557,6 +560,7 @@ export const createTransactions = ({
         if (run === undefined) {
           onRetry?.("rerun", round + 1);
           lost = undefined;
+          busy = false;
           if ((failures += 1) >= attempts) break;
           continue;
         }
@@ -568,6 +572,7 @@ export const createTransactions = ({
           if (!(error instanceof NegativeGaugeError)) throw error;
           negative = error;
           onRetry?.("rerun", round + 1);
+          busy = false;
           run = undefined;
           lost = undefined;
           if ((failures += 1) >= attempts) break;
@@ -599,6 +604,7 @@ export const createTransactions = ({
         }
         if (outcome.ok) return run.result;
         const failed = "failedOp" in outcome ? outcome.failedOp : undefined;
+        busy = failed === undefined;
         if (failed === undefined || failed >= run.ops.length) {
           onRetry?.("resend", round + 1);
           // Only a write that failed on one of its aggregate rows can be
@@ -624,7 +630,9 @@ export const createTransactions = ({
       throw (
         negative ??
         new DatabaseConflictError(
-          `The transaction conflicted ${attempts} times.`,
+          busy
+            ? `The database stayed busy through ${attempts} attempts of the transaction, as a store does at its throughput limit.`
+            : `The transaction conflicted ${attempts} times.`,
         )
       );
     },

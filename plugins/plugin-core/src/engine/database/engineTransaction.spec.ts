@@ -282,12 +282,23 @@ describe("engine transactions", () => {
     });
     exhausted.faults.inject = () => ({ ok: false, failedOp: 0 });
     await expect(exhausted.db.transaction(bump)).rejects.toThrow(
-      DatabaseConflictError,
+      new DatabaseConflictError("The transaction conflicted 3 times."),
     );
     expect(exhausted.writes).toHaveLength(3);
     await expect(
       exhausted.db.findOne("counters", { id: "c" }),
     ).resolves.toMatchObject({ value: 0 });
+
+    // A store that refuses every write as busy, as one at its throughput
+    // limit does, is reported as busy, not as a conflict.
+    const throttled = await setup({
+      retry: { attempts: 3, baseDelayMs: 0, maxDelayMs: 0 },
+    });
+    throttled.faults.inject = () => ({ ok: false, retry: true });
+    await expect(throttled.db.transaction(bump)).rejects.toThrow(
+      /stayed busy through 3 attempts/,
+    );
+    expect(throttled.writes).toHaveLength(3);
   });
 
   it("loses no increment across 32 concurrent read-modify-write writers", async () => {

@@ -1,5 +1,6 @@
 import {
   DatabaseConstraintError,
+  isDatabaseBusyError,
   type Platform,
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -121,7 +122,9 @@ const createLabelAllocator = (
 };
 
 // The rows one fill transaction labels at first; a store that refuses that
-// many in one write takes half as many, down to one.
+// many in one write, as too large or as busy through the transaction's
+// retries (a write-capacity cap, such as the 100 write units a second
+// `hot-updater init` gives a DynamoDB table), takes half as many, down to one.
 const FILL_BATCH = 25;
 const PAGE = 500;
 
@@ -170,8 +173,9 @@ export const fillLabels = async (
       } catch (error) {
         if (
           batchSize > 1 &&
-          error instanceof DatabaseConstraintError &&
-          error.reason === "too_large"
+          ((error instanceof DatabaseConstraintError &&
+            error.reason === "too_large") ||
+            isDatabaseBusyError(error))
         ) {
           batchSize = Math.max(1, Math.floor(batchSize / 2));
           continue;
