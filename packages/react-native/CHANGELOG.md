@@ -1,5 +1,14 @@
 # @hot-updater/react-native
 
+## 1.2.0-rc.59
+
+### Patch Changes
+
+- Updated dependencies [ef2db86]
+  - @hot-updater/plugin-insights@1.2.0-rc.59
+  - @hot-updater/plugin-remote-config@1.2.0-rc.59
+  - @hot-updater/protocol@1.2.0-rc.59
+
 ## 1.2.0-rc.58
 
 ### Patch Changes
