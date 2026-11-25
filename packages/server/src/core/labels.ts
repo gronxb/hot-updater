@@ -1,5 +1,6 @@
 import {
   DatabaseConstraintError,
+  isDatabaseBusyError,
   type Platform,
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -121,9 +122,20 @@ const createLabelAllocator = (
 };
 
 // The rows one fill transaction labels at first; a store that refuses that
-// many in one write takes half as many, down to one.
+// many in one write, as too large or as busy through the transaction's
+// retries (a write-capacity cap, such as the 100 write units a second
+// `hot-updater init` gives a DynamoDB table), takes half as many, down to one.
+// After a busy refusal the fill also waits before it writes again,
+// `PAUSE_MS` and twice as long after each further one, so the cap refills; a
+// commit starts the waits over, and a refusal after the `MAX_PAUSE_MS` wait
+// fails the fill, which a rerun resumes.
 const FILL_BATCH = 25;
 const PAGE = 500;
+const PAUSE_MS = 1_000;
+const MAX_PAUSE_MS = 32_000;
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
  * Labels a channel and platform's releases that have none, in ID order,
@@ -140,6 +152,8 @@ export const fillLabels = async (
   const id = labelSequenceId(channelId, platform);
   let labeled = 0;
   let batchSize = FILL_BATCH;
+  // The last wait after a busy refusal since the last commit; 0 after one.
+  let paused = 0;
   const label = async (ids: readonly string[]) => {
     for (let at = 0; at < ids.length; ) {
       const batch = ids.slice(at, at + batchSize);
@@ -167,6 +181,7 @@ export const fillLabels = async (
           return count;
         });
         at += batch.length;
+        paused = 0;
       } catch (error) {
         if (
           batchSize > 1 &&
@@ -176,7 +191,12 @@ export const fillLabels = async (
           batchSize = Math.max(1, Math.floor(batchSize / 2));
           continue;
         }
-        throw error;
+        if (!isDatabaseBusyError(error) || paused >= MAX_PAUSE_MS) {
+          throw error;
+        }
+        batchSize = Math.max(1, Math.floor(batchSize / 2));
+        paused = paused === 0 ? PAUSE_MS : paused * 2;
+        await sleep(paused);
       }
     }
   };

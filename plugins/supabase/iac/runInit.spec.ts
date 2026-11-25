@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  backfillInsightsReleaseRefs: vi.fn(async () => 0),
   api: {
     createBucket: vi.fn(),
     getInfrastructureState: vi.fn(),
@@ -76,7 +77,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     confirmInitInputPersistence: vi.fn(async () => false),
     // The managed server's plugins, over the project's database.
     // Labels releases over the assembled server; its database is mocked.
-    backfillInsightsReleaseRefs: vi.fn(async () => 0),
+    backfillInsightsReleaseRefs: mocks.backfillInsightsReleaseRefs,
     fillReleaseLabels: vi.fn(async () => ({ releases: 0, catalogs: 0 })),
     provisionClientCredential: mocks.provisionClientCredential,
     makeEnv: mocks.makeEnv,
@@ -308,6 +309,30 @@ describe("Supabase init", () => {
         expect.objectContaining({ module: "@hot-updater/react-native" }),
       ],
     });
+  });
+
+  it("moves the Insights events once the new function is deployed, on the managed server's plugins", async () => {
+    root = await project();
+
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    expect(mocks.backfillInsightsReleaseRefs).toHaveBeenCalledOnce();
+    const [server] = mocks.backfillInsightsReleaseRefs.mock
+      .calls[0] as never as [
+      { readonly plugins: readonly { readonly id: string }[] },
+    ];
+    expect(server.plugins.map(({ id }) => id)).toEqual([
+      "insights",
+      "apiKeys",
+      "remoteConfig",
+    ]);
+    const deploy = mocks.execa.mock.calls.findIndex(([, args]) =>
+      (args as readonly string[] | undefined)?.includes("deploy"),
+    );
+    expect(deploy).not.toBe(-1);
+    expect(
+      mocks.backfillInsightsReleaseRefs.mock.invocationCallOrder[0],
+    ).toBeGreaterThan(mocks.execa.mock.invocationCallOrder[deploy]!);
   });
 
   it("writes hot-updater.config.ts with the provider's plugins, and no server code", async () => {

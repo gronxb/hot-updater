@@ -355,8 +355,6 @@ export const runInit = async ({
   try {
     // Labels the releases written before labels, and rebuilds their catalogs.
     await fillReleaseLabels(server);
-    // Moves the Insights events a 1.1 server keyed by artifact to their releases.
-    await backfillInsightsReleaseRefs(server);
     credential = await provisionClientCredential(server, {
       env: providerEnv,
       name: "AWS init",
@@ -451,6 +449,22 @@ export const runInit = async ({
       settings: "AWS",
     },
   );
+
+  // Moves the Insights events a 1.1 server keyed by artifact to their
+  // releases, once the new server answers and init saved what it set up: a
+  // run that stops leaves a working deployment, and init's rerun resumes it.
+  const backfillDatabase = dynamoDB({
+    credentials,
+    region: bucketRegion,
+    tableName: resolvedDynamoDBTableName,
+  });
+  try {
+    await backfillInsightsReleaseRefs(
+      assembleServer({ database: backfillDatabase, plugins: server.plugins }),
+    );
+  } finally {
+    await backfillDatabase.dispose?.();
+  }
 
   // The app's server URL is the CloudFront domain.
   printAppSetup({

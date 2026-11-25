@@ -3,6 +3,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { backfillInsightsReleaseRefs } from "@hot-updater/cli-tools";
+import { execa } from "execa";
 import {
   type App,
   type AppOptions,
@@ -198,5 +200,24 @@ describe("Firebase init after hot-updater.config.ts was loaded", () => {
       expect(options.projectId).toBe("init-project");
       expect(options.credential).toMatchObject({ clientEmail: CLIENT_EMAIL });
     }
+  });
+
+  it("moves the Insights events once the new functions are deployed", async () => {
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    expect(vi.mocked(backfillInsightsReleaseRefs)).toHaveBeenCalledOnce();
+    const deploy = vi
+      .mocked(execa)
+      .mock.calls.findIndex(
+        ([command, args]) =>
+          command === "npx" &&
+          (args as readonly string[] | undefined)?.some((arg) =>
+            arg.startsWith("functions:hot-updater"),
+          ),
+      );
+    expect(deploy).not.toBe(-1);
+    expect(
+      vi.mocked(backfillInsightsReleaseRefs).mock.invocationCallOrder[0],
+    ).toBeGreaterThan(vi.mocked(execa).mock.invocationCallOrder[deploy]!);
   });
 });

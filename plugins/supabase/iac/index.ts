@@ -1148,8 +1148,6 @@ const runInitWithoutCliMetadata = async ({
     try {
       // Labels the releases written before labels, and rebuilds their catalogs.
       await fillReleaseLabels(managedServer);
-      // Moves the Insights events a 1.1 server keyed by artifact to their releases.
-      await backfillInsightsReleaseRefs(managedServer);
       credential = await provisionClientCredential(managedServer, {
         env: initInputEnv,
         name: "Supabase init",
@@ -1161,6 +1159,23 @@ const runInitWithoutCliMetadata = async ({
       await database.dispose?.();
     }
     await deployEdgeFunction(accessToken, tmpDir, project.id, functionName);
+    // Moves the Insights events a 1.1 server keyed by artifact to their
+    // releases, once the new function answers: a run that stops leaves a
+    // working deployment, and init's rerun resumes it.
+    const backfillDatabase = supabaseDatabase({
+      supabaseServiceRoleKey: projectAccess.serviceRoleApiKey,
+      supabaseUrl: `https://${project.id}.supabase.co`,
+    });
+    try {
+      await backfillInsightsReleaseRefs(
+        assembleServer({
+          database: backfillDatabase,
+          plugins: managedServer.plugins,
+        }),
+      );
+    } finally {
+      await backfillDatabase.dispose?.();
+    }
   } finally {
     await removeTmpDir();
   }

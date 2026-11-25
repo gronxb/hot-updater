@@ -22,3 +22,4 @@ export * from "./setupReleaseCatalogTestSuite";
 export * from "./httpTestClient";
 export * from "./httpTestServer";
 export * from "./releaseCatalogHttpFixtures";
+export * from "./capacityCappedStore";

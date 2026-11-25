@@ -1,6 +1,7 @@
 import {
   DatabaseConstraintError,
   type HotUpdaterDatabase,
+  isDatabaseBusyError,
 } from "@hot-updater/plugin-core";
 
 import {
@@ -21,12 +22,28 @@ export interface ReleaseRefBackfill {
 
 /**
  * Stored events read a page, and rewritten up to `BATCH` a transaction. A
- * store that takes fewer physical writes a transaction, as DynamoDB's 100
- * items hold fewer than 25 rewrites with their index copies and counts,
- * refuses the batch before writing anything; it is then rewritten in halves.
+ * run keeps one batch size, which only shrinks, halving whenever a store
+ * refuses a batch:
+ * - as too large, before writing anything: DynamoDB's 100 items hold fewer
+ *   than 25 rewrites with their index copies and counts;
+ * - as busy through the transaction's retries: a write-capacity cap, such as
+ *   the 100 write units a second `hot-updater init` gives a DynamoDB table,
+ *   throttles a transaction that costs more than the cap admits, about 13
+ *   rewrites of 2 KB events there, and refuses every write for seconds once
+ *   the run has spent it.
+ * After a busy refusal the run also waits before it writes again, `PAUSE_MS`
+ * and twice as long after each further one, so the cap refills; a commit
+ * starts the waits over. A batch the store still refuses after the
+ * `MAX_PAUSE_MS` wait, or a one-event batch too large to write, fails the
+ * run, which a rerun resumes.
  */
 const PAGE = 500;
 const BATCH = 25;
+const PAUSE_MS = 1_000;
+const MAX_PAUSE_MS = 32_000;
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 type StoredEvent = Parameters<typeof bundleRefsOf>[0] & {
   readonly id: string;
@@ -81,26 +98,37 @@ export const backfillReleaseRefs = async (
 ): Promise<ReleaseRefBackfill> => {
   const today = now() - (now() % DAY_MS);
   let events = 0;
-  const move = async (candidates: readonly StoredEvent[]): Promise<void> => {
+  let size = BATCH;
+  // The last wait after a busy refusal since the last commit; 0 after one.
+  let paused = 0;
+  const move = async (stale: readonly StoredEvent[]): Promise<void> => {
     if (dryRun) {
-      events += candidates.length;
+      events += stale.length;
       return;
     }
-    // Read before adding: a split adds its halves' events meanwhile.
-    const moved = await rewrite(candidates).catch(async (error: unknown) => {
-      if (
-        !(error instanceof DatabaseConstraintError) ||
-        error.reason !== "too_large" ||
-        candidates.length === 1
-      ) {
-        throw error;
+    for (let start = 0; start < stale.length; ) {
+      const candidates = stale.slice(start, start + size);
+      try {
+        events += await rewrite(candidates);
+        start += candidates.length;
+        paused = 0;
+      } catch (error) {
+        if (
+          error instanceof DatabaseConstraintError &&
+          error.reason === "too_large" &&
+          candidates.length > 1
+        ) {
+          size = Math.ceil(candidates.length / 2);
+          continue;
+        }
+        if (!isDatabaseBusyError(error) || paused >= MAX_PAUSE_MS) {
+          throw error;
+        }
+        size = Math.ceil(candidates.length / 2);
+        paused = paused === 0 ? PAUSE_MS : paused * 2;
+        await sleep(paused);
       }
-      const half = Math.ceil(candidates.length / 2);
-      await move(candidates.slice(0, half));
-      await move(candidates.slice(half));
-      return 0;
-    });
-    events += moved;
+    }
   };
   const rewrite = (candidates: readonly StoredEvent[]) =>
     db.transaction(async (tx) => {
@@ -146,9 +174,7 @@ export const backfillReleaseRefs = async (
       const stale = (page.rows as unknown as StoredEvent[]).filter(
         namesArtifact,
       );
-      for (let start = 0; start < stale.length; start += BATCH) {
-        await move(stale.slice(start, start + BATCH));
-      }
+      await move(stale);
       cursor = page.next;
     } while (cursor !== undefined);
   }

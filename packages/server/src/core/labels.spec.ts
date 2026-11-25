@@ -11,6 +11,7 @@ import {
 import { encodeChannelKey } from "@hot-updater/protocol";
 import {
   createBundleFixture,
+  createCapacityCappedStore,
   createMemoryKeyValueStore,
 } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
@@ -327,6 +328,37 @@ describe("release labels", () => {
     await expect(labelsOf(core)).resolves.toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
     ]);
+  });
+
+  it("labels releases from before labels through a store with a write-capacity cap, in transactions the cap admits", async () => {
+    // Room for the setup's one-transaction label wipe; the cap alone refuses
+    // the fill's larger transactions.
+    const inner = createMemoryKeyValueStore({
+      limits: { items: 10_000, bytes: 4_000_000 },
+    });
+    // `hot-updater init` caps an AWS table at 100 write units a second.
+    const capped = createCapacityCappedStore(inner, { unitsPerSecond: 100 });
+    let store: typeof inner | typeof capped = inner;
+    const context = setup(
+      createKvAdapter({
+        store: { ...inner, write: (ops) => store.write(ops) },
+      }),
+    );
+    const { core } = context;
+    for (let n = 0; n < 30; n += 1) await deploy(core);
+    await asBeforeLabels(context);
+    store = capped;
+
+    await expect(core.fillReleaseLabels({ catalogs: false })).resolves.toEqual({
+      releases: 30,
+      catalogs: 0,
+    });
+
+    expect(capped.throttles()).toBeGreaterThan(0);
+    store = inner;
+    await expect(labelsOf(core)).resolves.toEqual(
+      Array.from({ length: 30 }, (_, n) => n + 1),
+    );
   });
 
   it("starts a channel deleted and created again at v1, with no counter left behind", async () => {
