@@ -119,7 +119,9 @@ const createRequestHandler =
         let authenticated: boolean;
         try {
           authenticated = await clientPolicy.authenticate(request);
-        } catch {
+        } catch (error) {
+          // The 503 hides the cause from devices; the operator's logs need it.
+          console.error("Hot Updater client authentication error:", error);
           return errorResponse("Service unavailable", 503);
         }
         if (!authenticated) {
