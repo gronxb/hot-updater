@@ -68,7 +68,7 @@ catalogs:
     firebase-admin: 14.2.0
   hono:
     "@hono/node-server": 1.19.17
-    hono: 4.12.34
+    hono: 4.13.21
   supabase:
     "@supabase/supabase-js": 2.76.1
   tools:

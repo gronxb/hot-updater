@@ -27,7 +27,7 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@babel/core": "7.26.0",
+    "@babel/core": "7.29.13",
     "@babel/types": "7.26.0",
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
