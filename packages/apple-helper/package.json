@@ -32,7 +32,7 @@
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/protocol": "workspace:*",
     "execa": "catalog:tools",
-    "fast-xml-parser": "5.8.0"
+    "fast-xml-parser": "5.12.1"
   },
   "devDependencies": {
     "@types/node": "catalog:"
