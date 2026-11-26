@@ -1,0 +1,49 @@
+{
+  "name": "@hot-updater/github",
+  "type": "module",
+  "version": "1.1.16",
+  "description": "React Native OTA solution for self-hosted",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./client": {
+      "import": "./dist/client.mjs",
+      "require": "./dist/client.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/hot-updater/issues"
+  },
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "!**/*.spec.ts",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "test:type": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
+    "@hot-updater/server": "workspace:*"
+  },
+  "devDependencies": {
+    "@hot-updater/test-utils": "workspace:*",
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
+  }
+}
