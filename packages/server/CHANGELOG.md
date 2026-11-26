@@ -1,5 +1,15 @@
 # @hot-updater/server
 
+## 1.1.22
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.22
+  - @hot-updater/plugin-api-keys@1.1.22
+  - @hot-updater/plugin-insights@1.1.22
+  - @hot-updater/plugin-core@1.1.22
+  - @hot-updater/plugin-remote-config@1.1.22
+
 ## 1.1.21
 
 ### Patch Changes

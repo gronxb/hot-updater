@@ -1,5 +1,20 @@
 # hot-updater
 
+## 1.1.22
+
+### Patch Changes
+
+- 2735af4: Bump dependencies with open advisories (#2038): `hono` 4.12.34 → 4.13.21, which the Cloudflare Worker bundle and the AWS, Supabase, and Firebase functions ship; `fast-xml-parser` → 5.12.1 in `@hot-updater/apple-helper` and the bundled CLI; and `@babel/core` 7.26.0 → 7.29.13 in `@hot-updater/expo`. A deployed Worker or function keeps its old `hono` until you re-run `npx hot-updater init` after upgrading.
+- Updated dependencies [2735af4]
+  - @hot-updater/apple-helper@1.1.22
+  - @hot-updater/android-helper@1.1.22
+  - @hot-updater/bsdiff@1.1.22
+  - @hot-updater/cli-tools@1.1.22
+  - @hot-updater/console@1.1.22
+  - @hot-updater/protocol@1.1.22
+  - @hot-updater/server@1.1.22
+  - @hot-updater/plugin-core@1.1.22
+
 ## 1.1.21
 
 ### Patch Changes
