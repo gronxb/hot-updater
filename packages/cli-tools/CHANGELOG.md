@@ -817,6 +817,23 @@
   - @hot-updater/server@1.2.0-rc.0
   - @hot-updater/protocol@1.2.0-rc.0
 
+## 1.1.22
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.22
+  - @hot-updater/server@1.1.22
+  - @hot-updater/plugin-core@1.1.22
+
+## 1.1.21
+
+### Patch Changes
+
+- Updated dependencies [ccd81c9]
+  - @hot-updater/server@1.1.21
+  - @hot-updater/protocol@1.1.21
+  - @hot-updater/plugin-core@1.1.21
+
 ## 1.1.20
 
 ### Patch Changes

@@ -410,8 +410,12 @@ describe("createHandlers client routes", () => {
       );
 
       expect(response.status).toBe(503);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      await expect(response.json()).resolves.toEqual({
+        error: "Service unavailable",
+      });
       expect(consoleError).toHaveBeenCalledWith(
-        "Hot Updater client authentication failed:",
+        "Hot Updater client authentication error:",
         failure,
       );
     } finally {

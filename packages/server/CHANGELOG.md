@@ -1077,6 +1077,27 @@
   - @hot-updater/plugin-insights@1.2.0-rc.0
   - @hot-updater/plugin-remote-config@1.2.0-rc.0
 
+## 1.1.22
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.22
+  - @hot-updater/plugin-api-keys@1.1.22
+  - @hot-updater/plugin-insights@1.1.22
+  - @hot-updater/plugin-core@1.1.22
+  - @hot-updater/plugin-remote-config@1.1.22
+
+## 1.1.21
+
+### Patch Changes
+
+- ccd81c9: Log why client authentication failed before a client route answers 503. The `authenticate` catch answered `{"error":"Service unavailable"}` without logging, so a Worker or server operator saw nothing in their logs (#2035). The response stays the same.
+- @hot-updater/protocol@1.1.21
+  - @hot-updater/plugin-api-keys@1.1.21
+  - @hot-updater/plugin-insights@1.1.21
+  - @hot-updater/plugin-core@1.1.21
+  - @hot-updater/plugin-remote-config@1.1.21
+
 ## 1.1.20
 
 ### Patch Changes
