@@ -1089,6 +1089,63 @@ describe("takeNativeUpdateEvents", () => {
   });
 });
 
+describe("withBackgroundTask", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(nativeModuleMock, "beginBackgroundTask");
+    Reflect.deleteProperty(nativeModuleMock, "endBackgroundTask");
+  });
+
+  const installTasks = () => {
+    const events: string[] = [];
+    const beginBackgroundTask = vi.fn(() => {
+      events.push("begin");
+      return 7;
+    });
+    const endBackgroundTask = vi.fn((taskId: number) => {
+      events.push(`end ${taskId}`);
+    });
+    Object.assign(nativeModuleMock, { beginBackgroundTask, endBackgroundTask });
+    return events;
+  };
+
+  it("holds native background time while the work runs", async () => {
+    const events = installTasks();
+    const native = await import("./native");
+
+    await expect(
+      native.withBackgroundTask(async () => {
+        events.push("work");
+        return "done";
+      }),
+    ).resolves.toBe("done");
+    expect(events).toEqual(["begin", "work", "end 7"]);
+  });
+
+  it("ends the background time when the work fails", async () => {
+    const events = installTasks();
+    const native = await import("./native");
+
+    await expect(
+      native.withBackgroundTask(async () => {
+        throw new Error("offline");
+      }),
+    ).rejects.toThrow("offline");
+    expect(events).toEqual(["begin", "end 7"]);
+  });
+
+  it("runs the work alone on native built from an earlier SDK", async () => {
+    const native = await import("./native");
+
+    await expect(native.withBackgroundTask(async () => "done")).resolves.toBe(
+      "done",
+    );
+  });
+});
+
 describe("resetChannelIfSelectionCurrent", () => {
   const guard = {
     catalogId: "catalog-1",

@@ -578,6 +578,14 @@ class HotUpdaterModule internal constructor(
     @ReactMethod(isBlockingSynchronousMethod = true)
     override fun takeNativeUpdateEvents(): String? = getInstance().takeNativeUpdateEvents()
 
+    // Android doesn't suspend an app the moment it leaves the foreground, and
+    // JavaScript's update requests get their responses there without timers.
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun beginBackgroundTask(): Double = 0.0
+
+    @ReactMethod
+    override fun endBackgroundTask(taskId: Double) = Unit
+
     @ReactMethod
     override fun resetChannelIfSelectionCurrent(
         params: ReadableMap,

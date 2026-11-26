@@ -55,6 +55,14 @@ final class HotUpdaterNativeUpdatesAdapter: NSObject, HotUpdaterNativeUpdatesInt
         HotUpdaterNativeUpdateBridge.takeEvents(impl: impl as! HotUpdaterImpl)
     }
 
+    func beginJavaScriptBackgroundTask() -> NSNumber {
+        HotUpdaterNativeUpdateBridge.beginJavaScriptBackgroundTask()
+    }
+
+    func endJavaScriptBackgroundTask(_ identifier: NSNumber) {
+        HotUpdaterNativeUpdateBridge.endJavaScriptBackgroundTask(identifier)
+    }
+
     func impl(forBundleURL bundleURL: URL?) -> HotUpdaterImplInterface {
         HotUpdaterNativeUpdateBridge.impl(forBundleURL: bundleURL)
     }

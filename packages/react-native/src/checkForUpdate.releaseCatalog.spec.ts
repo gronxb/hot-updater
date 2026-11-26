@@ -29,6 +29,8 @@ const SCOPE_KEY = createReleaseCatalogScopeKey({
 
 const mocks = vi.hoisted(() => {
   Reflect.set(globalThis, "HotUpdater", { SDK_VERSION: "test-sdk-version" });
+  /** How many background tasks the check holds. */
+  const backgroundTasks = { held: 0 };
   return {
     addListener: vi.fn(() => () => {}),
     acceptReleaseCatalog: vi.fn(() => true),
@@ -60,6 +62,15 @@ const mocks = vi.hoisted(() => {
         patchFallback: boolean;
       } | null> => ({ delivery: "manifest", patchFallback: false }),
     ),
+    backgroundTasks,
+    withBackgroundTask: vi.fn(async <T>(work: () => Promise<T>) => {
+      backgroundTasks.held += 1;
+      try {
+        return await work();
+      } finally {
+        backgroundTasks.held -= 1;
+      }
+    }),
   };
 });
 
@@ -176,6 +187,63 @@ describe("checkForUpdate Release catalog protocol", () => {
       patchFallback: false,
     });
   });
+
+  // iOS suspends an app soon after it leaves the foreground: the check and
+  // the download each hold background time until their requests are answered
+  // and the download is staged, on success and failure alike.
+  it("holds background time over the catalog request", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client, fetchReleaseCatalog } = createClient();
+    let heldDuringRequest = 0;
+    fetchReleaseCatalog.mockImplementationOnce(async () => {
+      heldDuringRequest = mocks.backgroundTasks.held;
+      throw new Error("offline");
+    });
+
+    await checkForUpdate({ emit, client, updateStrategy: "appVersion" });
+
+    expect(heldDuringRequest).toBe(1);
+    expect(mocks.backgroundTasks.held).toBe(0);
+  });
+
+  it.each(["staged", "failed"] as const)(
+    "holds background time from the artifact request until the download is %s",
+    async (outcome) => {
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const { client, resolveArtifact } = createClient();
+      const update = await checkForUpdate({
+        emit,
+        client,
+        updateStrategy: "appVersion",
+      });
+      expect(mocks.backgroundTasks.held).toBe(0);
+      const held: number[] = [];
+      resolveArtifact.mockImplementationOnce(async () => {
+        held.push(mocks.backgroundTasks.held);
+        return {
+          artifactProtocolVersion: 1,
+          assets: {},
+          manifestFileHash: "manifest-hash",
+          manifestUrl: "https://updates.example.com/manifest.json",
+        };
+      });
+      mocks.stageBundle.mockImplementationOnce(async () => {
+        held.push(mocks.backgroundTasks.held);
+        if (outcome === "failed") throw new Error("download failed");
+        return { delivery: "manifest", patchFallback: false };
+      });
+
+      const pending = update!.updateBundle();
+      if (outcome === "failed") {
+        await expect(pending).rejects.toThrow("download failed");
+      } else {
+        await expect(pending).resolves.toBe(true);
+      }
+
+      expect(held).toEqual([1, 1]);
+      expect(mocks.backgroundTasks.held).toBe(0);
+    },
+  );
 
   it("reports the check, then the download only after staging", async () => {
     const { checkForUpdate } = await import("./checkForUpdate");

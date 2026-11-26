@@ -266,6 +266,22 @@ export interface Spec extends TurboModule {
    */
   takeNativeUpdateEvents: () => string | null;
 
+  /**
+   * Asks iOS for background time while JavaScript's update requests run, and
+   * returns the identifier `endBackgroundTask` takes. iOS suspends an app
+   * soon after it leaves the foreground; this keeps it running until the
+   * request is answered and the download finishes, or iOS takes the time
+   * back. Android returns 0 and holds nothing. Native built from an
+   * earlier SDK has no such method; JavaScript checks for it.
+   */
+  beginBackgroundTask: () => number;
+
+  /**
+   * Ends the background time `beginBackgroundTask` returned `taskId` for.
+   * An identifier that expired or was ended already ends nothing.
+   */
+  endBackgroundTask: (taskId: number) => void;
+
   // EventEmitter
   addListener(eventName: string): void;
   removeListeners(count: number): void;

@@ -38,6 +38,7 @@ import {
   resetChannelIfSelectionCurrent,
   stageBundle,
   supportsArtifactFiles,
+  withBackgroundTask,
 } from "./native";
 import { saveRecoveryCheckConfig } from "./recoveryCheckConfig";
 import { hotUpdaterStore } from "./store";
@@ -62,7 +63,8 @@ export interface CheckForUpdateOptions {
   requestHeaders?: Record<string, string>;
   onError?: (error: Error) => void;
   /**
-   * The timeout duration for the request.
+   * How long each update request may take, in milliseconds. Time the app
+   * spends in the background doesn't count.
    * @default 5000
    */
   requestTimeout?: number;
@@ -472,7 +474,7 @@ async function checkForReleaseCatalogUpdate(input: {
   };
   const updateBundleForSelection = async (): Promise<boolean> => {
     try {
-      return await installSelection();
+      return await withBackgroundTask(installSelection);
     } catch (error) {
       reportUpdateError(
         options.emit,
@@ -673,20 +675,22 @@ export async function checkForUpdate(
   const fingerprintHash = getFingerprintHash();
 
   try {
-    const result = await checkForReleaseCatalogUpdate({
-      cohort,
-      currentAppVersion,
-      currentBundleId,
-      currentChannel,
-      defaultChannel,
-      explicitChannel,
-      fingerprintHash,
-      isSwitched,
-      minBundleId,
-      options,
-      platform,
-      targetChannel,
-    });
+    const result = await withBackgroundTask(() =>
+      checkForReleaseCatalogUpdate({
+        cohort,
+        currentAppVersion,
+        currentBundleId,
+        currentChannel,
+        defaultChannel,
+        explicitChannel,
+        fingerprintHash,
+        isSwitched,
+        minBundleId,
+        options,
+        platform,
+        targetChannel,
+      }),
+    );
     if (result === null) {
       options.emit("onUpdateCheck", () => {
         const releaseId = getRunningReleaseId(currentBundleId, currentChannel);

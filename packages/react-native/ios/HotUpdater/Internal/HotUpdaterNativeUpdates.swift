@@ -253,6 +253,18 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
         }
     }
 
+    /// Background time for JavaScript's update requests, by the identifier
+    /// `endJavaScriptBackgroundTask` takes. See `JavaScriptBackgroundTasks`.
+    @objc(beginJavaScriptBackgroundTask)
+    public static func beginJavaScriptBackgroundTask() -> NSNumber {
+        NSNumber(value: JavaScriptBackgroundTasks.shared.begin())
+    }
+
+    @objc(endJavaScriptBackgroundTask:)
+    public static func endJavaScriptBackgroundTask(_ identifier: NSNumber) {
+        JavaScriptBackgroundTasks.shared.end(identifier.intValue)
+    }
+
     /// The queued plugin events as a JSON array, cleared as they are taken.
     @objc(takeEventsWithImpl:)
     public static func takeEvents(impl: HotUpdaterImpl) -> String? {

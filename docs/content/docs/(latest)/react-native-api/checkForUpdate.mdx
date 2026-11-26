@@ -76,6 +76,9 @@ The update source is always from `HotUpdater.init()`; it cannot be overridden
 in `checkForUpdate`. Per-check `requestHeaders` merge with the headers from
 `init`, overriding matching keys. An omitted `requestTimeout` uses the value
 from `init`, or 5000 ms when neither call sets one.
+Time the app spends in the background doesn't count toward `requestTimeout`.
+On iOS, the check and `updateBundle()` keep the app running in the background
+until the server answers and the download finishes, for as long as iOS allows.
 
 A requested channel switch is persisted only after the returned update applies
 successfully. If a different runtime channel is already active, call

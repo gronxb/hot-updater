@@ -18,6 +18,10 @@ export interface HotUpdaterInitOptions<
   /** Base URL of a server exposing the Hot Updater v1 client HTTP protocol. */
   baseURL: HotUpdaterBaseURL;
   requestHeaders?: Record<string, string>;
+  /**
+   * How long each request may take, in milliseconds. Time the app spends in
+   * the background doesn't count toward an update request's.
+   */
   requestTimeout?: number;
   /**
    * The fetch this instance's JavaScript requests use: release catalogs,
