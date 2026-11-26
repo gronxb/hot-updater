@@ -76,6 +76,8 @@ NS_ASSUME_NONNULL_BEGIN
                                       resolver:(RCTPromiseResolveBlock)resolve
                                       rejecter:(RCTPromiseRejectBlock)reject;
 - (nullable NSString *)takeEventsWithImpl:(id<HotUpdaterImplInterface>)impl;
+- (NSNumber *)beginJavaScriptBackgroundTask;
+- (void)endJavaScriptBackgroundTask:(NSNumber *)identifier;
 - (id<HotUpdaterImplInterface>)implForBundleURL:(nullable NSURL *)bundleURL
     NS_SWIFT_NAME(impl(forBundleURL:));
 @end

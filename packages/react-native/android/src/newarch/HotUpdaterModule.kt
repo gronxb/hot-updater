@@ -550,6 +550,12 @@ class HotUpdaterModule internal constructor(
 
     override fun takeNativeUpdateEvents(): String? = getInstance().takeNativeUpdateEvents()
 
+    // Android doesn't suspend an app the moment it leaves the foreground, and
+    // JavaScript's update requests get their responses there without timers.
+    override fun beginBackgroundTask(): Double = 0.0
+
+    override fun endBackgroundTask(taskId: Double) = Unit
+
     override fun resetChannelIfSelectionCurrent(
         params: ReadableMap,
         promise: Promise,

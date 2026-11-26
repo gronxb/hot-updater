@@ -691,6 +691,34 @@ export const setStorageItem = (key: string, value: string | null): void => {
 };
 
 /**
+ * Runs `work`, the requests of an update check or download, with background
+ * time from native, so iOS doesn't suspend an app that leaves the foreground
+ * before the response reaches it and the download finishes. Native
+ * built from an earlier SDK has no `beginBackgroundTask`, and an OTA can
+ * bring this JavaScript to such native code, which then runs `work` alone.
+ */
+export const withBackgroundTask = async <T>(
+  work: () => Promise<T>,
+): Promise<T> => {
+  const native = HotUpdaterNative as {
+    beginBackgroundTask?: unknown;
+    endBackgroundTask?: unknown;
+  };
+  if (
+    typeof native.beginBackgroundTask !== "function" ||
+    typeof native.endBackgroundTask !== "function"
+  ) {
+    return work();
+  }
+  const taskId = HotUpdaterNative.beginBackgroundTask();
+  try {
+    return await work();
+  } finally {
+    HotUpdaterNative.endBackgroundTask(taskId);
+  }
+};
+
+/**
  * Takes and clears the events of the native update checks, as JSON. Native
  * built from an earlier SDK has no `takeNativeUpdateEvents`, and an OTA can
  * bring this JavaScript to such native code, which has no events to replay.
