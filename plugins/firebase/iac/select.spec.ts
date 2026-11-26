@@ -57,6 +57,7 @@ describe("setEnv", () => {
       storageBucket: "demo-bucket",
       build: "bare",
       region: "asia-northeast3",
+      plugins: ["insights", "apiKeys", "remoteConfig"],
     });
 
     expect(vi.mocked(makeEnv)).toHaveBeenCalledWith(
@@ -70,6 +71,7 @@ describe("setEnv", () => {
         HOT_UPDATER_FIREBASE_REGION: "asia-northeast3",
         HOT_UPDATER_FIREBASE_DATABASE_ID: "hot-updater",
         HOT_UPDATER_FIREBASE_STORAGE_BUCKET: "demo-bucket",
+        HOT_UPDATER_PLUGINS: "insights,apiKeys,remoteConfig",
       },
       ".env.hotupdater",
       {
@@ -104,6 +106,31 @@ describe("setEnv", () => {
     expect(options).toMatchObject({ settings: "Firebase" });
   });
 
+  it("saves the selected plugins and lists only them in the config", async () => {
+    await setEnv({
+      databaseId: "hot-updater",
+      projectId: "demo-project",
+      storageBucket: "demo-bucket",
+      build: "bare",
+      region: "asia-northeast3",
+      plugins: ["insights", "remoteConfig"],
+    });
+
+    expect(vi.mocked(makeEnv)).toHaveBeenCalledWith(
+      expect.objectContaining({ HOT_UPDATER_PLUGINS: "insights,remoteConfig" }),
+      ".env.hotupdater",
+      expect.anything(),
+    );
+    const [scaffold] = vi.mocked(writeHotUpdaterFiles).mock.calls.at(-1) ?? [];
+    expect(scaffold?.text).toContain(
+      'import { insights, remoteConfig } from "hot-updater/plugins";',
+    );
+    expect(scaffold?.text).toContain(
+      "  plugins: [insights(), remoteConfig()],\n",
+    );
+    expect(scaffold?.text).not.toContain("apiKeys");
+  });
+
   it("propagates config write failures so init cannot continue without its config", async () => {
     const error = Object.assign(
       new Error("EACCES: permission denied, open 'hot-updater.config.ts'"),
@@ -118,6 +145,7 @@ describe("setEnv", () => {
         storageBucket: "demo-bucket",
         build: "bare",
         region: "asia-northeast3",
+        plugins: [],
       }),
     ).rejects.toBe(error);
   });

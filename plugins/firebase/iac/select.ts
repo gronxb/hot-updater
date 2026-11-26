@@ -1,8 +1,10 @@
 import {
   type BuildType,
+  formatManagedPlugins,
   getInitProviderTextPromptValues,
   link,
   makeEnv,
+  type ManagedPluginId,
   MissingInitInputsError,
   p,
   writeHotUpdaterFiles,
@@ -27,6 +29,7 @@ export const setEnv = async ({
   storageBucket,
   build,
   region,
+  plugins,
 }: {
   applicationCredentials?: string;
   databaseId: string;
@@ -34,6 +37,8 @@ export const setEnv = async ({
   storageBucket: string;
   build: BuildType;
   region: string;
+  /** The plugins the function runs, which the config lists. */
+  plugins: readonly ManagedPluginId[];
 }) => {
   await makeEnv(
     {
@@ -46,6 +51,8 @@ export const setEnv = async ({
       [FIREBASE_INIT_PROVIDER.inputs.region.envKey]: region,
       [FIREBASE_INIT_PROVIDER.inputs.databaseId.envKey]: databaseId,
       HOT_UPDATER_FIREBASE_STORAGE_BUCKET: storageBucket,
+      [FIREBASE_INIT_PROVIDER.inputs.plugins.envKey]:
+        formatManagedPlugins(plugins),
     },
     ".env.hotupdater",
     {
@@ -57,7 +64,7 @@ export const setEnv = async ({
 
   p.log.success("Firebase credentials have been successfully configured.");
 
-  await writeHotUpdaterFiles(getConfigScaffold(build), {
+  await writeHotUpdaterFiles(getConfigScaffold(build, plugins), {
     cwd: process.cwd(),
     settings: "Firebase",
   });

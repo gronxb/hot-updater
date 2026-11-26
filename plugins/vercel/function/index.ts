@@ -1,6 +1,6 @@
 import { postgres } from "@hot-updater/postgres";
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+import { managedPlugins } from "@hot-updater/server/plugins";
 import { attachDatabasePool } from "@vercel/functions";
 import { PostgresDialect } from "kysely";
 import pg from "pg";
@@ -29,11 +29,12 @@ attachDatabasePool(pool);
 
 const hotUpdater = createHotUpdater({
   database: postgres({ dialect: new PostgresDialect({ pool }) }),
-  plugins: [insights(), apiKeys(), remoteConfig()],
+  // The plugins init selected; every plugin when the variable is missing.
+  ...managedPlugins(process.env["HOT_UPDATER_PLUGINS"]),
   storage: vercelBlobStorage({
     token: requireEnv("HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN"),
   }),
-});
+} as Parameters<typeof createHotUpdater>[0]);
 
 /** Every route of the client handler; `vercel.json` rewrites every path here. */
 const handler = async (request: Request) =>

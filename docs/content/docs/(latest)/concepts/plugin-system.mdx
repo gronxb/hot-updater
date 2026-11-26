@@ -37,7 +37,8 @@ Plugins are configured in three places:
 A managed project lists plugins in two places: `hot-updater.config.ts`, where
 init imports `apiKeys`, `insights`, and `remoteConfig` from
 `hot-updater/plugins` and lists `[apiKeys(), insights(), remoteConfig()]`, and
-the app. Its prebuilt server runs the same server plugins.
+the app. Its prebuilt server runs the same server plugins. Each is optional:
+init asks which ones the server runs, and lists only those.
 
 Keep the config's list the same as the server's, and a deployed Console's
 `console.config.ts`, which mirrors the server too. When the server adds or
@@ -56,7 +57,8 @@ every project can reach.
 
 The managed Cloudflare, Supabase, AWS, Firebase, Vercel, and Azure servers are prebuilt with
 their provider's storage and database adapters and the official server
-plugins, Insights, API keys, and Remote Config. Other adapters and server plugins run on a
+plugins, Insights, API keys, and Remote Config, of which each runs the ones
+init selected. Other adapters and server plugins run on a
 [custom server](/docs/custom/overview). Client plugins run in any app.
 
 A feature can ship both halves, as Insights does: a server plugin that stores

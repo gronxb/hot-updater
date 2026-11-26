@@ -1,4 +1,7 @@
-import type { InitProviderDefinition } from "@hot-updater/cli-tools";
+import {
+  type InitProviderDefinition,
+  managedPluginsInput,
+} from "@hot-updater/cli-tools";
 
 /**
  * A resource group name: 1 to 90 letters, digits, `_`, `-`, `.`, `(`, and
@@ -91,5 +94,6 @@ export const initProvider = {
       optional: true,
       preflight: false,
     },
+    plugins: managedPluginsInput,
   },
 } as const satisfies InitProviderDefinition;

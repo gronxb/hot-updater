@@ -12,7 +12,13 @@ import {
 } from "@hot-updater/cli-tools";
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "@hot-updater/server";
-import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+import {
+  apiKeys,
+  formatManagedPlugins,
+  insights,
+  MANAGED_PLUGIN_IDS,
+  remoteConfig,
+} from "@hot-updater/server/plugins";
 import { build as buildHelper } from "tsdown";
 
 import {
@@ -45,6 +51,9 @@ const save = async (file, value) => {
 const pluginRoot = (provider) => path.join(repoRoot, "plugins", provider);
 const moduleAt = (file) => import(pathToFileURL(file).href);
 const placeholder = (name) => `__HOT_UPDATER_${name}__`;
+// The scaffold's prebuilt servers run every managed plugin, as its config,
+// credential helper, and instructions describe.
+const PLUGINS = formatManagedPlugins(MANAGED_PLUGIN_IDS);
 /**
  * The credential helper's server definition, which stays in the scaffold:
  * the config scaffold's database, storage, and plugins, without its build or
@@ -273,6 +282,7 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       transformEnv(path.join(root, "supabase/edge-functions/index.ts"), {
         BUCKET_NAME: placeholder("BUCKET_NAME"),
         FUNCTION_NAME: "hot-updater-v1",
+        PLUGINS,
       }),
     );
     const { resolveEdgeFunctionDenoConfig } = await moduleAt(
@@ -311,7 +321,12 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       path.join(lambda, "index.cjs"),
       transformEnv(
         path.join(lambda, "index.cjs"),
-        Object.fromEntries(inputs.map((name) => [name, placeholder(name)])),
+        {
+          ...Object.fromEntries(
+            inputs.map((name) => [name, placeholder(name)]),
+          ),
+          PLUGINS,
+        },
       ),
     );
     await save(path.join(lambda, "package.json"), {
@@ -480,6 +495,7 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       transformEnv(path.join(functions, "index.cjs"), {
         REGION: placeholder("REGION"),
         FIRESTORE_DATABASE_ID: placeholder("FIRESTORE_DATABASE_ID"),
+        PLUGINS,
       }),
     );
     // Indexes deploy to the database the function uses.

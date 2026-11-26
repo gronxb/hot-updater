@@ -91,6 +91,8 @@ export class LambdaEdgeDeployer {
       bucketName: string;
       dynamodbRegion: string;
       dynamodbTableName: string;
+      /** The plugins the function runs, as `parseManagedPlugins` reads them. */
+      plugins: string;
       publicKeyId: string;
       ssmParameterName: string;
       ssmRegion: string;
@@ -111,6 +113,7 @@ export class LambdaEdgeDeployer {
       SSM_PARAMETER_NAME: config.ssmParameterName,
       SSM_REGION: config.ssmRegion,
       S3_BUCKET_NAME: config.bucketName,
+      PLUGINS: config.plugins,
     });
     await fs.writeFile(indexPath, code);
 

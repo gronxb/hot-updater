@@ -25,7 +25,13 @@ import {
   createHotUpdater,
   type RuntimeHotUpdaterAPI,
 } from "@hot-updater/server";
-import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+import {
+  apiKeys,
+  formatManagedPlugins,
+  insights,
+  MANAGED_PLUGIN_IDS,
+  remoteConfig,
+} from "@hot-updater/server/plugins";
 import {
   assertDockerDaemonAvailable,
   findOpenPort,
@@ -338,6 +344,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       SSM_PARAMETER_NAME,
       SSM_REGION: REGION,
       S3_BUCKET_NAME,
+      PLUGINS: formatManagedPlugins(MANAGED_PLUGIN_IDS),
     });
     await writeFile(path.join(runtimeDir, "index.cjs"), transformedCode);
 

@@ -122,6 +122,7 @@ describe("aws lambda entrypoint", () => {
       SSM_PARAMETER_NAME: "/hot-updater/test",
       SSM_REGION: "us-east-1",
       S3_BUCKET_NAME: "hot-updater-test",
+      PLUGINS: "insights,apiKeys,remoteConfig",
     };
   });
 
@@ -150,6 +151,25 @@ describe("aws lambda entrypoint", () => {
     );
     expect(serverMocks.createHotUpdater.mock.lastCall?.[0]).not.toHaveProperty(
       "clientAccess",
+    );
+  });
+
+  it("runs only the plugins init selected, with public client routes without API keys", async () => {
+    globalThis.HotUpdater.PLUGINS = "remoteConfig";
+    const { handler } = await import("./index");
+    await handler(
+      createCloudFrontRequest(
+        "/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
+      ),
+      {} as never,
+      () => undefined,
+    );
+
+    expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientAccess: "public",
+        plugins: [expect.objectContaining({ id: "remoteConfig" })],
+      }),
     );
   });
 
