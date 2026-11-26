@@ -1,5 +1,13 @@
 # @hot-updater/neon
 
+## 1.2.0-rc.60
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.60
+  - @hot-updater/postgres@1.2.0-rc.60
+  - @hot-updater/storage-s3@1.2.0-rc.60
+
 ## 1.2.0-rc.59
 
 ### Patch Changes
