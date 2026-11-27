@@ -429,40 +429,53 @@ describe("BundlesPage", () => {
     expect(mocks.navigate).not.toHaveBeenCalled();
   });
 
-  it("moves a labeled Bundle's badges under its name when the row has no room beside it", () => {
-    releases = [
-      {
-        ...release,
-        currentlyUnreachable: true,
-        label: 4,
-        operation: "PROMOTE",
-      },
-    ];
+  it.each([false, true])(
+    "keeps a labeled Bundle's badges after its ID tail, and moves them under it when the row has no room (mobile: %s)",
+    (mobile) => {
+      mocks.isMobile.mockReturnValue(mobile);
+      releases = [
+        {
+          ...release,
+          currentlyUnreachable: true,
+          label: 4,
+          operation: "PROMOTE",
+        },
+      ];
 
-    render(<BundlesPage />);
-    const row = screen.getByRole("row", {
-      name: "Open bundle release-1",
-    });
-    const open = within(row).getByRole("button", {
-      name: "Open details for ID release-1",
-    });
-    const promoted = within(row).getByText("Promoted");
-    const unreachable = within(row).getByRole("button", {
-      name: /^Unreachable/,
-    });
+      render(<BundlesPage />);
+      const entry = mobile
+        ? screen.getByRole("article", { name: "Bundle release-1" })
+        : screen.getByRole("row", { name: "Open bundle release-1" });
+      const open = within(entry).getByRole("button", {
+        name: "Open details for ID release-1",
+      });
+      const copy = within(entry).getByRole("button", {
+        name: "Copy ID release-1",
+      });
+      const promoted = within(entry).getByText("Promoted");
+      const unreachable = within(entry).getByRole("button", {
+        name: /^Unreachable/,
+      });
 
-    // The label opens the Bundle; the ID column holds its tail.
-    const name = open.parentElement!;
-    expect(name.textContent).toBe("v4");
-    // The label doesn't shrink, so the badges wrap under it rather than
-    // over it, as on a phone card under the label and its ID tail.
-    expect(promoted.parentElement).toBe(name.parentElement);
-    expect(unreachable.parentElement).toBe(name.parentElement);
-    expect(name.parentElement!.className).toContain("flex-wrap");
-    // Stacked under the ID, the reason's touch area stays out of it.
-    expect(unreachable.className).toContain("after:-top-2");
-    expect(unreachable.className).toContain("after:-bottom-5");
-  });
+      // The label opens the Bundle. On a card the tail is beside it; in the
+      // table it heads the ID column, so the Label column stays as narrow as
+      // the label and the tail sits right after it.
+      expect(open.textContent).toBe("v4");
+      const name = mobile ? open.parentElement! : copy.parentElement!;
+      expect(name.textContent).toBe(mobile ? "v4 release-1" : "release-1");
+      if (!mobile) {
+        expect(open.closest("td")!.textContent).toBe("v4");
+      }
+      // The badges follow the tail in its flex-wrap row, so they wrap under
+      // it rather than being drawn over it.
+      expect(promoted.parentElement).toBe(name.parentElement);
+      expect(unreachable.parentElement).toBe(name.parentElement);
+      expect(name.parentElement!.className).toContain("flex-wrap");
+      // Stacked under the ID, the reason's touch area stays out of it.
+      expect(unreachable.className).toContain("after:-top-2");
+      expect(unreachable.className).toContain("after:-bottom-5");
+    },
+  );
 
   it.each([false, true])(
     "copies a labeled Bundle's full ID from its tail without opening it (mobile: %s)",

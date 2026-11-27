@@ -41,10 +41,13 @@ stays subordinate to exact values and actions.
 - Where a surface heads a release's values, the label and the ID split so
   `v12` never sits under "ID": the Bundles table has a Label column then an
   ID column, and the release sheet a Label row then an ID row
-  (`ReleaseIdDisplay` with `part="label"` and `part="id"`). The ID there is
-  always its 6-character tail copy button, labeled or not; a release without
-  a label shows a muted dash in the Label column, which still opens it, and
-  no Label row in the sheet. Split, both take `text-xs`, the size of the
+  (`ReleaseIdDisplay` with `part="label"` and `part="id"`). The Label
+  column holds only the expand chevron and the label, and the row's badges
+  follow the ID tail in the ID column, so the column stays as narrow as the
+  label and the tail sits right after it, read in the card's order. The ID
+  there is always its 6-character tail copy button, labeled or not; a
+  release without a label shows a muted dash in the Label column, which
+  still opens it, and no Label row in the sheet. Split, both take `text-xs`, the size of the
   values beside them (Target, Platform, Channel), and the copy button's
   phone touch area grows to stay 44 px tall. The label stays plain medium
   text, never a chip, since chips in that table mean channel, patch count,
