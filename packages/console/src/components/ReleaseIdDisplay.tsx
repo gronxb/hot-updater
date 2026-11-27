@@ -26,6 +26,13 @@ const COPIED_MS = 1_500;
 
 const LABEL_CLASS = "shrink-0 font-medium text-sm text-foreground tabular-nums";
 
+/**
+ * A label or a tail shown alone sits among a table's or a sheet's other
+ * values, which are `text-xs`, so it takes their size rather than the
+ * composite's `text-sm`.
+ */
+const PART_SIZE = "text-xs";
+
 interface ReleaseIdDisplayProps {
   /**
    * The release's ID: what users call its bundle ID, and what the app's
@@ -93,12 +100,23 @@ export function ReleaseIdDisplay({
   if (part === "id") {
     return copyable ? (
       <span className={cn("inline-flex whitespace-nowrap", className)}>
-        <CopyableTail releaseId={releaseId} clipped={clipped} />
+        <CopyableTail
+          releaseId={releaseId}
+          clipped={clipped}
+          // Its 16 px line reaches 44 px tall on a phone, as the composite's
+          // 20 px line does with 12 px above and below.
+          className={cn(PART_SIZE, "after:-inset-y-3.5")}
+        />
       </span>
     ) : (
       <span
         translate="no"
-        className={cn(tailClass(clipped), "whitespace-nowrap", className)}
+        className={cn(
+          tailClass(clipped),
+          PART_SIZE,
+          "whitespace-nowrap",
+          className,
+        )}
         title={releaseId}
       >
         {releaseId}
@@ -116,7 +134,9 @@ export function ReleaseIdDisplay({
         <span className="sr-only">No label</span>
       </>
     );
-    const textClass = labeled ? LABEL_CLASS : "text-sm text-muted-foreground";
+    const textClass = labeled
+      ? cn(LABEL_CLASS, PART_SIZE)
+      : cn(PART_SIZE, "text-muted-foreground");
     const named = labelAs ? (
       cloneElement(labelAs, {
         // The display's color wins over the caller's, so a dash stays muted.
@@ -218,9 +238,12 @@ const tailClass = (clipped: boolean) => cn(TAIL_CLASS, clipped && CLIP_CLASS);
 function CopyableTail({
   releaseId,
   clipped,
+  className,
 }: {
   readonly releaseId: string;
   readonly clipped: boolean;
+  /** Overrides the tail's size where it shows alone. */
+  readonly className?: string;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -269,6 +292,7 @@ function CopyableTail({
                 // A 44 px tall touch target on a phone, as an ID copy is: the
                 // button stays unclipped so its touch area reaches past it.
                 "relative inline-flex shrink-0 cursor-copy touch-manipulation rounded-sm outline-none transition-colors after:absolute after:inset-x-0 after:-inset-y-3 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:after:hidden motion-reduce:transition-none",
+                className,
               )}
               onClick={onClick}
             />

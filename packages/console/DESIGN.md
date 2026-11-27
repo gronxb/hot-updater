@@ -44,8 +44,11 @@ stays subordinate to exact values and actions.
   (`ReleaseIdDisplay` with `part="label"` and `part="id"`). The ID there is
   always its 6-character tail copy button, labeled or not; a release without
   a label shows a muted dash in the Label column, which still opens it, and
-  no Label row in the sheet. The label stays plain medium text, never a
-  chip, since chips in that table mean channel, patch count, and operation.
+  no Label row in the sheet. Split, both take `text-xs`, the size of the
+  values beside them (Target, Platform, Channel), and the copy button's
+  phone touch area grows to stay 44 px tall. The label stays plain medium
+  text, never a chip, since chips in that table mean channel, patch count,
+  and operation.
   Everywhere without a header for each value (phone Bundles cards,
   Insights, Served now, pickers, chart tooltips, diagnostics), the label and
   tail stay together as `v12 <ID tail>`.

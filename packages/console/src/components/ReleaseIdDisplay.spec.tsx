@@ -160,6 +160,10 @@ describe("ReleaseIdDisplay", () => {
       const copy = screen.getByRole("button", { name: `Copy ID ${id}` });
       expect(copy.firstElementChild!.className).toContain("w-[6ch]");
       expect(copy.parentElement!.textContent).toBe(id);
+      // The size of the values beside it, still 44 px tall to a finger.
+      expect(copy.className).toContain("text-xs");
+      expect(copy.className).not.toContain("text-sm");
+      expect(copy.className).toContain("after:-inset-y-3.5");
       fireEvent.click(copy);
       expect(writeText).toHaveBeenLastCalledWith(id);
       cleanup();
@@ -179,6 +183,8 @@ describe("ReleaseIdDisplay", () => {
     );
     const labeled = screen.getByRole("button", { name: "Open" });
     expect(labeled.textContent).toBe("v14");
+    expect(labeled.className).toContain("text-xs");
+    expect(labeled.className).not.toContain("text-sm");
     expect(labeled.parentElement!.textContent).toBe("v14");
     expect(screen.queryByRole("button", { name: /^Copy ID/u })).toBeNull();
     cleanup();
