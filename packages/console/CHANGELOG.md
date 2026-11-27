@@ -1,5 +1,16 @@
 # @hot-updater/console
 
+## 1.2.0-rc.61
+
+### Patch Changes
+
+- bb3ebf7: The Bundles table shows a release's label and its ID in their own columns, Label then ID, so `v14` no longer reads as part of the ID. The ID column shows the ID's last 12 characters, a UUID's last group, for every release, labeled or not, followed by the row's badges: hovering or focusing it shows the full ID, and a click copies it. A release without a label yet shows a dash in the Label column that still opens it. The Bundle detail sheet gives the label and the ID their own rows the same way. Phone cards, Insights, and the other screens keep `v14 <ID tail>`.
+- @hot-updater/bsdiff@1.2.0-rc.61
+  - @hot-updater/cli-tools@1.2.0-rc.61
+  - @hot-updater/protocol@1.2.0-rc.61
+  - @hot-updater/server@1.2.0-rc.61
+  - @hot-updater/plugin-core@1.2.0-rc.61
+
 ## 1.2.0-rc.60
 
 ### Patch Changes
