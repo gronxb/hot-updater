@@ -286,24 +286,27 @@ function ReleaseFilterToolbar({
 
 function ReleaseEntry({
   expanded,
+  labelOnly = false,
   onOpen,
   onToggleExpand,
   release,
 }: {
   expanded: boolean;
+  /**
+   * Whether the entry shows the label alone, for the table, whose ID column
+   * shows the ID's tail and the row's badges after it, so the label and the
+   * tail stay as close as on a card. A card has no column headers, so it
+   * shows both, then the badges.
+   */
+  labelOnly?: boolean;
   onOpen: () => void;
   onToggleExpand: () => void;
   release: ReleaseListRow;
 }) {
-  const operationLabel =
-    release.operation === "PROMOTE"
-      ? "Promoted"
-      : release.operation === "ROLLBACK"
-        ? "Rollback"
-        : null;
-
   return (
-    <div className="flex min-w-[240px] items-center gap-3">
+    <div
+      className={cn("flex items-center gap-3", !labelOnly && "min-w-[240px]")}
+    >
       {release.bundle_id ? (
         <Button
           aria-controls={`bundle-lineage-panel-${release.id}`}
@@ -329,10 +332,12 @@ function ReleaseEntry({
           room beside them the badges move under the ID instead of over it. */}
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
         {/* The label opens the Bundle; its ID tail is a copy button of its
-            own beside it, not inside it. */}
+            own beside it, or in the table's ID column, never inside it. A
+            release without a label yet opens from its dash in the table. */}
         <ReleaseIdDisplay
           releaseId={release.id}
           label={release.label}
+          part={labelOnly ? "label" : undefined}
           labelAs={
             <button
               aria-label={`Open details for ID ${release.id}`}
@@ -342,30 +347,58 @@ function ReleaseEntry({
             />
           }
         />
-        {!release.bundle_id ? (
-          <span className="inline-flex items-center gap-1.5 text-sm">
-            <RotateCcw className="size-3.5" /> Built-in bundle
-          </span>
-        ) : null}
-        {operationLabel ? (
-          <Badge className="shrink-0 font-normal" variant="secondary">
-            {operationLabel}
-          </Badge>
-        ) : null}
-        {release.currentlyUnreachable ? (
-          <RowReason
-            // Its touch area stays 44px tall but reaches only into the gap
-            // above, not over the ID when it moves under it.
-            className="after:-top-2 after:-bottom-5"
-            icon={CircleOff}
-            label="Unreachable: no device gets this bundle with the current delivery settings."
-            reason="No device gets this bundle with the current delivery settings."
-          >
-            Unreachable
-          </RowReason>
-        ) : null}
+        {labelOnly ? null : <ReleaseBadges release={release} />}
       </div>
     </div>
+  );
+}
+
+/**
+ * What sets a release apart in the list: built in, promoted or rolled back,
+ * unreachable. They follow its ID tail, on a card and in the table's ID
+ * column alike, in the `flex-wrap` row the caller gives them.
+ */
+function ReleaseBadges({
+  className,
+  release,
+}: {
+  /** The size of "Built-in bundle", `text-xs` among the table's values. */
+  className?: string;
+  release: ReleaseListRow;
+}) {
+  const operationLabel =
+    release.operation === "PROMOTE"
+      ? "Promoted"
+      : release.operation === "ROLLBACK"
+        ? "Rollback"
+        : null;
+  return (
+    <>
+      {!release.bundle_id ? (
+        <span
+          className={cn("inline-flex items-center gap-1.5 text-sm", className)}
+        >
+          <RotateCcw className="size-3.5" /> Built-in bundle
+        </span>
+      ) : null}
+      {operationLabel ? (
+        <Badge className="shrink-0 font-normal" variant="secondary">
+          {operationLabel}
+        </Badge>
+      ) : null}
+      {release.currentlyUnreachable ? (
+        <RowReason
+          // Its touch area stays 44px tall but reaches only into the gap
+          // above, not over the ID when it moves under it.
+          className="after:-top-2 after:-bottom-5"
+          icon={CircleOff}
+          label="Unreachable: no device gets this bundle with the current delivery settings."
+          reason="No device gets this bundle with the current delivery settings."
+        >
+          Unreachable
+        </RowReason>
+      ) : null}
+    </>
   );
 }
 
@@ -615,7 +648,7 @@ function BundlesPage() {
   const previousCursor = list.data?.previous;
   // Features add columns, such as release activity where the console reads it.
   const featureColumns = useReleaseColumns();
-  const columnCount = 10 + featureColumns.length;
+  const columnCount = 11 + featureColumns.length;
   const channelNames = new Map(
     channels.map((channel) => [channel.id, channel.name]),
   );
@@ -802,12 +835,19 @@ function BundlesPage() {
           <TableCell>
             <ReleaseEntry
               expanded={isExpanded}
+              labelOnly
               onOpen={() => select(release)}
               onToggleExpand={() =>
                 setExpandedReleaseId(isExpanded ? undefined : release.id)
               }
               release={release}
             />
+          </TableCell>
+          <TableCell>
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+              <ReleaseIdDisplay releaseId={release.id} part="id" />
+              <ReleaseBadges className="text-xs" release={release} />
+            </div>
           </TableCell>
           <TableCell>
             <ChannelBadge
@@ -1041,6 +1081,7 @@ function BundlesPage() {
                 rowGroups
                 header={
                   <>
+                    <TableHead>Label</TableHead>
                     <TableHead>ID</TableHead>
                     <TableHead>Channel</TableHead>
                     <TableHead>Platform</TableHead>

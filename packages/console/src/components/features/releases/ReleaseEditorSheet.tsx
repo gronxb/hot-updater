@@ -86,7 +86,6 @@ import {
   useReleaseQuery,
   useUpdateReleaseMutation,
 } from "@/lib/api";
-import { cn } from "@/lib/utils";
 
 interface Draft {
   enabled: boolean;
@@ -365,27 +364,29 @@ export function ReleaseEditorSheet({
                     </span>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-start gap-2">
-                  <span className="font-medium text-muted-foreground">ID</span>
-                  {/* A full ID takes its own row on a phone; a label and its ID tail fit beside "ID". */}
-                  <span
-                    className={cn(
-                      "min-w-0",
-                      typeof release.label === "number"
-                        ? null
-                        : "basis-full sm:basis-auto",
-                    )}
-                  >
+                {/* The label and the ID each head their own row, so `v12`
+                    never reads as part of the ID. A release without a label
+                    yet has no Label row. */}
+                {typeof release.label === "number" ? (
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="font-medium text-muted-foreground">
+                      Label
+                    </span>
                     <ReleaseIdDisplay
                       releaseId={release.id}
                       label={release.label}
+                      part="label"
                     />
-                    {!release.bundle_id ? (
-                      <span className="text-xs text-foreground">
-                        Built-in bundle
-                      </span>
-                    ) : null}
-                  </span>
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span className="font-medium text-muted-foreground">ID</span>
+                  <ReleaseIdDisplay releaseId={release.id} part="id" />
+                  {!release.bundle_id ? (
+                    <span className="text-xs text-foreground">
+                      Built-in bundle
+                    </span>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium text-muted-foreground">

@@ -21,10 +21,32 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
  */
 const LABELED_ID_TAIL = 6;
 
+/**
+ * How much of a release's ID shows where it has a column or row of its own
+ * (`part="id"`): its last 12 characters, a UUID's last group, as the Console
+ * showed IDs before labels. Without a label beside it there is room, and
+ * more of the ID tells it apart at a glance.
+ */
+const ALONE_ID_TAIL = 12;
+
 /** How long "Copied" shows before the popover reads "Click to copy" again. */
 const COPIED_MS = 1_500;
 
 const LABEL_CLASS = "shrink-0 font-medium text-sm text-foreground tabular-nums";
+
+/**
+ * A label or a tail shown alone sits among a table's or a sheet's other
+ * values, which are `text-xs`, so it takes their size rather than the
+ * composite's `text-sm`.
+ */
+const PART_SIZE = "text-xs";
+
+/**
+ * An ID shown alone is a value like the ones beside it, so it takes their
+ * color too, rather than the muted color that sets a tail apart from its
+ * label.
+ */
+const ALONE_ID_CLASS = cn(PART_SIZE, "text-foreground");
 
 interface ReleaseIdDisplayProps {
   /**
@@ -62,12 +84,22 @@ interface ReleaseIdDisplayProps {
    * already fixes the platform or shows it beside the release.
    */
   platform?: "ios" | "android";
+  /**
+   * One half of the display, for a surface that heads the label and the ID
+   * separately, such as the Bundles table's Label and ID columns and the
+   * release sheet's Label and ID rows. `label` renders `v12` alone (in
+   * `labelAs` when given), or a muted dash for a release without one.
+   * `id` renders the ID's tail alone, the same copy button, whether or not
+   * the release has a label. Left out, the display shows both.
+   */
+  part?: "label" | "id";
   className?: string;
 }
 
 /**
  * A release, named the way people read it: `v12 <ID tail>`, or its full ID
- * without a label. The only display that takes a label.
+ * without a label; or, with `part`, its label or its ID tail alone. The only
+ * display that takes a label.
  */
 export function ReleaseIdDisplay({
   releaseId,
@@ -75,9 +107,73 @@ export function ReleaseIdDisplay({
   copyable = true,
   labelAs,
   platform,
+  part,
   className,
 }: ReleaseIdDisplayProps) {
   const prefix = platform ? <PlatformPrefix platform={platform} /> : null;
+  const clip = releaseId.length > LABELED_ID_TAIL ? CLIP_CLASS : undefined;
+  if (part === "id") {
+    return copyable ? (
+      <span className={cn("inline-flex whitespace-nowrap", className)}>
+        <CopyableTail
+          releaseId={releaseId}
+          clip={releaseId.length > ALONE_ID_TAIL ? ALONE_CLIP_CLASS : undefined}
+          // Its 16 px line reaches 44 px tall on a phone, as the composite's
+          // 20 px line does with 12 px above and below.
+          className={cn(ALONE_ID_CLASS, "after:-inset-y-3.5")}
+        />
+      </span>
+    ) : (
+      <span
+        translate="no"
+        className={cn(
+          tailClass(
+            releaseId.length > ALONE_ID_TAIL ? ALONE_CLIP_CLASS : undefined,
+          ),
+          ALONE_ID_CLASS,
+          "whitespace-nowrap",
+          className,
+        )}
+        title={releaseId}
+      >
+        {releaseId}
+      </span>
+    );
+  }
+  if (part === "label") {
+    const labeled = typeof label === "number";
+    const text = labeled ? (
+      `v${label}`
+    ) : (
+      // A release without a label yet: `db migrate` labels it.
+      <>
+        <span aria-hidden="true">—</span>
+        <span className="sr-only">No label</span>
+      </>
+    );
+    const textClass = labeled
+      ? cn(LABEL_CLASS, PART_SIZE)
+      : cn(PART_SIZE, "text-muted-foreground");
+    const named = labelAs ? (
+      cloneElement(labelAs, {
+        // The display's color wins over the caller's, so a dash stays muted.
+        className: cn(labelAs.props.className, textClass),
+        children: text,
+      })
+    ) : (
+      <span translate="no" className={textClass}>
+        {text}
+      </span>
+    );
+    return (
+      <span
+        className={cn("inline-flex min-w-0 items-baseline gap-1.5", className)}
+      >
+        {prefix}
+        {named}
+      </span>
+    );
+  }
   if (typeof label !== "number") {
     const id = (
       <span
@@ -102,7 +198,6 @@ export function ReleaseIdDisplay({
       named
     );
   }
-  const clipped = releaseId.length > LABELED_ID_TAIL;
   return (
     <span
       className={cn(
@@ -124,9 +219,9 @@ export function ReleaseIdDisplay({
       )}
       {/* Read as "v12 <id>"; the flex gap draws the space. */}{" "}
       {copyable ? (
-        <CopyableTail releaseId={releaseId} clipped={clipped} />
+        <CopyableTail releaseId={releaseId} clip={clip} />
       ) : (
-        <span translate="no" className={tailClass(clipped)}>
+        <span translate="no" className={tailClass(clip)}>
           {releaseId}
         </span>
       )}
@@ -154,15 +249,21 @@ function PlatformPrefix({
  */
 const TAIL_CLASS = "font-mono text-sm text-muted-foreground tabular-nums";
 const CLIP_CLASS = "inline-flex w-[6ch] shrink-0 justify-end overflow-hidden";
-const tailClass = (clipped: boolean) => cn(TAIL_CLASS, clipped && CLIP_CLASS);
+const ALONE_CLIP_CLASS =
+  "inline-flex w-[12ch] shrink-0 justify-end overflow-hidden";
+const tailClass = (clip: string | undefined) => cn(TAIL_CLASS, clip);
 
 /** The tail as a button: the full ID in a popover, and a click copies it. */
 function CopyableTail({
   releaseId,
-  clipped,
+  clip,
+  className,
 }: {
   readonly releaseId: string;
-  readonly clipped: boolean;
+  /** The class that clips the ID to its tail; left out, it shows whole. */
+  readonly clip: string | undefined;
+  /** Overrides the tail's size where it shows alone. */
+  readonly className?: string;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -211,12 +312,13 @@ function CopyableTail({
                 // A 44 px tall touch target on a phone, as an ID copy is: the
                 // button stays unclipped so its touch area reaches past it.
                 "relative inline-flex shrink-0 cursor-copy touch-manipulation rounded-sm outline-none transition-colors after:absolute after:inset-x-0 after:-inset-y-3 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:after:hidden motion-reduce:transition-none",
+                className,
               )}
               onClick={onClick}
             />
           }
         >
-          <span className={clipped ? CLIP_CLASS : undefined}>{releaseId}</span>
+          <span className={clip}>{releaseId}</span>
         </TooltipTrigger>
         <TooltipContent
           className="max-w-80 flex-col items-start gap-0.5"

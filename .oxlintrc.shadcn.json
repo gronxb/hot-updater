@@ -15,6 +15,7 @@
         "packages/console/src/components/features/bundles/BundleChildrenPanel.tsx",
         "packages/console/src/components/features/insights/**/*.tsx",
         "packages/console/src/components/features/native-builds/**/*.tsx",
+        "packages/console/src/components/features/releases/ReleaseEditorSheet.tsx",
         "packages/console/src/components/features/remote-config/**/*.tsx",
         "packages/console/src/routes/index.tsx",
         "packages/console/src/routes/insights.tsx",
