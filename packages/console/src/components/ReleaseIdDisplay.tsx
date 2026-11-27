@@ -62,12 +62,22 @@ interface ReleaseIdDisplayProps {
    * already fixes the platform or shows it beside the release.
    */
   platform?: "ios" | "android";
+  /**
+   * One half of the display, for a surface that heads the label and the ID
+   * separately, such as the Bundles table's Label and ID columns and the
+   * release sheet's Label and ID rows. `label` renders `v12` alone (in
+   * `labelAs` when given), or a muted dash for a release without one.
+   * `id` renders the ID's tail alone, the same copy button, whether or not
+   * the release has a label. Left out, the display shows both.
+   */
+  part?: "label" | "id";
   className?: string;
 }
 
 /**
  * A release, named the way people read it: `v12 <ID tail>`, or its full ID
- * without a label. The only display that takes a label.
+ * without a label; or, with `part`, its label or its ID tail alone. The only
+ * display that takes a label.
  */
 export function ReleaseIdDisplay({
   releaseId,
@@ -75,9 +85,58 @@ export function ReleaseIdDisplay({
   copyable = true,
   labelAs,
   platform,
+  part,
   className,
 }: ReleaseIdDisplayProps) {
   const prefix = platform ? <PlatformPrefix platform={platform} /> : null;
+  const clipped = releaseId.length > LABELED_ID_TAIL;
+  if (part === "id") {
+    return copyable ? (
+      <span className={cn("inline-flex whitespace-nowrap", className)}>
+        <CopyableTail releaseId={releaseId} clipped={clipped} />
+      </span>
+    ) : (
+      <span
+        translate="no"
+        className={cn(tailClass(clipped), "whitespace-nowrap", className)}
+        title={releaseId}
+      >
+        {releaseId}
+      </span>
+    );
+  }
+  if (part === "label") {
+    const labeled = typeof label === "number";
+    const text = labeled ? (
+      `v${label}`
+    ) : (
+      // A release without a label yet: `db migrate` labels it.
+      <>
+        <span aria-hidden="true">—</span>
+        <span className="sr-only">No label</span>
+      </>
+    );
+    const textClass = labeled ? LABEL_CLASS : "text-sm text-muted-foreground";
+    const named = labelAs ? (
+      cloneElement(labelAs, {
+        // The display's color wins over the caller's, so a dash stays muted.
+        className: cn(labelAs.props.className, textClass),
+        children: text,
+      })
+    ) : (
+      <span translate="no" className={textClass}>
+        {text}
+      </span>
+    );
+    return (
+      <span
+        className={cn("inline-flex min-w-0 items-baseline gap-1.5", className)}
+      >
+        {prefix}
+        {named}
+      </span>
+    );
+  }
   if (typeof label !== "number") {
     const id = (
       <span
@@ -102,7 +161,6 @@ export function ReleaseIdDisplay({
       named
     );
   }
-  const clipped = releaseId.length > LABELED_ID_TAIL;
   return (
     <span
       className={cn(

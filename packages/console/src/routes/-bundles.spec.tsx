@@ -193,7 +193,7 @@ describe("BundlesPage", () => {
       expect(mocks.activity).not.toHaveBeenCalled();
       expect(screen.getByText("release-1")).toBeDefined();
       if (!mobile) {
-        expect(screen.getAllByRole("columnheader")).toHaveLength(10);
+        expect(screen.getAllByRole("columnheader")).toHaveLength(11);
       }
     },
   );
@@ -263,26 +263,72 @@ describe("BundlesPage", () => {
     vi.clearAllMocks();
   });
 
-  it("names a bundle by its label before its ID, and by its ID alone without one", () => {
+  it("heads a bundle's label and its ID in their own columns, the ID as its tail alone", () => {
+    const labeledId = "01a13d86-86f7-7830-952d-21238207019f";
+    const unlabeledId = "01a13d86-86f7-7830-952d-2123820701a0";
     releases = [
-      { ...release, label: 12 },
-      { ...release, id: "release-2", label: null },
+      { ...release, id: labeledId, label: 12 },
+      { ...release, id: unlabeledId, label: null },
     ];
-    try {
-      render(<BundlesPage />);
+    render(<BundlesPage />);
 
-      const labeled = screen.getByRole("row", {
-        name: "Open bundle release-1",
-      });
-      expect(within(labeled).getByText("v12")).toBeTruthy();
-      expect(within(labeled).getByText("release-1")).toBeTruthy();
-      const unlabeled = screen.getByRole("row", {
-        name: "Open bundle release-2",
-      });
-      expect(within(unlabeled).queryByText(/^v\d+$/u)).toBeNull();
-    } finally {
-      releases = [release];
-    }
+    // `v12` heads "Label", never "ID", so it never reads as part of the ID.
+    const headers = screen
+      .getAllByRole("columnheader")
+      .map((header) => header.textContent);
+    expect(headers.slice(0, 3)).toEqual(["Label", "ID", "Channel"]);
+    const cells = (id: string) => {
+      const row = screen.getByRole("row", { name: `Open bundle ${id}` });
+      const [label, idCell] = within(row).getAllByRole("cell");
+      return { row, label: label!, id: idCell! };
+    };
+
+    const labeled = cells(labeledId);
+    expect(
+      within(labeled.label).getByRole("button", {
+        name: `Open details for ID ${labeledId}`,
+      }).textContent,
+    ).toBe("v12");
+    expect(labeled.label.textContent).not.toContain(labeledId);
+    // The ID column holds no label: the ID's last 6 characters, which show
+    // the full ID on hover and copy it on a click.
+    expect(labeled.id.textContent).not.toMatch(/v\d+/u);
+    const copy = within(labeled.id).getByRole("button", {
+      name: `Copy ID ${labeledId}`,
+    });
+    expect(copy.firstElementChild!.className).toContain("w-[6ch]");
+
+    // A release without a label yet: a muted dash that still opens it from
+    // the keyboard, and its ID's tail like any other.
+    const unlabeled = cells(unlabeledId);
+    const open = within(unlabeled.label).getByRole("button", {
+      name: `Open details for ID ${unlabeledId}`,
+    });
+    expect(open.textContent).toBe("—No label");
+    expect(open.className).toContain("text-muted-foreground");
+    expect(unlabeled.label.textContent).not.toContain(unlabeledId);
+    expect(
+      within(unlabeled.id).getByRole("button", {
+        name: `Copy ID ${unlabeledId}`,
+      }).firstElementChild!.className,
+    ).toContain("w-[6ch]");
+
+    // Both rows tab the same way: diagnostics, open, then copy.
+    const order = (row: HTMLElement) =>
+      within(row)
+        .getAllByRole("button")
+        .map((button) =>
+          (button.getAttribute("aria-label") ?? "").replace(
+            /\b[0-9a-f-]{36}$/u,
+            "<id>",
+          ),
+        );
+    expect(order(labeled.row)).toEqual([
+      "Show advanced artifact diagnostics",
+      "Open details for ID <id>",
+      "Copy ID <id>",
+    ]);
+    expect(order(unlabeled.row)).toEqual(order(labeled.row));
   });
 
   it("opens the Bundle edit sheet from the whole table row", () => {
@@ -405,11 +451,11 @@ describe("BundlesPage", () => {
       name: /^Unreachable/,
     });
 
-    // The label opens the Bundle, beside its ID tail.
+    // The label opens the Bundle; the ID column holds its tail.
     const name = open.parentElement!;
-    expect(name.textContent).toBe("v4 release-1");
-    // The label and its ID tail don't shrink, so on a phone card the badges
-    // have to wrap under them, or they are drawn over the tail.
+    expect(name.textContent).toBe("v4");
+    // The label doesn't shrink, so the badges wrap under it rather than
+    // over it, as on a phone card under the label and its ID tail.
     expect(promoted.parentElement).toBe(name.parentElement);
     expect(unreachable.parentElement).toBe(name.parentElement);
     expect(name.parentElement!.className).toContain("flex-wrap");
@@ -487,10 +533,21 @@ describe("BundlesPage", () => {
 
       // A label's tail is its release ID: v12 reads, hovers, and copies as
       // on its own Bundle row, never with the artifact's ID.
-      const named = within(entry).getByRole("button", {
-        name: "Copy ID release-1",
-      }).parentElement!.textContent;
-      expect(named).toBe("v12 release-1");
+      const named = "v12 release-1";
+      expect(
+        within(entry).getByRole("button", {
+          name: "Open details for ID release-1",
+        }).textContent,
+      ).toBe("v12");
+      expect(
+        within(entry).getByRole("button", { name: "Copy ID release-1" }),
+      ).toBeTruthy();
+      if (mobile) {
+        expect(
+          within(entry).getByRole("button", { name: "Copy ID release-1" })
+            .parentElement!.textContent,
+        ).toBe(named);
+      }
       const base = within(panel).getByText("Base artifact ID").parentElement!;
       expect(base.textContent).toBe(
         `Base artifact ID${baseBundle.id}Release${named}`,

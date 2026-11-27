@@ -286,11 +286,17 @@ function ReleaseFilterToolbar({
 
 function ReleaseEntry({
   expanded,
+  labelOnly = false,
   onOpen,
   onToggleExpand,
   release,
 }: {
   expanded: boolean;
+  /**
+   * Whether the entry shows the label alone, for the table, whose ID column
+   * shows the ID's tail. A card has no column headers, so it shows both.
+   */
+  labelOnly?: boolean;
   onOpen: () => void;
   onToggleExpand: () => void;
   release: ReleaseListRow;
@@ -303,7 +309,12 @@ function ReleaseEntry({
         : null;
 
   return (
-    <div className="flex min-w-[240px] items-center gap-3">
+    <div
+      className={cn(
+        "flex items-center gap-3",
+        labelOnly ? "min-w-40" : "min-w-[240px]",
+      )}
+    >
       {release.bundle_id ? (
         <Button
           aria-controls={`bundle-lineage-panel-${release.id}`}
@@ -329,10 +340,12 @@ function ReleaseEntry({
           room beside them the badges move under the ID instead of over it. */}
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
         {/* The label opens the Bundle; its ID tail is a copy button of its
-            own beside it, not inside it. */}
+            own beside it, or in the table's ID column, never inside it. A
+            release without a label yet opens from its dash in the table. */}
         <ReleaseIdDisplay
           releaseId={release.id}
           label={release.label}
+          part={labelOnly ? "label" : undefined}
           labelAs={
             <button
               aria-label={`Open details for ID ${release.id}`}
@@ -615,7 +628,7 @@ function BundlesPage() {
   const previousCursor = list.data?.previous;
   // Features add columns, such as release activity where the console reads it.
   const featureColumns = useReleaseColumns();
-  const columnCount = 10 + featureColumns.length;
+  const columnCount = 11 + featureColumns.length;
   const channelNames = new Map(
     channels.map((channel) => [channel.id, channel.name]),
   );
@@ -802,12 +815,16 @@ function BundlesPage() {
           <TableCell>
             <ReleaseEntry
               expanded={isExpanded}
+              labelOnly
               onOpen={() => select(release)}
               onToggleExpand={() =>
                 setExpandedReleaseId(isExpanded ? undefined : release.id)
               }
               release={release}
             />
+          </TableCell>
+          <TableCell>
+            <ReleaseIdDisplay releaseId={release.id} part="id" />
           </TableCell>
           <TableCell>
             <ChannelBadge
@@ -1041,6 +1058,7 @@ function BundlesPage() {
                 rowGroups
                 header={
                   <>
+                    <TableHead>Label</TableHead>
                     <TableHead>ID</TableHead>
                     <TableHead>Channel</TableHead>
                     <TableHead>Platform</TableHead>

@@ -310,6 +310,50 @@ describe("ReleaseEditorSheet", () => {
     expect(within(diagnostics).getByText(bundle.id)).toBeDefined();
   });
 
+  it("heads the label and the ID in their own rows, the ID as its tail alone", () => {
+    const id = "01a13d86-86f7-7830-952d-21238207019f";
+    releaseValue = { ...release, id, label: 14 };
+    const view = render(
+      <ReleaseEditorSheet
+        channels={[{ id: "channel-1", name: "production" }]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={id}
+      />,
+    );
+    const header = () =>
+      screen.getByRole("heading", { name: "Bundle Detail" }).parentElement!;
+
+    // `v14` heads "Label", never "ID", so it never reads as part of the ID.
+    const labelRow = within(header()).getByText("Label").parentElement!;
+    expect(labelRow.textContent).toBe("Labelv14");
+    const idRow = within(header()).getByText("ID").parentElement!;
+    expect(idRow).not.toBe(labelRow);
+    expect(idRow.textContent).not.toMatch(/v\d+/u);
+    // The ID shows as its last 6 characters; hovering shows and a click
+    // copies all of it.
+    const copy = within(idRow).getByRole("button", { name: `Copy ID ${id}` });
+    expect(copy.firstElementChild!.className).toContain("w-[6ch]");
+
+    // A release without a label yet has no Label row, and its ID shows the
+    // same way.
+    view.unmount();
+    releaseValue = { ...release, id, label: null };
+    render(
+      <ReleaseEditorSheet
+        channels={[{ id: "channel-1", name: "production" }]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={id}
+      />,
+    );
+    expect(within(header()).queryByText("Label")).toBeNull();
+    const unlabeledCopy = within(
+      within(header()).getByText("ID").parentElement!,
+    ).getByRole("button", { name: `Copy ID ${id}` });
+    expect(unlabeledCopy.firstElementChild!.className).toContain("w-[6ch]");
+  });
+
   it("leaves release activity out where the console does not read it", () => {
     insightsAnalytics = false;
     render(

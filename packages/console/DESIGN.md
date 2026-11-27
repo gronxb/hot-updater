@@ -30,14 +30,25 @@ stays subordinate to exact values and actions.
 
 - Inter Variable is the UI typeface, with the platform stack as the initial
   fallback and the existing monospace stack for identifiers.
-- A labeled release reads `v12 <ID tail>` everywhere (`ReleaseIdDisplay`),
-  like a git short hash: the label in medium `text-sm`, then its ID in muted
-  monospace `text-sm` on the same baseline, clipped from the left to the last
-  6 characters, with a plain gap and no dot between them. The whole ID stays
+- A labeled release reads `v12 <ID tail>` (`ReleaseIdDisplay`), like a git
+  short hash: the label in medium `text-sm`, then its ID in muted monospace
+  `text-sm` on the same baseline, clipped from the left to the last 6
+  characters, with a plain gap and no dot between them. The whole ID stays
   in the text, so screen readers read all of it. A release without a label
   shows its full ID. The label and tail don't shrink, so a badge beside them
   (Promoted, Unreachable, Disabled) shares a `flex-wrap` row with them and
   moves under them on a narrow screen rather than over the tail.
+- Where a surface heads a release's values, the label and the ID split so
+  `v12` never sits under "ID": the Bundles table has a Label column then an
+  ID column, and the release sheet a Label row then an ID row
+  (`ReleaseIdDisplay` with `part="label"` and `part="id"`). The ID there is
+  always its 6-character tail copy button, labeled or not; a release without
+  a label shows a muted dash in the Label column, which still opens it, and
+  no Label row in the sheet. The label stays plain medium text, never a
+  chip, since chips in that table mean channel, patch count, and operation.
+  Everywhere without a header for each value (phone Bundles cards,
+  Insights, Served now, pickers, chart tooltips, diagnostics), the label and
+  tail stay together as `v12 <ID tail>`.
 - A label is unique only within a channel and platform: production iOS v14,
   production Android v14, and beta iOS v14 are three releases. Where one
   surface lists both platforms' releases, such as Insights with All

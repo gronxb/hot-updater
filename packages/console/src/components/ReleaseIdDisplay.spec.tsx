@@ -153,6 +153,52 @@ describe("ReleaseIdDisplay", () => {
     expect(screen.getByText("r-1").className).not.toContain("overflow-hidden");
   });
 
+  it("shows the ID's tail alone as its copy button, with or without a label", () => {
+    for (const label of [14, null]) {
+      render(<ReleaseIdDisplay releaseId={id} label={label} part="id" />);
+
+      const copy = screen.getByRole("button", { name: `Copy ID ${id}` });
+      expect(copy.firstElementChild!.className).toContain("w-[6ch]");
+      expect(copy.parentElement!.textContent).toBe(id);
+      fireEvent.click(copy);
+      expect(writeText).toHaveBeenLastCalledWith(id);
+      cleanup();
+    }
+  });
+
+  it("shows the label alone in the caller's control, or a muted dash without one", () => {
+    const open = vi.fn();
+    const control = <button type="button" aria-label="Open" onClick={open} />;
+    render(
+      <ReleaseIdDisplay
+        releaseId={id}
+        label={14}
+        labelAs={control}
+        part="label"
+      />,
+    );
+    const labeled = screen.getByRole("button", { name: "Open" });
+    expect(labeled.textContent).toBe("v14");
+    expect(labeled.parentElement!.textContent).toBe("v14");
+    expect(screen.queryByRole("button", { name: /^Copy ID/u })).toBeNull();
+    cleanup();
+
+    render(
+      <ReleaseIdDisplay
+        releaseId={id}
+        label={null}
+        labelAs={control}
+        part="label"
+      />,
+    );
+    const unlabeled = screen.getByRole("button", { name: "Open" });
+    expect(unlabeled.textContent).toBe("—No label");
+    expect(unlabeled.className).toContain("text-muted-foreground");
+    expect(screen.queryByText(id)).toBeNull();
+    fireEvent.click(unlabeled);
+    expect(open).toHaveBeenCalledOnce();
+  });
+
   it("shows the full ID of a release without a label", () => {
     render(<ReleaseIdDisplay releaseId={id} label={null} />);
 
