@@ -330,10 +330,10 @@ describe("ReleaseEditorSheet", () => {
     const idRow = within(header()).getByText("ID").parentElement!;
     expect(idRow).not.toBe(labelRow);
     expect(idRow.textContent).not.toMatch(/v\d+/u);
-    // The ID shows as its last 6 characters; hovering shows and a click
+    // The ID shows as its last 12 characters; hovering shows and a click
     // copies all of it.
     const copy = within(idRow).getByRole("button", { name: `Copy ID ${id}` });
-    expect(copy.firstElementChild!.className).toContain("w-[6ch]");
+    expect(copy.firstElementChild!.className).toContain("w-[12ch]");
 
     // A release without a label yet has no Label row, and its ID shows the
     // same way.
@@ -351,7 +351,7 @@ describe("ReleaseEditorSheet", () => {
     const unlabeledCopy = within(
       within(header()).getByText("ID").parentElement!,
     ).getByRole("button", { name: `Copy ID ${id}` });
-    expect(unlabeledCopy.firstElementChild!.className).toContain("w-[6ch]");
+    expect(unlabeledCopy.firstElementChild!.className).toContain("w-[12ch]");
   });
 
   it("leaves release activity out where the console does not read it", () => {

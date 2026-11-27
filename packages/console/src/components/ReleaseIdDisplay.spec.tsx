@@ -153,13 +153,16 @@ describe("ReleaseIdDisplay", () => {
     expect(screen.getByText("r-1").className).not.toContain("overflow-hidden");
   });
 
-  it("shows the ID's tail alone as its copy button, with or without a label", () => {
+  it("shows the ID's last 12 characters alone as its copy button, with or without a label", () => {
     for (const label of [14, null]) {
       render(<ReleaseIdDisplay releaseId={id} label={label} part="id" />);
 
       const copy = screen.getByRole("button", { name: `Copy ID ${id}` });
-      expect(copy.firstElementChild!.className).toContain("w-[6ch]");
+      // A UUID's last group, as dark as the values beside it.
+      expect(copy.firstElementChild!.className).toContain("w-[12ch]");
       expect(copy.parentElement!.textContent).toBe(id);
+      expect(copy.className).toContain("text-foreground");
+      expect(copy.className).not.toContain("text-muted-foreground");
       // The size of the values beside it, still 44 px tall to a finger.
       expect(copy.className).toContain("text-xs");
       expect(copy.className).not.toContain("text-sm");

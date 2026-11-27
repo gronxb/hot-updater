@@ -21,6 +21,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
  */
 const LABELED_ID_TAIL = 6;
 
+/**
+ * How much of a release's ID shows where it has a column or row of its own
+ * (`part="id"`): its last 12 characters, a UUID's last group, as the Console
+ * showed IDs before labels. Without a label beside it there is room, and
+ * more of the ID tells it apart at a glance.
+ */
+const ALONE_ID_TAIL = 12;
+
 /** How long "Copied" shows before the popover reads "Click to copy" again. */
 const COPIED_MS = 1_500;
 
@@ -32,6 +40,13 @@ const LABEL_CLASS = "shrink-0 font-medium text-sm text-foreground tabular-nums";
  * composite's `text-sm`.
  */
 const PART_SIZE = "text-xs";
+
+/**
+ * An ID shown alone is a value like the ones beside it, so it takes their
+ * color too, rather than the muted color that sets a tail apart from its
+ * label.
+ */
+const ALONE_ID_CLASS = cn(PART_SIZE, "text-foreground");
 
 interface ReleaseIdDisplayProps {
   /**
@@ -96,24 +111,26 @@ export function ReleaseIdDisplay({
   className,
 }: ReleaseIdDisplayProps) {
   const prefix = platform ? <PlatformPrefix platform={platform} /> : null;
-  const clipped = releaseId.length > LABELED_ID_TAIL;
+  const clip = releaseId.length > LABELED_ID_TAIL ? CLIP_CLASS : undefined;
   if (part === "id") {
     return copyable ? (
       <span className={cn("inline-flex whitespace-nowrap", className)}>
         <CopyableTail
           releaseId={releaseId}
-          clipped={clipped}
+          clip={releaseId.length > ALONE_ID_TAIL ? ALONE_CLIP_CLASS : undefined}
           // Its 16 px line reaches 44 px tall on a phone, as the composite's
           // 20 px line does with 12 px above and below.
-          className={cn(PART_SIZE, "after:-inset-y-3.5")}
+          className={cn(ALONE_ID_CLASS, "after:-inset-y-3.5")}
         />
       </span>
     ) : (
       <span
         translate="no"
         className={cn(
-          tailClass(clipped),
-          PART_SIZE,
+          tailClass(
+            releaseId.length > ALONE_ID_TAIL ? ALONE_CLIP_CLASS : undefined,
+          ),
+          ALONE_ID_CLASS,
           "whitespace-nowrap",
           className,
         )}
@@ -202,9 +219,9 @@ export function ReleaseIdDisplay({
       )}
       {/* Read as "v12 <id>"; the flex gap draws the space. */}{" "}
       {copyable ? (
-        <CopyableTail releaseId={releaseId} clipped={clipped} />
+        <CopyableTail releaseId={releaseId} clip={clip} />
       ) : (
-        <span translate="no" className={tailClass(clipped)}>
+        <span translate="no" className={tailClass(clip)}>
           {releaseId}
         </span>
       )}
@@ -232,16 +249,19 @@ function PlatformPrefix({
  */
 const TAIL_CLASS = "font-mono text-sm text-muted-foreground tabular-nums";
 const CLIP_CLASS = "inline-flex w-[6ch] shrink-0 justify-end overflow-hidden";
-const tailClass = (clipped: boolean) => cn(TAIL_CLASS, clipped && CLIP_CLASS);
+const ALONE_CLIP_CLASS =
+  "inline-flex w-[12ch] shrink-0 justify-end overflow-hidden";
+const tailClass = (clip: string | undefined) => cn(TAIL_CLASS, clip);
 
 /** The tail as a button: the full ID in a popover, and a click copies it. */
 function CopyableTail({
   releaseId,
-  clipped,
+  clip,
   className,
 }: {
   readonly releaseId: string;
-  readonly clipped: boolean;
+  /** The class that clips the ID to its tail; left out, it shows whole. */
+  readonly clip: string | undefined;
   /** Overrides the tail's size where it shows alone. */
   readonly className?: string;
 }) {
@@ -298,7 +318,7 @@ function CopyableTail({
             />
           }
         >
-          <span className={clipped ? CLIP_CLASS : undefined}>{releaseId}</span>
+          <span className={clip}>{releaseId}</span>
         </TooltipTrigger>
         <TooltipContent
           className="max-w-80 flex-col items-start gap-0.5"

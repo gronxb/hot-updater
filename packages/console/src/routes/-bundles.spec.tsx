@@ -290,13 +290,13 @@ describe("BundlesPage", () => {
       }).textContent,
     ).toBe("v12");
     expect(labeled.label.textContent).not.toContain(labeledId);
-    // The ID column holds no label: the ID's last 6 characters, which show
+    // The ID column holds no label: the ID's last 12 characters, which show
     // the full ID on hover and copy it on a click.
     expect(labeled.id.textContent).not.toMatch(/v\d+/u);
     const copy = within(labeled.id).getByRole("button", {
       name: `Copy ID ${labeledId}`,
     });
-    expect(copy.firstElementChild!.className).toContain("w-[6ch]");
+    expect(copy.firstElementChild!.className).toContain("w-[12ch]");
 
     // A release without a label yet: a muted dash that still opens it from
     // the keyboard, and its ID's tail like any other.
@@ -311,7 +311,7 @@ describe("BundlesPage", () => {
       within(unlabeled.id).getByRole("button", {
         name: `Copy ID ${unlabeledId}`,
       }).firstElementChild!.className,
-    ).toContain("w-[6ch]");
+    ).toContain("w-[12ch]");
 
     // Both rows tab the same way: diagnostics, open, then copy.
     const order = (row: HTMLElement) =>
