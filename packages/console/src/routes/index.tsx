@@ -373,8 +373,9 @@ function ReleaseEntry({
         release={release}
       />
       {/* A label and its ID tail don't shrink, so when a narrow card has no
-          room beside them the badges move under the ID instead of over it. */}
-      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+          room beside them the badges move under the ID instead of over it,
+          12 px under, past the tail's touch area. */}
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-3">
         <ReleaseName onOpen={onOpen} release={release} />
         <ReleaseBadges release={release} />
       </div>

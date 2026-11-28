@@ -467,14 +467,16 @@ export function EventBundleTransition({
     moved ||
     event.type === "UPDATE_APPLIED" ||
     event.type === "RECOVERED";
+  // On a phone each side is 44 px tall, as its copy button's touch area is,
+  // so From's and To's touch areas meet rather than overlap.
   return (
-    <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2">
+    <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2 max-sm:gap-y-0">
       {(fromReleaseId ?? fromBundleId) && changed ? (
         <>
           <dt className="text-muted-foreground">
             {downloaded || failed ? "Running" : "From"}
           </dt>
-          <dd className="flex min-w-0 flex-wrap items-center gap-2">
+          <dd className="flex min-w-0 flex-wrap items-center gap-2 max-sm:min-h-11">
             <ReportedBundleId
               bundleId={fromBundleId!}
               releaseId={fromReleaseId}
@@ -499,7 +501,7 @@ export function EventBundleTransition({
                   ? "To"
                   : "Current"}
           </dt>
-          <dd className="flex min-w-0 flex-wrap items-center gap-2">
+          <dd className="flex min-w-0 flex-wrap items-center gap-2 max-sm:min-h-11">
             <ReportedBundleId
               bundleId={event.toBundleId}
               releaseId={event.toReleaseId}

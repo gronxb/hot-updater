@@ -196,7 +196,10 @@ stays subordinate to exact values and actions.
   tooltip), pass `copyable={false}`: the tail is text, and the full ID shows
   on hover from `title`.
   The tail clips inside the button, so its phone touch area stays 44 px
-  tall. A dialog that names a release with it, such as Roll back, gives
+  tall. Where two tails stack on a phone (an artifact and the release
+  serving it, an event's From and To), each sits on a 44 px line so the
+  touch areas meet rather than overlap, and a badge that wraps under a
+  card's tail sits 12 px under it. A dialog that names a release with it, such as Roll back, gives
   first focus to Cancel, so no tooltip opens over it. Being a button, the
   tail doesn't take a text selection; the click copies.
 
