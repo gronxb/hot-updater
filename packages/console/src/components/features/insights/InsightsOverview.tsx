@@ -208,9 +208,10 @@ function ComparedBundleName({
 }) {
   return (
     <div className="flex min-w-0 flex-col">
-      {/* A label and its ID tail don't shrink, so on a
-          phone "Disabled" moves under them instead of over. */}
-      <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+      {/* A label and its ID tail don't shrink, so on a phone "Disabled"
+          moves under them instead of over, 12 px under, past the tail's
+          touch area. */}
+      <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-3">
         <ReleaseIdDisplay
           releaseId={release.releaseId}
           className="min-w-0"

@@ -100,7 +100,8 @@ export function BundleChildrenPanel({
         <h3 className="text-sm font-medium">Advanced artifact diagnostics</h3>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2 text-sm">
-            <span className="shrink-0 text-muted-foreground">
+            {/* As tall as the ID's 44 px line on a phone, so they center. */}
+            <span className="shrink-0 text-muted-foreground max-sm:flex max-sm:min-h-11 max-sm:items-center">
               Base artifact ID
             </span>
             <ArtifactId id={bundle.id} release={releaseOf(bundle.id)} />
