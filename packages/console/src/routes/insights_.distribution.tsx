@@ -115,7 +115,9 @@ function BuiltinBundle({
       <BuiltinBundleDisplay
         appVersion={appVersion}
         bundleId={bundleId}
-        className="text-sm"
+        // Its 20 px line reaches 44 px tall on a phone, meeting the release
+        // line above it rather than overlapping it.
+        className="text-sm after:-inset-y-3"
       />
     </div>
   );

@@ -228,7 +228,16 @@ describe("Distribution details", () => {
         name: "Review bundle release-rollback for app version 1.0.0",
       }),
     ).toBeDefined();
-    expect(within(adopted!).getByText("Built-in bundle · 1.0.0")).toBeDefined();
+    const adoptedBuiltin = within(adopted!).getByRole("button", {
+      name: `Built-in bundle · 1.0.0: copy built-in bundle ID ${builtin}`,
+    });
+    expect(adoptedBuiltin.textContent).toBe("Built-in bundle · 1.0.0");
+    // Under the release's 44 px line on a phone, its 20 px line reaches
+    // 12 px each way, 44 px tall, so its tap area meets the release tail's
+    // rather than overlapping it.
+    expect(adoptedBuiltin.className).toContain("text-sm");
+    expect(adoptedBuiltin.className).toContain("after:-inset-y-3");
+    expect(adoptedBuiltin.className).not.toContain("after:-inset-y-3.5");
     expect(within(unknown!).getByText("Unknown bundle")).toBeDefined();
     expect(within(unknown!).queryByText("Built-in bundle")).toBeNull();
     expect(mocks.release).toHaveBeenCalledWith({

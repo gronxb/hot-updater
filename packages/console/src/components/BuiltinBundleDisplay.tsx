@@ -39,19 +39,23 @@ export function BuiltinBundleDisplay({
   readonly className?: string;
 }) {
   const name = builtinBundleName(appVersion);
-  // A value among values, as an artifact ID is: its size and color.
-  const valueClass = cn("text-xs text-foreground", className);
   return copyable ? (
     <span className="inline-flex whitespace-nowrap">
       <CopyableIdTail
         id={bundleId}
         kind="builtin"
         name={name}
-        // Its 16 px line reaches 44 px tall on a phone.
-        className={cn(valueClass, "after:-inset-y-3.5")}
+        // A value among values, as an artifact ID is: its size and color.
+        // Its 16 px line reaches 44 px tall on a phone; a caller that sets
+        // another size sets the reach that keeps it 44 px.
+        className={cn("text-xs text-foreground after:-inset-y-3.5", className)}
       />
     </span>
   ) : (
-    <IdTailText id={bundleId} name={name} className={valueClass} />
+    <IdTailText
+      id={bundleId}
+      name={name}
+      className={cn("text-xs text-foreground", className)}
+    />
   );
 }
