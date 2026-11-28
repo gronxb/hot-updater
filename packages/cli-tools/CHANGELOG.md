@@ -1,5 +1,13 @@
 # @hot-updater/cli-tools
 
+## 1.2.0-rc.63
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.63
+  - @hot-updater/server@1.2.0-rc.63
+  - @hot-updater/plugin-core@1.2.0-rc.63
+
 ## 1.2.0-rc.62
 
 ### Patch Changes

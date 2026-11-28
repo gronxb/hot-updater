@@ -1,5 +1,17 @@
 # @hot-updater/console
 
+## 1.2.0-rc.63
+
+### Patch Changes
+
+- a0f2997: Name a built-in bundle "Built-in bundle" with its app version, such as `Built-in bundle · 1.6.1 (63)`, instead of a piece of its ID, which tells none apart: on a native build's page, a release's native build link and patch base, Insights distribution, events, and installations. Its popover still shows the full built-in bundle ID, and a click copies it.
+- fbf9bd9: Show a built-in bundle ID by its first 12 characters, its build time, since its last 12 are zeros in every native build, and keep the Unreachable badge's touch area off the ID copy button when it wraps under the ID on a phone.
+- @hot-updater/bsdiff@1.2.0-rc.63
+  - @hot-updater/cli-tools@1.2.0-rc.63
+  - @hot-updater/protocol@1.2.0-rc.63
+  - @hot-updater/server@1.2.0-rc.63
+  - @hot-updater/plugin-core@1.2.0-rc.63
+
 ## 1.2.0-rc.62
 
 ### Patch Changes

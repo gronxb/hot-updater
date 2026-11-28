@@ -1,5 +1,15 @@
 # @hot-updater/server
 
+## 1.2.0-rc.63
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.63
+  - @hot-updater/plugin-api-keys@1.2.0-rc.63
+  - @hot-updater/plugin-insights@1.2.0-rc.63
+  - @hot-updater/plugin-core@1.2.0-rc.63
+  - @hot-updater/plugin-remote-config@1.2.0-rc.63
+
 ## 1.2.0-rc.62
 
 ### Patch Changes
