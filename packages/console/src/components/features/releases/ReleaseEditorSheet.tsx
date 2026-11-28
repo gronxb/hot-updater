@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { normalizeRange } from "verkit";
 
+import { ArtifactIdDisplay } from "@/components/ArtifactIdDisplay";
 import { BundleMetadata } from "@/components/features/bundles/BundleMetadata";
 import { RolloutCohortsDialog } from "@/components/features/bundles/RolloutCohortsDialog";
 import { ReleaseSections } from "@/components/features/FeatureSlots";
@@ -695,8 +696,12 @@ export function ReleaseEditorSheet({
                   <dl className="mt-4 grid gap-3 text-muted-foreground sm:grid-cols-2">
                     <div className="sm:col-span-2">
                       <dt>Artifact ID</dt>
-                      <dd className="mt-1 break-all font-mono text-foreground">
-                        {release.bundle_id ?? "Built-in bundle"}
+                      <dd className="mt-1 text-foreground">
+                        {release.bundle_id ? (
+                          <ArtifactIdDisplay artifactId={release.bundle_id} />
+                        ) : (
+                          "Built-in bundle"
+                        )}
                       </dd>
                     </div>
                     <div>
@@ -708,8 +713,8 @@ export function ReleaseEditorSheet({
                     {patchBaseBundleId ? (
                       <div className="sm:col-span-2">
                         <dt>Patch base artifact ID</dt>
-                        <dd className="mt-1 break-all font-mono text-foreground">
-                          {patchBaseBundleId}
+                        <dd className="mt-1">
+                          <ArtifactIdDisplay artifactId={patchBaseBundleId} />
                         </dd>
                       </div>
                     ) : null}

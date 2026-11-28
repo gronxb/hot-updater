@@ -53,7 +53,7 @@ export function EventHistoryList<T extends InsightsEventRow>({
               </div>
             </dl>
             <div className="text-xs" aria-label="Bundle">
-              <EventBundleTransition event={event} touch />
+              <EventBundleTransition event={event} />
             </div>
           </li>
         ))}

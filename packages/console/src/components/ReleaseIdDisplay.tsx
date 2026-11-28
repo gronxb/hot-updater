@@ -1,36 +1,9 @@
-import {
-  cloneElement,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type MouseEvent,
-  type ReactElement,
-  type ReactNode,
-} from "react";
+import { cloneElement, type ReactElement, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
+import { CopyableIdTail, IdTailText } from "./IdTail";
 import { PlatformIcon } from "./PlatformIcon";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-
-/**
- * How much of a labeled release's ID shows after its label: its last 6
- * characters, like a git short hash. A UUIDv7's head is a timestamp that
- * neighbouring releases share; the tail tells them apart.
- */
-const LABELED_ID_TAIL = 6;
-
-/**
- * How much of a release's ID shows where it has a column or row of its own
- * (`part="id"`): its last 12 characters, a UUID's last group, as the Console
- * showed IDs before labels. Without a label beside it there is room, and
- * more of the ID tells it apart at a glance.
- */
-const ALONE_ID_TAIL = 12;
-
-/** How long "Copied" shows before the popover reads "Click to copy" again. */
-const COPIED_MS = 1_500;
 
 const LABEL_CLASS = "shrink-0 font-medium text-sm text-foreground tabular-nums";
 
@@ -48,6 +21,16 @@ const PART_SIZE = "text-xs";
  */
 const ALONE_ID_CLASS = cn(PART_SIZE, "text-foreground");
 
+/** A release without a label yet, where its label would show: `db migrate` labels it. */
+const NoLabel = ({ name }: { readonly name: string }) => (
+  <>
+    <span aria-hidden="true">—</span>
+    <span className="sr-only" translate="no">
+      {name}
+    </span>
+  </>
+);
+
 interface ReleaseIdDisplayProps {
   /**
    * The release's ID: what users call its bundle ID, and what the app's
@@ -57,10 +40,11 @@ interface ReleaseIdDisplayProps {
   releaseId: string;
   /**
    * The release's label, shown `v12 <ID tail>`: the name people use for it,
-   * then the end of its ID. The whole ID stays in the text, so screen readers
-   * read it, and hovering, focusing, or tapping the tail shows it in a
-   * popover; a click or Enter copies it. Left out, or null for a release
-   * without one, shows the full ID alone.
+   * then the last 12 characters of its ID. The whole ID stays in the text,
+   * so screen readers read it, and hovering, focusing, or tapping the tail
+   * shows it in a popover; a click or Enter copies it. Left out, or null
+   * for a release without one, shows the tail alone, after a muted dash in
+   * `labelAs` when given.
    */
   label?: number | null;
   /**
@@ -73,8 +57,8 @@ interface ReleaseIdDisplayProps {
   /**
    * The element the label renders as, such as the button or link that opens
    * the release, so the tail stays its own copy button beside it rather than
-   * inside the caller's control. A release without a label renders its full
-   * ID in it.
+   * inside the caller's control. A release without a label renders a muted
+   * dash in it, read as its whole ID unless the control has its own name.
    */
   labelAs?: ReactElement<{ className?: string; children?: ReactNode }>;
   /**
@@ -90,14 +74,15 @@ interface ReleaseIdDisplayProps {
    * release sheet's Label and ID rows. `label` renders `v12` alone (in
    * `labelAs` when given), or a muted dash for a release without one.
    * `id` renders the ID's tail alone, the same copy button, whether or not
-   * the release has a label. Left out, the display shows both.
+   * the release has a label, in the size and color of the values beside it.
+   * Left out, the display shows both.
    */
   part?: "label" | "id";
   className?: string;
 }
 
 /**
- * A release, named the way people read it: `v12 <ID tail>`, or its full ID
+ * A release, named the way people read it: `v12 <ID tail>`, or its ID tail
  * without a label; or, with `part`, its label or its ID tail alone. The only
  * display that takes a label.
  */
@@ -111,46 +96,24 @@ export function ReleaseIdDisplay({
   className,
 }: ReleaseIdDisplayProps) {
   const prefix = platform ? <PlatformPrefix platform={platform} /> : null;
-  const clip = releaseId.length > LABELED_ID_TAIL ? CLIP_CLASS : undefined;
+  const labeled = typeof label === "number";
   if (part === "id") {
     return copyable ? (
       <span className={cn("inline-flex whitespace-nowrap", className)}>
-        <CopyableTail
-          releaseId={releaseId}
-          clip={releaseId.length > ALONE_ID_TAIL ? ALONE_CLIP_CLASS : undefined}
+        <CopyableIdTail
+          id={releaseId}
+          kind="release"
           // Its 16 px line reaches 44 px tall on a phone, as the composite's
           // 20 px line does with 12 px above and below.
           className={cn(ALONE_ID_CLASS, "after:-inset-y-3.5")}
         />
       </span>
     ) : (
-      <span
-        translate="no"
-        className={cn(
-          tailClass(
-            releaseId.length > ALONE_ID_TAIL ? ALONE_CLIP_CLASS : undefined,
-          ),
-          ALONE_ID_CLASS,
-          "whitespace-nowrap",
-          className,
-        )}
-        title={releaseId}
-      >
-        {releaseId}
-      </span>
+      <IdTailText id={releaseId} className={cn(ALONE_ID_CLASS, className)} />
     );
   }
   if (part === "label") {
-    const labeled = typeof label === "number";
-    const text = labeled ? (
-      `v${label}`
-    ) : (
-      // A release without a label yet: `db migrate` labels it.
-      <>
-        <span aria-hidden="true">—</span>
-        <span className="sr-only">No label</span>
-      </>
-    );
+    const text = labeled ? `v${label}` : <NoLabel name="No label" />;
     const textClass = labeled
       ? cn(LABEL_CLASS, PART_SIZE)
       : cn(PART_SIZE, "text-muted-foreground");
@@ -174,30 +137,38 @@ export function ReleaseIdDisplay({
       </span>
     );
   }
-  if (typeof label !== "number") {
-    const id = (
-      <span
-        translate="no"
-        className={cn(
-          "break-all font-mono text-xs tabular-nums",
-          !prefix && className,
-        )}
-      >
-        {releaseId}
-      </span>
-    );
-    const named = labelAs ? cloneElement(labelAs, { children: id }) : id;
-    return prefix ? (
-      <span
-        className={cn("inline-flex min-w-0 items-baseline gap-1.5", className)}
-      >
-        {prefix}
-        {named}
-      </span>
+  // A release without a label opens from a muted dash where `labelAs` is
+  // given, and shows its tail alone otherwise: never its full ID.
+  const name = labeled ? (
+    labelAs ? (
+      cloneElement(labelAs, {
+        className: cn(LABEL_CLASS, labelAs.props.className),
+        children: `v${label}`,
+      })
     ) : (
-      named
-    );
-  }
+      <span translate="no" className={LABEL_CLASS}>
+        v{label}
+      </span>
+    )
+  ) : labelAs ? (
+    cloneElement(labelAs, {
+      className: cn(
+        labelAs.props.className,
+        "shrink-0 text-sm text-muted-foreground",
+      ),
+      // Read as its whole ID, so a list of links keeps one name per
+      // release, unless the control names itself.
+      children: (
+        <NoLabel
+          name={
+            (labelAs.props as { "aria-label"?: string })["aria-label"]
+              ? "No label"
+              : releaseId
+          }
+        />
+      ),
+    })
+  ) : null;
   return (
     <span
       className={cn(
@@ -207,23 +178,13 @@ export function ReleaseIdDisplay({
       title={copyable ? undefined : releaseId}
     >
       {prefix}
-      {labelAs ? (
-        cloneElement(labelAs, {
-          className: cn(LABEL_CLASS, labelAs.props.className),
-          children: `v${label}`,
-        })
-      ) : (
-        <span translate="no" className={LABEL_CLASS}>
-          v{label}
-        </span>
-      )}
-      {/* Read as "v12 <id>"; the flex gap draws the space. */}{" "}
+      {name}
+      {/* Read as "v12 <id>"; the flex gap draws the space. */}
+      {name ? " " : null}
       {copyable ? (
-        <CopyableTail releaseId={releaseId} clip={clip} />
+        <CopyableIdTail id={releaseId} kind="release" />
       ) : (
-        <span translate="no" className={tailClass(clip)}>
-          {releaseId}
-        </span>
+        <IdTailText id={releaseId} />
       )}
     </span>
   );
@@ -240,113 +201,5 @@ function PlatformPrefix({
       <PlatformIcon platform={platform} className="size-3.5" />
       <span className="sr-only">{platform === "ios" ? "iOS" : "Android"} </span>
     </span>
-  );
-}
-
-/**
- * The tail: the whole ID stays in the text, clipped to its last characters
- * from the left (one `ch` per monospace character), in the label's size.
- */
-const TAIL_CLASS = "font-mono text-sm text-muted-foreground tabular-nums";
-const CLIP_CLASS = "inline-flex w-[6ch] shrink-0 justify-end overflow-hidden";
-const ALONE_CLIP_CLASS =
-  "inline-flex w-[12ch] shrink-0 justify-end overflow-hidden";
-const tailClass = (clip: string | undefined) => cn(TAIL_CLASS, clip);
-
-/** The tail as a button: the full ID in a popover, and a click copies it. */
-function CopyableTail({
-  releaseId,
-  clip,
-  className,
-}: {
-  readonly releaseId: string;
-  /** The class that clips the ID to its tail; left out, it shows whole. */
-  readonly clip: string | undefined;
-  /** Overrides the tail's size where it shows alone. */
-  readonly className?: string;
-}) {
-  const id = useId();
-  const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState<"copied" | "failed" | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
-
-  const copy = async (touch: boolean) => {
-    clearTimeout(timer.current);
-    setOpen(true);
-    try {
-      await navigator.clipboard.writeText(releaseId);
-      setCopied("copied");
-    } catch {
-      setCopied("failed");
-    }
-    timer.current = setTimeout(() => {
-      setCopied(null);
-      // A tap opened it, and no pointer leaves to close it.
-      if (touch) setOpen(false);
-    }, COPIED_MS);
-  };
-
-  const onClick = (event: MouseEvent<HTMLButtonElement>) => {
-    // The row, card, or highlight the display sits in keeps its own clicks.
-    event.preventDefault();
-    event.stopPropagation();
-    const { pointerType } = event.nativeEvent as PointerEvent;
-    void copy(pointerType === "touch" || pointerType === "pen");
-  };
-
-  return (
-    <>
-      <Tooltip open={open} onOpenChange={setOpen} triggerId={id}>
-        <TooltipTrigger
-          closeOnClick={false}
-          id={id}
-          render={
-            <button
-              type="button"
-              aria-describedby={open ? `${id}-full` : undefined}
-              aria-label={`Copy ID ${releaseId}`}
-              translate="no"
-              className={cn(
-                TAIL_CLASS,
-                // A 44 px tall touch target on a phone, as an ID copy is: the
-                // button stays unclipped so its touch area reaches past it.
-                "relative inline-flex shrink-0 cursor-copy touch-manipulation rounded-sm outline-none transition-colors after:absolute after:inset-x-0 after:-inset-y-3 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:after:hidden motion-reduce:transition-none",
-                className,
-              )}
-              onClick={onClick}
-            />
-          }
-        >
-          <span className={clip}>{releaseId}</span>
-        </TooltipTrigger>
-        <TooltipContent
-          className="max-w-80 flex-col items-start gap-0.5"
-          id={`${id}-full`}
-          role="tooltip"
-        >
-          <p
-            translate="no"
-            className="break-all font-mono text-xs tabular-nums"
-          >
-            {releaseId}
-          </p>
-          <p className="text-background/70">
-            {copied === "copied"
-              ? "Copied"
-              : copied === "failed"
-                ? "Couldn't copy"
-                : "Click to copy"}
-          </p>
-        </TooltipContent>
-      </Tooltip>
-      <span role="status" className="sr-only">
-        {copied === "copied"
-          ? "ID copied"
-          : copied === "failed"
-            ? "Couldn't copy the ID"
-            : ""}
-      </span>
-    </>
   );
 }

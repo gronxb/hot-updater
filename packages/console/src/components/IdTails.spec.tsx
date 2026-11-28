@@ -134,7 +134,6 @@ describe("every release and artifact ID shows its last 12 characters", () => {
             toBundleId: PATCH_ARTIFACT,
             toReleaseId: OTHER_RELEASE,
             minBundleId: BUILT_IN,
-            failure: null,
           }}
         />
         <EventBundleTransition
@@ -143,9 +142,8 @@ describe("every release and artifact ID shows its last 12 characters", () => {
             fromBundleId: ARTIFACT,
             fromReleaseId: RELEASE,
             toBundleId: BUILT_IN,
-            toReleaseId: null,
+            toReleaseId: undefined,
             minBundleId: BUILT_IN,
-            failure: null,
           }}
         />
       </>,

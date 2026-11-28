@@ -439,15 +439,15 @@ describe("Release health counts", () => {
     ).rejects.toThrow("Choose a platform, channel, period, and bundle.");
   });
 
-  it("names a narrowed bundle by its label and ID tail, or its whole ID without one", () => {
+  it("names a narrowed bundle by its label and ID tail, or its tail alone without one", () => {
     const id = "019a0000-0000-7000-8000-00000000abcd";
     expect(bundleChip(id, [{ releaseId: id, label: 7 }])).toBe(
-      "Bundle v7 00abcd",
+      "Bundle v7 00000000abcd",
     );
     expect(bundleChip(id, [{ releaseId: id, label: null }])).toBe(
-      `Bundle ${id}`,
+      "Bundle 00000000abcd",
     );
-    expect(bundleChip(id, [])).toBe(`Bundle ${id}`);
+    expect(bundleChip(id, [])).toBe("Bundle 00000000abcd");
   });
 
   it("counts a crash rate over applies and crashes, and recommends a rollback from 5% of 20", () => {

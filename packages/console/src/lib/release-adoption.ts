@@ -1,3 +1,4 @@
+import { idTail } from "./id-tail";
 import { recoveryWindows } from "./insights-recovery";
 import type { InsightsWindow } from "./insights-rpc";
 
@@ -191,13 +192,11 @@ export const defaultAdoptionReleases = (
     .map((release) => release.releaseId);
 };
 
-/** The characters of a release ID a chip shows after its label, as `ReleaseIdDisplay` does. */
-const CHIP_ID_TAIL = 6;
-
 /**
- * How a filter chip names the bundle it narrows to: `Bundle v12 a1b2c3`,
- * its label and the tail of its release ID, from the releases already read;
- * the whole ID for one without a label or not among them.
+ * How a filter chip names the bundle it narrows to: `Bundle v12 <ID tail>`,
+ * its label and the last 12 characters of its release ID, as
+ * `ReleaseIdDisplay` shows it, from the releases already read; the tail
+ * alone for one without a label or not among them.
  */
 export const bundleChip = (
   releaseId: string,
@@ -206,8 +205,8 @@ export const bundleChip = (
   const label =
     releases.find((release) => release.releaseId === releaseId)?.label ?? null;
   return label === null
-    ? `Bundle ${releaseId}`
-    : `Bundle v${label} ${releaseId.slice(-CHIP_ID_TAIL)}`;
+    ? `Bundle ${idTail(releaseId)}`
+    : `Bundle v${label} ${idTail(releaseId)}`;
 };
 
 /** Whether a bundle's crashes call for rolling it back. */

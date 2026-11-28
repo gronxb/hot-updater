@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InsightsPagination } from "./InsightsPagination";
+import { ReportedBundleId } from "./ReportedBundleId";
 
 /** The bundle the installation runs: its release ID, or the bundle ID it reports for none. */
 const getLastKnownId = (event: InsightsInstallationViewRow) =>
@@ -132,12 +133,12 @@ export function InstallationMatchesCard({
                         Bundle
                       </span>
                       {currentBundleId ? (
-                        <span
-                          className="font-mono text-xs"
-                          title={currentBundleId}
-                        >
-                          {shortenIdentifier(currentBundleId)}
-                        </span>
+                        // Inside the option's button: text, not a copy button.
+                        <ReportedBundleId
+                          bundleId={event.lastKnownBundleId ?? currentBundleId}
+                          copyable={false}
+                          releaseId={event.lastKnownReleaseId}
+                        />
                       ) : (
                         <span className="text-sm text-muted-foreground">—</span>
                       )}

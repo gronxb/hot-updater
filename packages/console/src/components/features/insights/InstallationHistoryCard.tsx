@@ -41,6 +41,7 @@ import {
 import { EventHistoryList } from "./EventHistoryList";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InsightsPagination } from "./InsightsPagination";
+import { ReportedBundleId } from "./ReportedBundleId";
 
 const getUserLabel = (event: { readonly userId: string | null }) =>
   event.userId ?? "—";
@@ -98,14 +99,21 @@ export function InstallationHistoryCard({
   const lastKnownId = lastKnown?.releaseId ?? lastKnownBundleId;
 
   // The release downloaded and not launched yet.
-  const pendingId =
+  const pending =
     selectedEvent && "pendingBundleId" in selectedEvent
-      ? (selectedEvent.pendingReleaseId ?? selectedEvent.pendingBundleId)
+      ? {
+          releaseId: selectedEvent.pendingReleaseId,
+          bundleId: selectedEvent.pendingBundleId,
+        }
       : selectedEvent &&
           "type" in selectedEvent &&
           selectedEvent.type === "UPDATE_DOWNLOADED"
-        ? (selectedEvent.toReleaseId ?? selectedEvent.toBundleId)
+        ? {
+            releaseId: selectedEvent.toReleaseId,
+            bundleId: selectedEvent.toBundleId,
+          }
         : null;
+  const pendingId = pending ? (pending.releaseId ?? pending.bundleId) : null;
 
   return (
     <Card className="@container min-h-0 min-w-0 shadow-sm">
@@ -172,11 +180,11 @@ export function InstallationHistoryCard({
                   <dt className="text-xs text-muted-foreground">
                     Last known bundle
                   </dt>
-                  <dd className="mt-1 flex min-w-0 flex-wrap items-center gap-2 font-mono text-xs">
+                  <dd className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs">
                     {lastKnownId ? (
-                      <HashValueDisplay
-                        value={lastKnownId}
-                        buttonClassName="min-h-11 px-3 lg:min-h-0 lg:px-1.5"
+                      <ReportedBundleId
+                        bundleId={lastKnownBundleId ?? lastKnownId}
+                        releaseId={lastKnown?.releaseId}
                       />
                     ) : (
                       "—"
@@ -189,13 +197,16 @@ export function InstallationHistoryCard({
                     ) : null}
                   </dd>
                 </div>
-                {pendingId ? (
+                {pending && pendingId ? (
                   <div className="col-span-2 min-w-0">
                     <dt className="text-xs text-muted-foreground">
                       Downloaded · Not launched yet
                     </dt>
                     <dd className="mt-1 text-xs">
-                      <HashValueDisplay value={pendingId} />
+                      <ReportedBundleId
+                        bundleId={pending.bundleId ?? pendingId}
+                        releaseId={pending.releaseId}
+                      />
                     </dd>
                   </div>
                 ) : null}

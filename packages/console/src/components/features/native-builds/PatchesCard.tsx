@@ -101,7 +101,7 @@ function PatchTarget({
         search={{ artifactId }}
         to="/"
       >
-        <ArtifactIdDisplay artifactId={artifactId} />
+        <ArtifactIdDisplay artifactId={artifactId} copyable={false} />
       </Link>
     </span>
   );
