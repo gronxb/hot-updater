@@ -24,7 +24,12 @@ export function ThemeProvider({
   const [theme, setTheme] = useState<Theme>(defaultTheme);
 
   useEffect(() => {
-    const stored = localStorage.getItem(storageKey) as Theme | null;
+    let stored: Theme | null = null;
+    try {
+      stored = localStorage.getItem(storageKey) as Theme | null;
+    } catch {
+      // A browser that keeps nothing: the default theme stands.
+    }
     if (stored) {
       setTheme(stored);
     }
@@ -97,7 +102,11 @@ export function ThemeProvider({
   const value = {
     theme,
     setTheme: (newTheme: Theme) => {
-      localStorage.setItem(storageKey, newTheme);
+      try {
+        localStorage.setItem(storageKey, newTheme);
+      } catch {
+        // A browser that keeps nothing: the theme lasts this visit.
+      }
       setTheme(newTheme);
     },
   };

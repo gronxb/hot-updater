@@ -1,11 +1,32 @@
-import { describe, expect, it } from "vitest";
+import { loadConfig } from "@hot-updater/cli-tools";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   appendFingerprintExtraSources,
   describeFingerprintEngineChange,
+  ensureFingerprintConfig,
   getFingerprintEngineChange,
   getFingerprintInputs,
 } from "./common";
+
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
+  loadConfig: vi.fn(),
+}));
+
+describe("ensureFingerprintConfig", () => {
+  it("loads the config as it is, reading no secret", async () => {
+    vi.mocked(loadConfig).mockResolvedValue({
+      updateStrategy: "fingerprint",
+      build: () => ({ name: "bare", build: vi.fn() }),
+      fingerprint: {},
+    } as never);
+
+    await ensureFingerprintConfig([]);
+
+    expect(vi.mocked(loadConfig).mock.calls).toEqual([[null]]);
+  });
+});
 
 const SHARED_SOURCE = "keys/public-key.pem";
 const IOS_ONLY_SOURCE = "ios/Config.xcconfig";

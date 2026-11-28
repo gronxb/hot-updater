@@ -2,11 +2,11 @@ import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { BundleActivityReport } from "@/lib/bundle-activity";
+import type { ReleaseActivityReport } from "@/lib/release-activity";
 
 import {
-  BundleInsightsSummary,
-  BundleMovementSummary,
+  ReleaseInsightsSummary,
+  ReleaseMovementSummary,
   ReleaseFailuresSection,
 } from "./ReleaseActivity";
 
@@ -26,8 +26,8 @@ vi.mock("@/lib/console-features-api", () => ({
   useConsoleFeature: (feature: keyof typeof features) =>
     features[feature] ?? false,
 }));
-vi.mock("@/lib/bundle-activity", () => ({
-  useBundleActivityQuery: () => ({ data: undefined, isFetching: false }),
+vi.mock("@/lib/release-activity", () => ({
+  useReleaseActivityQuery: () => ({ data: undefined, isFetching: false }),
 }));
 vi.mock("@/lib/insights-api", () => ({
   useUpdateFailuresQuery: vi.fn(() => ({
@@ -50,7 +50,7 @@ describe("release Insights sections", () => {
 
   it("shows a release's download failures and their rate in its Insights card", async () => {
     const { useUpdateFailuresQuery } = await import("@/lib/insights-api");
-    render(<BundleInsightsSummary input={input} />);
+    render(<ReleaseInsightsSummary input={input} />);
     // 12 failure reports over 12 + 36 download reports.
     expect(screen.getByRole("term").textContent).toBe("Download failures");
     expect(screen.getByRole("definition").textContent).toBe("12(25.00%)");
@@ -65,7 +65,7 @@ describe("release Insights sections", () => {
       .toString(16)
       .padStart(12, "0");
     const releaseId = `${deployed.slice(0, 8)}-${deployed.slice(8)}-7000-8000-000000000001`;
-    render(<BundleInsightsSummary input={{ ...input, releaseId }} />);
+    render(<ReleaseInsightsSummary input={{ ...input, releaseId }} />);
     vi.useRealTimers();
     const search = new URL(
       screen.getByRole("link", { name: "View adoption" }).getAttribute("href")!,
@@ -87,7 +87,7 @@ describe("release Insights sections", () => {
       const deployed = (30 * 86_400_000 - ageMs).toString(16).padStart(12, "0");
       return `${deployed.slice(0, 8)}-${deployed.slice(8)}-7000-8000-000000000001`;
     };
-    const report: BundleActivityReport = {
+    const report: ReleaseActivityReport = {
       downloads: 3,
       launched: 2,
       failedLaunches: 0,
@@ -99,7 +99,7 @@ describe("release Insights sections", () => {
         "http://console",
       ).searchParams.get("bundleWindow");
     const view = render(
-      <BundleMovementSummary
+      <ReleaseMovementSummary
         report={report}
         variant="inline"
         input={{ ...input, releaseId: releaseOf(5 * hour) }}
@@ -108,7 +108,7 @@ describe("release Insights sections", () => {
     // Deployed 5 hours ago: 24 hours holds its first hours.
     expect(windowOf()).toBe("24h");
     view.rerender(
-      <BundleMovementSummary
+      <ReleaseMovementSummary
         report={report}
         variant="inline"
         input={{ ...input, releaseId: releaseOf(3 * 24 * hour) }}
@@ -134,13 +134,13 @@ describe("release Insights sections", () => {
   it.each(["inline", "card"] as const)(
     "preserves activity counts and crash rate in the %s layout",
     (variant) => {
-      const report: BundleActivityReport = {
+      const report: ReleaseActivityReport = {
         downloads: 1234,
         launched: 98,
         failedLaunches: 2,
         measuredAtMs: 0,
       };
-      render(<BundleMovementSummary report={report} variant={variant} />);
+      render(<ReleaseMovementSummary report={report} variant={variant} />);
 
       expect(
         screen.getAllByRole("term").map((term) => term.textContent),
@@ -152,14 +152,14 @@ describe("release Insights sections", () => {
   );
 
   it("shows no download count for a release of the built-in bundle, and names downloads not launched yet", () => {
-    const report: BundleActivityReport = {
+    const report: ReleaseActivityReport = {
       downloads: 120,
       launched: 98,
       failedLaunches: 2,
       measuredAtMs: 0,
     };
     const view = render(
-      <BundleMovementSummary report={report} variant="card" />,
+      <ReleaseMovementSummary report={report} variant="card" />,
     );
     expect(
       screen.getByText(
@@ -167,7 +167,7 @@ describe("release Insights sections", () => {
       ),
     ).toBeDefined();
     view.rerender(
-      <BundleMovementSummary
+      <ReleaseMovementSummary
         report={{ ...report, downloads: 0 }}
         variant="card"
         input={{

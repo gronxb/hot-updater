@@ -9,6 +9,7 @@ import {
   createInsightsReads,
   type InsightsReads,
   type InstallationRow,
+  toWireOverview,
 } from "@hot-updater/server/plugins";
 
 import { printBanner } from "@/utils/printBanner";
@@ -102,13 +103,11 @@ const platformName = (platform: "ios" | "android") =>
 interface ResolvedScope {
   readonly platform: "ios" | "android";
   readonly channel: string;
-  /** The bundle's release, which update failures key on. */
+  /** The bundle's release ID, which every Insights read keys on. */
   readonly releaseId?: string;
-  /** The bundle ID devices report, which the other reads key on. */
-  readonly bundleId?: string;
 }
 
-/** A bundle's platform, channel, and IDs; or the channel `-p` and `-c` name. */
+/** A bundle's platform, channel, and release ID; or the channel `-p` and `-c` name. */
 const resolveScope = async (
   core: HotUpdaterCoreApi,
   options: InsightsScopeOptions,
@@ -123,15 +122,9 @@ const resolveScope = async (
     if (release === null) {
       throw new Error(`Bundle "${options.bundle}" was not found.`);
     }
-    const channel =
-      (await core.listChannels()).find(({ id }) => id === release.channel_id)
-        ?.name ?? release.channel_id;
-    return {
-      platform: release.platform,
-      channel,
-      releaseId: release.id,
-      ...(release.bundle_id === null ? {} : { bundleId: release.bundle_id }),
-    };
+    const [row] = await core.getChannels([release.channel_id]);
+    const channel = row?.name ?? release.channel_id;
+    return { platform: release.platform, channel, releaseId: release.id };
   }
   if (options.platform === undefined || !options.channel?.trim()) {
     throw new Error(
@@ -139,15 +132,6 @@ const resolveScope = async (
     );
   }
   return { platform: options.platform, channel: options.channel.trim() };
-};
-
-const requireBundleId = (scope: ResolvedScope, id: string): string => {
-  if (scope.bundleId === undefined) {
-    throw new Error(
-      `Bundle "${id}" rolls back to the built-in bundle, which devices never download, so it has no reports of its own.`,
-    );
-  }
-  return scope.bundleId;
 };
 
 const scopeHeading = (
@@ -167,11 +151,10 @@ export const handleInsightsOverview = (
       platform: scope.platform,
       channel: scope.channel,
       window,
-      ...(options.bundle === undefined
-        ? {}
-        : { bundleId: requireBundleId(scope, options.bundle) }),
+      ...(scope.releaseId === undefined ? {} : { releaseId: scope.releaseId }),
     });
-    if (options.json) return printJson(overview);
+    // Its JSON names the bundle as the HTTP API does, by `bundleId`.
+    if (options.json) return printJson(toWireOverview(overview));
     const bundle = overview.bundle;
     p.log.message(
       [
@@ -249,6 +232,14 @@ export const handleInsightsFailures = (
     const attempts = failures.failedUpdates + failures.downloads;
     const breakdown = failures.breakdown ?? [];
     const coverage = failures.coverage;
+    // Hours read only in part: their failures, and so the attempts and the
+    // rate, are at least what they say.
+    const capped = failures.cappedHours?.length ?? 0;
+    const atLeast = capped > 0 ? "≥" : "";
+    // Coverage that starts after the period does is retention's.
+    const pastRetention =
+      coverage.kind === "partial" &&
+      (coverage.sinceMs === null || coverage.sinceMs > timeRange.start);
     p.log.message(
       [
         ui.title(
@@ -271,8 +262,8 @@ export const handleInsightsFailures = (
           ],
           [
             {
-              rate: rateText(failures.failedUpdates, attempts),
-              failed: `${count(failures.failedUpdates)} of ${count(attempts)}`,
+              rate: `${atLeast}${rateText(failures.failedUpdates, attempts)}`,
+              failed: `${atLeast}${count(failures.failedUpdates)} of ${atLeast}${count(attempts)}`,
               devices: count(failures.failedInstallations),
               downloads: count(failures.downloads),
               patches: count(failures.patchDownloads),
@@ -285,12 +276,19 @@ export const handleInsightsFailures = (
           : [
               `Update checks: ${rateText(failures.checks.failedInstallations, failures.checks.activeInstallations)} of ${count(failures.checks.activeInstallations)} active installations had a failed check.`,
             ]),
-        ...(coverage.kind === "partial"
+        ...(pastRetention
           ? [
               ui.warning(
                 coverage.sinceMs === null
                   ? "Partial: part of the period is past retention."
                   : `Partial: covers only since ${dateText(coverage.sinceMs)}, as older reports are past retention.`,
+              ),
+            ]
+          : []),
+        ...(capped > 0
+          ? [
+              ui.warning(
+                `Partial: ${capped} ${capped === 1 ? "hour" : "hours"} held more failure kinds than are read, so failures are at least the counts shown.`,
               ),
             ]
           : []),
@@ -329,6 +327,23 @@ const eventDetail = (event: EventHistoryRow): string =>
       ? (event.change?.kinds.join(", ") ?? "")
       : "";
 
+/**
+ * The bundle an event names on one side, as users know it: its release ID,
+ * or for a side with none, such as the built-in bundle, the bundle ID the
+ * report names.
+ */
+const sideOf = (releaseId: string | undefined, bundleId: string): string =>
+  releaseId ?? bundleId;
+
+const eventBundle = (event: EventHistoryRow): string => {
+  const to = sideOf(event.toReleaseId, event.toBundleId);
+  const from =
+    event.fromBundleId === null
+      ? null
+      : sideOf(event.fromReleaseId, event.fromBundleId);
+  return from === null || from === to ? to : `${from} → ${to}`;
+};
+
 const formatEvents = (events: readonly EventHistoryRow[]): string =>
   events.length === 0
     ? ui.muted("(no events)")
@@ -346,11 +361,7 @@ const formatEvents = (events: readonly EventHistoryRow[]): string =>
           received: dateText(event.receivedAtMs),
           type: EVENT_LABELS[event.type],
           install: event.installId,
-          bundle:
-            event.fromBundleId === null ||
-            event.fromBundleId === event.toBundleId
-              ? event.toBundleId
-              : `${event.fromBundleId} → ${event.toBundleId}`,
+          bundle: eventBundle(event),
           app: `${platformName(event.platform)} ${event.appVersion}`,
           channel: event.channel,
           detail: eventDetail(event),
@@ -387,7 +398,7 @@ export const handleInsightsEvents = (
         bundle: {
           platform: scope.platform,
           channel: scope.channel,
-          bundleId: requireBundleId(scope, options.bundle),
+          releaseId: scope.releaseId!,
           outcome: INSIGHTS_OUTCOMES[options.outcome],
         },
         ...page,
@@ -418,8 +429,14 @@ const formatInstallations = (rows: readonly InstallationRow[]): string =>
             ui.kv("App", `${platformName(row.platform)} ${row.appVersion}`),
             ui.kv("Channel", ui.channel(row.channel)),
             ui.kv("Cohort", row.cohort),
-            ui.kv("Bundle", ui.id(row.lastKnownBundleId)),
-            ui.kv("Pending", ui.id(row.pendingBundleId)),
+            ui.kv(
+              "Bundle",
+              ui.id(row.lastKnownReleaseId ?? row.lastKnownBundleId),
+            ),
+            ui.kv(
+              "Pending",
+              ui.id(row.pendingReleaseId ?? row.pendingBundleId),
+            ),
             ui.kv("Latest", EVENT_LABELS[row.latestStatus]),
             ui.kv("Reported", dateText(row.receivedAtMs)),
           ]),

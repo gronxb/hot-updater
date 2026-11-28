@@ -76,5 +76,14 @@ abstract class HotUpdaterSpec internal constructor(
 
     abstract fun takeNativeUpdateEvents(): String?
 
+    abstract fun beginBackgroundTask(): Double
+
+    abstract fun endBackgroundTask(taskId: Double)
+
     abstract fun resetChannel(promise: Promise)
+
+    abstract fun resetChannelIfSelectionCurrent(
+        params: ReadableMap,
+        promise: Promise,
+    )
 }

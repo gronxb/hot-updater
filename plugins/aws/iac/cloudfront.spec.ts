@@ -342,6 +342,84 @@ describe("buildDistributionConfigOverrides", () => {
     );
   });
 
+  it("never caches a 500, 502, 503 or 504, keeping the distribution's other error responses", () => {
+    const overrides = buildDistributionConfigOverrides(baseOptions);
+    const uncached = [500, 502, 503, 504].map((ErrorCode) => ({
+      ErrorCode,
+      ErrorCachingMinTTL: 0,
+      ResponsePagePath: "",
+      ResponseCode: "",
+    }));
+    expect(overrides.CustomErrorResponses).toEqual({
+      Quantity: 4,
+      Items: uncached,
+    });
+    // An existing distribution's, on init's replay: its 503 page is
+    // replaced, since a substituted page would hide the server's answer.
+    const updated = applyDistributionConfigOverrides(
+      {
+        ...buildDistributionConfig(baseOptions),
+        CustomErrorResponses: {
+          Quantity: 2,
+          Items: [
+            { ErrorCode: 404, ErrorCachingMinTTL: 300 },
+            {
+              ErrorCode: 503,
+              ErrorCachingMinTTL: 10,
+              ResponseCode: "200",
+              ResponsePagePath: "/maintenance.html",
+            },
+          ],
+        },
+      },
+      overrides,
+    );
+    expect(updated.CustomErrorResponses).toEqual({
+      Quantity: 5,
+      Items: [
+        {
+          ErrorCode: 404,
+          ErrorCachingMinTTL: 300,
+          ResponsePagePath: "",
+          ResponseCode: "",
+        },
+        ...uncached,
+      ],
+    });
+    expect(buildDistributionConfig(baseOptions).CustomErrorResponses).toEqual(
+      overrides.CustomErrorResponses,
+    );
+  });
+
+  it("sends ResponsePagePath and ResponseCode on every error response, empty when unset", () => {
+    // CloudFront answers IllegalUpdate ("The specified list of custom error
+    // responses does not exist or is not valid") to an item without both
+    // elements; an empty element means no replacement page.
+    const hasBothElements = (config: DistributionConfig) =>
+      (config.CustomErrorResponses?.Items ?? []).every(
+        ({ ResponsePagePath, ResponseCode }) =>
+          typeof ResponsePagePath === "string" &&
+          typeof ResponseCode === "string",
+      );
+    const overrides = buildDistributionConfigOverrides(baseOptions);
+    const created = buildDistributionConfig(baseOptions);
+    const updated = applyDistributionConfigOverrides(
+      {
+        ...created,
+        CustomErrorResponses: {
+          Quantity: 1,
+          Items: [{ ErrorCode: 404, ErrorCachingMinTTL: 300 }],
+        },
+      },
+      overrides,
+    );
+
+    expect(created.CustomErrorResponses?.Quantity).toBe(4);
+    expect(hasBothElements(created)).toBe(true);
+    expect(updated.CustomErrorResponses?.Quantity).toBe(5);
+    expect(hasBothElements(updated)).toBe(true);
+  });
+
   it("preserves the existing managed origin id referenced by other behaviors", () => {
     // Given
     const overrides = buildDistributionConfigOverrides(baseOptions);

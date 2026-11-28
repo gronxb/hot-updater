@@ -195,6 +195,218 @@ describe("Release catalog routes", () => {
     expect(catalogReads()).toBe(1);
   });
 
+  it("remembers a scope without a catalog for five seconds, so its update checks read it once", async () => {
+    const database = await createCatalogDatabase();
+    const catalogReads = countCatalogReads(database);
+    let now = Date.UTC(2026, 0, 1);
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const hotUpdater = createHotUpdater({
+      database,
+      storage: createReleaseCatalogTestStorage(),
+      clientAccess: "public",
+    });
+    const betaUrl =
+      `https://updates.example.com/release-catalogs/app-version/` +
+      `ios/${encodeChannelKey("beta")}/1.5.0`;
+    const check = () => hotUpdater.handlers.client(new Request(betaUrl));
+
+    const first = await check();
+    expect(first.status).toBe(404);
+    expect(first.headers.get("x-hot-updater-catalog")).toBe("none");
+    now += 4_999;
+    const remembered = await check();
+    expect(remembered.status).toBe(404);
+    expect(remembered.headers.get("x-hot-updater-catalog")).toBe("none");
+    const concurrent = await Promise.all(Array.from({ length: 50 }, check));
+    expect(concurrent.every(({ status }) => status === 404)).toBe(true);
+    expect(catalogReads()).toBe(1);
+
+    // The scope's first release shows once the miss's five seconds pass.
+    await hotUpdater.core.deploy([
+      {
+        bundle: {
+          assetBaseStorageUri: "storage://assets",
+          gitCommitHash: null,
+          id: "00000000-0000-7001-8000-000000000002",
+          manifestFileHash: "manifest-hash-beta",
+          manifestStorageUri: "storage://bundle/beta/manifest.json",
+          metadata: {},
+          platform: "ios",
+        },
+        release: {
+          channel: "beta",
+          enabled: true,
+          fingerprintHash: null,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: "*",
+        },
+      },
+    ]);
+    const reads = catalogReads();
+    now += 1;
+    const deployed = await check();
+    expect(deployed.status).toBe(200);
+    expect(catalogReads()).toBe(reads + 1);
+  });
+
+  it("singleflights concurrent cold requests of a scope without a catalog into one read", async () => {
+    const database = await createCatalogDatabase();
+    const catalogReads = countCatalogReads(database);
+    const hotUpdater = createHotUpdater({
+      database,
+      storage: createReleaseCatalogTestStorage(),
+      clientAccess: "public",
+    });
+    const url =
+      `https://updates.example.com/release-catalogs/app-version/` +
+      `ios/${encodeChannelKey("beta")}/1.5.0`;
+
+    const responses = await Promise.all(
+      Array.from({ length: 100 }, () =>
+        hotUpdater.handlers.client(new Request(url)),
+      ),
+    );
+
+    expect(responses.every(({ status }) => status === 404)).toBe(true);
+    expect(catalogReads()).toBe(1);
+  });
+
+  it("never lets scopes without a catalog evict a scope's catalog from the memo", async () => {
+    const database = await createCatalogDatabase();
+    const get = vi.spyOn(database.adapter, "get");
+    const hotUpdater = createHotUpdater({
+      database,
+      storage: createReleaseCatalogTestStorage(),
+      clientAccess: "public",
+    });
+    const deployedUrl =
+      `https://updates.example.com/release-catalogs/app-version/` +
+      `ios/${channelKey}/1.5.0`;
+    const deployedReads = () =>
+      get.mock.calls.filter(
+        ([table, keys]) =>
+          table.name === "release_catalogs" &&
+          keys.some((key) => key[0] === scopeKey),
+      ).length;
+
+    expect(
+      (await hotUpdater.handlers.client(new Request(deployedUrl))).status,
+    ).toBe(200);
+    // More scopes without a catalog than the memo holds.
+    for (let n = 0; n < 300; n += 1) {
+      const missing = await hotUpdater.handlers.client(
+        new Request(
+          `https://updates.example.com/release-catalogs/fingerprint/` +
+            `android/${channelKey}/fingerprint-${n}`,
+        ),
+      );
+      expect(missing.status).toBe(404);
+    }
+    expect(
+      (await hotUpdater.handlers.client(new Request(deployedUrl))).status,
+    ).toBe(200);
+    expect(deployedReads()).toBe(1);
+  });
+
+  it("reads a scope's catalog once for every app version it serves, and projects each version from it", async () => {
+    const database = createRuntimeDatabase();
+    const storage = createReleaseCatalogTestStorage();
+    const deployer = createHotUpdater({
+      database,
+      storage,
+      clientAccess: "public",
+    });
+    // Releases each app version sees differently, so a memo that served one
+    // version's projection to another would answer the wrong releases.
+    for (const [n, targetAppVersion] of [
+      [1, "*"],
+      [2, "1.x.x"],
+      [3, "2.x.x"],
+    ] as const) {
+      await deployer.core.deploy([
+        {
+          bundle: {
+            assetBaseStorageUri: "storage://assets",
+            gitCommitHash: null,
+            id: `00000000-0000-7001-8000-00000000000${n}`,
+            manifestFileHash: `manifest-hash-${n}`,
+            manifestStorageUri: `storage://bundle/${n}/manifest.json`,
+            metadata: {},
+            platform: "ios",
+          },
+          release: {
+            channel: "production",
+            enabled: true,
+            fingerprintHash: null,
+            message: null,
+            shouldForceUpdate: false,
+            targetAppVersion,
+          },
+        },
+      ]);
+    }
+    const versions = Array.from(
+      { length: 20 },
+      (_, n) => `${(n % 3) + 1}.0.${Math.floor(n / 3)}`,
+    );
+    const urlOf = (appVersion: string) =>
+      `https://updates.example.com/release-catalogs/app-version/` +
+      `ios/${channelKey}/${appVersion}`;
+    const expected = new Map(
+      await Promise.all(
+        versions.map(
+          async (appVersion) =>
+            [
+              appVersion,
+              await deployer.core.getReleaseCatalog({
+                appVersion,
+                channelKey,
+                platform: "ios",
+                strategy: "APP_VERSION",
+              }),
+            ] as const,
+        ),
+      ),
+    );
+    expect(
+      new Set([...expected.values()].map((catalog) => catalog!.releases.length))
+        .size,
+    ).toBe(2);
+
+    const reads = [];
+    for (const order of ["one after another", "all at once"] as const) {
+      const catalogReads = countCatalogReads(database);
+      const hotUpdater = createHotUpdater({
+        database,
+        storage,
+        clientAccess: "public",
+      });
+      const check = (appVersion: string) =>
+        hotUpdater.handlers.client(new Request(urlOf(appVersion)));
+      const responses =
+        order === "all at once"
+          ? await Promise.all(versions.map(check))
+          : await versions.reduce<Promise<Response[]>>(
+              async (done, appVersion) => [
+                ...(await done),
+                await check(appVersion),
+              ],
+              Promise.resolve([]),
+            );
+      for (const [index, response] of responses.entries()) {
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual(expected.get(versions[index]!));
+      }
+      reads.push({ order, catalogReads: catalogReads() });
+      vi.restoreAllMocks();
+    }
+    expect(reads).toEqual([
+      { order: "one after another", catalogReads: 1 },
+      { order: "all at once", catalogReads: 1 },
+    ]);
+  });
+
   it("varies authenticated catalog responses by the configured header", async () => {
     const hotUpdater = createHotUpdater({
       database: await createCatalogDatabase(),

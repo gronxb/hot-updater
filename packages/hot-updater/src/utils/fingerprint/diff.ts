@@ -57,12 +57,16 @@ export async function getFingerprintDiff(
   return diff;
 }
 
-/** Contents short enough to show, such as `react-native-screens@4.25.2`. */
+/**
+ * Contents short enough to show, such as `react-native-screens@4.25.2`. JSON
+ * stays out: a config is named by its source.
+ */
 const readableContents = (source: FingerprintSource): string | null =>
   source.type === "contents" &&
   typeof source.contents === "string" &&
   source.contents.length <= 120 &&
-  !source.contents.includes("\n")
+  !source.contents.includes("\n") &&
+  !source.contents.startsWith("{")
     ? source.contents
     : null;
 
@@ -81,7 +85,9 @@ function getSourcePath(source: FingerprintSource): string {
     ? `${source.id.slice("setting:".length)}=${contents}`
     : source.id === "nativeVersion"
       ? `nativeVersion=${contents}`
-      : contents;
+      : // A fingerprint.json from before local modules were followed records
+        // a stock module as `name@`.
+        contents.replace(/@$/u, "");
 }
 
 /**
@@ -166,19 +172,25 @@ export function showFingerprintChanges(
     return;
   }
 
-  p.log.info(`${colors.bold(`${platform} Fingerprint Changes:`)}`);
-
-  if (added.length > 0) {
-    p.log.info(`  ${colors.green("Added:")} ${added.join(", ")}`);
-  }
-
-  if (removed.length > 0) {
-    p.log.info(`  ${colors.red("Removed:")} ${removed.join(", ")}`);
-  }
-
-  if (changed.length > 0) {
-    p.log.info(`  ${colors.yellow("Changed:")} ${changed.join(", ")}`);
-  }
+  // One file per line, under its kind: a list of them would wrap.
+  const kinds = [
+    { label: "Added", files: added, color: colors.green },
+    { label: "Removed", files: removed, color: colors.red },
+    { label: "Changed", files: changed, color: colors.yellow },
+  ].filter(({ files }) => files.length > 0);
+  const width = Math.max(...kinds.map(({ label }) => label.length)) + 2;
+  p.log.info(
+    [
+      `${platform} fingerprint changes`,
+      ...kinds.flatMap(({ label, files, color }) =>
+        files.map((file, index) =>
+          index === 0
+            ? `${color(label.padEnd(width))}${file}`
+            : `${" ".repeat(width)}${file}`,
+        ),
+      ),
+    ].join("\n"),
+  );
 }
 
 export function showFingerprintDiff(

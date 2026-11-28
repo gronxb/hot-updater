@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="hot_updater_sandbox_marker" translatable="false">HOT_UPDATER_SANDBOX_NATIVE_LAYER</string>
+  <style name="HotUpdaterSandboxTheme" parent="android:Theme.Material.Light.NoActionBar">
+    <item name="android:windowBackground">#F2F2F7</item>
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+    <item name="android:windowLightStatusBar">true</item>
+  </style>
+</resources>

@@ -3,6 +3,7 @@ import { ArrowUpRight, Copy, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { InstallIdDisplay } from "@/components/InstallIdDisplay";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
@@ -113,7 +114,7 @@ function FailureDetail({ group }: { readonly group: FailureGroup }) {
             </p>
           ) : null}
           <Button
-            className="w-fit"
+            className="w-fit max-md:h-11"
             variant="outline"
             onClick={() => void copy()}
           >
@@ -175,7 +176,7 @@ function FailureDetail({ group }: { readonly group: FailureGroup }) {
           <EventBundleTransition event={event} />
           <Button
             variant="outline"
-            className="w-fit"
+            className="w-fit max-md:h-11"
             render={
               <Link
                 to="/installations"
@@ -186,8 +187,11 @@ function FailureDetail({ group }: { readonly group: FailureGroup }) {
             Installation history{" "}
             <ArrowUpRight aria-hidden="true" data-icon="inline-end" />
           </Button>
-          <p className="font-mono text-xs text-muted-foreground wrap-anywhere">
-            {event.installId}
+          {/* As tall as a touch target on a phone, so the copy button's
+              touch area stays off the button above. */}
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground max-sm:min-h-11">
+            Install ID
+            <InstallIdDisplay installId={event.installId} />
           </p>
         </section>
         <section aria-label="Occurrences" className="flex flex-col gap-2">
@@ -260,6 +264,7 @@ export function FailureReportsList({
           variant="ghost"
           size="icon-lg"
           aria-label="Refresh error reports"
+          className="max-md:size-11"
           disabled={isFetching}
           onClick={onRefresh}
         >

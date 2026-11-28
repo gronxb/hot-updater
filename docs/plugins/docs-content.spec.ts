@@ -210,14 +210,31 @@ describe("agent documentation", () => {
     const site = readDocumentation("content/docs");
     expect(
       orderedPages(site)
-        .filter((page) => !page.url.startsWith("/docs/v0/"))
+        .filter(
+          (page) =>
+            !page.url.startsWith("/docs/v1.0/") &&
+            !page.url.startsWith("/docs/v0/"),
+        )
         .map((page) => page.url),
     ).toEqual(orderedPages(documentation).map((page) => page.url));
+    expect(index).not.toContain("/docs/v1.0/");
     expect(index).not.toContain("/docs/v0/");
     expect(index).not.toContain("(latest)");
     expect(index).toContain("/docs/guides/bundle-diffing.md");
     expect(orderedPages(documentation)[0]?.url).toBe(
       "/docs/get-started/introduction",
+    );
+  });
+
+  it("keeps the v1.0 archive's links within the archive", () => {
+    const archive = readDocumentation("content/docs/v1.0", "v1.0");
+    // Cross-links to the v0 archive are checked by the v0 site, not here.
+    const issues = validateDocumentation(archive, "public").filter(
+      (issue) => !/ \/docs\/v0\//.test(issue),
+    );
+    expect(issues).toEqual([]);
+    expect(orderedPages(archive)[0]?.url).toBe(
+      "/docs/v1.0/get-started/introduction",
     );
   });
 });

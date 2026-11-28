@@ -1,4 +1,8 @@
-import { setupReadBudgetTestSuite } from "@hot-updater/test-utils";
+import {
+  setupReadBudgetTestSuite,
+  setupReleaseLabelEngineTestSuite,
+  type ReadBudgetSuiteOptions,
+} from "@hot-updater/test-utils";
 import type { RowsExamined } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import { inject } from "vitest";
@@ -74,18 +78,27 @@ const rowsRead = (database: D1Database) => {
  * The worker's `d1Database` on the D1 binding. Its schema fence reads the
  * settings rows the migration writes once, while the suite seeds.
  */
-setupReadBudgetTestSuite({
-  name: "d1 (workerd)",
-  createAdapter: async () => {
-    const [migration] = inject("d1Migrations");
-    // `exec` runs one statement per line, and a comment line is not one.
+// Both suites share the binding's database, which the migrations, whose
+// ALTER TABLE runs once, create a single time.
+let migrated: Promise<void> | undefined;
+const migrate = async () => {
+  // `exec` runs one statement per line, and a comment line is not one.
+  for (const migration of inject("d1Migrations")) {
     await env.DB.exec(
-      migration!.sql
+      migration.sql
         .split("\n")
         .filter((line) => line.trim() !== "" && !line.startsWith("--"))
         .join("\n"),
     );
+  }
+};
+const backend: ReadBudgetSuiteOptions = {
+  name: "d1 (workerd)",
+  createAdapter: async () => {
+    await (migrated ??= migrate());
     const { binding, examined, written } = rowsRead(env.DB);
     return { adapter: d1Database(binding).adapter, examined, written };
   },
-});
+};
+setupReadBudgetTestSuite(backend);
+setupReleaseLabelEngineTestSuite(backend);

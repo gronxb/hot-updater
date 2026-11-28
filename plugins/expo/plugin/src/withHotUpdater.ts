@@ -198,6 +198,7 @@ const withHotUpdaterConfigAsync =
 
     // === iOS: Add channel to Info.plist ===
     modifiedConfig = withInfoPlist(modifiedConfig, async (cfg) => {
+      (await loadCliTools()).assertSupportedExpoSdk(cfg.modRequest.projectRoot);
       await writeFingerprintJson(cfg.modRequest.projectRoot);
 
       // Load public key if signing is enabled
@@ -215,6 +216,7 @@ const withHotUpdaterConfigAsync =
 
     // === Android: Add channel to AndroidManifest.xml ===
     modifiedConfig = withAndroidManifest(modifiedConfig, async (cfg) => {
+      (await loadCliTools()).assertSupportedExpoSdk(cfg.modRequest.projectRoot);
       await writeFingerprintJson(cfg.modRequest.projectRoot);
 
       // Load public key if signing is enabled

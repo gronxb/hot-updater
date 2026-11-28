@@ -625,9 +625,28 @@ const iosCanaryPatchA = createBundle({
   targetCohorts: ["design-review", "ios-lab"],
 });
 
+// Newer pull request previews, each the only release of its channel, so the
+// first page of bundles is full and ends in a fold.
+const pullRequestPreviews = Array.from({ length: 4 }, (_, index) =>
+  createBundle({
+    id: `01972200-1aa1-7445-8b8c-27272727272${index}`,
+    enabled: true,
+    shouldForceUpdate: false,
+    fileHash: `file-android-pr-${140 + index}`,
+    gitCommitHash: `d${index}4e8a10`,
+    platform: "android",
+    targetAppVersion: null,
+    message: `Pull request #${140 + index} preview`,
+    channel: `pr-${140 + index}`,
+    fingerprintHash: `fp-android-pr-${140 + index}`,
+    rolloutCohortCount: 1000,
+  }),
+);
+
 // Seed lineages so filters, pagination, detail sheets, and patch tables all
 // have enough variety to be useful during local development.
 const bundles: DemoDeployment[] = [
+  ...pullRequestPreviews,
   iosCanaryPatchA,
   androidBetaPatchA,
   androidDevPatchA,
@@ -673,6 +692,468 @@ const seeding = assembleServer({
   plugins,
 });
 const { core } = seeding;
+
+// Native builds, registered before the deploys so their built-in bundles are
+// stored before the patches from them: a superseded pair on one scope, each
+// artifact kind, submitted to a store or not, a pull request's builds on both
+// platforms, and enough older pull request builds to page. Their MIN_BUNDLE_IDs take both forms an app
+// in the field has: zero random bits, as builds issue them, and an earlier
+// CLI's platform byte (`01` iOS, `02` Android) and random bits.
+type DemoNativeBuild = {
+  readonly n: number;
+  readonly platform: "ios" | "android";
+  readonly channel: string;
+  readonly target:
+    | { readonly fingerprint: string }
+    | { readonly appVersion: string };
+  readonly minBundleId: string;
+  readonly kind: "apk" | "aab" | "ipa" | "app";
+  readonly gitCommitHash: string | null;
+  /** A sandbox scheme's build, on the pull request's channel that made it. */
+  readonly sandbox?: true;
+  /** How an `.ipa` was exported, as its profile says. */
+  readonly exportMethod?: "app-store" | "ad-hoc";
+  /**
+   * The app version the artifact reports, whatever the strategy: an app
+   * version build's target by default, and none for a build registered
+   * before it was recorded.
+   */
+  readonly nativeAppVersion?: string | null;
+  /** The demo bundles that patch from this build's built-in bundle. */
+  readonly patchTargets?: readonly DemoDeployment[];
+  /** The artifact's file name, when it isn't its kind's usual one. */
+  readonly fileName?: string;
+};
+const nativeBuildId = (n: number) =>
+  `019f6300-0000-7000-8000-${String(n).padStart(12, "0")}`;
+const artifactFile = {
+  apk: "app-release.apk",
+  aab: "app-release.aab",
+  ipa: "HotUpdaterExample.ipa",
+  app: "HotUpdaterExample.app.zip",
+} as const;
+const demoNativeBuilds: DemoNativeBuild[] = [
+  ...Array.from(
+    { length: 15 },
+    (_, index): DemoNativeBuild => ({
+      n: index + 1,
+      platform: "android",
+      channel: `pr-${110 + index}`,
+      target: { fingerprint: `fp-android-pr-${110 + index}` },
+      nativeAppVersion: null,
+      minBundleId: `019f6200-${(index + 1).toString(16).padStart(4, "0")}-7000-8000-000000000000`,
+      kind: "apk",
+      gitCommitHash: `a${String(index).padStart(2, "0")}c4e19`,
+    }),
+  ),
+  // Builds a newer one on their distribution path passes over: TestFlight,
+  // Play internal, a staging APK, and a sandbox TestFlight build.
+  {
+    n: 16,
+    platform: "ios",
+    channel: "production",
+    target: { fingerprint: "fp-ios-production-1-0-0" },
+    nativeAppVersion: null,
+    minBundleId: "019f6300-00c6-7000-8000-000000000000",
+    kind: "ipa",
+    exportMethod: "app-store",
+    gitCommitHash: "6e2a9d40",
+  },
+  {
+    n: 17,
+    platform: "android",
+    channel: "production",
+    target: { appVersion: "1.3.0" },
+    minBundleId: "019f6300-00c7-7000-8000-000000000000",
+    kind: "aab",
+    gitCommitHash: "48c1f0b2",
+  },
+  {
+    n: 18,
+    platform: "android",
+    channel: "staging",
+    target: { fingerprint: "fp-android-camera-v2" },
+    nativeAppVersion: "1.3.0",
+    minBundleId: "019f6300-00c8-7000-8000-000000000000",
+    kind: "apk",
+    gitCommitHash: "0b7d3e95",
+  },
+  {
+    n: 19,
+    platform: "ios",
+    channel: "pr-128",
+    target: { fingerprint: "fp-ios-sandbox" },
+    nativeAppVersion: "1.0.0",
+    minBundleId: "019f6300-00c9-7000-8000-000000000000",
+    kind: "ipa",
+    exportMethod: "app-store",
+    gitCommitHash: "3f9a1c27",
+    sandbox: true,
+  },
+  {
+    n: 20,
+    platform: "android",
+    channel: "staging",
+    target: { fingerprint: "fp-android-camera-v2" },
+    nativeAppVersion: "1.2.4",
+    minBundleId: "01971f4e-0000-7000-8000-02a1b2c3d4e5",
+    kind: "apk",
+    gitCommitHash: "1d3e5f7a",
+    patchTargets: [androidStagingVisionBase],
+  },
+  {
+    n: 21,
+    platform: "ios",
+    channel: "production",
+    target: { appVersion: "1.4.2" },
+    minBundleId: "01971f0f-0000-7000-8000-01c4d2e8a7f3",
+    kind: "ipa",
+    exportMethod: "app-store",
+    gitCommitHash: "9c12ab40",
+    patchTargets: [iosProdCorePatchA, iosProdCorePatchB],
+  },
+  {
+    n: 22,
+    platform: "android",
+    channel: "production",
+    target: { appVersion: "1.3.0" },
+    minBundleId: "01971f2f-0000-7000-8000-000000000000",
+    kind: "aab",
+    gitCommitHash: "51b0e2d9",
+    patchTargets: [androidProdPatchA],
+  },
+  {
+    n: 23,
+    platform: "ios",
+    channel: "dev",
+    target: { appVersion: "1.6.0" },
+    minBundleId: "01971f5f-0000-7000-8000-000000000000",
+    kind: "app",
+    gitCommitHash: "c7d8e9f0",
+  },
+  {
+    n: 24,
+    platform: "android",
+    channel: "staging",
+    target: { fingerprint: "fp-android-camera-v2" },
+    nativeAppVersion: "1.3.0",
+    minBundleId: "01971f4f-0000-7000-8000-029e7b3c1d5a",
+    kind: "apk",
+    gitCommitHash: "20be7311",
+    patchTargets: [androidStagingVisionPatchA, androidStagingVisionPatchB],
+  },
+  {
+    n: 25,
+    platform: "android",
+    channel: "pr-130",
+    target: { fingerprint: "fp-android-pr-130" },
+    nativeAppVersion: "1.6.0",
+    minBundleId: "019f6300-00a5-7000-8000-000000000000",
+    kind: "apk",
+    gitCommitHash: "e4f1a2b3",
+  },
+  {
+    n: 26,
+    platform: "ios",
+    channel: "pr-130",
+    target: { fingerprint: "fp-ios-pr-130" },
+    nativeAppVersion: "1.6.0",
+    minBundleId: "019f6300-00a7-7000-8000-000000000000",
+    kind: "app",
+    gitCommitHash: "e4f1a2b3",
+  },
+  // An AAB built elsewhere and imported, which no store took: no commit.
+  {
+    n: 27,
+    platform: "android",
+    channel: "staging",
+    target: { appVersion: "1.3.1" },
+    minBundleId: "01971f31-0000-7000-8000-000000000000",
+    kind: "aab",
+    gitCommitHash: null,
+  },
+  // A newer production IPA than the one the store sells, which the mark
+  // passes over: new deploys keep patching from build 21.
+  {
+    n: 28,
+    platform: "ios",
+    channel: "production",
+    target: { appVersion: "1.4.2" },
+    minBundleId: "01971f10-0000-7000-8000-000000000000",
+    kind: "ipa",
+    exportMethod: "ad-hoc",
+    gitCommitHash: "b48e0c21",
+  },
+  // A production IPA on the fingerprint strategy, which TestFlight took and
+  // its scope sells.
+  {
+    n: 29,
+    platform: "ios",
+    channel: "production",
+    target: { fingerprint: "fp-ios-production-1-0-0" },
+    nativeAppVersion: "1.0.0",
+    minBundleId: "01971f60-0000-7000-8000-000000000000",
+    kind: "ipa",
+    exportMethod: "app-store",
+    gitCommitHash: "7f3c2d18",
+  },
+  // A sandbox scheme's builds, which pull request previews open: an APK, and
+  // an IPA on TestFlight's internal track.
+  {
+    n: 30,
+    platform: "android",
+    channel: "pr-128",
+    target: { fingerprint: "fp-android-sandbox" },
+    nativeAppVersion: "1.0.0",
+    minBundleId: "019f6300-00b0-7000-8000-000000000000",
+    kind: "apk",
+    gitCommitHash: "5a6b7c8d",
+    sandbox: true,
+  },
+  {
+    n: 31,
+    platform: "ios",
+    channel: "pr-128",
+    target: { fingerprint: "fp-ios-sandbox" },
+    nativeAppVersion: "1.0.0",
+    minBundleId: "019f6300-00b1-7000-8000-000000000000",
+    kind: "ipa",
+    exportMethod: "app-store",
+    gitCommitHash: "5a6b7c8d",
+    sandbox: true,
+  },
+  // A build on a long feature channel.
+  {
+    n: 32,
+    platform: "android",
+    channel: "feature-checkout-redesign-with-saved-payment-methods",
+    target: { fingerprint: "fp-android-checkout" },
+    nativeAppVersion: "1.5.0-beta.3",
+    minBundleId: "019f6300-00b2-7000-8000-000000000000",
+    kind: "apk",
+    gitCommitHash: "9e8d7c6b",
+  },
+  // A newer ad hoc production IPA, which build 28 is older than.
+  {
+    n: 33,
+    platform: "ios",
+    channel: "production",
+    target: { appVersion: "1.4.2" },
+    minBundleId: "019f6300-00b3-7000-8000-000000000000",
+    kind: "ipa",
+    exportMethod: "ad-hoc",
+    gitCommitHash: "c3d9e0f1",
+  },
+  // A sandbox scheme's two direct installs of one native code: an ad hoc IPA
+  // for registered iPhones, and a Simulator app another pull request made.
+  {
+    n: 42,
+    platform: "ios",
+    channel: "pr-139",
+    target: { fingerprint: "fp-ios-sandbox-direct" },
+    nativeAppVersion: "1.6.0",
+    minBundleId: "019f6300-00d0-7000-8000-000000000000",
+    kind: "ipa",
+    exportMethod: "ad-hoc",
+    gitCommitHash: "e4f5a6b7",
+    sandbox: true,
+  },
+  {
+    n: 43,
+    platform: "ios",
+    channel: "pr-140",
+    target: { fingerprint: "fp-ios-sandbox-direct" },
+    nativeAppVersion: "1.6.0",
+    minBundleId: "019f6300-00d1-7000-8000-000000000000",
+    kind: "app",
+    gitCommitHash: "f5a6b7c8",
+    sandbox: true,
+    fileName: "HotUpdaterExampleSandbox-Release-iphonesimulator.app.zip",
+  },
+  // Newer pull request builds, so the first page ends in a fold.
+  ...Array.from(
+    { length: 8 },
+    (_, index): DemoNativeBuild => ({
+      n: 34 + index,
+      platform: "android",
+      channel: `pr-${131 + index}`,
+      target: { fingerprint: `fp-android-pr-${131 + index}` },
+      // One registered by an older CLI, which recorded no version.
+      nativeAppVersion: index === 5 ? null : "1.6.0",
+      minBundleId: `019f6300-00${(0xc0 + index).toString(16)}-7000-8000-000000000001`,
+      kind: "apk",
+      gitCommitHash: `b${String(index).padStart(2, "0")}d5f20`,
+    }),
+  ),
+];
+for (const build of demoNativeBuilds) {
+  const id = nativeBuildId(build.n);
+  const file = build.fileName ?? artifactFile[build.kind];
+  await core.registerNativeBuild({
+    id,
+    platform: build.platform,
+    channel: build.channel,
+    ...("fingerprint" in build.target
+      ? {
+          fingerprintHash: toSeedHash("fingerprint", build.target.fingerprint),
+          appVersion: null,
+        }
+      : { fingerprintHash: null, appVersion: build.target.appVersion }),
+    minBundleId: build.minBundleId,
+    gitCommitHash: build.gitCommitHash,
+    // The CLI keys each build it makes by its inputs; an imported build, one
+    // with no commit, has no key.
+    buildKey:
+      build.gitCommitHash === null
+        ? null
+        : `nbk1:${toSeedHash("build-key", `${build.n}`)}`,
+    buildNumber: String(100 + build.n),
+    isSandbox: build.sandbox === true,
+    ...(build.sandbox === true
+      ? {
+          sandboxUrlScheme: "myapp-preview",
+          sandboxAppId:
+            build.platform === "android"
+              ? "com.example.myapp.sandbox"
+              : "com.example.myapp",
+        }
+      : {}),
+    exportMethod: build.exportMethod ?? null,
+    nativeAppVersion:
+      build.nativeAppVersion !== undefined
+        ? build.nativeAppVersion
+        : "appVersion" in build.target
+          ? build.target.appVersion
+          : null,
+    artifact: {
+      kind: build.kind,
+      storageUri: `storage://my-app/native-builds/${build.platform}/${id}/${file}`,
+      byteSize: {
+        apk: 48_201_331,
+        aab: 31_775_402,
+        ipa: 61_340_918,
+        app: 92_118_044,
+      }[build.kind],
+    },
+    embeddedBundle: {
+      manifestStorageUri: createManifestUri(build.minBundleId),
+      manifestFileHash: toSeedHash("manifest", build.minBundleId),
+      assetBaseStorageUri: createAssetBaseUri(build.minBundleId),
+    },
+  });
+  const builtIn = {
+    id: build.minBundleId,
+    platform: build.platform,
+    demoFileHash: toSeedHash("file", `builtin-${build.minBundleId}`),
+  } as unknown as Bundle;
+  for (const [index, target] of (build.patchTargets ?? []).entries()) {
+    Object.assign(target, {
+      patches: [
+        ...(target.patches ?? []),
+        {
+          ...createPatchArtifact(target.id, builtIn, `builtin-${target.id}`),
+          byteSize: 182_400 + index * 41_250,
+        },
+      ],
+    });
+  }
+}
+
+// The production IPAs went to TestFlight and the AAB to Google Play's
+// internal track, which the CLI records once the store took each.
+await core.recordNativeBuildSubmission(nativeBuildId(16), {
+  destination: "testflight",
+  version: "1.0.0 (116)",
+});
+await core.recordNativeBuildSubmission(nativeBuildId(17), {
+  destination: "play-internal",
+  version: "1.3.0 (117)",
+});
+await core.recordNativeBuildSubmission(nativeBuildId(19), {
+  destination: "testflight",
+  version: "1.0.0 (119)",
+});
+await core.recordNativeBuildSubmission(nativeBuildId(21), {
+  destination: "testflight",
+  version: "1.4.2 (121)",
+});
+await core.recordNativeBuildSubmission(nativeBuildId(22), {
+  destination: "play-internal",
+  version: "1.3.0 (122)",
+});
+await core.recordNativeBuildSubmission(nativeBuildId(29), {
+  destination: "testflight",
+  version: "1.0.0 (129)",
+});
+await core.recordNativeBuildSubmission(nativeBuildId(31), {
+  destination: "testflight",
+  version: "1.0.0 (131)",
+});
+
+// The iOS device registry: a tester's request, an approved iPad, an iPhone
+// the newer production IPA lists, and one Apple refused.
+const demoIssuer = "69a6de70-0000-47e3-e053-5b8c7c11a4d1";
+const demoDevice = async (
+  udid: string,
+  name: string,
+  requestedBy: string | null,
+  then?: (device: {
+    id: string;
+    approved_at_ms: number | null;
+  }) => Promise<unknown>,
+) => {
+  const { device } = await core.requestIosDevice({ udid, name, requestedBy });
+  if (then !== undefined) await then(device);
+};
+const approveDemo = (id: string) =>
+  core.approveIosDevice(id, { approvedBy: "lead@hot-updater.dev" });
+await demoDevice(
+  "00008110-001a2b3c4d5e6f70",
+  "QA iPhone 15",
+  "lead@hot-updater.dev",
+  async ({ id }) => {
+    const approved = (await approveDemo(id))!;
+    await core.recordIosDeviceOutcome({
+      id,
+      seen: { status: "approved", approvedAtMs: approved.approved_at_ms },
+      issuerId: demoIssuer,
+      outcome: "registered",
+    });
+    await core.markIosDevicesInBuild({ buildId: nativeBuildId(28), ids: [id] });
+  },
+);
+await demoDevice(
+  "00008120-0019283a4b5c6d7e",
+  "Mina's iPhone",
+  "mina@hot-updater.dev",
+  async ({ id }) => {
+    const approved = (await approveDemo(id))!;
+    await core.recordIosDeviceOutcome({
+      id,
+      seen: { status: "approved", approvedAtMs: approved.approved_at_ms },
+      issuerId: demoIssuer,
+      outcome: "refused",
+      reason:
+        "The maximum number of devices for this membership year was reached.",
+    });
+  },
+);
+await demoDevice(
+  "1a2b3c4d5e6f708192a3b4c5d6e7f80910a1b2c3",
+  "Lee's iPad",
+  "lee@hot-updater.dev",
+  async ({ id }) => approveDemo(id),
+);
+await demoDevice(
+  "00008130-000e1f2a3b4c5d6e",
+  "Kim's iPhone",
+  "kim@hot-updater.dev",
+);
+
+// What the store sells of the production IPA's scope.
+await core.markNativeBuild(nativeBuildId(21), { storeBuild: true });
+await core.markNativeBuild(nativeBuildId(29), { storeBuild: true });
+
 // Oldest first, one deploy each, so a patch's base is stored before it.
 const releaseIdByBundle = new Map<string, string>();
 for (const deployment of [...bundles].sort((left, right) =>

@@ -43,6 +43,15 @@ export type HotUpdaterConsoleConfig = Readonly<{
   console?: {
     /** The Git repository whose commits the console links bundles to. */
     gitUrl?: string;
+    /**
+     * The signed-in emails that may approve iPhones and iPads for ad hoc
+     * builds, each of which the next build registers with your Apple account
+     * and spends one of its yearly device slots on. Left out or empty, nobody
+     * approves in this Console: approve from a terminal with
+     * `npx hot-updater native-build devices add`. The emails come from the
+     * Console's sign-in, so a custom auth adapter must supply verified ones.
+     */
+    deviceApprovers?: readonly string[];
   };
 }>;
 

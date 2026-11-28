@@ -32,7 +32,36 @@ const providers = [
   "azure",
 ] as const;
 const builds = ["bare", "rock", "expo"] as const;
+const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
+const oxfmt = path.join(repoRoot, "node_modules/.bin/oxfmt");
+const oxfmtConfig = path.join(repoRoot, ".oxfmtrc.json");
 /** Providers whose credential script runs the server's migrator. */
+/** The credentials each provider's config reads, which no config reads by `process.env`. */
+const CREDENTIALS: Readonly<Record<string, readonly string[]>> = {
+  aws: ["HOT_UPDATER_S3_ACCESS_KEY_ID", "HOT_UPDATER_S3_SECRET_ACCESS_KEY"],
+  azure: [
+    "HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING",
+    "HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING",
+  ],
+  cloudflare: [
+    "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+    "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
+    "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+  ],
+  firebase: [],
+  supabase: ["HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY"],
+  vercel: [
+    "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN",
+    "HOT_UPDATER_VERCEL_DATABASE_URL",
+  ],
+};
+const credentialNames = (provider: string) => {
+  const names = CREDENTIALS[provider];
+  if (names === undefined)
+    throw new Error(`No credentials listed for ${provider}.`);
+  return names;
+};
+
 const migrates = (provider: string) =>
   provider === "firebase" || provider === "vercel" || provider === "azure";
 let cwd: string;
@@ -119,13 +148,15 @@ describe("published agent infrastructure commands", () => {
           "app/provision-client-credential.mjs",
           "app/verify-server.mjs",
         ]);
-        // A migration tool applies the package's migration, which holds
-        // core's tables and those of the prebuilt server's plugins.
-        const migrations = Object.keys(manifest.files).filter((file) =>
-          /migrations\/[^/]+\.sql$/u.test(file),
-        );
+        // A migration tool applies the package's numbered migrations, which
+        // hold core's tables and those of the prebuilt server's plugins.
+        const migrations = Object.keys(manifest.files)
+          .filter((file) => /migrations\/[^/]+\.sql$/u.test(file))
+          .sort();
         if (provider === "cloudflare" || provider === "supabase") {
-          expect(migrations).toHaveLength(1);
+          expect(
+            migrations.map((file) => path.basename(file).split("_")[0]),
+          ).toEqual(migrations.map((_, index) => `000${index + 1}`));
           const sql = await readFile(
             path.join(result.data.output, migrations[0]!),
             "utf8",
@@ -188,8 +219,17 @@ describe("published agent infrastructure commands", () => {
           ([, key]) => key!,
         );
         for (const source of sources)
-          for (const [, key] of source.matchAll(/process\.env\.([A-Z_0-9]+)/g))
-            expect(variables).toContain(key);
+          for (const [, read, named] of source.matchAll(
+            /process\.env\.([A-Z_0-9]+)|\bsecret\("([A-Z_0-9]+)"\)/g,
+          ))
+            expect(variables).toContain(read ?? named);
+        // The config reads every credential with secret(), and the server
+        // definition, a server's, from its own environment.
+        expect(config).not.toMatch(/secretEnv|"secret:/u);
+        for (const name of credentialNames(provider)) {
+          expect(config).not.toContain(`process.env.${name}`);
+          expect(definition).not.toContain(`secret("${name}")`);
+        }
         // The managed server runs apiKeys(), which sets its client-route policy.
         expect(manifest.clientAuth).toEqual({
           plugin: "apiKeys",
@@ -303,6 +343,27 @@ describe("published agent infrastructure commands", () => {
       operation: "upgrade",
     });
     expect(upgrade.data.instructions).toMatch(/upgrades\/README\.md$/);
+  });
+
+  it("writes upgrade files a project's formatter keeps as generated", () => {
+    const { output } = run(
+      "upgrade",
+      "--provider",
+      "cloudflare",
+      "--build",
+      "bare",
+    ).data;
+    // A project's oxfmt checks the scaffold it keeps, whose manifest pins
+    // these files' hashes: they must already be formatted.
+    const check = spawnSync(
+      oxfmt,
+      ["--check", "--config", oxfmtConfig, path.join(output, "upgrades")],
+      { cwd, encoding: "utf8" },
+    );
+    expect(check.stdout + check.stderr).toContain(
+      "All matched files use the correct format.",
+    );
+    expect(check.status).toBe(0);
   });
 
   it("rejects occupied, mismatched and incomplete outputs without overwriting them", async () => {

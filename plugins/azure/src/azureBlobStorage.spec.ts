@@ -1,6 +1,38 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { azureBlobStorage } from "./azureBlobStorage";
+
+describe("azureBlobStorage", () => {
+  it("connects on first use, so a config loads without the connection string", async () => {
+    const storage = azureBlobStorage({
+      connectionString: undefined as never,
+      containerName: "bundles",
+    });
+
+    await expect(
+      storage.exists({ storageUri: "azure-blob://bundles/key" }),
+    ).rejects.toThrow();
+  });
+});
+
+describe("azureBlobStorage's connection string from a function", () => {
+  it("is read on first use, not when the config loads", async () => {
+    const connectionString = vi.fn(async () => {
+      throw new Error('secret("STORAGE_CONNECTION_STRING") has no value');
+    });
+
+    const storage = azureBlobStorage({
+      connectionString,
+      containerName: "bundles",
+    });
+    expect(connectionString).not.toHaveBeenCalled();
+
+    await expect(
+      storage.exists({ storageUri: "azblob://bundles/key" }),
+    ).rejects.toThrow('secret("STORAGE_CONNECTION_STRING") has no value');
+    expect(connectionString).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("azureBlobStorage download URLs", () => {
   it("refuses to hand devices a SAS connection string's own token", async () => {

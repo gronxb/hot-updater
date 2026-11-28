@@ -50,7 +50,7 @@ describe("inputSupabaseAccessToken", () => {
       "npx",
       [
         "-y",
-        "supabase@2.122.1",
+        "supabase@3.0.0",
         "projects",
         "list",
         "--output",
@@ -73,7 +73,7 @@ describe("inputSupabaseAccessToken", () => {
     expect(mocks.execa).toHaveBeenNthCalledWith(
       2,
       "npx",
-      ["-y", "supabase@2.122.1", "login", "--no-browser", "--agent", "no"],
+      ["-y", "supabase@3.0.0", "login", "--no-browser", "--agent", "no"],
       {
         stdin: "inherit",
         stderr: "inherit",

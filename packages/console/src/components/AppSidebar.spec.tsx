@@ -177,6 +177,40 @@ describe("AppSidebar navigation", () => {
     expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
   });
 
+  it("forgets this iPhone's device cookie under the Console's own path before signing out on an iPhone", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1",
+    );
+    pathname = "/insights";
+    window.history.replaceState(null, "", "/console/insights");
+    const fetchMock = vi.fn(
+      async (_url: string, _init?: RequestInit) =>
+        new Response("{}", { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const reload = vi.fn();
+    vi.spyOn(window, "location", "get").mockReturnValue({
+      ...window.location,
+      pathname: "/console/insights",
+      reload,
+    } as Location);
+    try {
+      render(<AppSidebar canSignOut />);
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+      expect(fetchMock.mock.calls[0]![0]).toBe(
+        "/console/_hot-updater/devices/receipt",
+      );
+      expect(fetchMock.mock.calls[0]![1]?.method).toBe("DELETE");
+      expect(fetchMock.mock.calls[1]![0]).toBe("/api/auth/sign-out");
+    } finally {
+      pathname = "/";
+      window.history.replaceState(null, "", "/");
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    }
+  });
+
   it("disables sign out while pending and lets the user retry a failed request", async () => {
     let finish!: (response: Response) => void;
     const fetchMock = vi.fn(

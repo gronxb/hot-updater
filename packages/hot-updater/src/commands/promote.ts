@@ -1,15 +1,20 @@
-import { loadConfig, p } from "@hot-updater/cli-tools";
+import { loadConfig, nonInteractiveReason, p } from "@hot-updater/cli-tools";
 import type { ReleaseRow } from "@hot-updater/plugin-core";
 
 import { type LoadedServer, loadServer } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
-import { withPublicBundleErrors } from "../utils/publicBundleError";
+import { failBundleCommand, notFoundError } from "../utils/publicBundleError";
+import {
+  labelText,
+  resolveReleaseId,
+  type LabelScopeOptions,
+} from "./releaseLabel";
 
 export type PromoteAction = "copy" | "move";
 
-export interface PromoteOptions {
+export interface PromoteOptions extends LabelScopeOptions {
   readonly action?: PromoteAction;
   readonly target: string;
   readonly yes?: boolean;
@@ -33,6 +38,9 @@ const summarizePlan = (
 ) =>
   ui.block(`Promote Bundle (${action})`, [
     ui.kv("Source ID", ui.id(source.id)),
+    labelText(source) === ""
+      ? ""
+      : ui.kv("Source label", `${sourceChannel} ${labelText(source)}`),
     ui.kv("Platform", ui.platform(source.platform)),
     ui.kv("From", ui.channel(sourceChannel)),
     ui.kv("To", ui.channel(targetChannel)),
@@ -48,7 +56,7 @@ const summarizePlan = (
   ]);
 
 export const handlePromote = async (
-  sourceReleaseId: string,
+  sourceIdOrLabel: string,
   options: PromoteOptions,
 ) => {
   printBanner();
@@ -61,20 +69,25 @@ export const handlePromote = async (
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
-    const [source, channels] = await Promise.all([
-      core.getRelease(sourceReleaseId),
-      core.listChannels(),
-    ]);
+    const sourceReleaseId = await resolveReleaseId(
+      core,
+      sourceIdOrLabel,
+      options,
+    );
+    const source = await core.getRelease(sourceReleaseId);
     if (source === null) {
-      p.log.error(`No bundle with ID ${sourceReleaseId}.`);
-      process.exit(1);
+      return await failBundleCommand(
+        core,
+        sourceReleaseId,
+        notFoundError(sourceReleaseId),
+        { outcome: "promoted" },
+      );
     }
-    const sourceChannel =
-      channels.find(({ id }) => id === source.channel_id)?.name ??
-      source.channel_id;
+    const [channel] = await core.getChannels([source.channel_id]);
+    const sourceChannel = channel?.name ?? source.channel_id;
     p.log.message(summarizePlan(source, sourceChannel, targetChannel, action));
     if (!options.yes) {
-      if (!process.stdin.isTTY) {
+      if (nonInteractiveReason() !== undefined) {
         p.log.error(
           "Cannot prompt in a non-interactive shell. Re-run with -y.",
         );
@@ -89,14 +102,19 @@ export const handlePromote = async (
         process.exit(2);
       }
     }
-    const result = await withPublicBundleErrors(() =>
-      core.promoteRelease({
+    let result: Awaited<ReturnType<typeof core.promoteRelease>>;
+    try {
+      result = await core.promoteRelease({
         action,
         expectedRevision: source.revision,
         releaseId: source.id,
         targetChannel,
-      }),
-    );
+      });
+    } catch (error) {
+      return await failBundleCommand(core, sourceReleaseId, error, {
+        outcome: "promoted",
+      });
+    }
     const promoted = result.target.release;
     if (promoted === null)
       throw new Error("Promoted bundle was not persisted.");
@@ -105,7 +123,19 @@ export const handlePromote = async (
         ? `Promoted bundle to ${targetChannel}.`
         : `Moved bundle to ${targetChannel}.`,
     );
-    p.log.info(ui.kv("ID", ui.id(promoted.id)));
+    const label = labelText(promoted);
+    const sourceLabel = labelText(source);
+    p.log.info(
+      ui.block("", [
+        ui.kv("ID", ui.id(promoted.id)),
+        label === ""
+          ? ""
+          : ui.kv(
+              "Label",
+              `${targetChannel} ${label}${sourceLabel === "" ? "" : ` (from ${sourceChannel} ${sourceLabel})`}`,
+            ),
+      ]),
+    );
   } finally {
     await safeDispose(server);
   }

@@ -280,8 +280,10 @@ describe("E2E navigation compact surface contract", () => {
       "runtime-initial-cohort-screen.tsx",
       "runtime-large-asset-screen.tsx",
       "runtime-marker-screen.tsx",
+      "runtime-release-label-screen.tsx",
       "runtime-release-state-screen.tsx",
       "runtime-remote-config-screen.tsx",
+      "runtime-reported-bundle-screen.tsx",
     ]);
 
     for (const fileName of [

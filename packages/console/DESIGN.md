@@ -30,6 +30,90 @@ stays subordinate to exact values and actions.
 
 - Inter Variable is the UI typeface, with the platform stack as the initial
   fallback and the existing monospace stack for identifiers.
+- Every release, artifact, and install ID the Console shows is its tail:
+  the whole ID in the text, so screen readers read all of it, clipped from
+  the left to its last 12 characters (`ID_TAIL`, a UUID's last group; a
+  UUIDv7's head is a timestamp neighbouring IDs share). Nothing shows one
+  in full, as a shorter slice, or as a head…tail pill; `IdTails.spec.tsx`
+  fails on any other clip width, on an ID printed as bare text or as a
+  labeled row's value, and on an ID passed to `HashValueDisplay`, whose
+  pill is for content hashes (fingerprint, build key, manifest) only.
+- A labeled release reads `v12 <ID tail>` (`ReleaseIdDisplay`): the label
+  in medium `text-sm`, then its ID tail in muted monospace `text-sm` on the
+  same baseline, with a plain gap and no dot between them. A release without
+  a label shows its tail alone, after a muted dash where the label would
+  open it (`labelAs`), and the dash reads as its whole ID unless the control
+  names itself. The label and tail don't shrink, so a badge beside them
+  (Promoted, Unreachable, Disabled) shares a `flex-wrap` row with them and
+  moves under them on a narrow screen rather than over the tail.
+- Where a surface heads a release's values, the label and the ID split so
+  `v12` never sits under "ID": the Bundles table has a Label column then an
+  ID column, and the release sheet a Label row then an ID row
+  (`ReleaseIdDisplay` with `part="label"` and `part="id"`). The expand
+  chevron has a narrow first column of its own, headed only for screen
+  readers ("Expand"), with an empty cell for a built-in bundle, so "Label"
+  sits over `v12` and "ID" over the tail. An unreachable fold's chevron sits
+  in a box as wide as the rows' chevron button (`DataTableFold`'s
+  `leadColumn`), so the two chevrons share a center and the fold's text
+  starts under "Label". The Label column holds only the label, and the
+  row's badges follow the ID tail in the ID column, so the column stays as
+  narrow as the label and the tail sits right after it, read in the card's
+  order. The ID there is the same 12-character tail as the copy button,
+  labeled or not. A release without a label
+  shows a muted dash in the Label column, which still opens it, and no Label
+  row in the sheet. Split, both take `text-xs` and the ID takes
+  `text-foreground`, the size and color of the values beside them (Target,
+  Platform, Channel), and the copy button's phone touch area grows to stay
+  44 px tall. The label stays plain medium text, never a chip, since chips
+  in that table mean channel, patch count, and operation.
+  Everywhere without a header for each value (phone Bundles cards,
+  Insights, Served now, pickers, chart tooltips, diagnostics), the label and
+  tail stay together as `v12 <ID tail>`.
+- A label is unique only within a channel and platform: production iOS v14,
+  production Android v14, and beta iOS v14 are three releases. Where one
+  surface lists both platforms' releases, such as Insights with All
+  platforms, `ReleaseIdDisplay` gets `platform` and shows its muted icon
+  before the label, read as the platform's name. Where the screen fixes the
+  platform, or the row already shows it (a Bundles row's platform and channel
+  badge, the release sheet, a native build's served releases), nothing more
+  shows. No labeled surface mixes channels without a channel badge in the
+  row, so labels carry no channel prefix.
+- A label's tail is its release ID (what the app's `getBundleId()`
+  returns): its tooltip shows and its copy copies that ID, never an
+  artifact's, so `vN` reads the same on every screen.
+- "Bundle ID" in Console copy means the release ID. An artifact's ID shows
+  through `ArtifactIdDisplay`, which takes no label, and its copy says
+  "artifact". `ReleaseIdDisplay` is the only display that takes a label.
+- An artifact's ID is the same tail and copy button as a release's
+  (`ArtifactIdDisplay`), and its popover says "Artifact ID" and its button
+  "Copy artifact ID". Inside a link it is text with the full ID in `title`
+  (`copyable={false}`). Where an installation reported a bundle with no
+  release, Insights shows that artifact ID (`ReportedBundleId`); otherwise
+  the release ID. A built-in bundle's ID shows no piece of itself: a native
+  build makes it from its build time and zero random bits, so its tail is
+  zeros in every build and its head a timestamp. It reads `Built-in bundle ·
+  <app version>` (`BuiltinBundleDisplay`), the version the surface already
+  holds: the native build's store label such as `1.6.1 (63)`, or the app
+  version of the report or row that names it, and `Built-in bundle` alone
+  where the surface has none. It is the same copy button, its popover
+  saying "Built-in bundle ID" with the full ID; inside a link it is text
+  with the ID in `title`. `ArtifactIdDisplay` names any ID in a built-in
+  bundle's shape this way, a filter chip reads "Built-in bundle", and
+  `BuiltinBundleNames.spec.tsx` fails on any piece of one shown. Where a
+  release serves the built-in bundle, its release ID shows with a "Built-in
+  bundle" badge. An installation's ID is
+  the same tail (`InstallIdDisplay`), its popover saying "Install ID" and
+  its button "Copy install ID", in event rows, installation history,
+  matching installations (as text inside the option), failure reports, and
+  an HTTP response's context.
+- Where an artifact shows (advanced artifact diagnostics' base and target),
+  its ID tail shows first, then "Release" and the label of the release serving it
+  in the expanded Bundle's channel and platform. Without one on the page,
+  the artifact ID shows alone, never another channel's label. A native
+  build's patches name each target by the release serving it in the build's
+  scope now, and date it by that release, as Served now does; an older
+  target shows as "Artifact" and its ID, dated by the artifact, linking to
+  the Bundles list filtered to that artifact (`?artifactId=`).
 - Page headings use `text-base` or `text-lg` with semibold weight. Operational
   card titles use `text-sm` with medium or semibold weight.
 - Body and control text use `text-sm`; dense metadata and table content use
@@ -117,6 +201,27 @@ stays subordinate to exact values and actions.
   use a short state and direct action for empty lookup results, such as No
   matches / Edit search.
 
+- **ID copy:** a release's or an artifact's ID tail is a button of its own.
+  Hover or keyboard focus opens a tooltip with the full ID and Click to copy;
+  a click, Enter, or a tap copies the full ID and the same tooltip says
+  Copied (Couldn't copy on failure), with a polite status for screen readers.
+  It never sits inside another control: where the label opens something (the
+  Bundles row's button, Served now's link), that control wraps only `vN`
+  through `labelAs`, and the tail stays beside it, keeping its click from the
+  row. Inside a control that can't hold a button (a combobox option, a chart
+  tooltip), pass `copyable={false}`: the tail is text, and the full ID shows
+  on hover from `title`.
+  The tail clips inside the button, so its phone touch area stays 44 px
+  tall. Where two tails stack on a phone (an artifact and the release
+  serving it, an event's From and To), each sits on a 44 px line so the
+  touch areas meet rather than overlap. A badge that wraps under a card's
+  tail sits 12 px under it, where the tail's touch area ends; a control that
+  wraps there, such as Unreachable, has a touch area of its own, so the row
+  gap holds both: 16 px under, the tail's area reaching 12 px into it and
+  the control's 4 px, meeting without overlapping, both 44 px tall. A dialog that names a release with it, such as Roll back, gives
+  first focus to Cancel, so no tooltip opens over it. Being a button, the
+  tail doesn't take a text selection; the click copies.
+
 Primitive states are default, hover/focus for interactive controls, disabled
 while submitting/loading when relevant, loading, empty, error, and success.
 
@@ -125,6 +230,13 @@ while submitting/loading when relevant, loading, empty, error, and success.
 - **Reporting installations:** the leading card shows the unique latest-state
   installation count for the selected platform, channel, and period, with its
   independent measurement time.
+- **Compared bundles:** Release health compares its bundles in a table from
+  32 rem of card width. A narrower card lists them instead, one bundle per
+  item: its line color, label and ID tail with their badges, and deployment on
+  top, with the Remove button beside them at 44 px; then each count under the
+  name its table column has, in a `dl`. Both copies render the same name and
+  counts, so they can't drift, and only the card width picks one. Nothing in
+  either copy spills its cell or breaks mid-word, from 360 px up.
 - **Selected bundle:** when a bundle is selected, show its latest-state
   installation count and independent Applied reports, Recovered-from reports,
   and Adopted reports counts. Each outcome links to event history using the

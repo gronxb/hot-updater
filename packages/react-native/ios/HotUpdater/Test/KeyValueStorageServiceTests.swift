@@ -142,6 +142,65 @@ struct KeyValueStorageServiceTests {
         #expect(storage.getItem("a") == "1")
     }
 
+    @Test
+    func setThatChangesNothingLeavesTheFileAlone() throws {
+        let directory = try workingDirectory(named: "unchanged")
+        defer { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
+        let storage = KeyValueStorageService(directory: directory)
+        #expect(storage.setItem("a", value: "1"))
+
+        // Another writer's bytes stay: the same value, or removing a missing key, writes nothing.
+        try Data(#"{"a":"disk"}"#.utf8).write(to: storageFile(in: directory))
+        #expect(storage.setItem("a", value: "1"))
+        #expect(storage.setItem("gone", value: nil))
+        #expect(try storedObject(in: directory) == ["a": "disk"])
+
+        #expect(storage.setItem("a", value: "2"))
+        #expect(try storedObject(in: directory) == ["a": "2"])
+    }
+
+    @Test
+    func canonicallyEquivalentValueIsStillAChange() throws {
+        let directory = try workingDirectory(named: "unicode")
+        defer { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
+        let storage = KeyValueStorageService(directory: directory)
+        let composed = "\u{00E9}"
+        let decomposed = "e\u{0301}"
+        #expect(storage.setItem("a", value: composed))
+        #expect(storage.setItem("a", value: decomposed))
+
+        #expect(storage.getItem("a").map { Array($0.utf8) } == Array(decomposed.utf8))
+        let stored = try Data(contentsOf: storageFile(in: directory))
+        #expect(stored.range(of: Data(decomposed.utf8)) != nil)
+    }
+
+    @Test
+    func setAfterAFailedWriteWritesAgain() throws {
+        let directory = try workingDirectory(named: "retry")
+        defer { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
+        let file = storageFile(in: directory)
+        // A directory where the file belongs makes the write fail.
+        try FileManager.default.createDirectory(at: file, withIntermediateDirectories: true)
+        let storage = KeyValueStorageService(directory: directory)
+        #expect(storage.setItem("a", value: "1") == false)
+
+        try FileManager.default.removeItem(at: file)
+        #expect(storage.setItem("a", value: "1"))
+        #expect(try storedObject(in: directory) == ["a": "1"])
+    }
+
+    @Test
+    func setAfterAnUnreadableFileReplacesIt() throws {
+        let directory = try workingDirectory(named: "unreadable")
+        defer { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("{".utf8).write(to: storageFile(in: directory))
+        let storage = KeyValueStorageService(directory: directory)
+
+        #expect(storage.setItem("missing", value: nil))
+        #expect(try storedObject(in: directory) == [:])
+    }
+
     private func workingDirectory(named name: String) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("key-value-storage-tests-\(name)-\(UUID().uuidString)")

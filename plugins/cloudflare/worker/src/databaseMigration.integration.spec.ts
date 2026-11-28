@@ -10,9 +10,10 @@ import {
   createBundleEventRowFixture,
   createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
-import { env } from "cloudflare:test";
+import { applyD1Migrations, env } from "cloudflare:test";
 import { expect, inject, it } from "vitest";
 
+import { d1MigrationStatements } from "../../src/d1Schema";
 import { d1Database } from "../../src/worker";
 
 declare module "vitest" {
@@ -36,28 +37,67 @@ const dataTables = toolingTargetOf([
     .map((index) => `${table.name}__${index.name}`),
 ]);
 
-it("ships a single 1.0.0 initialization migration", () => {
-  expect(inject("d1Migrations").map(({ name }) => name)).toEqual([
-    "0001_hot-updater_1.0.0.sql",
-  ]);
+/** A migration as `exec` runs it: one statement per line, and a comment line is not one. */
+const execable = (sql: string) =>
+  sql
+    .split("\n")
+    .filter((line) => line.trim() !== "" && !line.startsWith("--"))
+    .join("\n");
+
+/**
+ * The Worker's migrations as `wrangler d1 migrations apply` runs them, which
+ * init runs again on every upgrade: each one's statements, recorded in
+ * `d1_migrations` by name.
+ */
+const wranglerMigrations = () =>
+  inject("d1Migrations").map(({ name, sql }) => ({
+    name,
+    queries: d1MigrationStatements(sql),
+  }));
+
+it("runs the migrations a database initialized by an earlier release has not run, and records them", async () => {
+  const [first, ...later] = inject("d1Migrations");
+  // What `wrangler d1 migrations apply` left when init ran with only the first.
+  await env.DB.exec(execable(first!.sql));
+  await env.DB.exec(
+    "CREATE TABLE IF NOT EXISTS d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL);",
+  );
+  await env.DB.prepare("INSERT INTO d1_migrations (name) VALUES (?)")
+    .bind(first!.name)
+    .run();
+
+  expect(later).not.toEqual([]);
+
+  await applyD1Migrations(env.DB, wranglerMigrations());
+  const recorded = await env.DB.prepare(
+    "SELECT name FROM d1_migrations ORDER BY id",
+  ).all<{ name: string }>();
+  expect(recorded.results.map(({ name }) => name)).toEqual(
+    inject("d1Migrations").map(({ name }) => name),
+  );
+  // The managed server's fence passes.
+  await expect(
+    createHotUpdater({
+      database: d1Database(env.DB),
+      storage: createReleaseCatalogTestStorage(),
+      plugins: [insights(), apiKeys(), remoteConfig()],
+    }).core.listChannels(),
+  ).resolves.toEqual([]);
 });
 
-it("creates every table, the batch guard, and the settings the fence checks", async () => {
-  const [migration] = inject("d1Migrations");
-  // `exec` runs one statement per line, and a comment line is not one.
-  await env.DB.exec(
-    migration!.sql
-      .split("\n")
-      .filter((line) => line.trim() !== "" && !line.startsWith("--"))
-      .join("\n"),
-  );
+it("creates every table, the batch guard, the migration records, and the settings the fence checks", async () => {
   const tables = (
     await env.DB.prepare(
       "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'",
     ).all<{ name: string }>()
   ).results.map(({ name }) => name);
   expect(tables.toSorted()).toEqual(
-    ["_hu_write", "private_hot_updater_settings", ...dataTables].toSorted(),
+    [
+      "_hu_write",
+      "d1_migrations",
+      "private_hot_updater_settings",
+      ...dataTables,
+    ].toSorted(),
   );
   const settings = await env.DB.prepare(
     "SELECT key, value FROM private_hot_updater_settings ORDER BY key",

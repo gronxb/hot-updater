@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BASE = "ef1a071e83fc870038a591b7b83d91a6a738f96c"
 EVENT_ONLY = "dfee6cb63e6cf6d79a03453284d2417f2c1600db"
-SCHEMA = "plugins/cloudflare/worker/migrations/0001_hot-updater_1.0.0.sql"
+SCHEMA = "plugins/cloudflare/sql/bundles.sql"
 LATEST = """NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id
 AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id)))"""
 

@@ -1,0 +1,289 @@
+---
+title: "Agent infrastructure reference"
+description: "Let AI agents apply versioned infrastructure templates and resume setup or upgrades using their available provider tools."
+icon: Bot
+---
+
+## Ask your agent
+
+For a new app, start with [Set up with an agent](/docs/v1.0/guides/ai-agents). It
+covers installation, provider discovery, native integration and the first
+verified OTA. This page documents the infrastructure commands, generated files,
+resume behavior and server verification used during that workflow.
+
+`hot-updater agent infra setup` and `upgrade` generate local files. The agent
+applies those files through available provider tools, creates missing resources
+when authorized and verifies their actual state. The commands themselves do not
+authenticate or execute the deployment plan.
+
+For terminal setup, use [Set up manually](/docs/v1.0/get-started/basic-usage).
+
+## Before provisioning
+
+The CLI and the generated client credential helper, which imports TypeScript,
+require Node.js 22.23.4+, 24.22.1+, or 26.12.1+. Have the agent check this before creating remote resources; the
+helper can use a separate runtime from your app.
+
+Before either command, follow [Install packages](/docs/v1.0/get-started/installation)
+to install `hot-updater`, `@hot-updater/react-native` and the selected
+build/provider packages. Record the installed versions and keep the lockfile.
+
+The installed CLI must advertise `agent infra setup` and `agent infra upgrade`.
+The agent also checks `doctor --help` for the `scaffold` and `infrastructure`
+scopes, `--infra-dir` and live target options before provisioning. If missing,
+it needs a compatible CLI/package upgrade to complete verification. The skill
+does not add commands to older versions or substitute checklist claims for a
+doctor result.
+
+## What the setup command produces
+
+With no provider/build selections, `hot-updater agent infra setup` prints a guide
+for the agent to discover the project and gather only missing choices. With both
+selections, it writes the scaffold and returns its absolute paths:
+
+| Output | Purpose |
+| --- | --- |
+| Provider deployment files | Server runtime, migrations, bindings, indexes and deployment configuration |
+| `app/` | The selected build's app configuration, client-key provisioning and server verification helpers |
+| `env.example` and `ENVIRONMENT.md` | Variable names, purposes, required or conditional status, and where to obtain values |
+| `COMMON.md` and `SETUP.md` | Project discovery, secure access, provider setup, verification and retry instructions |
+| `manifest.json` and `deployment.json` | Target versions/file hashes and a record for pending actions and verified outcomes |
+| `upgrades/` | Preserved release instructions for future upgrades |
+
+The command does not execute the generated deployment plan. The agent continues
+from these files until setup is verified or a specific external blocker remains.
+
+For standalone server template extraction, use
+[`hot-updater infra scaffold`](/docs/v1.0/guides/infrastructure-templates). Agent
+commands reuse that extractor and add instructions, app configuration and a
+deployment record. Their server runtime files are identical.
+
+## Generate templates
+
+Without options, either command prints instructions for the agent to gather
+the provider and build selections:
+
+```bash
+npx hot-updater agent infra setup
+npx hot-updater agent infra upgrade
+```
+
+Provide both selections to generate deployment files:
+
+```bash
+npx hot-updater agent infra setup --provider cloudflare --build expo
+npx hot-updater agent infra setup --provider supabase --build bare
+npx hot-updater agent infra setup --provider aws --build rock
+npx hot-updater agent infra setup --provider firebase --build bare
+npx hot-updater agent infra setup --provider vercel --build bare
+npx hot-updater agent infra setup --provider azure --build bare
+```
+
+All five providers support `bare`, `rock`, and `expo`. The output prints absolute
+paths to the templates, instructions, manifest, and deployment record.
+
+| Option | Purpose |
+| --- | --- |
+| `--provider <provider>` | `cloudflare`, `supabase`, `aws`, `firebase`, `vercel`, or `azure` |
+| `--build <plugin>` | `bare`, `rock`, or `expo` |
+| `--output <directory>` | Choose an unused scaffold destination |
+| `--json` | Return bootstrap instructions or scaffold paths as JSON |
+
+The default directory is
+`hot-updater-infra/<provider>/<operation>-<build>-<cli-version>`.
+Repeating a command preserves an existing compatible scaffold, including agent
+edits. A different provider, build, operation, or version requires another
+directory. Missing files in an existing scaffold are reported for repair.
+
+## Apply the generated files
+
+`SETUP.md` is an ordered checklist. Each step lists its inputs or prerequisites,
+the action and working directory, what to verify, and how to retry. The agent
+verifies a prerequisite before starting its dependent step. Database preparation
+and client-key registration follow the provider's `init` sequence, including
+Firebase's and Vercel's database migration, and Azure's adapter initialization, before Function deployment. A checked box alone
+is not evidence of a successful deployment.
+
+Each scaffold includes `COMMON.md`, provider-specific `SETUP.md`, and an
+`upgrades/` directory. Each release has its own `<version>.md` file containing
+compatibility, common changes, provider instructions and verification.
+`upgrades/README.md` lists those files in version order and explains how to read
+the complete upgrade path.
+
+| Provider | Deployment artifacts |
+| --- | --- |
+| Cloudflare | Bundled Worker, Wrangler bindings, D1 migrations |
+| Supabase | Prepared Edge Function, Deno imports and vendored files, SQL migrations |
+| AWS | Lambda bundle and dependencies, CloudFront specifications, DynamoDB/IAM JSON inputs and SSM references |
+| Firebase | Built Functions project, dependencies, Firebase config, Firestore indexes |
+| Vercel | Bundled Function and `vercel.json` |
+| Azure | Bundled Function package: `index.mjs`, `host.json`, and `package.json` |
+
+The `app/` directory contains `hot-updater.config.ts` for the selected
+`--build`, with the provider's storage, database and `plugins`, and a client
+API-key helper. The helper provisions the key through `hotUpdater.ts` beside
+it (plus `migrate.ts` for Firestore), which stays in the scaffold.
+`env.example` lists local provider settings; `ENVIRONMENT.md` explains
+each variable's purpose, when it is needed and where to obtain it. The JSON
+`environment` field points to that guide. The agent merges the config's
+storage, database and `plugins` into your app's existing `hot-updater.config.ts`
+and prepares credentials for future CLI deploys.
+Connecting an MCP server does not automatically provide credentials to the CLI.
+
+The agent configures optional creation or authentication fields only when your setup needs them.
+For example, an existing Supabase project needs no new-project name or region,
+and the AWS scaffold can use an existing profile or role without creating access
+keys. The agent discovers resource values and configures only the credentials
+required by the chosen tools and local CLI.
+
+`manifest.json` records concrete target package versions and original file
+hashes. `deployment.json` starts with empty resource IDs and verification results.
+Before each remote mutation, the agent saves `pendingStep` with a stable target
+locator and records a request ID when available. After observing the result, it
+saves actual resource IDs and dated verification evidence in `verifiedSteps`.
+The agent maintains this record; the CLI does not execute or enforce it.
+Generating a manifest does not mean the target server version has been deployed.
+
+Keep real credentials and key files private. The supplied credential helper
+persists the client credential before registration and reuses it after an
+interrupted request. Use only that client credential in the app's request
+header, `x-api-key` for the managed servers' `apiKeys()`.
+
+### Provide access securely
+
+Do not paste tokens, passwords, private keys or credential JSON into the agent
+conversation. Sign in through the provider's login flow or save required secrets
+directly in a local ignored environment file or provider secret store. Tell the
+agent when authentication is complete; it verifies access without printing values.
+The agent can generate and store new keys privately when setup requires them.
+
+## Resume a failed step
+
+Ask the agent to read the existing scaffold and deployment record. It queries
+actual remote state using the recorded target or request ID before retrying,
+including when a request timed out after the provider may have completed it.
+The agent resolves that pending action before starting another remote mutation.
+
+For example, if Worker deployment fails after D1 and R2 creation, the agent
+verifies those resources and retries deployment with the same IDs. It preserves
+migration history, secrets, and existing objects.
+
+## Upgrade an existing server
+
+With the skill attached, ask your agent:
+
+```text
+$hot-updater Upgrade this project's existing server infrastructure.
+```
+
+If doctor has identified the server, you can include its URL:
+
+```text
+$hot-updater Upgrade the server infrastructure at https://updates.example.com and verify it with doctor.
+```
+
+The agent uses a CLI release that contains the desired server template and runs
+the upgrade command with your project's provider and build selections, for example:
+
+```bash
+npx hot-updater agent infra upgrade --provider cloudflare --build expo
+```
+
+This generates a separate upgrade directory. The agent compares its target
+manifest with the previous deployment, live `/version`, migration history, and
+your customized files. It applies relevant upgrade entries in order, preserving
+resources, secrets, endpoints, and unrelated settings. It re-verifies against the
+new manifest instead of copying old checkmarks into the upgrade record, and ties
+each upgrade step's evidence to its release filename.
+
+Before making changes, the agent reads the installed generation's baseline as
+context and every subsequent version file through the target requirement.
+Reading only the newest file can miss prerequisites from a skipped release.
+Previously applied steps provide context; the agent verifies actual state
+before deciding which steps still need to run. The JSON output includes
+`upgradeGuide` and an ordered `upgradeFiles` array of versions and absolute paths.
+
+`doctor` points to this command when infrastructure changes are required. Its
+version requirements and the upgrade-file index share one registry. Every
+requirement must have a complete version-named file; packaging fails if a file
+or required provider section is missing. Existing files are preserved so future
+releases retain the context needed for upgrades across multiple versions.
+
+## Verify completion
+
+The agent follows `COMMON.md` and uses doctor as the scaffold and server
+verification gate. After configuring deployment inputs, run:
+
+```bash
+npx hot-updater doctor --scope scaffold --infra-dir <scaffold-path> --json
+```
+
+The scaffold command's JSON also provides this invocation as `doctor.command`
+and `doctor.args`. Fresh templates fail until placeholders are filled. The
+checks use the installed CLI's file requirements and provider rules, while
+allowing intended template customization.
+
+After deployment, resolve any pending operation and run from the app directory:
+
+```bash
+npx hot-updater doctor --scope infrastructure --infra-dir <scaffold-path> --json \
+  --server-base-url https://updates.example.com \
+  --platform ios --channel production --app-version 1.0.0
+```
+
+For fingerprint updates, use `--fingerprint <fingerprint>` instead of
+`--app-version`. Doctor checks the local scaffold and live server generation/version,
+then the same Release Catalog URL without a key (401) and with the saved key
+(valid 200, or the empty-catalog 404 marked `x-hot-updater-catalog: none`).
+It reads keys from private local storage and returns sanitized JSON. The existing
+`app/verify-server.mjs` helper remains available and shares doctor's server probe.
+
+Require exit code 0, `success: true`, and the requested
+`details.verification.scope`. Repair `fail` and `blocked` checks, then rerun.
+Do not rewrite manifests or mark checklist entries complete to bypass a check.
+The CLI observes the filesystem and server directly; recorded `verifiedSteps`
+are not proof of completion.
+
+Read `details.verification.notChecked` before reporting completion. Provider
+resource bindings/migrations, local storage access and artifact downloads still
+need the provider checklist checks; native OTA requires a separate runtime test.
+For package/native configuration checks, also run:
+
+```bash
+npx hot-updater doctor --json --server-base-url https://updates.example.com
+```
+
+After setup passes these checks, the agent provides a ready-to-copy configuration
+like the final output of `hot-updater init`:
+
+```ts
+import { HotUpdater, insights } from "@hot-updater/react-native";
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: "https://your-deployed-update-server",
+  requestHeaders: {
+    "x-api-key": "<your-registered-client-api-key>",
+  },
+  plugins: [insights()],
+});
+```
+
+The agent replaces these example values with the verified base URL, including
+any Function path, and the actual client key it registered or reused. It shows
+the client key itself, rather than a masked value or a path to its saved file.
+Provider tokens, service-role keys, admin credentials and signing keys remain
+private. The deployed server runs `insights()`, so the snippet includes the
+[Insights plugin](/docs/v1.0/react-native-api/insights) that reports to it.
+
+Place initialization once, at the top level of its own module such as
+`src/hotUpdater.ts`. `HotUpdater.init` does not start an update check; the agent also shows `hotUpdater.wrap` around the app's root, or
+`hotUpdater.checkForUpdate` in your own flow, with your app's `appVersion` or
+`fingerprint` strategy. Preserve existing initialization options.
+Infrastructure-only setup includes this snippet and identifies app integration
+and native OTA verification as remaining work.
+
+Server deployment, JS/native integration, and an OTA test in a native Release
+build are separate results. Continue with [Connect your app](/docs/v1.0/get-started/app-setup)
+and [Test an OTA update](/docs/v1.0/get-started/test-ota). The agent reports which
+checks passed and which work remains; a scaffold, manifest or healthy server
+version alone does not prove app delivery.

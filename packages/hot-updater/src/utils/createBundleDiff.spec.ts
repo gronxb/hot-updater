@@ -223,6 +223,103 @@ describe("createBundleDiff", () => {
     }
   });
 
+  /** A refusal as core's in-process API or a standalone server's 400 throws it. */
+  const refusalOf = (name: string, status?: number) =>
+    Object.assign(
+      new Error("A sandbox build's built-in bundle is no patch base."),
+      { name },
+      status === undefined ? {} : { status },
+    );
+
+  const diffWithFailingWrite = async (
+    write: (
+      core: Core,
+      update: Parameters<Core["updateBundle"]>,
+    ) => Promise<void>,
+  ) => {
+    const baseAsset = createAsset([1, 2, 3]);
+    const targetAsset = createAsset([1, 9, 3]);
+    const baseBundle = createBundle(
+      "00000000-0000-0000-0000-000000000001",
+      {},
+      hermesAssets(baseAsset),
+    );
+    const targetBundle = createBundle(
+      "00000000-0000-0000-0000-000000000002",
+      {},
+      hermesAssets(targetAsset),
+    );
+    const core = await createCore([baseBundle, targetBundle]);
+    const updateBundle = core.updateBundle.bind(core);
+    vi.spyOn(core, "updateBundle").mockImplementation((...update) =>
+      write({ ...core, updateBundle }, update),
+    );
+    const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
+      async ({ key }) => ({ storageUri: `s3://test-bucket/${key}` }),
+    );
+    const storageAdapter = createStorageAdapter(upload);
+    const remove = vi.spyOn(storageAdapter, "delete");
+    stubStorageFetch([
+      { bundle: baseBundle, asset: baseAsset },
+      { bundle: targetBundle, asset: targetAsset },
+    ]);
+    try {
+      const error = await createBundleDiff(
+        { baseBundleId: baseBundle.id, bundleId: targetBundle.id },
+        { core, storageAdapter },
+      ).then(
+        () => null,
+        (thrown: unknown) => thrown,
+      );
+      const uploaded = (await upload.mock.results[0]!.value) as {
+        storageUri: string;
+      };
+      return {
+        error,
+        remove,
+        uploaded,
+        stored: await storedBundle(core, targetBundle.id),
+      };
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  };
+
+  it.each([
+    ["core's in-process refusal", refusalOf("NativeBuildInputError")],
+    ["a standalone server's 400", refusalOf("StandaloneDatabaseError", 400)],
+  ])("deletes the uploaded patch on %s", async (_, refusal) => {
+    const { error, remove, uploaded, stored } = await diffWithFailingWrite(
+      async () => {
+        throw refusal;
+      },
+    );
+
+    expect(error).toBe(refusal);
+    expect(remove).toHaveBeenCalledWith({ storageUri: uploaded.storageUri });
+    expect(stored).toMatchObject({ patches: [] });
+  });
+
+  it.each([
+    ["a lost response", new Error("fetch failed")],
+    ["a server error", refusalOf("StandaloneDatabaseError", 500)],
+  ])(
+    "keeps the uploaded patch the write may have committed, on %s",
+    async (_, failure) => {
+      // The write commits, then the answer is lost or fails.
+      const { error, remove, uploaded, stored } = await diffWithFailingWrite(
+        async (core, update) => {
+          await core.updateBundle(...update);
+          throw failure;
+        },
+      );
+
+      expect(error).toBe(failure);
+      expect(remove).not.toHaveBeenCalled();
+      expect(stored?.patches?.[0]?.patchStorageUri).toBe(uploaded.storageUri);
+    },
+  );
+
   it("rejects ambiguous Hermes bundle assets in manifests", async () => {
     const baseAssets = {
       "index.ios.bundle": { fileHash: "hash-old" },
@@ -778,6 +875,119 @@ describe("createBundleDiff", () => {
         `Manifest of bundle ${baseBundle.id} does not match its signature`,
       );
       expect(upload).not.toHaveBeenCalled();
+    });
+
+    describe("a native build's built-in bundle as the base", () => {
+      const minBundleId = "01900000-0000-7000-8000-000000000000";
+      const targetBundleId = "01900000-0000-7000-8000-000000000001";
+
+      /**
+       * A signed target, and the built-in bundle of a registered native
+       * build: registration records its manifest's SHA-256, never a
+       * signature, as `native-build ios|android` does.
+       */
+      const setupBuiltIn = async (builtInManifest?: string) => {
+        const baseAsset = createAsset([1, 2, 3]);
+        const targetAsset = createAsset([1, 9, 3]);
+        const targetBundle = createBundle(targetBundleId, {
+          manifestFileHash: signedManifestHash(
+            manifestJson(targetBundleId, hermesAssets(targetAsset)),
+          ),
+        });
+        const core = await createCore([targetBundle]);
+        await core.registerNativeBuild({
+          id: "01900000-0000-7000-8000-00000000b001",
+          platform: "ios",
+          channel: "production",
+          fingerprintHash: "fingerprint-hash",
+          appVersion: null,
+          minBundleId,
+          gitCommitHash: null,
+          buildKey: null,
+          artifact: {
+            kind: "ipa",
+            storageUri: "s3://test-bucket/native-builds/ios/b001",
+            byteSize: 1_024,
+          },
+          embeddedBundle: {
+            manifestStorageUri: `s3://test-bucket/releases/bundles/${minBundleId}/manifest.json`,
+            manifestFileHash: sha256(
+              manifestJson(minBundleId, hermesAssets(baseAsset)),
+            ),
+            assetBaseStorageUri: "s3://test-bucket/releases/assets",
+          },
+        });
+        const fetchMock = vi.fn(async (input: Request | URL | string) => {
+          const url = String(input);
+          if (url.endsWith(`${minBundleId}/manifest.json`)) {
+            return new Response(
+              builtInManifest ??
+                manifestJson(minBundleId, hermesAssets(baseAsset)),
+            );
+          }
+          if (url.endsWith(`${targetBundleId}/manifest.json`)) {
+            return new Response(
+              manifestJson(targetBundleId, hermesAssets(targetAsset)),
+            );
+          }
+          for (const asset of [baseAsset, targetAsset]) {
+            if (url.endsWith(asset.compressedPath)) {
+              return new Response(asset.compressed as BodyInit);
+            }
+          }
+          return new Response("not found", { status: 404 });
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
+          async ({ key }) => ({ storageUri: `s3://test-bucket/${key}` }),
+        );
+        return { baseAsset, core, fetchMock, upload };
+      };
+
+      it("patches a signed bundle from it with the configured public key", async () => {
+        const { core, upload } = await setupBuiltIn();
+
+        await createBundleDiff(
+          { baseBundleId: minBundleId, bundleId: targetBundleId },
+          {
+            core,
+            signingPublicKey: publicKey,
+            storageAdapter: createStorageAdapter(upload),
+          },
+        );
+
+        expect(upload).toHaveBeenCalledOnce();
+        expect(
+          (await storedBundle(core, targetBundleId))?.patches?.map(
+            (patch) => patch.baseBundleId,
+          ),
+        ).toEqual([minBundleId]);
+      });
+
+      it("rejects its manifest when it does not match the registered hash, before reading its assets", async () => {
+        const { baseAsset, core, fetchMock, upload } = await setupBuiltIn(
+          manifestJson(minBundleId, hermesAssets(createAsset([7, 7, 7]))),
+        );
+
+        await expect(
+          createBundleDiff(
+            { baseBundleId: minBundleId, bundleId: targetBundleId },
+            {
+              core,
+              signingPublicKey: publicKey,
+              storageAdapter: createStorageAdapter(upload),
+            },
+          ),
+        ).rejects.toThrow(
+          `Manifest of bundle ${minBundleId} does not match its hash`,
+        );
+        expect(
+          fetchMock.mock.calls.some(([input]) =>
+            String(input).endsWith(baseAsset.compressedPath),
+          ),
+        ).toBe(false);
+        expect(upload).not.toHaveBeenCalled();
+      });
     });
   });
 });

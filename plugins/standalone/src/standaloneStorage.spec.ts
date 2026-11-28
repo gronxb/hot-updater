@@ -71,6 +71,30 @@ describe("standaloneStorage", () => {
     );
   });
 
+  it("sends lazy common headers resolved when it lists and deletes objects", async () => {
+    const authorization = vi.fn(async () => "Bearer lazy-token");
+    const fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        "Bearer lazy-token",
+      );
+      return String(input).endsWith("/list")
+        ? Response.json({ objects: [] })
+        : new Response(null, { status: 204 });
+    });
+    vi.stubGlobal("fetch", fetch);
+    const storage = standaloneStorage({
+      baseUrl: "https://repo.example.com",
+      protocol: "s3",
+      commonHeaders: { Authorization: authorization },
+    });
+    expect(authorization).not.toHaveBeenCalled();
+
+    await expect(storage.listObjects("bundles")).resolves.toEqual([]);
+    await storage.deleteObjects(["bundles/a.zip"]);
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("returns the remote object response directly", async () => {
     vi.stubGlobal(
       "fetch",

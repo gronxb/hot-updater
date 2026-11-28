@@ -123,4 +123,31 @@ describe("getFingerprintDiff", () => {
       ],
     });
   });
+
+  it("names a config by its source rather than its JSON, and a module with no version by its name", () => {
+    const registration = (modules: string) =>
+      contentsOf(
+        "expo-module-config:my-module",
+        `{"coreFeatures":null,"listed":true,"section":{"modules":["${modules}"]}}`,
+      );
+
+    expect(
+      summarizeFingerprintDiff([
+        { op: "added", addedSource: registration("LocalModule") },
+        {
+          op: "removed",
+          removedSource: contentsOf("dependency:my-module", "my-module@"),
+        },
+        {
+          op: "changed",
+          beforeSource: contentsOf("codegen-config:.", '{"type":"modules"}'),
+          afterSource: contentsOf("codegen-config:.", '{"type":"all"}'),
+        },
+      ]),
+    ).toEqual({
+      added: ["expo-module-config:my-module"],
+      removed: ["my-module"],
+      changed: ["codegen-config:."],
+    });
+  });
 });

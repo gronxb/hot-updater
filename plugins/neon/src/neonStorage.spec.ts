@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { neonStorage } from "./neonStorage";
 
@@ -83,5 +83,30 @@ describe("neonStorage", () => {
     await expect(
       storage.getDownloadUrl({ storageUri: "neon://other/bundle.zip" }),
     ).rejects.toThrow(/Bucket name mismatch/);
+  });
+
+  it("signs with credentials whose fields are lazy, read once on first use", async () => {
+    const accessKeyId = vi.fn(async () => "lazy-access-key-id");
+    const secretAccessKey = vi.fn(async () => "lazy-secret-access-key");
+    const storage = neonStorage({
+      bucketName: "updates",
+      credentials: { accessKeyId, secretAccessKey },
+      endpoint,
+    });
+    expect(accessKeyId).not.toHaveBeenCalled();
+
+    const urls = await Promise.all(
+      ["a.zip", "b.zip"].map((key) =>
+        storage.getDownloadUrl({ storageUri: `neon://updates/${key}` }),
+      ),
+    );
+
+    for (const { url } of urls) {
+      expect(new URL(url).searchParams.get("X-Amz-Credential")).toMatch(
+        /^lazy-access-key-id\//,
+      );
+    }
+    expect(accessKeyId).toHaveBeenCalledTimes(1);
+    expect(secretAccessKey).toHaveBeenCalledTimes(1);
   });
 });

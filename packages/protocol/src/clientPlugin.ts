@@ -247,7 +247,13 @@ export interface HotUpdaterClientContext {
   readonly minBundleId: string;
   /** Whether this is a debug build (`__DEV__`). */
   readonly isDebugBuild: boolean;
-  /** The bundle native reports as current. */
+  /**
+   * The same ID as `hotUpdater.getBundleId()`: the selected release's ID, the
+   * one the Console shows. It names a staged update before the app reloads,
+   * `minBundleId` for the built-in bundle, and the artifact ID only for a
+   * bundle installed without a release. A plugin that needs the artifact reads
+   * the hooks' `bundleId`, `fromBundleId`, `toBundleId`, and `targetBundleId`.
+   */
   getBundleId(): string;
   getChannel(): string;
   getCohort(): string;

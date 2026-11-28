@@ -14,7 +14,7 @@ export const downloadBundle = async (
   { core, storage }: DownloadBundleDependencies,
 ): Promise<Response> => {
   const detail = await core.getBundle(bundleId);
-  if (!detail) return new Response("Bundle not found", { status: 404 });
+  if (!detail) return new Response("Artifact not found", { status: 404 });
 
   const storageUri = detail.bundle.manifest_storage_uri;
 

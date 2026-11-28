@@ -46,14 +46,14 @@ npx wrangler whoami
 
 Edit the root `wrangler.jsonc` using your existing OTA backend's values:
 
-| Field | Set to |
-| --- | --- |
-| `name` | A new console Worker name |
-| `account_id` | Your Cloudflare account ID |
-| `vars.BETTER_AUTH_URL` | Your public console HTTPS origin |
-| `vars.BUCKET_NAME` | Your existing R2 bucket name |
-| `d1_databases[0]` | Your existing D1 database name and ID |
-| `r2_buckets[0].bucket_name` | The same R2 bucket name |
+| Field                       | Set to                                |
+| --------------------------- | ------------------------------------- |
+| `name`                      | A new console Worker name             |
+| `account_id`                | Your Cloudflare account ID            |
+| `vars.BETTER_AUTH_URL`      | Your public console HTTPS origin      |
+| `vars.BUCKET_NAME`          | Your existing R2 bucket name          |
+| `d1_databases[0]`           | Your existing D1 database name and ID |
+| `r2_buckets[0].bucket_name` | The same R2 bucket name               |
 
 The default origin is `https://<worker-name>.<account-subdomain>.workers.dev`. Register its [OAuth callback](/docs/guides/console-deployment#set-up-sign-in), or use your custom domain consistently.
 
@@ -151,13 +151,13 @@ Rollback restores Worker code/configuration, not D1 or R2 data.
 </Accordion>
 <Accordion title="Troubleshooting">
 
-| Symptom | Check |
-| --- | --- |
-| Bindings unavailable | Build and run the Worker preset, not Vite's Node server |
+| Symptom                              | Check                                                                                     |
+| ------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Bindings unavailable                 | Build and run the Worker preset, not Vite's Node server                                   |
 | Insights missing from the navigation | `plugins` in `console.config.ts` includes `insights()` from `@hot-updater/server/plugins` |
-| Empty Insights | Correct D1 binding; local preview uses separate data |
-| Bucket mismatch | `BUCKET_NAME`, the R2 binding, and stored bundle URI use the same bucket |
-| Stale bindings | Edit root config, rebuild, and deploy the generated output |
+| Empty Insights                       | Correct D1 binding; local preview uses separate data                                      |
+| Bucket mismatch                      | `BUCKET_NAME`, the R2 binding, and stored bundle URI use the same bucket                  |
+| Stale bindings                       | Edit root config, rebuild, and deploy the generated output                                |
 
 ```package-install
 npx wrangler tail

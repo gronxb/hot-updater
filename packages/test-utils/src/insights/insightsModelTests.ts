@@ -89,7 +89,7 @@ export const registerInsightsModelTests = (
             filter: {
               kind: "bundle",
               type: "UPDATE_DOWNLOADED",
-              toBundleId: download.to_bundle_id,
+              toReleaseId: download.to_release_id!,
               platform: "ios",
               channel: "production",
             },
@@ -345,7 +345,7 @@ export const registerInsightsModelTests = (
             platform: "ios",
             channel: "production",
             type: "UPDATE_APPLIED",
-            toBundleId: bundleB,
+            toReleaseId: bundleB,
           },
           applied,
         ],
@@ -354,7 +354,7 @@ export const registerInsightsModelTests = (
             platform: "ios",
             channel: "production",
             type: "RECOVERED",
-            fromBundleId: bundleB,
+            fromReleaseId: bundleB,
           },
           recovered,
         ],
@@ -410,7 +410,7 @@ export const registerInsightsModelTests = (
               platform: "ios",
               channel: "production",
               type: "UNCHANGED",
-              toBundleId: bundleB,
+              toReleaseId: bundleB,
             },
             sinceMs: 100,
             beforeReceivedAtMs: 200,
@@ -418,22 +418,6 @@ export const registerInsightsModelTests = (
         0,
       );
       // Latest events count whole UTC days: every head above lies in day 0.
-      await expectInsightsIndex(
-        () =>
-          model.countLatestEvents({
-            platform: "ios",
-            channel: "production",
-            sinceMs: 0,
-            bundle: [
-              {
-                field: "to_bundle_id",
-                value: bundleA,
-                types: ["UNCHANGED", "UPDATE_APPLIED", "RECOVERED"],
-              },
-            ],
-          }),
-        1,
-      );
       await expectInsightsIndex(
         () =>
           model.countLatestEvents({
@@ -522,51 +506,127 @@ export const registerInsightsModelTests = (
       ).resolves.toEqual([events[2]!]);
     });
 
-    it("counts overlapping bundle predicates once per latest installation", async () => {
+    it("counts one release's latest installations: a download's source, and the target of anything else", async () => {
       const model = state.getDatabase();
-      const event = createBundleEventRowFixture("9700", 100);
-      await record(model, event);
-      const predicate = {
-        field: "to_bundle_id" as const,
-        value: event.to_bundle_id,
-        types: [event.type],
+      const releaseA = "00000000-0000-7000-8000-000000009702";
+      const releaseB = "00000000-0000-7000-8000-000000009703";
+      const applied = {
+        ...createBundleEventRowFixture("9700", 100),
+        to_release_id: releaseA,
       };
-      await expectInsightsIndex(
-        () =>
-          model.countLatestEvents({
-            platform: event.platform,
-            channel: event.channel,
-            sinceMs: 0,
-            bundle: [predicate, predicate],
-          }),
-        1,
-      );
+      // Downloaded B, and still runs A until it launches B.
+      const downloaded: BundleEventRow = {
+        ...createBundleEventRowFixture("9701", 100),
+        type: "UPDATE_DOWNLOADED",
+        from_release_id: releaseA,
+        to_release_id: releaseB,
+      };
+      await record(model, applied);
+      await record(model, downloaded);
+      const scope = {
+        platform: "ios",
+        channel: "production",
+        sinceMs: 0,
+      } as const;
+      const count = (releaseId?: string) =>
+        releaseId === undefined
+          ? model.countLatestEvents(scope)
+          : model
+              .countReleaseInstallations({ ...scope, releaseId })
+              .then(({ release }) => release);
+      await expectInsightsIndex(() => count(releaseA), 2);
+      await expectInsightsIndex(() => count(releaseB), 0);
+      await expectInsightsIndex(() => count(), 2);
     });
 
-    it("counts a latest installation once when a from and a to predicate both match it", async () => {
+    it("keeps two releases of one artifact in one scope apart, as a promote back into the channel makes them", async () => {
       const model = state.getDatabase();
-      const moved = createBundleEventRowFixture("9701", 100);
-      await record(model, moved);
+      // v3 served artifact A, v4 artifact B, and v5 promoted A back: two
+      // releases of A in one channel and platform.
+      const artifactA = createBundleEventRowFixture("9750", 0).to_bundle_id;
+      const artifactB = createBundleEventRowFixture("9751", 0).to_bundle_id;
+      const v3 = "00000000-0000-7000-8000-000000009753";
+      const v4 = "00000000-0000-7000-8000-000000009754";
+      const v5 = "00000000-0000-7000-8000-000000009755";
+      const event = (
+        suffix: string,
+        receivedAtMs: number,
+        installId: string,
+        fields: Partial<BundleEventRow>,
+      ): BundleEventRow =>
+        ({
+          ...createBundleEventRowFixture(suffix, receivedAtMs),
+          install_id: installId,
+          ...fields,
+        }) as BundleEventRow;
+      const onV3 = { to_bundle_id: artifactA, to_release_id: v3 };
+      const onV5 = { to_bundle_id: artifactA, to_release_id: v5 };
+      const events = [
+        // Two installations launched v3, and both crashed on it.
+        event("9760", 100, "abba-1", onV3),
+        event("9761", 110, "abba-2", onV3),
+        event("9762", 120, "abba-1", {
+          type: "RECOVERED",
+          from_bundle_id: artifactA,
+          from_release_id: v3,
+          to_bundle_id: artifactB,
+          to_release_id: v4,
+        }),
+        event("9763", 130, "abba-2", {
+          type: "RECOVERED",
+          from_bundle_id: artifactA,
+          from_release_id: v3,
+          to_bundle_id: artifactB,
+          to_release_id: v4,
+        }),
+        // Three launched v5 later, and none crashed.
+        event("9764", 200, "abba-3", onV5),
+        event("9765", 210, "abba-4", onV5),
+        event("9766", 220, "abba-5", onV5),
+      ];
+      for (const row of events) await record(model, row);
+      const scope = { platform: "ios", channel: "production" } as const;
+      const count = (filter: InsightsBundleEventFilter) =>
+        model.countEvents({ filter, sinceMs: 0, beforeReceivedAtMs: 1_000 });
+      const series = (filter: InsightsBundleEventFilter) =>
+        model
+          .countEventSeries({
+            filter,
+            timeRange: { start: 0, end: 3_600_000 },
+            intervalMs: 3_600_000,
+          })
+          .then((points) => points.map(({ events }) => events));
+      const launched = (release: string) =>
+        ({ ...scope, type: "UPDATE_APPLIED", toReleaseId: release }) as const;
+      const crashed = (release: string) =>
+        ({ ...scope, type: "RECOVERED", fromReleaseId: release }) as const;
+      // Each release has its own launches and crashes: v3 crashed for both
+      // of its installations, v5 for none of its three.
+      await expectInsightsIndex(() => count(launched(v3)), 2);
+      await expectInsightsIndex(() => count(launched(v5)), 3);
+      await expectInsightsIndex(() => count(crashed(v3)), 2);
+      await expectInsightsIndex(() => count(crashed(v5)), 0);
+      await expectInsightsIndex(() => series(launched(v5)), [3]);
+      await expectInsightsIndex(() => series(crashed(v5)), [0]);
+      await expectInsightsIndex(() => series(crashed(v3)), [2]);
+      // Each release's installations: the two that crashed on v3 went to v4.
+      const installations = (releaseId: string) =>
+        model
+          .countReleaseInstallations({ ...scope, sinceMs: 0, releaseId })
+          .then(({ release }) => release);
+      await expectInsightsIndex(() => installations(v5), 3);
+      await expectInsightsIndex(() => installations(v4), 2);
+      await expectInsightsIndex(() => installations(v3), 0);
       await expectInsightsIndex(
         () =>
-          model.countLatestEvents({
-            platform: moved.platform,
-            channel: moved.channel,
-            sinceMs: 0,
-            bundle: [
-              {
-                field: "from_bundle_id",
-                value: moved.from_bundle_id,
-                types: [moved.type],
-              },
-              {
-                field: "to_bundle_id",
-                value: moved.to_bundle_id,
-                types: [moved.type],
-              },
-            ],
-          }),
-        1,
+          model
+            .listEvents({
+              filter: { kind: "bundle", ...crashed(v3) },
+              beforeReceivedAtMs: 1_000,
+              limit: 10,
+            })
+            .then((rows) => rows.map(({ install_id }) => install_id)),
+        ["abba-2", "abba-1"],
       );
     });
 
@@ -585,7 +645,7 @@ export const registerInsightsModelTests = (
             platform: "ios",
             channel: "production",
             type: "RECOVERED",
-            fromBundleId: createBundleEventRowFixture("1", 0).to_bundle_id,
+            fromReleaseId: "00000000-0000-7000-8000-000000003001",
           },
           sinceMs: 0,
           beforeReceivedAtMs: 100,
@@ -663,7 +723,7 @@ export const registerInsightsModelTests = (
           hourly({
             ...scope,
             type: "UPDATE_APPLIED",
-            toBundleId: base.to_bundle_id,
+            toReleaseId: releaseB,
           }),
         points(2, 0, 0),
       );
@@ -672,7 +732,7 @@ export const registerInsightsModelTests = (
           hourly({
             ...scope,
             type: "RECOVERED",
-            fromBundleId: base.to_bundle_id,
+            fromReleaseId: releaseB,
           }),
         points(1, 0, 0),
       );
@@ -758,6 +818,22 @@ export const registerInsightsModelTests = (
         ]),
       );
       expect(usage.bundleDistribution).toHaveLength(2);
+      // The built-in bundle names no release: its installations count by its
+      // ID, as event filters match a report without a release; an unknown
+      // bundle's, by no ID.
+      const installations = (releaseId: string) =>
+        model
+          .countReleaseInstallations({
+            channel,
+            platform: "ios",
+            sinceMs: 0,
+            releaseId,
+          })
+          .then(({ release }) => release);
+      await expectInsightsIndex(() => installations(builtin), 2);
+      await expect(
+        installations(createBundleEventRowFixture("9905", 0).id),
+      ).resolves.toBe(0);
     });
     it("pages insights events newest first with a stable cursor", async () => {
       const model = state.getDatabase();
@@ -946,7 +1022,7 @@ export const registerInsightsModelTests = (
               platform: "ios",
               channel: "production",
               type: "UNCHANGED",
-              toBundleId: base.to_bundle_id,
+              toReleaseId: releaseB,
             },
             sinceMs: 0,
             beforeReceivedAtMs: 2 * day,
@@ -1054,9 +1130,9 @@ export const registerInsightsModelTests = (
           (await count({
             ...scope,
             type: "UPDATE_APPLIED",
-            toBundleId: bundleB,
+            toReleaseId: releaseB,
           })) +
-          (await count({ ...scope, type: "UNCHANGED", toBundleId: bundleB })),
+          (await count({ ...scope, type: "UNCHANGED", toReleaseId: releaseB })),
         metrics!.applies,
       );
       // The download series counts the stored download rows and the
@@ -1072,7 +1148,7 @@ export const registerInsightsModelTests = (
       ).length;
       await expectInsightsIndex(
         () =>
-          count({ ...scope, type: "UPDATE_DOWNLOADED", toBundleId: bundleB }),
+          count({ ...scope, type: "UPDATE_DOWNLOADED", toReleaseId: releaseB }),
         metrics!.downloads,
       );
       expect(implied).toBe(2);
@@ -1144,12 +1220,16 @@ export const registerInsightsModelTests = (
         [check, download, applied],
       );
       const scope = { platform: "ios", channel: "production" } as const;
-      for (const [toBundleId, listed] of [
+      for (const [toReleaseId, listed] of [
         [download.to_bundle_id, [download]],
         // A failed check names the running bundle, which it did not target.
         [check.to_bundle_id, []],
       ] as const) {
-        const filter = { ...scope, type: "UPDATE_FAILED", toBundleId } as const;
+        const filter = {
+          ...scope,
+          type: "UPDATE_FAILED",
+          toReleaseId,
+        } as const;
         await expectInsightsIndex(
           () =>
             model.listEvents({

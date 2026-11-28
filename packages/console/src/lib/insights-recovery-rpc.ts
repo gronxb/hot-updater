@@ -1,11 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 
-import type { BundleActivityInput } from "./bundle-activity";
 import { consoleAccess } from "./console-access";
 import { readRecoveryInput } from "./insights-recovery";
+import type { ReleaseActivityInput } from "./release-activity";
 
-export function readBundleActivityInput(
-  inputs: readonly BundleActivityInput[],
+export function readReleaseActivityInput(
+  inputs: readonly ReleaseActivityInput[],
 ) {
   if (!Array.isArray(inputs) || inputs.length > 20)
     throw new Error("Choose up to 20 bundles.");
@@ -16,18 +16,18 @@ export function readBundleActivityInput(
   });
 }
 
-export const getBundleActivityRpc = createServerFn({ method: "GET" })
+export const getReleaseActivityRpc = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
-  .validator(readBundleActivityInput)
+  .validator(readReleaseActivityInput)
   .handler(async ({ data }) => {
-    const [{ prepareConfig }, { getBundleActivity }, { requireFeature }] =
+    const [{ prepareConfig }, { getReleaseActivity }, { requireFeature }] =
       await Promise.all([
         import("./server/config.server"),
-        import("./server/bundleActivity"),
+        import("./server/releaseActivity"),
         import("./server/runtime.server"),
       ]);
     const { runtime } = await prepareConfig();
-    return getBundleActivity(
+    return getReleaseActivity(
       await requireFeature(runtime, "insightsAnalytics"),
       data,
     );

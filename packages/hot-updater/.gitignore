@@ -1,0 +1,3 @@
+# secretsSnippets.spec.ts type-checks the docs snippets here, removing them after.
+.snippet-*/
+.snippets-*/

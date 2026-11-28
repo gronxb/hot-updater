@@ -112,7 +112,39 @@ export type DistributionConfigOverrides = {
   Origins: NonNullable<DistributionConfig["Origins"]>;
   DefaultCacheBehavior: NonNullable<DistributionConfig["DefaultCacheBehavior"]>;
   CacheBehaviors: NonNullable<DistributionConfig["CacheBehaviors"]>;
+  CustomErrorResponses: NonNullable<DistributionConfig["CustomErrorResponses"]>;
 };
+
+/**
+ * Server errors CloudFront never caches: by default it keeps a 5xx for ten
+ * seconds, so one 503 of a retryable read would reach every device behind
+ * that edge. No response page replaces the server's own answer.
+ */
+export const HOT_UPDATER_UNCACHED_ERROR_CODES = [500, 502, 503, 504] as const;
+
+type CustomErrorResponse = NonNullable<
+  NonNullable<DistributionConfig["CustomErrorResponses"]>["Items"]
+>[number];
+
+/**
+ * The API reference lists `ResponsePagePath` and `ResponseCode` as optional,
+ * but CloudFront rejects an error response without both elements
+ * (IllegalUpdate: "The specified list of custom error responses does not
+ * exist or is not valid"). Empty elements mean no page replaces the origin's
+ * answer.
+ */
+const withResponseElements = (
+  response: CustomErrorResponse,
+): CustomErrorResponse => ({
+  ...response,
+  ResponsePagePath: response.ResponsePagePath ?? "",
+  ResponseCode: response.ResponseCode ?? "",
+});
+
+const uncachedErrorResponses = () =>
+  HOT_UPDATER_UNCACHED_ERROR_CODES.map((ErrorCode) =>
+    withResponseElements({ ErrorCode, ErrorCachingMinTTL: 0 }),
+  );
 
 type DefaultBehavior = NonNullable<DistributionConfig["DefaultCacheBehavior"]>;
 type CacheBehavior = NonNullable<
@@ -219,6 +251,15 @@ const sanitizeDistributionConfig = (
         ),
       }
     : distributionConfig.CacheBehaviors,
+  CustomErrorResponses: distributionConfig.CustomErrorResponses
+    ? {
+        Quantity: distributionConfig.CustomErrorResponses.Quantity,
+        Items:
+          distributionConfig.CustomErrorResponses.Items?.map(
+            withResponseElements,
+          ),
+      }
+    : distributionConfig.CustomErrorResponses,
 });
 
 const buildOriginRequestLambdaAssociations = (functionArn: string) => ({
@@ -443,6 +484,10 @@ export const buildDistributionConfigOverrides = (options: {
       ),
     ],
   },
+  CustomErrorResponses: {
+    Quantity: HOT_UPDATER_UNCACHED_ERROR_CODES.length,
+    Items: uncachedErrorResponses(),
+  },
 });
 
 export const applyDistributionConfigOverrides = (
@@ -475,6 +520,19 @@ export const applyDistributionConfigOverrides = (
     distributionConfig.CacheBehaviors?.Items ?? [],
     cacheBehaviorOverrides,
   );
+  // The distribution's other error responses stay; these codes become
+  // uncached, with no page substituted.
+  const managedCodes = new Set<number>(
+    (overrides.CustomErrorResponses.Items ?? []).map(
+      ({ ErrorCode }) => ErrorCode!,
+    ),
+  );
+  const errorResponses = [
+    ...(distributionConfig.CustomErrorResponses?.Items ?? []).filter(
+      ({ ErrorCode }) => !managedCodes.has(ErrorCode!),
+    ),
+    ...(overrides.CustomErrorResponses.Items ?? []),
+  ];
   return sanitizeDistributionConfig({
     ...distributionConfig,
     Origins: {
@@ -488,6 +546,10 @@ export const applyDistributionConfigOverrides = (
     CacheBehaviors: {
       Quantity: cacheBehaviors.length,
       Items: cacheBehaviors,
+    },
+    CustomErrorResponses: {
+      Quantity: errorResponses.length,
+      Items: errorResponses,
     },
   });
 };

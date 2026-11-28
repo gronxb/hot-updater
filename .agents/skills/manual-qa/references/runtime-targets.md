@@ -42,6 +42,7 @@ The route-based app exposes focused evidence instead of one long page:
 | testID | Deep link |
 | --- | --- |
 | `runtime-bundle-id` | `hotupdaterexample://e2e/runtime-bundle` |
+| `runtime-reported-bundle-id` | `hotupdaterexample://e2e/runtime-reported-bundle` |
 | `runtime-release-state` | `hotupdaterexample://e2e/runtime-release-state` |
 | `runtime-large-e2e-asset` | `hotupdaterexample://e2e/runtime-large-asset` |
 | `runtime-scenario-marker` | `hotupdaterexample://e2e/runtime-marker` |

@@ -1,5 +1,537 @@
 # @hot-updater/bare
 
+## 1.2.0-rc.63
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.63
+  - @hot-updater/plugin-core@1.2.0-rc.63
+
+## 1.2.0-rc.62
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.62
+  - @hot-updater/plugin-core@1.2.0-rc.62
+
+## 1.2.0-rc.61
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.61
+  - @hot-updater/plugin-core@1.2.0-rc.61
+
+## 1.2.0-rc.60
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.60
+  - @hot-updater/plugin-core@1.2.0-rc.60
+
+## 1.2.0-rc.59
+
+### Patch Changes
+
+- Updated dependencies [ef2db86]
+  - @hot-updater/plugin-core@1.2.0-rc.59
+  - @hot-updater/cli-tools@1.2.0-rc.59
+
+## 1.2.0-rc.58
+
+### Patch Changes
+
+- Updated dependencies [e7ae1dc]
+  - @hot-updater/cli-tools@1.2.0-rc.58
+  - @hot-updater/plugin-core@1.2.0-rc.58
+
+## 1.2.0-rc.57
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.57
+  - @hot-updater/plugin-core@1.2.0-rc.57
+
+## 1.2.0-rc.56
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.56
+  - @hot-updater/plugin-core@1.2.0-rc.56
+
+## 1.2.0-rc.55
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.55
+  - @hot-updater/plugin-core@1.2.0-rc.55
+
+## 1.2.0-rc.54
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.54
+  - @hot-updater/plugin-core@1.2.0-rc.54
+
+## 1.2.0-rc.53
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.53
+  - @hot-updater/plugin-core@1.2.0-rc.53
+
+## 1.2.0-rc.52
+
+### Patch Changes
+
+- Updated dependencies [610f038]
+- Updated dependencies [f35618e]
+  - @hot-updater/plugin-core@1.2.0-rc.52
+  - @hot-updater/cli-tools@1.2.0-rc.52
+
+## 1.2.0-rc.51
+
+### Patch Changes
+
+- Updated dependencies [e833260]
+  - @hot-updater/plugin-core@1.2.0-rc.51
+  - @hot-updater/cli-tools@1.2.0-rc.51
+
+## 1.2.0-rc.50
+
+### Patch Changes
+
+- Updated dependencies [24fc70c]
+- Updated dependencies [21cf534]
+- Updated dependencies [36e1f23]
+- Updated dependencies [d840def]
+  - @hot-updater/plugin-core@1.2.0-rc.50
+  - @hot-updater/cli-tools@1.2.0-rc.50
+
+## 1.2.0-rc.49
+
+### Patch Changes
+
+- Updated dependencies [c0e1572]
+  - @hot-updater/cli-tools@1.2.0-rc.49
+  - @hot-updater/plugin-core@1.2.0-rc.49
+
+## 1.2.0-rc.48
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.48
+  - @hot-updater/plugin-core@1.2.0-rc.48
+
+## 1.2.0-rc.47
+
+### Patch Changes
+
+- a699856: fix(android-helper): Windows Android native builds record the channel and app version they embed, and build where long paths broke them.
+  - aapt2.exe ends its lines with CRLF, so the built artifact's `versionName` and `com.hotupdater.CHANNEL` read as unknown and the build was recorded on `production` with no native app version. The reader now accepts CRLF, and a meta-data name it can't read counts as unknown, never as no channel. A native build now records the channel the artifact embeds, with or without `--channel`, and never the project's: one no reader can read fails the build before anything is cached or recorded.
+  - `gradlew.bat` runs by its path, so a Windows machine with `NoDefaultCurrentDirectoryInExePath` set finds it.
+  - Windows builds pass `-DCMAKE_OBJECT_PATH_MAX=250` through an init script to every module's CMake whose own arguments don't set it. CMake then hashes the long part of React Native's codegen object paths, which ninja 1.10.2 in the SDK's CMake 3.22.1 can't reach past 260 characters.
+  - A bundle command that fails, such as `expo export:embed`, now reports its exit code or signal (an NTSTATUS such as 0xC0000005 in hex), its error lines and the command to run for its full output, instead of only its stderr. deploy prints a failed task's error once.
+
+- Updated dependencies [a699856]
+  - @hot-updater/cli-tools@1.2.0-rc.47
+  - @hot-updater/plugin-core@1.2.0-rc.47
+
+## 1.2.0-rc.46
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.46
+  - @hot-updater/plugin-core@1.2.0-rc.46
+
+## 1.2.0-rc.45
+
+### Patch Changes
+
+- Updated dependencies [39021d1]
+- Updated dependencies [51c4afb]
+- Updated dependencies [08aee10]
+  - @hot-updater/plugin-core@1.2.0-rc.45
+  - @hot-updater/cli-tools@1.2.0-rc.45
+
+## 1.2.0-rc.44
+
+### Patch Changes
+
+- Updated dependencies [6b45f64]
+- Updated dependencies [6b45f64]
+- Updated dependencies [6b45f64]
+  - @hot-updater/plugin-core@1.2.0-rc.44
+  - @hot-updater/cli-tools@1.2.0-rc.44
+
+## 1.2.0-rc.43
+
+### Patch Changes
+
+- Updated dependencies [6d1b8f8]
+  - @hot-updater/plugin-core@1.2.0-rc.43
+  - @hot-updater/cli-tools@1.2.0-rc.43
+
+## 1.2.0-rc.42
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.42
+  - @hot-updater/plugin-core@1.2.0-rc.42
+
+## 1.2.0-rc.41
+
+### Patch Changes
+
+- Updated dependencies [97f063d]
+  - @hot-updater/plugin-core@1.2.0-rc.41
+  - @hot-updater/cli-tools@1.2.0-rc.41
+
+## 1.2.0-rc.40
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.40
+  - @hot-updater/plugin-core@1.2.0-rc.40
+
+## 1.2.0-rc.39
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.39
+  - @hot-updater/plugin-core@1.2.0-rc.39
+
+## 1.2.0-rc.38
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.38
+  - @hot-updater/plugin-core@1.2.0-rc.38
+
+## 1.2.0-rc.37
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.37
+  - @hot-updater/plugin-core@1.2.0-rc.37
+
+## 1.2.0-rc.36
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.36
+  - @hot-updater/plugin-core@1.2.0-rc.36
+
+## 1.2.0-rc.35
+
+### Patch Changes
+
+- Updated dependencies [f1f0d01]
+  - @hot-updater/plugin-core@1.2.0-rc.35
+  - @hot-updater/cli-tools@1.2.0-rc.35
+
+## 1.2.0-rc.34
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.34
+  - @hot-updater/plugin-core@1.2.0-rc.34
+
+## 1.2.0-rc.33
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.33
+  - @hot-updater/plugin-core@1.2.0-rc.33
+
+## 1.2.0-rc.32
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.32
+  - @hot-updater/plugin-core@1.2.0-rc.32
+
+## 1.2.0-rc.31
+
+### Patch Changes
+
+- Updated dependencies [d4341b4]
+  - @hot-updater/plugin-core@1.2.0-rc.31
+  - @hot-updater/cli-tools@1.2.0-rc.31
+
+## 1.2.0-rc.30
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.30
+  - @hot-updater/plugin-core@1.2.0-rc.30
+
+## 1.2.0-rc.29
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.29
+  - @hot-updater/plugin-core@1.2.0-rc.29
+
+## 1.2.0-rc.28
+
+### Patch Changes
+
+- Updated dependencies [43605fd]
+- Updated dependencies [b03f1be]
+  - @hot-updater/plugin-core@1.2.0-rc.28
+  - @hot-updater/cli-tools@1.2.0-rc.28
+
+## 1.2.0-rc.27
+
+### Patch Changes
+
+- Updated dependencies [dbf78b0]
+- Updated dependencies [dbf78b0]
+  - @hot-updater/cli-tools@1.2.0-rc.27
+  - @hot-updater/plugin-core@1.2.0-rc.27
+
+## 1.2.0-rc.26
+
+### Patch Changes
+
+- Updated dependencies [acd3794]
+- Updated dependencies [a402c84]
+  - @hot-updater/cli-tools@1.2.0-rc.26
+  - @hot-updater/plugin-core@1.2.0-rc.26
+
+## 1.2.0-rc.25
+
+### Patch Changes
+
+- Updated dependencies [a2d057c]
+- Updated dependencies [0d8a448]
+- Updated dependencies [211e584]
+- Updated dependencies [5427f56]
+  - @hot-updater/cli-tools@1.2.0-rc.25
+  - @hot-updater/plugin-core@1.2.0-rc.25
+
+## 1.2.0-rc.24
+
+### Patch Changes
+
+- Updated dependencies [69225c7]
+  - @hot-updater/cli-tools@1.2.0-rc.24
+  - @hot-updater/plugin-core@1.2.0-rc.24
+
+## 1.2.0-rc.23
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.23
+  - @hot-updater/plugin-core@1.2.0-rc.23
+
+## 1.2.0-rc.22
+
+### Patch Changes
+
+- Updated dependencies [a823198]
+  - @hot-updater/plugin-core@1.2.0-rc.22
+  - @hot-updater/cli-tools@1.2.0-rc.22
+
+## 1.2.0-rc.21
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.21
+  - @hot-updater/plugin-core@1.2.0-rc.21
+
+## 1.2.0-rc.20
+
+### Patch Changes
+
+- Updated dependencies [1e72e05]
+  - @hot-updater/plugin-core@1.2.0-rc.20
+  - @hot-updater/cli-tools@1.2.0-rc.20
+
+## 1.2.0-rc.19
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.19
+  - @hot-updater/plugin-core@1.2.0-rc.19
+
+## 1.2.0-rc.18
+
+### Patch Changes
+
+- Updated dependencies [42f5b23]
+  - @hot-updater/plugin-core@1.2.0-rc.18
+  - @hot-updater/cli-tools@1.2.0-rc.18
+
+## 1.2.0-rc.17
+
+### Patch Changes
+
+- Updated dependencies [a8da20c]
+- Updated dependencies [e9edd9f]
+  - @hot-updater/cli-tools@1.2.0-rc.17
+  - @hot-updater/plugin-core@1.2.0-rc.17
+
+## 1.2.0-rc.16
+
+### Patch Changes
+
+- Updated dependencies [29bc1e6]
+  - @hot-updater/cli-tools@1.2.0-rc.16
+  - @hot-updater/plugin-core@1.2.0-rc.16
+
+## 1.2.0-rc.15
+
+### Patch Changes
+
+- Updated dependencies [effac38]
+  - @hot-updater/cli-tools@1.2.0-rc.15
+  - @hot-updater/plugin-core@1.2.0-rc.15
+
+## 1.2.0-rc.14
+
+### Patch Changes
+
+- Updated dependencies [cc31804]
+  - @hot-updater/cli-tools@1.2.0-rc.14
+  - @hot-updater/plugin-core@1.2.0-rc.14
+
+## 1.2.0-rc.13
+
+### Patch Changes
+
+- Updated dependencies [b54eddc]
+- Updated dependencies [ad99046]
+- Updated dependencies [a5daa89]
+- Updated dependencies [1e85609]
+- Updated dependencies [20006f2]
+- Updated dependencies [ef790db]
+  - @hot-updater/plugin-core@1.2.0-rc.13
+  - @hot-updater/cli-tools@1.2.0-rc.13
+
+## 1.2.0-rc.12
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.12
+  - @hot-updater/plugin-core@1.2.0-rc.12
+
+## 1.2.0-rc.11
+
+### Patch Changes
+
+- Updated dependencies [4c10736]
+  - @hot-updater/cli-tools@1.2.0-rc.11
+  - @hot-updater/plugin-core@1.2.0-rc.11
+
+## 1.2.0-rc.10
+
+### Patch Changes
+
+- Updated dependencies [41444fa]
+- Updated dependencies [fd2aa7e]
+  - @hot-updater/cli-tools@1.2.0-rc.10
+  - @hot-updater/plugin-core@1.2.0-rc.10
+
+## 1.2.0-rc.9
+
+### Patch Changes
+
+- Updated dependencies [12ff126]
+  - @hot-updater/cli-tools@1.2.0-rc.9
+  - @hot-updater/plugin-core@1.2.0-rc.9
+
+## 1.2.0-rc.8
+
+### Patch Changes
+
+- Updated dependencies [8a440e3]
+- Updated dependencies [2e3f250]
+- Updated dependencies [21cfeec]
+- Updated dependencies [c463534]
+- Updated dependencies [5358377]
+  - @hot-updater/cli-tools@1.2.0-rc.8
+  - @hot-updater/plugin-core@1.2.0-rc.8
+
+## 1.2.0-rc.7
+
+### Patch Changes
+
+- Updated dependencies [f3989de]
+  - @hot-updater/cli-tools@1.2.0-rc.7
+  - @hot-updater/plugin-core@1.2.0-rc.7
+
+## 1.2.0-rc.6
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.6
+  - @hot-updater/plugin-core@1.2.0-rc.6
+
+## 1.2.0-rc.5
+
+### Patch Changes
+
+- Updated dependencies [dd7db4b]
+- Updated dependencies [709997a]
+- Updated dependencies [5d4d977]
+- Updated dependencies [2fd1c83]
+  - @hot-updater/cli-tools@1.2.0-rc.5
+  - @hot-updater/plugin-core@1.2.0-rc.5
+
+## 1.2.0-rc.4
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.4
+  - @hot-updater/plugin-core@1.2.0-rc.4
+
+## 1.2.0-rc.3
+
+### Patch Changes
+
+- Updated dependencies [3c00e7a]
+  - @hot-updater/cli-tools@1.2.0-rc.3
+  - @hot-updater/plugin-core@1.2.0-rc.3
+
+## 1.2.0-rc.2
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.2
+  - @hot-updater/plugin-core@1.2.0-rc.2
+
+## 1.2.0-rc.1
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.1
+  - @hot-updater/plugin-core@1.2.0-rc.1
+
+## 1.2.0-rc.0
+
+### Patch Changes
+
+- Updated dependencies [6276804]
+- Updated dependencies [d7f02a6]
+- Updated dependencies [8c675a2]
+- Updated dependencies [28dfe97]
+- Updated dependencies [e97d063]
+- Updated dependencies [84b21f0]
+- Updated dependencies [0050ff3]
+- Updated dependencies [1ad0ebe]
+- Updated dependencies [89cd5ce]
+- Updated dependencies [f5cffc0]
+- Updated dependencies [79c81f6]
+- Updated dependencies [4d8e0d2]
+- Updated dependencies [ed37acf]
+- Updated dependencies [b78660b]
+- Updated dependencies [4e4ddfb]
+- Updated dependencies [f017e61]
+- Updated dependencies [5e7a045]
+  - @hot-updater/cli-tools@1.2.0-rc.0
+  - @hot-updater/plugin-core@1.2.0-rc.0
+
 ## 1.1.22
 
 ### Patch Changes

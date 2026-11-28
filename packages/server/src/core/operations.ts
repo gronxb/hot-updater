@@ -24,10 +24,24 @@ import {
   encodeChannelKey,
 } from "@hot-updater/protocol";
 
-import { toBundleRow, toReleaseRow, type CoreDatabase } from "./reads";
+import {
+  fillLabels,
+  pendingLabelPairs,
+  probeLabelSchema,
+  writeWithLabels,
+} from "./labels";
+import { isBuiltInBundle, refuseSandboxPatchBase } from "./nativeBuilds";
+import {
+  toBundleRow,
+  toCatalogRow,
+  toReleaseRow,
+  type CoreDatabase,
+} from "./reads";
 import {
   changeRelease,
   changeReleases,
+  catalogRowScope,
+  preflightRebuild,
   readCatalog,
   rebuildScope,
   type ReleaseChangeResult,
@@ -49,12 +63,15 @@ type CoreOperations = Pick<
   | "deleteRelease"
   | "promoteRelease"
   | "rebuildReleaseCatalog"
+  | "fillReleaseLabels"
   | "preflightReleaseCatalogRebuild"
   | "ensureChannel"
   | "deleteChannel"
   | "updateBundle"
   | "deleteBundles"
 >;
+
+const CATALOG_PAGE = 100;
 
 /** Carries a preflight's result out of the transaction it stops, so nothing is written. */
 class Preflight<T> extends Error {
@@ -200,15 +217,7 @@ const catalogScope = async (tx: CoreTransaction, scopeKey: string) => {
   if (row === null) {
     throw new Error(`Release catalog "${scopeKey}" was not found.`);
   }
-  const scope: ReleaseCatalogScope = {
-    channelId: row.channel_id,
-    channelName: decodeChannelKey(row.channel_key),
-    fingerprintHash: row.fingerprint_hash,
-    platform: row.platform as "ios" | "android",
-    scopeKey: row.scope_key,
-    strategy: row.strategy as "APP_VERSION" | "FINGERPRINT",
-  };
-  return scope;
+  return catalogRowScope(toCatalogRow(row));
 };
 
 /**
@@ -262,12 +271,26 @@ export const createCoreOperations = (
     // A stored bundle's platform comes from its row: one point read each.
     const platforms = new Map<string, ReleaseRow["platform"]>();
     for (const deployment of deployments) {
-      if (!("bundleId" in deployment) || platforms.has(deployment.bundleId)) {
+      // A new bundle's patches are new, so each base is checked as
+      // `updateBundle` checks one: none, and no read, without patches.
+      if (!("bundleId" in deployment)) {
+        for (const { baseBundleId } of deployment.bundle.patches ?? []) {
+          await refuseSandboxPatchBase(db, baseBundleId);
+        }
         continue;
       }
+      if (platforms.has(deployment.bundleId)) continue;
       const row = await db.findOne("bundles", { id: deployment.bundleId });
       if (row === null) {
         throw new DatabaseBundleNotFoundError(deployment.bundleId);
+      }
+      // A built-in bundle's manifest holds only its JavaScript bundle file,
+      // so a release of it would drop every asset the app ships.
+      if (await isBuiltInBundle(db, deployment.bundleId)) {
+        throw new ReleaseManagementError(
+          "TARGET_RELEASE_INVALID",
+          `Bundle "${deployment.bundleId}" is a native build's built-in bundle, which no release publishes.`,
+        );
       }
       platforms.set(deployment.bundleId, toBundleRow(row).platform);
     }
@@ -423,7 +446,7 @@ export const createCoreOperations = (
         }
         const channel = await ensureChannel(targetChannel);
         const updatedAtMs = now();
-        return db.transaction(async (tx) => {
+        return writeWithLabels(db, async (tx, labels) => {
           const { release: source, scope: sourceScope } = await loadTarget(
             tx,
             input,
@@ -462,27 +485,32 @@ export const createCoreOperations = (
                   updatedAtMs,
                 })
               : null;
-          const target = await changeRelease(tx, {
-            scope: targetScope,
-            change: {
-              operation: "insert",
-              row: {
-                ...source,
-                id: createUUIDv7After(floor ?? null, updatedAtMs),
-                revision: 1,
-                scope_key: targetScope.scopeKey,
-                channel_id: targetScope.channelId,
-                enabled: true,
-                rollout_cohort_count: 1_000,
-                target_cohorts: [],
-                operation: "PROMOTE",
-                source_release_id: source.id,
-                created_at_ms: updatedAtMs,
-                updated_at_ms: updatedAtMs,
+          const { label: _label, ...copied } = source;
+          const target = await changeRelease(
+            tx,
+            {
+              scope: targetScope,
+              change: {
+                operation: "insert",
+                row: {
+                  ...copied,
+                  id: createUUIDv7After(floor ?? null, updatedAtMs),
+                  revision: 1,
+                  scope_key: targetScope.scopeKey,
+                  channel_id: targetScope.channelId,
+                  enabled: true,
+                  rollout_cohort_count: 1_000,
+                  target_cohorts: [],
+                  operation: "PROMOTE",
+                  source_release_id: source.id,
+                  created_at_ms: updatedAtMs,
+                  updated_at_ms: updatedAtMs,
+                },
               },
+              updatedAtMs,
             },
-            updatedAtMs,
-          });
+            labels,
+          );
           return {
             source: moved === null ? null : mutationResult(moved),
             target: mutationResult(target),
@@ -502,21 +530,51 @@ export const createCoreOperations = (
       });
     },
 
-    preflightReleaseCatalogRebuild: (scopeKey) => {
-      const updatedAtMs = now();
-      return dryRun(db, async (tx) => {
-        const rebuilt = await rebuildScope(
-          tx,
-          await catalogScope(tx, scopeKey),
-          updatedAtMs,
-        );
-        return {
-          changed: rebuilt.changed,
-          currentCatalog: rebuilt.current,
-          diagnostics: rebuilt.diagnostics,
-          projectedCatalog: rebuilt.catalog,
-        };
-      });
+    preflightReleaseCatalogRebuild: (scopeKey) =>
+      preflightRebuild(db, scopeKey, now()),
+
+    fillReleaseLabels: async ({ dryRun = false, catalogs = true } = {}) => {
+      let releases = 0;
+      const pairs = await pendingLabelPairs(db);
+      // A dry run writes nothing, so without this read a database missing
+      // the label column or counters would count its releases as unlabeled.
+      if (dryRun && pairs[0] !== undefined) {
+        await probeLabelSchema(db, pairs[0]);
+      }
+      for (const pair of pairs) {
+        releases += await fillLabels(db, pair, { dryRun });
+      }
+      let rebuilt = 0;
+      if (catalogs) {
+        // Each catalog compiled before its releases had labels, rebuilt in
+        // its own transaction; one core can't compile is doctor's to report.
+        let cursor: string | undefined;
+        do {
+          const page = await db.findMany("release_catalogs", {
+            index: "all",
+            where: {},
+            limit: CATALOG_PAGE,
+            ...(cursor === undefined ? {} : { cursor }),
+          });
+          for (const row of page.rows) {
+            if (row.is_tombstone) continue;
+            const preflight = await preflightRebuild(
+              db,
+              row.scope_key,
+              now(),
+            ).catch(() => null);
+            if (preflight === null || !preflight.labelsOnly) continue;
+            rebuilt += 1;
+            if (dryRun) continue;
+            const updatedAtMs = now();
+            await db.transaction((tx) =>
+              rebuildScope(tx, catalogRowScope(toCatalogRow(row)), updatedAtMs),
+            );
+          }
+          cursor = page.next;
+        } while (cursor !== undefined);
+      }
+      return { releases, catalogs: rebuilt };
     },
 
     ensureChannel,
@@ -530,12 +588,18 @@ export const createCoreOperations = (
         const { patches, ...fields } = update;
         const next = { ...rowToBundle(toBundleRow(current)), ...fields, id };
         const { id: _id, ...set } = bundleToRow(next);
-        updateBundle(tx, current, set);
+        // Only a platform change moves totals, and a built-in bundle has none.
+        const counted =
+          set.platform === current.platform || !(await isBuiltInBundle(tx, id));
+        updateBundle(tx, current, set, { counted });
         if (patches !== undefined) {
+          // Only a new patch is checked, so one stored before a sandbox
+          // build's bundle was refused as a base stays through updates.
           await replaceBundlePatches(
             tx,
             current,
             bundleToPatchRows({ ...next, patches }),
+            (row) => refuseSandboxPatchBase(tx, row.base_bundle_id),
           );
         }
       }),
@@ -545,7 +609,12 @@ export const createCoreOperations = (
         await db.transaction(async (tx) => {
           for (const id of new Set(ids)) {
             const current = await tx.findOne("bundles", { id });
-            if (current !== null) await deleteBundle(tx, current);
+            if (current === null) continue;
+            // A native build's built-in bundle stays as long as its build.
+            if (await isBuiltInBundle(tx, id)) {
+              throw new DatabaseRowReferencedError();
+            }
+            await deleteBundle(tx, current);
           }
         });
       } catch (error) {

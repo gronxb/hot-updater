@@ -2,7 +2,12 @@ import type {
   ReleaseFilter,
   ReleasePolicyPatch,
 } from "@hot-updater/plugin-core";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import {
   createChannel as createChannelApi,
@@ -13,8 +18,18 @@ import {
   getBundleChildren,
   getChannels,
   getConfig,
+  getNativeBuildDetail,
+  getNativeBuildFold,
+  markNativeBuild as markNativeBuildApi,
+  createNativeBuildDownloadLink,
+  getNativeBuildDownloadUrl,
+  getNativeBuildInstallEligibility,
+  getNativeBuildPatches,
+  getNativeBuilds,
   getRelease,
   getReleaseCatalogDiagnostics,
+  getReleaseNativeBuild,
+  getReleaseFold,
   getReleases,
   preflightRelease as preflightReleaseApi,
   promoteRelease as promoteReleaseApi,
@@ -30,6 +45,8 @@ export const queryKeys = {
     all: releaseListQueryKey,
     list: (filters?: ReleaseFilters) =>
       [...releaseListQueryKey, filters ?? {}] as const,
+    fold: (filter: ReleaseFilter | undefined, fold: FoldBounds) =>
+      [...releaseListQueryKey, "fold", filter ?? {}, fold] as const,
   },
   release: (releaseId: string) => ["release", releaseId] as const,
   releaseCatalog: (scopeKey: string) => ["release-catalog", scopeKey] as const,
@@ -40,7 +57,66 @@ export const queryKeys = {
       ["bundle-children", "counts", ...bundleIds] as const,
   },
   bundle: (bundleId: string) => ["bundle", bundleId] as const,
+  nativeBuilds: {
+    all: ["native-builds"] as const,
+    list: (page: NativeBuildPage) => ["native-builds", page] as const,
+    fold: (channel: string | undefined, fold: FoldBounds) =>
+      ["native-builds", "fold", channel ?? null, fold] as const,
+  },
+  nativeBuild: (id: string) => ["native-build", id] as const,
+  nativeBuildPatches: (minBundleId: string, page: KeysetPage) =>
+    ["native-build-patches", minBundleId, page] as const,
+  nativeBuildDownloadUrl: (id: string) =>
+    ["native-build-download-url", id] as const,
+  nativeBuildDownloadLink: (id: string) =>
+    ["native-build-download-link", id] as const,
+  nativeBuildInstallEligibility: (id: string, udid: string | null) =>
+    ["native-build-install-eligibility", id, udid] as const,
+  releaseNativeBuild: (release: ReleaseNativeBuildInput) =>
+    ["release-native-build", release] as const,
 };
+
+export type KeysetPage = {
+  /** Rows older than this key: the next page. */
+  before?: string;
+  /** Rows newer than this key: the previous page. */
+  after?: string;
+};
+
+export type NativeBuildPage = KeysetPage & {
+  /** Only the builds that embed this channel. */
+  channel?: string;
+};
+
+export type ReleaseNativeBuildInput = {
+  platform: "ios" | "android";
+  channel: string;
+  fingerprintHash: string | null;
+  targetAppVersion: string | null;
+};
+
+/**
+ * How long a storage download URL counts as fresh. Storage gives no lifetime
+ * with the URL, and adapters let it be configured down to minutes, so a
+ * person coming back to the page after this gets a new one.
+ */
+const DOWNLOAD_URL_STALE_MS = 60_000;
+
+/**
+ * How long a build page's signed link counts as fresh: far inside its 30 days,
+ * so a page left open never shows an expired one, and it costs one request
+ * a day.
+ */
+const DOWNLOAD_LINK_STALE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How long an iPhone keeps a build's install details and Install link, which
+ * lasts an hour: past this, an open page reads and signs again.
+ */
+const INSTALL_ELIGIBILITY_STALE_MS = 30 * 60 * 1000;
+
+/** Where a fold of a list's page lies: its bounds, as the page gave them. */
+export type FoldBounds = { readonly from?: string; readonly to: string };
 
 export type ReleaseFilters = {
   /** One of the filter sets the release indexes serve; none lists every release. */
@@ -49,7 +125,8 @@ export type ReleaseFilters = {
   beforeReleaseId?: string;
   /** Releases newer than this id: the previous page. */
   afterReleaseId?: string;
-  limit?: number;
+  /** The selected release, which the page never folds. */
+  releaseId?: string;
 };
 
 // Query Hooks
@@ -69,11 +146,49 @@ export function useChannelsQuery() {
   });
 }
 
-export function useReleasesQuery(filters?: ReleaseFilters) {
+/**
+ * How long a list of releases or patches stays fresh, as the native build
+ * list does: a focus within it reads nothing. A change made in this Console
+ * invalidates it at once; a deploy from elsewhere shows within a minute.
+ */
+const LIST_STALE_MS = 60_000;
+
+export function useReleasesQuery(
+  filters?: ReleaseFilters,
+  { enabled = true }: { readonly enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: queryKeys.releases.list(filters),
     queryFn: () => getReleases({ data: filters }),
     placeholderData: (previousData) => previousData,
+    staleTime: LIST_STALE_MS,
+    enabled,
+  });
+}
+
+/**
+ * A fold's releases, a chunk at a time, read once it opens: the page that
+ * folded them reads nothing more when one opens.
+ */
+export function useReleaseFoldQuery(
+  filter: ReleaseFilter | undefined,
+  fold: FoldBounds,
+  enabled: boolean,
+) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.releases.fold(filter, fold),
+    queryFn: ({ pageParam }) =>
+      getReleaseFold({
+        data: {
+          ...fold,
+          ...(filter === undefined ? {} : { filter }),
+          ...(pageParam === undefined ? {} : { after: pageParam }),
+        },
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next,
+    enabled,
+    staleTime: LIST_STALE_MS,
   });
 }
 
@@ -82,6 +197,20 @@ export function useReleaseQuery(releaseId: string) {
     enabled: releaseId.length > 0,
     queryFn: () => getRelease({ data: { releaseId } }),
     queryKey: queryKeys.release(releaseId),
+  });
+}
+
+/**
+ * A release's label, `null` for none: read once a page, since a label never
+ * changes once given, under the release's own key.
+ */
+export function useReleaseLabelQuery(releaseId: string) {
+  return useQuery({
+    enabled: releaseId.length > 0,
+    queryFn: () => getRelease({ data: { releaseId } }),
+    queryKey: queryKeys.release(releaseId),
+    select: (release) => release?.label ?? null,
+    staleTime: Infinity,
   });
 }
 
@@ -125,6 +254,142 @@ export function useBundleChildCountsQuery(bundleIds: string[]) {
   });
 }
 
+/** A fold's native builds, a chunk at a time, read once it opens. */
+export function useNativeBuildFoldQuery(
+  channel: string | undefined,
+  fold: FoldBounds,
+  enabled: boolean,
+) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.nativeBuilds.fold(channel, fold),
+    queryFn: ({ pageParam }) =>
+      getNativeBuildFold({
+        data: {
+          ...fold,
+          ...(channel === undefined ? {} : { channel }),
+          ...(pageParam === undefined ? {} : { after: pageParam }),
+        },
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next,
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
+/** One page of native builds, newest first, kept on screen while the next loads. */
+export function useNativeBuildsQuery(
+  page: NativeBuildPage,
+  { enabled = true }: { readonly enabled?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: queryKeys.nativeBuilds.list(page),
+    queryFn: () => getNativeBuilds({ data: page }),
+    placeholderData: (previousData) => previousData,
+    staleTime: 60_000,
+    enabled,
+  });
+}
+
+/**
+ * A native build's page in one round trip, or null for an unknown ID. The
+ * page reads it again when it opens, since its catalog and patches change
+ * with each deploy.
+ */
+export function useNativeBuildDetailQuery(id: string) {
+  return useQuery({
+    queryKey: queryKeys.nativeBuild(id),
+    queryFn: () => getNativeBuildDetail({ data: { id } }),
+    enabled: id.length > 0,
+  });
+}
+
+/**
+ * A page of patches from a built-in bundle other than the newest, which the
+ * build's page already holds; kept on screen while the next one loads.
+ */
+export function useNativeBuildPatchesQuery(
+  minBundleId: string,
+  page: KeysetPage,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: queryKeys.nativeBuildPatches(minBundleId, page),
+    queryFn: () => getNativeBuildPatches({ data: { minBundleId, ...page } }),
+    enabled: enabled && minBundleId.length > 0,
+    placeholderData: (previousData) => previousData,
+    staleTime: LIST_STALE_MS,
+  });
+}
+
+/**
+ * The newest native build of a release's scope, or none: read only for a
+ * release one build can serve, by its fingerprint or one exact app version.
+ */
+export function useReleaseNativeBuildQuery(
+  release: ReleaseNativeBuildInput | null,
+) {
+  return useQuery({
+    queryKey: queryKeys.releaseNativeBuild(
+      release ?? {
+        platform: "ios",
+        channel: "",
+        fingerprintHash: null,
+        targetAppVersion: null,
+      },
+    ),
+    queryFn: () => getReleaseNativeBuild({ data: release! }),
+    enabled: release !== null,
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * The signed link of a build's page, which its QR code, download button, and
+ * copyable link all use: one request when the page opens.
+ */
+export function useNativeBuildDownloadLinkQuery(id: string) {
+  return useQuery({
+    queryKey: queryKeys.nativeBuildDownloadLink(id),
+    queryFn: () => createNativeBuildDownloadLink({ data: { id } }),
+    staleTime: DOWNLOAD_LINK_STALE_MS,
+  });
+}
+
+/**
+ * What this iPhone can do with a build, and the link Install opens: requested
+ * only by an iPhone on the page of an IPA, and again before that link, which
+ * lasts about an hour, runs out.
+ */
+export function useNativeBuildInstallEligibilityQuery(
+  id: string,
+  udid: string | null,
+) {
+  return useQuery({
+    queryKey: queryKeys.nativeBuildInstallEligibility(id, udid),
+    queryFn: () =>
+      getNativeBuildInstallEligibility({
+        data: { id, ...(udid === null ? {} : { udid }) },
+      }),
+    staleTime: INSTALL_ELIGIBILITY_STALE_MS,
+    // A page left open never holds an expired link. It reads nothing while the
+    // tab is hidden, and coming back reads again once this has passed.
+    refetchInterval: INSTALL_ELIGIBILITY_STALE_MS,
+  });
+}
+
+/**
+ * The storage URL a phone downloads a build from when the Console can't sign
+ * a link: read once, and again only when someone comes back to the page.
+ */
+export function useNativeBuildDownloadUrlQuery(id: string) {
+  return useQuery({
+    queryKey: queryKeys.nativeBuildDownloadUrl(id),
+    queryFn: () => getNativeBuildDownloadUrl({ data: { id } }),
+    staleTime: DOWNLOAD_URL_STALE_MS,
+  });
+}
+
 // Mutation Hooks
 export function useCreateChannelMutation() {
   const queryClient = useQueryClient();
@@ -146,6 +411,29 @@ export function useDeleteChannelMutation() {
       deleteChannelApi({ data: input }).then((response) => response.data),
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.channels });
+    },
+  });
+}
+
+/**
+ * Marks a build as its scope's store build, or clears it. The mark it replaced
+ * is on another build's page, in the list and in a release sheet's link, so
+ * they read again.
+ */
+export function useMarkNativeBuildMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; storeBuild: boolean }) =>
+      markNativeBuildApi({ data: input }),
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["native-build"] }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.nativeBuilds.all,
+        }),
+        // A release sheet links the build new deploys patch from.
+        queryClient.invalidateQueries({ queryKey: ["release-native-build"] }),
+      ]);
     },
   });
 }
@@ -200,6 +488,7 @@ export function useDeleteReleaseMutation() {
         queryClient.invalidateQueries({
           queryKey: queryKeys.bundleChildren.all,
         }),
+        queryClient.invalidateQueries({ queryKey: ["native-build-patches"] }),
       ]);
     },
   });

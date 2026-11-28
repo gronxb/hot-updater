@@ -1,5 +1,387 @@
 # @hot-updater/protocol
 
+## 1.2.0-rc.63
+
+## 1.2.0-rc.62
+
+## 1.2.0-rc.61
+
+## 1.2.0-rc.60
+
+## 1.2.0-rc.59
+
+## 1.2.0-rc.58
+
+### Patch Changes
+
+- 7709b2b: Name artifact IDs `bundleId` and release IDs `releaseId` in code. `ReleaseSelectionInput` and `ReleaseSelectionContextInput` in `@hot-updater/protocol` take the built-in bundle's ID as `minBundleId` instead of `minimumReleaseId`, as the React Native SDK and its iOS and Android code now name it, and the rollout functions name their first parameter `releaseId`, the ID they hash. A selection context hash is unchanged: its canonical JSON keeps the key `minimumReleaseId`, so receipts written by any patch still match. In `@hot-updater/plugin-insights`, the reads take and return a bundle's release ID as `releaseId` (`InsightsBundleSelection`, `getReportingOverview`'s input, and `ReportingOverview`'s `bundle`), while the HTTP API and `hot-updater insights overview --json` still call it `bundleId`; `toWireOverview` maps an overview to that shape. The docs call the release ID the bundle ID everywhere, and an artifact's ID the artifact ID.
+- 8e77373: Every "bundle ID" the SDK shows is now the release ID, the ID the Console shows and `hotUpdater.getBundleId()` returns:
+  - The native instance's `getBundleId()` (iOS `HotUpdaterInstance`, Android `HotUpdaterInstance`) returns the ID of the release the launch runs. For the built-in bundle it returns `MIN_BUNDLE_ID`. It returns the artifact ID only for a bundle installed without a release, and `nil`/`null` before the launch's bundle is read. Before, it returned the artifact ID, and `nil` for the built-in bundle.
+  - A client plugin's `context.getBundleId()` returns the same value as `hotUpdater.getBundleId()`. Before, it returned the artifact ID. A plugin that needs the artifact reads the hooks' `bundleId`, `fromBundleId`, `toBundleId`, and `targetBundleId`.
+  - The sandbox screen names every bundle by its release ID, as its Downloaded rows already did: the big row, Running and Next launch, the crash banner, and Info's Current and Pending. A crashed bundle whose release the device no longer knows is named by its artifact ID.
+
+  The TurboModule's methods and parameters are unchanged.
+
+## 1.2.0-rc.57
+
+## 1.2.0-rc.56
+
+## 1.2.0-rc.55
+
+## 1.2.0-rc.54
+
+## 1.2.0-rc.53
+
+## 1.2.0-rc.52
+
+## 1.2.0-rc.51
+
+### Patch Changes
+
+- c01ee70: feat(react-native): the app can show the label of the release it runs.
+  - `hotUpdater.getReleaseLabel()` returns the label of the release the app runs, such as `12` for `v12`, or `null` for the built-in bundle and a release without one. Native keeps it with the installed bundle, so it reads the same after a restart and offline. The native `HotUpdaterInstance` has `getReleaseLabel()` too, and its update has `label`.
+  - `checkForUpdate()`'s result has `label`, the label of the release it offers.
+  - Older servers send no labels, and the getters return `null`. An app on native code from an earlier SDK also gets `null`; nothing else changes for it.
+
+- e833260: feat(release): each bundle gets a label, `v1`, `v2`, …, numbered per channel and platform.
+  - A deploy prints the bundle's label beside its ID, and `bundle list` shows it first. `--json` rows gain `label`, a number, or `null` until the database labels the bundle.
+  - A label never changes, and no other bundle of that channel and platform takes it while the channel exists: deleting a bundle leaves a gap, disabling or enabling one keeps its label, and a rollback takes none. A promotion takes the target channel's next label, and prints `Label  production v5 (from staging v12)`.
+  - `bundle show`, `update`, `enable`, `disable`, `delete` and `promote` take a label in place of the ID, with its channel and platform: `bundle show v12 -c production -p ios`.
+  - Release catalogs carry each bundle's label, so apps can read it.
+  - `hot-updater init` and `db migrate` label the bundles a database already holds, in the order they were deployed, and rebuild the catalogs that lack their labels. The first deploy to a channel and platform does it too. `hot-updater doctor` reports bundles without a label as `RELEASE_LABELS_MISSING`, and catalogs without them as `RELEASE_CATALOGS_WITHOUT_LABELS`, naming the command that migrates the database.
+  - `db migrate` adds the `label` column to an existing `releases` table on PostgreSQL, MySQL and SQLite, including a database a 1.2 release candidate migrated. Drizzle and Prisma add it through their own tooling after `db generate`, and `db migrate` names it while it is missing.
+  - A self-hosted server serves `GET /release-labels` and `POST /release-labels/fill` on its admin API. Against a server older than this release, the CLI says it can't look up labels: pass the bundle's ID.
+  - Database adapters may implement the optional `migrations.addColumns`, which the SQL kit implements; `lateColumnStatements` gives migration-file generators the `ALTER TABLE` statements for columns added to existing tables.
+
+## 1.2.0-rc.50
+
+## 1.2.0-rc.49
+
+## 1.2.0-rc.48
+
+## 1.2.0-rc.47
+
+## 1.2.0-rc.46
+
+## 1.2.0-rc.45
+
+## 1.2.0-rc.44
+
+## 1.2.0-rc.43
+
+## 1.2.0-rc.42
+
+## 1.2.0-rc.41
+
+### Minor Changes
+
+- 97f063d: Sandbox builds live on the project's channel. A sandbox build embeds the channel `channel set` writes, or `-c`, like any scheme's build, and registers on it, so in a pull request preview it is one more native build on `pr-<n>`. The `sandbox-<scheme>` channels are no longer reserved: a normal build can use a channel named `sandbox-*`, and nothing about a channel makes a build a sandbox build. The artifact's sandbox layer and the registry's `is_sandbox` do.
+  - Pull requests reuse a sandbox build across channels. Its registry scope names no channel: the app ID its artifact reports, its URL scheme, its artifact kind, and whether it installs directly (APK, simulator `.app`, ad hoc `.ipa`) or through a store (AAB, App Store `.ipa`). `native-build find --scheme <sandbox scheme>` finds it on any channel, and `--json`'s `sandbox` names the found build's `channel` in place of `otherBuilds`. A store build never hides an installable ad hoc build of the same native code, nor the reverse. An `.ipa` whose export no profile confirmed is never reused. Sandbox previews need the `fingerprint` update strategy to tell native changes apart.
+  - A sandbox registration needs `sandboxUrlScheme` and the new `sandboxAppId`. `GET /native-builds/latest` takes `sandboxAppId`, `sandboxUrlScheme`, `artifactKind` and `distribution`, all four or none, and `NativeBuildScope` takes `sandbox` for them.
+  - `native-build find --json` adds `iosDevices` for a found ad hoc `.ipa`: whether it still installs on the device registry's iPhones. For an iPhone the `.ipa` lacks, it reads Apple's devices with the scheme's `signing.ascApiKey`, as a build does, and writes nothing. The preview action builds again, with `--no-cache`, when a build now would add one (enabled at Apple, or approved and not at Apple yet), or the profile expired or can't be read. An iPhone Apple has disabled or refused, another account's, one in a registry another Apple account holds, or one a scheme can't add (no `signing.ascApiKey`, a pinned profile, or an export other than `release-testing`, as the build decides), gets a note in the job's log and no build. `findIosDeviceAccount()` and `GET /ios-devices/account` read the registry's Apple account without claiming it.
+  - The preview action keeps sandbox builds when a pull request closes, merged or not: `channel delete --native-builds --keep-sandbox-builds` deletes the bundles and normal builds and keeps the sandbox builds and their channel, and succeeds with `reason: "sandbox_builds"` and `keptNativeBuildIds` when nothing else is left. Delete a kept build with `native-build delete` or `channel delete --native-builds`.
+  - `ios-install-url` is the Console build page for a direct-install `.ipa`, where "Install on iPhone" checks the device. `ios-download-url` keeps the `.ipa` itself.
+  - The comment names the pull request whose sandbox build a preview reuses, and the Console's "newer build" suggestion for an iPhone finds a sandbox build another pull request made.
+  - The release action refuses a sandbox scheme on any channel.
+  - `@hot-updater/protocol/native-artifact` drops `sandboxChannelOf` and `isSandboxChannel`, `sandboxArtifactProblem` takes no channel.
+
+  For a release candidate already in use:
+  - `android-fallback-scheme` and `ios-fallback-scheme` are removed. Remove them from your workflow: a pull request with new native code gets a new sandbox build.
+  - Deploy the server first, then the CLI (1.2.0-rc.41 or later), the actions and the Console. A server of this release refuses an older CLI's sandbox registration, which sends no `sandboxAppId`, and says to upgrade the CLI. An older CLI's lookup also misses the new builds.
+  - No migration runs. Sandbox builds already on `sandbox-*` channels stay where they are, and the first preview after the upgrade builds a new sandbox build once per platform. Delete the old ones with `npx hot-updater channel delete sandbox-<scheme> --native-builds` once you no longer need them.
+
+## 1.2.0-rc.40
+
+## 1.2.0-rc.39
+
+## 1.2.0-rc.38
+
+## 1.2.0-rc.37
+
+## 1.2.0-rc.36
+
+## 1.2.0-rc.35
+
+## 1.2.0-rc.34
+
+## 1.2.0-rc.33
+
+## 1.2.0-rc.32
+
+## 1.2.0-rc.31
+
+### Patch Changes
+
+- d4341b4: Every native build now shows the app version its artifact reports, whatever the update strategy.
+
+  **What is recorded.** `native_builds` records `native_app_version`, the artifact's own `CFBundleShortVersionString` or `versionName`. It is read when the build registers and never changes.
+  - A build reads it from the app it built: the archived `.app` of an `.ipa`, the simulator `.app`, or the manifest of an `.apk` or `.aab`.
+  - An import reads it from the imported artifact.
+  - It is null when the artifact's can't be read, and on a build registered before it was recorded.
+  - `app_version` is unchanged: it is still the version OTAs target, and it stays null on a fingerprint build.
+
+  **Where it shows.**
+  - **Console:** a fingerprint build's Target shows its version over the fingerprint, in the Native builds table, on its card, and on its page. A build without a version shows its fingerprint alone. An app-version build shows its version once, as before.
+  - **`native-build find`:** names a fingerprint build's app version, and `--json` carries it on `nativeBuild`.
+  - **Build summary:** a fingerprint build's heading names its version, such as `Android release 1.6.0 (66)`.
+
+  The admin API takes `nativeAppVersion` on `POST /native-builds` and returns `native_app_version` on every native build.
+
+  If a 1.2.0 prerelease migrated your database before this release, the column is missing; add it once. A database created from this release's migration already has it, so check first and skip the ALTER when `native_app_version` is listed.
+  - Cloudflare D1, SQLite: run `PRAGMA table_info("native_builds");`. Only when no row is named `native_app_version`, run `ALTER TABLE "native_builds" ADD COLUMN "native_app_version" TEXT;`. SQLite has no `IF NOT EXISTS` for a column, and running the ALTER again fails with `duplicate column name`.
+  - Supabase: `ALTER TABLE "hot_updater_v1_native_builds" ADD COLUMN IF NOT EXISTS "native_app_version" text COLLATE "C";` This is safe to run again.
+  - PostgreSQL, Neon: `ALTER TABLE "native_builds" ADD COLUMN IF NOT EXISTS "native_app_version" text COLLATE "C";` This is safe to run again.
+  - MySQL: run `SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'native_builds' AND column_name = 'native_app_version';`. Only when it returns 0, run ``ALTER TABLE `native_builds` ADD COLUMN `native_app_version` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;``. MySQL has no `IF NOT EXISTS` for a column.
+  - MongoDB, DynamoDB, Firestore, Cosmos DB: nothing to do; a row without the field reads as null.
+
+## 1.2.0-rc.30
+
+## 1.2.0-rc.29
+
+## 1.2.0-rc.28
+
+### Minor Changes
+
+- b03f1be: Add the iOS device registry: the iPhones and iPads a team asks to install ad hoc builds on, kept in the server's database (new core tables `ios_devices`, and `ios_device_account`, the one Apple account the registry belongs to), as requested, approved, or registered with Apple.
+  - Console: **Native builds** gets an **iOS devices** view, beside Builds, with no new menu. A tester opens it on an iPhone, names it, and installs a profile that reads its UDID; the iPhone is listed as requested. On a build's page, an iPhone the `.ipa` doesn't list gets **Request access** instead of a command to copy, and an ad hoc build's page lists the devices its `.ipa` includes, by registry name. The profile link is a short-lived capability signed with `BETTER_AUTH_SECRET`, and Request access takes the UDID only from a receipt the profile's answer signed for the same signed-in person. Approvers approve, rename, and remove devices: the emails in the new `console.deviceApprovers` of `defineConsoleConfig`, or anyone on the local Console. Without `deviceApprovers`, a hosted Console approves nothing. The Console still holds no Apple key.
+  - CLI: an ad hoc `native-build ios` registers the approved devices with the Apple account of the scheme's `signing.ascApiKey` before it archives, one at a time, recording each answer. When the exported `.ipa` still lacks an approved device Apple has enabled, it deletes this app's saved Xcode-managed ad hoc profiles (matched by team and application identifier) and exports once more; a device still missing fails the build before it is tracked. A scheme with no key, with manual signing, or signing with another Apple account than the registry's registers nothing and says so. `--json` reports `devices`. `native-build devices add` picks from the requested devices at a terminal without `--udid`, and records what it registers; `devices list` shows the registry beside the Apple account; the new `devices rename` renames a device in both, and `devices remove` deletes it from the registry and, once confirmed or with `--yes`, disables it at Apple.
+  - The per-build profile routes under `/_hot-updater/native-builds/<id>/device*` are replaced by `/_hot-updater/devices/device.mobileconfig` and `device-response`. The shell command that removed saved profiles is gone: the build handles it.
+  - One Apple account per registry: before a build sends Apple its first device, it claims the registry for its key's issuer in `ios_device_account`, whose single key makes the claim atomic on every store; a build of another account sends Apple nothing, and an approved device another account registered before is never sent by a different account.
+  - Server: core gains `claimIosDeviceAccount`, `listIosDevices`, `findIosDevice`, `requestIosDevice`, `approveIosDevice`, `renameIosDevice`, `recordIosDeviceOutcome`, `markIosDevicesInBuild`, and `deleteIosDevice`, with admin routes under `/ios-devices` that `standaloneRepository` uses. No client route changes.
+  - Protocol: `readIpaInstallInfo` reports the `.ipa`'s `teamId`, and `readProvisioningProfile` reads a saved profile.
+
+  The table is part of the 1.2.0 migration. A database a 1.2 prerelease already migrated needs it created by hand, before this version is deployed over it: until then, an ad hoc build and the Console's iOS devices view fail to read the registry. Upgrade in this order: create the table, deploy the server, deploy the Console, then upgrade the CLI.
+  - D1 or SQLite:
+
+    ```sql
+    CREATE TABLE IF NOT EXISTS "ios_devices" ("id" TEXT NOT NULL, "udid" TEXT NOT NULL, "name" TEXT NOT NULL, "status" TEXT NOT NULL, "requested_by" TEXT, "created_at_ms" INTEGER NOT NULL, "approved_by" TEXT, "approved_at_ms" INTEGER, "registered_at_ms" INTEGER, "apple_issuer_id" TEXT, "apple_error" TEXT, "build_id" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+    CREATE INDEX IF NOT EXISTS "ios_devices_byStatus" ON "ios_devices" ("status", "id");
+    CREATE UNIQUE INDEX IF NOT EXISTS "ios_devices_udid" ON "ios_devices" ("udid");
+    CREATE TABLE IF NOT EXISTS "ios_device_account" ("id" TEXT NOT NULL, "apple_issuer_id" TEXT NOT NULL, "claimed_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+    ```
+
+  - Supabase: the `hot_updater_v1_ios_devices` table with its two indexes and the `hot_updater_v1_ios_device_account` table, each with `ENABLE ROW LEVEL SECURITY`, as in `0002_hot-updater_1.2.0.sql`, then that file's `CREATE OR REPLACE FUNCTION public.hot_updater_v1_apply`, whose table allowlist names both.
+  - PostgreSQL (Vercel, Neon, or your own): the same as Supabase without the `hot_updater_v1_` prefix, row level security, or the function, as in `@hot-updater/postgres`'s `sql/bundles.sql`.
+  - MySQL: the `ios_devices` table with its two indexes and the `ios_device_account` table, as `hot-updater db generate --sql mysql` prints them.
+  - MongoDB: `hot-updater db migrate` on the server, or these, which are the adapter's own index definitions:
+
+    ```js
+    db.ios_devices.createIndexes([
+      { name: "byStatus", key: { status: 1, id: 1 } },
+      { name: "all", key: { id: 1 } },
+      { name: "udid", key: { udid: 1 }, unique: true },
+    ]);
+    db.ios_device_account.createIndexes([{ name: "all", key: { id: 1 } }]);
+    ```
+
+  - Prisma or Drizzle: run `npx hot-updater db generate <server file>`, then the migration the ORM writes from it.
+
+  DynamoDB, Firestore, and Cosmos DB need nothing. Nor does `standaloneRepository`: its server's database takes the table. An AWS deployment re-runs `hot-updater init` only to keep its Lambda role's DynamoDB policy listing every core table; the Lambda never reads this one.
+
+## 1.2.0-rc.27
+
+## 1.2.0-rc.26
+
+### Patch Changes
+
+- f424a4e: A preview link names the platform it's for: `createPreviewLink({ platform })` adds `&platform=ios` or `&platform=android`, `parsePreviewLink` returns it, and reads any other value as none. The preview action's links and QR codes name theirs. Both platforms' sandbox builds of an app often register the same URL scheme, so an iPhone's camera opened the Android QR code in the iOS sandbox build, which said only that the channel "needs another build". Now a sandbox build refuses the other platform's link, scanned, pasted, or opened with its own URL scheme, before checking the scheme or fingerprint, with "This QR is for Android" and "Scan the iPhone QR code for pr-12." on iOS, and "This QR is for iOS" and "Scan the Android QR code for pr-12." on Android. A link without `platform` reads as before, and a sandbox build from before this version ignores the parameter.
+
+## 1.2.0-rc.25
+
+### Patch Changes
+
+- 211e584: Set a sandbox build's URL scheme on its scheme: `sandbox: { urlScheme: "acme-preview" }` in `hot-updater.config.ts` turns the sandbox on with that scheme, and `sandbox: true` keeps `hu-sandbox-<app ID>`. The config refuses a scheme that isn't lower case URI syntax of up to 64 characters, or is `http`, `https`, `file`, `data`, `javascript`, `true` or `false` (which Android's manifest compiles as booleans), and the build refuses one the app registers itself.
+
+  The build registers the scheme in its sandbox URL type on iOS, which also records it in the Info.plist key `HOT_UPDATER_SANDBOX_URL_SCHEME`, and on the sandbox activity on Android, which also names it in `com.hotupdater.sandbox.URL_SCHEME`, and the scheme is part of the native build key. Import and registration read it from the artifact (on Android, the sandbox activity's link scheme that its meta-data names; on iOS, the one scheme of the sandbox URL type) into the registry's new `native_builds.sandbox_url_scheme`, `native-build find --json` returns it as `sandbox.urlScheme`, and the preview action's link and QR code use it, so a reused build keeps the scheme it was built with. A sandbox build accepts only its own scheme's links: another scheme's link "isn't a link for this app". A preview link's scheme is ASCII alone. The iOS build refuses an app whose own URL type is named `hot-updater-sandbox`, and, when it patches an app it patched before, anything but exactly one `hot-updater-sandbox` URL type holding the one recorded scheme. The patch, the artifact reader and the build itself read the recorded scheme by one rule: absent, it's a prerelease's build, read as before; present, it must be a lower-case ASCII scheme that the one `hot-updater-sandbox` URL type holds alone, or the build has no scheme of its own and refuses every link. Builds registered before the column read as the derived scheme.
+
+  The column is part of the 1.2.0 migration. A SQL database a 1.2 prerelease already migrated needs it added by hand, before this version is deployed over it: until then, reads still work, but registering any native build, a normal one too, fails. Upgrade in this order: add the column, deploy the server, then upgrade the CLI. A new CLI that registers through `standaloneRepository` with an older server loses the scheme, since that server's admin route drops `sandboxUrlScheme`: the row stores null, and its links fall back to the derived scheme.
+  - D1 or SQLite: `ALTER TABLE native_builds ADD COLUMN sandbox_url_scheme TEXT;`
+  - Supabase: `ALTER TABLE hot_updater_v1_native_builds ADD COLUMN sandbox_url_scheme varchar(255) COLLATE "C";`
+  - PostgreSQL (Vercel, Neon, or your own): `ALTER TABLE native_builds ADD COLUMN sandbox_url_scheme varchar(255) COLLATE "C";`
+  - MySQL: ``ALTER TABLE native_builds ADD COLUMN `sandbox_url_scheme` varchar(255) CHARACTER SET ascii COLLATE ascii_bin;``
+  - Prisma or Drizzle: run `npx hot-updater db generate <server file>`, then the migration the ORM writes from it.
+
+  Key-value and document stores (DynamoDB, Firestore, Cosmos DB, MongoDB) need nothing: a row stored before the column has no such field, which reads as null. Nor does `standaloneRepository`, which stores nothing itself: its server's database takes the ALTER.
+
+## 1.2.0-rc.24
+
+## 1.2.0-rc.23
+
+## 1.2.0-rc.22
+
+### Minor Changes
+
+- a823198: Record which native builds are sandbox builds and tag them **Sandbox** like the Store build tag, and make the native build booleans `is_*` and never null.
+  - `native_builds.store_build` (true or null) is now `is_store_build`, and the new sandbox fact is `is_sandbox`. Both are required booleans, true or false, in v1.2's existing `0002` migrations; `schema.core` stays `1.2.0`. One store build per scope is now kept by `store_build_scope_key`, a column the engine derives from `is_store_build` (the scope key on the store build, null on every other), under the unique index `byStoreBuild`. Boolean columns follow one rule: `is_*` for a fact about the row or `should_*` for an instruction to the client, never null.
+  - Derived string fields take `maxLength` and `ascii` like declared ones, so a derived key renders the right column on MySQL.
+  - `native-build android|ios` records `is_sandbox` from the scheme's `sandbox: true`, and `native-build import` from the artifact's sandbox layer. The admin API takes `isSandbox: boolean` on a registration, and refuses null.
+  - The registry refuses a registration whose `isSandbox` disagrees with its channel. A sandbox build registers only on a `sandbox-*` channel, and only a sandbox build registers there. A 1.2 prerelease CLI that registers a sandbox build without the field is refused with a 400 naming the reserved channel; upgrade the CLI with the server. Normal builds register as before.
+  - Everything that asks "is this a sandbox build" reads `is_sandbox`, not the channel. The Console tags the build **Sandbox** beside its kind in the Native builds list, its card, and the build's page, and hides **Mark as store build** for it. `native-build mark` refuses it by the record, and `find`, `download`, `delete` and `import` print `Kind  apk · sandbox`. `find --json`'s `nativeBuild` carries `is_sandbox` and `is_store_build`. The preview action tells a sandbox scheme from `find`'s `sandbox` result.
+  - `native-build mark --json` now reports the refusal `reason` as `sandbox_build`, not `sandbox_channel`.
+
+  If you deployed a 1.2.0 prerelease, its database already ran `0002` with `store_build`, and nothing reports it: the schema check, `hot-updater doctor` and `db migrate` all pass. Upgrade it in a maintenance window: stop everything that registers or marks native builds (CI jobs that run `native-build`, `deploy`, and the Console), run your database's SQL below, then deploy this release's server and CLI before you start them again. Until then, native build commands, `deploy`, and the Console's native build page fail; OTA update checks keep working. The SQL marks each scope's store build again and records the sandbox builds already registered (from their `sandbox-*` channel, once). It uses the default table names; with a `tablePrefix`, prepend it.
+  - Cloudflare D1, and Kysely on SQLite or libSQL. SQLite keeps the `DEFAULT 0`; nothing reads it, and the engine writes both columns:
+
+    ```sql
+    DROP INDEX IF EXISTS "native_builds_byStoreBuild";
+    ALTER TABLE "native_builds" ADD COLUMN "is_store_build" INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE "native_builds" ADD COLUMN "is_sandbox" INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE "native_builds" ADD COLUMN "store_build_scope_key" TEXT;
+    UPDATE "native_builds" SET "is_store_build" = 1, "store_build_scope_key" = "scope_key" WHERE "store_build" = 1;
+    UPDATE "native_builds" SET "is_sandbox" = 1
+      WHERE "channel_id" IN (SELECT "id" FROM "channels" WHERE substr("name", 1, 8) = 'sandbox-');
+    ALTER TABLE "native_builds" DROP COLUMN "store_build";
+    CREATE UNIQUE INDEX IF NOT EXISTS "native_builds_byStoreBuild" ON "native_builds" ("store_build_scope_key");
+    ```
+
+  - Supabase:
+
+    ```sql
+    DROP INDEX IF EXISTS "hot_updater_v1_native_builds_byStoreBuild";
+    ALTER TABLE "hot_updater_v1_native_builds"
+      ADD COLUMN "is_store_build" boolean NOT NULL DEFAULT false,
+      ADD COLUMN "is_sandbox" boolean NOT NULL DEFAULT false,
+      ADD COLUMN "store_build_scope_key" varchar(2048) COLLATE "C";
+    UPDATE "hot_updater_v1_native_builds" SET "is_store_build" = true, "store_build_scope_key" = "scope_key" WHERE "store_build" = true;
+    UPDATE "hot_updater_v1_native_builds" SET "is_sandbox" = true
+      WHERE "channel_id" IN (SELECT "id" FROM "hot_updater_v1_channels" WHERE substr("name", 1, 8) = 'sandbox-');
+    ALTER TABLE "hot_updater_v1_native_builds"
+      DROP COLUMN "store_build",
+      ALTER COLUMN "is_store_build" DROP DEFAULT,
+      ALTER COLUMN "is_sandbox" DROP DEFAULT;
+    CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byStoreBuild" ON "hot_updater_v1_native_builds" ("store_build_scope_key");
+    ```
+
+  - PostgreSQL (`@hot-updater/postgres`, its Neon and Vercel re-exports, and Kysely on PostgreSQL):
+
+    ```sql
+    DROP INDEX IF EXISTS "native_builds_byStoreBuild";
+    ALTER TABLE "native_builds"
+      ADD COLUMN "is_store_build" boolean NOT NULL DEFAULT false,
+      ADD COLUMN "is_sandbox" boolean NOT NULL DEFAULT false,
+      ADD COLUMN "store_build_scope_key" varchar(2048) COLLATE "C";
+    UPDATE "native_builds" SET "is_store_build" = true, "store_build_scope_key" = "scope_key" WHERE "store_build" = true;
+    UPDATE "native_builds" SET "is_sandbox" = true
+      WHERE "channel_id" IN (SELECT "id" FROM "channels" WHERE substr("name", 1, 8) = 'sandbox-');
+    ALTER TABLE "native_builds"
+      DROP COLUMN "store_build",
+      ALTER COLUMN "is_store_build" DROP DEFAULT,
+      ALTER COLUMN "is_sandbox" DROP DEFAULT;
+    CREATE UNIQUE INDEX IF NOT EXISTS "native_builds_byStoreBuild" ON "native_builds" ("store_build_scope_key");
+    ```
+
+  - Kysely on MySQL:
+
+    ```sql
+    DROP INDEX `native_builds_byStoreBuild` ON `native_builds`;
+    ALTER TABLE `native_builds`
+      ADD COLUMN `is_store_build` boolean NOT NULL DEFAULT false,
+      ADD COLUMN `is_sandbox` boolean NOT NULL DEFAULT false,
+      ADD COLUMN `store_build_scope_key` varchar(2048) CHARACTER SET ascii COLLATE ascii_bin;
+    UPDATE `native_builds` SET `is_store_build` = 1, `store_build_scope_key` = `scope_key` WHERE `store_build` = 1;
+    UPDATE `native_builds` SET `is_sandbox` = 1
+      WHERE `channel_id` IN (SELECT `id` FROM `channels` WHERE BINARY SUBSTRING(`name`, 1, 8) = 'sandbox-');
+    ALTER TABLE `native_builds`
+      DROP COLUMN `store_build`,
+      ALTER COLUMN `is_store_build` DROP DEFAULT,
+      ALTER COLUMN `is_sandbox` DROP DEFAULT;
+    CREATE UNIQUE INDEX `native_builds_byStoreBuild` ON `native_builds` (`store_build_scope_key`);
+    ```
+
+  - Prisma and Drizzle: run `hot-updater db generate` so the ORM schema matches, then apply your dialect's SQL above by hand rather than the ORM's generated migration, which would drop `store_build` before copying it and can't add a NOT NULL column to a table with rows. Record the migration as applied (`prisma migrate resolve --applied <name>`, or Drizzle's journal) so the next diff is empty.
+  - MongoDB: drop the old index, then run `hot-updater db migrate <server file>`, whose schema step creates the new `byStoreBuild`. Prefix the collection name with your `tablePrefix`, if any:
+
+    ```js
+    for (const name of ["byStoreBuild", "native_builds_byStoreBuild"]) {
+      if (db.native_builds.getIndexes().some((index) => index.name === name)) {
+        db.native_builds.dropIndex(name);
+      }
+    }
+    ```
+
+  MongoDB, DynamoDB, Firestore and Cosmos DB get no data backfill. A build registered before this release reads `is_store_build` and `is_sandbox` as false until it is written again. If you marked a store build on a prerelease, mark it again after upgrading with `hot-updater native-build mark <id>`; until then deploys patch from the scope's newest build. A sandbox build registered there before this release shows no **Sandbox** tag and can be marked as the store build: build the sandbox scheme again, or remove the old build with `hot-updater native-build delete <id>`.
+
+## 1.2.0-rc.21
+
+## 1.2.0-rc.20
+
+## 1.2.0-rc.19
+
+## 1.2.0-rc.18
+
+## 1.2.0-rc.17
+
+## 1.2.0-rc.16
+
+## 1.2.0-rc.15
+
+## 1.2.0-rc.14
+
+## 1.2.0-rc.13
+
+### Minor Changes
+
+- 20006f2: Add sandbox builds: `sandbox: true` on a `nativeBuild` scheme builds the app with a native layer for testing, which no other build compiles. `@hot-updater/react-native` gets no new API and no new bridge method. See the Sandbox builds guide.
+  - iOS: the layer's sources stay excluded unless the CLI's build xcconfig brings them back, and the CLI patches the archive's Info.plist before the export: a dedicated URL scheme and the default channel `sandbox-<scheme>`. The bundle ID stays what Xcode builds: the store app's by default, or a separate configuration's, which `bundleIdentifier` must name. The `.ipa` is for TestFlight internal testing only: the CLI checks it before the upload and reads `buildAudienceType` after it. A closed version train raises the sandbox build's version under the fingerprint strategy, and stops with a next step under `appVersion`.
+  - A normal build excludes the layer again over a scheme's own `xcconfig`, which would otherwise replace the podspec's exclusion.
+  - Android: `-PhotUpdaterSandbox=<scheme>` attaches `src/sandbox`, and a CLI-written init script adds `.sandbox` to the application ID and a manifest overlay for the channel. No project file changes. AGP 9's default DSL and a project's own build type manifest are refused.
+  - Registry: the channel `sandbox-<scheme>` is reserved, with no new column. Before a build is tracked or uploaded, and in `native-build import`, the CLI reads the artifact: a sandbox build must hold the layer and embed a normal build's fingerprint, and a normal build must hold none of it.
+  - `hot-updater doctor` reports what a sandbox scheme can't build with, a `google-services.json` with no client for the real application ID, and what no sandbox build has been tested with.
+  - Fix a repeat `assembleRelease` failing with `it is internal in file` on Kotlin 2: every build's `MIN_BUNDLE_ID` changes a generated Java class, so the SDK's module no longer compiles Kotlin incrementally.
+
+- 3d95e55: Sandbox builds now show a native screen before the app's JavaScript starts, and open preview links natively. `@hot-updater/react-native` gets no new API, no new bridge method, and no change to any source a normal build compiles. See the Sandbox builds guide.
+  - iOS: a gate at the deepest `RCTRootViewFactory` method holds React Native behind a stable container until the screen's Open. Notifications, background entry points, shortcuts and the app's own links start the app at once; a host it can't gate starts as usual, with a log.
+  - Android: the build reads the variant's merged manifest and moves the launcher entry to the sandbox's activity, which forwards anything addressed to the app with its intent. It refuses more than one launcher and task settings its activity can't share a task with.
+  - A link is checked against the build's fingerprint, confirmed by name, checked on the server, and only then deletes downloaded bundles. A failure afterwards shows what's selected now and offers a retry. A link waits across restarts for the app's first answered update check.
+  - `createPreviewLink` and `parsePreviewLink` join `@hot-updater/protocol/native-artifact`, and an artifact check refuses a sandbox build whose launcher or URL scheme isn't the sandbox's.
+
+### Patch Changes
+
+- ad99046: Install an ad hoc IPA on an iPhone from the Console, and register iPhones from the CLI.
+  - A build's page on an iPhone checks whether the IPA includes that phone, reading its `Info.plist` and provisioning profiles from storage with HTTP Range requests. It offers "Check this iPhone", then "Install" or "Not in this build", with "Install anyway" second. A storage that answers Range with the whole file shows "Installation details unavailable", and nothing downloads.
+  - "Check this iPhone" installs a UDID-only profile. The phone lands on a page, which takes no session and reads nothing, with its UDID, one command to send a maintainer, and a copy button. The UDID stays in the phone's `localStorage`.
+  - Install opens `itms-services` on `/_hot-updater/native-builds/{id}/manifest.plist?t=`, which verifies its download token before any read and mints nothing. An Install link lasts about an hour.
+  - `native-build devices add --udid <UDID> --name <name>` (`--udid` repeats) registers iPhones in App Store Connect, each at most once, and `native-build devices list` reads them back. The Console never holds an Apple key.
+  - `native-build ios` prints how many devices the `.ipa` lists, and with `--udid` whether each is included. A sandbox scheme can export with `release-testing`.
+  - A pull request preview's QR code of an IPA holds the build's page, through `/_hot-updater/native-builds/qr?target=page`, which stays anonymous and reads nothing.
+  - `@hot-updater/protocol/native-artifact` adds `readIpaInstallInfo`, `readProfileServiceUdid` and `normalizeIosUdid`. Its plist parser now reads crafted XML in linear time.
+  - An ad hoc export in CI signs in the build's own keychain, and only its development certificates are revoked.
+  - An iOS build's output and cache hold only the `.ipa` of its export. Xcode's `Packaging.log`, which holds the API key's bearer token for 20 minutes, no longer reaches `.hot-updater/output`. Build logs mask any JSON Web Token.
+
+## 1.2.0-rc.12
+
+## 1.2.0-rc.11
+
+## 1.2.0-rc.10
+
+## 1.2.0-rc.9
+
+## 1.2.0-rc.8
+
+## 1.2.0-rc.7
+
+## 1.2.0-rc.6
+
+## 1.2.0-rc.5
+
+## 1.2.0-rc.4
+
+## 1.2.0-rc.3
+
+## 1.2.0-rc.2
+
+## 1.2.0-rc.1
+
+## 1.2.0-rc.0
+
+### Minor Changes
+
+- ed37acf: `hot-updater native-build ios` and `hot-updater native-build android` build native apps, without `EXPERIMENTAL`: `native-build <platform> [-s <scheme>] [-o <path>] [--submit testflight|play-internal] [--dry-run] [--json]`, beside `native-build find`, `native-build delete`, and `native-build import`. They replace the experimental `build:ios` and `build:android`; `run:ios` and `run:android` are removed, with no alias: install the artifact (`xcrun simctl install`, `adb install`) or use your framework's run command. Without `--scheme`, the build asks for the scheme at a terminal, and in CI or without a terminal stops with the schemes to pass. A build returns and prints the artifact (`.apk`, `.aab`, `.ipa`, or simulator `.app`) with the values compiled into it: the MIN_BUNDLE_ID, the fingerprint hash or app version, and the default channel (the app version and channel are read from the built artifact: the app's Info.plist on iOS, and with the SDK's `aapt2` the merged manifest of the `.apk` or `.aab` on Android). The build adapter's `prebuild`, such as `expo prebuild`, now runs before the commands read the native projects. The CLI issues each MIN_BUNDLE_ID as the SDK's podspec script phase and Gradle task do, the UUIDv7 of the build's millisecond with zero random bits, stepped 1 ms forward past a bundle the registry already holds at it; a build whose MIN_BUNDLE_ID another build registered first, as one started in the same millisecond can, is refused when it is tracked, with an error that says so.
+
+  `hot-updater native-build import <file> [-c <channel>] [--dry-run] [--json]` tracks an `.ipa`, `.aab`, `.apk`, or simulator `.app` (the directory or its `.app.zip`) built elsewhere, such as by another build service or an earlier release, as `native-build ios|android` tracks its own builds, with the build number it reports as the row's `build_number`, so OTAs deployed after it patch from its built-in bundle. It reads everything from the artifact: the platform, app version, build number, and app ID from the manifest or Info.plist, the channel the app reports (`production` without one), the MIN_BUNDLE_ID and the fingerprint from the string literals of the app's code (the dex files' string pool, or the Mach-O `__cstring` section of the executable or of HotUpdater's dynamic framework), and the built-in bundle. It prints what it read, then refuses an artifact without a built-in bundle (a Debug build), one built without `@hot-updater/react-native`'s build step (no MIN_BUNDLE_ID) or with several candidates, one without a fingerprint under the fingerprint strategy or without a comparable app version under the appVersion strategy, a channel given as a resource reference (unless `--channel` names the channel the app reports, as when its code sets one or it switches at runtime), and an artifact whose MIN_BUNDLE_ID is registered with another built-in bundle or scope, naming that native build. Importing the same build again succeeds and changes nothing, reporting `alreadyImported: true` under `--json`, so CI jobs can rerun. An app ID no `nativeBuild` scheme's `bundleIdentifier` or `applicationId` (by default its `packageName`) names is a warning. It then uploads the artifact and the built-in bundle and registers them with no build key and no commit; `--dry-run` reads and checks, and records nothing. The reader treats every artifact as untrusted input: it reads only the entries it needs through the zip's central directory, caps the directory, each entry it reads, and all it inflates, stops an entry that inflates past its declared size (a zip bomb), matches no absolute or `..` entry name and refuses a symbolic link or a doubled name among those it reads, writes nothing to disk by entry name, gives up after two minutes, and refuses a truncated or malformed archive, plist, or manifest as unreadable instead of crashing. `@hot-updater/protocol/native-artifact`, a subpath no app imports, exports the reader (`readNativeArtifact` over a `blobSource`, with no dependencies) and `checkNativeArtifact`.
+
+  A `nativeBuild` scheme signs with a credential the CLI resolves while it builds: `signing: { keystore }` on Android passes an `android-keystore` to Gradle as the injected signing properties of release variants, and `signing: { ascApiKey }` on iOS signs device builds with automatic signing through an `asc-api-key`. Debug variants and simulator builds resolve nothing. With `signing.ascApiKey` and no `exportOptionsPlist`, an iOS device build exports for App Store Connect, and `native-build ios` refuses a device scheme with neither before it builds. The helpers' `minBundleId` and `credentials` are optional: without them, `buildAndroid` and `buildIos` issue a MIN_BUNDLE_ID of the build's millisecond (`createMinBundleId` from `@hot-updater/cli-tools`) and resolve signing credentials from the environment. `@hot-updater/android-helper` and `@hot-updater/apple-helper` no longer export `runAndroid`, `runIos`, or their device types. The build log in `.hot-updater/log` keeps the whole output of `xcodebuild` (also with `xcbeautify` installed, which now only formats the progress) or Gradle, through its last line. A failed build prints why on stderr, in `--json` mode too: `xcodebuild`'s `error:` lines and failed commands, or Gradle's `What went wrong` block, else the output's last 40 lines, then `Build log: <path>`, instead of the raw start of the tool's output; the helpers throw a `BuildFailedError` (`@hot-updater/cli-tools`) with the log's path and those lines.
+
 ## 1.1.22
 
 ## 1.1.21

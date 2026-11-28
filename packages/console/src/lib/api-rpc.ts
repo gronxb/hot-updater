@@ -5,13 +5,17 @@ import {
   type ReleasePolicyPatch,
   rowToBundle,
 } from "@hot-updater/plugin-core";
+import { assertCanonicalChannelName } from "@hot-updater/protocol";
 import { createServerFn } from "@tanstack/react-start";
 
 import { consoleAccess } from "./console-access";
-import { DEFAULT_PAGE_LIMIT } from "./constants";
+import { channelIdOf, releaseNativeBuildScope } from "./native-builds";
 import { withPublicBundleMutationErrors } from "./public-bundle-error";
-import { listReleases, readReleaseFilter } from "./server/listReleases";
-import { addReleaseReachability } from "./server/releaseReachability";
+import {
+  listReleaseFolds,
+  readReleaseFilter,
+  readReleaseFold,
+} from "./server/listReleases";
 
 type GetBundleInput = {
   bundleId: string;
@@ -32,7 +36,28 @@ type GetReleasesInput = {
   beforeReleaseId?: string;
   /** Releases newer than this id: the previous page. */
   afterReleaseId?: string;
-  limit?: number;
+  /** The selected release, which never folds. */
+  releaseId?: string;
+};
+
+/** A fold of a list's page, as the page gave it, and where its last chunk ended. */
+type FoldInput = { from?: string; to: string; after?: string };
+
+/** The bounds of a fold, checked: IDs as text. */
+const readFoldInput = (input: FoldInput) => {
+  const text = (value: unknown) => typeof value === "string" && value !== "";
+  if (
+    !text(input.to) ||
+    (input.from !== undefined && !text(input.from)) ||
+    (input.after !== undefined && !text(input.after))
+  ) {
+    throw new Error("A fold is its to, and optionally from and after.");
+  }
+  return {
+    to: input.to,
+    ...(input.from === undefined ? {} : { from: input.from }),
+    ...(input.after === undefined ? {} : { after: input.after }),
+  };
 };
 
 type ReleaseMutationInput = {
@@ -44,16 +69,6 @@ type ReleaseMutationInput = {
 type DeleteReleaseInput = {
   expectedRevision?: number;
   releaseId: string;
-};
-
-const MAX_PAGE_LIMIT = 100;
-
-const pageLimit = (limit: number | undefined) => {
-  const value = limit ?? DEFAULT_PAGE_LIMIT;
-  if (!Number.isSafeInteger(value) || value < 1 || value > MAX_PAGE_LIMIT) {
-    throw new Error(`limit must be between 1 and ${MAX_PAGE_LIMIT}.`);
-  }
-  return value;
 };
 
 const prepare = async () => {
@@ -71,16 +86,18 @@ export const getReleases = createServerFn({ method: "GET" })
     ...(input?.beforeReleaseId === undefined
       ? {}
       : { beforeReleaseId: input.beforeReleaseId }),
-    limit: pageLimit(input?.limit),
+    ...(input?.releaseId === undefined ? {} : { releaseId: input.releaseId }),
   }))
-  .handler(async ({ data }) => {
-    const { core } = await prepare();
-    const result = await listReleases(core, data);
-    return {
-      ...result,
-      data: await addReleaseReachability(core, result.data),
-    };
-  });
+  .handler(async ({ data }) => listReleaseFolds((await prepare()).core, data));
+
+/** One chunk of a release page's fold. */
+export const getReleaseFold = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
+  .validator((input: FoldInput & { filter?: ReleaseFilter }) => ({
+    filter: readReleaseFilter(input.filter),
+    ...readFoldInput(input),
+  }))
+  .handler(async ({ data }) => readReleaseFold((await prepare()).core, data));
 
 export const getRelease = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
@@ -241,4 +258,175 @@ export const getBundleChildCounts = createServerFn({ method: "GET" })
       console.error("Error during bundle child count retrieval:", error);
       throw error;
     }
+  });
+
+/** A channel name the list filters by, as its channel ID. */
+const channelIdFilter = (channel: unknown) => {
+  if (channel === undefined) return {};
+  if (typeof channel !== "string") throw new Error("channel must be a name.");
+  assertCanonicalChannelName(channel);
+  return { channelId: channelIdOf(channel) };
+};
+
+export const getNativeBuilds = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
+  .validator(
+    (
+      input: { before?: string; after?: string; channel?: string } | undefined,
+    ) => ({
+      ...(input?.before === undefined ? {} : { before: input.before }),
+      ...(input?.after === undefined ? {} : { after: input.after }),
+      ...channelIdFilter(input?.channel),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const [{ core }, { listNativeBuildFolds }] = await Promise.all([
+      prepare(),
+      import("./server/nativeBuilds"),
+    ]);
+    return listNativeBuildFolds(core, data);
+  });
+
+/** One chunk of a native build page's fold. */
+export const getNativeBuildFold = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
+  .validator((input: FoldInput & { channel?: string }) => ({
+    ...channelIdFilter(input.channel),
+    ...readFoldInput(input),
+  }))
+  .handler(async ({ data }) => {
+    const [{ core }, { readNativeBuildFold }] = await Promise.all([
+      prepare(),
+      import("./server/nativeBuilds"),
+    ]);
+    return readNativeBuildFold(core, data);
+  });
+
+/** A native build's page: the build, its built-in bundle, what it is served, and its patches. */
+export const getNativeBuildDetail = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
+  .validator((input: { id: string }) => input)
+  .handler(async ({ data }) => {
+    const [{ core }, { getNativeBuildDetail: readNativeBuildDetail }] =
+      await Promise.all([prepare(), import("./server/nativeBuilds")]);
+    return readNativeBuildDetail(core, data.id);
+  });
+
+/** One page of the patches from a native build's built-in bundle. */
+export const getNativeBuildPatches = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
+  .validator(
+    (input: { minBundleId: string; before?: string; after?: string }) => ({
+      minBundleId: input.minBundleId,
+      ...(input.before === undefined ? {} : { before: input.before }),
+      ...(input.after === undefined ? {} : { after: input.after }),
+    }),
+  )
+  .handler(async ({ data: { minBundleId, ...page } }) => {
+    const [{ core }, { listNativeBuildPatches, NATIVE_BUILD_PATCH_PAGE_SIZE }] =
+      await Promise.all([prepare(), import("./server/nativeBuilds")]);
+    return listNativeBuildPatches(core, minBundleId, {
+      ...page,
+      limit: NATIVE_BUILD_PATCH_PAGE_SIZE,
+    });
+  });
+
+/**
+ * The native build new deploys to a release's scope patch from: the scope's
+ * store build in one read, or with no mark its newest build in one more. A
+ * release of an app version range has no one build: it reads nothing. A
+ * sandbox build is never in the scope, so it is never the one.
+ */
+export const getReleaseNativeBuild = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
+  .validator(
+    (input: {
+      platform: "ios" | "android";
+      channel: string;
+      fingerprintHash: string | null;
+      targetAppVersion: string | null;
+    }) => input,
+  )
+  .handler(async ({ data }) => {
+    const scope = releaseNativeBuildScope(data);
+    if (scope === null) return null;
+    const { core } = await prepare();
+    return (
+      (await core.findNativeBuild(scope, { storeBuild: true })) ??
+      core.findNativeBuild(scope)
+    );
+  });
+
+/**
+ * Marks a build as what the store sells, replacing its scope's mark, or clears
+ * its mark: only for a signed-in caller. It creates no patch: a hosted Console
+ * doesn't run the diff.
+ */
+export const markNativeBuild = createServerFn({ method: "POST" })
+  .middleware([consoleAccess])
+  .validator((input: { id: string; storeBuild: boolean }) => input)
+  .handler(async ({ data }) =>
+    (await prepare()).core.markNativeBuild(data.id, {
+      storeBuild: data.storeBuild,
+    }),
+  );
+
+/**
+ * The URL a phone downloads a build from when the Console can't sign a link,
+ * or null when the storage gives none: the storage's download URL, resolved
+ * again each time it is read, since it may expire.
+ */
+export const getNativeBuildDownloadUrl = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
+  .validator((input: { id: string }) => input)
+  .handler(async ({ data }) => {
+    const [deps, { resolveNativeBuildDownloadUrl }] = await Promise.all([
+      prepare(),
+      import("./server/nativeBuilds"),
+    ]);
+    return { url: await resolveNativeBuildDownloadUrl(data.id, deps) };
+  });
+
+/**
+ * A new signed link to one build's download, which works without the
+ * console's sign-in until it expires: only for a signed-in caller.
+ */
+export const createNativeBuildDownloadLink = createServerFn({ method: "POST" })
+  .middleware([consoleAccess])
+  .validator((input: { id: string }) => input)
+  .handler(async ({ data }) => {
+    const { issueNativeBuildDownloadLink } =
+      await import("./server/nativeBuildDownloadLink");
+    return issueNativeBuildDownloadLink(data.id);
+  });
+
+/**
+ * What an iPhone can do with one build: read from the IPA on demand, one row
+ * and a few storage requests, with the Install button's link when it can
+ * install. A POST, since it signs that link, and only for a signed-in caller.
+ */
+export const getNativeBuildInstallEligibility = createServerFn({
+  method: "POST",
+})
+  .middleware([consoleAccess])
+  .validator((input: { id: string; udid?: string }) => input)
+  .handler(async ({ data }) => {
+    const [deps, { checkNativeBuildInstall }] = await Promise.all([
+      prepare(),
+      import("./server/nativeBuildInstall"),
+    ]);
+    return checkNativeBuildInstall(data.id, data.udid, deps, {
+      // Under Apple's refusal only: an approver gets the iOS devices page.
+      canApprove: async () => {
+        const [{ getRequest }, { requireConsoleAccess }, { iosDeviceViewer }] =
+          await Promise.all([
+            import("@tanstack/react-start/server"),
+            import("./server/auth.server"),
+            import("./server/iosDevices"),
+          ]);
+        const principal = await requireConsoleAccess(getRequest());
+        return (await iosDeviceViewer(principal, deps.config.deviceApprovers))
+          .canApprove;
+      },
+    });
   });

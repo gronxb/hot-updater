@@ -1,12 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-
-/**
- * A built-in bundle's ID: every native build makes it from its build time with
- * the random bits zeroed, or the nil UUID in a debug build. A deployed
- * bundle's ID is a random UUIDv7, so it never has this shape.
- */
-const BUILTIN_BUNDLE_ID =
-  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-7000-8000-000000000000|00000000-0000-0000-0000-000000000000)$/iu;
+import { isBuiltinBundleId } from "@/lib/builtin-bundle-id";
 
 /**
  * Whether a reported bundle is one a native build shipped: the report's
@@ -19,7 +12,7 @@ export const isBuiltinBundle = (
 ): boolean =>
   bundleId !== null &&
   bundleId !== undefined &&
-  (bundleId === minBundleId || BUILTIN_BUNDLE_ID.test(bundleId));
+  (bundleId === minBundleId || isBuiltinBundleId(bundleId));
 
 /** Marks a bundle ID as the bundle its native build shipped. */
 export function BuiltinBundleBadge() {

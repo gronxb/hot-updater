@@ -40,7 +40,7 @@ staging update. This example assumes the build-time default channel is
 import { hotUpdater } from "./hotUpdater";
 
 const updateInfo = await hotUpdater.checkForUpdate({
-  updateStrategy: "appVersion",
+  updateStrategy: "fingerprint",
   channel: "staging", // [!code ++]
 });
 

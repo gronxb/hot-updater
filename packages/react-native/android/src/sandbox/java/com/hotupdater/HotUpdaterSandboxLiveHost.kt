@@ -1,0 +1,335 @@
+package com.hotupdater
+
+import android.content.Context
+import android.content.SharedPreferences
+import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+
+/**
+ * The coordinator's view of the SDK: main's native state, and its server as the
+ * app's JavaScript left it after an answered check. No new native API: the check
+ * and the update are `HotUpdaterInstance`'s, and the preflight reads through the
+ * same catalog client, so the check that follows it costs a 304.
+ */
+internal class HotUpdaterSandboxLiveHost(
+    context: Context,
+    /** Main's SDK: the app's, or a test's over its own directories. */
+    private val mainImpl: () -> HotUpdaterImpl = { HotUpdater.getInstance(context.applicationContext) },
+    /** What the previous process's crash left, read before anything settled it. */
+    private val crashMarkerAtStart: () -> PendingCrashRecovery? = { HotUpdaterSandboxProcess.crashMarkerAtStart },
+    private val appRunning: () -> Boolean = { HotUpdaterSandboxProcess.hostActivities > 0 },
+    private val appHidden: () -> Boolean = HotUpdaterSandbox::isHostHidden,
+    private val canStartUnderScreen: () -> Boolean = HotUpdaterSandbox::canStartHostUnderScreen,
+    private val startUnderScreen: () -> Unit = HotUpdaterSandbox::startHostUnderScreen,
+) : HotUpdaterSandboxHost {
+    private val context = context.applicationContext
+    private val impl get() = mainImpl()
+
+    private fun config() = RecoveryCheckConfig.parse(impl.getStorageItem(RecoveryCheckConfig.KEY))
+
+    private fun requireConfig() = config() ?: throw IllegalStateException(HotUpdaterSandboxHomeModel.NO_SERVER)
+
+    private fun instance(config: RecoveryCheckConfig) =
+        HotUpdater.init(
+            context,
+            HotUpdaterOptions(
+                baseURL = config.baseURL,
+                requestHeaders = config.requestHeaders,
+                requestTimeoutMillis = config.requestTimeoutMillis,
+            ),
+        )
+
+    override fun fingerprintHash(): String? = impl.getFingerprintHash()
+
+    override val isInSession: Boolean
+        get() = HotUpdaterSandboxDev.session(context) != null
+
+    override val storedSessionBundleId: String?
+        get() = HotUpdaterSandboxDev.storedBundle(context)?.bundleId
+
+    override fun startStoredSession(
+        bundle: HotUpdaterSandboxStoredBundle,
+        handoff: String,
+    ): Boolean =
+        try {
+            // Leaving the normal launch, so its "started" mark doesn't read as a crash.
+            if (!isInSession) HotUpdaterSandboxDev.clearNormalLaunchStarted(impl.getRunningBundleId())
+            HotUpdaterSandboxDev.startRelaunch(context, HotUpdaterSandboxRelaunch.Stored(bundle.bundleId, handoff, bundle.releaseId))
+            true
+        } catch (error: Exception) {
+            Log.w("HotUpdaterSandbox", "couldn't relaunch into ${bundle.bundleId}: ${error.message}")
+            // Taken here, so no helper can act on it.
+            runCatching { abandonStoredSession(handoff) }
+            false
+        }
+
+    override fun abandonStoredSession(handoff: String): Boolean = HotUpdaterSandboxDev.filesOf(context).claimHandoff(handoff)
+
+    override fun exitSession() = HotUpdaterSandbox.devServer(context).exitDevServer()
+
+    override fun hasServerConfig(): Boolean =
+        if (isInSession) {
+            // Only the app's own launches leave the normal selection's server.
+            RecoveryCheckConfig.parse(KeyValueStorageService.create(context).getItem(RecoveryCheckConfig.KEY)) != null
+        } else {
+            config() != null
+        }
+
+    override suspend fun selection(): HotUpdaterSandboxSelection =
+        withContext(Dispatchers.IO) {
+            val builtIn = HotUpdaterImpl.getMinBundleId()
+            // In a session, what the next normal launch selects, with nothing settled.
+            val normal = if (isInSession) HotUpdaterSandboxDev.normalSelection() else null
+            // Read first: before a launch, it settles what the previous process left.
+            val launchBundleId = if (isInSession) null else impl.getBundleIdForUpdateCheck()
+            val active = impl.getActiveUpdateState()["activeSelection"] as? Map<*, *>
+            val bundleId =
+                if (isInSession) {
+                    normal?.first ?: builtIn
+                } else {
+                    hotUpdaterSandboxNextLaunchBundleId(
+                        runningBundleId = impl.getRunningBundleId(),
+                        launchBundleId = launchBundleId,
+                        activeBundleId = active?.get("bundleId") as? String,
+                        builtInBundleId = builtIn,
+                    )
+                }
+            HotUpdaterSandboxSelection(
+                channel = if (isInSession) normal?.second ?: impl.getDefaultChannel() else impl.getChannel(),
+                defaultChannel = impl.getDefaultChannel(),
+                bundleId = bundleId,
+                isBuiltIn = bundleId == builtIn,
+            )
+        }
+
+    override suspend fun launchBundleId(): String =
+        if (isInSession) {
+            // The SDK's read answers for the session, which runs no selected bundle.
+            selection().bundleId ?: HotUpdaterImpl.getMinBundleId()
+        } else {
+            withContext(Dispatchers.IO) { impl.getBundleIdForUpdateCheck() ?: HotUpdaterImpl.getMinBundleId() }
+        }
+
+    override fun isAppRunning(): Boolean = appRunning()
+
+    override fun isAppHidden(): Boolean = appHidden()
+
+    override fun canStartAppUnderScreen(): Boolean = canStartUnderScreen()
+
+    override fun startAppUnderScreen() = startUnderScreen()
+
+    override fun launchEvidence(): HotUpdaterSandboxLaunchEvidence {
+        val builtIn = HotUpdaterImpl.getMinBundleId()
+        // The launch report is a read: JavaScript gets the same one after.
+        val report = impl.notifyAppReady()
+        val from = report["fromBundleId"] as? String
+        return HotUpdaterSandboxLaunchEvidence(
+            marker =
+                crashMarkerAtStart()?.let {
+                    HotUpdaterSandboxCrashMarker(it.launchedBundleId ?: builtIn, it.shouldRollback)
+                },
+            rollback =
+                if (report["status"] == "RECOVERED" && from != null) {
+                    HotUpdaterSandboxRollback(
+                        from,
+                        report["toBundleId"] as? String ?: builtIn,
+                        fromReleaseId = report["fromReleaseId"] as? String,
+                        toReleaseId = report["toReleaseId"] as? String,
+                    )
+                } else {
+                    null
+                },
+        )
+    }
+
+    override fun details(): HotUpdaterSandboxDetails {
+        val builtIn = HotUpdaterImpl.getMinBundleId()
+        // A session's own view holds nothing pending, and the normal selection's may.
+        val state = (if (isInSession) HotUpdaterSandboxDev.normalActiveState() else null) ?: impl.getActiveUpdateState()
+        val active = (state["activeSelection"] as? Map<*, *>)?.get("bundleId") as? String ?: builtIn
+        // Later receipts win: the running launch's over the next launch's, over the stable one.
+        val releaseIds = mutableMapOf<String, String>()
+        for (key in listOf("stableSelection", "activeSelection", "runningSelection")) {
+            val receipt = state[key] as? Map<*, *> ?: continue
+            if (receipt["kind"] != SelectionKind.BUNDLE.name) continue
+            val bundleId = receipt["bundleId"] as? String ?: continue
+            releaseIds[bundleId] = receipt["releaseId"] as? String ?: continue
+        }
+        return HotUpdaterSandboxDetails(
+            builtInBundleId = builtIn,
+            fingerprintHash = impl.getFingerprintHash(),
+            pendingBundleId = active.takeIf { state["verificationPending"] == true },
+            releaseIds = releaseIds,
+        )
+    }
+
+    override suspend fun preflight(channel: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val config = requireConfig()
+            val state = HotUpdaterImplUpdateCheckState(context, impl)
+            val channelKey = ReleaseCatalogs.encodeChannelKey(channel)
+            val strategy = config.updateStrategy.releaseStrategy
+            val baseURL = config.baseURL.trimEnd('/')
+            val (scope, url) =
+                if (strategy == ReleaseStrategy.APP_VERSION) {
+                    val appVersion =
+                        state.getAppVersion()?.let(ReleaseCatalogs::canonicalizeAppVersion)
+                            ?: throw IllegalStateException("Failed to canonicalize app version")
+                    ReleaseCatalogScope.AppVersion(platform = PLATFORM, channelKey = channelKey) to
+                        "$baseURL/release-catalogs/app-version/$PLATFORM/$channelKey/${encodeURIComponent(appVersion)}"
+                } else {
+                    val fingerprintHash =
+                        state.getFingerprintHash()?.takeIf { it.isNotEmpty() }
+                            ?: throw IllegalStateException("Fingerprint hash is required")
+                    ReleaseCatalogScope.Fingerprint(
+                        platform = PLATFORM,
+                        channelKey = channelKey,
+                        fingerprintHash = fingerprintHash,
+                    ) to "$baseURL/release-catalogs/fingerprint/$PLATFORM/$channelKey/${encodeURIComponent(fingerprintHash)}"
+                }
+            val catalog =
+                ReleaseCatalogClient(state, OkHttpUpdateCheckTransport()).fetchReleaseCatalog(
+                    baseURL = baseURL,
+                    url = url,
+                    expectedScope = scope,
+                    requestHeaders = config.requestHeaders,
+                    requestTimeoutMillis = config.requestTimeoutMillis,
+                ) ?: return@withContext false
+            hotUpdaterSandboxChannelHasBundle(
+                catalog,
+                builtInBundleId = state.getMinBundleId(),
+                cohort = state.getCohort(),
+                crashedBundleIds = state.getCrashHistory(),
+            )
+        }
+
+    override suspend fun reset(): Boolean = withContext(Dispatchers.IO) { instance(requireConfig()).resetChannel() }
+
+    override suspend fun checkAndStage(
+        channel: String,
+        onProgress: (Double) -> Unit,
+    ): HotUpdaterSandboxStaged =
+        withContext(Dispatchers.IO) {
+            val config = requireConfig()
+            val update =
+                instance(config).checkForUpdateOlderThanBuiltIn(
+                    HotUpdaterCheckOptions(updateStrategy = config.updateStrategy, channel = channel),
+                ) ?: return@withContext HotUpdaterSandboxStaged.NoUpdate
+            val staged =
+                try {
+                    update.updateBundle(onProgress)
+                } catch (error: Exception) {
+                    // Another check's catalog replaced this selection while it staged.
+                    if (hotUpdaterSandboxIsStaleSelection(error)) false else throw error
+                }
+            if (!staged) return@withContext HotUpdaterSandboxStaged.Superseded
+            val active = impl.getActiveUpdateState()["activeSelection"] as? Map<*, *>
+            HotUpdaterSandboxStaged.Update(
+                active?.get("bundleId") as? String ?: HotUpdaterImpl.getMinBundleId(),
+                update.message,
+                // What `HotUpdater.getBundleId()` reports for this selection.
+                active?.get("releaseId") as? String,
+            )
+        }
+
+    private companion object {
+        const val PLATFORM = "android"
+    }
+}
+
+/**
+ * Whether opening a channel from the sandbox finds a bundle in [catalog]: what
+ * this device would select once it left its bundles behind, with no floor, so
+ * a Release older than the built-in bundle counts. A crashed bundle doesn't.
+ */
+internal fun hotUpdaterSandboxChannelHasBundle(
+    catalog: ReleaseCatalog,
+    builtInBundleId: String,
+    cohort: String,
+    crashedBundleIds: List<String>,
+): Boolean {
+    val desired =
+        ReleaseSelector.selectDesiredRelease(
+            catalog,
+            ReleaseSelectionInput(
+                builtInBundleId = builtInBundleId,
+                currentBundleId = builtInBundleId,
+                activeReleaseId = null,
+                runningReleaseId = RunningReleaseId.Explicit(null),
+                minBundleId = NO_FLOOR,
+                cohort = ReleaseSelector.normalizeCohortValue(cohort),
+                crashedBundleIds = crashedBundleIds,
+            ),
+        )
+    return desired != null && desired.kind != SelectionKind.BUILTIN
+}
+
+/** No bundle ID sorts below it. */
+private const val NO_FLOOR = "00000000-0000-0000-0000-000000000000"
+
+/** A staging that failed only because a newer check's selection replaced its own: no update failure. */
+internal fun hotUpdaterSandboxIsStaleSelection(error: Throwable): Boolean =
+    generateSequence(error) { it.cause.takeIf { cause -> cause !== it } }
+        .any { it is StaleReleaseCatalogException || it is StaleReleaseSelectionException }
+
+/**
+ * The sandbox's own file: an app's data and the SDK's stores stay as they are.
+ * Every write reaches the disk before it returns, since a switch ends by killing
+ * this process, and a link that's gone from memory but not from disk asks again.
+ */
+internal class HotUpdaterSandboxPreferences(
+    context: Context,
+) : HotUpdaterSandboxStore {
+    private val preferences: SharedPreferences =
+        context.applicationContext.getSharedPreferences(NAME, Context.MODE_PRIVATE)
+
+    override var pendingLinks: List<String>
+        get() {
+            val value = preferences.getString(PENDING_LINKS, null) ?: return emptyList()
+            return runCatching {
+                val links = JSONArray(value)
+                (0 until links.length()).map(links::getString)
+            }.getOrDefault(emptyList())
+        }
+        set(value) {
+            preferences.edit().putString(PENDING_LINKS, JSONArray(value).toString()).commit()
+        }
+
+    override var lastLaunch: HotUpdaterSandboxLastLaunch?
+        get() {
+            val value = preferences.getString(LAST_LAUNCH, null) ?: return null
+            return runCatching {
+                val item = JSONObject(value)
+                HotUpdaterSandboxLastLaunch(
+                    kind = HotUpdaterSandboxLastLaunch.Kind.valueOf(item.getString("kind")),
+                    bundleId = item.getString("bundleId"),
+                    rolledBackToBundleId = item.optString("rolledBackToBundleId").takeIf { item.has("rolledBackToBundleId") },
+                    releaseId = item.optString("releaseId").takeIf { item.has("releaseId") },
+                    rolledBackToReleaseId = item.optString("rolledBackToReleaseId").takeIf { item.has("rolledBackToReleaseId") },
+                )
+            }.getOrNull()
+        }
+        set(value) {
+            val item =
+                value?.let {
+                    JSONObject()
+                        .put("kind", it.kind.name)
+                        .put("bundleId", it.bundleId)
+                        .put("rolledBackToBundleId", it.rolledBackToBundleId)
+                        .put("releaseId", it.releaseId)
+                        .put("rolledBackToReleaseId", it.rolledBackToReleaseId)
+                        .toString()
+                }
+            preferences.edit().putString(LAST_LAUNCH, item).commit()
+        }
+
+    companion object {
+        /** The sandbox's own preferences file. */
+        const val NAME = "hot_updater_sandbox"
+        private const val PENDING_LINKS = "pendingLinks"
+        private const val LAST_LAUNCH = "lastLaunch"
+    }
+}

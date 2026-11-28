@@ -30,6 +30,30 @@ final class LaunchPreparationLock {
         }
     }
 
+    /// Resets the channel in `storage` while the selection `guardParams` names
+    /// is current, as `resetChannel` does. Once it resets, `clearNextLaunch`
+    /// runs under the lock.
+    func resetChannelIfSelectionCurrent(
+        _ guardParams: ReleaseSelectionGuardParams,
+        in storage: BundleStorageService,
+        clearNextLaunch: () -> Void
+    ) -> Result<Bool, Error> {
+        withLock {
+            let result = storage.resetChannelIfSelectionCurrent(
+                catalogId: guardParams.catalogId,
+                scopeKey: guardParams.scopeKey,
+                generation: guardParams.generation,
+                catalogHash: guardParams.catalogHash,
+                channel: guardParams.channel,
+                selectionContextHash: guardParams.selectionContextHash
+            )
+            if case .success(true) = result {
+                clearNextLaunch()
+            }
+            return result
+        }
+    }
+
     /// Commits `selection` in `storage`. Committing anything but a bundle, such
     /// as the built-in bundle, deletes every downloaded bundle, so it runs
     /// under the lock as a channel reset does. Once it commits,
@@ -50,5 +74,140 @@ final class LaunchPreparationLock {
             }
             return committed
         }
+    }
+}
+
+/// The two launch selections of one instance: the one React Native's next read
+/// of the bundle URL returns, and the one React Native runs in this process. A
+/// channel reset or built-in commit clears only the next one: the bundle ID
+/// JavaScript reads follows the selection, while the running bundle's base URL
+/// and manifest, which locate the files its JavaScript loads, stay that
+/// bundle's until React Native reloads. Read by native update checks on other
+/// threads while React Native sets it.
+final class LaunchSelections: @unchecked Sendable {
+    private let lock = NSLock()
+    private var nextValue: LaunchSelection?
+    private var runningValue: LaunchSelection?
+
+    /// The selection React Native's next read of the bundle URL returns, nil
+    /// once a reset or built-in commit asks it to select again.
+    var next: LaunchSelection? {
+        lock.lock()
+        defer { lock.unlock() }
+        return nextValue
+    }
+
+    /// The selection React Native runs in this process.
+    var running: LaunchSelection? {
+        lock.lock()
+        defer { lock.unlock() }
+        return runningValue
+    }
+
+    /// React Native launches `selection`, and runs it until it reads again.
+    func launch(_ selection: LaunchSelection) {
+        lock.lock()
+        nextValue = selection
+        runningValue = selection
+        lock.unlock()
+    }
+
+    /// The next read selects again; the running bundle stays until it does.
+    func clearNext() {
+        lock.lock()
+        nextValue = nil
+        lock.unlock()
+    }
+
+    /// Forgets both, before a reload reads the bundle URL again.
+    func clear() {
+        lock.lock()
+        nextValue = nil
+        runningValue = nil
+        lock.unlock()
+    }
+
+    /// The selected bundle's ID, which getBundleId() reports: nil for the
+    /// built-in bundle once a reset or built-in commit clears the next
+    /// selection, before React Native reloads.
+    var selectedBundleId: String? {
+        next?.launchedBundleId
+    }
+
+    var runningBundleId: String? {
+        running?.launchedBundleId
+    }
+
+    /// The ID of the release this launch runs, as JavaScript's getBundleId()
+    /// names a release: the receipt's release ID, a promote that reuses the
+    /// running artifact included; the artifact ID for a receipt without one;
+    /// and `minBundleId` for the built-in bundle. Nil before React Native
+    /// launches one.
+    func runningReleaseId(in storage: BundleStorageService, minBundleId: String) -> String? {
+        guard let running else { return nil }
+        guard let bundleId = running.launchedBundleId else { return minBundleId }
+        return runningReceipt(of: bundleId, in: storage)?["releaseId"] as? String ?? bundleId
+    }
+
+    /// The receipt of `bundleId`, the bundle this launch runs: the one its
+    /// launch recorded, which a commit of the next launch's selection leaves;
+    /// before a launch, the next launch's receipt of that bundle.
+    func runningReceipt(of bundleId: String, in storage: BundleStorageService) -> [String: Any]? {
+        let state = storage.getActiveUpdateState()
+        let keys = state.keys.contains("runningSelection")
+            ? ["runningSelection"]
+            : ["activeSelection", "stableSelection"]
+        for key in keys {
+            guard let selection = state[key] as? [String: Any],
+                  (selection["kind"] as? String) == SelectionKind.bundle.rawValue,
+                  (selection["bundleId"] as? String) == bundleId else {
+                continue
+            }
+            return selection
+        }
+        return nil
+    }
+
+    /// The running bundle's directory as a file:// URL, nil for the built-in
+    /// bundle or before React Native launches one.
+    func runningBaseURL(in storage: BundleStorageService) -> String? {
+        guard let running else { return nil }
+        let baseURL = storage.getBaseURL(forBundleId: running.launchedBundleId)
+        return baseURL.isEmpty ? nil : baseURL
+    }
+
+    /// The running bundle's manifest, empty for the built-in bundle or before
+    /// React Native launches one.
+    func runningManifest(in storage: BundleStorageService) -> ManifestAssets {
+        guard let running else { return [:] }
+        return storage.getManifest(forBundleId: running.launchedBundleId)
+    }
+}
+
+/// The Release selection a guarded change names, as JavaScript sends it.
+struct ReleaseSelectionGuardParams {
+    let catalogId: String
+    let scopeKey: String
+    let generation: Int64
+    let catalogHash: String
+    let channel: String
+    let selectionContextHash: String
+
+    init?(_ params: [AnyHashable: Any]?) {
+        guard let data = params as? [String: Any],
+              let catalogId = data["catalogId"] as? String,
+              let scopeKey = data["scopeKey"] as? String,
+              let generation = data["generation"] as? NSNumber,
+              let catalogHash = data["catalogHash"] as? String,
+              let channel = data["channel"] as? String,
+              let selectionContextHash = data["selectionContextHash"] as? String else {
+            return nil
+        }
+        self.catalogId = catalogId
+        self.scopeKey = scopeKey
+        self.generation = generation.int64Value
+        self.catalogHash = catalogHash
+        self.channel = channel
+        self.selectionContextHash = selectionContextHash
     }
 }

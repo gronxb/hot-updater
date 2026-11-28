@@ -16,7 +16,10 @@ import {
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   type RunInitOptions,
+  type RunInitResult,
   writeHotUpdaterFiles,
+  backfillInsightsReleaseRefs,
+  fillReleaseLabels,
 } from "@hot-updater/cli-tools";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { Cloudflare } from "cloudflare";
@@ -138,10 +141,14 @@ const deployWorker = async (
   }
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  envFile,
+  secretsEnv,
+}: RunInitOptions): Promise<RunInitResult> => {
   const cwd = getCwd();
   const nonInteractive = envFile !== undefined;
-  const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);
+  const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile, secretsEnv);
   const { managedEnv } = initEnvSources;
   const initInputEnv = getHotUpdaterInitInputEnv(
     initEnvSources,
@@ -674,6 +681,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   // The app's credential, through the managed server's plugins, on the tables they read.
   let credential: ProvisionedClientCredential | undefined;
   try {
+    // Labels the releases written before labels, and rebuilds their catalogs.
+    await fillReleaseLabels(server);
+    // Moves the Insights events a 1.1 server keyed by artifact to their releases.
+    await backfillInsightsReleaseRefs(server);
     credential = await provisionClientCredential(server, {
       env: initInputEnv,
       name: "Cloudflare init",
@@ -686,10 +697,17 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   p.log.success("Generated '.env.hotupdater' file with Cloudflare settings.");
-  await writeHotUpdaterFiles(getConfigScaffold(build), {
-    cwd,
-    settings: "Cloudflare",
-  });
+  await writeHotUpdaterFiles(
+    getConfigScaffold(build, {
+      accountId,
+      bucketName: selectedBucketName,
+      d1DatabaseId: selectedD1DatabaseId,
+    }),
+    {
+      cwd,
+      settings: "Cloudflare",
+    },
+  );
 
   printAppSetup({
     ...(subdomains.subdomain
@@ -701,12 +719,13 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     clientPlugins: server.clientPlugins,
   });
 
-  p.log.message(
-    `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/cloudflare#step-3-add-hotupdater-to-your-project",
-    )}`,
-  );
-  p.log.success("Done! 🎉");
+  return {
+    nextSteps: [
+      link(
+        "https://hot-updater.dev/docs/managed/cloudflare#step-3-add-hotupdater-to-your-project",
+      ),
+    ],
+  };
 };
 
 // What init asks for and checks before `runInit`.

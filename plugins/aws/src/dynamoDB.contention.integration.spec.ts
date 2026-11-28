@@ -163,7 +163,7 @@ describe("Insights rollout gate on DynamoDB Local", () => {
       {
         name: "dynamoDB",
         adapter: withAdapterLatency(adapter, LATENCY_MS),
-        aggregateBatching: { mode: "log", windowMs: 1_000 },
+        aggregateBatching: { windowMs: 1_000 },
         retry: {
           onRetry: (kind, attempt) => {
             retries[kind] += 1;
@@ -209,16 +209,16 @@ describe("Insights rollout gate on DynamoDB Local", () => {
     // An event's transaction writes no aggregate row, so moves of distinct
     // installations never conflict.
     if (ENFORCE_RETRIED_BOUND) expect(retried).toBeLessThanOrEqual(0.01);
-    const latest = (bundle: string) =>
-      rollout.countLatestEvents({
-        platform: "ios",
-        channel: "production",
-        sinceMs: start - (start % 86_400_000),
-        bundle: [
-          { field: "to_bundle_id", value: bundle, types: ["UPDATE_APPLIED"] },
-        ],
-      });
-    expect(await latest("bundle-b")).toBe(INSTALLS);
-    expect(await latest("bundle-a")).toBe(0);
+    const latest = (releaseId: string) =>
+      rollout
+        .countReleaseInstallations({
+          platform: "ios",
+          channel: "production",
+          sinceMs: start - (start % 86_400_000),
+          releaseId,
+        })
+        .then(({ release }) => release);
+    expect(await latest("release-b")).toBe(INSTALLS);
+    expect(await latest("release-a")).toBe(0);
   }, 600_000);
 });

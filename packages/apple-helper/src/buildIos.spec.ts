@@ -1,0 +1,639 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import type { CredentialResolver } from "@hot-updater/cli-tools";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+let root: string;
+
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
+  const { createMinBundleId, isCI, parseSecretReference, secret } =
+    await importOriginal<typeof import("@hot-updater/cli-tools")>();
+  return {
+    createMinBundleId,
+    isCI,
+    parseSecretReference,
+    secret,
+    getCwd: () => root,
+    p: {
+      log: { info: vi.fn(), success: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    },
+  };
+});
+vi.mock("./utils/readBuiltApp", () => ({
+  readBuiltApp: vi.fn(async (appPath: string) => ({
+    appVersion: "2.0.0",
+    channel: appPath,
+  })),
+}));
+vi.mock("execa", () => ({
+  // plutil reading an exportOptionsPlist's method: the file holds it.
+  execa: vi.fn(async (_file: string, args: string[]) => ({
+    exitCode: 0,
+    stdout: await fs.readFile(args.at(-1)!, "utf-8"),
+  })),
+}));
+// The build's directories are made under root, which each test removes.
+vi.mock("./utils/createRandomTmpDir", () => ({
+  createRandomTmpDir: vi.fn(async () => fs.mkdtemp(path.join(root, "tmp-"))),
+  removeTmpDir: vi.fn(async (directory: string) =>
+    fs.rm(directory, { recursive: true, force: true }),
+  ),
+}));
+vi.mock("./utils/ciSigningKeychain", () => ({
+  withSigningKeychain: vi.fn(async ({ run }: { run: () => Promise<unknown> }) =>
+    run(),
+  ),
+}));
+vi.mock("./utils/assertXcodebuildExist", () => ({
+  assertXcodebuildExist: vi.fn(),
+}));
+vi.mock("./builder/buildXcodeProject", () => ({
+  buildXcodeProject: vi.fn(
+    async ({ outputDirectory }: { outputDirectory: string }) => {
+      const appPath = path.join(outputDirectory, "App.app");
+      await fs.mkdir(appPath, { recursive: true });
+      return { appPath };
+    },
+  ),
+}));
+vi.mock("./builder/archiveXcodeProject", () => ({
+  archiveXcodeProject: vi.fn(
+    async ({ archiveDirectory }: { archiveDirectory: string }) => {
+      const archivePath = path.join(archiveDirectory, "App.xcarchive");
+      await fs.mkdir(
+        path.join(archivePath, "Products", "Applications", "App.app"),
+        { recursive: true },
+      );
+      return { archivePath };
+    },
+  ),
+}));
+/** The export options each export read, before their directory is removed. */
+let exportOptions: string[];
+vi.mock("./builder/exportXcodeArchive", () => ({
+  exportXcodeArchive: vi.fn(
+    async ({
+      exportPath,
+      exportOptionsPlist,
+    }: {
+      exportPath: string;
+      exportOptionsPlist: string;
+    }) => {
+      exportOptions.push(
+        await fs.readFile(exportOptionsPlist, "utf-8").catch(() => ""),
+      );
+      exportCount += 1;
+      await fs.mkdir(exportPath, { recursive: true });
+      await fs.writeFile(
+        path.join(exportPath, "App.ipa"),
+        `ipa ${exportCount}`,
+      );
+      return { exportPath };
+    },
+  ),
+}));
+
+// What each export's .ipa lists, in order; past the list, the last.
+let exportedDevices: (readonly string[])[];
+let exportCount: number;
+vi.mock("./utils/readIpaSigning", () => ({
+  readIpaSigning: vi.fn(async () => ({
+    distribution: "ad-hoc",
+    teamId: "ABCDE12345",
+    devices: exportedDevices[Math.min(exportCount, exportedDevices.length) - 1],
+    profileBundleIds: ["com.example", "com.example.widget"],
+  })),
+}));
+vi.mock("./utils/savedAdHocProfiles", () => ({
+  removeSavedAdHocProfiles: vi.fn(async () => ({
+    removed: ["saved-profile"],
+    failed: [],
+  })),
+}));
+
+vi.mock("./utils/sandboxInfoPlist", () => ({
+  patchSandboxArchive: vi.fn(),
+  patchSandboxSimulatorApp: vi.fn(),
+}));
+
+import { secret } from "@hot-updater/cli-tools";
+
+import { archiveXcodeProject } from "./builder/archiveXcodeProject";
+import { buildXcodeProject } from "./builder/buildXcodeProject";
+import { exportXcodeArchive } from "./builder/exportXcodeArchive";
+import { buildIos } from "./buildIos";
+import { withSigningKeychain } from "./utils/ciSigningKeychain";
+import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
+import { readBuiltApp } from "./utils/readBuiltApp";
+import { readIpaSigning } from "./utils/readIpaSigning";
+import {
+  patchSandboxArchive,
+  patchSandboxSimulatorApp,
+} from "./utils/sandboxInfoPlist";
+import { removeSavedAdHocProfiles } from "./utils/savedAdHocProfiles";
+
+const MIN_BUNDLE_ID = "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5";
+
+const scheme = (
+  overrides: Partial<EnrichedNativeBuildIosScheme> = {},
+): EnrichedNativeBuildIosScheme => ({
+  bundleIdentifier: "com.example",
+  scheme: "App",
+  platform: "ios",
+  installPods: false,
+  configuration: "Release",
+  destination: [],
+  simulator: false,
+  hotUpdaterSchemeName: "release",
+  ...overrides,
+});
+
+const ascKeyResolver = () => {
+  const resolve = vi.fn(async () => ({
+    keyPath: "/tmp/AuthKey_ABC.p8",
+    keyId: "ABC",
+    issuerId: "issuer",
+  }));
+  return { resolve: resolve as typeof resolve & CredentialResolver["resolve"] };
+};
+
+const AUTHENTICATION_ARGS = [
+  "-allowProvisioningUpdates",
+  "-authenticationKeyPath",
+  "/tmp/AuthKey_ABC.p8",
+  "-authenticationKeyID",
+  "ABC",
+  "-authenticationKeyIssuerID",
+  "issuer",
+];
+
+beforeEach(async () => {
+  vi.clearAllMocks();
+  exportOptions = [];
+  exportedDevices = [[]];
+  exportCount = 0;
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "apple-helper-spec-"));
+});
+
+afterEach(async () => {
+  vi.unstubAllEnvs();
+  await fs.rm(root, { recursive: true, force: true });
+});
+
+describe("buildIos of a simulator scheme", () => {
+  it("builds with the scheme's xcconfig", async () => {
+    await buildIos({
+      schemeConfig: scheme({ simulator: true, xcconfig: "Release.xcconfig" }),
+      minBundleId: MIN_BUNDLE_ID,
+    });
+
+    expect(buildXcodeProject).toHaveBeenCalledWith(
+      expect.objectContaining({ xcconfig: "Release.xcconfig" }),
+    );
+  });
+});
+
+describe("buildIos of a sandbox scheme", () => {
+  const plan = {
+    updateStrategy: "fingerprint",
+    train: { highestClosedVersion: "1.6.2", highestBuildNumber: 68 },
+  } as const;
+
+  it("compiles the layer in, and patches the simulator app before reading it", async () => {
+    await buildIos({
+      schemeConfig: scheme({ simulator: true, sandbox: true }),
+      minBundleId: MIN_BUNDLE_ID,
+    });
+
+    expect(buildXcodeProject).toHaveBeenCalledWith(
+      expect.objectContaining({ sandbox: true }),
+    );
+    const [patched] = vi.mocked(patchSandboxSimulatorApp).mock
+      .invocationCallOrder;
+    const [read] = vi.mocked(readBuiltApp).mock.invocationCallOrder;
+    expect(patched).toBeLessThan(read!);
+  });
+
+  it("patches the archive before it copies the app out and exports, internal testing only", async () => {
+    await buildIos({
+      schemeConfig: scheme({
+        sandbox: true,
+        signing: { ascApiKey: secret("asc-api-key") },
+      }),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials: ascKeyResolver(),
+      sandbox: plan,
+    });
+
+    expect(archiveXcodeProject).toHaveBeenCalledWith(
+      expect.objectContaining({ sandbox: true }),
+    );
+    expect(patchSandboxArchive).toHaveBeenCalledWith(
+      expect.objectContaining({
+        plan,
+        appPath: expect.stringMatching(/Products\/Applications\/App\.app$/),
+      }),
+    );
+    const [patched] = vi.mocked(patchSandboxArchive).mock.invocationCallOrder;
+    const [exported] = vi.mocked(exportXcodeArchive).mock.invocationCallOrder;
+    const [read] = vi.mocked(readBuiltApp).mock.invocationCallOrder;
+    expect(patched).toBeLessThan(read!);
+    expect(patched).toBeLessThan(exported!);
+    expect(exportOptions[0]).toContain("testFlightInternalTestingOnly");
+  });
+
+  it("never patches or marks a normal scheme's build", async () => {
+    await buildIos({
+      schemeConfig: scheme({ signing: { ascApiKey: secret("asc-api-key") } }),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials: ascKeyResolver(),
+    });
+    await buildIos({
+      schemeConfig: scheme({ simulator: true }),
+      minBundleId: MIN_BUNDLE_ID,
+    });
+
+    expect(patchSandboxArchive).not.toHaveBeenCalled();
+    expect(patchSandboxSimulatorApp).not.toHaveBeenCalled();
+    expect(exportOptions[0]).not.toContain("testFlightInternalTestingOnly");
+    expect(
+      vi.mocked(archiveXcodeProject).mock.calls[0]![0].sandbox,
+    ).toBeFalsy();
+  });
+});
+
+describe("buildIos", () => {
+  it("builds a simulator .app without resolving signing credentials", async () => {
+    const credentials = ascKeyResolver();
+
+    const { buildDirectory, buildArtifactPath, builtApp } = await buildIos({
+      schemeConfig: scheme({
+        simulator: true,
+        signing: { ascApiKey: secret("asc-api-key") },
+      }),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials,
+    });
+
+    expect(buildArtifactPath).toBe(path.join(buildDirectory, "app", "App.app"));
+    // Read from the built app.
+    expect(builtApp).toEqual({
+      appVersion: "2.0.0",
+      channel: buildArtifactPath,
+    });
+    expect(buildXcodeProject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deviceType: "simulator",
+        minBundleId: MIN_BUNDLE_ID,
+      }),
+    );
+    expect(vi.mocked(buildXcodeProject).mock.calls[0]![0]).not.toHaveProperty(
+      "authenticationArgs",
+    );
+    expect(credentials.resolve).not.toHaveBeenCalled();
+    expect(archiveXcodeProject).not.toHaveBeenCalled();
+  });
+
+  it("archives and exports an .ipa with the scheme's export options and the project's signing", async () => {
+    const credentials = ascKeyResolver();
+    const exportOptionsPlist = path.join(root, "ExportOptions.plist");
+    await fs.writeFile(
+      exportOptionsPlist,
+      "<plist><dict><key>method</key><string>release-testing</string></dict></plist>",
+    );
+
+    const { buildDirectory, buildArtifactPath, builtApp, exportMethod } =
+      await buildIos({
+        schemeConfig: scheme({ exportOptionsPlist }),
+        minBundleId: MIN_BUNDLE_ID,
+        credentials,
+      });
+
+    // The method the .ipa was exported with, for the registry to confirm.
+    expect(exportMethod).toBe("release-testing");
+
+    expect(buildArtifactPath).toBe(
+      path.join(buildDirectory, "export", "App.ipa"),
+    );
+    // Read from the archived app the .ipa exports.
+    expect(builtApp?.channel).toBe(
+      path.join(buildDirectory, "archive", "App.app"),
+    );
+    expect(archiveXcodeProject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        minBundleId: MIN_BUNDLE_ID,
+        authenticationArgs: undefined,
+      }),
+    );
+    expect(exportXcodeArchive).toHaveBeenCalledWith(
+      expect.objectContaining({
+        exportOptionsPlist,
+        authenticationArgs: undefined,
+      }),
+    );
+    expect(credentials.resolve).not.toHaveBeenCalled();
+  });
+
+  it("signs the archive and the export with the scheme's App Store Connect API key", async () => {
+    const credentials = ascKeyResolver();
+
+    const { buildArtifactPath, exportMethod } = await buildIos({
+      schemeConfig: scheme({ signing: { ascApiKey: secret("app-store-key") } }),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials,
+    });
+
+    expect(buildArtifactPath.endsWith("App.ipa")).toBe(true);
+    expect(exportMethod).toBe("app-store-connect");
+    expect(credentials.resolve).toHaveBeenCalledOnce();
+    expect(credentials.resolve).toHaveBeenCalledWith({
+      kind: "asc-api-key",
+      name: "app-store-key",
+    });
+    expect(archiveXcodeProject).toHaveBeenCalledWith(
+      expect.objectContaining({ authenticationArgs: AUTHENTICATION_ARGS }),
+    );
+    const [{ authenticationArgs, exportOptionsPlist }] =
+      vi.mocked(exportXcodeArchive).mock.calls[0]!;
+    expect(authenticationArgs).toEqual(AUTHENTICATION_ARGS);
+    // Without exportOptionsPlist, it exports for App Store Connect.
+    expect(exportOptions[0]).toContain("<string>app-store-connect</string>");
+    expect(exportOptions[0]).toContain("<string>automatic</string>");
+    // The export options are written to a directory the export removes.
+    await expect(fs.stat(path.dirname(exportOptionsPlist))).rejects.toThrow();
+  });
+
+  it.each([
+    ["true", true],
+    ["", false],
+  ])(
+    "archives and exports in a keychain of the build's own only in CI (CI=%j)",
+    async (ci, enabled) => {
+      vi.stubEnv("CI", ci);
+      const credentials = ascKeyResolver();
+
+      await buildIos({
+        schemeConfig: scheme({
+          signing: { ascApiKey: secret("app-store-key") },
+        }),
+        minBundleId: MIN_BUNDLE_ID,
+        credentials,
+      });
+
+      expect(withSigningKeychain).toHaveBeenCalledOnce();
+      expect(withSigningKeychain).toHaveBeenCalledWith(
+        expect.objectContaining({
+          enabled,
+          apiKey: {
+            keyPath: "/tmp/AuthKey_ABC.p8",
+            keyId: "ABC",
+            issuerId: "issuer",
+          },
+        }),
+      );
+      expect(archiveXcodeProject).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each([
+    ["app-store-connect", true],
+    ["development", false],
+    ["release-testing", true],
+    ["ad-hoc", true],
+  ])(
+    "in CI, signs a %s export with the API key in a keychain of its own: %s",
+    async (method, enabled) => {
+      vi.stubEnv("CI", "true");
+      const exportOptionsPlist = path.join(root, "ExportOptions.plist");
+      // The mocked plutil prints the file: its method.
+      await fs.writeFile(exportOptionsPlist, method);
+
+      await buildIos({
+        schemeConfig: scheme({
+          exportOptionsPlist,
+          signing: { ascApiKey: secret("app-store-key") },
+        }),
+        minBundleId: MIN_BUNDLE_ID,
+        credentials: ascKeyResolver(),
+      });
+
+      expect(withSigningKeychain).toHaveBeenCalledWith(
+        expect.objectContaining({
+          enabled,
+          // A certificate that may have signed an ad hoc .ipa stays valid.
+          keepDistribution: ["release-testing", "ad-hoc"].includes(method),
+        }),
+      );
+      expect(exportXcodeArchive).toHaveBeenCalledWith(
+        expect.objectContaining({ authenticationArgs: AUTHENTICATION_ARGS }),
+      );
+    },
+  );
+
+  it("leaves only the .ipa of an export, so no log with its bearer token reaches the output or the cache", async () => {
+    vi.mocked(exportXcodeArchive).mockImplementationOnce(
+      async ({ exportPath }: { exportPath: string }) => {
+        await fs.mkdir(path.join(exportPath, "App.xcdistributionlogs"), {
+          recursive: true,
+        });
+        await Promise.all(
+          [
+            "App.ipa",
+            "Packaging.log",
+            "DistributionSummary.plist",
+            "ExportOptions.plist",
+            "App.xcdistributionlogs/IDEDistribution.verbose.log",
+          ].map((file) =>
+            fs.writeFile(
+              path.join(exportPath, file),
+              'Authorization = "Bearer eyJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJhIn0.c2lnbmF0dXJl"',
+            ),
+          ),
+        );
+        return { exportPath };
+      },
+    );
+
+    const { buildDirectory, buildArtifactPath, dispose } = await buildIos({
+      schemeConfig: scheme({
+        signing: { ascApiKey: secret("app-store-key") },
+      }),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials: ascKeyResolver(),
+    });
+
+    const files = await fs.readdir(buildDirectory, { recursive: true });
+    expect(
+      files.filter((file) => /log|Summary|ExportOptions/iu.test(file)),
+    ).toEqual([]);
+    expect(path.basename(buildArtifactPath)).toBe("App.ipa");
+    expect(files).toContain(path.join("export", "App.ipa"));
+    await dispose();
+  });
+
+  it("needs no keychain of its own for a build with the project's signing", async () => {
+    vi.stubEnv("CI", "true");
+    const exportOptionsPlist = path.join(root, "ExportOptions.plist");
+    await fs.writeFile(exportOptionsPlist, "<plist/>");
+
+    await buildIos({
+      schemeConfig: scheme({ exportOptionsPlist }),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials: ascKeyResolver(),
+    });
+
+    expect(withSigningKeychain).not.toHaveBeenCalled();
+    expect(exportXcodeArchive).toHaveBeenCalledOnce();
+  });
+
+  it("returns the archive of a device build it cannot export", async () => {
+    const credentials = ascKeyResolver();
+
+    const { buildDirectory, buildArtifactPath } = await buildIos({
+      schemeConfig: scheme(),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials,
+    });
+
+    expect(buildArtifactPath).toBe(
+      path.join(buildDirectory, "archive", "App.xcarchive"),
+    );
+    expect(exportXcodeArchive).not.toHaveBeenCalled();
+    expect(credentials.resolve).not.toHaveBeenCalled();
+  });
+
+  it("refuses a channel for an archive it can't export, before it archives, so no signed app is modified", async () => {
+    await expect(
+      buildIos({
+        schemeConfig: scheme(),
+        minBundleId: MIN_BUNDLE_ID,
+        channel: "pr-7",
+      }),
+    ).rejects.toThrow(
+      "The scheme release archives without exporting, so its app can't embed a --channel and stay signed.\nSet exportOptionsPlist or signing.ascApiKey on the scheme.",
+    );
+    expect(archiveXcodeProject).not.toHaveBeenCalled();
+    expect(exportXcodeArchive).not.toHaveBeenCalled();
+  });
+
+  it("issues a MIN_BUNDLE_ID with zero random bits without one, as the podspec script phase does", async () => {
+    await buildIos({ schemeConfig: scheme({ simulator: true }) });
+
+    expect(vi.mocked(buildXcodeProject).mock.calls[0]![0].minBundleId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7000-8000-000000000000$/,
+    );
+  });
+});
+
+describe("buildIos of an ad hoc scheme with devices the registry expects", () => {
+  const PHONE = "00008030-001c2d3e4f5a6b7c";
+  const IPAD = "a".repeat(40);
+  const adHocScheme = async (sandbox = false) => {
+    const exportOptionsPlist = path.join(root, "ExportOptions.plist");
+    await fs.writeFile(exportOptionsPlist, "release-testing");
+    return scheme({
+      exportOptionsPlist,
+      sandbox,
+      signing: { ascApiKey: secret("app-store-key") },
+    });
+  };
+
+  it("exports once when the .ipa lists every expected device, and deletes no profile", async () => {
+    exportedDevices = [[PHONE, IPAD]];
+    await buildIos({
+      schemeConfig: await adHocScheme(),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials: ascKeyResolver(),
+      expectedDevices: [PHONE.toUpperCase()],
+    });
+    expect(exportXcodeArchive).toHaveBeenCalledOnce();
+    expect(removeSavedAdHocProfiles).not.toHaveBeenCalled();
+  });
+
+  it("reads nothing and exports once with no expected device", async () => {
+    await buildIos({
+      schemeConfig: await adHocScheme(),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials: ascKeyResolver(),
+    });
+    expect(readIpaSigning).not.toHaveBeenCalled();
+    expect(exportXcodeArchive).toHaveBeenCalledOnce();
+  });
+
+  it("deletes the app's saved profiles and exports once more, with the same options file, when a device is missing", async () => {
+    exportedDevices = [[PHONE], [PHONE, IPAD]];
+    const exportPlists: string[] = [];
+    vi.mocked(exportXcodeArchive).mockImplementation(
+      async ({ exportPath, exportOptionsPlist }) => {
+        // The options file exists at each export: a sandbox's is temporary.
+        await fs.access(exportOptionsPlist);
+        exportPlists.push(exportOptionsPlist);
+        exportCount += 1;
+        await fs.mkdir(exportPath, { recursive: true });
+        await fs.writeFile(path.join(exportPath, "Packaging.log"), "Bearer x");
+        await fs.writeFile(
+          path.join(exportPath, "App.ipa"),
+          `ipa ${exportCount}`,
+        );
+        return { exportPath };
+      },
+    );
+    const { buildArtifactPath, buildDirectory } = await buildIos({
+      schemeConfig: await adHocScheme(true),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials: ascKeyResolver(),
+      expectedDevices: [PHONE, IPAD],
+    });
+    expect(removeSavedAdHocProfiles).toHaveBeenCalledWith({
+      teamId: "ABCDE12345",
+      bundleIds: ["com.example", "com.example.widget"],
+    });
+    expect(exportPlists).toHaveLength(2);
+    expect(exportPlists[1]).toBe(exportPlists[0]);
+    expect(await fs.readFile(buildArtifactPath, "utf-8")).toBe("ipa 2");
+    const files = await fs.readdir(buildDirectory, { recursive: true });
+    expect(files.filter((file) => file.includes("Packaging"))).toEqual([]);
+  });
+
+  it("exports once more only after deleting a profile: with none saved, the .ipa stands for the build to judge", async () => {
+    exportedDevices = [[PHONE]];
+    vi.mocked(removeSavedAdHocProfiles).mockResolvedValueOnce({
+      removed: [],
+      failed: [],
+    });
+    await buildIos({
+      schemeConfig: await adHocScheme(),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials: ascKeyResolver(),
+      expectedDevices: [IPAD],
+    });
+    expect(exportXcodeArchive).toHaveBeenCalledOnce();
+  });
+
+  it("leaves no Packaging.log when an export throws", async () => {
+    let buildDirectory = "";
+    vi.mocked(exportXcodeArchive).mockImplementationOnce(
+      async ({ exportPath }) => {
+        buildDirectory = path.dirname(exportPath);
+        await fs.mkdir(exportPath, { recursive: true });
+        await fs.writeFile(path.join(exportPath, "Packaging.log"), "Bearer x");
+        throw new Error("export failed");
+      },
+    );
+    const { removeTmpDir } = await import("./utils/createRandomTmpDir");
+    vi.mocked(removeTmpDir).mockImplementationOnce(async () => {
+      // The build folder outlives the throw here, so the spec can look.
+    });
+    await expect(
+      buildIos({
+        schemeConfig: await adHocScheme(),
+        minBundleId: MIN_BUNDLE_ID,
+        credentials: ascKeyResolver(),
+        expectedDevices: [PHONE],
+      }),
+    ).rejects.toThrow("export failed");
+    expect(await fs.readdir(path.join(buildDirectory, "export"))).toEqual([]);
+  });
+});

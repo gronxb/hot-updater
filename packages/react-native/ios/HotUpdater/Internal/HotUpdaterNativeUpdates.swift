@@ -80,6 +80,13 @@ final class HotUpdaterImplUpdateHost: NativeUpdateHost {
         return (value as? Bool) ?? false
     }
 
+    func resetChannelIfSelectionCurrent(_ guardParams: [String: Any]) async -> Bool {
+        let value = try? await promise { resolve, reject in
+            self.impl.resetChannelIfSelectionCurrent(guardParams, resolver: resolve, rejecter: reject)
+        }
+        return (value as? Bool) ?? false
+    }
+
     func releaseCatalogCache(_ partition: String) -> String? {
         impl.releaseCatalogCacheValue(partition)
     }
@@ -216,6 +223,48 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
         }
     }
 
+    /// `resetChannelIfSelectionCurrent` for JavaScript: waits for a native
+    /// check or staging as `resetChannel` does, then resets only while the
+    /// Release selection `params` names is current.
+    @objc(resetChannelIfSelectionCurrentWithImpl:params:resolver:rejecter:)
+    public static func resetChannelIfSelectionCurrent(
+        impl: HotUpdaterImpl,
+        params: [AnyHashable: Any]?,
+        resolver resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        let checker = checker(impl: impl)
+        Task {
+            await checker.whenIdle {
+                await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+                    impl.resetChannelIfSelectionCurrent(params, resolver: { value in
+                        // The reset deleted staged bundles; their queued downloads go too.
+                        if (value as? Bool) == true {
+                            NativeUpdateEvents.remove(name: "onBundleDownloaded", from: HotUpdaterImplUpdateHost(impl: impl))
+                        }
+                        resolve(value)
+                        done.resume()
+                    }, rejecter: { code, message, error in
+                        reject(code, message, error)
+                        done.resume()
+                    })
+                }
+            }
+        }
+    }
+
+    /// Background time for JavaScript's update requests, by the identifier
+    /// `endJavaScriptBackgroundTask` takes. See `JavaScriptBackgroundTasks`.
+    @objc(beginJavaScriptBackgroundTask)
+    public static func beginJavaScriptBackgroundTask() -> NSNumber {
+        NSNumber(value: JavaScriptBackgroundTasks.shared.begin())
+    }
+
+    @objc(endJavaScriptBackgroundTask:)
+    public static func endJavaScriptBackgroundTask(_ identifier: NSNumber) {
+        JavaScriptBackgroundTasks.shared.end(identifier.intValue)
+    }
+
     /// The queued plugin events as a JSON array, cleared as they are taken.
     @objc(takeEventsWithImpl:)
     public static func takeEvents(impl: HotUpdaterImpl) -> String? {
@@ -280,6 +329,13 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
         try await checker.checkForUpdate(NativeCheckRequest(self.options, options))
     }
 
+    /// `checkForUpdate` for the sandbox's explicit channel open: the channel's
+    /// latest Release this build can run, even one older than the built-in
+    /// bundle. The same checker and staging as `checkForUpdate`.
+    func checkForUpdateOlderThanBuiltIn(_ options: HotUpdaterCheckOptions) async throws -> HotUpdaterUpdate? {
+        try await checker.checkForUpdate(NativeCheckRequest(self.options, options, allowsOlderThanBuiltIn: true))
+    }
+
     /// `checkForUpdate` for Objective-C; completes on the main queue.
     /// `cancel` on the returned task cancels the check.
     @discardableResult
@@ -326,9 +382,21 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
 
     @objc public func getAppVersion() -> String? { HotUpdaterImpl.appVersion }
 
-    /// The bundle this launch runs, or nil for the built-in bundle or before
-    /// `bundleURL()` is read.
-    @objc public func getBundleId() -> String? { impl.runningBundleId() }
+    /// The ID of the release this launch runs, the ID the Console and
+    /// JavaScript's `getBundleId()` show: MIN_BUNDLE_ID for the built-in
+    /// bundle, and the artifact ID only for a bundle installed without a
+    /// release. Nil before `bundleURL()` is read. A staged update changes it
+    /// once it launches, as `getReleaseLabel()`; JavaScript's names a staged
+    /// update right away.
+    @objc public func getBundleId() -> String? { impl.runningReleaseId() }
+
+    /// The label of the release this launch runs, shown `v<label>`: nil for
+    /// the built-in bundle, a release without one, or before `bundleURL()` is
+    /// read. Kept with the bundle, so it reads the same after a restart and
+    /// offline.
+    @objc public func getReleaseLabel() -> NSNumber? {
+        impl.runningReleaseLabel().map(NSNumber.init(value:))
+    }
 
     @objc public func getMinBundleId() -> String { HotUpdaterImpl.minBundleId() }
 

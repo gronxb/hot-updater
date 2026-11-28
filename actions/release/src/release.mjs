@@ -1,0 +1,392 @@
+// @ts-check
+
+import {
+  assertBuildRunner,
+  runNativeBuild,
+} from "../../native-build/src/nativeBuild.mjs";
+import {
+  deployBundle,
+  findNativeBuild,
+  parseFlag,
+  parsePlatforms,
+  parseSchemes,
+  refreshFingerprint,
+  STORES,
+} from "../../shared/nativeBuild.mjs";
+import { PLAY_TRACKS } from "../../shared/playTracks.mjs";
+
+/**
+ * @typedef {import("../../shared/nativeBuild.mjs").Platform} Platform
+ * @typedef {import("../../shared/nativeBuild.mjs").NativeBuildFindResult} NativeBuildFindResult
+ * @typedef {import("../../shared/nativeBuild.mjs").NativeBuildRow} NativeBuildRow
+ *
+ * @typedef {object} Inputs
+ * @property {Platform[]} platforms
+ * @property {Partial<Record<Platform, string>>} schemes The `nativeBuild`
+ *   scheme of each platform's store build.
+ * @property {string | null} channel The channel to release on, or null for
+ *   the one a build of the native project would embed.
+ * @property {boolean} submit Whether a native build goes to the store.
+ * @property {boolean} dryRun Whether to only look up and print the decision.
+ *
+ * @typedef {object} Deps
+ * @property {import("../../shared/cli.mjs").Cli} cli
+ * @property {import("../../shared/cli.mjs").BuildLogs} buildLogs
+ * @property {(name: string, value: string) => void} setOutput
+ * @property {{ info: (message: string) => void, notice: (message: string) => void, group: <T>(name: string, run: () => Promise<T>) => Promise<T> }} log
+ * @property {(markdown: string) => void} summary Appends to the job's summary.
+ *
+ * @typedef {"ota" | "build"} Decision
+ *
+ * @typedef {object} PlatformResult One platform's line of the result.
+ * @property {Platform} platform
+ * @property {string} scheme
+ * @property {string | null} channel
+ * @property {string | null} fingerprintHash
+ * @property {string | null} appVersion
+ * @property {Decision | "none"} decision `none` when the lookup failed, which
+ *   says nothing about the registry, or the scheme is a sandbox scheme: nothing
+ *   runs.
+ * @property {string} reason
+ * @property {"deployed" | "built" | "decided" | "failed"} outcome
+ * @property {string | null} nativeBuildId
+ * @property {string | null} bundleId
+ * @property {"testflight" | "play-internal" | "play-closed" | "play-open" | "play-production" | null} submittedTo
+ * @property {string | null} error
+ */
+
+/**
+ * Why a release refuses a sandbox scheme, which `find` tells by its
+ * `sandbox`: a sandbox build never goes to a store, whatever its channel.
+ *
+ * @param {Platform} platform
+ * @param {string} scheme
+ */
+const sandboxSchemeMessage = (platform, scheme) =>
+  `The ${platform}-scheme ${scheme} is a sandbox scheme, which never goes to a store. Use a scheme without sandbox: true.`;
+
+/**
+ * The action's inputs, from the environment its composite step passes.
+ *
+ * @param {Record<string, string | undefined>} env
+ * @returns {Inputs}
+ */
+export const parseInputs = (env) => {
+  /** @param {string} name */
+  const input = (name) => env[`INPUT_${name}`]?.trim() ?? "";
+
+  const platforms = input("PLATFORMS");
+  if (platforms === "") {
+    throw new Error("platforms is required: ios, android, or both.");
+  }
+  const parsed = parsePlatforms(platforms);
+  const schemes = parseSchemes(input);
+  for (const platform of parsed) {
+    if (schemes[platform] === undefined) {
+      throw new Error(
+        `${platform}-scheme is required: the nativeBuild.${platform} scheme of the store build.`,
+      );
+    }
+  }
+  const channel = input("CHANNEL") || null;
+  return {
+    platforms: parsed,
+    schemes,
+    channel,
+    submit: parseFlag(input, "SUBMIT", true),
+    dryRun: parseFlag(input, "DRY_RUN", false),
+  };
+};
+
+/**
+ * Whether the release deploys a bundle or needs a native build. A tracked
+ * build is recorded before its upload, so a tracked build with no submission
+ * may be one whose upload failed: deploying over it would turn the rerun of a
+ * failed submit green with nothing in the store, so it goes through
+ * `native-build --submit`, which reuses the build while its inputs are the
+ * same. A build registered from elsewhere (`native-build import`), which has
+ * no build key, is taken to be in the store already.
+ *
+ * @param {NativeBuildFindResult} found
+ * @param {Pick<Inputs, "submit">} inputs
+ * @returns {{ decision: Decision, reason: string }}
+ */
+export const decide = (found, { submit }) => {
+  const build = found.nativeBuild;
+  if (build === null) {
+    return {
+      decision: "build",
+      reason: `no tracked native build on ${found.channel}`,
+    };
+  }
+  const store = STORES[found.platform];
+  if (!submit || (build.build_key ?? null) === null) {
+    return { decision: "ota", reason: `native build ${build.id} is tracked` };
+  }
+  return (
+    found.platform === "android"
+      ? build.submitted_to?.startsWith("play-")
+      : build.submitted_to === store.id
+  )
+    ? {
+        decision: "ota",
+        reason: `native build ${build.id} is on ${found.platform === "android" ? (PLAY_TRACKS[/** @type {keyof typeof PLAY_TRACKS} */ (build.submitted_to)]?.name ?? "Google Play") : store.name}`,
+      }
+    : {
+        decision: "build",
+        reason: `native build ${build.id} has no ${store.name} submission`,
+      };
+};
+
+/**
+ * A lookup's output that says something else than "no build" is a failed
+ * lookup, never a reason to build.
+ *
+ * @param {NativeBuildFindResult} found
+ */
+const assertLookup = (found) => {
+  if (
+    found.nativeBuild === undefined ||
+    typeof found.channel !== "string" ||
+    (found.fingerprintHash === null && found.appVersion === null)
+  ) {
+    throw new Error("native-build find printed no build, channel, or target.");
+  }
+};
+
+/**
+ * The fingerprint in a decision's line and table.
+ *
+ * @param {Pick<PlatformResult, "fingerprintHash" | "appVersion">} target
+ */
+const shortTarget = ({ fingerprintHash, appVersion }) =>
+  fingerprintHash !== null
+    ? `fingerprint ${fingerprintHash.slice(0, 8)}`
+    : appVersion !== null
+      ? `app version ${appVersion}`
+      : "fingerprint unknown";
+
+/** @param {PlatformResult} result */
+export const formatDecision = (result) =>
+  [result.platform, shortTarget(result), result.decision, result.reason].join(
+    " · ",
+  );
+
+/**
+ * Builds, tracks, and submits one platform's native build.
+ *
+ * @param {Deps} deps
+ * @param {Inputs} inputs
+ * @param {Record<string, string | undefined>} env
+ * @param {PlatformResult} result
+ * @param {string} channel
+ */
+const buildPlatform = async (deps, inputs, env, result, channel) => {
+  const { platform, scheme } = result;
+  const store = STORES[platform];
+  assertBuildRunner(platform, env);
+  // The channel input is the one the build embeds, whatever the project or an
+  // Expo config plugin sets: --channel stamps it into the artifact.
+  const built = await runNativeBuild(
+    deps,
+    {
+      platform,
+      scheme,
+      submit: inputs.submit ? store.id : null,
+      ...(inputs.channel === null
+        ? {}
+        : { extraArgs: ["--channel", inputs.channel] }),
+    },
+    { buildLogOutput: `${platform}-build-log` },
+  );
+  if (built.nativeBuild === null) {
+    throw new Error(
+      `The ${platform}-scheme ${scheme} builds Debug, which a store refuses: use a Release scheme.`,
+    );
+  }
+  result.nativeBuildId = built.nativeBuild.id;
+  // What the artifact embeds, such as an app version an xcconfig sets.
+  result.fingerprintHash = built.build.fingerprintHash;
+  result.appVersion = built.build.appVersion;
+  if (built.build.channel !== channel) {
+    throw new Error(
+      `native-build ${platform} built a native build that embeds the ${built.build.channel} channel, not ${channel}.`,
+    );
+  }
+  // The store matched the build number, not this artifact, which may hold
+  // native code the store's build with that number doesn't. A cached build
+  // says nothing here: a build the store refused is tracked and reused too.
+  const { skipped, existing } = built.submission;
+  if (skipped === "already-submitted" && existing?.source === "store") {
+    throw new Error(
+      `${store.name} already has ${existing.version ?? "this build number"}, which may be another build. Raise the build number and push again.`,
+    );
+  }
+  result.submittedTo = inputs.submit
+    ? (existing?.destination ?? built.nativeBuild.submitted_to ?? store.id)
+    : null;
+  result.outcome = "built";
+};
+
+/**
+ * Looks up, decides, and runs one platform, whose failure stays its own, so
+ * the other platform still runs and the result shows both.
+ *
+ * @param {Deps} deps
+ * @param {Inputs} inputs
+ * @param {Record<string, string | undefined>} env
+ * @param {Platform} platform
+ * @returns {Promise<PlatformResult>}
+ */
+const releasePlatform = async (deps, inputs, env, platform) => {
+  const scheme = /** @type {string} */ (inputs.schemes[platform]);
+  /** @type {PlatformResult} */
+  const result = {
+    platform,
+    scheme,
+    channel: inputs.channel,
+    fingerprintHash: null,
+    appVersion: null,
+    decision: "none",
+    reason: "the lookup failed",
+    outcome: "failed",
+    nativeBuildId: null,
+    bundleId: null,
+    submittedTo: null,
+    error: null,
+  };
+  try {
+    const found = await deps.log
+      .group(`Look up ${platform}`, async () => {
+        const lookup = await findNativeBuild(deps, {
+          platform,
+          scheme,
+          channel: inputs.channel,
+        });
+        assertLookup(lookup);
+        return lookup;
+      })
+      .catch((error) => {
+        deps.log.info(formatDecision(result));
+        throw error;
+      });
+    result.channel = found.channel;
+    result.fingerprintHash = found.fingerprintHash;
+    result.appVersion = found.appVersion;
+    // Only the lookup says whether the scheme is a sandbox's.
+    if (found.sandbox !== undefined) {
+      result.reason = `${scheme} is a sandbox scheme`;
+      deps.log.info(formatDecision(result));
+      throw new Error(sandboxSchemeMessage(platform, scheme));
+    }
+    Object.assign(result, decide(found, inputs));
+    deps.log.info(formatDecision(result));
+
+    if (inputs.dryRun) {
+      result.outcome = "decided";
+      return result;
+    }
+    if (result.decision === "build") {
+      await deps.log.group(`Build ${platform}`, () =>
+        buildPlatform(deps, inputs, env, result, found.channel),
+      );
+      return result;
+    }
+    result.nativeBuildId = found.nativeBuild?.id ?? null;
+    await deps.log.group(`Deploy ${platform}`, async () => {
+      await refreshFingerprint(deps, found);
+      ({ id: result.bundleId } = await deployBundle(deps, {
+        platform,
+        channel: found.channel,
+        target: found,
+      }));
+    });
+    result.outcome = "deployed";
+    return result;
+  } catch (error) {
+    result.outcome = "failed";
+    result.error = error instanceof Error ? error.message : String(error);
+    return result;
+  }
+};
+
+/** @param {string} value */
+const tableCell = (value) => value.replaceAll("|", "\\|").replaceAll("\n", " ");
+
+/**
+ * @param {PlatformResult} result
+ * @returns {string}
+ */
+const describeOutcome = (result) => {
+  switch (result.outcome) {
+    case "decided":
+      return "dry run";
+    case "deployed":
+      return `bundle \`${result.bundleId}\``;
+    case "built":
+      return result.submittedTo === null
+        ? `native build \`${result.nativeBuildId}\``
+        : `native build \`${result.nativeBuildId}\` to ${STORES[result.platform].name}`;
+    case "failed":
+      return `**failed**: ${result.error}`;
+  }
+};
+
+/**
+ * The job's summary: each platform's decision and what came of it.
+ *
+ * @param {PlatformResult[]} platforms
+ */
+export const renderSummary = (platforms) =>
+  [
+    "### hot-updater release",
+    "",
+    "| Platform | Channel | Target | Decision | Reason | Result |",
+    "| --- | --- | --- | --- | --- | --- |",
+    ...platforms.map((result) => {
+      const cells = [
+        result.platform,
+        result.channel ?? "",
+        shortTarget(result),
+        result.decision,
+        result.reason,
+        describeOutcome(result),
+      ];
+      return `| ${cells.map(tableCell).join(" | ")} |`;
+    }),
+    "",
+  ].join("\n");
+
+/**
+ * Releases each platform, then sets the result and the job's summary, and
+ * fails when any platform failed, naming it and the ones that finished.
+ *
+ * @param {Deps} deps
+ * @param {Record<string, string | undefined>} env
+ */
+export const runAction = async (deps, env) => {
+  const inputs = parseInputs(env);
+  /** @type {PlatformResult[]} */
+  const platforms = [];
+  for (const platform of inputs.platforms) {
+    platforms.push(await releasePlatform(deps, inputs, env, platform));
+  }
+  const failed = platforms.filter(({ outcome }) => outcome === "failed");
+  const result = { dryRun: inputs.dryRun, ok: failed.length === 0, platforms };
+  deps.setOutput("result", JSON.stringify(result));
+  deps.summary(renderSummary(platforms));
+  if (failed.length > 0) {
+    const finished = platforms.filter(({ outcome }) => outcome !== "failed");
+    throw new Error(
+      [
+        ...failed.map(({ platform, error }) => `${platform}: ${error}`),
+        ...(finished.length > 0
+          ? [
+              `${finished.map(({ platform, outcome }) => `${platform} ${outcome}`).join(", ")}: this run released part of the push.`,
+            ]
+          : []),
+      ].join("\n"),
+    );
+  }
+  return result;
+};

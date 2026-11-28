@@ -317,8 +317,10 @@ describe("E2E navigation stack contract", () => {
       "runtime-initial-cohort-route.tsx",
       "runtime-large-asset-route.tsx",
       "runtime-marker-route.tsx",
+      "runtime-release-label-route.tsx",
       "runtime-release-state-route.tsx",
       "runtime-remote-config-route.tsx",
+      "runtime-reported-bundle-route.tsx",
       "set-cohort-qa-action-route.tsx",
       "update-action-result-route.tsx",
       "update-store-download-paths-route.tsx",
@@ -327,7 +329,7 @@ describe("E2E navigation stack contract", () => {
     const stackScreens = routeModuleSources.flatMap(
       (source) => source.match(/<Stack\.Screen/g) ?? [],
     );
-    expect(stackScreens).toHaveLength(38);
+    expect(stackScreens).toHaveLength(40);
     expect(e2eAppRoutesSource).not.toContain("routeGroups");
     expect(e2eAppRoutesSource).not.toContain("routeScreens");
     for (const [index, source] of routeModuleSources.entries()) {

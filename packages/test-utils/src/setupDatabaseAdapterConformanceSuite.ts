@@ -60,6 +60,14 @@ export const conformanceItems: PhysicalTable = {
     },
     { name: "payload", type: "json", nullable: true },
     { name: "note", type: "string", nullable: true },
+    /** A unique slot only some rows hold, as long as a scope key. */
+    {
+      name: "slot",
+      type: "string",
+      nullable: true,
+      maxLength: 2048,
+      ascii: true,
+    },
     { name: "_v", type: "integer", nullable: false },
   ],
   key: ["id"],
@@ -69,6 +77,7 @@ export const conformanceItems: PhysicalTable = {
     { name: "byGroupFlag", eq: ["grp", "flag"], sort: ["score"] },
     { name: "byLabel", eq: ["label"], sort: [], unique: true },
     { name: "byTag", eq: ["tags"], sort: ["score"] },
+    { name: "bySlot", eq: ["slot"], sort: [], unique: true },
   ],
 };
 
@@ -130,6 +139,7 @@ const item = (id: string, values: Partial<StoredRow> = {}): StoredRow => ({
   tags: null,
   payload: null,
   note: null,
+  slot: null,
   _v: 0,
   ...values,
 });
@@ -456,6 +466,44 @@ export const setupDatabaseAdapterConformanceSuite = (
       ).toEqual(["f"]);
     });
 
+    it("moves a unique slot between rows in one write, and holds a long ASCII value", async () => {
+      const adapter = await setup();
+      // Past varchar(255), within every key-value store's key limit.
+      const slot = `s:${"a".repeat(998)}`;
+      // Any number of rows hold no slot.
+      await ok(adapter, [
+        insert(item("a", { slot })),
+        insert(item("b")),
+        insert(item("c")),
+      ]);
+      expect(await adapter.write([insert(item("d", { slot }))])).toEqual({
+        ok: false,
+        failedOp: 0,
+      });
+      const patch = (
+        id: string,
+        from: string | null,
+        to: string | null,
+      ): WriteOp => ({
+        type: "patch",
+        table: conformanceItems,
+        key: [id],
+        set: { slot: to },
+        guard: { v: 0 },
+        previous: item(id, { slot: from }),
+      });
+      // Taking a held slot fails; freeing it first in the same write moves it.
+      expect(await adapter.write([patch("b", null, slot)])).toEqual({
+        ok: false,
+        failedOp: 0,
+      });
+      await ok(adapter, [patch("a", slot, null), patch("b", null, slot)]);
+      expect(
+        ids(await query(adapter, { index: "bySlot", eq: [slot] })),
+      ).toEqual(["b"]);
+      expect(await one(adapter, "a")).toMatchObject({ slot: null });
+    });
+
     it("orders strings by UTF-8 bytes and numbers numerically", async () => {
       const adapter = await setup();
       const names = ["b", "B", "a", "a ", "é", "z", "😀", "ﬀ", "10", "9"];
@@ -606,6 +654,66 @@ export const setupDatabaseAdapterConformanceSuite = (
         lower: { values: ["r4"], inclusive: false },
       });
       expect(ids(second)).toEqual(["r5", "r6", "r7", "r8"]);
+    });
+
+    it("reads every write committed before the read starts", async () => {
+      const adapter = await setup();
+      await ok(adapter, [insert(item("s", { score: 1 }))]);
+      for (let score = 2; score <= 5; score += 1) {
+        const previous = (await one(adapter, "s"))!;
+        await ok(adapter, [
+          {
+            type: "patch",
+            table: conformanceItems,
+            key: ["s"],
+            set: { score },
+            guard: { v: previous._v as number },
+            previous,
+          },
+        ]);
+        expect((await one(adapter, "s"))?.score).toBe(score);
+        expect(
+          (await query(adapter, { index: "byGroup", eq: ["g"] })).map(
+            (row) => row.score,
+          ),
+        ).toEqual([score]);
+      }
+    });
+
+    it("writes the index items of rows written without the index (migrations.fillIndex)", async () => {
+      const adapter = await setup();
+      const fillIndex = adapter.migrations?.fillIndex;
+      // A store whose indexes cover every row itself has nothing to fill.
+      if (fillIndex === undefined) return;
+      // As a server of an earlier release writes them: without `byGroup`.
+      const earlier: PhysicalTable = {
+        ...conformanceItems,
+        indexes: conformanceItems.indexes.filter(
+          ({ name }) => name !== "byGroup",
+        ),
+      };
+      await ok(
+        adapter,
+        ["r0", "r1", "r2"].map((id) => ({
+          type: "insert" as const,
+          table: earlier,
+          row: item(id, { score: Number(id.slice(1)) }),
+        })),
+      );
+      await ok(adapter, [insert(item("r3", { score: 3 }))]);
+      const byGroup = () =>
+        query(adapter, { index: "byGroup", eq: ["g"] }).then(ids);
+      await expect(byGroup()).resolves.toEqual(["r3"]);
+
+      await expect(
+        fillIndex(conformanceItems, "byGroup", { dryRun: true }),
+      ).resolves.toBe(3);
+      await expect(byGroup()).resolves.toEqual(["r3"]);
+      await expect(fillIndex(conformanceItems, "byGroup")).resolves.toBe(3);
+      await expect(byGroup()).resolves.toEqual(["r0", "r1", "r2", "r3"]);
+      await expect(
+        fillIndex(conformanceItems, "byGroup", { dryRun: true }),
+      ).resolves.toBe(0);
     });
 
     it(`lets exactly one of ${writers} concurrent writers win a contested key`, async () => {

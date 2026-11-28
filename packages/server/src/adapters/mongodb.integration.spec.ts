@@ -21,6 +21,7 @@ import { MongoClient } from "mongodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createInProcessCoreApi } from "../core/inProcess.testFixtures";
+import { composeUp } from "../docker.testFixtures";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
 import { mongoAdapter } from "./mongodb";
@@ -66,6 +67,15 @@ const connect = async (name: string) => {
   return client;
 };
 
+/**
+ * Fixtures stamp rows with times near the epoch, so every row with retention
+ * is already past its `_expireAt`. MongoDB's TTL monitor would delete those
+ * rows on whichever 60-second pass lands inside a test. The suite asserts the
+ * stamps and the TTL index, not the monitor, so it runs with the monitor off.
+ */
+const stopTtlMonitor = (client: MongoClient) =>
+  client.db("admin").command({ setParameter: 1, ttlMonitorEnabled: false });
+
 let engine: MongoClient;
 let suiteClient: MongoClient;
 
@@ -75,9 +85,13 @@ beforeAll(async () => {
     COMPOSE_PROJECT_NAME: `hot-updater-mongo-engine-${process.pid}`,
     HOT_UPDATER_E2E_MONGODB_PORT: String(port),
   };
-  await compose(["up", "-d", "--wait"]);
+  await composeUp({
+    compose: ["compose", "-f", composeFile],
+    env: environment,
+  });
   engine = await connect("engine");
   suiteClient = await connect("suite");
+  await stopTtlMonitor(engine);
 }, 180_000);
 
 afterAll(async () => {
@@ -117,6 +131,13 @@ setupDatabaseTestSuite({
     ),
   plugins: [
     insightsTestSuite({
+      createApi: (database, plugin = insights()) =>
+        createHotUpdater({
+          database,
+          storage: createReleaseCatalogTestStorage(),
+          plugins: [plugin],
+          clientAccess: "public",
+        }).api.insights,
       createModel: (database) =>
         createInsightsModel(
           createHotUpdater({
@@ -235,7 +256,7 @@ describe("mongoAdapter migrations", () => {
     await expect(migrator.migrateToLatest()).resolves.toMatchObject({
       operations: [],
     });
-    await expect(migrator.getVersion()).resolves.toBe("1.0.0");
+    await expect(migrator.getVersion()).resolves.toBe("1.2.0");
 
     const [result] = await core.deploy([
       {

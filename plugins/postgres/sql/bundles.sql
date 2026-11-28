@@ -12,7 +12,7 @@ CREATE INDEX IF NOT EXISTS "bundle_patches_byBundle" ON "bundle_patches" ("bundl
 
 CREATE INDEX IF NOT EXISTS "bundle_patches_byBase" ON "bundle_patches" ("base_bundle_id", "bundle_id", "id");
 
-CREATE TABLE IF NOT EXISTS "releases" ("id" varchar(36) COLLATE "C" NOT NULL, "revision" bigint NOT NULL, "scope_key" varchar(2048) COLLATE "C" NOT NULL, "channel_id" varchar(1408) COLLATE "C" NOT NULL, "platform" varchar(16) COLLATE "C" NOT NULL, "kind" varchar(16) COLLATE "C" NOT NULL, "bundle_id" varchar(36) COLLATE "C", "strategy" varchar(16) COLLATE "C" NOT NULL, "target_app_version" text COLLATE "C", "fingerprint_hash" varchar(255) COLLATE "C", "enabled" boolean NOT NULL, "should_force_update" boolean NOT NULL, "message" text COLLATE "C", "rollout_cohort_count" bigint NOT NULL, "target_cohorts" jsonb NOT NULL, "operation" varchar(16) COLLATE "C" NOT NULL, "source_release_id" varchar(36) COLLATE "C", "created_at_ms" bigint NOT NULL, "updated_at_ms" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+CREATE TABLE IF NOT EXISTS "releases" ("id" varchar(36) COLLATE "C" NOT NULL, "revision" bigint NOT NULL, "scope_key" varchar(2048) COLLATE "C" NOT NULL, "channel_id" varchar(1408) COLLATE "C" NOT NULL, "platform" varchar(16) COLLATE "C" NOT NULL, "kind" varchar(16) COLLATE "C" NOT NULL, "bundle_id" varchar(36) COLLATE "C", "strategy" varchar(16) COLLATE "C" NOT NULL, "target_app_version" text COLLATE "C", "fingerprint_hash" varchar(255) COLLATE "C", "enabled" boolean NOT NULL, "should_force_update" boolean NOT NULL, "message" text COLLATE "C", "rollout_cohort_count" bigint NOT NULL, "target_cohorts" jsonb NOT NULL, "operation" varchar(16) COLLATE "C" NOT NULL, "source_release_id" varchar(36) COLLATE "C", "created_at_ms" bigint NOT NULL, "updated_at_ms" bigint NOT NULL, "label" bigint, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
 CREATE INDEX IF NOT EXISTS "releases_byScope" ON "releases" ("scope_key", "id");
 
@@ -24,6 +24,8 @@ CREATE INDEX IF NOT EXISTS "releases_byChannelPlatformEnabled" ON "releases" ("c
 
 CREATE INDEX IF NOT EXISTS "releases_byBundle" ON "releases" ("bundle_id", "id");
 
+CREATE UNIQUE INDEX IF NOT EXISTS "releases_byLabel" ON "releases" ("channel_id", "platform", "label");
+
 CREATE TABLE IF NOT EXISTS "release_catalogs" ("scope_key" varchar(2048) COLLATE "C" NOT NULL, "catalog_id" varchar(255) COLLATE "C" NOT NULL, "strategy" varchar(16) COLLATE "C" NOT NULL, "channel_id" varchar(1408) COLLATE "C" NOT NULL, "channel_key" varchar(1400) COLLATE "C" NOT NULL, "platform" varchar(16) COLLATE "C" NOT NULL, "fingerprint_hash" varchar(255) COLLATE "C", "generation" bigint NOT NULL, "payload" text COLLATE "C" NOT NULL, "catalog_hash" varchar(71) COLLATE "C" NOT NULL, "byte_size" bigint NOT NULL, "is_tombstone" boolean NOT NULL, "updated_at_ms" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("scope_key"));
 
 CREATE TABLE IF NOT EXISTS "channels" ("id" varchar(1408) COLLATE "C" NOT NULL, "name" varchar(255) COLLATE "C" NOT NULL, "_refs_releases_channel_id" bigint NOT NULL DEFAULT 0, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
@@ -34,8 +36,34 @@ CREATE UNIQUE INDEX IF NOT EXISTS "channels_name" ON "channels" ("name");
 
 CREATE TABLE IF NOT EXISTS "bundle_totals" ("platform_key" varchar(16) COLLATE "C" NOT NULL, "_shard" bigint NOT NULL, "bundles" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("platform_key", "_shard"));
 
+CREATE TABLE IF NOT EXISTS "native_builds" ("id" varchar(36) COLLATE "C" NOT NULL, "scope_key" varchar(2048) COLLATE "C" NOT NULL, "platform" varchar(16) COLLATE "C" NOT NULL, "channel_id" varchar(1408) COLLATE "C" NOT NULL, "fingerprint_hash" varchar(255) COLLATE "C", "app_version" text COLLATE "C", "min_bundle_id" varchar(36) COLLATE "C" NOT NULL, "artifact_kind" varchar(16) COLLATE "C" NOT NULL, "artifact_storage_uri" text COLLATE "C" NOT NULL, "byte_size" bigint NOT NULL, "git_commit_hash" varchar(255) COLLATE "C", "created_at_ms" bigint NOT NULL, "build_key" varchar(69) COLLATE "C", "build_number" varchar(64) COLLATE "C", "submitted_to" varchar(16) COLLATE "C", "submitted_at_ms" bigint, "submitted_version" varchar(255) COLLATE "C", "is_store_build" boolean NOT NULL, "is_sandbox" boolean NOT NULL, "sandbox_url_scheme" varchar(255) COLLATE "C", "export_method" varchar(16) COLLATE "C", "native_app_version" text COLLATE "C", "store_build_scope_key" varchar(2048) COLLATE "C", "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
+CREATE INDEX IF NOT EXISTS "native_builds_byScope" ON "native_builds" ("scope_key", "id");
+
+CREATE INDEX IF NOT EXISTS "native_builds_byBuildKey" ON "native_builds" ("scope_key", "build_key", "id");
+
+CREATE INDEX IF NOT EXISTS "native_builds_byScopeKind" ON "native_builds" ("scope_key", "artifact_kind", "id");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "native_builds_byStoreBuild" ON "native_builds" ("store_build_scope_key");
+
+CREATE INDEX IF NOT EXISTS "native_builds_byChannel" ON "native_builds" ("channel_id", "id");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "native_builds_min_bundle_id" ON "native_builds" ("min_bundle_id");
+
+CREATE TABLE IF NOT EXISTS "ios_devices" ("id" varchar(36) COLLATE "C" NOT NULL, "udid" varchar(40) COLLATE "C" NOT NULL, "name" varchar(100) COLLATE "C" NOT NULL, "status" varchar(16) COLLATE "C" NOT NULL, "requested_by" varchar(320) COLLATE "C", "created_at_ms" bigint NOT NULL, "approved_by" varchar(320) COLLATE "C", "approved_at_ms" bigint, "registered_at_ms" bigint, "apple_issuer_id" varchar(64) COLLATE "C", "apple_error" varchar(512) COLLATE "C", "build_id" varchar(36) COLLATE "C", "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
+CREATE INDEX IF NOT EXISTS "ios_devices_byStatus" ON "ios_devices" ("status", "id");
+
+CREATE INDEX IF NOT EXISTS "ios_devices_byRegistration" ON "ios_devices" ("registered_at_ms", "id");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "ios_devices_udid" ON "ios_devices" ("udid");
+
+CREATE TABLE IF NOT EXISTS "ios_device_account" ("id" varchar(16) COLLATE "C" NOT NULL, "apple_issuer_id" varchar(64) COLLATE "C" NOT NULL, "claimed_at_ms" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
+CREATE TABLE IF NOT EXISTS "label_sequences" ("id" varchar(1440) COLLATE "C" NOT NULL, "last_label" bigint NOT NULL, "is_filled" boolean NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
 CREATE TABLE IF NOT EXISTS "private_hot_updater_settings" ("key" varchar(255) COLLATE "C" NOT NULL, "value" varchar(255) COLLATE "C" NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("key"));
 
 INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.engine', '1', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
 
-INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.core', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
+INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.core', '1.2.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";

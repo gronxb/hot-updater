@@ -1,7 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const platform = vi.hoisted(() => ({ OS: "android" }));
-vi.mock("react-native", () => ({ Platform: platform }));
+/** React Native's AppState, whose changes the tests send. */
+const appState = vi.hoisted(() => {
+  type Listener = (state: string) => void;
+  const listeners = new Set<Listener>();
+  return {
+    currentState: "active",
+    listeners,
+    addEventListener(_type: "change", listener: Listener) {
+      listeners.add(listener);
+      return { remove: () => listeners.delete(listener) };
+    },
+    change(state: string) {
+      this.currentState = state;
+      for (const listener of listeners) listener(state);
+    },
+  };
+});
+vi.mock("react-native", () => ({ AppState: appState, Platform: platform }));
 
 import { fetchUpdateResponse } from "./fetchUpdateResponse";
 
@@ -266,5 +283,132 @@ describe("fetchUpdateResponse with the fetch given to HotUpdater.init", () => {
 
     await assertion;
     expect(customFetch.mock.calls[0]![1]?.signal?.aborted).toBe(true);
+  });
+});
+
+describe("fetchUpdateResponse across time in the background", () => {
+  let respond: () => void;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    platform.OS = "ios";
+    appState.currentState = "active";
+    appState.listeners.clear();
+    // The response comes when the test says it reached the app.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(
+        (_url, init) =>
+          new Promise((resolve, reject) => {
+            respond = () =>
+              resolve(new Response('{"ok":true}', { status: 200 }));
+            init?.signal?.addEventListener("abort", () => {
+              const error = new Error("Aborted");
+              error.name = "AbortError";
+              reject(error);
+            });
+          }),
+      ),
+    );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  const track = <T>(promise: Promise<T>) => {
+    const state = { settled: false };
+    promise.then(
+      () => {
+        state.settled = true;
+      },
+      () => {
+        state.settled = true;
+      },
+    );
+    return state;
+  };
+
+  // iOS suspends an app about a second after it leaves the foreground, and
+  // its timers stop with it. When the user comes back, the timer that became
+  // overdue meanwhile must not abort a response that arrived while away.
+  it("doesn't time out over a background period the response arrived in", async () => {
+    const request = fetchUpdateResponse({
+      requestTimeout: 15_000,
+      resource: "artifact",
+      url: "https://x.test/artifacts/v2/target/from/current",
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    appState.change("background");
+    // Back after 23 s: the overdue timers run first.
+    await vi.advanceTimersByTimeAsync(23_000);
+    appState.change("active");
+    respond();
+
+    await expect(request).resolves.toMatchObject({ body: '{"ok":true}' });
+  });
+
+  it("times out once the foreground time before and after a background period reaches requestTimeout", async () => {
+    const request = fetchUpdateResponse({
+      requestTimeout: 1000,
+      resource: "artifact",
+      url: "https://x.test/a",
+    });
+    const rejected = expect(request).rejects.toThrow("Request timed out");
+    const state = track(request);
+    await vi.advanceTimersByTimeAsync(600);
+    appState.change("background");
+    await vi.advanceTimersByTimeAsync(60_000);
+    appState.change("active");
+    await vi.advanceTimersByTimeAsync(399);
+    expect(state.settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+
+    await rejected;
+    expect(appState.listeners.size).toBe(0);
+  });
+
+  it("starts counting a request sent from the background once the app is back", async () => {
+    appState.currentState = "background";
+    const request = fetchUpdateResponse({
+      requestTimeout: 1000,
+      resource: "artifact",
+      url: "https://x.test/a",
+    });
+    const rejected = expect(request).rejects.toThrow("Request timed out");
+    const state = track(request);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(state.settled).toBe(false);
+    appState.change("active");
+    await vi.advanceTimersByTimeAsync(1000);
+
+    await rejected;
+  });
+
+  // An app in the app switcher or behind Control Center still runs.
+  it("keeps counting while the app is inactive", async () => {
+    const request = fetchUpdateResponse({
+      requestTimeout: 1000,
+      resource: "artifact",
+      url: "https://x.test/a",
+    });
+    const rejected = expect(request).rejects.toThrow("Request timed out");
+    appState.change("inactive");
+    await vi.advanceTimersByTimeAsync(1000);
+
+    await rejected;
+  });
+
+  it("stops listening for app state changes once the response arrives", async () => {
+    const request = fetchUpdateResponse({
+      resource: "artifact",
+      url: "https://x.test/a",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    respond();
+    await request;
+
+    expect(appState.listeners.size).toBe(0);
   });
 });

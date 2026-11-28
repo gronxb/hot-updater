@@ -8,6 +8,7 @@ import {
   selectDesiredRelease,
   type PersistedSelectionReceipt,
   type ReleaseCatalog,
+  readReleaseLabel,
 } from "@hot-updater/protocol";
 import { Platform } from "react-native";
 
@@ -34,8 +35,10 @@ import {
   getCrashHistory,
   isReleaseSelectionCurrent,
   isChannelSwitched,
+  resetChannelIfSelectionCurrent,
   stageBundle,
   supportsArtifactFiles,
+  withBackgroundTask,
 } from "./native";
 import { saveRecoveryCheckConfig } from "./recoveryCheckConfig";
 import { hotUpdaterStore } from "./store";
@@ -60,7 +63,8 @@ export interface CheckForUpdateOptions {
   requestHeaders?: Record<string, string>;
   onError?: (error: Error) => void;
   /**
-   * The timeout duration for the request.
+   * How long each update request may take, in milliseconds. Time the app
+   * spends in the background doesn't count.
    * @default 5000
    */
   requestTimeout?: number;
@@ -74,6 +78,12 @@ export type CheckForUpdateResult = {
   readonly status: "ROLLBACK" | "UPDATE";
   readonly targetCohorts: string[];
   readonly releaseId?: string | null;
+  /**
+   * The release's label, shown `v<label>` in the console and the CLI:
+   * numbered per channel and platform, never changed or reused. Null for the
+   * built-in bundle, a release without one, and a server before labels.
+   */
+  readonly label?: number | null;
   readonly transitionKind?: ReleaseTransitionKind;
   /**
    * Updates the bundle.
@@ -172,7 +182,7 @@ async function checkForReleaseCatalogUpdate(input: {
   readonly platform: "ios" | "android";
   readonly currentAppVersion: string;
   readonly currentBundleId: string;
-  readonly minimumReleaseId: string;
+  readonly minBundleId: string;
   readonly defaultChannel: string;
   readonly currentChannel: string;
   readonly targetChannel: string;
@@ -255,13 +265,13 @@ async function checkForReleaseCatalogUpdate(input: {
     activeInTargetScope !== null ||
     (!hasAuthenticatedActive && !explicitScopeSwitch)
       ? input.currentBundleId
-      : input.minimumReleaseId;
+      : input.minBundleId;
   const selectionContextHash = createReleaseSelectionContextHash({
     activeBundleId: selectorCurrentBundleId,
     activeReleaseId: activeInTargetScope?.releaseId ?? null,
     cohort: input.cohort,
     crashedBundleIds,
-    minimumReleaseId: input.minimumReleaseId,
+    minBundleId: input.minBundleId,
     strategy,
     strategyValue:
       strategy === "APP_VERSION"
@@ -282,6 +292,25 @@ async function checkForReleaseCatalogUpdate(input: {
       "Rejected a stale or inconsistent Release catalog",
     );
   }
+  // The switched channel holds nothing for this build any more, as a deleted
+  // channel does: the server answers its scope with an accepted catalog
+  // without releases. A scope without a catalog proves nothing, since a
+  // cache can still answer that for a channel deployed seconds ago.
+  if (
+    input.isSwitched &&
+    input.targetChannel === input.currentChannel &&
+    catalog.releases.length === 0 &&
+    catalog.rollbackReleases.length === 0
+  ) {
+    return leaveSwitchedChannel(input, {
+      catalogId,
+      catalogHash: catalog.catalogHash,
+      channel: input.targetChannel,
+      generation: catalog.generation,
+      scopeKey,
+      selectionContextHash,
+    });
+  }
   const stableInTargetScope =
     activeState.stableSelection?.catalogId === catalogId &&
     activeState.stableSelection.scopeKey === scopeKey
@@ -295,17 +324,17 @@ async function checkForReleaseCatalogUpdate(input: {
       [activeInTargetScope, stableInTargetScope].find(
         (selection) => selection?.bundleId === selectorCurrentBundleId,
       )?.releaseId ?? null,
-    builtInBundleId: input.minimumReleaseId,
+    builtInBundleId: input.minBundleId,
     cohort: input.cohort,
     crashedBundleIds,
     currentBundleId: selectorCurrentBundleId,
-    minimumReleaseId: input.minimumReleaseId,
+    minBundleId: input.minBundleId,
   });
   if (desired === null) return null;
 
   if (
     desired.kind === "BUILTIN" &&
-    input.currentBundleId === input.minimumReleaseId &&
+    input.currentBundleId === input.minBundleId &&
     (active === null || active.kind === "BUILTIN")
   ) {
     return null;
@@ -318,6 +347,9 @@ async function checkForReleaseCatalogUpdate(input: {
     channel: input.targetChannel,
     generation: catalog.generation,
     kind: desired.kind,
+    // Native keeps it with the selection, for `getReleaseLabel()`; native
+    // before labels ignores the key.
+    label: readReleaseLabel(desired.release?.label),
     releaseId: desired.releaseId,
     scopeKey,
     selectionContextHash,
@@ -442,7 +474,7 @@ async function checkForReleaseCatalogUpdate(input: {
   };
   const updateBundleForSelection = async (): Promise<boolean> => {
     try {
-      return await installSelection();
+      return await withBackgroundTask(installSelection);
     } catch (error) {
       reportUpdateError(
         options.emit,
@@ -476,6 +508,7 @@ async function checkForReleaseCatalogUpdate(input: {
 
   return {
     id: desired.releaseId ?? desired.bundleId,
+    label: receipt.label ?? null,
     message: release?.message ?? null,
     releaseId: desired.releaseId,
     rolloutCohortCount: release?.rolloutCohortCount ?? 1000,
@@ -485,6 +518,120 @@ async function checkForReleaseCatalogUpdate(input: {
     transitionKind,
     updateBundle: updateBundleForSelection,
   };
+}
+
+/**
+ * The last channel leave that reset the device, by its channel and catalog
+ * guard: another result of the same check target counts as left too.
+ */
+let lastLeftKey: string | null = null;
+
+/** A channel leave in flight, which another result of the same target joins. */
+let pendingLeave: {
+  readonly key: string;
+  readonly promise: Promise<boolean>;
+} | null = null;
+
+/**
+ * Leaves a switched channel that holds nothing for this build, such as a
+ * deleted one: a rollback to the built-in bundle whose update also clears
+ * the runtime channel with `resetChannel()`, so the next check reads the
+ * build's default channel. A check never resets by itself, since the reset
+ * removes the running bundle's files.
+ */
+function leaveSwitchedChannel(
+  input: {
+    readonly options: InternalCheckForUpdateOptions;
+    readonly currentBundleId: string;
+    readonly currentChannel: string;
+    readonly minBundleId: string;
+  },
+  guard: Parameters<typeof isReleaseSelectionCurrent>[0],
+): CheckForUpdateResult {
+  const { options } = input;
+  const shouldForceUpdate = input.currentBundleId !== input.minBundleId;
+  const errorScope = {
+    bundleId: input.currentBundleId,
+    channel: input.currentChannel,
+    targetBundleId: input.minBundleId,
+    targetReleaseId: null,
+    updateStrategy: options.updateStrategy,
+  };
+  options.emit("onUpdateCheck", () => ({
+    status: "UPDATE_AVAILABLE",
+    channel: input.currentChannel,
+    fromBundleId: input.currentBundleId,
+    fromReleaseId: getRunningReleaseId(
+      input.currentBundleId,
+      input.currentChannel,
+    ),
+    toBundleId: input.minBundleId,
+    toReleaseId: null,
+    transitionKind: "USE_BUILTIN",
+    updateStatus: "ROLLBACK",
+    shouldForceUpdate,
+    updateStrategy: options.updateStrategy,
+  }));
+  const leaveKey = JSON.stringify([
+    input.currentChannel,
+    guard.catalogId,
+    guard.generation,
+    guard.catalogHash,
+    guard.selectionContextHash,
+  ]);
+  const result: CheckForUpdateResult = {
+    id: input.minBundleId,
+    label: null,
+    message: null,
+    releaseId: null,
+    rolloutCohortCount: 1000,
+    shouldForceUpdate,
+    status: "ROLLBACK",
+    targetCohorts: [],
+    transitionKind: "USE_BUILTIN",
+    updateBundle: async () => {
+      // This leave, from this or another result of the same catalog, already
+      // happened: calling it again changes nothing.
+      if (lastLeftKey === leaveKey && !isChannelSwitched()) return true;
+      // The same leave in flight: wait for it rather than run it twice.
+      if (pendingLeave?.key === leaveKey) return pendingLeave.promise;
+      const promise = leave();
+      pendingLeave = { key: leaveKey, promise };
+      try {
+        return await promise;
+      } finally {
+        if (pendingLeave?.promise === promise) pendingLeave = null;
+      }
+    },
+  };
+  return result;
+
+  async function leave(): Promise<boolean> {
+    resetProgress();
+    try {
+      // A device that left or changed the channel meanwhile keeps it; a
+      // newer catalog of it accepted meanwhile keeps it too, checked again
+      // in the same native step as the reset.
+      if (
+        !isChannelSwitched() ||
+        getChannel() !== input.currentChannel ||
+        !(await resetChannelIfSelectionCurrent(guard))
+      ) {
+        throw new StaleReleaseCatalogError();
+      }
+      lastLeftKey = leaveKey;
+      return true;
+    } catch (error) {
+      reportUpdateError(
+        options.emit,
+        error,
+        "download",
+        "artifact",
+        errorScope,
+      );
+      throw error;
+    }
+  }
 }
 
 export async function checkForUpdate(
@@ -504,7 +651,7 @@ export async function checkForUpdate(
   const currentAppVersion = getAppVersion();
   const platform = Platform.OS as "ios" | "android";
   const currentBundleId = getBundleId();
-  const minimumReleaseId = getMinBundleId();
+  const minBundleId = getMinBundleId();
   const defaultChannel = getDefaultChannel();
   const isSwitched = isChannelSwitched();
   const currentChannel = isSwitched ? getChannel() : defaultChannel;
@@ -528,20 +675,22 @@ export async function checkForUpdate(
   const fingerprintHash = getFingerprintHash();
 
   try {
-    const result = await checkForReleaseCatalogUpdate({
-      cohort,
-      currentAppVersion,
-      currentBundleId,
-      currentChannel,
-      defaultChannel,
-      explicitChannel,
-      fingerprintHash,
-      isSwitched,
-      minimumReleaseId,
-      options,
-      platform,
-      targetChannel,
-    });
+    const result = await withBackgroundTask(() =>
+      checkForReleaseCatalogUpdate({
+        cohort,
+        currentAppVersion,
+        currentBundleId,
+        currentChannel,
+        defaultChannel,
+        explicitChannel,
+        fingerprintHash,
+        isSwitched,
+        minBundleId,
+        options,
+        platform,
+        targetChannel,
+      }),
+    );
     if (result === null) {
       options.emit("onUpdateCheck", () => {
         const releaseId = getRunningReleaseId(currentBundleId, currentChannel);

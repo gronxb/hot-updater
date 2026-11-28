@@ -3,7 +3,7 @@ import { ChartNoAxesCombined } from "lucide-react";
 
 import type { ConsoleFeatureUiRegistry } from "../FeatureSlots";
 import {
-  BundleInsightsSummary,
+  ReleaseInsightsSummary,
   ReleaseFailuresSection,
   releaseActivityColumn,
 } from "./ReleaseActivity";
@@ -30,6 +30,6 @@ export const insightsFeatureUi = {
   },
   insightsAnalytics: {
     releaseColumn: releaseActivityColumn,
-    releaseSection: ({ release }) => <BundleInsightsSummary input={release} />,
+    releaseSection: ({ release }) => <ReleaseInsightsSummary input={release} />,
   },
 } satisfies ConsoleFeatureUiRegistry;

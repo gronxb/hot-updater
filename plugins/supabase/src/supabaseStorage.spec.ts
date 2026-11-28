@@ -101,6 +101,7 @@ describe("supabaseStorage", () => {
     expect(createClient).toHaveBeenCalledWith(
       "https://example.supabase.co",
       "service-role-key",
+      { global: { fetch: expect.any(Function) } },
     );
     expect(bucket.download).toHaveBeenCalledWith("logo@2x.json");
   });

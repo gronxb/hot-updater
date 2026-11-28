@@ -7,6 +7,7 @@ import {
   DatabaseRowReferencedError,
   type DatabaseAdapter,
 } from "@hot-updater/plugin-core";
+import { encodeChannelKey } from "@hot-updater/protocol";
 import {
   createBundleFixture,
   createReleaseCatalogTestStorage,
@@ -285,6 +286,54 @@ describe("core operations", () => {
     await expect(core.deleteChannel(production!.id)).resolves.toEqual({
       deleted: false,
       reason: "not_empty",
+    });
+  });
+
+  it("answers a deleted channel's scope with an empty catalog", async () => {
+    // A switched app reads this answer as a channel to leave (the client
+    // spec "a switched channel that holds nothing for this build").
+    const hotUpdater = createHotUpdater({
+      database: { name: "memory", adapter: createMemoryAdapter() },
+      storage: createReleaseCatalogTestStorage(),
+      plugins: [],
+      clientAccess: "public",
+    });
+    const { core } = hotUpdater;
+    await core.deploy([
+      deployment(createBundleFixture("671"), { channel: "pr-2" }),
+    ]);
+    const channel = (await core.findChannelByName("pr-2"))!;
+    // As `hot-updater channel delete` deletes it.
+    for (const release of await core.listReleases({
+      filter: {
+        kind: "channelPlatform",
+        channelId: channel.id,
+        platform: "ios",
+      },
+      limit: 10,
+    })) {
+      await core.updateReleasePolicy({
+        expectedRevision: release.revision,
+        patch: { enabled: false },
+        releaseId: release.id,
+      });
+      await core.deleteRelease({ releaseId: release.id });
+    }
+    await expect(core.deleteChannel(channel.id)).resolves.toEqual({
+      deleted: true,
+    });
+
+    const response = await hotUpdater.handlers.client(
+      new Request(
+        `http://localhost/release-catalogs/app-version/ios/${encodeChannelKey("pr-2")}/1.0.0`,
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      releases: [],
+      rollbackReleases: [],
+      scopeKey: `v1:app-version:ios:${encodeChannelKey("pr-2")}`,
     });
   });
 

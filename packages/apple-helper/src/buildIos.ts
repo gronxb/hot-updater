@@ -1,119 +1,440 @@
 import fs from "fs";
 import path from "path";
 
-import { getCwd, p } from "@hot-updater/cli-tools";
+import {
+  type CredentialResolver,
+  createMinBundleId,
+  getCwd,
+  isCI,
+  p,
+} from "@hot-updater/cli-tools";
 
 import { archiveXcodeProject } from "./builder/archiveXcodeProject";
 import { buildXcodeProject } from "./builder/buildXcodeProject";
 import { exportXcodeArchive } from "./builder/exportXcodeArchive";
+import type { SandboxArchivePlan } from "./sandboxTestFlight";
 import { assertXcodebuildExist } from "./utils/assertXcodebuildExist";
-import { createRandomTmpDir } from "./utils/createRandomTmpDir";
+import { stampAppChannel } from "./utils/channelInfoPlist";
+import { withSigningKeychain } from "./utils/ciSigningKeychain";
+import { createRandomTmpDir, removeTmpDir } from "./utils/createRandomTmpDir";
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
+import { readBuiltApp } from "./utils/readBuiltApp";
+import { readIpaSigning } from "./utils/readIpaSigning";
+import {
+  patchSandboxArchive,
+  patchSandboxSimulatorApp,
+} from "./utils/sandboxInfoPlist";
+import { removeSavedAdHocProfiles } from "./utils/savedAdHocProfiles";
+import {
+  exportsForAppStoreConnect,
+  exportsForRegisteredDevices,
+  readExportMethod,
+  resolveSandboxExportOptions,
+  resolveXcodeSigning,
+  writeAppStoreConnectExportOptions,
+} from "./utils/xcodeSigning";
 
+/**
+ * Builds a simulator `.app` for a `simulator` scheme, and otherwise archives
+ * and exports an `.ipa`, or returns the `.xcarchive` of a scheme it cannot
+ * export: one with neither `exportOptionsPlist` nor `signing.ascApiKey`.
+ *
+ * The artifact is in a temporary `buildDirectory`, which `dispose` removes
+ * once the caller has copied it out. A failed build removes it, and every
+ * other directory the build used, itself.
+ */
 export const buildIos = async ({
   schemeConfig,
+  minBundleId = createMinBundleId(),
+  credentials,
+  sandbox,
+  logHeader = [],
+  expectedDevices,
+  channel,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
-}): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
+  /**
+   * The channel the build embeds, whatever the project's Info.plist or an
+   * Expo config plugin set; without it, theirs.
+   */
+  channel?: string;
+  /** The MIN_BUNDLE_ID the build compiles in. */
+  minBundleId?: string;
+  /** Resolves the scheme's `signing` key, when a device build signs with one. */
+  credentials?: Pick<CredentialResolver, "resolve">;
+  /**
+   * What a `sandbox` scheme's archive takes from App Store Connect: its
+   * closed version train and next build number, and what a closed train does.
+   */
+  sandbox?: SandboxArchivePlan;
+  /** Lines the build log starts with, such as the native build key. */
+  logHeader?: string[];
+  /**
+   * The UDIDs an ad hoc export must list, as the device registry expects: when
+   * the `.ipa` lacks one, Xcode's saved ad hoc profiles of the app are deleted
+   * and it exports once more, so Xcode asks Apple for a profile with every
+   * enabled device.
+   */
+  expectedDevices?: readonly string[];
+}): Promise<{
+  buildDirectory: string;
+  buildArtifactPath: string;
+  /** The build log, which an archive's export appends to, or null. */
+  logFilePath: string | null;
+  /**
+   * The `method` of the export options the `.ipa` was exported with, as
+   * they say it; absent for an archive, a simulator app, or none read.
+   */
+  exportMethod?: string;
+  /** What the built app reports, from its Info.plist. */
+  builtApp?: {
+    appVersion: string | null;
+    channel: string | null;
+    /** The app's `CFBundleVersion`. */
+    buildNumber: string | null;
+  };
+  /** Removes `buildDirectory`, once the artifact is copied out of it. */
+  dispose: () => Promise<void>;
+}> => {
   await assertXcodebuildExist();
-  const iosProjectRoot = path.join(getCwd(), "ios");
+  if (schemeConfig.simulator && schemeConfig.destination.length) {
+    p.log.error(
+      "The scheme option 'simulator' is not compatible with the 'destination' option.",
+    );
+    process.exit(1);
+  }
 
   const buildDirectory = await createRandomTmpDir();
-  const archiveDir = path.join(buildDirectory, "archive");
-  const exportDir = path.join(buildDirectory, "export");
-  await fs.promises.mkdir(archiveDir, { recursive: true });
+  try {
+    const built = await buildInto({
+      schemeConfig,
+      minBundleId,
+      credentials,
+      sandbox,
+      buildDirectory,
+      logHeader,
+      expectedDevices,
+      channel,
+    });
+    return { ...built, dispose: () => removeTmpDir(buildDirectory) };
+  } catch (error) {
+    await removeTmpDir(buildDirectory);
+    throw error;
+  }
+};
+
+const buildInto = async ({
+  schemeConfig,
+  minBundleId,
+  credentials,
+  sandbox,
+  buildDirectory,
+  logHeader,
+  expectedDevices,
+  channel,
+}: {
+  schemeConfig: EnrichedNativeBuildIosScheme;
+  channel?: string;
+  minBundleId: string;
+  credentials?: Pick<CredentialResolver, "resolve">;
+  sandbox?: SandboxArchivePlan;
+  buildDirectory: string;
+  logHeader: string[];
+  expectedDevices?: readonly string[];
+}) => {
+  const iosProjectRoot = path.join(getCwd(), "ios");
 
   if (schemeConfig.simulator) {
-    if (schemeConfig.destination.length) {
-      p.log.error(
-        "The scheme option 'simulator' is not compatible with the 'destination' option.",
-      );
-      process.exit(1);
-    }
     const appDir = path.join(buildDirectory, "app");
     await fs.promises.mkdir(appDir, { recursive: true });
 
-    const { appPath } = await buildXcodeProject({
+    const { appPath, logFilePath } = await buildXcodeProject({
       sourceDir: iosProjectRoot,
+      outputDirectory: appDir,
       logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build`,
+      header: logHeader,
       platform: schemeConfig.platform,
       xcodeScheme: schemeConfig.scheme,
       configuration: schemeConfig.configuration,
       deviceType: "simulator",
       installPods: schemeConfig.installPods,
+      xcconfig: schemeConfig.xcconfig,
       extraParams: schemeConfig.extraParams,
       useGenericDestination: true,
+      minBundleId,
+      sandbox: schemeConfig.sandbox,
     });
-
-    const finalAppPath = path.join(appDir, path.basename(appPath));
-    await fs.promises.cp(appPath, finalAppPath, { recursive: true });
-
-    p.log.success(`.app file created: ${path.basename(appPath)}`);
+    if (schemeConfig.sandbox) {
+      await patchSandboxSimulatorApp(appPath, schemeConfig);
+    }
+    if (channel !== undefined) {
+      await stampAppChannel(appPath, channel, { signAdHoc: true });
+    }
 
     return {
       buildDirectory: buildDirectory,
-      buildArtifactPath: finalAppPath,
+      buildArtifactPath: appPath,
+      logFilePath,
+      builtApp: await readBuiltApp(appPath),
     };
   } else {
-    // archivePath is the .xcarchive file path
-    const { archivePath } = await archiveXcodeProject({
-      platform: schemeConfig.platform,
-      sourceDir: iosProjectRoot,
-      xcconfig: schemeConfig.xcconfig,
-      xcodeScheme: schemeConfig.scheme,
-      destination: schemeConfig.destination,
-      extraParams: schemeConfig.extraParams,
-      configuration: schemeConfig.configuration,
-      installPods: schemeConfig.installPods,
-      logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build-archive`,
-    });
-
-    const finalArchivePath = path.join(archiveDir, path.basename(archivePath));
-    await fs.promises.cp(archivePath, finalArchivePath, { recursive: true });
-
-    // Extract .app from xcarchive if present
-    const appFromArchive = extractAppFromXcarchive(finalArchivePath);
-
-    if (appFromArchive) {
-      await fs.promises.cp(
-        appFromArchive,
-        path.join(archiveDir, path.basename(appFromArchive)),
-        { recursive: true },
-      );
-      p.log.success(".app extracted from .xcarchive");
-    }
-
-    // if export is needed
-    if (schemeConfig.exportOptionsPlist) {
-      await fs.promises.mkdir(exportDir, { recursive: true });
-
-      const { exportPath } = await exportXcodeArchive({
-        archivePath,
-        exportExtraParams: schemeConfig.exportExtraParams,
-        exportOptionsPlist: schemeConfig.exportOptionsPlist!,
-        sourceDir: iosProjectRoot,
-        logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build-export`,
+    const signing = await resolveXcodeSigning({ schemeConfig, credentials });
+    if (!signing) {
+      return archiveAndExport({
+        schemeConfig,
+        minBundleId,
+        sandbox,
+        buildDirectory,
+        logHeader,
+        expectedDevices,
+        channel,
       });
-
-      await fs.promises.cp(exportPath, exportDir, { recursive: true });
-
-      const ipaFile = fs
-        .readdirSync(exportDir)
-        .find((file) => file.endsWith(".ipa"));
-
-      if (ipaFile) {
-        const ipaPath = path.join(exportDir, ipaFile);
-        return {
-          buildDirectory: buildDirectory,
-          buildArtifactPath: ipaPath,
-        };
-      }
-      throw new Error("IPA file not found after export");
     }
+    // In CI, an App Store Connect or ad hoc export signs in a keychain of its
+    // own, whose certificates are revoked and deleted with it: its .ipa is
+    // signed with the cloud-managed distribution certificate. Another export,
+    // such as a development one, may be signed with the certificate Xcode
+    // creates, so it keeps the runner's keychains and its certificates.
+    const registeredDevices = await exportsForRegisteredDevices(schemeConfig);
+    const ownKeychain =
+      registeredDevices || (await exportsForAppStoreConnect(schemeConfig));
+    if (isCI() && !ownKeychain) {
+      p.log.info(
+        "Signing in the runner's own keychains (not an App Store Connect or ad hoc export).",
+      );
+    }
+    return withSigningKeychain({
+      enabled: isCI() && ownKeychain,
+      keepDistribution: registeredDevices,
+      apiKey: signing.apiKey,
+      run: () =>
+        archiveAndExport({
+          schemeConfig,
+          minBundleId,
+          sandbox,
+          buildDirectory,
+          logHeader,
+          authenticationArgs: signing.authenticationArgs,
+          expectedDevices,
+          channel,
+        }),
+    });
+  }
+};
+
+/**
+ * Archives a device build and exports its `.ipa`, or returns the
+ * `.xcarchive` of a scheme it cannot export.
+ */
+const archiveAndExport = async ({
+  schemeConfig,
+  minBundleId,
+  sandbox,
+  buildDirectory,
+  logHeader,
+  authenticationArgs,
+  expectedDevices,
+  channel,
+}: {
+  schemeConfig: EnrichedNativeBuildIosScheme;
+  minBundleId: string;
+  /** The channel the build embeds: see `buildIos`. */
+  channel?: string;
+  sandbox?: SandboxArchivePlan;
+  buildDirectory: string;
+  logHeader: string[];
+  /** Signing arguments from `resolveXcodeSigning`. */
+  authenticationArgs?: string[];
+  /** UDIDs the `.ipa` must list: see `buildIos`. */
+  expectedDevices?: readonly string[];
+}) => {
+  // An archive it doesn't export keeps the signature Xcode gave its app,
+  // which a stamped Info.plist would break: only an export signs it again.
+  if (
+    channel !== undefined &&
+    !schemeConfig.exportOptionsPlist &&
+    !authenticationArgs
+  ) {
+    throw new Error(
+      `The scheme ${schemeConfig.hotUpdaterSchemeName} archives without exporting, so its app can't embed a --channel and stay signed.\nSet exportOptionsPlist or signing.ascApiKey on the scheme.`,
+    );
+  }
+  const iosProjectRoot = path.join(getCwd(), "ios");
+  const archiveDir = path.join(buildDirectory, "archive");
+  const exportDir = path.join(buildDirectory, "export");
+  await fs.promises.mkdir(archiveDir, { recursive: true });
+  // archivePath is the .xcarchive file path
+  const { archivePath, logFilePath } = await archiveXcodeProject({
+    archiveDirectory: archiveDir,
+    authenticationArgs,
+    minBundleId,
+    platform: schemeConfig.platform,
+    sourceDir: iosProjectRoot,
+    xcconfig: schemeConfig.xcconfig,
+    xcodeScheme: schemeConfig.scheme,
+    destination: schemeConfig.destination,
+    extraParams: schemeConfig.extraParams,
+    configuration: schemeConfig.configuration,
+    installPods: schemeConfig.installPods,
+    logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build`,
+    header: logHeader,
+    sandbox: schemeConfig.sandbox,
+  });
+
+  // Extract .app from xcarchive if present
+  const appFromArchive = extractAppFromXcarchive(archivePath);
+
+  // Before the copy, which reports what the app does, and before the export,
+  // which signs the patched app.
+  if (schemeConfig.sandbox) {
+    if (!appFromArchive) {
+      throw new Error(`The archive ${archivePath} has no app to patch.`);
+    }
+    await patchSandboxArchive({
+      archivePath,
+      appPath: appFromArchive,
+      schemeConfig,
+      plan: sandbox,
+    });
+  }
+  if (channel !== undefined) {
+    if (!appFromArchive) {
+      throw new Error(`The archive ${archivePath} has no app to stamp.`);
+    }
+    await stampAppChannel(appFromArchive, channel);
+  }
+
+  const archivedAppPath = appFromArchive
+    ? path.join(archiveDir, path.basename(appFromArchive))
+    : undefined;
+  if (appFromArchive && archivedAppPath) {
+    await fs.promises.cp(appFromArchive, archivedAppPath, {
+      recursive: true,
+    });
+  }
+
+  // Without export options, a scheme that signs with an App Store Connect
+  // API key exports for App Store Connect, and any other returns the
+  // archive.
+  if (!schemeConfig.exportOptionsPlist && !authenticationArgs) {
     return {
       buildDirectory,
-      buildArtifactPath: finalArchivePath,
+      buildArtifactPath: archivePath,
+      logFilePath,
+      builtApp: archivedAppPath
+        ? await readBuiltApp(archivedAppPath)
+        : undefined,
     };
+  }
+
+  let exportMethod: string | undefined;
+  const runExport = async (exportOptionsPlist: string) => {
+    // What the registry confirms against the .ipa; one it can't read is none.
+    exportMethod =
+      (await readExportMethod(exportOptionsPlist).catch(() => "")) || undefined;
+    await exportXcodeArchive({
+      archivePath,
+      exportPath: exportDir,
+      authenticationArgs,
+      exportExtraParams: schemeConfig.exportExtraParams,
+      exportOptionsPlist,
+      sourceDir: iosProjectRoot,
+      logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build`,
+      // The export's output follows the archive's in one log.
+      logFilePath: logFilePath ?? undefined,
+      title: schemeConfig.scheme,
+    });
+  };
+  // Each export starts from an empty folder and leaves only its .ipa, even
+  // when it throws: Packaging.log holds the API key's bearer token.
+  const exportOnce = async (exportOptionsPlist: string) => {
+    await fs.promises.rm(exportDir, { recursive: true, force: true });
+    await fs.promises.mkdir(exportDir, { recursive: true });
+    try {
+      await runExport(exportOptionsPlist);
+    } finally {
+      await keepOnlyIpas(exportDir);
+    }
+  };
+  // An ad hoc export Xcode signed with a saved profile that lacks a device
+  // the registry expects: the profile goes, and the same options export
+  // again inside the same keychain, so Xcode asks Apple for a new profile.
+  const exportArchive = async (exportOptionsPlist: string) => {
+    await exportOnce(exportOptionsPlist);
+    if (!expectedDevices?.length) return;
+    const ipaFile = findIpa(exportDir);
+    if (ipaFile === undefined) return;
+    const signed = await readIpaSigning(path.join(exportDir, ipaFile));
+    if (signed === null || signed.teamId === null) return;
+    const missing = expectedDevices.filter(
+      (udid) => !signed.devices.includes(udid.toLowerCase()),
+    );
+    if (missing.length === 0 || signed.distribution !== "ad-hoc") return;
+    const { removed, failed } = await removeSavedAdHocProfiles({
+      teamId: signed.teamId,
+      bundleIds: signed.profileBundleIds,
+    });
+    for (const { file, reason } of failed) {
+      p.log.warn(`Couldn't delete the saved profile ${file}: ${reason}`);
+    }
+    if (removed.length === 0) return;
+    p.log.info(
+      `Exporting again · a saved ad hoc profile lacked ${missing.length} approved ${missing.length === 1 ? "device" : "devices"}`,
+    );
+    await exportOnce(exportOptionsPlist);
+  };
+  const { exportOptionsPlist } = schemeConfig;
+  if (exportOptionsPlist && !schemeConfig.sandbox) {
+    await exportArchive(exportOptionsPlist);
+  } else {
+    const exportOptionsDir = await createRandomTmpDir();
+    try {
+      await exportArchive(
+        exportOptionsPlist
+          ? await resolveSandboxExportOptions(
+              schemeConfig.hotUpdaterSchemeName,
+              exportOptionsPlist,
+              exportOptionsDir,
+            )
+          : await writeAppStoreConnectExportOptions(exportOptionsDir, {
+              internalTestingOnly: schemeConfig.sandbox,
+            }),
+      );
+    } finally {
+      await removeTmpDir(exportOptionsDir);
+    }
+  }
+
+  const ipaFile = findIpa(exportDir);
+
+  if (!ipaFile) {
+    throw new Error("IPA file not found after export");
+  }
+  return {
+    buildDirectory: buildDirectory,
+    buildArtifactPath: path.join(exportDir, ipaFile),
+    logFilePath,
+    ...(exportMethod === undefined ? {} : { exportMethod }),
+    builtApp: archivedAppPath ? await readBuiltApp(archivedAppPath) : undefined,
+  };
+};
+
+const findIpa = (exportDir: string) =>
+  fs.readdirSync(exportDir).find((file) => file.endsWith(".ipa"));
+
+/**
+ * Leaves only the `.ipa` in an export's folder. Xcode writes `Packaging.log`
+ * beside it, which holds the API key's bearer token for its 20 minutes, and the
+ * build's output and its cache copy the whole build directory into the project.
+ */
+const keepOnlyIpas = async (exportDir: string) => {
+  for (const entry of await fs.promises.readdir(exportDir)) {
+    if (!entry.endsWith(".ipa")) {
+      await fs.promises.rm(path.join(exportDir, entry), {
+        recursive: true,
+        force: true,
+      });
+    }
   }
 };
 

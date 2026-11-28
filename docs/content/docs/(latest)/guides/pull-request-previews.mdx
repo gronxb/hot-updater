@@ -1,0 +1,918 @@
+---
+title: "Pull Request Previews"
+description: "Install one sandbox build, then scan each pull request's QR code to open its bundle, with a GitHub Action that builds, deploys, comments, and cleans up."
+icon: GitPullRequest
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+import { Step, Steps } from "fumadocs-ui/components/steps";
+
+## Open a pull request in a sandbox build
+
+Testers check a pull request on their own phone. They install one
+[sandbox build](/docs/native-builds/sandbox) and scan a QR code for each pull
+request. The preview action does the rest:
+
+<Steps>
+<Step>
+
+### A pull request changes native code
+
+A change the
+[fingerprint](/docs/guides/update-strategies/fingerprint#what-the-fingerprint-covers)
+covers, such as a new native package, gives it a fingerprint no sandbox build
+has yet.
+
+</Step>
+<Step>
+
+### The action builds a sandbox build
+
+The sandbox build embeds the pull request's channel, `pr-12`, like any native
+build of the pull request. The action deploys the pull request's bundle there,
+and comments an install link and a QR code for each platform.
+
+</Step>
+<Step>
+
+### A tester installs it once
+
+On Android, from the comment's APK download. On a registered iPhone, from the
+build's page in the Console. TestFlight and Google Play internal testing work
+too.
+
+</Step>
+<Step>
+
+### They scan the pull request's QR code
+
+The QR code opens `pr-12` in the sandbox build. It asks, then runs the latest
+bundle there.
+
+</Step>
+<Step>
+
+### They test it, and the pull request merges
+
+The next pull request with the same native code reuses that sandbox build,
+whichever pull request made it: no new install, only a scan. Closing a pull
+request, merged or not, deletes its bundles and keeps its sandbox build for the
+others.
+
+</Step>
+</Steps>
+
+A pull request that changes only JavaScript keeps its fingerprint, so when a
+sandbox build has it, the action deploys the bundle and builds nothing.
+
+## Prepare the project
+
+- [Deploy the Console](/docs/guides/console-deployment): the comment's
+  install links open it, on the internet or on a private network such as a
+  VPN. See [The comment](#the-comment).
+- Read the deploy credentials with
+  [`secret()`](/docs/concepts/secrets#adapter-credentials), as
+  the config managed `init` writes does, and add their values to the
+  repository's secrets, or keep them in a
+  [team store](/docs/concepts/secrets#this-machine-or-the-team), which the job
+  only signs in to.
+- Add a sandbox [native build scheme](/docs/guides/native-build#configure-schemes)
+  for each previewed platform. On Android, `aab: false` builds an `.apk`,
+  signed with a `secret()` keystore. On iOS, an `.ipa` exported for registered
+  devices, with the `release-testing` method, as
+  [Install on an iPhone](/docs/native-builds/iphone-install) describes. It
+  signs with an App Store Connect API key with the Admin role, as
+  [Build and upload from CI](/docs/guides/ci-native-build#get-the-keys-once)
+  describes.
+- Use the [fingerprint strategy](/docs/guides/update-strategies/fingerprint).
+  A QR code's link names a fingerprint, so under the `appVersion` strategy the
+  comment has none.
+- The registry tells native builds apart by platform, channel, and
+  fingerprint or app version, not by application ID. A project that previews
+  several apps, such as flavors with their own application IDs, runs the
+  action once per app, with the app's own `channel`, such as
+  `pr-${{ github.event.number }}-tv`, and its own sandbox scheme name.
+
+```ts title="hot-updater.config.ts"
+import { defineConfig, secret } from "hot-updater";
+
+export default defineConfig({
+  nativeBuild: {
+    android: {
+      sandbox: {
+        packageName: "com.example.app",
+        aab: false,
+        signing: { keystore: secret("release-keystore") },
+        sandbox: true,
+      },
+    },
+    ios: {
+      sandbox: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        exportOptionsPlist: "./ios/ExportOptions.plist",
+        signing: { ascApiKey: secret("asc-api-key") },
+        sandbox: true,
+      },
+    },
+  },
+  signing: secret("bundle-signing-key"),
+  // ...build, storage, database, plugins
+});
+```
+
+In the job's environment, `secret("release-keystore")` reads `HOT_UPDATER_RELEASE_KEYSTORE`,
+the keystore's JSON value, `secret("asc-api-key")` reads
+`HOT_UPDATER_ASC_API_KEY`, and `secret("bundle-signing-key")` reads
+`HOT_UPDATER_BUNDLE_SIGNING_KEY`, the
+[bundle signing](/docs/guides/bundle-signing) key's PEM, as
+[Sign native builds with secrets](/docs/concepts/secrets#sign-native-builds-with-secrets)
+describes.
+
+The CLI reads these through the config's
+[`secrets` adapter](/docs/concepts/secrets): with `localSecrets()`, what `init`
+writes, the job's environment, where the workflow maps repository secrets, or
+a secrets store the job signs in to, as
+[Build and upload from CI](/docs/guides/ci-native-build#add-the-workflow)
+shows. It signs bundles with the config's
+[`signing` adapter](/docs/guides/bundle-signing).
+
+### The bundle signing key in CI
+
+Read the bundle signing key as a secret, `signing: secret("bundle-signing-key")`,
+as above: the job maps the repository secret to
+`HOT_UPDATER_BUNDLE_SIGNING_KEY`, which `localSecrets()` reads before its
+files, as the workflow below does, and needs no key file.
+
+A config that reads the key from a file with `privateKeyPath` needs that file
+in the job. Write it from a repository secret before the action, readable
+only by the job's user:
+
+```yaml
+      - name: Write the bundle signing key
+        env:
+          BUNDLE_SIGNING_KEY: ${{ secrets.BUNDLE_SIGNING_KEY }}
+        run: |
+          umask 077
+          mkdir -p keys
+          printf '%s' "$BUNDLE_SIGNING_KEY" > keys/private-key.pem
+```
+
+Write it under the action's `working-directory`, at the path the config sets,
+and keep the path in `.gitignore`.
+
+## Add the workflow
+
+The workflow previews three builds of the pull request: the Android APK, the
+iPhone's ad hoc `.ipa`, and an iOS Simulator `.app` of the same native code.
+[Add the iOS Simulator](#add-the-ios-simulator) adds the Simulator's scheme.
+Each build has its own job, and the three run at the same time, so a pull
+request that changes native code waits about as long as its slowest build. A
+last job writes the comment:
+
+```yaml title=".github/workflows/preview.yml"
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  # The comment's QR codes go to the hot-updater-preview branch.
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.preview.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The pull request's own commit, which the comment and the bundle
+          # name, not GitHub's merge of it into the base branch.
+          ref: ${{ github.event.pull_request.head.sha }}
+          # Keeps the token out of the project's install and build scripts.
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm ci
+      # The tag of the hot-updater release your project installs.
+      - id: preview
+        uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          HOT_UPDATER_RELEASE_KEYSTORE: ${{ secrets.HOT_UPDATER_RELEASE_KEYSTORE }}
+          HOT_UPDATER_BUNDLE_SIGNING_KEY: ${{ secrets.HOT_UPDATER_BUNDLE_SIGNING_KEY }}
+          # ...and the deploy variables your config reads with secret()
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          platforms: android
+          android-scheme: sandbox
+          comment: false
+
+  ios-adhoc:
+    if: github.event.action != 'closed'
+    runs-on: macos-latest
+    outputs:
+      result: ${{ steps.preview.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: . # the Gemfile's directory
+      - run: npm ci
+      - id: preview
+        uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}
+          HOT_UPDATER_BUNDLE_SIGNING_KEY: ${{ secrets.HOT_UPDATER_BUNDLE_SIGNING_KEY }}
+          # ...and the deploy variables your config reads with secret()
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          platforms: ios
+          ios-scheme: sandbox
+          # The ios-deploy job deploys the iOS bundle once both iOS builds
+          # are done.
+          deploy: false
+          comment: false
+
+  ios-simulator:
+    if: github.event.action != 'closed'
+    runs-on: macos-latest
+    outputs:
+      result: ${{ steps.preview.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: . # the Gemfile's directory
+      - run: npm ci
+      - id: preview
+        uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}
+          HOT_UPDATER_BUNDLE_SIGNING_KEY: ${{ secrets.HOT_UPDATER_BUNDLE_SIGNING_KEY }}
+          # ...and the deploy variables your config reads with secret()
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          platforms: ios
+          ios-scheme: sandboxSimulator
+          deploy: false
+          comment: false
+
+  # One iOS bundle, after both iOS builds, against the builds they report.
+  ios-deploy:
+    needs: [ios-adhoc, ios-simulator]
+    if: ${{ !cancelled() && github.event.action != 'closed' }}
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.preview.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - id: preview
+        uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          HOT_UPDATER_BUNDLE_SIGNING_KEY: ${{ secrets.HOT_UPDATER_BUNDLE_SIGNING_KEY }}
+          # ...and the deploy variables your config reads with secret()
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          platforms: ios
+          ios-scheme: sandbox, sandboxSimulator
+          build: false
+          comment: false
+          results: |
+            ios-adhoc ${{ needs.ios-adhoc.result }} ${{ needs.ios-adhoc.outputs.result }}
+            ios-simulator ${{ needs.ios-simulator.result }} ${{ needs.ios-simulator.outputs.result }}
+
+  # The one comment and its QR codes, from each job's result, also when one
+  # of them failed.
+  comment:
+    needs: [android, ios-adhoc, ios-simulator, ios-deploy]
+    if: ${{ !cancelled() && github.event.action != 'closed' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: gronxb/hot-updater/actions/preview@v1.2.0
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          mode: comment
+          results: |
+            android ${{ needs.android.result }} ${{ needs.android.outputs.result }}
+            ios-adhoc ${{ needs.ios-adhoc.result }} ${{ needs.ios-adhoc.outputs.result }}
+            ios-simulator ${{ needs.ios-simulator.result }} ${{ needs.ios-simulator.outputs.result }}
+            ios-deploy ${{ needs.ios-deploy.result }} ${{ needs.ios-deploy.outputs.result }}
+
+  cleanup:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          HOT_UPDATER_BUNDLE_SIGNING_KEY: ${{ secrets.HOT_UPDATER_BUNDLE_SIGNING_KEY }}
+          # ...and the deploy variables your config reads with secret()
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+```
+
+- **The three build jobs** each find or build their build, and write no
+  comment (`comment: false`). The Android job also deploys the Android bundle.
+  The iOS jobs only build (`deploy: false`).
+- **The ios-deploy job** waits for both iOS builds, then deploys the one iOS
+  bundle on Linux, against the builds their `result` outputs name
+  (`build: false`). It compiles nothing and looks up no other build: a scheme
+  whose job failed or was skipped stays failed, and so does an `.ipa` that
+  installs directly (ad hoc, development, or enterprise) whose profile expired
+  after its job reported it, as a result kept for a
+  re-run can, or whose result doesn't say when it expires, and a store build
+  its store has stopped offering since: re-run its job.
+  The bundle is newer than both
+  builds, so both run it, also after a re-run of one iOS job, which re-runs
+  this one too. Each push deploys one bundle per platform.
+- **The comment job** waits for all of them, then writes the one comment and
+  its QR codes from their `result` outputs. A job that failed shows as failed,
+  the others as usual. A build shows only once a job deployed its bundle: when
+  the `ios-deploy` job didn't run, the comment says so instead of offering the
+  iOS builds. It checks the pull request's head before writing and
+  again just before the comment, and writes no comment for an older commit,
+  whose newer run writes it. A push that lands during that last write can
+  still show the older comment until its own run replaces it.
+- **The cleanup job** runs when the pull request closes.
+
+The action runs your project's CLI, and needs the one from the same
+hot-updater release as its tag. When the app has a `Gemfile`, as React Native
+and Expo projects do, the CLI runs CocoaPods through Bundler, so
+`ruby/setup-ruby` runs in the directory of the `Gemfile`.
+
+A job that builds takes far longer than one that only deploys the bundle. If a
+build outlasts GitHub's default limit of six hours, give its job a
+`timeout-minutes`.
+
+A large app's release build can outgrow the template's 2 GB Gradle heap. Give
+the `android` job more, and keep Kotlin's compiler daemon, which takes the
+same heap by default, smaller. On `ubuntu-latest`, with 16 GB, this kept a
+four-ABI 277 MB APK's build under 12 GB:
+
+```yaml
+  android:
+    env:
+      GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g
+    steps:
+      # ...before the preview step
+      - run: mkdir -p ~/.gradle && echo "kotlin.daemon.jvmargs=-Xmx2g" >> ~/.gradle/gradle.properties
+```
+
+To use fewer macOS minutes, one iOS job can build both schemes in order,
+`ios-scheme: sandbox, sandboxSimulator`, and deploy one bundle after them, at
+the cost of waiting for both builds: it replaces the three iOS jobs.
+
+### Add the iOS Simulator
+
+A Simulator build of the same native code lets someone on a Mac with Apple
+silicon test the pull request without an iPhone. Add a sandbox scheme with
+`simulator: true` and the iPhone scheme's `bundleIdentifier`:
+
+```ts title="hot-updater.config.ts"
+    ios: {
+      sandbox: {
+        // ...the iPhone scheme above
+      },
+      sandboxSimulator: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        configuration: "Release",
+        simulator: true,
+        sandbox: true,
+      },
+    },
+```
+
+Without it, leave out the `ios-simulator` job, its lines in the `results` of
+`ios-deploy` and `comment`, `ios-simulator` in their `needs`, and
+`sandboxSimulator` in the `ios-scheme` of `ios-deploy`.
+
+The comment's iOS section keeps the iPhone's install link and QR code, and
+adds a command for the Simulator build, which a Simulator can't scan. Run in
+your project, it installs the build on the booted Simulator and opens the pull
+request's latest bundle:
+
+```sh
+npx hot-updater native-build install <build id> --open pr-12
+```
+
+On the Console, the Install card of either build switches to the other with
+**iPhone** and **Simulator**. Under the `appVersion` strategy, the command
+installs and opens the app, but can't open the pull request, since a link
+names a fingerprint.
+
+### pnpm, Yarn, and Bun
+
+The action runs the CLI with `cli`, `npx --no-install hot-updater` by default.
+With another package manager, install with it in each job that checks out the
+project, and pass its command. With pnpm:
+
+```yaml
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      # ...setup-java or setup-ruby
+      - run: pnpm install --frozen-lockfile
+      - id: preview
+        uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          # ...the variables above
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          platforms: android
+          android-scheme: sandbox
+          comment: false
+          cli: pnpm exec hot-updater
+```
+
+With Yarn, run `yarn install --immutable` (`--frozen-lockfile` on Yarn 1)
+and pass `cli: yarn hot-updater`.
+With Bun, set it up with `oven-sh/setup-bun`, run `bun install --frozen-lockfile`,
+and pass `cli: bun run hot-updater`. In a monorepo, set `working-directory` to the
+app's directory.
+
+## When the native code changes
+
+For each platform, the action looks for a sandbox build with the pull request's
+fingerprint, made by any pull request:
+
+- **A sandbox build has the fingerprint.** Nothing is built. The action deploys
+  the bundle, and when another pull request made the build, the comment names
+  that pull request's channel, so a tester who has it installed skips to the
+  scan.
+- **No sandbox build has it.** The action builds one on the pull request's
+  channel, which testers install before they scan, then deploys the bundle.
+
+Use the `fingerprint` update strategy. Under `appVersion`, a sandbox build
+matches every pull request of its app version, whatever its native code, and a
+link has no fingerprint to check.
+
+A device holds one sandbox app, so a tester moving between pull requests with
+different native code installs again each time.
+
+A new sandbox build's `MIN_BUNDLE_ID` can pass other open pull requests'
+bundles of the same native code. Nothing redeploys them, so when a run makes a
+new sandbox build, its comment asks you to push the others again.
+
+An ad hoc `.ipa` includes the iPhones registered when it was built. Before
+reusing one, the action checks the iPhones it lacks against Apple's device list,
+with the scheme's `signing.ascApiKey`: one a build now adds, enabled at Apple or
+approved and not at Apple yet, gets a new build, which registers it first. So
+does a profile that expired. An iPhone Apple has disabled or refused, or one the
+scheme can't add, gets a note in the job's log instead. See
+[Install on an iPhone](/docs/native-builds/iphone-install).
+
+## Install through TestFlight or Google Play
+
+An iPhone that isn't registered installs through TestFlight, and a team that
+can't sideload an APK installs through Google Play. Point the action at a
+[sandbox](/docs/native-builds/sandbox) scheme and name the store. This scheme
+builds an `.aab` on Android, the default, and exports for App Store Connect on
+iOS, with no `exportOptionsPlist`:
+
+```ts title="hot-updater.config.ts"
+export default defineConfig({
+  nativeBuild: {
+    android: {
+      sandbox: {
+        packageName: "com.example.app",
+        signing: { keystore: secret("release-keystore") },
+        sandbox: true,
+      },
+    },
+    ios: {
+      sandbox: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        signing: { ascApiKey: secret("asc-api-key") },
+        sandbox: true,
+      },
+    },
+  },
+  // ...build, storage, database, signing, plugins
+});
+```
+
+In the `android` job:
+
+```yaml
+      - id: preview
+        uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          HOT_UPDATER_RELEASE_KEYSTORE: ${{ secrets.HOT_UPDATER_RELEASE_KEYSTORE }}
+          HOT_UPDATER_PLAY_SERVICE_ACCOUNT: ${{ secrets.HOT_UPDATER_PLAY_SERVICE_ACCOUNT }}
+          # ...the variables above
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          platforms: android
+          android-scheme: sandbox
+          android-submit: play-internal
+          comment: false
+```
+
+In the `ios-adhoc` job:
+
+```yaml
+      - id: preview
+        uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}
+          # ...the variables above
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          platforms: ios
+          ios-scheme: sandbox
+          ios-submit: testflight
+          ios-testflight-group: QA
+          deploy: false
+          comment: false
+```
+
+The `ios-deploy` job stays as it is: it deploys against the store build the
+`ios-adhoc` job reports, and runs no store command, so it needs no store input
+and no App Store Connect key.
+
+Pull requests with the same native code share the store build:
+
+- **The fingerprint has a build the store still offers.** Nothing is built or
+  uploaded. The action asks the store for the build's state, adds the build to
+  `ios-testflight-group`, and deploys the bundle.
+- **It has none.** The action builds and uploads one. On iOS, the build number
+  follows App Store Connect, What to Test names the pull request, and the build
+  joins `ios-testflight-group`, an internal group. On Android, the version code
+  follows Google Play.
+- **The store no longer offers it.** A TestFlight build within a week of its
+  90-day expiry, or a Google Play build a newer release replaced on the internal
+  track, gets a new build.
+
+The comment's install line shows the store's link and state, such as
+**processing**, in place of a download, and the QR code stays the same.
+TestFlight's link opens the app in App Store Connect: internal testers install
+from the TestFlight app. Google Play's link is where a tester on the internal
+track opts in.
+
+`ios-submit` and `android-submit` go no further than internal testing, and refuse
+a scheme without `sandbox: true`. A store build and an ad hoc or APK build of
+one native code are separate builds, and neither hides the other. A group
+that isn't internal stops the run before it builds or deploys. A build still
+processing joins its group once App Store Connect has processed it, or on a later
+run. Set up each store first, as [TestFlight](/docs/native-builds/testflight) and
+[Google Play](/docs/native-builds/google-play) describe. The `.sandbox` app needs
+its own record in Play Console, with its first `.aab` uploaded and rolled out by
+hand. Until then a release stays a draft, and the comment says so.
+
+## What each run does
+
+Before anything else, the action runs `hot-updater channel set <channel>`.
+Every native build it makes is built with `--channel <channel>`, so it embeds
+the pull request's channel, whatever the project or an Expo config plugin
+sets. Then, for each platform, and each of its schemes in order:
+
+1. `hot-updater native-build find -p <platform> -s <scheme> --json`
+   prints the newest tracked build that a build of the project would
+   match: the channel it would embed, the same fingerprint, from the config's
+   fingerprint inputs, or with the `appVersion` strategy, the version of the app
+   the scheme builds, and the kind of artifact the scheme builds, so a Simulator
+   scheme never reuses an `.ipa`, nor an APK scheme an `.aab`, and a newer
+   build of one kind never hides the other's. See
+   [Find a build](/docs/guides/native-build#find-a-build). A sandbox scheme's
+   build is found on any channel, and `sandbox.channel` names the one it
+   embeds. For another scheme, when the project embeds another channel than
+   the pull request's, as a config plugin can, it asks again with
+   `-c <channel>`. A found ad hoc `.ipa` also says, in `iosDevices`, whether it
+   installs on the device registry's iPhones.
+2. With no build, `hot-updater native-build <platform> --scheme <scheme> --channel <channel> --json`
+   builds and tracks one, and prints what its artifact embeds: the
+   channel, and the fingerprint or app version. The action fails when the
+   build embeds another channel than the pull request's. An ad hoc `.ipa`
+   that lacks a newly approved iPhone is built again the same way, with
+   `--no-cache`. With a build, the action skips the native build and runs
+   `hot-updater fingerprint create`, since a committed `fingerprint.json` can
+   be older than the project.
+3. Once each scheme has its build, `hot-updater deploy -p <platform> -c <channel>`
+   deploys the platform's one bundle to the pull request's channel, with the
+   build's app version as its target with the `appVersion` strategy. The action
+   checks that the bundle targets the build's fingerprint or app version.
+   Schemes that build different native code fail the platform before the
+   deploy.
+
+Once every platform is done, `native-build find` runs once more for each, for
+the build's [download URL](#outputs). A failed lookup or another match leaves
+that output empty and fails nothing.
+
+When a native build fails, the job's log shows the build's errors and the
+path of the CLI's build log, which keeps the whole output of `xcodebuild` or
+Gradle, and the action uploads that log as the
+`hot-updater-preview-build-log-<platform>` artifact. Download it from the
+run's **Summary** page within a day: the artifact is kept for one day, since
+the CLI masks only the credentials it reads, not every value the build may
+print.
+
+A job that fails doesn't stop the others. The comment shows only the builds
+that finished, and links each failed one to the run. One that failed after
+deploying its bundle says so, and the comment names no commit for it. A job
+that gave no result, because it failed before the action or GitHub skipped
+it, gets one line. When no bundle was deployed, the comment stays as it was.
+
+Each build job sets its `result` output when its builds are done, also when it
+then fails: the comment's fields, with no download URL or credential. The
+comment job, with `mode: comment`, reads each job's line of `results`: its
+name, its conclusion, and that output. A Simulator build from a job with
+`deploy: false` shows the bundle the iPhone's job deployed to the same
+fingerprint. Before writing anything, the comment job checks that the pull
+request's head is still the run's commit.
+
+When the pull request closes, merged or not,
+`hot-updater channel delete <channel> --native-builds --keep-sandbox-builds --yes`
+deletes its bundles and every other native build that embeds its channel, with
+its built-in bundle and its artifact in storage. It keeps the sandbox builds,
+which other pull requests with the same native code reuse, and the channel they
+embed. A channel with no sandbox build is deleted. The comment says what was
+deleted and what stays. To delete a kept sandbox build, delete it in the
+Console, or run `hot-updater native-build delete <id>`, or
+`hot-updater channel delete <channel> --native-builds` for the channel and all
+its builds. See
+[Delete a Channel](/docs/guides/channel-management#delete-a-channel).
+
+## The comment
+
+The action keeps one comment on the pull request and edits it on every push,
+never another author's. It says what a tester does, in order:
+
+```md
+### Preview on `pr-12`
+
+**1. Install the sandbox app** once. Pull requests with the same native code share it.
+
+- **Android**: Download APK · Details · allow "Install unknown apps" when Android asks
+- **iOS**: Install on iPhone · Download IPA · registered devices only
+
+**2. Scan to open the latest bundle on `pr-12`** with the sandbox app.
+Latest commit: abc1234
+```
+
+1. **Install the sandbox app.** Each platform has one line of links: an APK's
+   **Download APK**, with a reminder to allow **Install unknown apps**, an
+   `.ipa`'s **Install on iPhone**, which
+   [checks whether the `.ipa` includes the iPhone and installs it](/docs/native-builds/iphone-install),
+   or the store's link and state for a
+   [store build](#install-through-testflight-or-google-play). **Details** opens
+   the build's page on the Console's
+   [Native builds](/docs/guides/native-build#native-builds-in-the-console) tab.
+   A sandbox build another pull request made adds a line such as
+   "Sandbox build from `pr-10`, with the same native code. Already installed?
+   Skip to step 2." When this run made a new sandbox build, the comment asks
+   you to push the other open pull requests again.
+2. **Scan to open the latest bundle on `pr-12`.** Each platform has a QR code
+   of its sandbox link, since each has its own fingerprint:
+
+   ```text
+   hu-sandbox-com-example-app://hot-updater/preview?channel=pr-12&fingerprint=<hash>&platform=ios
+   ```
+
+   A sandbox build with other native code refuses the link, and the other
+   platform's sandbox build says which QR code to scan instead. The comment
+   shows the link under its QR code. The line above names the latest commit,
+   the one the job checked out, which the sandbox build shows too, in the
+   bundle's message: `abc1234 · #12 Fix login`.
+
+The download links fetch a fresh storage URL on each request, so they never
+expire. A phone without a Console session signs in first, and a phone that
+opens a private Console's link has to be on its network. Install lines are
+links only: the sandbox links are the comment's only QR codes.
+
+Each install line names the build's version and build number, such as
+`1.7.0 (66)`, as the Console's Native builds page does.
+
+Two collapsed sections follow. **Builds** lists each native build with its
+version and build number, whether this run built or reused it, its
+fingerprint or app version, and the bundle's ID. The other section shows how to install a Simulator app with
+[`native-build install`](/docs/guides/native-build#install-a-build), run in
+your project, and an APK on an emulator with `adb install`.
+
+### Where the QR codes live
+
+The action draws the sandbox link's QR code itself and commits it to the
+repository's `hot-updater-preview` branch, at `pr-<number>/<hash>.png`, then
+shows it in the comment from GitHub. Anyone who can read the repository sees
+it, whatever network the Console is on.
+
+- The branch has no history in common with your other branches. Each run
+  adds to the pull request's own folder, and commits nothing when its QR
+  codes are there already. An image is named by what it holds and stays until
+  the pull request closes, so a comment that a failed or cancelled run left
+  in place keeps its QR codes. When the pull request closes, its folder goes,
+  and the branch's history keeps it, as the comment's edit history keeps its
+  links.
+- The job needs `contents: write`. Without it, the action writes the comment
+  without QR codes, then fails with the permission to add. A ruleset that
+  stops the job's token from creating or updating the branch fails the same
+  way.
+- With `comment: false`, the action writes no QR code, and the `comment-body`
+  output has the links only.
+
+The comment ends with "Preview by hot-updater". Set `credit: false` to leave
+it out.
+
+## Without a sandbox build
+
+A project without a sandbox scheme previews each pull request in a native build
+of its own, which embeds the pull request's channel, `pr-12`. An installed build
+opens the latest bundle on that channel on its first launch, with no code in the
+app. Each pull request installs its own build, and closing the pull request
+deletes it.
+
+Use a Release APK for Android, signed with a `secret()` keystore, and a scheme
+with `simulator: true` for iOS, which builds a Simulator `.app` that needs no
+signing:
+
+```ts title="hot-updater.config.ts"
+import { defineConfig, secret } from "hot-updater";
+
+export default defineConfig({
+  nativeBuild: {
+    android: {
+      previewApk: {
+        packageName: "com.example.app",
+        aab: false,
+        signing: { keystore: secret("release-keystore") },
+      },
+    },
+    ios: {
+      previewSimulator: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        configuration: "Release",
+        simulator: true,
+      },
+    },
+  },
+  signing: secret("bundle-signing-key"),
+  // ...build, storage, database, plugins
+});
+```
+
+Use [the workflow](#add-the-workflow) without the `ios-adhoc` job, its lines
+in the `results` of `ios-deploy` and `comment`, and `ios-adhoc` in their
+`needs`.
+Set `android-scheme: previewApk` in the `android` job, and
+`ios-scheme: previewSimulator` in the `ios-simulator` and `ios-deploy` jobs.
+
+A pull request's first run builds each platform's native build, since the
+build embeds the pull request's channel: an Android APK on an Ubuntu runner,
+and the Simulator app, whose build takes about 20–25 minutes on a GitHub-hosted
+macOS runner. Later pushes reuse the pull request's build while the native
+code doesn't change, so they only deploy the bundle.
+
+The comment says **Install this pull request's build**, with no QR code. A
+Simulator app installs with the `native-build install` command under the
+comment.
+
+A scheme that sets the app version at build time, such as in an `xcconfig`,
+builds a version the project doesn't declare, so its preview builds again on
+every run.
+
+## Inputs
+
+| Input                  | Default                        | Description                                                                                                     |
+| ---------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `console-url`          |                                | The Console's URL, which the comment's install links point at                                                   |
+| `platforms`            | `android`                      | The platforms to preview, comma-separated: `android`, `ios`. iOS needs a macOS runner                           |
+| `android-scheme`       |                                | The `nativeBuild.android` scheme of the preview build. Required to preview Android                              |
+| `ios-scheme`           |                                | The `nativeBuild.ios` scheme of the preview build, a `simulator: true` scheme for a Simulator app. Several, comma-separated, share one bundle |
+| `android-submit`       |                                | `play-internal` releases a sandbox scheme's `.aab` to Google Play's internal testing track                      |
+| `ios-submit`           |                                | `testflight` uploads a sandbox scheme's `.ipa` to TestFlight for internal testing                               |
+| `ios-testflight-group` |                                | With `ios-submit`, the internal TestFlight group to add the build to. A group that takes every build needs none |
+| `channel`              | `pr-<number>`                  | The pull request's channel, which its bundles deploy to and its non-sandbox native builds embed                 |
+| `credit`               | `true`                         | Whether the comment ends with "Preview by hot-updater"                                                          |
+| `comment`              | `true`                         | Whether to write the comment, and its sandbox QR codes to the `hot-updater-preview` branch                      |
+| `deploy`               | `true`                         | Whether to deploy each platform's bundle. `false` only builds, as the iOS build jobs do                         |
+| `build`                | `true`                         | Whether a scheme with no build builds one. `false` deploys against the builds `results` names, and compiles and looks up nothing, as the `ios-deploy` job does |
+| `mode`                 | `auto`                         | `preview`, `cleanup`, `comment`, or `auto`: `cleanup` when the pull request closed, else `preview`. `comment` writes the comment from `results` |
+| `results`              |                                | With `mode: comment` or `build: false`, one line per job: its name, `needs.<job>.result`, and `needs.<job>.outputs.result` |
+| `working-directory`    | `.`                            | The app's directory, with `hot-updater.config.ts`                                                               |
+| `cli`                  | `npx --no-install hot-updater` | The command that runs the project's CLI                                                                         |
+| `github-token`         | `github.token`                 | The token that writes the comment and the QR codes. A personal access token's push starts your `push` workflows |
+
+## Outputs
+
+| Output                                     | Description                                                                                                                                                                                                                                                     |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `comment-body`                             | The comment's Markdown                                                                                                                                                                                                                                          |
+| `result`                                   | JSON of what the comment shows of this run's builds and failed platforms, for the comment job: no download URL or credential. Set once the builds are done, also when the run then fails |
+| `previews`                                 | A JSON array of each platform's `platform`, `target`, `nativeBuild` (`id`, `artifactKind`, `fileName`), `built`, `bundleId`, `bundleLabel` (its release's `vN` number, null before 1.2), `installUrl`, `downloadUrl`, with a store input, `store` (`destination`, `url`, `version`, `state`, `expiresAtMs`, `reusable`), and on a sandbox build, `sandbox` (`appId`, `urlScheme`, `link`, `minBundleId`, `fromChannel`: the other pull request's channel a reused build embeds, or null). With several schemes on a platform, each has its `scheme`, and the platform's other outputs are its first successful scheme's |
+| `android-install-url`, `ios-install-url`   | What a person opens: the comment's download link for an APK, the build's Console page for an `.ipa`, where **Install on iPhone** checks the device, for a Simulator app its `npx hot-updater native-build install <build id>` command, or with a store input, the store's link |
+| `android-download-url`, `ios-download-url` | The storage's URL of the artifact, for a later step. Empty when the storage gives none, where `previews` has `null`                                                                                                                                             |
+| `android-sandbox-link`, `ios-sandbox-link` | On a sandbox build, the link the comment's QR code holds. Empty under the `appVersion` strategy |
+| `android-store-url`, `ios-store-url`       | With a store input, the store's link. Empty when the store couldn't be read                                                                                                                                                                                     |
+| `android-store-state`, `ios-store-state`   | With a store input, the store's word on the build: `processing`, `ready`, `missing-compliance`, or `draft`. Empty when the store couldn't be read                                                                                                               |
+| `android-build-log`, `ios-build-log`       | When the platform's native build fails, the path of its build log                                                                                                                                                                                               |
+
+A platform's outputs are set when the action previews it, so a cleanup run and a
+pull request from a fork have none.
+
+The action reads the download URLs last, once every platform is done. From then,
+a URL lasts as long as
+[your storage adapter gives it](/docs/guides/native-build#which-storage-gives-a-download-url),
+so a step that runs after that lifetime gets an expired URL.
+
+### Fetch the build in a later step
+
+The comment's download link asks for a Console session, which a later step doesn't have, so
+fetch the build by its ID, which works on every storage, with the same deploy
+variables as the action:
+
+```yaml
+      - id: preview
+        uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          # ...the variables above
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          android-scheme: sandbox
+      - if: steps.preview.outputs.previews != ''
+        env:
+          # ...the variables above
+          BUILD_ID: ${{ fromJSON(steps.preview.outputs.previews)[0].nativeBuild.id }}
+        run: npx hot-updater native-build download "$BUILD_ID" -o app.apk
+```
+
+Or fetch `android-download-url` or `ios-download-url` with no credentials, when
+[your storage gives one](/docs/guides/native-build#which-storage-gives-a-download-url):
+
+```yaml
+      - if: steps.preview.outputs.android-download-url != ''
+        env:
+          DOWNLOAD_URL: ${{ steps.preview.outputs.android-download-url }}
+        run: curl -fL -o app.apk "$DOWNLOAD_URL"
+```
+
+<Callout type="warn">
+  Anyone who has the URL can download the build until it expires. The action
+  keeps it out of the job's log and the comment, but the log shows what a step
+  reads through `env` or an expression. In a public repository, use
+  `native-build download`.
+</Callout>
+
+## Pull requests from forks
+
+GitHub gives a pull request from a fork no secrets, no OIDC ID token, and a
+read-only token, so the action does nothing for it, and the closed pull
+request needs no cleanup. Don't run the action on `pull_request_target`: it would build the
+fork's code with your secrets.

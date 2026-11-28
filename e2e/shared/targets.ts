@@ -275,3 +275,32 @@ export function nativeAppPath(
     env.HOT_UPDATER_E2E_ANDROID_BINARY_PATH ?? target.android.apk,
   );
 }
+
+/**
+ * A second real Release build of the same app, with another MIN_BUNDLE_ID and
+ * so another isolation key: what a device gets when a different build of the
+ * app is installed over it. `e2e:build` writes it beside the run's build, so it
+ * follows wherever the run's build is, such as a shared setup worktree.
+ */
+export function otherNativeAppPath(
+  target: E2eTarget,
+  platform: "ios" | "android",
+  repositoryRoot: string,
+  env: NodeJS.ProcessEnv,
+): string {
+  const runBuild = nativeAppPath(target, platform, repositoryRoot, env);
+  return platform === "ios"
+    ? // <derived data>/Build/Products/<configuration>/<app>
+      path.resolve(
+        runBuild,
+        "../../../..",
+        "OtherBuild",
+        path.basename(runBuild),
+      )
+    : // <outputs>/apk/release/<apk>
+      path.resolve(
+        path.dirname(path.dirname(runBuild)),
+        "other-build",
+        path.basename(runBuild),
+      );
+}

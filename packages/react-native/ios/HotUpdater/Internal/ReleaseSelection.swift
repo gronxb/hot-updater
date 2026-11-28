@@ -98,9 +98,9 @@ private func modularInverse(_ value: Int, _ modulus: Int) -> Int {
     return positiveMod(t, modulus)
 }
 
-private func rolloutShuffleParameters(_ bundleId: String) -> (offset: Int, inverseMultiplier: Int) {
+private func rolloutShuffleParameters(_ releaseId: String) -> (offset: Int, inverseMultiplier: Int) {
     let size = ReleaseCatalogLimits.numericCohortSize
-    var multiplier = positiveMod(hashString("\(bundleId):multiplier"), 997)
+    var multiplier = positiveMod(hashString("\(releaseId):multiplier"), 997)
     if multiplier == 0 {
         multiplier = 1
     }
@@ -110,12 +110,12 @@ private func rolloutShuffleParameters(_ bundleId: String) -> (offset: Int, inver
             multiplier = 1
         }
     }
-    let offset = positiveMod(hashString("\(bundleId):offset"), size)
+    let offset = positiveMod(hashString("\(releaseId):offset"), size)
     return (offset, modularInverse(multiplier, size))
 }
 
-private func numericCohortRolloutPosition(_ bundleId: String, _ cohortValue: Int) -> Int {
-    let (offset, inverseMultiplier) = rolloutShuffleParameters(bundleId)
+private func numericCohortRolloutPosition(_ releaseId: String, _ cohortValue: Int) -> Int {
+    let (offset, inverseMultiplier) = rolloutShuffleParameters(releaseId)
     return positiveMod(
         inverseMultiplier * (cohortValue - 1 - offset),
         ReleaseCatalogLimits.numericCohortSize
@@ -123,7 +123,7 @@ private func numericCohortRolloutPosition(_ bundleId: String, _ cohortValue: Int
 }
 
 func isCohortEligibleForUpdate(
-    bundleId: String,
+    releaseId: String,
     cohort: String?,
     rolloutCohortCount: Double?,
     targetCohorts: [String]?
@@ -149,7 +149,7 @@ func isCohortEligibleForUpdate(
     if normalizedRolloutCount >= ReleaseCatalogLimits.numericCohortSize {
         return true
     }
-    return numericCohortRolloutPosition(bundleId, numericCohort) < normalizedRolloutCount
+    return numericCohortRolloutPosition(releaseId, numericCohort) < normalizedRolloutCount
 }
 
 /// Whether a device in `cohort` may take the Release: it is targeted, rolled
@@ -161,7 +161,7 @@ func isReleaseEligibleForCohort(
     cohort: String?
 ) -> Bool {
     if isCohortEligibleForUpdate(
-        bundleId: releaseId,
+        releaseId: releaseId,
         cohort: cohort,
         rolloutCohortCount: rolloutCohortCount,
         targetCohorts: targetCohorts
@@ -190,7 +190,7 @@ struct ReleaseSelectionContext {
     let activeBundleId: String?
     let activeReleaseId: String?
     let cohort: String?
-    let minimumReleaseId: String
+    let minBundleId: String
     let strategy: ReleaseStrategy
     let strategyValue: String
     let crashedBundleIds: [String]
@@ -220,8 +220,10 @@ func createReleaseSelectionContextHash(_ context: ReleaseSelectionContext) -> St
         }
         json.string(bundleId)
     }
+    // The key predates the minBundleId rename: receipts keep this hash, and
+    // JavaScript and native from other patches hash it.
     json.raw("],\"minimumReleaseId\":")
-    json.string(context.minimumReleaseId)
+    json.string(context.minBundleId)
     json.raw(",\"selectorSchemaVersion\":\(ReleaseCatalogLimits.schemaVersion),\"strategy\":")
     json.string(context.strategy.rawValue)
     json.raw(",\"strategyValue\":")
@@ -293,7 +295,7 @@ struct ReleaseSelectionInput {
     /// `nil` defaults to `activeReleaseId`; `.some(nil)` compares by
     /// `currentBundleId`.
     let runningReleaseId: String??
-    let minimumReleaseId: String
+    let minBundleId: String
     let cohort: String?
     let crashedBundleIds: [String]
 }
@@ -327,7 +329,7 @@ func selectDesiredRelease(_ catalog: ReleaseCatalog, input: ReleaseSelectionInpu
     func safeBundleId(_ release: ReleaseCatalogDescriptor) -> String? {
         guard let bundleId = release.bundleId,
               !crashedBundleIds.contains(Array(bundleId.utf16)),
-              !bundleId.jsLess(input.minimumReleaseId) else {
+              !bundleId.jsLess(input.minBundleId) else {
             return nil
         }
         return bundleId
@@ -352,7 +354,7 @@ func selectDesiredRelease(_ catalog: ReleaseCatalog, input: ReleaseSelectionInpu
             guard passed.shouldForceUpdate, let bundleId = passed.bundleId else {
                 return false
             }
-            return !bundleId.jsLess(input.minimumReleaseId)
+            return !bundleId.jsLess(input.minBundleId)
                 && !bundleId.jsEquals(input.currentBundleId)
                 && !selected.releaseId.jsLess(passed.releaseId)
                 && isNewerThanRunning(passed)
@@ -413,7 +415,7 @@ func selectDesiredRelease(_ catalog: ReleaseCatalog, input: ReleaseSelectionInpu
             }
         }
 
-        if !input.minimumReleaseId.jsLess(input.currentBundleId) {
+        if !input.minBundleId.jsLess(input.currentBundleId) {
             return nil
         }
     }

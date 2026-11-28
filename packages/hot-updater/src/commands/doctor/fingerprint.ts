@@ -27,7 +27,6 @@ const generationFailed = (error: unknown): NativeCheckIssue => {
       message,
       resolution:
         "Update @hot-updater/react-native to the version of hot-updater, then rebuild the app and rerun doctor.",
-      fixability: "auto",
       paths: ["package.json"],
     };
   }
@@ -38,7 +37,6 @@ const generationFailed = (error: unknown): NativeCheckIssue => {
     message: `Could not compute the project's fingerprint: ${message}`,
     resolution:
       "Check the fingerprint settings in hot-updater.config.ts, then rerun doctor.",
-    fixability: "auto",
     paths: ["hot-updater.config.ts"],
   };
 };
@@ -83,7 +81,6 @@ export const checkFingerprintJson = async (
             ? `fingerprint.json records ${before.engine} for the ${label} fingerprint, which ${engine} now computes unchanged.`
             : `fingerprint.json doesn't record the engine behind the ${label} fingerprint, which ${engine} computes unchanged.`,
           resolution: `Run \`${FINGERPRINT_CREATE}\` to record it, so doctor and deploy can tell an engine upgrade from a native change. The fingerprint stays the same.`,
-          fixability: "command",
           commands: [FINGERPRINT_CREATE],
           paths: ["fingerprint.json"],
         });
@@ -99,7 +96,6 @@ export const checkFingerprintJson = async (
         ...describeFingerprintEngineChange(engineChange, label),
         // Going back to the engine or rebuilding shipped apps is the user's
         // call, so no command is offered to run.
-        fixability: "blocked",
         paths: ["fingerprint.json"],
       });
       continue;
@@ -125,7 +121,6 @@ export const checkFingerprintJson = async (
         ? `The ${label} fingerprint changed since fingerprint.json was created.`
         : `fingerprint.json has no ${label} fingerprint.`,
       resolution: `Run \`${FINGERPRINT_CREATE}\`, then rebuild the ${label} app.`,
-      fixability: "command",
       commands: [FINGERPRINT_CREATE],
       paths: ["fingerprint.json"],
       ...(changes === undefined ? {} : { changes }),
@@ -153,7 +148,6 @@ export const checkUnusedFingerprintJson = (
           message: `fingerprint.json exists, but updateStrategy is '${updateStrategy}'. Native builds embed its fingerprint hash, so the app reports the fingerprint strategy.`,
           resolution:
             "Delete fingerprint.json, then rebuild the app. To use the fingerprint strategy instead, set updateStrategy to 'fingerprint' in hot-updater.config.ts.",
-          fixability: "auto",
           paths: ["fingerprint.json"],
         },
       ]

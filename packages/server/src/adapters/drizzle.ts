@@ -31,8 +31,9 @@ export interface DrizzleConfig {
 /**
  * Hot Updater's database on a Drizzle instance: the storage engine through the
  * shared SQL core, fenced by the schema settings. `db generate` writes the
- * Drizzle schema drizzle-kit applies; `db migrate` then writes the settings
- * rows the fence checks.
+ * Drizzle schema drizzle-kit applies; `db migrate` then checks the tables,
+ * sets the PostgreSQL collations drizzle-kit cannot read back, and writes the
+ * settings rows the fence checks.
  */
 export const drizzleAdapter = (config: DrizzleConfig): ToolingDatabase => {
   const provider = checkSqlProvider("drizzleAdapter", config.provider);
@@ -52,13 +53,20 @@ export const drizzleAdapter = (config: DrizzleConfig): ToolingDatabase => {
         path: "hot-updater-schema.ts",
       };
     }) satisfies SchemaGenerator,
-    createMigrator: ({ settings, ordered } = coreTarget) =>
+    createMigrator: ({ schema, settings, ordered } = coreTarget) =>
       createSettingsMigrator({
         adapterName: "drizzle",
         executor,
+        schema,
         settings,
         ordered,
-        applyTables: "`drizzle-kit push` (or your drizzle-kit migrations)",
+        applyTables:
+          provider === "mysql"
+            ? "`npx drizzle-kit generate` and `npx drizzle-kit migrate`"
+            : "`npx drizzle-kit push`",
+        // drizzle-kit reads a PostgreSQL column's type without its
+        // collation, so the generated schema leaves it out.
+        collate: () => provider === "postgresql",
       }),
   };
 };

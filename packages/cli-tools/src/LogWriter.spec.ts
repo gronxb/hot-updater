@@ -36,6 +36,26 @@ describe("createLogWriter", () => {
     await writer.close();
   });
 
+  it("appends a second writer of the same file, as an export does to its archive's log", async () => {
+    const logFilePath = `/tmp/hot-updater-log-writer-append-${Date.now()}.log`;
+    createdLogFiles.push(logFilePath);
+
+    const archive = await createLogWriter({ prefix: "ios-build", logFilePath });
+    archive.writeLines(["$ xcodebuild archive", "** ARCHIVE SUCCEEDED **"]);
+    await archive.close();
+    const exported = await createLogWriter({
+      prefix: "ios-build",
+      logFilePath,
+    });
+    exported.writeLines(["$ xcodebuild -exportArchive"]);
+    await exported.close();
+
+    const log = fs.readFileSync(logFilePath, "utf8");
+    expect(log).toMatch(
+      /ios-build\n\$ xcodebuild archive\n\*\* ARCHIVE SUCCEEDED \*\*\n.*ios-build\n\$ xcodebuild -exportArchive\n$/,
+    );
+  });
+
   it("strips ANSI color/style escape sequences", () => {
     const withAnsi =
       "\u001b[36;1mnote: \u001b[0mBuilding targets in dependency order\n" +

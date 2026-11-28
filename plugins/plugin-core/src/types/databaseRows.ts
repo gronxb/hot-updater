@@ -57,6 +57,13 @@ export interface ReleaseRow {
   readonly source_release_id: string | null;
   readonly created_at_ms: number;
   readonly updated_at_ms: number;
+  /**
+   * The release's label, shown `v<label>`: sequential per channel and
+   * platform, assigned once and never changed or reused while the channel
+   * exists. Null on a row the label fill hasn't reached yet, and left out
+   * of a row read through an adapter of an earlier release.
+   */
+  readonly label?: number | null;
 }
 
 export interface ReleaseCatalogRow {
@@ -78,4 +85,127 @@ export interface ReleaseCatalogRow {
 export interface ChannelRow {
   readonly id: string;
   readonly name: string;
+}
+
+/** The kinds of artifact a native build registers. */
+export type NativeBuildArtifactKind = "apk" | "aab" | "ipa" | "app";
+
+/** The store track a native build was submitted to. */
+export type NativeBuildSubmissionDestination =
+  | "testflight"
+  | "play-internal"
+  | "play-closed"
+  | "play-open"
+  | "play-production";
+
+/**
+ * How an iOS `.ipa` was exported, as its embedded provisioning profile says:
+ * for the App Store (no device list), ad hoc or development (a device list,
+ * development's with `get-task-allow`), or enterprise (every device).
+ */
+export type NativeBuildExportMethod =
+  | "app-store"
+  | "ad-hoc"
+  | "development"
+  | "enterprise";
+
+/**
+ * A registered native build: its artifact in storage, the scope it serves,
+ * and `min_bundle_id`, the `bundles` row of the bundle built into it.
+ */
+export interface NativeBuildRow {
+  readonly id: string;
+  readonly scope_key: string;
+  readonly platform: Platform;
+  readonly channel_id: string;
+  readonly fingerprint_hash: string | null;
+  readonly app_version: string | null;
+  readonly min_bundle_id: string;
+  readonly artifact_kind: NativeBuildArtifactKind;
+  readonly artifact_storage_uri: string;
+  readonly byte_size: number;
+  readonly git_commit_hash: string | null;
+  readonly created_at_ms: number;
+  /** The native build key of the build's inputs, or null for none. */
+  readonly build_key: string | null;
+  /**
+   * The build number the artifact reports, its `CFBundleVersion` or
+   * `versionCode`, which a store takes once per version; null when it can't
+   * be read.
+   */
+  readonly build_number: string | null;
+  /** The store track the build went to, or null when it was submitted to none. */
+  readonly submitted_to: NativeBuildSubmissionDestination | null;
+  /** When Hot Updater recorded the store's build, in epoch milliseconds. */
+  readonly submitted_at_ms: number | null;
+  /**
+   * The store's label of the build, its version and build number, such as
+   * `1.7.0 (66)`: TestFlight and Google Play tell builds of one version apart
+   * by the build number, and a fingerprint build records no app version.
+   */
+  readonly submitted_version: string | null;
+  /**
+   * Whether the build is marked as what the store sells, which deploys patch
+   * from over the scope's newest build. A scope has one at most.
+   */
+  readonly is_store_build: boolean;
+  /**
+   * Whether the build is a sandbox build, one built from a scheme with
+   * `sandbox: true` or imported with the sandbox layer: set from its artifact
+   * when the build registers, on any channel, and never changed. A sandbox
+   * build is never the store build.
+   */
+  readonly is_sandbox: boolean;
+  /**
+   * The URL scheme a sandbox build's artifact registers, which its preview
+   * links open. Null on any other build, and on a sandbox build registered
+   * before it was recorded, which registered `hu-sandbox-<app ID>`.
+   */
+  readonly sandbox_url_scheme: string | null;
+  /**
+   * How an `.ipa` was exported, read from its profile when it registered and
+   * never changed. Null on any other artifact, and on an `.ipa` registered
+   * before it was recorded.
+   */
+  readonly export_method: NativeBuildExportMethod | null;
+  /**
+   * The app version the artifact itself reports, its
+   * `CFBundleShortVersionString` or `versionName`, whatever the update
+   * strategy: a fingerprint build has one too, where `app_version`, the
+   * version OTAs target, is null. Read from the artifact when it registered
+   * and never changed. Null when it couldn't be read, and on a build
+   * registered before it was recorded; a server older than it leaves it out.
+   */
+  readonly native_app_version?: string | null;
+}
+
+/** Where an iOS device is in the registry: requested, approved, or registered with Apple. */
+export type IosDeviceStatus = "pending" | "approved" | "registered";
+
+/**
+ * An iPhone or iPad a team asked to install ad hoc builds on: the device
+ * registry the CLI registers with Apple from. Holds personal data: a UDID, a
+ * name, and emails.
+ */
+export interface IosDeviceRow {
+  readonly id: string;
+  /** The UDID in lower case, in whichever of Apple's two formats it came. */
+  readonly udid: string;
+  /** The name App Store Connect shows once it is registered. */
+  readonly name: string;
+  readonly status: IosDeviceStatus;
+  /** Who asked for it, or null for the CLI. */
+  readonly requested_by: string | null;
+  readonly created_at_ms: number;
+  /** Who approved it: a Console email, or null for the CLI. */
+  readonly approved_by: string | null;
+  readonly approved_at_ms: number | null;
+  /** When it first counted as registered with Apple. */
+  readonly registered_at_ms: number | null;
+  /** The App Store Connect issuer of the account that registered it, set once. */
+  readonly apple_issuer_id: string | null;
+  /** Why Apple didn't take it or stopped counting it, in Apple's words or ours. */
+  readonly apple_error: string | null;
+  /** The newest native build whose .ipa the CLI checked lists it. */
+  readonly build_id: string | null;
 }

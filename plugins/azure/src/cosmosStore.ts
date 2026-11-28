@@ -173,8 +173,10 @@ const statusOf = (error: unknown): unknown => {
 
 /**
  * The most items read by point reads rather than one query. On Strong
- * consistency a point read costs 2 RU and a query of 1, 3, or 10 ids 5.9,
- * 6.4, and 8.3 RU (Azure Cosmos DB, 2026-11-14).
+ * consistency a point read of a ~600 B item costs 2 RU and a query of 1, 3,
+ * or 10 ids 5.9, 6.4, and 8.3 RU (Azure Cosmos DB, 2026-11-14). A point
+ * read's charge grows faster with the item's size: it costs more than the
+ * query from about 50 KB, where rows such as release catalogs hold 1–2 KB.
  */
 const POINT_READS = 2;
 
@@ -301,7 +303,8 @@ export const assertCosmosContainerReusable = async (
 };
 
 export interface CosmosStoreOptions {
-  readonly client: CosmosClient;
+  /** The account's client, or what creates it on the store's first request. */
+  readonly client: CosmosClient | (() => CosmosClient | Promise<CosmosClient>);
   readonly databaseId: string;
   /** The one container every item lives in. */
   readonly containerId: string;
@@ -384,9 +387,22 @@ export const createCosmosStore = ({
   engine,
   nativePageSize,
 }: CosmosStoreOptions): KeyValueStore => {
-  const container: Container = client
-    .database(databaseId)
-    .container(containerId);
+  let opened:
+    | Promise<{ client: CosmosClient; container: Container }>
+    | undefined;
+  // Opened on the first request, so a config loads without the connection.
+  const open = () =>
+    (opened ??= (async () => {
+      const account = typeof client === "function" ? await client() : client;
+      return {
+        client: account,
+        container: account.database(databaseId).container(containerId),
+      };
+    })().catch((error: unknown) => {
+      opened = undefined;
+      throw error;
+    }));
+  const container = async () => (await open()).container;
 
   /**
    * The item `id` names, or undefined when it is missing. A missing item
@@ -394,7 +410,9 @@ export const createCosmosStore = ({
    * 404 with a substatus and no partition, and reads as a missing schema.
    */
   const pointRead = async (id: string) => {
-    const response = await container
+    const response = await (
+      await container()
+    )
       .item(id, COSMOS_PARTITION)
       .read<CosmosItem>()
       .catch(missingContainer);
@@ -442,7 +460,9 @@ export const createCosmosStore = ({
         continue;
       }
       for (let at = 0; at < group.length; at += GET_BATCH) {
-        const { resources } = await container.items
+        const { resources } = await (
+          await container()
+        ).items
           .query<{
             id: string;
             etag: string;
@@ -660,7 +680,9 @@ export const createCosmosStore = ({
         return keys.map((key) => found.get(cosmosItemId(key)) ?? null);
       }
       for (let at = 0; at < ids.length; at += GET_BATCH) {
-        const { resources } = await container.items
+        const { resources } = await (
+          await container()
+        ).items
           .query<{ id: string; row: unknown }>(
             `SELECT c.id, c.row FROM c WHERE c.id IN (${idList(ids.slice(at, at + GET_BATCH))})`,
             { partitionKey: COSMOS_PARTITION },
@@ -692,7 +714,9 @@ export const createCosmosStore = ({
         filters.push(order === "asc" ? "c.sk > @after" : "c.sk < @after");
         parameters.push({ name: "@after", value: after });
       }
-      const { resources } = await container.items
+      const { resources } = await (
+        await container()
+      ).items
         .query<{ sk: string; row: unknown }>(
           {
             query: `SELECT TOP @size c.sk, c.row FROM c WHERE ${filters.join(
@@ -768,7 +792,9 @@ export const createCosmosStore = ({
         }
         let results: readonly { readonly statusCode: number }[];
         try {
-          const response = await container.items.batch(
+          const response = await (
+            await container()
+          ).items.batch(
             planned.map(({ operation }) => operation),
             COSMOS_PARTITION,
           );
@@ -809,7 +835,9 @@ export const createCosmosStore = ({
     async deleteConsumed(keys) {
       let remaining = [...new Set(keys.map(cosmosItemId))];
       for (let attempt = 0; remaining.length > 0; attempt += 1) {
-        const results = await container.items
+        const results = await (
+          await container()
+        ).items
           .executeBulkOperations(
             remaining.map(
               (id): OperationInput => ({
@@ -843,9 +871,11 @@ export const createCosmosStore = ({
       /** Creates the database and the container when they are missing. */
       async apply() {
         if (engine !== undefined) {
-          await assertCosmosContainerReusable(container, engine);
+          await assertCosmosContainerReusable(await container(), engine);
         }
-        const { database } = await client.databases.createIfNotExists({
+        const { database } = await (
+          await open()
+        ).client.databases.createIfNotExists({
           id: databaseId,
         });
         const { resource } = await database.containers.createIfNotExists({

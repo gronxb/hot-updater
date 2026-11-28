@@ -24,6 +24,7 @@ export class ReleaseCatalogMutationError extends Error {
     readonly code:
       | "CATALOG_GENERATION_EXHAUSTED"
       | "CATALOG_IDENTITY_MISSING"
+      | "CATALOG_FROM_LATER_RELEASE"
       | "INVALID_SCOPE"
       | "NON_MONOTONIC_RELEASE_ID"
       | "RELEASE_NOT_FOUND"
@@ -52,6 +53,12 @@ export interface ReleaseCatalogRebuildResult {
 
 export interface ReleaseCatalogRebuildPreflight {
   readonly changed: boolean;
+  /**
+   * Whether the rebuild would change only release labels: a catalog
+   * compiled before its releases had them. A server before labels leaves it
+   * out.
+   */
+  readonly labelsOnly?: boolean;
   readonly currentCatalog: ReleaseCatalogRow | null;
   readonly diagnostics: ReleaseCatalogCompilation["diagnostics"];
   readonly projectedCatalog: ReleaseCatalogRow;

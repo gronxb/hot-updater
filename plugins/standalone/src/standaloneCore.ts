@@ -1,5 +1,7 @@
 import {
+  compareUtf8,
   DatabaseBundleNotFoundError,
+  ReleaseCatalogCompilationError,
   ReleaseCatalogMutationError,
   ReleaseManagementError,
 } from "@hot-updater/plugin-core";
@@ -9,11 +11,20 @@ import type {
   ChannelDeleteResult,
   ChannelRow,
   HotUpdaterCoreApi,
+  IosDeviceAccount,
+  IosDeviceAccountClaim,
+  IosDeviceRequestResult,
+  IosDeviceRow,
   KeysetInput,
+  NativeBuildDeleteResult,
+  NativeBuildMarkResult,
+  NativeBuildRow,
+  NativeBuildScope,
   PromoteReleaseResult,
   ReleaseCatalogMutationPreflight,
   ReleaseCatalogMutationResult,
   ReleaseCatalogRebuildPreflight,
+  ReleaseLabelFill,
   ReleaseCatalogRebuildResult,
   ReleaseCatalogRow,
   ReleaseFilter,
@@ -45,6 +56,7 @@ const MANAGEMENT_CODES = new Set<string>([
 const CATALOG_CODES = new Set<string>([
   "CATALOG_GENERATION_EXHAUSTED",
   "CATALOG_IDENTITY_MISSING",
+  "CATALOG_FROM_LATER_RELEASE",
   "INVALID_SCOPE",
   "NON_MONOTONIC_RELEASE_ID",
 ] satisfies CatalogCode[]);
@@ -60,6 +72,9 @@ const refusal = (status: number, value: unknown, fallback: string): Error => {
   if (typeof code === "string" && CATALOG_CODES.has(code)) {
     return new ReleaseCatalogMutationError(code as CatalogCode, message);
   }
+  if (code === "CATALOG_OVERSIZE") {
+    return new ReleaseCatalogCompilationError(code, message);
+  }
   if (code === "BUNDLE_NOT_FOUND" && isRecord(value)) {
     const id = /"([^"]+)"/u.exec(message)?.[1] ?? "";
     return new DatabaseBundleNotFoundError(id);
@@ -67,10 +82,34 @@ const refusal = (status: number, value: unknown, fallback: string): Error => {
   return new StandaloneDatabaseError("request-failed", message, status);
 };
 
-const keysetParams = ({ order, after, limit }: KeysetInput) => ({
+const nativeBuildScopeParams = ({
+  platform,
+  channel,
+  fingerprintHash,
+  appVersion,
+  sandbox,
+}: NativeBuildScope): Record<string, string> => ({
+  platform,
+  channel,
+  ...(fingerprintHash === null ? { appVersion } : { fingerprintHash }),
+  ...(sandbox === undefined || sandbox === null
+    ? {}
+    : {
+        sandboxAppId: sandbox.appId,
+        sandboxUrlScheme: sandbox.urlScheme,
+        artifactKind: sandbox.artifactKind,
+        distribution: sandbox.distribution,
+      }),
+});
+
+/** The most IDs the admin API takes in one request. */
+const MAX_IDS = 100;
+
+const keysetParams = ({ order, after, through, limit }: KeysetInput) => ({
   limit: String(limit),
   ...(order === undefined ? {} : { order }),
   ...(after === undefined ? {} : { cursor: after }),
+  ...(through === undefined ? {} : { through }),
 });
 
 const filterParams = (filter: ReleaseFilter): Record<string, string> => {
@@ -110,7 +149,7 @@ export const createStandaloneCoreApi = (
 
   const checkProtocol = async () => {
     const response = await fetch(http.buildUrl("/version"), {
-      headers: http.headers({ "Cache-Control": "no-cache" }),
+      headers: await http.headers({ "Cache-Control": "no-cache" }),
     });
     const body: unknown =
       response.status === 404 ? {} : await http.parseJson(response);
@@ -141,9 +180,12 @@ export const createStandaloneCoreApi = (
     {
       query = {},
       body,
+      requiredRoute,
     }: {
       readonly query?: Readonly<Record<string, string>>;
       readonly body?: unknown;
+      /** What the route serves, for a route an older server may not have: its 404 asks for an upgrade. */
+      readonly requiredRoute?: string;
     } = {},
   ): Promise<Record<string, unknown> | null> => {
     checked ??= checkProtocol().catch((error: unknown) => {
@@ -157,18 +199,25 @@ export const createStandaloneCoreApi = (
     }
     const response = await fetch(url, {
       method,
-      headers: http.headers(
+      headers: await http.headers(
         method === "GET" ? { "Cache-Control": "no-cache" } : undefined,
       ),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (response.status === 204) return null;
+    if (requiredRoute !== undefined && response.status === 404) {
+      throw new StandaloneDatabaseError(
+        "request-failed",
+        `The server at ${config.baseUrl} has no ${requiredRoute} route (${method} ${path} answered 404). Upgrade the server's @hot-updater/server, migrate its database, and try again.`,
+        404,
+      );
+    }
     if (method === "GET" && response.status === 404) return null;
     if (response.status === 503) {
       // The server's schema fence answers 503 until its database is migrated.
       throw new StandaloneDatabaseError(
         "request-failed",
-        `The server at ${config.baseUrl} answered ${method} ${path} with 503: its database is not ready. If it needs migrations, run \`hot-updater db migrate\` where the server's database is configured.`,
+        `The server at ${config.baseUrl} answered ${method} ${path} with 503: its database is not ready. If it needs migrations, run \`hot-updater db migrate\` in the server's project as you deploy it.`,
         503,
       );
     }
@@ -255,6 +304,11 @@ export const createStandaloneCoreApi = (
         limit: String(limit),
       }),
     getRelease: (id) => call<ReleaseRow>("GET", `/releases/${encode(id)}`),
+    getReleaseByLabel: ({ channel, platform, label }) =>
+      call<ReleaseRow>("GET", "/release-labels", {
+        query: { channel, platform, label: String(label) },
+        requiredRoute: "release label",
+      }),
     listReleases: ({ filter, ...input }) =>
       list<ReleaseRow>("/releases", {
         ...keysetParams(input),
@@ -264,9 +318,124 @@ export const createStandaloneCoreApi = (
       call<ReleaseCatalogRow>("GET", `/release-catalogs/${encode(scopeKey)}`),
     listReleaseCatalogs: (input) =>
       list<ReleaseCatalogRow>("/release-catalogs", keysetParams(input)),
-    listChannels: () => list<ChannelRow>("/channels", {}),
+    listReleaseScopeKeys: async ({ after, limit }) =>
+      (await call<string[]>("GET", "/release-scopes", {
+        query: {
+          limit: String(limit),
+          ...(after === undefined ? {} : { cursor: after }),
+        },
+        requiredRoute: "release scope",
+      })) ?? [],
+    listChannels: async (input) => {
+      if (input === undefined) return list<ChannelRow>("/channels", {});
+      const rows = await list<ChannelRow>("/channels", keysetParams(input));
+      // A server before channel pages ignores the page and answers every
+      // channel by name, so the page is cut here by the same keyset rule;
+      // a newer server's page passes through unchanged.
+      const desc = input.order === "desc";
+      const { after, through } = input;
+      // `after` excludes its name and `through` includes its, in the
+      // requested direction.
+      const past = (name: string, bound: string) =>
+        desc ? compareUtf8(name, bound) < 0 : compareUtf8(name, bound) > 0;
+      return rows
+        .filter(
+          ({ name }) =>
+            (after === undefined || past(name, after)) &&
+            (through === undefined || !past(name, through)),
+        )
+        .sort((left, right) =>
+          desc
+            ? compareUtf8(right.name, left.name)
+            : compareUtf8(left.name, right.name),
+        )
+        .slice(0, input.limit);
+    },
+    getChannels: async (ids) => {
+      const unique = [...new Set(ids)];
+      const found = new Map<string, ChannelRow>();
+      for (let start = 0; start < unique.length; start += MAX_IDS) {
+        const chunk = unique.slice(start, start + MAX_IDS);
+        // A server before channel lookups by ID ignores `ids` and answers
+        // every channel, so only the asked IDs are kept.
+        const asked = new Set(chunk);
+        for (const row of await list<ChannelRow>("/channels", {
+          ids: chunk.join(","),
+        })) {
+          if (asked.has(row.id)) found.set(row.id, row);
+        }
+      }
+      return unique.flatMap((id) => {
+        const row = found.get(id);
+        return row === undefined ? [] : [row];
+      });
+    },
     findChannelByName: (name) =>
       call<ChannelRow>("GET", "/channels", { query: { name } }),
+    getNativeBuild: (id) =>
+      call<NativeBuildRow>("GET", `/native-builds/${encode(id)}`, {
+        requiredRoute: "native build",
+      }),
+    findNativeBuildByBuiltInBundle: (bundleId) =>
+      call<NativeBuildRow>(
+        "GET",
+        `/native-builds/built-in/${encode(bundleId)}`,
+        { requiredRoute: "native build" },
+      ),
+    // A server that predates native build keys or the store build mark ignores
+    // `buildKey` or `storeBuild` and answers the scope's newest build, whose
+    // key or mark then differs: no build.
+    findNativeBuild: async (scope, options) => {
+      const buildKey = options?.buildKey;
+      const row = await call<NativeBuildRow>("GET", "/native-builds/latest", {
+        query: {
+          ...nativeBuildScopeParams(scope),
+          ...(buildKey === undefined ? {} : { buildKey }),
+          ...(options?.storeBuild ? { storeBuild: "true" } : {}),
+          ...(options?.builtInOlderThan === undefined
+            ? {}
+            : { builtInOlderThan: options.builtInOlderThan }),
+          ...(options?.artifactKind === undefined
+            ? {}
+            : { kind: options.artifactKind }),
+        },
+        requiredRoute: "native build",
+      });
+      if (buildKey !== undefined && row?.build_key !== buildKey) return null;
+      // A server that predates `kind` answers the scope's newest build.
+      if (
+        options?.artifactKind !== undefined &&
+        row !== null &&
+        row.artifact_kind !== options.artifactKind
+      ) {
+        return null;
+      }
+      if (options?.storeBuild && row?.is_store_build !== true) return null;
+      // A server without sandbox lookups answers the channel's scope, whose
+      // newest build may be a normal build or another sandbox scope's.
+      const sandbox = scope.sandbox;
+      if (
+        sandbox &&
+        row !== null &&
+        (row.is_sandbox !== true ||
+          row.artifact_kind !== sandbox.artifactKind ||
+          row.sandbox_url_scheme !== sandbox.urlScheme)
+      ) {
+        return null;
+      }
+      return row;
+    },
+    // A server that predates the route answers 404: no sibling.
+    findNativeBuildSibling: (build) =>
+      call<NativeBuildRow>("GET", `/native-builds/${encode(build.id)}/sibling`),
+    // A server without the native build routes holds no native builds: its
+    // schema fence refuses a database whose schema has them. So its 404
+    // lists none, which keeps doctor working against it.
+    listNativeBuilds: ({ channelId, ...input }) =>
+      list<NativeBuildRow>("/native-builds", {
+        ...keysetParams(input),
+        ...(channelId === undefined ? {} : { channelId }),
+      }),
 
     deploy: async (deployments) =>
       (await call<ReleaseCatalogMutationResult[]>("POST", "/releases", {
@@ -308,6 +477,11 @@ export const createStandaloneCoreApi = (
         "POST",
         `/release-catalogs/${encode(scopeKey)}/rebuild`,
       ))!,
+    fillReleaseLabels: async (input = {}) =>
+      (await call<ReleaseLabelFill>("POST", "/release-labels/fill", {
+        body: input,
+        requiredRoute: "release label",
+      }))!,
     preflightReleaseCatalogRebuild: async (scopeKey) =>
       (await call<ReleaseCatalogRebuildPreflight>(
         "POST",
@@ -336,5 +510,96 @@ export const createStandaloneCoreApi = (
     deleteBundles: async (ids) => {
       await request("POST", "/bundles/delete", { body: { ids } });
     },
+    registerNativeBuild: async (registration) =>
+      (await call<NativeBuildRow>("POST", "/native-builds", {
+        body: registration,
+        requiredRoute: "native build",
+      }))!,
+    // An unknown ID answers 200 with null data; a 404 means a server
+    // without the route.
+    recordNativeBuildSubmission: (id, submission) =>
+      call<NativeBuildRow>("POST", `/native-builds/${encode(id)}/submission`, {
+        body: submission,
+        requiredRoute: "native build submission",
+      }),
+    // An unknown ID answers 200 with null data; a 404 means a server without
+    // the route.
+    markNativeBuild: (id, mark) =>
+      call<NativeBuildMarkResult>(
+        "POST",
+        `/native-builds/${encode(id)}/store-build`,
+        { body: mark, requiredRoute: "native build store mark" },
+      ),
+    // A server without the device registry's routes answers 404, which these
+    // turn into an upgrade request: an empty list would make a build skip the
+    // devices a team approved.
+    listIosDevices: async ({ status, ...input }) =>
+      (await call<IosDeviceRow[]>("GET", "/ios-devices", {
+        query: {
+          ...keysetParams(input),
+          ...(status === undefined ? {} : { status }),
+        },
+        requiredRoute: "iOS device registry",
+      })) ?? [],
+    findIosDevice: (udid) =>
+      call<IosDeviceRow>("GET", `/ios-devices/udid/${encode(udid)}`, {
+        requiredRoute: "iOS device registry",
+      }),
+    requestIosDevice: async (input) =>
+      (await call<IosDeviceRequestResult>("POST", "/ios-devices", {
+        body: input,
+        requiredRoute: "iOS device registry",
+      }))!,
+    approveIosDevice: (id, input) =>
+      call<IosDeviceRow>("POST", `/ios-devices/${encode(id)}/approval`, {
+        body: input,
+        requiredRoute: "iOS device registry",
+      }),
+    renameIosDevice: (id, name) =>
+      call<IosDeviceRow>("PATCH", `/ios-devices/${encode(id)}`, {
+        body: { name },
+        requiredRoute: "iOS device registry",
+      }),
+    recordIosDeviceOutcome: ({ id, ...input }) =>
+      call<IosDeviceRow>("POST", `/ios-devices/${encode(id)}/outcome`, {
+        body: input,
+        requiredRoute: "iOS device registry",
+      }),
+    // Each device is marked by itself, so the IDs go in requests of 100.
+    markIosDevicesInBuild: async ({ buildId, ids }) => {
+      let start = 0;
+      do {
+        await request("POST", "/ios-devices/in-build", {
+          body: { buildId, ids: ids.slice(start, start + MAX_IDS) },
+          requiredRoute: "iOS device registry",
+        });
+        start += MAX_IDS;
+      } while (start < ids.length);
+    },
+    findIosDeviceAccount: () =>
+      call<IosDeviceAccount>("GET", "/ios-devices/account", {
+        requiredRoute: "iOS device registry",
+      }),
+    claimIosDeviceAccount: async (issuerId) =>
+      (await call<IosDeviceAccountClaim>("POST", "/ios-devices/account", {
+        body: { issuerId },
+        requiredRoute: "iOS device registry",
+      }))!,
+    deleteIosDevice: (id, only) =>
+      call<IosDeviceRow>("DELETE", `/ios-devices/${encode(id)}`, {
+        query: {
+          ...(only?.status === undefined ? {} : { status: only.status }),
+          ...(only?.requestedBy === undefined
+            ? {}
+            : { requestedBy: only.requestedBy }),
+        },
+        requiredRoute: "iOS device registry",
+      }),
+    deleteNativeBuild: async (id) =>
+      (await call<NativeBuildDeleteResult>(
+        "DELETE",
+        `/native-builds/${encode(id)}`,
+        { requiredRoute: "native build deletion" },
+      ))!,
   };
 };

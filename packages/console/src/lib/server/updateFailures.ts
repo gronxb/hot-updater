@@ -42,7 +42,8 @@ const summed = <T extends { readonly events: number }>(
 /**
  * Both platforms' failures as one report. An installation runs on one
  * platform, so its counts and installation estimates add up; the period is
- * complete only where both are.
+ * complete only where both are, and an hour either read only in part stays
+ * listed, so the merged failure counts read as lower bounds too.
  */
 export function mergeUpdateFailures(
   reports: readonly InsightsUpdateFailures[],
@@ -56,6 +57,9 @@ export function mergeUpdateFailures(
     report.checks ? [report.checks] : [],
   );
   const breakdowns = reports.flatMap((report) => report.breakdown ?? []);
+  const cappedHours = [
+    ...new Set(reports.flatMap((report) => report.cappedHours ?? [])),
+  ].sort((left, right) => left - right);
   return {
     coverage:
       latestSince !== null &&
@@ -105,6 +109,7 @@ export function mergeUpdateFailures(
           ),
         }
       : {}),
+    ...(cappedHours.length === 0 ? {} : { cappedHours }),
   };
 }
 

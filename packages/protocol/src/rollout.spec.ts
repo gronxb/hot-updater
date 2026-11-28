@@ -12,7 +12,7 @@ import {
 
 describe("getRolledOutNumericCohorts", () => {
   it("returns an ascending numeric cohort set that matches rollout eligibility", () => {
-    const rolloutCohorts = getRolledOutNumericCohorts("bundle-a", 137);
+    const rolloutCohorts = getRolledOutNumericCohorts("release-a", 137);
 
     expect(rolloutCohorts).toHaveLength(137);
     expect(rolloutCohorts).toEqual([...rolloutCohorts].sort((a, b) => a - b));
@@ -20,7 +20,7 @@ describe("getRolledOutNumericCohorts", () => {
 
     for (const cohortValue of rolloutCohorts) {
       expect(
-        isCohortEligibleForUpdate("bundle-a", String(cohortValue), 137, null),
+        isCohortEligibleForUpdate("release-a", String(cohortValue), 137, null),
       ).toBe(true);
     }
 
@@ -31,13 +31,13 @@ describe("getRolledOutNumericCohorts", () => {
 
     expect(excludedCohort).toBeDefined();
     expect(
-      isCohortEligibleForUpdate("bundle-a", String(excludedCohort), 137, null),
+      isCohortEligibleForUpdate("release-a", String(excludedCohort), 137, null),
     ).toBe(false);
   });
 
   it("keeps the existing cohort set when rollout expands", () => {
-    const smallRollout = new Set(getRolledOutNumericCohorts("bundle-b", 100));
-    const largeRollout = new Set(getRolledOutNumericCohorts("bundle-b", 400));
+    const smallRollout = new Set(getRolledOutNumericCohorts("release-b", 100));
+    const largeRollout = new Set(getRolledOutNumericCohorts("release-b", 400));
 
     expect(largeRollout.size).toBe(400);
 
@@ -47,8 +47,10 @@ describe("getRolledOutNumericCohorts", () => {
   });
 
   it("returns empty and full sets at the rollout boundaries", () => {
-    expect(getRolledOutNumericCohorts("bundle-c", 0)).toEqual([]);
-    expect(getRolledOutNumericCohorts("bundle-c", NUMERIC_COHORT_SIZE)).toEqual(
+    expect(getRolledOutNumericCohorts("release-c", 0)).toEqual([]);
+    expect(
+      getRolledOutNumericCohorts("release-c", NUMERIC_COHORT_SIZE),
+    ).toEqual(
       Array.from({ length: NUMERIC_COHORT_SIZE }, (_, index) => index + 1),
     );
   });
@@ -56,11 +58,11 @@ describe("getRolledOutNumericCohorts", () => {
 
 describe("isCohortEligibleForUpdate", () => {
   it("keeps numeric rollout active when target cohorts are configured", () => {
-    const bundleId = "bundle-d";
-    const rolloutCohorts = getRolledOutNumericCohorts(bundleId, 137);
+    const releaseId = "release-d";
+    const rolloutCohorts = getRolledOutNumericCohorts(releaseId, 137);
 
     expect(
-      isCohortEligibleForUpdate(bundleId, String(rolloutCohorts[0]), 137, [
+      isCohortEligibleForUpdate(releaseId, String(rolloutCohorts[0]), 137, [
         "qa-group",
       ]),
     ).toBe(true);
@@ -68,13 +70,13 @@ describe("isCohortEligibleForUpdate", () => {
 
   it("includes targeted custom cohorts in addition to numeric rollout", () => {
     expect(
-      isCohortEligibleForUpdate("bundle-e", "qa-group", 137, ["qa-group"]),
+      isCohortEligibleForUpdate("release-e", "qa-group", 137, ["qa-group"]),
     ).toBe(true);
   });
 
   it("includes targeted numeric cohorts even when rollout excludes them", () => {
-    const bundleId = "bundle-f";
-    const rolloutCohorts = new Set(getRolledOutNumericCohorts(bundleId, 10));
+    const releaseId = "release-f";
+    const rolloutCohorts = new Set(getRolledOutNumericCohorts(releaseId, 10));
     const excludedCohort = Array.from(
       { length: NUMERIC_COHORT_SIZE },
       (_, index) => index + 1,
@@ -85,7 +87,7 @@ describe("isCohortEligibleForUpdate", () => {
     }
 
     expect(
-      isCohortEligibleForUpdate(bundleId, String(excludedCohort), 10, [
+      isCohortEligibleForUpdate(releaseId, String(excludedCohort), 10, [
         String(excludedCohort),
       ]),
     ).toBe(true);

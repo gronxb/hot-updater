@@ -9,6 +9,7 @@ import {
   within,
 } from "@testing-library/react";
 import { type ReactNode, useState } from "react";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ReleaseEditorSheet } from "./ReleaseEditorSheet";
@@ -20,7 +21,7 @@ const recovery = vi.fn();
 const failures = vi.fn();
 
 vi.mock("@/components/features/insights/ReleaseActivity", () => ({
-  BundleInsightsSummary: (props: unknown) => {
+  ReleaseInsightsSummary: (props: unknown) => {
     recovery(props);
     return <div>Activity · 24 hours</div>;
   },
@@ -83,6 +84,9 @@ const bundle = {
 } as Bundle;
 
 let releaseValue = release;
+let bundleValue = bundle;
+let nativeBuildValue: unknown = null;
+const nativeBuildQuery = vi.fn();
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children, to }: { children: ReactNode; to: string }) => (
@@ -111,7 +115,7 @@ vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 
 vi.mock("@/lib/api", () => ({
   useBundleQuery: () => ({
-    data: bundle,
+    data: bundleValue,
     isError: false,
     isPending: false,
   }),
@@ -126,6 +130,10 @@ vi.mock("@/lib/api", () => ({
     mutateAsync: promote,
   }),
   useReleaseCatalogDiagnosticsQuery: () => ({ data: null }),
+  useReleaseNativeBuildQuery: (input: unknown) => {
+    nativeBuildQuery(input);
+    return { data: nativeBuildValue, isPending: false };
+  },
   useReleaseQuery: () => ({ data: releaseValue, isError: false }),
   useUpdateReleaseMutation: () => ({ isPending: false, mutateAsync: update }),
 }));
@@ -137,12 +145,66 @@ describe("ReleaseEditorSheet", () => {
     insightsAnalytics = true;
     recovery.mockReset();
     releaseValue = release;
+    bundleValue = bundle;
+    nativeBuildValue = null;
+    nativeBuildQuery.mockReset();
     preflight.mockReset();
     preflight.mockResolvedValue({});
     promote.mockReset();
-    promote.mockResolvedValue({});
+    promote.mockResolvedValue({ source: null, target: { release: null } });
     update.mockReset();
     update.mockResolvedValue({});
+  });
+
+  it("names a built-in patch base by the scope build's version, from the read the sheet already makes", () => {
+    const minBundleId = "019f6a0e-77c1-7000-8000-000000000000";
+    releaseValue = {
+      ...release,
+      strategy: "FINGERPRINT",
+      fingerprint_hash: "fp-1",
+      target_app_version: null,
+    } as ReleaseRow;
+    bundleValue = {
+      ...bundle,
+      patches: [{ ...bundle.patches![0]!, baseBundleId: minBundleId }],
+    } as Bundle;
+    nativeBuildValue = {
+      id: "019f6a0e-77c0-7a1b-9c2d-3e4f5a6b7c8d",
+      platform: "ios",
+      artifact_kind: "ipa",
+      min_bundle_id: minBundleId,
+      app_version: null,
+      native_app_version: "1.6.1",
+      build_number: "63",
+      submitted_version: null,
+    };
+    render(
+      <ReleaseEditorSheet
+        channels={[{ id: "channel-1", name: "production" }]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={release.id}
+      />,
+    );
+    const base = screen.getByText("Patch base artifact ID").nextElementSibling!;
+    expect(base.textContent).toContain("Built-in bundle · 1.6.1 (63)");
+    expect(base.textContent).not.toContain("000000000000");
+    expect(base.textContent).not.toContain("019f6a0e");
+    // One scope input, the native build link's own: no read of its own.
+    expect(
+      new Set(
+        nativeBuildQuery.mock.calls.map(([input]) => JSON.stringify(input)),
+      ),
+    ).toEqual(
+      new Set([
+        JSON.stringify({
+          platform: "ios",
+          channel: "production",
+          fingerprintHash: "fp-1",
+          targetAppVersion: null,
+        }),
+      ]),
+    );
   });
 
   it("converts percentage input and preflights before saving", async () => {
@@ -306,6 +368,50 @@ describe("ReleaseEditorSheet", () => {
       .closest("details")!;
     expect(diagnostics.open).toBe(false);
     expect(within(diagnostics).getByText(bundle.id)).toBeDefined();
+  });
+
+  it("heads the label and the ID in their own rows, the ID as its tail alone", () => {
+    const id = "01a13d86-86f7-7830-952d-21238207019f";
+    releaseValue = { ...release, id, label: 14 };
+    const view = render(
+      <ReleaseEditorSheet
+        channels={[{ id: "channel-1", name: "production" }]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={id}
+      />,
+    );
+    const header = () =>
+      screen.getByRole("heading", { name: "Bundle Detail" }).parentElement!;
+
+    // `v14` heads "Label", never "ID", so it never reads as part of the ID.
+    const labelRow = within(header()).getByText("Label").parentElement!;
+    expect(labelRow.textContent).toBe("Labelv14");
+    const idRow = within(header()).getByText("ID").parentElement!;
+    expect(idRow).not.toBe(labelRow);
+    expect(idRow.textContent).not.toMatch(/v\d+/u);
+    // The ID shows as its last 12 characters; hovering shows and a click
+    // copies all of it.
+    const copy = within(idRow).getByRole("button", { name: `Copy ID ${id}` });
+    expect(copy.firstElementChild!.className).toContain("w-[12ch]");
+
+    // A release without a label yet has no Label row, and its ID shows the
+    // same way.
+    view.unmount();
+    releaseValue = { ...release, id, label: null };
+    render(
+      <ReleaseEditorSheet
+        channels={[{ id: "channel-1", name: "production" }]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={id}
+      />,
+    );
+    expect(within(header()).queryByText("Label")).toBeNull();
+    const unlabeledCopy = within(
+      within(header()).getByText("ID").parentElement!,
+    ).getByRole("button", { name: `Copy ID ${id}` });
+    expect(unlabeledCopy.firstElementChild!.className).toContain("w-[12ch]");
   });
 
   it("leaves release activity out where the console does not read it", () => {
@@ -474,6 +580,42 @@ describe("ReleaseEditorSheet", () => {
         targetChannel: "beta",
       });
     });
+  });
+
+  it("names the promoted bundle's label in the target channel", async () => {
+    const success = vi.spyOn(toast, "success");
+    promote.mockResolvedValue({
+      source: null,
+      target: { release: { ...release, id: "release-2", label: 5 } },
+    });
+    render(
+      <ReleaseEditorSheet
+        channels={[
+          { id: "channel-1", name: "production" },
+          { id: "channel-2", name: "beta" },
+        ]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={release.id}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Promote to channel" }));
+    const dialog = screen.getByRole("dialog", {
+      name: "Promote to Channel",
+    });
+    fireEvent.click(
+      within(dialog).getByRole("combobox", { name: "Target Channel" }),
+    );
+    const betaOption = screen.getByRole("option", { name: "beta" });
+    fireEvent.pointerDown(betaOption);
+    fireEvent.click(betaOption);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+
+    await waitFor(() => {
+      expect(success).toHaveBeenCalledWith("Bundle moved to beta as v5");
+    });
+    success.mockRestore();
   });
 
   it("explains Force update in a tooltip beside its switch", async () => {

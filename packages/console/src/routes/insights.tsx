@@ -11,18 +11,19 @@ import { InsightsScope } from "@/components/features/insights/InsightsScope";
 import { UpdateFailures } from "@/components/features/insights/UpdateFailures";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { requireConsoleFeature } from "@/lib/console-features-api";
+import { DEFAULT_CHANNEL } from "@/lib/constants";
 import {
   useInsightsRetention,
   useUpdateFailuresQuery,
 } from "@/lib/insights-api";
 import {
-  comparedBundleIds,
-  DEFAULT_INSIGHTS_CHANNEL,
+  comparedReleaseIds,
   validateInsightsSearch,
 } from "@/lib/insights-search";
 import type { AppUsageScope, UsageWindow } from "@/lib/insights-usage";
 import { getAppUsageReportRpc } from "@/lib/insights-usage-rpc";
-import { useReleaseHealth } from "@/lib/release-adoption-api";
+import { bundleChip } from "@/lib/release-adoption";
+import { knownReleases, useReleaseHealth } from "@/lib/release-adoption-api";
 
 export const Route = createFileRoute("/insights")({
   beforeLoad: ({ context }) =>
@@ -39,7 +40,7 @@ function InsightsPage() {
   const retention = useInsightsRetention();
   const usageWindow = search.window ?? "24h";
   const bundleWindow = search.bundleWindow ?? "24h";
-  const channel = search.channel ?? DEFAULT_INSIGHTS_CHANNEL;
+  const channel = search.channel ?? DEFAULT_CHANNEL;
   const platform = search.platform ?? "all";
   const scope: AppUsageScope = {
     platform,
@@ -65,7 +66,7 @@ function InsightsPage() {
     platform,
     channel,
     window: bundleWindow,
-    releaseIds: comparedBundleIds(search.bundles),
+    releaseIds: comparedReleaseIds(search.bundles),
     focusReleaseId: search.releaseId,
     chart,
   });
@@ -89,9 +90,7 @@ function InsightsPage() {
               ...next,
               // Defaults stay out of the URL.
               channel:
-                next.channel === DEFAULT_INSIGHTS_CHANNEL
-                  ? undefined
-                  : next.channel,
+                next.channel === DEFAULT_CHANNEL ? undefined : next.channel,
               platform: next.platform === "all" ? undefined : next.platform,
               // A release and bundles chosen in another channel or platform
               // do not carry over; a new focus picks its own bundles.
@@ -160,7 +159,9 @@ function InsightsPage() {
                 channel={channel}
                 platform={platform}
                 narrower={
-                  search.releaseId ? [`Release ${search.releaseId}`] : []
+                  search.releaseId
+                    ? [bundleChip(search.releaseId, knownReleases(health))]
+                    : []
                 }
               />
             }

@@ -52,7 +52,7 @@ describe("ConfigBuilder", () => {
     );
     expect(scaffold.text).toBe(`import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-import { defineConfig } from "hot-updater";
+import { defineConfig, localSecrets } from "hot-updater";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { existsSync } from "node:fs";
 
@@ -76,13 +76,15 @@ export default defineConfig({
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
-  updateStrategy: "appVersion", // or "fingerprint"
+  secrets: localSecrets(),
+  updateStrategy: "fingerprint", // or "appVersion"
 });`);
   });
 
   it.each([
     ["rock", 'import { rock } from "@hot-updater/rock";', "build: rock(),"],
     ["expo", 'import { expo } from "@hot-updater/expo";', "build: expo(),"],
+    ["one", 'import { one } from "@hot-updater/one";', "build: one(),"],
   ] as const)(
     "imports the %s build adapter",
     (build, importLine, buildLine) => {
@@ -123,7 +125,7 @@ export default defineConfig({
       .toBe(`import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { fromIni } from "@aws-sdk/credential-providers";
-import { defineConfig } from "hot-updater";
+import { defineConfig, localSecrets } from "hot-updater";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { existsSync } from "node:fs";
 
@@ -138,7 +140,8 @@ export default defineConfig({
   storage: s3Storage(awsOptions),
   database: dynamoDB(awsOptions),
   plugins: [apiKeys(), insights(), remoteConfig()],
-  updateStrategy: "appVersion", // or "fingerprint"
+  secrets: localSecrets(),
+  updateStrategy: "fingerprint", // or "appVersion"
 });`);
   });
 

@@ -50,6 +50,11 @@ internal class AndroidBuiltInAssetResolver(
 
     private val lock = Any()
 
+    // Both are fixed for this process, which an update of the package ends,
+    // so one OTA's copies share one lookup and one read of the index.
+    private var cachedPackageIdentity: String? = null
+    private var cachedIndex: CachedIndex? = null
+
     /** Source hashes the native build recorded, by asset path. */
     private val sourceHashes: Map<String, String> by lazy { readSourceHashes() }
 
@@ -312,7 +317,9 @@ internal class AndroidBuiltInAssetResolver(
             .filter(File::isFile)
     }
 
-    private fun packageIdentity(): String? =
+    private fun packageIdentity(): String? = cachedPackageIdentity ?: readPackageIdentity()?.also { cachedPackageIdentity = it }
+
+    private fun readPackageIdentity(): String? =
         try {
             val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
             val versionCode =
@@ -342,6 +349,11 @@ internal class AndroidBuiltInAssetResolver(
         }
 
     private fun readIndex(packageIdentity: String): CachedIndex {
+        cachedIndex?.takeIf { it.packageIdentity == packageIdentity }?.let { return it }
+        return readIndexFile(packageIdentity).also { cachedIndex = it }
+    }
+
+    private fun readIndexFile(packageIdentity: String): CachedIndex {
         try {
             if (cacheFile.isFile) {
                 val json = JSONObject(cacheFile.readText())

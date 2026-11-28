@@ -71,6 +71,9 @@ export async function resetDecisionFixtures() {
       "bundles",
       "channels",
       "bundle_totals",
+      "native_builds",
+      "ios_devices",
+      "ios_device_account",
     ].map((collection) => db.collection(collection).deleteMany({})),
   );
 }

@@ -15,9 +15,13 @@ import {
   provisionClientCredential,
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
+  resolveInitProviderInputs,
   type RunInitOptions,
+  type RunInitResult,
   shouldAutoSelectOnlyInitResource,
   writeHotUpdaterFiles,
+  backfillInsightsReleaseRefs,
+  fillReleaseLabels,
 } from "@hot-updater/cli-tools";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 
@@ -168,19 +172,23 @@ const resolveName = async ({
   );
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  envFile,
+  secretsEnv,
+}: RunInitOptions): Promise<RunInitResult> => {
   const cwd = getCwd();
   const nonInteractive = envFile !== undefined;
-  const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);
+  const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile, secretsEnv);
   const initInputEnv = getHotUpdaterInitInputEnv(
     initEnvSources,
     nonInteractive,
   );
-  const saved = Object.fromEntries(
-    Object.entries(inputs).map(([name, input]) => [
-      name,
-      initInputEnv[input.envKey]?.trim() || undefined,
-    ]),
+  // The environment's value first, then the env files', as init's
+  // preflight and every other provider read them.
+  const saved = resolveInitProviderInputs(
+    initInputEnv,
+    AZURE_INIT_PROVIDER,
   ) as Partial<Record<keyof typeof inputs, string>>;
 
   const cliVersion = await azureCliVersion();
@@ -437,6 +445,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const server = assembleServer({ database, plugins });
   let credential: ProvisionedClientCredential | undefined;
   try {
+    // Labels the releases written before labels, and rebuilds their catalogs.
+    await fillReleaseLabels(server);
+    // Moves the Insights events a 1.1 server keyed by artifact to their releases.
+    await backfillInsightsReleaseRefs(server);
     credential = await provisionClientCredential(server, {
       env: initInputEnv,
       name: "Azure init",
@@ -449,22 +461,33 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   p.log.success("Generated '.env.hotupdater' file with Azure settings.");
-  await writeHotUpdaterFiles(getConfigScaffold(build), {
-    cwd,
-    settings: "Azure",
-  });
+  const cosmosEndpoint = /AccountEndpoint=([^;]+)/iu.exec(
+    cosmosConnectionString,
+  )?.[1];
+  await writeHotUpdaterFiles(
+    getConfigScaffold(
+      build,
+      cosmosEndpoint === undefined ? {} : { cosmosEndpoint },
+    ),
+    {
+      cwd,
+      settings: "Azure",
+    },
+  );
 
   printAppSetup({
     baseURL,
     ...(credential === undefined ? {} : { credential }),
     clientPlugins: server.clientPlugins,
   });
-  p.log.message(
-    `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/azure#step-3-add-hotupdater-to-your-project",
-    )}`,
-  );
-  p.log.success("Done! 🎉");
+
+  return {
+    nextSteps: [
+      link(
+        "https://hot-updater.dev/docs/managed/azure#step-3-add-hotupdater-to-your-project",
+      ),
+    ],
+  };
 };
 
 // The Function package the infrastructure scaffold ships.

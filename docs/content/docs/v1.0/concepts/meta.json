@@ -1,0 +1,10 @@
+{
+  "title": "Concepts",
+  "description": "Understand the update lifecycle, automatic rollback, and the Release Catalog contract.",
+  "icon": "BookOpen",
+  "pages": [
+    "how-it-works",
+    "automatic-rollback",
+    "release-catalog-contract"
+  ]
+}

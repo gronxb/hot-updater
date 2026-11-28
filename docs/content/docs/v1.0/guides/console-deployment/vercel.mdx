@@ -1,0 +1,83 @@
+---
+title: "Vercel"
+description: "Deploy the Nitro console with Vercel Node functions."
+icon: vercel
+---
+
+import { Step, Steps } from "fumadocs-ui/components/steps";
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
+
+## Prerequisites
+
+Complete [Basics](/docs/v1.0/guides/console-deployment) first, with adapters that run in Node.
+
+<Steps>
+<Step>
+
+## Import your repository
+
+Import your private console repository, or link your local checkout:
+
+```package-install
+npx vercel link
+```
+
+Use the console checkout as the root directory and keep the detected package manager.
+
+</Step>
+<Step>
+
+## Set the build
+
+Select **Other** as the framework preset and Node.js 22 or later. Set this as the build command:
+
+```package-install
+npm run build
+```
+
+Add `NITRO_PRESET=vercel` as a build environment variable. Nitro generates `.vercel/output`; keep the generated server functions and static assets together.
+
+</Step>
+<Step>
+
+## Set runtime variables
+
+Choose the production domain. Add the [authentication variables](/docs/v1.0/guides/console-deployment#set-up-sign-in) and your backend credentials to the project's Production environment.
+
+Set `BETTER_AUTH_URL` to that domain's HTTPS origin and register the matching OAuth callback. Use server variables, without a `VITE_` prefix.
+
+</Step>
+<Step>
+
+## Deploy and check
+
+Deploy from the dashboard or your linked checkout:
+
+```package-install
+npx vercel deploy --prod
+```
+
+Open the production URL and follow [Verify the deployment](/docs/v1.0/guides/console-deployment#verify-the-deployment).
+
+Use **Download manifest** in a bundle's details and verify `manifest.json`.
+The console streams the manifest through the function when a storage adapter
+handles its URI; otherwise, public HTTP(S) manifest URLs redirect to storage.
+[Vercel's payload and execution limits](https://vercel.com/docs/functions/limitations)
+apply to responses streamed through the function. This action does not download
+the JavaScript bundle or its assets; verify OTA delivery with the
+[app update workflow](/docs/v1.0/get-started/test-ota).
+
+</Step>
+</Steps>
+
+<Accordions>
+<Accordion title="Preview deployments and updates">
+
+Preview URLs need matching OAuth callbacks and `BETTER_AUTH_URL`. Otherwise, use sign-in only on the production origin.
+
+Push updates through the same Git workflow. To restore console code, promote a previous Vercel deployment; backend data is unaffected by that rollback.
+
+</Accordion>
+</Accordions>
+
+See [Nitro on Vercel](https://nitro.build/deploy/providers/vercel) and [Vercel environment variables](https://vercel.com/docs/environment-variables).

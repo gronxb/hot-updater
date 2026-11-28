@@ -1189,6 +1189,14 @@ RCT_EXPORT_MODULE();
     return [HotUpdaterNativeUpdates() takeEventsWithImpl:[self instanceImpl]];
 }
 
+- (NSNumber *)beginBackgroundTask {
+    return [HotUpdaterNativeUpdates() beginJavaScriptBackgroundTask];
+}
+
+- (void)endBackgroundTask:(double)taskId {
+    [HotUpdaterNativeUpdates() endJavaScriptBackgroundTask:@(taskId)];
+}
+
 - (NSString * _Nullable)getBaseURL {
     NSLog(@"[HotUpdater.mm] getBaseURL called");
     HotUpdaterImpl *impl = [self instanceImpl];
@@ -1223,6 +1231,15 @@ RCT_EXPORT_MODULE();
     [HotUpdaterNativeUpdates() resetChannelWithImpl:[self instanceImpl]
                                            resolver:resolve
                                            rejecter:reject];
+}
+
+- (void)resetChannelIfSelectionCurrent:(NSDictionary *)params
+                               resolve:(RCTPromiseResolveBlock)resolve
+                                reject:(RCTPromiseRejectBlock)reject {
+    [HotUpdaterNativeUpdates() resetChannelIfSelectionCurrentWithImpl:[self instanceImpl]
+                                                               params:params
+                                                             resolver:resolve
+                                                             rejecter:reject];
 }
 
 - (facebook::react::ModuleConstants<JS::NativeHotUpdater::Constants::Builder>)constantsToExport {
@@ -1370,6 +1387,14 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(takeNativeUpdateEvents) {
     return [HotUpdaterNativeUpdates() takeEventsWithImpl:[self instanceImpl]];
 }
 
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(beginBackgroundTask) {
+    return [HotUpdaterNativeUpdates() beginJavaScriptBackgroundTask];
+}
+
+RCT_EXPORT_METHOD(endBackgroundTask:(double)taskId) {
+    [HotUpdaterNativeUpdates() endJavaScriptBackgroundTask:@(taskId)];
+}
+
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {
     NSLog(@"[HotUpdater.mm] getBaseURL called");
     HotUpdaterImpl *impl = [self instanceImpl];
@@ -1404,6 +1429,15 @@ RCT_EXPORT_METHOD(resetChannel:(RCTPromiseResolveBlock)resolve
     [HotUpdaterNativeUpdates() resetChannelWithImpl:[self instanceImpl]
                                            resolver:resolve
                                            rejecter:reject];
+}
+
+RCT_EXPORT_METHOD(resetChannelIfSelectionCurrent:(NSDictionary *)params
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    [HotUpdaterNativeUpdates() resetChannelIfSelectionCurrentWithImpl:[self instanceImpl]
+                                                               params:params
+                                                             resolver:resolve
+                                                             rejecter:reject];
 }
 
 - (NSDictionary *)constantsToExport {

@@ -25,7 +25,7 @@ const release = (
   overrides: Partial<AdoptionRelease> = {},
 ): AdoptionRelease => ({
   releaseId,
-  bundleId: `bundle-${releaseId}`,
+  label: null,
   platform: "ios",
   deployedAtMs: 0,
   targetAppVersion: "1.6.x",
@@ -65,6 +65,7 @@ describe("InsightsControls", () => {
   beforeEach(() => {
     mocks.channels.mockReturnValue({
       data: [{ name: "production" }, { name: "beta" }],
+      refetch: vi.fn(),
     });
   });
 
@@ -179,6 +180,107 @@ describe("InsightsControls", () => {
     });
   });
 
+  it("finds a release by its label, and names the picked one by it", async () => {
+    const labeled = "01a13d86-86f7-7830-952d-21238207019f";
+    const { onFiltersChange, rerender } = renderControls({
+      releases: [
+        release("01a16ed8-85df-749f-8f9e-0e22532a5d87", { label: 11 }),
+        release(labeled, { label: 12 }),
+      ],
+    });
+    fireEvent.click(screen.getByRole("combobox", { name: /^Release/ }));
+    const search = await screen.findByRole("combobox", {
+      name: "Search releases",
+    });
+    act(() => search.focus());
+    fireEvent.input(search, {
+      inputType: "insertText",
+      target: { value: "v12" },
+    });
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      // All platforms: the label's platform shows beside it.
+      expect.stringMatching(/^iOS v12 01a13d86/),
+    ]);
+    await choose(options[0]!);
+    expect(onFiltersChange).toHaveBeenLastCalledWith({ releaseId: labeled });
+
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <InsightsControls
+          filters={{
+            channel: "production",
+            platform: "all",
+            releaseId: labeled,
+          }}
+          appVersions={[]}
+          releases={[release(labeled, { label: 12 })]}
+          onFiltersChange={onFiltersChange}
+        />
+      </QueryClientProvider>,
+    );
+    const chip = screen.getByRole("combobox", { name: `Release: ${labeled}` });
+    // Its platform too, as All platforms mixes both platforms' v12.
+    expect(chip.textContent).toBe(`ReleaseiOS v12 ${labeled}`);
+    expect(chip.querySelector("svg")).not.toBeNull();
+
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <InsightsControls
+          filters={{
+            channel: "production",
+            platform: "ios",
+            releaseId: labeled,
+          }}
+          appVersions={[]}
+          releases={[release(labeled, { label: 12 })]}
+          onFiltersChange={onFiltersChange}
+        />
+      </QueryClientProvider>,
+    );
+    // One platform: v12 names one release, and nothing more shows.
+    expect(
+      screen.getByRole("combobox", { name: `Release: ${labeled}` }).textContent,
+    ).toBe(`Releasev12 ${labeled}`);
+  });
+
+  it("finds a release by its label and ID tail as the Console shows it, and never by its artifact ID", async () => {
+    const labeled = "01a13d86-86f7-7830-952d-21238207019f";
+    // The artifact v12 serves, which Insights never names.
+    const artifact = "01a13d80-0000-7000-8000-00000000a12f";
+    mocks.release.mockResolvedValue({ release: null });
+    renderControls({
+      releases: [
+        release("01a16ed8-85df-749f-8f9e-0e22532a5d87", { label: 11 }),
+        release(labeled, { label: 12 }),
+      ],
+    });
+    fireEvent.click(screen.getByRole("combobox", { name: /^Release/ }));
+    const search = await screen.findByRole("combobox", {
+      name: "Search releases",
+    });
+    act(() => search.focus());
+    const type = (value: string) =>
+      fireEvent.input(search, { inputType: "insertText", target: { value } });
+    type("V12 · 07019F");
+    expect(
+      (await screen.findAllByRole("option")).map(
+        (option) => option.textContent,
+      ),
+    ).toEqual([expect.stringMatching(/^iOS v12 01a13d86/)]);
+    type("v11 07019f");
+    expect(await screen.findByText("No matching bundles.")).toBeDefined();
+    type(artifact);
+    expect(
+      await screen.findByText(
+        "No bundle with this ID in production · All platforms.",
+      ),
+    ).toBeDefined();
+    expect(mocks.release).toHaveBeenLastCalledWith({
+      data: { channel: "production", platform: "all", releaseId: artifact },
+    });
+  });
+
   it("looks up a pasted release ID the list leaves out, in the filters' scope", async () => {
     const pasted = "01a0f000-0000-7000-8000-000000000001";
     mocks.release.mockImplementation(async ({ data }) => ({
@@ -219,14 +321,25 @@ describe("InsightsControls", () => {
     expect(onFiltersChange).toHaveBeenLastCalledWith({ releaseId: pasted });
   });
 
+  it("offers the project's channels and no All channels", async () => {
+    renderControls();
+    fireEvent.click(screen.getByRole("combobox", { name: /^Channel/ }));
+    expect(
+      (await screen.findAllByRole("option")).map(
+        (option) => option.textContent,
+      ),
+    ).toEqual(["production", "beta"]);
+  });
+
   it("lets the user retry an unavailable channel list", async () => {
     const refetch = vi.fn();
     mocks.channels.mockReturnValue({ isError: true, refetch });
     renderControls();
     fireEvent.click(screen.getByRole("combobox", { name: /^Channel/ }));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Retry channels" }),
-    );
+    const retry = await screen.findByRole("button", { name: "Retry channels" });
+    // Opening the list reads it again once; Retry reads it once more.
+    refetch.mockClear();
+    fireEvent.click(retry);
     expect(refetch).toHaveBeenCalledOnce();
   });
 });

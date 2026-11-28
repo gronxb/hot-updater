@@ -3,6 +3,7 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 import type { MobileContext } from "./context.ts";
+import { isIosLinkMaybeSent, isIosLinkNotSent } from "./ios-link-timeout.ts";
 
 export const RUNNER_VERSIONS = {
   e2e: "0.18.0",
@@ -294,21 +295,36 @@ export function normalizeMobileResult(
         );
       }
       // A launch disconnect is expected only when the driver subsequently
-      // verifies native recovery. Every other recorded failure is unaccepted.
+      // verifies native recovery, and an iOS link timeout only when the driver
+      // caught it and the scenario still reached the route. Every other recorded
+      // failure is unaccepted.
       const launchFailures = proof?.expectedLaunchFailures;
+      const linkTimeouts = proof?.expectedLinkTimeouts ?? 0;
       const failedSteps = (steps ?? []).filter(
         (step) => step.status !== "passed" || step.error !== undefined,
       );
+      const failedLaunches = failedSteps.filter(
+        (step) => step.api === "device.openApp",
+      );
+      const failedLinks = failedSteps.filter((step) => {
+        const message = String(object(step.error)?.message ?? "");
+        return (
+          step.api === "device.openLink" &&
+          (isIosLinkNotSent(message) || isIosLinkMaybeSent(message))
+        );
+      });
       if (
         typeof launchFailures !== "number" ||
         !Number.isInteger(launchFailures) ||
         launchFailures < 0 ||
-        failedSteps.length !== launchFailures ||
+        typeof linkTimeouts !== "number" ||
+        !Number.isInteger(linkTimeouts) ||
+        linkTimeouts < 0 ||
+        failedLaunches.length !== launchFailures ||
+        failedLinks.length !== linkTimeouts ||
+        failedSteps.length !== launchFailures + linkTimeouts ||
         failedSteps.some(
-          (step) =>
-            step.status !== "failed" ||
-            step.api !== "device.openApp" ||
-            !object(step.error),
+          (step) => step.status !== "failed" || !object(step.error),
         )
       ) {
         failures.push("SDK steps contain an unverified failure");

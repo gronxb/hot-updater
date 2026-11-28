@@ -7,9 +7,10 @@ guide; do not duplicate its page inventory here.
 ## Scope and structure
 
 - Documentation lives in `content/docs/(latest)` and is served at `/docs/...`.
-  The frozen v0 archive lives in `content/docs/v0` at `/docs/v0/...`, behind
-  the version selector; don't edit it. Keep no PRDs, plans, audits or
-  measurement records in the repository.
+  The frozen v1.0 and v0 archives live in `content/docs/v1.0` and
+  `content/docs/v0` at `/docs/v1.0/...` and `/docs/v0/...`, behind the version
+  selector; don't edit them. Keep no PRDs, plans, audits or measurement
+  records in the repository.
 - Treat latest content as the stable release. Keep v0/v1 comparisons and
   transition steps in `guides/upgrade-to-v1.mdx`; omit release-candidate
   setup and migration procedures.
@@ -62,7 +63,7 @@ Prefer `HotUpdater.init` with `checkForUpdate`, the returned `updateBundle`
 helper and deliberate reload timing in onboarding and general examples. `init`
 does not check or apply an update by itself. Keep `wrap` as the optional
 automatic startup flow and retain its focused API reference. Preserve separate
-managed/custom hosting, the build/storage/database/signing adapter groups and
+managed/custom hosting, the build/storage/database/secrets adapter groups and
 the integration plugin group. Call what fills one config slot an adapter and
 what a `plugins` list holds a plugin, and keep authoring guides in the Create
 an Adapter and Create a Plugin groups.

@@ -1,5 +1,6 @@
 import {
   createStorageAdapter,
+  type Lazy,
   parseStorageUri,
   type StorageDeleteInput,
   type StorageExistsInput,
@@ -7,6 +8,8 @@ import {
   type StorageObject,
   type StoragePutInput,
 } from "@hot-updater/plugin-core";
+
+import { resolveHeaders } from "./standaloneHttp";
 
 /** A storage route: its path, and headers added to the common ones. */
 export interface RouteConfig {
@@ -59,13 +62,18 @@ export interface StandaloneStorageConfig {
   baseUrl: string;
   /** Storage URI protocol owned by the remote implementation. */
   protocol: string;
-  commonHeaders?: Record<string, string>;
+  /**
+   * Headers sent with every request. A value may be a function that returns
+   * it, such as `secret("<name>")` in `hot-updater.config.ts`, called on
+   * the first request.
+   */
+  commonHeaders?: Record<string, Lazy<string>>;
   routes?: Partial<StorageRoutes>;
 }
 
 export const standaloneStorage = (config: StandaloneStorageConfig) => {
-  const getHeaders = (routeHeaders?: Record<string, string>) => ({
-    ...config.commonHeaders,
+  const getHeaders = async (routeHeaders?: Record<string, string>) => ({
+    ...(await resolveHeaders(config.commonHeaders)),
     ...routeHeaders,
   });
 
@@ -82,14 +90,17 @@ export const standaloneStorage = (config: StandaloneStorageConfig) => {
     return createRoute(fallback(...args), custom?.(...args));
   };
 
-  const postJson = (
+  const postJson = async (
     path: string,
-    headers: Readonly<Record<string, string>> | undefined,
+    headers: Record<string, string> | undefined,
     body: unknown,
   ) =>
     fetch(`${config.baseUrl}${path}`, {
       method: "POST",
-      headers: { "content-type": "application/json", ...getHeaders(headers) },
+      headers: {
+        "content-type": "application/json",
+        ...(await getHeaders(headers)),
+      },
       body: JSON.stringify(body),
     });
 
@@ -105,7 +116,7 @@ export const standaloneStorage = (config: StandaloneStorageConfig) => {
       method: routeName === "delete" ? "DELETE" : "POST",
       headers: {
         "content-type": "application/json",
-        ...getHeaders(headers),
+        ...(await getHeaders(headers)),
       },
       body: JSON.stringify({ storageUri }),
     });
@@ -138,7 +149,7 @@ export const standaloneStorage = (config: StandaloneStorageConfig) => {
       formData.append("key", key);
       const response = await fetch(`${config.baseUrl}${path}`, {
         method: "POST",
-        headers: getHeaders(headers),
+        headers: await getHeaders(headers),
         body: formData,
       });
       if (!response.ok) {

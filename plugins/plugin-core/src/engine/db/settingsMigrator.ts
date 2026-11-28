@@ -7,11 +7,25 @@ import {
   type SchemaSettings,
 } from "../database/fence";
 import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
+import type { ResolvedSchema } from "../database/resolveSchema";
 import type { SqlExecutor } from "../database/sql/sqlAdapter";
-import { quoteSql } from "../database/sql/sqlSchema";
+import { quoteSql, type SqlColumnShape } from "../database/sql/sqlSchema";
 import { settingsStatements } from "./engineSql";
 import { getEmptyMigrationResult } from "./fixedMigratorShared";
-import type { MigrateOptions, MigrationResult, Migrator } from "./types";
+import {
+  addColumnStatements,
+  collationStatements,
+  missingSqlSchema,
+  readSqlSchemaState,
+  targetShapes,
+  type MissingSqlSchema,
+} from "./sqlSchemaState";
+import type {
+  MigrateOptions,
+  MigrationOperation,
+  MigrationResult,
+  Migrator,
+} from "./types";
 
 /**
  * Every settings row by key and value alone, so a v0 layout reads too; null
@@ -58,7 +72,7 @@ export const refuseV0Database = (
 /**
  * The settings whose versions only move forward when a `ToolingTarget` names
  * none. `schema.engine` is a storage layout, not a release: a store refuses
- * another layout itself.
+ * another layout itself, and doctor reports it as not migratable.
  */
 export const DEFAULT_ORDERED_SETTINGS: readonly string[] = ["schema.core"];
 
@@ -94,37 +108,75 @@ export const refuseNewerSchema = (
 };
 
 /**
+ * The tables, late columns or indexes an ORM has yet to apply, found before `db migrate`
+ * writes the settings rows, so the fence never passes over missing tables.
+ */
+export class HotUpdaterSchemaTablesMissingError extends Error {
+  constructor(
+    readonly adapterName: string,
+    readonly missing: MissingSqlSchema,
+    /** The command that applies the generated schema. */
+    readonly applyTables: string,
+  ) {
+    const all = missing.tables.includes(SETTINGS_TABLE.name);
+    const items = [
+      ...(missing.tables.length === 0
+        ? []
+        : [
+            `table${missing.tables.length === 1 ? "" : "s"} ${missing.tables.join(", ")}`,
+          ]),
+      ...(missing.columns.length === 0
+        ? []
+        : [
+            `column${missing.columns.length === 1 ? "" : "s"} ${missing.columns.map(({ table, column }) => `${table}.${column.name}`).join(", ")}`,
+          ]),
+      ...(missing.indexes.length === 0
+        ? []
+        : [
+            `index${missing.indexes.length === 1 ? "" : "es"} ${missing.indexes.map(({ index }) => index).join(", ")}`,
+          ]),
+    ];
+    super(
+      `${adapterName}: ${all ? "the Hot Updater tables are missing" : `the database lacks ${items.join(" and ")}`}. Run \`hot-updater db generate\`, apply it with ${applyTables}, then migrate again.`,
+    );
+    this.name = "HotUpdaterSchemaTablesMissingError";
+  }
+}
+
+/**
  * `hot-updater db migrate` for an ORM that applies the DDL itself (Drizzle,
- * Prisma): it sets what the ORM cannot declare, writes the settings rows, and
- * refuses a v0 database or one a newer release migrated. The `createMigrator` of an adapter whose ORM
+ * Prisma). Before it writes the settings rows it refuses a v0 database or one
+ * a newer release migrated, checks that every table and index the target
+ * declares exists, and sets the collations the ORM cannot declare on the
+ * columns that lack them. The `createMigrator` of an adapter whose ORM
  * creates the tables returns it, as the Drizzle and Prisma adapters' do.
  */
 export const createSettingsMigrator = (options: {
   readonly adapterName: string;
   readonly executor: SqlExecutor;
+  /** The tables the ORM applies, which must exist before the settings move. */
+  readonly schema: ResolvedSchema;
   readonly settings: SchemaSettings;
   /** The settings whose versions only move forward; `ToolingTarget.ordered`. */
   readonly ordered?: readonly string[];
-  /** How the ORM applies the tables, for the error when they are missing. */
+  /** The command that applies the generated schema, for the error when tables are missing. */
   readonly applyTables: string;
-  /** What the ORM cannot declare, set before the settings rows. */
-  readonly fixups?: {
-    readonly description: string;
-    readonly statements: readonly string[];
-  };
+  /**
+   * The columns whose collation the ORM cannot declare, which `db migrate`
+   * sets where the database lacks it. The settings table is left as it is:
+   * it is only read by key, and the migrator has already read it, so
+   * altering it would invalidate PostgreSQL's cached plan for that read.
+   */
+  readonly collate?: (column: SqlColumnShape) => boolean;
 }): Migrator => {
   const read = () => readStoredSettings(options.executor);
   const getVersion = async () => storedSchemaVersion(await read());
+  const { executor } = options;
 
   const makeResult = async (
     migrate: MigrateOptions = {},
   ): Promise<MigrationResult> => {
-    const stored = await read();
-    if (stored === null) {
-      throw new Error(
-        `${options.adapterName}: the Hot Updater tables are missing. Run \`hot-updater db generate\`, apply the schema with ${options.applyTables}, then migrate again.`,
-      );
-    }
+    const stored = (await read()) ?? new Map<string, unknown>();
     refuseV0Database(options.adapterName, stored);
     refuseNewerSchema(
       options.adapterName,
@@ -132,38 +184,97 @@ export const createSettingsMigrator = (options: {
       options.settings,
       options.ordered,
     );
+    const shapes = targetShapes(executor.dialect, options.schema);
+    const missing = missingSqlSchema(
+      shapes,
+      await readSqlSchemaState(executor),
+    );
+    // A column added to a table a released schema created, and that table's
+    // missing indexes, are added here when the ORM's migration left them
+    // out: a migration file written for a database an earlier release
+    // created leaves out every statement on the tables it already has.
+    const lateTables = new Set(missing.columns.map(({ table }) => table));
+    const lateIndexes = missing.indexes.filter(({ table }) =>
+      lateTables.has(table),
+    );
+    const blocking = missing.indexes.filter(
+      ({ table }) => !lateTables.has(table),
+    );
+    if (missing.tables.length > 0 || blocking.length > 0) {
+      throw new HotUpdaterSchemaTablesMissingError(
+        options.adapterName,
+        { tables: missing.tables, columns: [], indexes: blocking },
+        options.applyTables,
+      );
+    }
+    const quote = (name: string) => quoteSql(executor.dialect, name);
+    const lateSchema = [
+      ...addColumnStatements(executor.dialect, missing.columns),
+      ...lateIndexes.map(({ table, index: name }) => {
+        const index = shapes
+          .find((shape) => shape.name === table)!
+          .indexes.find(
+            (candidate) =>
+              candidate.kind === "index" && candidate.name === name,
+          )!;
+        return index.kind === "index"
+          ? `CREATE ${index.unique ? "UNIQUE " : ""}INDEX ${quote(name)} ON ${quote(table)} (${index.columns.map(quote).join(", ")})`
+          : "";
+      }),
+    ];
+    const collations =
+      options.collate === undefined
+        ? { statements: [], columns: 0 }
+        : await collationStatements(
+            executor,
+            shapes.filter((shape) => shape.name !== SETTINGS_TABLE.name),
+            options.collate,
+          );
+    const changed =
+      migrate.updateSettings === false
+        ? []
+        : Object.entries(options.settings).filter(
+            ([key, value]) => stored.get(key) !== value,
+          );
     if (
-      migrate.updateSettings === false ||
-      Object.entries(options.settings).every(
-        ([key, value]) => stored.get(key) === value,
-      )
+      lateSchema.length === 0 &&
+      collations.statements.length === 0 &&
+      changed.length === 0
     ) {
       return getEmptyMigrationResult();
     }
-    const fixups = options.fixups?.statements ?? [];
     const statements = [
-      ...fixups,
-      ...settingsStatements(options.executor.dialect, options.settings),
+      ...lateSchema,
+      ...collations.statements,
+      ...(changed.length === 0
+        ? []
+        : settingsStatements(executor.dialect, options.settings)),
+    ];
+    const operations: MigrationOperation[] = [
+      ...missing.columns.map(({ table, column }) => ({
+        type: "custom" as const,
+        description: `Add column: ${column.name} to ${table}`,
+      })),
+      ...lateIndexes.map(({ table, index }) => ({
+        type: "custom" as const,
+        description: `Create index: ${index} on ${table}`,
+      })),
+      ...(collations.columns === 0
+        ? []
+        : [
+            {
+              type: "custom" as const,
+              description: `Set the byte-order collation the ORM cannot declare on ${collations.columns} column${collations.columns === 1 ? "" : "s"} of ${collations.statements.length} table${collations.statements.length === 1 ? "" : "s"}`,
+            },
+          ]),
+      ...(changed.length === 0 ? [] : [settingsOperation(stored, changed)]),
     ];
     return {
-      operations: [
-        ...(fixups.length === 0
-          ? []
-          : [
-              {
-                type: "custom" as const,
-                description: options.fixups!.description,
-              },
-            ]),
-        {
-          type: "custom",
-          description: `Write the schema settings: ${Object.keys(options.settings).join(", ")}`,
-        },
-      ],
+      operations,
       getSQL: () => statements.map((statement) => `${statement};`).join("\n\n"),
       execute: async () => {
         for (const sql of statements) {
-          await options.executor.execute({ sql, params: [] });
+          await executor.execute({ sql, params: [] });
         }
       },
     };
@@ -190,3 +301,19 @@ export const createSettingsMigrator = (options: {
     migrateToLatest: makeResult,
   };
 };
+
+/** The settings rows a migration changes, each with its stored value. */
+export const settingsOperation = (
+  stored: ReadonlyMap<string, unknown>,
+  changed: readonly (readonly [string, string])[],
+): MigrationOperation => ({
+  type: "custom",
+  description: `Record ${changed
+    .map(([key, value]) => {
+      const found = stored.get(key);
+      return typeof found === "string"
+        ? `${key} ${found} → ${value}`
+        : `${key} ${value}`;
+    })
+    .join(", ")}`,
+});

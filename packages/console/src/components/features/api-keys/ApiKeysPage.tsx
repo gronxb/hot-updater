@@ -113,7 +113,7 @@ function CreateApiKeyDialog() {
 
   return (
     <>
-      <Button onClick={() => setOpen(true)}>
+      <Button className="max-md:h-11" onClick={() => setOpen(true)}>
         <Plus data-icon="inline-start" />
         Create API key
       </Button>
@@ -160,7 +160,7 @@ function CreateApiKeyDialog() {
                   {create.isPending ? (
                     <Loader2
                       data-icon="inline-start"
-                      className="animate-spin"
+                      className="animate-spin motion-reduce:animate-none"
                     />
                   ) : (
                     <KeyRound data-icon="inline-start" />
@@ -224,7 +224,9 @@ function RevokeApiKeyDialog({ record }: { record: ApiKeyView }) {
         if (!revoke.isPending) setOpen(nextOpen);
       }}
     >
-      <AlertDialogTrigger render={<Button size="sm" variant="ghost" />}>
+      <AlertDialogTrigger
+        render={<Button className="max-md:h-11" size="sm" variant="ghost" />}
+      >
         <ShieldOff data-icon="inline-start" />
         Revoke
       </AlertDialogTrigger>

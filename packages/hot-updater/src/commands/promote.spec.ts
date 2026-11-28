@@ -99,6 +99,51 @@ describe("handlePromote", () => {
     }
   });
 
+  it("names the bundle to promote when given its artifact ID, and promotes nothing", async () => {
+    vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit");
+    }) as never);
+    const { handlePromote } = await import("./promote");
+
+    await handlePromote(sourceBundle.id, {
+      action: "copy",
+      target: "beta",
+      yes: true,
+    });
+
+    expect(log.error).toHaveBeenCalledExactlyOnceWith(
+      `No bundle with ID ${sourceBundle.id}.\nThat's an artifact ID. Use bundle ${sourceReleaseId}`,
+    );
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
+    expect(await releasesForChannel("beta")).toEqual([]);
+  });
+
+  it("promotes a bundle by its label, and prints the target's label with the source's", async () => {
+    const { handlePromote } = await import("./promote");
+
+    await handlePromote("v1", {
+      action: "copy",
+      channel: "production",
+      platform: "ios",
+      target: "beta",
+      yes: true,
+    });
+
+    const [promoted] = await releasesForChannel("beta");
+    expect(promoted).toMatchObject({
+      source_release_id: sourceReleaseId,
+      label: 1,
+    });
+    const plan = stripVTControlCharacters(
+      String(log.message.mock.calls[0]?.[0]),
+    );
+    expect(plan).toMatch(/^Source label {2,}production v1$/mu);
+    expect(
+      stripVTControlCharacters(String(log.info.mock.calls.at(-1)?.[0])),
+    ).toBe(`ID     ${promoted!.id}\nLabel  beta v1 (from production v1)`);
+  });
+
   it("creates a target-channel Release that reuses the source Bundle", async () => {
     const { handlePromote } = await import("./promote");
 
@@ -123,14 +168,14 @@ describe("handlePromote", () => {
     const result = stripVTControlCharacters(
       String(log.info.mock.calls[0]?.[0]),
     );
-    expect(result).toMatch(/\bID:\s+/);
+    expect(result).toMatch(/^ID {2,}/mu);
     expect(result).toContain(promoted!.id);
     expect(result).not.toContain(sourceBundle.id);
     expect(result).not.toContain("Release ID");
     const preview = stripVTControlCharacters(
       String(log.message.mock.calls[0]?.[0]),
     );
-    expect(preview).toContain("Source ID:");
+    expect(preview).toMatch(/^Source ID {2,}/mu);
     expect(preview).toContain(sourceReleaseId);
     expect(preview).not.toContain(sourceBundle.id);
     expect(preview).toContain("reused; no upload or copy");
@@ -176,9 +221,11 @@ describe("handlePromote", () => {
     });
     const { handlePromote } = await import("./promote");
 
-    await expect(
-      handlePromote(sourceReleaseId, { target: "beta" }),
-    ).rejects.toThrow(/revision/i);
+    await handlePromote(sourceReleaseId, { target: "beta" });
+
+    expect(String(log.error.mock.calls[0]?.[0])).toMatch(/^Bundle .*revision/u);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
 
     expect(await releasesForChannel("beta")).toEqual([]);
     await expect(
@@ -193,11 +240,24 @@ describe("handlePromote", () => {
   it("rejects a promotion back into the same Release scope", async () => {
     const { handlePromote } = await import("./promote");
 
-    await expect(
-      handlePromote(sourceReleaseId, {
-        target: "production",
-        yes: true,
-      }),
-    ).rejects.toThrow(/same/i);
+    await handlePromote(sourceReleaseId, {
+      target: "production",
+      yes: true,
+    });
+
+    expect(String(log.error.mock.calls[0]?.[0])).toMatch(/same/iu);
+    expect(String(log.error.mock.calls[0]?.[0])).not.toContain("Release");
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
   });
+});
+
+// The terminal these specs simulate takes prompts only outside CI, and CI
+// runners set CI.
+beforeEach(() => {
+  vi.stubEnv("CI", "");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });

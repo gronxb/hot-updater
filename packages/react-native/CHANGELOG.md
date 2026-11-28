@@ -1,5 +1,705 @@
 # @hot-updater/react-native
 
+## 1.2.0-rc.63
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.63
+  - @hot-updater/plugin-insights@1.2.0-rc.63
+  - @hot-updater/plugin-remote-config@1.2.0-rc.63
+
+## 1.2.0-rc.62
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.62
+  - @hot-updater/plugin-insights@1.2.0-rc.62
+  - @hot-updater/plugin-remote-config@1.2.0-rc.62
+
+## 1.2.0-rc.61
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.61
+  - @hot-updater/plugin-insights@1.2.0-rc.61
+  - @hot-updater/plugin-remote-config@1.2.0-rc.61
+
+## 1.2.0-rc.60
+
+### Patch Changes
+
+- 844b66d: Update requests no longer fail with "Request timed out" when the app comes back from the background. The request timeout counts only the time the app runs in the foreground, so a timer that came due while iOS had suspended the app no longer aborts a response that arrived meanwhile. On iOS, the update check and `updateBundle()` also hold background time until the server answers and the download finishes, so a request sent as the user leaves the app still starts its download before the links expire. JavaScript checks for the new native methods and falls back to the timeout fix alone on native code from an earlier release.
+- @hot-updater/protocol@1.2.0-rc.60
+  - @hot-updater/plugin-insights@1.2.0-rc.60
+  - @hot-updater/plugin-remote-config@1.2.0-rc.60
+
+## 1.2.0-rc.59
+
+### Patch Changes
+
+- Updated dependencies [ef2db86]
+  - @hot-updater/plugin-insights@1.2.0-rc.59
+  - @hot-updater/plugin-remote-config@1.2.0-rc.59
+  - @hot-updater/protocol@1.2.0-rc.59
+
+## 1.2.0-rc.58
+
+### Patch Changes
+
+- 7709b2b: Name artifact IDs `bundleId` and release IDs `releaseId` in code. `ReleaseSelectionInput` and `ReleaseSelectionContextInput` in `@hot-updater/protocol` take the built-in bundle's ID as `minBundleId` instead of `minimumReleaseId`, as the React Native SDK and its iOS and Android code now name it, and the rollout functions name their first parameter `releaseId`, the ID they hash. A selection context hash is unchanged: its canonical JSON keeps the key `minimumReleaseId`, so receipts written by any patch still match. In `@hot-updater/plugin-insights`, the reads take and return a bundle's release ID as `releaseId` (`InsightsBundleSelection`, `getReportingOverview`'s input, and `ReportingOverview`'s `bundle`), while the HTTP API and `hot-updater insights overview --json` still call it `bundleId`; `toWireOverview` maps an overview to that shape. The docs call the release ID the bundle ID everywhere, and an artifact's ID the artifact ID.
+- 8e77373: Every "bundle ID" the SDK shows is now the release ID, the ID the Console shows and `hotUpdater.getBundleId()` returns:
+  - The native instance's `getBundleId()` (iOS `HotUpdaterInstance`, Android `HotUpdaterInstance`) returns the ID of the release the launch runs. For the built-in bundle it returns `MIN_BUNDLE_ID`. It returns the artifact ID only for a bundle installed without a release, and `nil`/`null` before the launch's bundle is read. Before, it returned the artifact ID, and `nil` for the built-in bundle.
+  - A client plugin's `context.getBundleId()` returns the same value as `hotUpdater.getBundleId()`. Before, it returned the artifact ID. A plugin that needs the artifact reads the hooks' `bundleId`, `fromBundleId`, `toBundleId`, and `targetBundleId`.
+  - The sandbox screen names every bundle by its release ID, as its Downloaded rows already did: the big row, Running and Next launch, the crash banner, and Info's Current and Pending. A crashed bundle whose release the device no longer knows is named by its artifact ID.
+
+  The TurboModule's methods and parameters are unchanged.
+
+- Updated dependencies [7709b2b]
+- Updated dependencies [e7ae1dc]
+- Updated dependencies [8e77373]
+  - @hot-updater/protocol@1.2.0-rc.58
+  - @hot-updater/plugin-insights@1.2.0-rc.58
+  - @hot-updater/plugin-remote-config@1.2.0-rc.58
+
+## 1.2.0-rc.57
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.57
+  - @hot-updater/plugin-insights@1.2.0-rc.57
+  - @hot-updater/plugin-remote-config@1.2.0-rc.57
+
+## 1.2.0-rc.56
+
+### Patch Changes
+
+- Add a `fetch` option to `HotUpdater.init` so an instance's JavaScript requests (release catalogs, artifact lookups, and client plugins such as `insights()`) can use a fetch other than the global one, such as `react-native-nitro-fetch`. It defaults to the global `fetch`; native downloads and the native recovery check don't use it. On Android, update requests use it instead of the XMLHttpRequest the SDK otherwise sends them with.
+- @hot-updater/protocol@1.2.0-rc.56
+  - @hot-updater/plugin-insights@1.2.0-rc.56
+  - @hot-updater/plugin-remote-config@1.2.0-rc.56
+
+## 1.2.0-rc.55
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.55
+  - @hot-updater/plugin-insights@1.2.0-rc.55
+  - @hot-updater/plugin-remote-config@1.2.0-rc.55
+
+## 1.2.0-rc.54
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.54
+  - @hot-updater/plugin-insights@1.2.0-rc.54
+  - @hot-updater/plugin-remote-config@1.2.0-rc.54
+
+## 1.2.0-rc.53
+
+### Patch Changes
+
+- 188ec1a: fix: download an update right after the server signs its links, even when the user leaves the app
+
+  Storage download links are signed for an hour. Some updates failed with HTTP 403 `ExpiredRequest` because their requests went out long after signing:
+  - iOS: a download that started while the app was in the background went to the system's background URLSession. iOS always runs such a transfer at its own discretion, ignoring `isDiscretionary = false`; Apple documents that a discretionary transfer waits for conditions such as Wi-Fi and power, so it could go out hours later with the link fixed when it started. It now starts at once in the app's own session.
+  - iOS: an update now holds background time until it finishes, so the rest of its downloads go out right away when the user leaves the app mid-update. If iOS ends that time first, the update fails then as a cancelled network transfer, and the next check gets new links, instead of sending a request with an old link once the app runs again.
+  - iOS: a download that starts while the app is inactive, as when the user is leaving it, still uses the background session and keeps going after the app is suspended. The system's retries of such a transfer now stop after 30 minutes instead of seven days.
+  - Android: React Native's `fetch` resolves in a JavaScript timer, and Android runs none while the app is in the background, so an update response that arrived after the user left reached the app, and its links native, only once the user came back. The SDK's update requests on Android now use XMLHttpRequest, which answers from the network event. This part is JavaScript, so it also reaches apps on earlier native code through an OTA update.
+
+  No API change.
+
+- @hot-updater/protocol@1.2.0-rc.53
+  - @hot-updater/plugin-insights@1.2.0-rc.53
+  - @hot-updater/plugin-remote-config@1.2.0-rc.53
+
+## 1.2.0-rc.52
+
+### Patch Changes
+
+- @hot-updater/plugin-insights@1.2.0-rc.52
+  - @hot-updater/plugin-remote-config@1.2.0-rc.52
+  - @hot-updater/protocol@1.2.0-rc.52
+
+## 1.2.0-rc.51
+
+### Patch Changes
+
+- eaaffed: fix(react-native): on Android, a download that another update check made stale keeps its files for the next install of the same bundle.
+  - When a newer check replaces the selection while a bundle downloads, as the sandbox's **Open latest** does while the app's own launch check downloads the same bundle, Android now refuses the install before it moves the files into place. The verified files stay staged, and the next install of that bundle reuses them instead of downloading everything again. Before, Android moved them into place, then deleted them, so the second install downloaded every file again and failed if a file request failed. iOS already worked this way.
+
+- c01ee70: feat(react-native): the app can show the label of the release it runs.
+  - `hotUpdater.getReleaseLabel()` returns the label of the release the app runs, such as `12` for `v12`, or `null` for the built-in bundle and a release without one. Native keeps it with the installed bundle, so it reads the same after a restart and offline. The native `HotUpdaterInstance` has `getReleaseLabel()` too, and its update has `label`.
+  - `checkForUpdate()`'s result has `label`, the label of the release it offers.
+  - Older servers send no labels, and the getters return `null`. An app on native code from an earlier SDK also gets `null`; nothing else changes for it.
+
+- Updated dependencies [c01ee70]
+- Updated dependencies [e833260]
+  - @hot-updater/protocol@1.2.0-rc.51
+  - @hot-updater/plugin-insights@1.2.0-rc.51
+  - @hot-updater/plugin-remote-config@1.2.0-rc.51
+
+## 1.2.0-rc.50
+
+### Patch Changes
+
+- 1645772: fix(android): the first OTA after a store install downloads XML drawables instead of reusing them from the APK. AAPT2 compiles XML under `res/` to binary XML, so the packaged file was copied into the bundle in place of its source, and anything reading that file (such as an XML vector icon loaded by its `file://` URI) got binary XML (#1984). Takes effect with the next native build.
+- 951e3f0: fix(ios, android): the launch status no longer rarely reports `UNCHANGED` for a launch that applied an update. When JavaScript read the status at the moment first content verified the new bundle, it could see the bundle verified but no launch report yet, and answer a final `UNCHANGED` instead of `UPDATE_APPLIED` (Insights then recorded the launch as unchanged). The read now waits for the verification to finish writing. Takes effect with the next native build.
+- a411f96: **Less SDK work at launch and during installs.** The SDK does less work before your JavaScript runs and during each update check, and Android applies a bsdiff patch about three times as fast. Nothing changes in how you use it.
+  - iOS, with an update applied: the launch checks the update's files with one `lstat` each, instead of building a full attribute dictionary and two standardized URLs per file.
+  - The native module's constants are read once per runtime instead of 12–13 times per launch, each time reading the bundle metadata.
+  - A check that sees the catalog it already stored no longer rewrites the metadata. A key-value store write that changes nothing no longer rewrites and syncs `storage.json`.
+  - Android applies a bsdiff patch with buffered input and output; before, the bzip2 decoder read the patch file one byte per system call.
+  - Copying files from the built-in bundle looks up the package and the asset index once, not once per file.
+
+- c4311db: **React Native.** A release whose download fails verification is no longer downloaded again on every launch. When a file or the manifest fails its hash or signature, or can't be decoded, update checks skip that bundle for 24 hours, so a bad release costs each device at most one download a day instead of one per launch. After a day the bundle may be selected again, because a proxy, a block page, or a body cut short can make good bytes fail. `getCrashHistory()` lists these bundles next to crashed ones while they're skipped (up to 10, never as crashes), `clearCrashHistory()` clears them, and installing another native build forgets them. Network, HTTP and local storage errors keep retrying as before. Released JavaScript benefits without an update, because it already skips what `getCrashHistory()` returns. Crash history is now written atomically, so an app killed mid-write keeps the previous history.
+- Updated dependencies [f7884ec]
+  - @hot-updater/plugin-insights@1.2.0-rc.50
+  - @hot-updater/plugin-remote-config@1.2.0-rc.50
+  - @hot-updater/protocol@1.2.0-rc.50
+
+## 1.2.0-rc.49
+
+### Patch Changes
+
+- c0e1572: fix(react-native): an Android sandbox build works on stock React Native 0.88 and One templates, without changing `ext.kotlinVersion`.
+  - A sandbox build used to require the root `ext.kotlinVersion` to equal the Kotlin Gradle plugin the build loads. React Native 0.88's template sets `kotlinVersion = "2.2.0"`, while its Gradle plugin loads 2.2.10, so every default 0.88 app had to edit `android/build.gradle` first. A One app couldn't build at all, because `one prebuild` rewrites that file. The SDK now reads the version from the Kotlin Gradle plugin the build loaded, and puts the Compose compiler plugin on the classpath at that version. Kotlin 1.9 is unchanged, and builds that aren't sandbox builds get nothing new.
+  - One 2.15 is now a tested Android host for sandbox builds. `hot-updater doctor` warns about a One iOS sandbox scheme, which hasn't been tested yet.
+  - When `bundle install` or React Native codegen fails in `native-build ios`, the output now shows the error line, such as Ruby's `NoMethodError`, along with the command to run it again. It used to show only the backtrace's last lines and the CLI's own stack.
+  - `native-build android` now refuses a Rock sandbox scheme before it prepares anything, so `fingerprint.json` stays unchanged.
+
+- @hot-updater/protocol@1.2.0-rc.49
+  - @hot-updater/plugin-insights@1.2.0-rc.49
+  - @hot-updater/plugin-remote-config@1.2.0-rc.49
+
+## 1.2.0-rc.48
+
+### Patch Changes
+
+- f46aaf6: fix(android-helper): Windows Expo builds keep CMake object paths within MAX_PATH, and the sandbox names the bundle as its Downloaded list does.
+  - Expo's root project plugin gives every Android module `-DCMAKE_OBJECT_PATH_MAX` from the `expo.android.cmakeObjectPathMax` Gradle property, 1024 by default, so the Windows init script's own value never applied to an Expo app. On Windows the init script now sets that property to 259, unless gradle.properties, `-P` or the environment set it; a value set there stands, and `0`, which turns Expo's limit off, leaves every module without one. Other apps still get `-DCMAKE_OBJECT_PATH_MAX=259` on each module whose own CMake arguments don't set it.
+  - The limit is 259 instead of 250: at 250, a 179-character object directory left no room for CMake's hash and a 40-character file name.
+  - A Gradle build's log names the command as it ran, with the Windows init script.
+  - The sandbox's "Couldn't open" dialog names the selected bundle by the ID its Downloaded list shows, the release ID `HotUpdater.getBundleId()` returns, on iOS and Android.
+
+- @hot-updater/protocol@1.2.0-rc.48
+  - @hot-updater/plugin-insights@1.2.0-rc.48
+  - @hot-updater/plugin-remote-config@1.2.0-rc.48
+
+## 1.2.0-rc.47
+
+### Patch Changes
+
+- 3bf979e: fix(react-native): a shared sandbox build opens a channel's latest bundle even when the bundle is older than the build.
+
+  Sandbox builds are shared across channels, so the installed build can be newer than a channel's last deploy. Opening that channel from the sandbox (a link, a QR code, or Enter a channel) used to run the build's own built-in bundle. On another channel it said "has no bundle for this build", even though the channel had a bundle for that native code.
+
+  The sandbox's channel open now picks the channel's latest bundle that matches this build's fingerprint, or its app version under the appVersion strategy, whatever its age. A channel with no such bundle, the build's own channel included, now says "<channel> has no bundle for this build." before anything is reset or downloaded. Reset still opens the built-in bundle.
+
+  Apps outside the sandbox, and the app's own update checks inside it, keep today's behavior: they never select a bundle older than the built-in one. If the app's own check replaces the selection while the sandbox downloads, the sandbox checks again once before it reports the failure.
+
+- @hot-updater/protocol@1.2.0-rc.47
+  - @hot-updater/plugin-insights@1.2.0-rc.47
+  - @hot-updater/plugin-remote-config@1.2.0-rc.47
+
+## 1.2.0-rc.46
+
+### Patch Changes
+
+- 10290e3: fix(react-native): on Android, opening the same sandbox link again asks for it again.
+
+  A pull request's QR code stays the same across pushes, so after a JavaScript-only push a tester scans it again to get the new bundle. On Android that did nothing while the app's task was alive: Android remembers the intent that started a task, and when the identical link came again it only brought the task forward, so the sandbox never saw it.
+  - When a link starts the app's task, the sandbox moves to a new task that the launcher's intent starts, and carries the link along. Opening the same link again then reaches the sandbox, which asks "Open latest on <channel>?", whether the app runs a channel's bundle or the built-in one, or the sandbox screen is in front.
+  - Tapping the app's icon while a link-started app runs now shows the app, as it does for an app the icon started. It used to show the sandbox screen over the app.
+  - Opening the app from the screen after Android ended its process now brings back the app's activity, when that activity is all the task holds under the screen. With the `standard` and `singleTop` launch modes, it used to start a second one on top. In any other task, such as one where the camera opened, the app starts as before.
+
+  Only sandbox builds change. There is no JavaScript change and no JS↔native change.
+
+- @hot-updater/protocol@1.2.0-rc.46
+  - @hot-updater/plugin-insights@1.2.0-rc.46
+  - @hot-updater/plugin-remote-config@1.2.0-rc.46
+
+## 1.2.0-rc.45
+
+### Patch Changes
+
+- 1fe0f8f: fix(react-native): a sandbox link whose first check didn't answer now recovers the way the screen says.
+
+  When a fresh sandbox build gets a link, it starts the app under the screen so the app's own update check can find the server. If that one check fails, for example because the first request took longer than its timeout on a slow device, the screen says after a minute to open the app. Until now, opening it showed the app that had already checked, so nothing checked again until the process was stopped by hand.
+  - **Open** after that minute, with still no answer, now starts the app anew (a reload on iOS, a restart on Android), whether or not it was already shown. Its launch check runs again, and the link asks over the app once the server answers. While the first check still has time, or once a server answered, Open only shows the app, as before.
+  - **Reload** over the app now works while a link waits for a server. It used to do nothing.
+  - Android asks the waiting link in the restarted process. The restart carries a one-time token for that link, and only the app's activity it starts takes it. A notification, another activity or another link takes nothing, and a restart that never arrived leaves the link for the next screen, as before.
+  - The screen says "Checking <channel>…" from its first frame for a link it will start the app for. It no longer shows the open-the-app message for a moment first.
+
+  Only sandbox builds change. No JavaScript or JS↔native change.
+
+- @hot-updater/plugin-insights@1.2.0-rc.45
+  - @hot-updater/plugin-remote-config@1.2.0-rc.45
+  - @hot-updater/protocol@1.2.0-rc.45
+
+## 1.2.0-rc.44
+
+### Patch Changes
+
+- 7df93d4: A fresh sandbox build opens a preview link without a manual step. When a link waits for your update server, the sandbox starts your app under its screen, once, so the app's own update check can answer. The screen says "Checking pr-134…" and then asks to open the latest bundle. If no answer comes within a minute, such as from an app that checks only after sign-in, the screen asks you to open the app, as before.
+- c7f6344: The sandbox Home leads with what the build is for. Under the current bundle come **Channels**, with **Scan a channel QR code** and **Enter a channel**, then **Downloaded**. The dev server is one compact card at the end. Closed, it's a **Dev server** row that shows a saved host that answered; open, it lists the hosts used before, takes a new address with **Open**, and links to **Help**. While a dev server runs, the card is a single row with its address, which reloads, and **Exit**. iOS and Android match.
+
+  Text reads at WCAG AA at rest and pressed. Orange text, the focus ring, the progress bar and the selected tab use a darker orange in light mode, and destructive actions use a darker red. Text and icon actions press to an opaque light fill. Labels on orange buttons are near-black. Placeholders and the unselected tab use the secondary text color. While a dev server runs, its card keeps **Help** beside **Exit**, and the running row says it reloads. With Reduce Motion on iOS, or animations off on Android, cards open and close without the spring, also when the setting changes while the screen is up. Dialogs that only show a message close with **Done** instead of **OK**. While Home is busy, the dev server form's saved hosts, field and **Open** don't respond on Android, as on iOS.
+
+- e07cfe7: The sandbox screen's orange tile and primary buttons carry white again, on a slightly deeper orange (#EA580C, pressed #C2410C) that keeps them accessible: the play and reload glyph reads at 3.56:1, and button labels are now Geist Bold at 19 so they count as large text. Sandbox builds bundle Geist Bold for it.
+- @hot-updater/plugin-insights@1.2.0-rc.44
+  - @hot-updater/plugin-remote-config@1.2.0-rc.44
+  - @hot-updater/protocol@1.2.0-rc.44
+
+## 1.2.0-rc.43
+
+### Patch Changes
+
+- @hot-updater/plugin-insights@1.2.0-rc.43
+  - @hot-updater/plugin-remote-config@1.2.0-rc.43
+  - @hot-updater/protocol@1.2.0-rc.43
+
+## 1.2.0-rc.42
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.42
+  - @hot-updater/plugin-insights@1.2.0-rc.42
+  - @hot-updater/plugin-remote-config@1.2.0-rc.42
+
+## 1.2.0-rc.41
+
+### Patch Changes
+
+- Updated dependencies [97f063d]
+  - @hot-updater/protocol@1.2.0-rc.41
+  - @hot-updater/plugin-insights@1.2.0-rc.41
+  - @hot-updater/plugin-remote-config@1.2.0-rc.41
+
+## 1.2.0-rc.40
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.40
+  - @hot-updater/plugin-insights@1.2.0-rc.40
+  - @hot-updater/plugin-remote-config@1.2.0-rc.40
+
+## 1.2.0-rc.39
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.39
+  - @hot-updater/plugin-insights@1.2.0-rc.39
+  - @hot-updater/plugin-remote-config@1.2.0-rc.39
+
+## 1.2.0-rc.38
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.38
+  - @hot-updater/plugin-insights@1.2.0-rc.38
+  - @hot-updater/plugin-remote-config@1.2.0-rc.38
+
+## 1.2.0-rc.37
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.37
+  - @hot-updater/plugin-insights@1.2.0-rc.37
+  - @hot-updater/plugin-remote-config@1.2.0-rc.37
+
+## 1.2.0-rc.36
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.36
+  - @hot-updater/plugin-insights@1.2.0-rc.36
+  - @hot-updater/plugin-remote-config@1.2.0-rc.36
+
+## 1.2.0-rc.35
+
+### Patch Changes
+
+- @hot-updater/plugin-insights@1.2.0-rc.35
+  - @hot-updater/plugin-remote-config@1.2.0-rc.35
+  - @hot-updater/protocol@1.2.0-rc.35
+
+## 1.2.0-rc.34
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.34
+  - @hot-updater/plugin-insights@1.2.0-rc.34
+  - @hot-updater/plugin-remote-config@1.2.0-rc.34
+
+## 1.2.0-rc.33
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.33
+  - @hot-updater/plugin-insights@1.2.0-rc.33
+  - @hot-updater/plugin-remote-config@1.2.0-rc.33
+
+## 1.2.0-rc.32
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.32
+  - @hot-updater/plugin-insights@1.2.0-rc.32
+  - @hot-updater/plugin-remote-config@1.2.0-rc.32
+
+## 1.2.0-rc.31
+
+### Patch Changes
+
+- Updated dependencies [d4341b4]
+  - @hot-updater/protocol@1.2.0-rc.31
+  - @hot-updater/plugin-insights@1.2.0-rc.31
+  - @hot-updater/plugin-remote-config@1.2.0-rc.31
+
+## 1.2.0-rc.30
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.30
+  - @hot-updater/plugin-insights@1.2.0-rc.30
+  - @hot-updater/plugin-remote-config@1.2.0-rc.30
+
+## 1.2.0-rc.29
+
+### Patch Changes
+
+- e2078e4: Sandbox: before the app's first answered update check, Enter a channel stays disabled, and the Home hint and the error both say to open the app so it can check for updates. The row turns on as soon as a check is answered, even with the screen open.
+- @hot-updater/protocol@1.2.0-rc.29
+  - @hot-updater/plugin-insights@1.2.0-rc.29
+  - @hot-updater/plugin-remote-config@1.2.0-rc.29
+
+## 1.2.0-rc.28
+
+### Patch Changes
+
+- Updated dependencies [b03f1be]
+  - @hot-updater/protocol@1.2.0-rc.28
+  - @hot-updater/plugin-insights@1.2.0-rc.28
+  - @hot-updater/plugin-remote-config@1.2.0-rc.28
+
+## 1.2.0-rc.27
+
+### Patch Changes
+
+- 8eaa63c: Resolve React Native's directory with `providers.exec` on Android, so apps can build with Gradle's configuration cache.
+- @hot-updater/protocol@1.2.0-rc.27
+  - @hot-updater/plugin-insights@1.2.0-rc.27
+  - @hot-updater/plugin-remote-config@1.2.0-rc.27
+
+## 1.2.0-rc.26
+
+### Patch Changes
+
+- 7333c27: The Android fingerprint Gradle task locates the hot-updater CLI by running `resolve-hot-updater-cli.js`, a file the package ships, instead of an inline `node -e` script, so no code passes through the command line, whose quoting differs on Windows.
+- f424a4e: A preview link names the platform it's for: `createPreviewLink({ platform })` adds `&platform=ios` or `&platform=android`, `parsePreviewLink` returns it, and reads any other value as none. The preview action's links and QR codes name theirs. Both platforms' sandbox builds of an app often register the same URL scheme, so an iPhone's camera opened the Android QR code in the iOS sandbox build, which said only that the channel "needs another build". Now a sandbox build refuses the other platform's link, scanned, pasted, or opened with its own URL scheme, before checking the scheme or fingerprint, with "This QR is for Android" and "Scan the iPhone QR code for pr-12." on iOS, and "This QR is for iOS" and "Scan the Android QR code for pr-12." on Android. A link without `platform` reads as before, and a sandbox build from before this version ignores the parameter.
+- 190c0b7: The sandbox's **Reset to built-in bundle**, on the Info tab and on a crash banner, no longer runs the built-in bundle right away. The sandbox screen stays up and shows Home, whose row reads **Open built-in bundle** and runs it when tapped, also over a running app that still runs another bundle.
+
+  `resetChannel()`, and an update check that selects the built-in bundle, keep the files of the bundle the app runs, so its images still load until the app reloads; the next launch removes them. Until then `HotUpdater.getBaseURL()` and `getManifest()` keep describing the running bundle, so Expo DOM components keep loading its content, and an update installed before the reload no longer removes its files. `getBundleId()` reports the selected update, the built-in one after a reset, as before.
+
+- a402c84: Fix two Windows failures: the Android fingerprint Gradle task no longer passes node an inline script with double quotes, which `ProcessBuilder` broke (#1853), and the CLI finds `AndroidManifest.xml` with a `/` glob pattern, so `keys export-public`, `channel set`, and `doctor` see Android manifests again (#1854).
+- Updated dependencies [f424a4e]
+  - @hot-updater/protocol@1.2.0-rc.26
+  - @hot-updater/plugin-insights@1.2.0-rc.26
+  - @hot-updater/plugin-remote-config@1.2.0-rc.26
+
+## 1.2.0-rc.25
+
+### Patch Changes
+
+- 10281e9: Keep what Android crash recovery reads by reflection from R8: `BridgelessReactContext`'s host, and `ReactRootViewTagGenerator` with its root view tag counter. In a minified release build of an app with named instances, R8 renamed them, so a named instance's fatal JavaScript error on the New Architecture skipped crash recovery, and a crash couldn't be attributed to the instance on screen. Apps need no ProGuard rules of their own: the library's consumer rules cover everything it reads by reflection.
+- f1cfcd6: Word the sandbox screen for any channel: the section is "Channels", the field's placeholder is "Channel" instead of a `pr-123` example, and its button reads "Open latest", as does a downloaded bundle's press-and-hold action, since a channel opens its latest bundle. The notes, the scanner hint and the refusals no longer call a channel a preview. Normal builds are unchanged.
+- 36ffe93: The sandbox screen lists the last 10 bundles a QR code, a link, or a channel downloaded. Tapping one runs that exact bundle again, offline, until the app restarts. On iOS, only a sandbox whose bundle ID ends in `.sandbox` keeps copies; with the store app's ID, a row checks its channel.
+- c83defd: Sandbox screen fixes. Opening **Enter a channel** or **Enter URL manually** now scrolls the field and its button above the on-screen keyboard, on iOS and Android, also in a window shorter than the form, such as a phone on its side. With camera access off, the iOS QR scanner no longer shows the viewfinder and the aiming hint: it shows one line and an **Open Settings** button, or, when the camera is restricted on the device, only a line saying so. It reads the camera access again when the app comes back to the foreground. A link opened before any bundle runs no longer says it replaces the running bundle. The Geist license reads as paragraphs, without the file's hard line breaks, on both platforms.
+- 0b3e640: Name each bundle in the sandbox's Downloaded list by the ID that `HotUpdater.getBundleId()`, the PR preview comment, and the Console show: the release's ID. The list showed the ID of the stored files instead, so a row didn't match the app or the PR comment. The "Running stored" row and Info's Current row use the same ID. Bundles listed before this change keep their old ID until they're downloaded again. Only `sandbox: true` builds change.
+- 8a045f4: The sandbox screen is native and shares one design on both platforms: SwiftUI on iOS 16 and later, and Jetpack Compose on Android, set in Geist. Expanding and collapsing rows animate smoothly, and the screen keeps its state across folds and rotations. A wide window, such as an open foldable, shows Home and Info side by side, away from the fold. Android gets edge-to-edge drawing and predictive Back. All of it ships only in sandbox builds.
+- bf29fc3: In a sandbox build, a Downloaded bundle running from its row now reports its release ID, the bundle ID its row, the Console, and pull request comments show, to `HotUpdater.getBundleId()`, instead of its files' ID. The session's update checks are unaffected, and a row listed before releases were kept still reports its files' ID. The running row also shows the bundle's deploy message, and a sandbox link now asks **Open latest on `<channel>`?** with **Open latest**. Normal builds are unchanged.
+- 211e584: Set a sandbox build's URL scheme on its scheme: `sandbox: { urlScheme: "acme-preview" }` in `hot-updater.config.ts` turns the sandbox on with that scheme, and `sandbox: true` keeps `hu-sandbox-<app ID>`. The config refuses a scheme that isn't lower case URI syntax of up to 64 characters, or is `http`, `https`, `file`, `data`, `javascript`, `true` or `false` (which Android's manifest compiles as booleans), and the build refuses one the app registers itself.
+
+  The build registers the scheme in its sandbox URL type on iOS, which also records it in the Info.plist key `HOT_UPDATER_SANDBOX_URL_SCHEME`, and on the sandbox activity on Android, which also names it in `com.hotupdater.sandbox.URL_SCHEME`, and the scheme is part of the native build key. Import and registration read it from the artifact (on Android, the sandbox activity's link scheme that its meta-data names; on iOS, the one scheme of the sandbox URL type) into the registry's new `native_builds.sandbox_url_scheme`, `native-build find --json` returns it as `sandbox.urlScheme`, and the preview action's link and QR code use it, so a reused build keeps the scheme it was built with. A sandbox build accepts only its own scheme's links: another scheme's link "isn't a link for this app". A preview link's scheme is ASCII alone. The iOS build refuses an app whose own URL type is named `hot-updater-sandbox`, and, when it patches an app it patched before, anything but exactly one `hot-updater-sandbox` URL type holding the one recorded scheme. The patch, the artifact reader and the build itself read the recorded scheme by one rule: absent, it's a prerelease's build, read as before; present, it must be a lower-case ASCII scheme that the one `hot-updater-sandbox` URL type holds alone, or the build has no scheme of its own and refuses every link. Builds registered before the column read as the derived scheme.
+
+  The column is part of the 1.2.0 migration. A SQL database a 1.2 prerelease already migrated needs it added by hand, before this version is deployed over it: until then, reads still work, but registering any native build, a normal one too, fails. Upgrade in this order: add the column, deploy the server, then upgrade the CLI. A new CLI that registers through `standaloneRepository` with an older server loses the scheme, since that server's admin route drops `sandboxUrlScheme`: the row stores null, and its links fall back to the derived scheme.
+  - D1 or SQLite: `ALTER TABLE native_builds ADD COLUMN sandbox_url_scheme TEXT;`
+  - Supabase: `ALTER TABLE hot_updater_v1_native_builds ADD COLUMN sandbox_url_scheme varchar(255) COLLATE "C";`
+  - PostgreSQL (Vercel, Neon, or your own): `ALTER TABLE native_builds ADD COLUMN sandbox_url_scheme varchar(255) COLLATE "C";`
+  - MySQL: ``ALTER TABLE native_builds ADD COLUMN `sandbox_url_scheme` varchar(255) CHARACTER SET ascii COLLATE ascii_bin;``
+  - Prisma or Drizzle: run `npx hot-updater db generate <server file>`, then the migration the ORM writes from it.
+
+  Key-value and document stores (DynamoDB, Firestore, Cosmos DB, MongoDB) need nothing: a row stored before the column has no such field, which reads as null. Nor does `standaloneRepository`, which stores nothing itself: its server's database takes the ALTER.
+
+- Updated dependencies [211e584]
+  - @hot-updater/protocol@1.2.0-rc.25
+  - @hot-updater/plugin-insights@1.2.0-rc.25
+  - @hot-updater/plugin-remote-config@1.2.0-rc.25
+
+## 1.2.0-rc.24
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.24
+  - @hot-updater/plugin-insights@1.2.0-rc.24
+  - @hot-updater/plugin-remote-config@1.2.0-rc.24
+
+## 1.2.0-rc.23
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.23
+  - @hot-updater/plugin-insights@1.2.0-rc.23
+  - @hot-updater/plugin-remote-config@1.2.0-rc.23
+
+## 1.2.0-rc.22
+
+### Patch Changes
+
+- 18ecacd: The Android sandbox dev server loads an Expo app's assets, in a monorepo too.
+  - Metro lists every asset outside the project root, such as a hoisted dependency's, with `../` in `unstable_path`. The sandbox refused those assets with "The dev server listed an asset this build won't write". It now writes them.
+  - Expo URL-encodes `unstable_path` in the bundle, and React Native names each Android resource from that encoded path, while the asset list has the raw one. The sandbox wrote every Expo asset, fonts and images of the app itself included, under a name the app never asked for, so an app that waits for its fonts stayed blank. Each asset now goes under the name React Native reads.
+  - An asset name or type that could leave the session folder is still refused.
+
+- Updated dependencies [a823198]
+  - @hot-updater/protocol@1.2.0-rc.22
+  - @hot-updater/plugin-insights@1.2.0-rc.22
+  - @hot-updater/plugin-remote-config@1.2.0-rc.22
+
+## 1.2.0-rc.21
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.21
+  - @hot-updater/plugin-insights@1.2.0-rc.21
+  - @hot-updater/plugin-remote-config@1.2.0-rc.21
+
+## 1.2.0-rc.20
+
+### Patch Changes
+
+- @hot-updater/plugin-insights@1.2.0-rc.20
+  - @hot-updater/plugin-remote-config@1.2.0-rc.20
+  - @hot-updater/protocol@1.2.0-rc.20
+
+## 1.2.0-rc.19
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.19
+  - @hot-updater/plugin-insights@1.2.0-rc.19
+  - @hot-updater/plugin-remote-config@1.2.0-rc.19
+
+## 1.2.0-rc.18
+
+### Patch Changes
+
+- @hot-updater/plugin-insights@1.2.0-rc.18
+  - @hot-updater/plugin-remote-config@1.2.0-rc.18
+  - @hot-updater/protocol@1.2.0-rc.18
+
+## 1.2.0-rc.17
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.17
+  - @hot-updater/plugin-insights@1.2.0-rc.17
+  - @hot-updater/plugin-remote-config@1.2.0-rc.17
+
+## 1.2.0-rc.16
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.16
+  - @hot-updater/plugin-insights@1.2.0-rc.16
+  - @hot-updater/plugin-remote-config@1.2.0-rc.16
+
+## 1.2.0-rc.15
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.15
+  - @hot-updater/plugin-insights@1.2.0-rc.15
+  - @hot-updater/plugin-remote-config@1.2.0-rc.15
+
+## 1.2.0-rc.14
+
+### Minor Changes
+
+- 11ee65d: A sandbox build can run JavaScript from a dev server. Enter its address on the first screen; `reload()` stays on it, a crash ends it, and only **Exit dev server** returns to your app's bundle. Dev JavaScript's update checks, `updateBundle`, `resetChannel` and launch reports leave the selected bundle's state as it was, and its crash is never held against a bundle. See the Sandbox builds guide.
+  - Android: a sandbox build compiles a generated `HotUpdaterImpl` from the source it packages, in place of the original, and refuses a source it doesn't recognize. A normal build's compile inputs don't change. It refuses an app that takes the SDK as a prebuilt AAR, and the Rock adapter on Android.
+  - iOS: the sandbox template overrides `HotUpdaterImpl`'s bridge-facing methods, with no change to a normal build's sources. A sandbox archive allows local networking.
+  - `@hot-updater/react-native` gets no new API, no new bridge method, and no change to any source a normal build compiles.
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.14
+  - @hot-updater/plugin-insights@1.2.0-rc.14
+  - @hot-updater/plugin-remote-config@1.2.0-rc.14
+
+## 1.2.0-rc.13
+
+### Minor Changes
+
+- 20006f2: Add sandbox builds: `sandbox: true` on a `nativeBuild` scheme builds the app with a native layer for testing, which no other build compiles. `@hot-updater/react-native` gets no new API and no new bridge method. See the Sandbox builds guide.
+  - iOS: the layer's sources stay excluded unless the CLI's build xcconfig brings them back, and the CLI patches the archive's Info.plist before the export: a dedicated URL scheme and the default channel `sandbox-<scheme>`. The bundle ID stays what Xcode builds: the store app's by default, or a separate configuration's, which `bundleIdentifier` must name. The `.ipa` is for TestFlight internal testing only: the CLI checks it before the upload and reads `buildAudienceType` after it. A closed version train raises the sandbox build's version under the fingerprint strategy, and stops with a next step under `appVersion`.
+  - A normal build excludes the layer again over a scheme's own `xcconfig`, which would otherwise replace the podspec's exclusion.
+  - Android: `-PhotUpdaterSandbox=<scheme>` attaches `src/sandbox`, and a CLI-written init script adds `.sandbox` to the application ID and a manifest overlay for the channel. No project file changes. AGP 9's default DSL and a project's own build type manifest are refused.
+  - Registry: the channel `sandbox-<scheme>` is reserved, with no new column. Before a build is tracked or uploaded, and in `native-build import`, the CLI reads the artifact: a sandbox build must hold the layer and embed a normal build's fingerprint, and a normal build must hold none of it.
+  - `hot-updater doctor` reports what a sandbox scheme can't build with, a `google-services.json` with no client for the real application ID, and what no sandbox build has been tested with.
+  - Fix a repeat `assembleRelease` failing with `it is internal in file` on Kotlin 2: every build's `MIN_BUNDLE_ID` changes a generated Java class, so the SDK's module no longer compiles Kotlin incrementally.
+
+- 3d95e55: Sandbox builds now show a native screen before the app's JavaScript starts, and open preview links natively. `@hot-updater/react-native` gets no new API, no new bridge method, and no change to any source a normal build compiles. See the Sandbox builds guide.
+  - iOS: a gate at the deepest `RCTRootViewFactory` method holds React Native behind a stable container until the screen's Open. Notifications, background entry points, shortcuts and the app's own links start the app at once; a host it can't gate starts as usual, with a log.
+  - Android: the build reads the variant's merged manifest and moves the launcher entry to the sandbox's activity, which forwards anything addressed to the app with its intent. It refuses more than one launcher and task settings its activity can't share a task with.
+  - A link is checked against the build's fingerprint, confirmed by name, checked on the server, and only then deletes downloaded bundles. A failure afterwards shows what's selected now and offers a retry. A link waits across restarts for the app's first answered update check.
+  - `createPreviewLink` and `parsePreviewLink` join `@hot-updater/protocol/native-artifact`, and an artifact check refuses a sandbox build whose launcher or URL scheme isn't the sandbox's.
+
+- ea52563: A sandbox build's first screen is now a real screen: Home and Info tabs, dark mode, and the same screen over the running app with a shake. It sends the update server nothing when it opens, and `@hot-updater/react-native` gets no new API, no new bridge method, and no change to any source a normal build compiles.
+  - Home: the bundle the next launch runs, by bundle rather than by channel; a Dev server section; the previews this device opened; Scan QR; Enter a channel. iOS scans in the app. Android opens the system camera, and a pasted link gets the same checks.
+  - Over the app: Running, Reload, and what the next launch runs when it differs.
+  - A crash banner from what the launch left: a rollback only when one happened, and a verified bundle that crashed stays selected, with a reset.
+  - A sandbox app's `Info.plist` gets the camera and local network usage texts and `NSAllowsLocalNetworking`, keeping any value the app set.
+
+### Patch Changes
+
+- 7cc4b67: Keep an OTA from getting stuck after an app goes back to an earlier build.
+
+  When a build of another fingerprint, channel, or version is installed, the SDK deletes the downloaded bundles. It left `metadata.json` naming them. If that build wrote no metadata of its own, because it had no network or its channel was empty, reinstalling the original build brought the old selection back: the app ran its built-in JavaScript, `getBundleId()` reported the deleted OTA, and `checkForUpdate` stopped offering it until a newer release was published.
+  - The cleanup now replaces the metadata before it deletes the bundles, so a crash between the two leaves only files nothing names. A pending OTA caught by the cleanup is no longer recorded as crashed.
+  - A launch now forgets a verified bundle whose files are gone, so a device already left in this state reports what it runs and installs the OTA again.
+
+- 134d970: Keep the iOS sandbox layer out of a build that overrides the pod's excluded files.
+  - An app's own `EXCLUDED_SOURCE_FILE_NAMES` replaced the only thing keeping the layer out, so a plain `xcodebuild` could show the sandbox screen. Its sources now compile to nothing without a condition only Hot Updater's build of a sandbox scheme sets, and it starts only with the `Info.plist` key that build writes
+  - On Android, a project that gave every library a build type or flavor named `sandbox` compiled the layer in, unused. Those source sets now stay empty
+  - A scheme's `xcconfig` that sets `SWIFT_ACTIVE_COMPILATION_CONDITIONS` or `GCC_PREPROCESSOR_DEFINITIONS` with a condition such as `[config=Release]` is now refused for a sandbox scheme, since it would outrank the build's own
+
+- 7d6a7c9: Show a sandbox build's first screen on React Native 0.83, and so on Expo SDK 55. iOS started the app straight away there, because the gate didn't hold the root view method that version calls.
+- eafdc72: Respect more of the app's own code in a sandbox build, and report sandbox hosts correctly.
+  - iOS: a `backgroundColor` the app sets on its root view before **Open** now reaches the real root.
+  - iOS: a sandbox link no longer shows in the `urlContexts` of a scene delegate's connection options.
+  - `hot-updater doctor` no longer warns about `use_frameworks` on an Expo project that doesn't enable it, and treats Expo SDK 55, 57 and 58 as tested.
+
+- Updated dependencies [ad99046]
+- Updated dependencies [20006f2]
+- Updated dependencies [3d95e55]
+  - @hot-updater/protocol@1.2.0-rc.13
+  - @hot-updater/plugin-insights@1.2.0-rc.13
+  - @hot-updater/plugin-remote-config@1.2.0-rc.13
+
+## 1.2.0-rc.12
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.12
+  - @hot-updater/plugin-insights@1.2.0-rc.12
+  - @hot-updater/plugin-remote-config@1.2.0-rc.12
+
+## 1.2.0-rc.11
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.11
+  - @hot-updater/plugin-insights@1.2.0-rc.11
+  - @hot-updater/plugin-remote-config@1.2.0-rc.11
+
+## 1.2.0-rc.10
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.10
+  - @hot-updater/plugin-insights@1.2.0-rc.10
+  - @hot-updater/plugin-remote-config@1.2.0-rc.10
+
+## 1.2.0-rc.9
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.9
+  - @hot-updater/plugin-insights@1.2.0-rc.9
+  - @hot-updater/plugin-remote-config@1.2.0-rc.9
+
+## 1.2.0-rc.8
+
+### Patch Changes
+
+- @hot-updater/plugin-insights@1.2.0-rc.8
+  - @hot-updater/plugin-remote-config@1.2.0-rc.8
+  - @hot-updater/protocol@1.2.0-rc.8
+
+## 1.2.0-rc.7
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.7
+  - @hot-updater/plugin-insights@1.2.0-rc.7
+  - @hot-updater/plugin-remote-config@1.2.0-rc.7
+
+## 1.2.0-rc.6
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.6
+  - @hot-updater/plugin-insights@1.2.0-rc.6
+  - @hot-updater/plugin-remote-config@1.2.0-rc.6
+
+## 1.2.0-rc.5
+
+### Patch Changes
+
+- @hot-updater/plugin-insights@1.2.0-rc.5
+  - @hot-updater/plugin-remote-config@1.2.0-rc.5
+  - @hot-updater/protocol@1.2.0-rc.5
+
+## 1.2.0-rc.4
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.4
+  - @hot-updater/plugin-insights@1.2.0-rc.4
+  - @hot-updater/plugin-remote-config@1.2.0-rc.4
+
+## 1.2.0-rc.3
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.3
+  - @hot-updater/plugin-insights@1.2.0-rc.3
+  - @hot-updater/plugin-remote-config@1.2.0-rc.3
+
+## 1.2.0-rc.2
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.2
+  - @hot-updater/plugin-insights@1.2.0-rc.2
+  - @hot-updater/plugin-remote-config@1.2.0-rc.2
+
+## 1.2.0-rc.1
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.1
+  - @hot-updater/plugin-insights@1.2.0-rc.1
+  - @hot-updater/plugin-remote-config@1.2.0-rc.1
+
+## 1.2.0-rc.0
+
+### Minor Changes
+
+- 3462a9a: A store install's first OTA downloads a Hermes patch from the built-in bundle of its registered native build.
+  - `hot-updater deploy` adds the built-in bundle of the newest native build `native-build ios|android` tracked for the deploy's channel, platform, and fingerprint or exact app version to its patch bases, beside the `patch.maxBaseBundles` released ones, in one indexed read. A built-in bundle newer than the deployed bundle, or a self-hosted server without the native build routes, adds none.
+  - With no OTA installed, the iOS and Android runtimes apply a patch whose base is the app's MIN_BUNDLE_ID to a copy of the packaged Hermes file, after checking it against the patch's base file hash. When store processing changed the file, they download the complete file instead, and report `patchFallback`.
+  - The runtimes choose between per-file downloads and `bundle.tar.br` counting only the patches they can apply: a built-in patch counts once the packaged file has been checked against its base.
+
+### Patch Changes
+
+- a47b582: A device switched to a channel that holds nothing for its build any more, as after `hot-updater channel delete`, leaves the switch. The server answers the deleted channel's scope with an empty catalog; a check without `channel` then returns a forced rollback to the built-in bundle whose `updateBundle()` also clears the runtime channel, as `resetChannel()` does, so the next check reads the build's default channel. Native builds of this version reset through a new `resetChannelIfSelectionCurrent` method, which checks the catalog and resets in one step, so a newer catalog accepted meanwhile, such as by a native `HotUpdaterInstance` check, keeps the channel. JavaScript checks for the method and, on native builds of earlier 1.x versions, checks the catalog and then calls `resetChannel`, so the fix also ships over the air. The native `HotUpdaterInstance` checks on iOS and Android follow the same rule.
+- Updated dependencies [ed37acf]
+  - @hot-updater/protocol@1.2.0-rc.0
+  - @hot-updater/plugin-insights@1.2.0-rc.0
+  - @hot-updater/plugin-remote-config@1.2.0-rc.0
+
 ## 1.1.22
 
 ### Patch Changes

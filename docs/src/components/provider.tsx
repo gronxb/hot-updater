@@ -23,6 +23,9 @@ const PrefetchLink = (({ href, children, ...props }) => {
   );
 }) satisfies Framework["Link"];
 
+// Frozen archives under /docs/<version>; search stays within the one open.
+const archivedVersions = ["v1.0", "v0"];
+
 export function Provider({
   children,
 }: {
@@ -30,7 +33,10 @@ export function Provider({
 }) {
   const { path } = useRouter();
   const docsVersion =
-    path === "/docs/v0" || path.startsWith("/docs/v0/") ? "v0" : "latest";
+    archivedVersions.find(
+      (version) =>
+        path === `/docs/${version}` || path.startsWith(`/docs/${version}/`),
+    ) ?? "latest";
 
   return (
     <RootProvider

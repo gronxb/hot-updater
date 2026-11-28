@@ -14,3 +14,11 @@ export {
   generateFingerprints,
   readLocalFingerprint,
 } from "./utils/fingerprint";
+
+export { localSecrets, secret } from "@hot-updater/cli-tools";
+export { infisical, type InfisicalOptions } from "./infisical";
+export type {
+  SecretRef,
+  SecretsAdapter,
+  SecretsContext,
+} from "@hot-updater/plugin-core";

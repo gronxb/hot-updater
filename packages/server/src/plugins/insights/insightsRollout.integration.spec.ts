@@ -20,6 +20,7 @@ import { execa } from "execa";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { composeUp } from "../../docker.testFixtures";
 import type { CoreReader } from "../definePlugin";
 import { insights, type BundleEventRow } from "./index";
 
@@ -83,10 +84,10 @@ const move = (
 let pool: pg.Pool;
 
 beforeAll(async () => {
-  await execa("docker", [...compose, "up", "-d", "--wait", "postgres"]);
+  await composeUp({ compose, services: ["postgres"] });
   pool = new pg.Pool({
     connectionString:
-      "postgres://postgres:hot_updater@127.0.0.1:55432/hot_updater",
+      "postgres://postgres:hot_updater@127.0.0.1:15432/hot_updater",
     max: CONNECTIONS,
   });
   for (let attempt = 0; ; attempt += 1) {
@@ -167,29 +168,21 @@ describe("Insights rollout gate on PostgreSQL", () => {
     expect(report.committed).toBe(INSTALLS);
     if (ENFORCE_RETRIED_BOUND) expect(retried).toBeLessThanOrEqual(0.05);
 
-    const latest = await seeded.countLatestEvents({
+    // Every installation's latest event leaves it running release-b.
+    const latest = await seeded.countReleaseInstallations({
       platform: "ios",
       channel: "production",
       sinceMs: 0,
-      bundle: [
-        { field: "to_bundle_id", value: "bundle-b", types: ["UPDATE_APPLIED"] },
-        { field: "to_bundle_id", value: "bundle-a", types: ["UPDATE_APPLIED"] },
-      ],
+      releaseId: "release-b",
     });
-    expect(latest).toBe(INSTALLS);
+    expect(latest).toEqual({ installations: INSTALLS, release: INSTALLS });
     await expect(
-      seeded.countLatestEvents({
+      seeded.countReleaseInstallations({
         platform: "ios",
         channel: "production",
         sinceMs: 0,
-        bundle: [
-          {
-            field: "to_bundle_id",
-            value: "bundle-a",
-            types: ["UPDATE_APPLIED"],
-          },
-        ],
+        releaseId: "release-a",
       }),
-    ).resolves.toBe(0);
+    ).resolves.toEqual({ installations: INSTALLS, release: 0 });
   }, 300_000);
 });

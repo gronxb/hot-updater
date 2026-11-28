@@ -14,11 +14,11 @@ afterAll(() => {
 });
 
 /**
- * The lines `hot-updater/no-filtered-find-many` reports on `source` under the
- * repo's oxlint config. oxlint lints only paths under its working directory,
- * so it runs from the scratch directory.
+ * The lines `hot-updater/<rule>` reports on `source` under the repo's oxlint
+ * config. oxlint lints only paths under its working directory, so it runs
+ * from the scratch directory.
  */
-const reported = (file: string, source: string): number[] => {
+const reportedBy = (rule: string, file: string, source: string): number[] => {
   writeFileSync(path.join(dir, file), source);
   let output: string;
   try {
@@ -38,9 +38,12 @@ const reported = (file: string, source: string): number[] => {
     }[];
   };
   return diagnostics
-    .filter(({ code }) => code === "hot-updater(no-filtered-find-many)")
+    .filter(({ code }) => code === `hot-updater(${rule})`)
     .map(({ labels }) => labels[0]!.span.line);
 };
+
+const reported = (file: string, source: string): number[] =>
+  reportedBy("no-filtered-find-many", file, source);
 
 const filtered = [
   "export const a = async (db: any) =>",
@@ -72,5 +75,62 @@ describe("hot-updater/no-filtered-find-many", () => {
       ),
     ).toEqual([]);
     expect(reported("reads.spec.ts", filtered)).toEqual([]);
+  });
+});
+
+describe("hot-updater/id-naming", () => {
+  const idNaming = (file: string, lines: readonly string[]) =>
+    reportedBy("id-naming", file, lines.join("\n"));
+
+  it("reports a release ID shown through an artifact's bundleId", () => {
+    // The bug that showed a release's label with its artifact's ID.
+    expect(
+      idNaming("ServedNow.tsx", [
+        "declare const ReleaseIdDisplay: (props: any) => null;",
+        "export const Row = ({ release }: { release: any }) => (",
+        "  <ReleaseIdDisplay releaseId={release.bundleId} label={release.label} />",
+        ");",
+      ]),
+    ).toEqual([3]);
+  });
+
+  it("reports each binding that crosses the two kinds", () => {
+    expect(
+      idNaming("bindings.ts", [
+        "declare const release: { id: string; bundleId: string };",
+        "declare const bundle: { id: string };",
+        "declare const row: { releaseId: string | null; bundleId: string };",
+        "export const a = { bundleId: release.id };",
+        "export const b = { releaseId: bundle.id };",
+        "export const c = { toBundleId: row.releaseId ?? row.bundleId };",
+        "const releaseId = row.bundleId;",
+        "let bundleId = row.bundleId;",
+        "bundleId = release.id;",
+        "export const { bundleId: activeReleaseId } = row;",
+        "export const d = (releaseIds = [row.bundleId]) => releaseIds;",
+        "export const e = (releaseId = row.bundleId) => releaseId;",
+        "export class F { bundleId = row.releaseId; }",
+        "export { releaseId, bundleId };",
+      ]),
+    ).toEqual([4, 5, 6, 7, 9, 10, 12, 13]);
+  });
+
+  it("allows matching kinds, neutral names, calls, and a reasoned disable", () => {
+    expect(
+      idNaming("allowed.tsx", [
+        "declare const release: { id: string; bundleId: string };",
+        "declare const row: { releaseId: string | null; bundleId: string };",
+        "declare const getBundleId: () => string;",
+        "declare const ReleaseIdDisplay: (props: any) => null;",
+        "export const a = { releaseId: release.id, bundleId: release.bundleId };",
+        "export const b = { id: row.releaseId ?? row.bundleId };",
+        "export const c = { releaseId: getBundleId() };",
+        "export const d = <ReleaseIdDisplay releaseId={release.id} />;",
+        "export const e = {",
+        "  // oxlint-disable-next-line hot-updater/id-naming -- display fallback",
+        "  releaseId: row.releaseId ?? row.bundleId,",
+        "};",
+      ]),
+    ).toEqual([]);
   });
 });

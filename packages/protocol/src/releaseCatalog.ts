@@ -38,6 +38,12 @@ export interface Release {
   readonly sourceReleaseId: string | null;
   readonly createdAtMs: number;
   readonly updatedAtMs: number;
+  /**
+   * The release's label, `v<label>` in the CLI and the Console: sequential
+   * per channel and platform, never changed or reused. Null or left out
+   * until the database assigns one.
+   */
+  readonly label?: number | null;
 }
 
 export interface ReleaseCatalogDescriptor {
@@ -48,6 +54,12 @@ export interface ReleaseCatalogDescriptor {
   readonly targetCohorts: readonly string[];
   readonly shouldForceUpdate: boolean;
   readonly message: string | null;
+  /**
+   * The release's label, when it has one. Optional on the wire: a server
+   * before labels, or a catalog too large to carry them, leaves it out, and
+   * clients read a missing or malformed one as none.
+   */
+  readonly label?: number;
 }
 
 export interface ReleaseCatalog {
@@ -81,6 +93,13 @@ export interface PersistedSelectionReceipt {
   readonly catalogHash: string | null;
   readonly channel: string;
   readonly selectionContextHash: string | null;
+  /**
+   * The selected release's label, which native keeps with the receipt so the
+   * app reads it after a restart and offline. Left out or null for the
+   * built-in bundle, a release without one, and native built from an SDK
+   * before labels, which drops it.
+   */
+  readonly label?: number | null;
 }
 
 export interface ReleaseSelectionInput {
@@ -93,7 +112,11 @@ export interface ReleaseSelectionInput {
    * Defaults to `activeReleaseId`; null compares by `currentBundleId`.
    */
   readonly runningReleaseId?: string | null;
-  readonly minimumReleaseId: string;
+  /**
+   * The selection floor: the built-in bundle's ID (MIN_BUNDLE_ID), or the
+   * nil UUID when bundles older than it may be selected.
+   */
+  readonly minBundleId: string;
   readonly cohort: string | null | undefined;
   readonly crashedBundleIds: readonly string[];
 }
@@ -102,7 +125,11 @@ export interface ReleaseSelectionContextInput {
   readonly activeBundleId?: string | null;
   readonly activeReleaseId?: string | null;
   readonly cohort: string | null | undefined;
-  readonly minimumReleaseId: string;
+  /**
+   * The selection floor: the built-in bundle's ID (MIN_BUNDLE_ID), or the
+   * nil UUID when bundles older than it may be selected.
+   */
+  readonly minBundleId: string;
   readonly strategy: ReleaseStrategy;
   readonly strategyValue: string;
   readonly crashedBundleIds: readonly string[];
@@ -134,7 +161,10 @@ export function createReleaseSelectionContextHash(
     activeReleaseId: input.activeReleaseId ?? null,
     cohort: normalizeCohortValue(input.cohort ?? ""),
     crashedBundleIds,
-    minimumReleaseId: input.minimumReleaseId,
+    // The key predates the rename: receipts keep this hash, and JavaScript
+    // and native from other patches hash the same JSON.
+    // oxlint-disable-next-line hot-updater/id-naming -- frozen hash key
+    minimumReleaseId: input.minBundleId,
     selectorSchemaVersion: RELEASE_CATALOG_SCHEMA_VERSION,
     strategy: input.strategy,
     strategyValue: input.strategyValue,
@@ -198,7 +228,7 @@ export function selectDesiredRelease(
   ): release is ReleaseCatalogDescriptor & { readonly bundleId: string } =>
     release.bundleId !== null &&
     !crashedBundleIds.has(release.bundleId) &&
-    release.bundleId >= input.minimumReleaseId;
+    release.bundleId >= input.minBundleId;
 
   const runningReleaseId =
     input.runningReleaseId === undefined
@@ -217,7 +247,7 @@ export function selectDesiredRelease(
       (passed) =>
         passed.shouldForceUpdate &&
         passed.bundleId !== null &&
-        passed.bundleId >= input.minimumReleaseId &&
+        passed.bundleId >= input.minBundleId &&
         passed.bundleId !== input.currentBundleId &&
         passed.releaseId <= selected.releaseId &&
         isNewerThanRunning(passed) &&
@@ -283,7 +313,7 @@ export function selectDesiredRelease(
       return desiredBundle(rollback, "ROLLBACK");
     }
 
-    if (input.currentBundleId <= input.minimumReleaseId) {
+    if (input.currentBundleId <= input.minBundleId) {
       return null;
     }
   }

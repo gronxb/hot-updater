@@ -1,3 +1,6 @@
+import os from "node:os";
+import path from "node:path";
+
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import { defineConfig, defineProject } from "vitest/config";
 
@@ -27,6 +30,7 @@ const unitInclude = [
   "plugins/**/*.test.ts",
   "examples-server/**/*.spec.ts",
   "examples-server/**/*.test.ts",
+  "actions/**/*.spec.ts",
 ];
 const e2eUnitInclude = ["e2e/**/*.spec.ts", "e2e/**/*.test.ts"];
 const integrationInclude = [
@@ -52,6 +56,13 @@ export default defineConfig({
             "packages/bsdiff/tests/runtime/*.manual.*",
           ],
           environment: "node",
+          // No spec reads or writes the developer's own localSecrets() store.
+          env: {
+            HOT_UPDATER_HOME: path.join(
+              os.tmpdir(),
+              `hot-updater-unit-home-${process.pid}`,
+            ),
+          },
           hookTimeout: 60000,
           testTimeout: 60000,
         },

@@ -23,23 +23,32 @@ const loadCachedConfig = async (request: Request) => {
   return configPromise;
 };
 
+/**
+ * The console's config, core, and features, without the access check: for
+ * routes that take no session, such as a channel link's QR code. Everything
+ * else goes through {@link prepareConfig}.
+ */
+export const loadConsole = async (request: Request = getRequest()) => {
+  const config = await loadCachedConfig(request);
+
+  // Bundles, releases, catalogs, and channels: core assembled as the
+  // server's, on the server's own path, or a self-hosted server's admin API.
+  core ??= config.core;
+
+  // The console's features: those of the plugins its config lists.
+  if (!runtime) {
+    const { createConsoleRuntime } = await import("./runtime.server");
+    runtime = createConsoleRuntime(config);
+  }
+
+  // Each bundle file is read and deleted with its protocol's storage.
+  return { config, core, runtime, storage: config.storage };
+};
+
 export const prepareConfig = async (request: Request = getRequest()) => {
   try {
     await requireConsoleAccess(request);
-    const config = await loadCachedConfig(request);
-
-    // Bundles, releases, catalogs, and channels: core assembled as the
-    // server's, on the server's own path, or a self-hosted server's admin API.
-    core ??= config.core;
-
-    // The console's features: those of the plugins its config lists.
-    if (!runtime) {
-      const { createConsoleRuntime } = await import("./runtime.server");
-      runtime = createConsoleRuntime(config);
-    }
-
-    // Each bundle file is read and deleted with its protocol's storage.
-    return { config, core, runtime, storage: config.storage };
+    return await loadConsole(request);
   } catch (error) {
     if (
       !(

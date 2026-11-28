@@ -1,0 +1,51 @@
+---
+title: "Native Compatibility and App Review"
+description: "Decide when a change needs a native build and review the store policies that apply to OTA updates."
+icon: FileCheck
+---
+
+Hot Updater delivers JavaScript and assets. It cannot replace the installed
+native binary. First determine whether the change is compatible with that
+binary, then check the applicable store policies.
+
+## Choose a delivery path
+
+| Change | Technical delivery path |
+| --- | --- |
+| First integration of Hot Updater | Build and distribute a new native app through the store review process. |
+| Swift, Objective-C, Kotlin, or Java changes | Build and distribute a new native app. |
+| Installing or upgrading a dependency that changes native code | Build and distribute a new native app; inspect native dependency changes. |
+| JavaScript changes compatible with the installed native runtime | OTA is technically possible, subject to store policies. |
+| Assets referenced with `require`, such as images or media | OTA is technically possible, subject to store policies. |
+| A JavaScript-only library change | OTA is technically possible if it remains compatible with the installed runtime, subject to store policies. |
+
+A library requiring changes such as `pod install` may affect the native app.
+Inspect the actual dependency and native changes before choosing OTA.
+Configure an [app-version](/docs/v1.0/guides/update-strategies/app-version) or
+[fingerprint](/docs/v1.0/guides/update-strategies/fingerprint) compatibility strategy
+so the update reaches an appropriate native runtime.
+
+## Check store policies
+
+Technical compatibility does not guarantee that an update can bypass app
+store review. JavaScript-only updates are not exempt from store policies.
+
+Apple's [App Review Guidelines, including section 2.5.2](https://developer.apple.com/app-store/review/guidelines/#software-requirements),
+restrict downloaded code that introduces or changes app features or
+functionality. Google's [Device and Network Abuse policy](https://support.google.com/googleplay/android-developer/answer/16559646?hl=en)
+also requires runtime-loaded interpreted code to comply with Google Play
+policies. Review the applicable policies before distributing an OTA update.
+
+## Check package upgrades
+
+The package version number does not determine native compatibility or app
+store review requirements. Even a patch release of `@hot-updater/react-native`
+can include native changes.
+
+Check release notes and native dependency changes before upgrading. Changes to
+the native runtime require a new native build distributed through the app
+store; an OTA bundle cannot install those changes. JavaScript-only changes
+still need to be compatible with the installed runtime and comply with store
+policies.
+
+For an existing v0 installation, use the [v1 upgrade guide](/docs/v1.0/guides/upgrade-to-v1).

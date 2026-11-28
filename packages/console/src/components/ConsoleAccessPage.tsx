@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,40 @@ const providerLabel: Record<ConsoleAuthProvider, string> = {
   google: "Google",
 };
 
+/** A path on this console, or the root for anything that could leave it. */
+const consolePath = (target: string) =>
+  target.startsWith("/") && !/^\/[/\\]/.test(target) ? target : "/";
+
+/**
+ * Where sign-in returns to: the page that asked for it, as a path on this
+ * console, so a link to a build lands on that build. A page a route sent
+ * here names its own target in `returnTo`, relative to the page, as the
+ * native build download does: sign-in returns there instead, when it is on
+ * this console's origin. Anything that could leave the console, such as
+ * `//host` or `/\host`, returns to the page, or to the root.
+ */
+export const signInCallbackURL = (location: {
+  readonly href: string;
+  readonly pathname: string;
+  readonly search: string;
+}): string => {
+  const page = consolePath(`${location.pathname}${location.search}`);
+  const returnTo = new URLSearchParams(location.search).get("returnTo");
+  if (returnTo === null) return page;
+  try {
+    const target = new URL(returnTo, location.href);
+    return target.origin === new URL(location.href).origin
+      ? consolePath(`${target.pathname}${target.search}`)
+      : page;
+  } catch {
+    return page;
+  }
+};
+
+/** Whether sign-in returns to a native build's download. */
+const returnsToDownload = (callbackURL: string) =>
+  /\/api\/native-builds\/[^/]+\/download$/.test(callbackURL);
+
 export function ConsoleAccessPage({
   access,
   providers,
@@ -22,6 +56,13 @@ export function ConsoleAccessPage({
   const [pendingProvider, setPendingProvider] =
     useState<ConsoleAuthProvider | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  // Read after the page mounts: the server renders it without a location.
+  const [downloadAfterSignIn, setDownloadAfterSignIn] = useState(false);
+  useEffect(() => {
+    setDownloadAfterSignIn(
+      returnsToDownload(signInCallbackURL(window.location)),
+    );
+  }, []);
   const [error, setError] = useState<string | null>(null);
 
   const signIn = async (provider: ConsoleAuthProvider) => {
@@ -29,7 +70,10 @@ export function ConsoleAccessPage({
     setError(null);
     try {
       const response = await fetch("/api/auth/sign-in/social", {
-        body: JSON.stringify({ callbackURL: "/", provider }),
+        body: JSON.stringify({
+          callbackURL: signInCallbackURL(window.location),
+          provider,
+        }),
         headers: { "content-type": "application/json" },
         method: "POST",
       });
@@ -71,7 +115,9 @@ export function ConsoleAccessPage({
           <div>
             <h1 className="text-lg font-semibold">Hot Updater Console</h1>
             <p className="text-muted-foreground text-sm">
-              Sign in to manage OTA bundles.
+              {downloadAfterSignIn
+                ? "Sign in to download the build. It starts once you're in."
+                : "Sign in to manage OTA bundles."}
             </p>
           </div>
         </div>

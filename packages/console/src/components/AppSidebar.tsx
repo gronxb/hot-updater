@@ -1,9 +1,10 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LogOut, Moon, Package, Sun } from "lucide-react";
+import { LogOut, HardDrive, Moon, Package, Sun } from "lucide-react";
 import { type ReactElement, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
 import { useFeatureUi } from "@/components/features/FeatureSlots";
+import { isIosBrowser } from "@/components/features/native-builds/IosInstall";
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
 import { useTheme } from "@/components/ThemeProvider";
 import {
@@ -19,6 +20,8 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { forgetKeptIosDevice } from "@/lib/ios-devices-api";
+import { consolePathFromRouter } from "@/lib/native-builds";
 
 type NavigationItem = {
   readonly label: string;
@@ -52,10 +55,21 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
             enabled: undefined,
             releaseId: undefined,
             platform: undefined,
-            bundleId: undefined,
+            artifactId: undefined,
             scopeKey: undefined,
           }}
         />
+      ),
+    },
+    {
+      label: "Native builds",
+      icon: <HardDrive />,
+      // A build's page keeps its list's item active.
+      active:
+        currentPath === "/native-builds" ||
+        currentPath.startsWith("/native-builds/"),
+      link: (
+        <Link to="/native-builds" onClick={closeMobileSidebar} search={{}} />
       ),
     },
     // Each feature that is on adds its item, as the feature registry lists it.
@@ -76,6 +90,12 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
   const signOut = async () => {
     setSigningOut(true);
     try {
+      // Only an iPhone or iPad holds this Safari's proof of itself.
+      if (isIosBrowser(navigator)) {
+        await forgetKeptIosDevice(
+          consolePathFromRouter(window.location, routerState.location.pathname),
+        );
+      }
       const response = await fetch("/api/auth/sign-out", {
         body: "{}",
         headers: { "content-type": "application/json" },
@@ -102,10 +122,10 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
             enabled: undefined,
             releaseId: undefined,
             platform: undefined,
-            bundleId: undefined,
+            artifactId: undefined,
             scopeKey: undefined,
           }}
-          className="flex items-center gap-3 p-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2"
+          className="flex items-center gap-3 p-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2 max-md:min-h-11"
         >
           <HotUpdaterLogo className="h-7 w-7 shrink-0" />
           <div className="flex flex-col gap-0 group-data-[collapsible=icon]:hidden">
@@ -174,7 +194,7 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
           href="https://hot-updater.dev"
           target="_blank"
           rel="noreferrer"
-          className="px-2 pb-1 text-[11px] text-sidebar-foreground/60 hover:text-sidebar-foreground group-data-[collapsible=icon]:hidden"
+          className="px-2 pb-1 text-[11px] text-sidebar-foreground/60 hover:text-sidebar-foreground group-data-[collapsible=icon]:hidden max-md:flex max-md:min-h-11 max-md:items-center"
         >
           Powered by hot-updater
         </a>

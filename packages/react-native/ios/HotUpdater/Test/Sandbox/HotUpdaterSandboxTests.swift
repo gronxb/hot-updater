@@ -1,0 +1,3575 @@
+#if canImport(Testing)
+import Foundation
+import Testing
+
+@testable import HotUpdaterSandboxCore
+
+private let fingerprint = "abc"
+
+private func link(_ channel: String, fingerprintHash: String = fingerprint) -> String {
+    "hu-sandbox-app://hot-updater/preview?channel=\(channel)&fingerprint=\(fingerprintHash)"
+}
+
+private enum FakeError: Error { case offline }
+
+/// A step the test finishes by hand.
+private final class Gate<T: Sendable>: @unchecked Sendable {
+    private var continuation: CheckedContinuation<T, Error>?
+    private var result: Result<T, Error>?
+    private(set) var started = 0
+
+    func wait() async throws -> T {
+        started += 1
+        if let result { return try result.get() }
+        return try await withCheckedThrowingContinuation { continuation = $0 }
+    }
+
+    func finish(_ value: Result<T, Error>) {
+        if let continuation {
+            self.continuation = nil
+            continuation.resume(with: value)
+        } else {
+            result = value
+        }
+    }
+}
+
+@MainActor
+private final class FakeHost: HotUpdaterSandboxHost {
+    var fingerprint: String? = "abc"
+    var serverConfig = true
+    var channel = "sandbox-release"
+    var bundleId = "built-in"
+    var calls: [String] = []
+    var preflightGate: Gate<Bool>?
+    var preflights: [String: Result<Bool, Error>] = [:]
+    var resetResult: Result<Bool, Error> = .success(true)
+    var stageGate: Gate<HotUpdaterSandboxStaged>?
+    var stageResult: Result<HotUpdaterSandboxStaged, Error> = .success(.update(bundleId: "ota"))
+    /// Answers the next stagings in order, before `stageResult`.
+    var stageResults: [HotUpdaterSandboxStaged] = []
+    var progressReporter: ((Double) -> Void)?
+    /// The OTA this process launched, which stays what it runs after a reset deletes it.
+    var runningBundleId: String?
+    var channelAfterStaging: String?
+    var runsDevServer = false
+    var devExits = 0
+    var storedBundleId: String?
+    var startedStored: [String] = []
+    var startedBundles: [HotUpdaterSandboxStoredBundle] = []
+
+    nonisolated var isInSession: Bool {
+        MainActor.assumeIsolated { runsDevServer || storedBundleId != nil }
+    }
+
+    nonisolated var storedSessionBundleId: String? {
+        MainActor.assumeIsolated { storedBundleId }
+    }
+
+    nonisolated func startStoredSession(_ bundle: HotUpdaterSandboxStoredBundle) {
+        MainActor.assumeIsolated {
+            startedStored.append(bundle.bundleId)
+            startedBundles.append(bundle)
+            storedBundleId = bundle.bundleId
+        }
+    }
+
+    nonisolated func exitSession() {
+        exitSessionForLink()
+    }
+
+    nonisolated func exitSessionForLink() {
+        MainActor.assumeIsolated {
+            devExits += 1
+            runsDevServer = false
+            storedBundleId = nil
+        }
+    }
+
+    var evidence = HotUpdaterSandboxLaunchEvidence()
+    var pendingBundleId: String?
+
+    nonisolated func launchEvidence() -> HotUpdaterSandboxLaunchEvidence {
+        MainActor.assumeIsolated { evidence }
+    }
+
+    nonisolated func details() -> HotUpdaterSandboxDetails {
+        MainActor.assumeIsolated {
+            HotUpdaterSandboxDetails(
+                builtInBundleId: "built-in",
+                fingerprintHash: fingerprint,
+                pendingBundleId: pendingBundleId
+            )
+        }
+    }
+
+    nonisolated func fingerprintHash() -> String? {
+        MainActor.assumeIsolated { fingerprint }
+    }
+
+    nonisolated func hasServerConfig() -> Bool {
+        MainActor.assumeIsolated { serverConfig }
+    }
+
+    /// While true, a read of the selection waits for `releaseSelection()`.
+    var holdsSelection = false
+    private var heldSelections: [CheckedContinuation<Void, Never>] = []
+
+    func releaseSelection() {
+        holdsSelection = false
+        let held = heldSelections
+        heldSelections = []
+        held.forEach { $0.resume() }
+    }
+
+    func selection() async -> HotUpdaterSandboxSelection {
+        if holdsSelection {
+            await withCheckedContinuation { heldSelections.append($0) }
+        }
+        return HotUpdaterSandboxSelection(
+            channel: channel,
+            defaultChannel: "sandbox-release",
+            bundleId: bundleId,
+            isBuiltIn: bundleId == "built-in"
+        )
+    }
+
+    func launchBundleId() async -> String {
+        runningBundleId ?? bundleId
+    }
+
+    var appRunning = false
+
+    nonisolated func isAppRunning() -> Bool {
+        MainActor.assumeIsolated { appRunning }
+    }
+
+    /// The app runs under the screen that started it, unseen.
+    var appHidden = false
+
+    nonisolated func isAppHidden() -> Bool {
+        MainActor.assumeIsolated { appHidden && appRunning }
+    }
+
+    /// Whether this host can start the app under the screen: off unless a test turns it on.
+    var canStartUnderScreen = false
+    var startsUnderScreen = 0
+    /// What the app does once it starts under the screen, such as its check answering.
+    var onStartUnderScreen: () -> Void = {}
+
+    nonisolated func canStartAppUnderScreen() -> Bool {
+        MainActor.assumeIsolated { canStartUnderScreen }
+    }
+
+    nonisolated func startAppUnderScreen() {
+        MainActor.assumeIsolated {
+            startsUnderScreen += 1
+            appRunning = true
+            onStartUnderScreen()
+        }
+    }
+
+    func preflight(channel: String) async throws -> Bool {
+        calls.append("preflight \(channel)")
+        if let preflightGate { return try await preflightGate.wait() }
+        return try (preflights[channel] ?? .success(true)).get()
+    }
+
+    func reset() async throws -> Bool {
+        calls.append("reset")
+        let reset = try resetResult.get()
+        if reset {
+            channel = "sandbox-release"
+            bundleId = "built-in"
+        }
+        return reset
+    }
+
+    func checkAndStage(channel: String, onProgress: @escaping (Double) -> Void) async throws -> HotUpdaterSandboxStaged {
+        calls.append("check \(channel)")
+        progressReporter = onProgress
+        let staged: HotUpdaterSandboxStaged
+        if let stageGate {
+            staged = try await stageGate.wait()
+        } else if !stageResults.isEmpty {
+            staged = stageResults.removeFirst()
+        } else {
+            staged = try stageResult.get()
+        }
+        if case .update(let bundleId, _, _) = staged {
+            self.channel = channelAfterStaging ?? channel
+            self.bundleId = bundleId
+        }
+        return staged
+    }
+}
+
+@MainActor
+private final class FakeDevServer: HotUpdaterSandboxDevServer {
+    var isRunningDevServer: Bool
+    var runningDevServerHost: String?
+    var devServerHosts: [HotUpdaterSandboxDevServerHost] = []
+    var lastDevServerError: String?
+    var onDevServerChange: (() -> Void)?
+    var reloads = 0
+
+    init(isRunning: Bool, host: String?) {
+        isRunningDevServer = isRunning
+        runningDevServerHost = host
+    }
+
+    func connect(host _: String, completion: @escaping (String?) -> Void) { completion(nil) }
+    func reloadDevServer() { reloads += 1 }
+    func exitDevServer() {}
+}
+
+private final class FakeStore: HotUpdaterSandboxStore {
+    var pendingLinks: [String] = []
+    var lastLaunch: HotUpdaterSandboxLastLaunch?
+}
+
+/// Lets the coordinator's tasks run, including a copy off the main actor.
+@MainActor
+private func settle() async {
+    for index in 0 ..< 50 {
+        await Task.yield()
+        if index % 10 == 0 { try? await Task.sleep(nanoseconds: 2_000_000) }
+    }
+}
+
+/// A directory of its own, for each test's files.
+private func temporaryDirectory() -> URL {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("sandbox-shelf-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return url
+}
+
+/// A bundle as main's store installs it: its manifest, the JavaScript, and an image.
+private func install(_ bundleId: String, in store: URL, skipping: String? = nil) {
+    let directory = store.appendingPathComponent(bundleId, isDirectory: true)
+    try? FileManager.default.createDirectory(at: directory.appendingPathComponent("assets"), withIntermediateDirectories: true)
+    let assets = ["index.ios.bundle", "assets/logo.png"]
+    let manifest: [String: Any] = [
+        "bundleId": bundleId,
+        "assets": Dictionary(uniqueKeysWithValues: assets.map { ($0, ["fileHash": "hash"]) }),
+    ]
+    try? JSONSerialization.data(withJSONObject: manifest).write(to: directory.appendingPathComponent("manifest.json"))
+    for asset in assets where asset != skipping {
+        try? Data("\(bundleId) \(asset)".utf8).write(to: directory.appendingPathComponent(asset))
+    }
+}
+
+/// Runs `work` on a thread of its own while `turn` repeats here, a pause between
+/// turns, as a person's taps have: a lock isn't fair, and a loop that takes it back
+/// at once can starve the work. A thread of its own always runs; work sent to a
+/// global queue can wait for one for as long as the test runner keeps every
+/// thread busy, as on a three-core CI runner, and a loop waiting for it then
+/// never ends. The loop gives up after 30 s instead of hanging the run.
+private func race(
+    _ work: @escaping () -> Void,
+    against turn: () -> Void,
+    sourceLocation: SourceLocation = #_sourceLocation
+) {
+    let done = DispatchSemaphore(value: 0)
+    let thread = Thread {
+        work()
+        done.signal()
+    }
+    thread.start()
+    let deadline = Date().addingTimeInterval(30)
+    repeat {
+        turn()
+        guard Date() < deadline else {
+            Issue.record("the work didn't finish within 30 s", sourceLocation: sourceLocation)
+            return
+        }
+    } while done.wait(timeout: .now() + .microseconds(200)) == .timedOut
+}
+
+/// A queue held until the test lets it go, once, even when the test ends early:
+/// a queue released while suspended crashes the run, and one never resumed
+/// holds every test waiting on it.
+private final class Suspended {
+    private let queue: DispatchQueue
+    private var isSuspended = true
+
+    init(_ queue: DispatchQueue) {
+        self.queue = queue
+        queue.suspend()
+    }
+
+    func resume() {
+        guard isSuspended else { return }
+        isSuspended = false
+        queue.resume()
+    }
+}
+
+private func makeShelf(_ root: URL, key: String = "key", storesBundles: Bool = true) -> HotUpdaterSandboxShelf {
+    HotUpdaterSandboxShelf(
+        root: root.appendingPathComponent("shelf", isDirectory: true),
+        source: root.appendingPathComponent("bundle-store", isDirectory: true),
+        isolationKey: key,
+        storesBundles: storesBundles
+    )
+}
+
+/// The server watch's pause, ended by hand: each `tick()` is one look at the host.
+@MainActor
+private final class ServerTicks {
+    private var pending: CheckedContinuation<Void, Never>?
+
+    /// The pause each look asked for, in milliseconds.
+    private(set) var pauses: [UInt64] = []
+
+    /// Whether a watch waits for its next look.
+    var isWaiting: Bool { pending != nil }
+
+    func next(_ pauseMs: UInt64) async {
+        pauses.append(pauseMs)
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { pending = $0 }
+        } onCancel: {
+            // A cancelled watch waits no more.
+            Task { @MainActor in self.tick() }
+        }
+    }
+
+    func tick() {
+        let waiting = pending
+        pending = nil
+        waiting?.resume()
+    }
+}
+
+@MainActor
+private struct Fixture {
+    let host = FakeHost()
+    let store = FakeStore()
+    let lock = HotUpdaterSandboxLock()
+    let files = temporaryDirectory()
+    let shelf: HotUpdaterSandboxShelf
+    var opens: [(Bool, Bool)] { box.opens }
+    var serverAnswers: Int { box.serverAnswers }
+    private let box = Box()
+    let coordinator: HotUpdaterSandboxCoordinator
+
+    var canEnterChannel: Bool {
+        HotUpdaterSandboxHomeModel(state: coordinator.state, isOverApp: true, nowMs: 0).canEnterChannel
+    }
+
+    private final class Box {
+        var opens: [(Bool, Bool)] = []
+        var serverAnswers = 0
+        var elapsedMs: Double = 5_000
+    }
+
+    /// Moves the clock the app's time to answer runs on.
+    func advance(_ ms: Double) {
+        box.elapsedMs += ms
+    }
+
+    /// Whether the link on screen says "Checking…": the app started under the screen and its time runs.
+    var checking: Bool? {
+        if case .waitingForServer(_, let checking) = coordinator.state.phase { return checking }
+        return nil
+    }
+
+    var statusText: String? {
+        HotUpdaterSandboxHomeModel(state: coordinator.state, isOverApp: false, nowMs: 0).status?.text
+    }
+
+    /// What a fresh install of a sandbox build looks like with its Home up: no server known yet.
+    func freshHomeThatCanStartTheApp() async -> () -> Void {
+        host.serverConfig = false
+        host.canStartUnderScreen = true
+        let stop = coordinator.observe { _ in }
+        await coordinator.refresh()
+        return stop
+    }
+
+    init(
+        pendingLinks: [String] = [],
+        storesBundles: Bool = true,
+        shelfQueue: DispatchQueue = DispatchQueue(label: "test.shelf"),
+        ownScheme: String? = nil,
+        // A watch never looks unless a test ticks it.
+        serverPoll: @escaping (UInt64) async -> Void = { _ in try? await Task.sleep(nanoseconds: 3_600_000_000_000) }
+    ) {
+        store.pendingLinks = pendingLinks
+        let box = box
+        shelf = makeShelf(files, storesBundles: storesBundles)
+        // What the fake check installs.
+        install("ota", in: shelf.source)
+        coordinator = HotUpdaterSandboxCoordinator(
+            host: host,
+            store: store,
+            shelf: shelf,
+            openApp: { box.opens.append(($0, $1)) },
+            now: { Date(timeIntervalSince1970: 1000) },
+            lock: lock,
+            shelfQueue: shelfQueue,
+            isOwnScheme: { HotUpdaterSandboxLink.isOwnScheme($0, own: ownScheme) },
+            serverPoll: serverPoll,
+            onServerAnswer: { box.serverAnswers += 1 },
+            elapsedMs: { box.elapsedMs }
+        )
+    }
+}
+
+@MainActor
+struct HotUpdaterSandboxCoordinatorTests {
+    @Test
+    func inADevSessionAConfirmedLinkExitsItAndIsAskedAgain() async {
+        let fixture = Fixture()
+        fixture.host.runsDevServer = true
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.coordinator.confirmLink()
+        await settle()
+        #expect(fixture.host.devExits == 1)
+        #expect(fixture.host.calls.isEmpty)
+        #expect(fixture.store.pendingLinks == [link("pr-1")])
+        guard case .confirming = fixture.coordinator.state.phase else {
+            Issue.record("expected the link to ask again")
+            return
+        }
+    }
+
+    @Test
+    func openingInADevSessionOpensTheApp() async {
+        let fixture = Fixture()
+        fixture.host.runsDevServer = true
+        await fixture.coordinator.open()
+        #expect(fixture.opens.count == 1)
+    }
+
+    @Test
+    func aDevSessionsOpenNeverReloadsWhateverThisLaunchAndTheNextOneSay() async {
+        // What makes a normal launch fixed: it runs one bundle, and the next selects another.
+        let normal = Fixture()
+        normal.host.runningBundleId = "ota-1"
+        normal.host.bundleId = "ota-2"
+        await normal.coordinator.open()
+        #expect(normal.opens.first?.1 == true)
+
+        let dev = Fixture()
+        dev.host.runsDevServer = true
+        dev.host.runningBundleId = "ota-1"
+        dev.host.bundleId = "ota-2"
+        await dev.coordinator.refresh()
+        await dev.coordinator.open()
+        #expect(dev.opens.first?.1 == false)
+    }
+
+    @Test
+    func inADevSessionARowOrAResetAsksToExitFirstAndChangesNothing() async {
+        let fixture = Fixture()
+        fixture.host.runsDevServer = true
+        #expect(fixture.coordinator.switchTo("pr-1"))
+        await settle()
+        guard case .failed(_, _, _, .error(let message), _) = fixture.coordinator.state.phase else {
+            Issue.record("expected a failure")
+            return
+        }
+        #expect(message == "The dev server is running. Exit it, then try again.")
+        #expect(fixture.host.calls.isEmpty)
+        fixture.coordinator.dismiss()
+        #expect(fixture.coordinator.resetToBuiltIn())
+        await settle()
+        #expect(fixture.host.calls.isEmpty)
+        #expect(fixture.host.devExits == 0)
+    }
+
+    @Test
+    func aSessionThatStartsDuringASwitchStopsItBeforeAnythingChanges() async {
+        let fixture = Fixture()
+        let preflight = Gate<Bool>()
+        fixture.host.preflightGate = preflight
+        #expect(fixture.coordinator.switchTo("pr-1"))
+        await settle()
+        #expect(fixture.host.calls == ["preflight pr-1"])
+        // A dev server's session starts while the preflight awaits.
+        fixture.host.runsDevServer = true
+        preflight.finish(.success(true))
+        await settle()
+        #expect(fixture.host.calls == ["preflight pr-1"], "the switch went on in a dev session")
+        guard case .failed(_, _, _, .error(let message), _) = fixture.coordinator.state.phase else {
+            Issue.record("expected a failure")
+            return
+        }
+        #expect(message == "The dev server is running. Exit it, then try again.")
+    }
+
+    @Test
+    func aSwitchWhileADevServerConnectsIsRefusedAndChangesNothing() async {
+        let fixture = Fixture()
+        #expect(fixture.lock.take(.devServer))
+        #expect(fixture.coordinator.switchTo("pr-1"))
+        await settle()
+        #expect(fixture.host.calls.isEmpty)
+        guard case .failed(_, _, _, .error(let message), _) = fixture.coordinator.state.phase else {
+            Issue.record("expected a failure")
+            return
+        }
+        #expect(message == "A dev server is connecting. Wait for it, then try again.")
+        fixture.coordinator.dismiss()
+        #expect(fixture.coordinator.resetToBuiltIn())
+        await settle()
+        #expect(fixture.host.calls.isEmpty)
+        fixture.coordinator.dismiss()
+        fixture.lock.release(.devServer)
+        #expect(fixture.coordinator.switchTo("pr-1"))
+        await settle()
+        #expect(fixture.host.calls == ["preflight pr-1", "reset", "check pr-1"])
+    }
+
+    @Test
+    func aSwitchHoldsTheLockUntilItEndsEitherWay() async {
+        let fixture = Fixture()
+        let preflight = Gate<Bool>()
+        fixture.host.preflightGate = preflight
+        #expect(fixture.coordinator.switchTo("pr-1"))
+        await settle()
+        #expect(fixture.lock.holder == .switching)
+        preflight.finish(.failure(FakeError.offline))
+        await settle()
+        #expect(fixture.lock.holder == nil)
+        fixture.host.preflightGate = nil
+        fixture.coordinator.retry()
+        await settle()
+        #expect(fixture.host.calls == ["preflight pr-1", "preflight pr-1", "reset", "check pr-1"])
+        #expect(fixture.lock.holder == nil)
+        #expect(fixture.coordinator.resetToBuiltIn())
+        await settle()
+        #expect(fixture.lock.holder == nil)
+    }
+
+    @Test
+    func aLinkConfirmsThenRunsEveryStepInOrderAndOpens() async {
+        let fixture = Fixture()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        guard case .confirming(let parsed) = fixture.coordinator.state.phase else {
+            Issue.record("expected a confirmation")
+            return
+        }
+        #expect(parsed.channel == "pr-1")
+        #expect(fixture.host.calls.isEmpty)
+
+        fixture.coordinator.confirmLink()
+        await settle()
+        #expect(fixture.host.calls == ["preflight pr-1", "reset", "check pr-1"])
+        #expect(fixture.coordinator.state.phase == .idle)
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens[0] == (true, false))
+        #expect(fixture.store.pendingLinks.isEmpty)
+    }
+
+    @Test
+    func anotherFingerprintIsRefusedBeforeAnyRequest() async {
+        let fixture = Fixture()
+        fixture.coordinator.receiveLink(link("pr-1", fingerprintHash: "other"))
+        #expect(fixture.coordinator.state.phase == .refused(.otherFingerprint(
+            link: HotUpdaterSandboxLink(url: link("pr-1", fingerprintHash: "other"))!,
+            buildFingerprintHash: "abc"
+        )))
+        #expect(fixture.host.calls.isEmpty)
+        #expect(fixture.store.pendingLinks.isEmpty)
+    }
+
+    @Test
+    func anAndroidLinkIsRefusedBeforeItsFingerprint() async {
+        let fixture = Fixture()
+        let android = link("pr-1", fingerprintHash: "other") + "&platform=android"
+        fixture.coordinator.receiveLink(android)
+        #expect(fixture.coordinator.state.phase == .refused(.otherPlatform(link: HotUpdaterSandboxLink(url: android)!)))
+        #expect(fixture.host.calls.isEmpty)
+        #expect(fixture.store.pendingLinks.isEmpty)
+    }
+
+    @Test
+    func anAndroidLinkOfAnotherSchemeStillSaysWhichQrToScan() async {
+        // The Android sandbox can register another scheme, and the in-app
+        // scanner takes any preview link.
+        let fixture = Fixture(ownScheme: "acme-preview")
+        let android = link("pr-1") + "&platform=android"
+        fixture.coordinator.receiveLink(android)
+        #expect(fixture.coordinator.state.phase == .refused(.otherPlatform(link: HotUpdaterSandboxLink(url: android)!)))
+    }
+
+    @Test
+    func anIosLinkOrAnUnknownPlatformIsAskedAbout() async {
+        for platform in ["ios", "windows"] {
+            let fixture = Fixture()
+            let url = link("pr-1") + "&platform=\(platform)"
+            fixture.coordinator.receiveLink(url)
+            #expect(fixture.coordinator.state.phase == .confirming(HotUpdaterSandboxLink(url: url)!), "\(platform)")
+        }
+    }
+
+    @Test
+    func aPastedAndroidLinkIsRefusedLikeAScannedOne() async {
+        let fixture = Fixture()
+        fixture.coordinator.switchTo(" \(link("pr-1"))&platform=android ")
+        guard case .refused(.otherPlatform) = fixture.coordinator.state.phase else {
+            Issue.record("expected the other platform's refusal")
+            return
+        }
+    }
+
+    @Test
+    func aRefusedLinkDeliveredTwiceAsksOnce() async {
+        let fixture = Fixture()
+        let refused = link("pr-1", fingerprintHash: "other")
+        fixture.coordinator.receiveLink(refused)
+        fixture.coordinator.receiveLink(refused)
+        #expect(fixture.store.pendingLinks.isEmpty)
+        fixture.coordinator.dismiss()
+        #expect(fixture.coordinator.state.phase == .idle)
+        // Sent again after the answer, it's a new question.
+        fixture.coordinator.receiveLink(refused)
+        guard case .refused = fixture.coordinator.state.phase else {
+            Issue.record("expected a refusal")
+            return
+        }
+    }
+
+    @Test
+    func aBuildWithoutAFingerprintRefusesEveryLink() async {
+        let fixture = Fixture()
+        fixture.host.fingerprint = nil
+        fixture.coordinator.receiveLink(link("pr-1"))
+        guard case .refused(.otherFingerprint(_, let build)) = fixture.coordinator.state.phase else {
+            Issue.record("expected a refusal")
+            return
+        }
+        #expect(build == nil)
+    }
+
+    @Test
+    func aPastedLinkHasTheFingerprintCheckAndConfirmsLikeAScannedOne() async {
+        let fixture = Fixture()
+        fixture.coordinator.switchTo("  \(link("pr-1", fingerprintHash: "other")) ")
+        guard case .refused(.otherFingerprint) = fixture.coordinator.state.phase else {
+            Issue.record("expected a refusal")
+            return
+        }
+        fixture.coordinator.dismiss()
+        fixture.coordinator.switchTo(link("pr-2"))
+        guard case .confirming = fixture.coordinator.state.phase else {
+            Issue.record("expected a confirmation")
+            return
+        }
+    }
+
+    @Test
+    func aRowRunsWithoutAConfirmation() async {
+        let fixture = Fixture()
+        #expect(fixture.coordinator.switchTo("pr-1"))
+        await settle()
+        #expect(fixture.host.calls == ["preflight pr-1", "reset", "check pr-1"])
+    }
+
+    @Test
+    func anInvalidTypedChannelIsRefused() async {
+        let fixture = Fixture()
+        fixture.coordinator.switchTo("")
+        #expect(fixture.coordinator.state.phase == .refused(.invalidChannel("")))
+    }
+
+    @Test
+    func aLinkOfItsOwnSchemeIsAskedAbout() async {
+        let fixture = Fixture(ownScheme: "acme-preview")
+        let url = "acme-preview://hot-updater/preview?channel=pr-1&fingerprint=\(fingerprint)"
+        fixture.coordinator.receiveLink(url)
+        #expect(fixture.coordinator.state.phase == .confirming(HotUpdaterSandboxLink(url: url)!))
+    }
+
+    @Test
+    func aLinkOfAnotherSchemeIsntForThisApp() async {
+        let fixture = Fixture(ownScheme: "acme-preview")
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.coordinator.state.phase == .refused(.unreadable(url: link("pr-1"))))
+        #expect(fixture.store.pendingLinks.isEmpty)
+    }
+
+    @Test
+    func anUnreadableLinkIsRefusedAndConsumed() async {
+        let fixture = Fixture()
+        fixture.coordinator.receiveLink("hu-sandbox-app://hot-updater/other")
+        #expect(fixture.coordinator.state.phase == .refused(.unreadable(url: "hu-sandbox-app://hot-updater/other")))
+        #expect(fixture.store.pendingLinks.isEmpty)
+    }
+
+    @Test
+    func theSameUrlCountsOnceWhetherWaitingOrRunning() async {
+        let fixture = Fixture()
+        let gate = Gate<Bool>()
+        fixture.host.preflightGate = gate
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.store.pendingLinks == [link("pr-1")])
+        fixture.coordinator.confirmLink()
+        await settle()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.store.pendingLinks == [link("pr-1")])
+        #expect(fixture.coordinator.state.queuedLinks == 0)
+        gate.finish(.success(true))
+        await settle()
+        #expect(fixture.host.calls.filter { $0 == "reset" }.count == 1)
+    }
+
+    @Test
+    func aSecondLinkQueuesForItsOwnConfirmationAndHoldsTheOpen() async {
+        let fixture = Fixture()
+        let gate = Gate<HotUpdaterSandboxStaged>()
+        fixture.host.stageGate = gate
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.coordinator.confirmLink()
+        await settle()
+        fixture.coordinator.receiveLink(link("pr-2"))
+        guard case .working(_, "pr-1", _, _) = fixture.coordinator.state.phase else {
+            Issue.record("expected the first switch to keep running")
+            return
+        }
+        #expect(fixture.coordinator.state.queuedLinks == 1)
+        gate.finish(.success(.update(bundleId: "ota-1")))
+        await settle()
+        guard case .confirming(let next) = fixture.coordinator.state.phase else {
+            Issue.record("expected the second link's confirmation")
+            return
+        }
+        #expect(next.channel == "pr-2")
+        #expect(fixture.opens.isEmpty)
+        fixture.coordinator.dismiss()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.store.pendingLinks.isEmpty)
+    }
+
+    @Test
+    func aRowOrResetCantStartDuringASwitch() async {
+        let fixture = Fixture()
+        let gate = Gate<Bool>()
+        fixture.host.preflightGate = gate
+        #expect(fixture.coordinator.switchTo("pr-1"))
+        #expect(!fixture.coordinator.switchTo("pr-2"))
+        #expect(!fixture.coordinator.resetToBuiltIn())
+        gate.finish(.success(true))
+        await settle()
+        #expect(fixture.host.calls == ["preflight pr-1", "reset", "check pr-1"])
+    }
+
+    @Test
+    func aFailedPreflightLeavesEverythingDownloadedInPlace() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-0"
+        fixture.host.bundleId = "ota-0"
+        fixture.host.preflights["pr-1"] = .failure(FakeError.offline)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        guard case .failed(_, "pr-1", .preflight, .error, let selection) = fixture.coordinator.state.phase else {
+            Issue.record("expected the preflight's failure")
+            return
+        }
+        #expect(selection.channel == "pr-0")
+        #expect(selection.bundleId == "ota-0")
+        #expect(!fixture.host.calls.contains("reset"))
+        #expect(fixture.opens.isEmpty)
+    }
+
+    @Test
+    func anEmptyChannelStopsBeforeTheReset() async {
+        let fixture = Fixture()
+        fixture.host.preflights["pr-1"] = .success(false)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        guard case .failed(_, _, .preflight, .noBundle, _) = fixture.coordinator.state.phase else {
+            Issue.record("expected no bundle")
+            return
+        }
+        #expect(fixture.host.calls == ["preflight pr-1"])
+    }
+
+    @Test
+    func goingOfflineAfterThePreflightShowsTheBuiltInSelectionAndRetries() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-0"
+        fixture.host.bundleId = "ota-0"
+        fixture.host.stageResult = .failure(FakeError.offline)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        guard case .failed(let first, "pr-1", .check, .error, let selection) = fixture.coordinator.state.phase else {
+            Issue.record("expected the check's failure")
+            return
+        }
+        // The reset ran: the bundle that's gone isn't what the screen says.
+        #expect(selection.channel == "sandbox-release")
+        #expect(selection.isBuiltIn)
+        #expect(fixture.coordinator.state.selection == selection)
+        #expect(fixture.opens.isEmpty)
+
+        fixture.host.stageResult = .success(.update(bundleId: "ota-1"))
+        fixture.coordinator.retry()
+        await settle()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.host.channel == "pr-1")
+        #expect(fixture.host.calls.filter { $0 == "preflight pr-1" }.count == 2)
+        #expect(first == 1)
+    }
+
+    @Test
+    func goingOfflineOverARunningOtaShowsTheBuiltInSelectionNotTheDeletedBundle() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-0"
+        fixture.host.bundleId = "ota-0"
+        fixture.host.runningBundleId = "ota-0"
+        fixture.host.stageResult = .failure(FakeError.offline)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        guard case .failed(_, _, _, _, let selection) = fixture.coordinator.state.phase else {
+            Issue.record("expected the check's failure")
+            return
+        }
+        #expect(selection.bundleId == "built-in")
+        #expect(selection.isBuiltIn)
+    }
+
+    @Test
+    func theNextLaunchIsWhatStorageHoldsOnceALaunchIsFixed() {
+        func next(_ running: String?, _ launch: String?, _ active: String?) -> String {
+            hotUpdaterSandboxNextLaunchBundleId(
+                runningBundleId: running,
+                launchBundleId: launch,
+                activeBundleId: active,
+                builtInBundleId: "built-in"
+            )
+        }
+        // Before any launch, the SDK's read is what a launch would pick.
+        #expect(next(nil, "ota", "ota") == "ota")
+        #expect(next(nil, nil, nil) == "built-in")
+        // A running OTA a reset deleted: its read still names it, and storage holds nothing.
+        #expect(next("ota", "ota", nil) == "built-in")
+        // A running OTA with another staged.
+        #expect(next("ota", "ota", "next") == "next")
+        // A launch of the built-in bundle with an OTA staged since.
+        #expect(next(nil, nil, "next") == "next")
+    }
+
+    @Test
+    func openOverARunningAppLeavesWhatsStagedForItsLaunch() async {
+        let fixture = Fixture()
+        fixture.host.bundleId = "next"
+        fixture.host.runningBundleId = "ota-0"
+        fixture.host.appRunning = true
+        await fixture.coordinator.open()
+        #expect(fixture.opens[0] == (false, false))
+    }
+
+    @Test
+    func openBeforeTheAppStartsReloadsAFixedLaunchIntoWhatsSelected() async {
+        let fixture = Fixture()
+        fixture.host.bundleId = "built-in"
+        fixture.host.runningBundleId = "ota-0"
+        await fixture.coordinator.open()
+        #expect(fixture.opens[0] == (false, true))
+    }
+
+    @Test
+    func theDefaultChannelStagingNothingAfterTheResetNeedsAReloadOverAFixedLaunch() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.runningBundleId = "ota-1"
+        fixture.host.stageResult = .success(.noUpdate)
+        fixture.coordinator.switchTo("sandbox-release")
+        await settle()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens[0] == (true, true))
+        #expect(fixture.coordinator.state.selection?.bundleId == "built-in")
+    }
+
+    @Test
+    func resetOverTheAppOpensNothingAndItsRowRunsTheBuiltInBundle() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.runningBundleId = "ota-1"
+        fixture.host.appRunning = true
+        #expect(fixture.coordinator.resetToBuiltIn())
+        await settle()
+        #expect(fixture.host.calls == ["reset"])
+        #expect(fixture.opens.isEmpty, "a reset ran the app")
+        #expect(fixture.coordinator.state.phase == .idle)
+        #expect(fixture.coordinator.state.selection?.isBuiltIn == true)
+        let row = HotUpdaterSandboxHomeModel(state: fixture.coordinator.state, isOverApp: true, nowMs: 0).bigRow
+        #expect(row.title == "Open built-in bundle")
+        #expect(row.action == .openOverApp)
+        // Its reload is what runs the built-in bundle over a fixed launch.
+        fixture.coordinator.tap(row.action, devServer: nil)
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens.first?.0 == true)
+        #expect(fixture.opens.first?.1 == true)
+    }
+
+    @Test
+    func resetBeforeTheAppStartsOpensNothingAndItsRowOpensTheBuiltInBundle() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        #expect(fixture.coordinator.resetToBuiltIn())
+        await settle()
+        #expect(fixture.opens.isEmpty, "a reset ran the app")
+        let row = HotUpdaterSandboxHomeModel(state: fixture.coordinator.state, isOverApp: false, nowMs: 0).bigRow
+        #expect(row.title == "Open built-in bundle")
+        #expect(row.action == .open)
+        #expect(fixture.coordinator.state.selection?.isBuiltIn == true)
+        fixture.coordinator.tap(row.action, devServer: nil)
+        await settle()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens.first?.0 == false)
+        #expect(fixture.opens.first?.1 == false)
+    }
+
+    @Test
+    func aDevServerRunningWithoutAHostLeavesTheRowAndItsTapToTheApp() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.runningBundleId = "ota-1"
+        fixture.host.appRunning = true
+        #expect(fixture.coordinator.resetToBuiltIn())
+        await settle()
+        let devServer = FakeDevServer(isRunning: true, host: nil)
+        let row = HotUpdaterSandboxHomeModel(
+            state: fixture.coordinator.state,
+            isOverApp: true,
+            runningDevServerHost: devServer.runningDevServerHost,
+            nowMs: 0
+        ).bigRow
+        #expect(row.title == "Open built-in bundle")
+        #expect(row.action == .openOverApp)
+        // The tap does what the row says: it runs the built-in bundle.
+        fixture.coordinator.tap(row.action, devServer: devServer)
+        #expect(devServer.reloads == 0)
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens.first?.0 == true)
+        #expect(fixture.opens.first?.1 == true)
+    }
+
+    @Test
+    func aRunningDevServersRowReloadsIt() async {
+        let fixture = Fixture()
+        let devServer = FakeDevServer(isRunning: true, host: "localhost:8081")
+        let row = HotUpdaterSandboxHomeModel(
+            state: fixture.coordinator.state,
+            isOverApp: true,
+            runningDevServerHost: devServer.runningDevServerHost,
+            nowMs: 0
+        ).bigRow
+        #expect(row.action == .reloadDevServer)
+        fixture.coordinator.tap(row.action, devServer: devServer)
+        await settle()
+        #expect(devServer.reloads == 1)
+        #expect(fixture.opens.isEmpty)
+    }
+
+    @Test
+    func aSecondOpenWhileOneRunsOpensNothingMore() async {
+        let fixture = Fixture()
+        fixture.host.holdsSelection = true
+        fixture.coordinator.tap(.open, devServer: nil)
+        await settle()
+        fixture.coordinator.tap(.open, devServer: nil)
+        await settle()
+        fixture.host.releaseSelection()
+        await settle()
+        #expect(fixture.opens.count == 1)
+        // Once it opened, Open opens again.
+        await fixture.coordinator.open()
+        #expect(fixture.opens.count == 2)
+    }
+
+    @Test
+    func aLaunchThatAlreadyRunsTheSelectionNeedsNoReload() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.runningBundleId = "ota-1"
+        fixture.host.stageResult = .success(.noUpdate)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens[0] == (true, false))
+    }
+
+    @Test
+    func noFixedLaunchNeedsNoReloadWhateverTheSwitchDid() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.stageResult = .success(.noUpdate)
+        fixture.coordinator.switchTo("sandbox-release")
+        await settle()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens[0] == (true, false))
+    }
+
+    @Test
+    func openAfterAFailedSwitchReloadsAFixedLaunchOutOfTheDeletedBundle() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-0"
+        fixture.host.bundleId = "ota-0"
+        fixture.host.runningBundleId = "ota-0"
+        fixture.host.stageResult = .failure(FakeError.offline)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        fixture.coordinator.dismiss()
+        #expect(fixture.opens.isEmpty)
+        await fixture.coordinator.open()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens[0] == (false, true))
+    }
+
+    @Test
+    func aQueuedLinkThatFailsDecidesTheReloadNotTheSwitchBeforeIt() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-0"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.runningBundleId = "ota-1"
+        fixture.host.stageResult = .success(.update(bundleId: "ota-1"))
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.coordinator.receiveLink(link("pr-2"))
+        fixture.coordinator.confirmLink()
+        await settle()
+        // The first switch selects what this launch already runs.
+        guard case .confirming = fixture.coordinator.state.phase else {
+            Issue.record("expected the second link's confirmation")
+            return
+        }
+        fixture.host.stageResult = .failure(FakeError.offline)
+        fixture.coordinator.confirmLink()
+        await settle()
+        guard case .failed = fixture.coordinator.state.phase else {
+            Issue.record("expected the second link's failure")
+            return
+        }
+        #expect(fixture.opens.isEmpty)
+        // The second reset deleted it, so the first switch's open can't keep its answer.
+        fixture.coordinator.dismiss()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens[0] == (true, true))
+    }
+
+    @Test
+    func nothingForTheTargetAfterTheResetIsAFailureThatSaysSo() async {
+        let fixture = Fixture()
+        fixture.host.stageResult = .success(.noUpdate)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        guard case .failed(_, _, .check, .noBundle, _) = fixture.coordinator.state.phase else {
+            Issue.record("expected no bundle")
+            return
+        }
+        #expect(fixture.opens.isEmpty)
+    }
+
+    @Test
+    func theBuildsOwnChannelWithNoBundleForItStopsBeforeTheResetAsAnyChannel() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.preflights["sandbox-release"] = .success(false)
+        fixture.coordinator.switchTo("sandbox-release")
+        await settle()
+        guard case .failed(_, _, .preflight, .noBundle, let selection) = fixture.coordinator.state.phase else {
+            Issue.record("expected no bundle")
+            return
+        }
+        #expect(fixture.host.calls == ["preflight sandbox-release"])
+        // What the device runs and what it downloaded stay; Reset opens the built-in bundle.
+        #expect(selection.channel == "pr-1")
+        #expect(selection.bundleId == "ota-1")
+        #expect(fixture.opens.isEmpty)
+    }
+
+    @Test
+    func theBuildsOwnChannelItAlreadyRunsWithNoBundleLeftStopsBeforeTheCheck() async {
+        let fixture = Fixture()
+        fixture.host.bundleId = "ota-1"
+        fixture.host.preflights["sandbox-release"] = .success(false)
+        fixture.coordinator.switchTo("sandbox-release")
+        await settle()
+        guard case .failed(_, _, .preflight, .noBundle, _) = fixture.coordinator.state.phase else {
+            Issue.record("expected no bundle")
+            return
+        }
+        #expect(fixture.host.calls == ["preflight sandbox-release"])
+        #expect(fixture.opens.isEmpty)
+    }
+
+    @Test
+    func aSwitchToTheCurrentChannelKeepsWhatIsDownloaded() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.stageResult = .success(.noUpdate)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        #expect(!fixture.host.calls.contains("reset"))
+        #expect(fixture.opens.count == 1)
+    }
+
+    @Test
+    func aStagingSupersededTwiceIsAFailureAfterOneFreshCheck() async {
+        let fixture = Fixture()
+        fixture.host.stageResult = .success(.superseded)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        guard case .failed(_, _, .check, .superseded, _) = fixture.coordinator.state.phase else {
+            Issue.record("expected superseded")
+            return
+        }
+        #expect(fixture.host.calls == ["preflight pr-1", "reset", "check pr-1", "check pr-1"])
+        #expect(fixture.opens.isEmpty)
+    }
+
+    @Test
+    func aStagingTheAppsCheckSupersededOnceOpensWhatOneFreshCheckStages() async {
+        let fixture = Fixture()
+        fixture.host.stageResults = [.superseded]
+        fixture.host.stageResult = .success(.update(bundleId: "ota-1"))
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        #expect(fixture.coordinator.state.phase == .idle)
+        #expect(fixture.host.calls == ["preflight pr-1", "reset", "check pr-1", "check pr-1"])
+        #expect(fixture.coordinator.state.selection?.bundleId == "ota-1")
+        #expect(fixture.opens.count == 1)
+    }
+
+    @Test
+    func reopeningTheChannelTheDeviceIsOnRetriesASupersededStagingOnceWithNoReset() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.stageResults = [.superseded]
+        fixture.host.stageResult = .success(.update(bundleId: "ota-2"))
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        #expect(fixture.coordinator.state.phase == .idle)
+        #expect(fixture.host.calls == ["preflight pr-1", "check pr-1", "check pr-1"])
+        #expect(fixture.coordinator.state.selection?.bundleId == "ota-2")
+    }
+
+    @Test
+    func theFreshCheckAfterASupersededStagingStillRefusesAChannelSwitchedMeanwhile() async {
+        let fixture = Fixture()
+        fixture.host.stageResults = [.superseded]
+        fixture.host.channelAfterStaging = "other"
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        guard case .failed(_, _, .check, .superseded, let selection) = fixture.coordinator.state.phase else {
+            Issue.record("expected superseded")
+            return
+        }
+        #expect(selection.channel == "other")
+        #expect(fixture.opens.isEmpty)
+    }
+
+    @Test
+    func aRunningChecksChannelSwitchIsDetected() async {
+        let fixture = Fixture()
+        // The running app's own check moved the channel during the SDK's steps.
+        fixture.host.channelAfterStaging = "other"
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        guard case .failed(_, _, .check, .superseded, let selection) = fixture.coordinator.state.phase else {
+            Issue.record("expected superseded")
+            return
+        }
+        #expect(selection.channel == "other")
+        #expect(fixture.opens.isEmpty)
+    }
+
+    @Test
+    func aFixedLaunchNeedsAReload() async {
+        let fixture = Fixture()
+        fixture.host.bundleId = "ota-0"
+        fixture.host.runningBundleId = "ota-0"
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens[0] == (true, true))
+        // The screen says what the next launch runs, not what this one does.
+        #expect(fixture.coordinator.state.selection?.bundleId == "ota")
+    }
+
+    @Test
+    func aLateProgressReportChangesNothing() async {
+        let fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        #expect(fixture.coordinator.state.phase == .idle)
+        fixture.host.progressReporter?(0.5)
+        await settle()
+        #expect(fixture.coordinator.state.phase == .idle)
+    }
+
+    @Test
+    func progressBelongsToItsOperation() async {
+        let fixture = Fixture()
+        let gate = Gate<HotUpdaterSandboxStaged>()
+        fixture.host.stageGate = gate
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        fixture.host.progressReporter?(0.5)
+        await settle()
+        guard case .working(_, "pr-1", .download, 0.5) = fixture.coordinator.state.phase else {
+            Issue.record("expected the download's progress")
+            return
+        }
+        gate.finish(.success(.update(bundleId: "ota")))
+        await settle()
+    }
+
+    @Test
+    func aPendingLinkWaitsForAServerAnswerAndSurvivesARestart() async {
+        let first = Fixture()
+        first.host.serverConfig = false
+        first.coordinator.receiveLink(link("pr-1"))
+        guard case .waitingForServer = first.coordinator.state.phase else {
+            Issue.record("expected the link to wait")
+            return
+        }
+        #expect(first.store.pendingLinks == [link("pr-1")])
+
+        // The next process reads it back, and a server has answered by then.
+        let second = Fixture(pendingLinks: first.store.pendingLinks)
+        await second.coordinator.refresh()
+        guard case .confirming = second.coordinator.state.phase else {
+            Issue.record("expected the link's confirmation")
+            return
+        }
+    }
+
+    @Test
+    func anOpenHomeTurnsEnterAChannelOnOnceTheAppsFirstCheckIsAnswered() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        fixture.host.serverConfig = false
+        let stop = fixture.coordinator.observe { _ in }
+        await fixture.coordinator.refresh()
+        #expect(!fixture.canEnterChannel)
+
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { ticks.isWaiting }
+        #expect(!fixture.canEnterChannel)
+
+        // The app's check is answered under the screen, which stays up.
+        fixture.host.serverConfig = true
+        ticks.tick()
+        await settle { fixture.canEnterChannel }
+        #expect(fixture.canEnterChannel)
+        #expect(fixture.coordinator.state.phase == .idle)
+        #expect(fixture.store.pendingLinks.isEmpty)
+        // Known now: nothing looks again.
+        await settle()
+        #expect(!ticks.isWaiting)
+        stop()
+    }
+
+    @Test
+    func anOpenHomeKeepsWatchingPastTheLinksBudgetEvery5sAfterTheFirstMinute() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        fixture.host.serverConfig = false
+        let stop = fixture.coordinator.observe { _ in }
+        await fixture.coordinator.refresh()
+        for _ in 0 ..< 700 {
+            await settle { ticks.isWaiting }
+            guard ticks.isWaiting else {
+                Issue.record("the watch stopped after \(ticks.pauses.count) looks")
+                return
+            }
+            ticks.tick()
+        }
+        await settle { ticks.isWaiting }
+        #expect(!fixture.canEnterChannel)
+        #expect(ticks.pauses == Array(repeating: 1_000, count: 60) + Array(repeating: 5_000, count: 641))
+
+        // The first config arrives long after: offline, or a native check.
+        fixture.host.serverConfig = true
+        ticks.tick()
+        await settle { fixture.canEnterChannel }
+        #expect(fixture.canEnterChannel)
+        await settle()
+        #expect(!ticks.isWaiting)
+        stop()
+    }
+
+    @Test
+    func closingHomeStopsTheWatchAtOnceAndTheNextHomeStartsOne() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        fixture.host.serverConfig = false
+        let stop = fixture.coordinator.observe { _ in }
+        await fixture.coordinator.refresh()
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { ticks.isWaiting }
+        #expect(ticks.isWaiting)
+
+        stop()
+        await settle { !ticks.isWaiting }
+        #expect(!ticks.isWaiting)
+        let looks = ticks.pauses.count
+        await settle()
+        #expect(ticks.pauses.count == looks)
+
+        let stopAgain = fixture.coordinator.observe { _ in }
+        await fixture.coordinator.refresh()
+        await settle { ticks.isWaiting }
+        #expect(ticks.isWaiting)
+        fixture.host.serverConfig = true
+        ticks.tick()
+        await settle { fixture.canEnterChannel }
+        #expect(fixture.canEnterChannel)
+        stopAgain()
+    }
+
+    @Test
+    func aLinkWaitingWithNoHomeStopsLookingAfter600Looks() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        fixture.host.serverConfig = false
+        fixture.coordinator.receiveLink(link("pr-1"))
+        for _ in 0 ..< 600 {
+            await settle { ticks.isWaiting }
+            guard ticks.isWaiting else {
+                Issue.record("the watch stopped after \(ticks.pauses.count) looks")
+                return
+            }
+            ticks.tick()
+        }
+        await settle()
+        #expect(!ticks.isWaiting)
+        #expect(ticks.pauses.count == 600)
+
+        // The next launch's refresh asks it.
+        fixture.host.serverConfig = true
+        guard case .waitingForServer = fixture.coordinator.state.phase else {
+            Issue.record("expected the link to wait")
+            return
+        }
+        #expect(fixture.serverAnswers == 0)
+    }
+
+    @Test
+    func nothingWatchesForAServerOnceOneIsKnownOrWhileNobodyWaitsForIt() async {
+        let ticks = ServerTicks()
+        let known = Fixture(serverPoll: { await ticks.next($0) })
+        let stop = known.coordinator.observe { _ in }
+        await known.coordinator.refresh()
+        #expect(known.canEnterChannel)
+        await settle()
+        #expect(!ticks.isWaiting)
+        stop()
+
+        let unseen = Fixture(serverPoll: { await ticks.next($0) })
+        unseen.host.serverConfig = false
+        await unseen.coordinator.refresh()
+        await settle()
+        #expect(!ticks.isWaiting)
+    }
+
+    @Test
+    func aLinkWaitingForAServerIsAskedOnceOneAnswersWithNoScreenUp() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        fixture.host.serverConfig = false
+        fixture.coordinator.receiveLink(link("pr-1"))
+        guard case .waitingForServer = fixture.coordinator.state.phase else {
+            Issue.record("expected the link to wait")
+            return
+        }
+
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { ticks.isWaiting }
+        #expect(fixture.serverAnswers == 0)
+        fixture.host.serverConfig = true
+        ticks.tick()
+        await settle { fixture.serverAnswers > 0 }
+        guard case .confirming = fixture.coordinator.state.phase else {
+            Issue.record("expected the link's confirmation")
+            return
+        }
+        #expect(fixture.serverAnswers == 1)
+        await settle()
+        #expect(!ticks.isWaiting)
+    }
+
+    /// The bridge's own show and hide: a hidden screen renders nothing more, and
+    /// with no link waiting, its server watch ends with it.
+    @Test
+    func hidingTheScreenEndsItsSubscriptionAndItsServerWatch() async {
+        final class Shown {}
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        fixture.host.serverConfig = false
+        let slot = HotUpdaterSandboxScreenSlot<Shown>(coordinator: fixture.coordinator)
+        var renders = 0
+        let shown = Shown()
+        slot.show(shown) { _, _ in renders += 1 }
+        await fixture.coordinator.refresh()
+        await settle { ticks.isWaiting }
+        #expect(ticks.isWaiting)
+        #expect(slot.screen === shown)
+
+        #expect(slot.hide() === shown)
+        #expect(slot.screen == nil)
+        await settle { !ticks.isWaiting }
+        #expect(!ticks.isWaiting)
+        let rendered = renders
+        await fixture.coordinator.refresh()
+        #expect(renders == rendered)
+    }
+
+    @Test
+    func showingAnotherScreenEndsThePreviousOnesSubscription() async {
+        final class Shown {}
+        let fixture = Fixture()
+        let slot = HotUpdaterSandboxScreenSlot<Shown>(coordinator: fixture.coordinator)
+        var first = 0
+        var second = 0
+        let firstScreen = Shown()
+        let secondScreen = Shown()
+        slot.show(firstScreen) { _, _ in first += 1 }
+        slot.show(secondScreen) { _, _ in second += 1 }
+        await settle()
+        let firstRenders = first
+        let secondRenders = second
+        await fixture.coordinator.refresh()
+        #expect(first == firstRenders)
+        #expect(second > secondRenders)
+        #expect(slot.hide() === secondScreen)
+        withExtendedLifetime(firstScreen) {}
+    }
+
+    /// From the round-3 review: config after 1200 looks still enables Home.
+    @Test
+    func anOpenHomeLearnsAConfigThatComesAfter1200Looks() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        fixture.host.serverConfig = false
+        let stop = fixture.coordinator.observe { _ in }
+        await fixture.coordinator.refresh()
+        for _ in 0 ..< 1200 {
+            await settle { ticks.isWaiting }
+            #expect(ticks.isWaiting)
+            ticks.tick()
+        }
+        await settle { ticks.isWaiting }
+        fixture.host.serverConfig = true
+        ticks.tick()
+        await settle { fixture.canEnterChannel }
+        #expect(fixture.canEnterChannel)
+        stop()
+    }
+
+    /// From the round-3 review: rapid reopen, then a link's budget.
+    @Test
+    func aHomeReopenedAtOnceKeepsOneWatchAndALinkLeftBehindStopsAtItsBudget() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        fixture.host.serverConfig = false
+        let stop = fixture.coordinator.observe { _ in }
+        await fixture.coordinator.refresh()
+        await settle { ticks.isWaiting }
+        stop()
+        let stopAgain = fixture.coordinator.observe { _ in }
+        await fixture.coordinator.refresh()
+        await settle { ticks.isWaiting }
+        #expect(ticks.pauses.count == 1)
+        fixture.coordinator.receiveLink(link("pr-1"))
+        stopAgain()
+        await settle()
+        for _ in 0 ..< 600 {
+            await settle { ticks.isWaiting }
+            #expect(ticks.isWaiting)
+            ticks.tick()
+        }
+        await settle()
+        #expect(!ticks.isWaiting)
+        #expect(ticks.pauses.count == 600)
+    }
+
+    /// From the round-3 review: known config cancels the sleeping watch.
+    @Test
+    func aConfigReadInByAnyRefreshCancelsTheSleepingWatchAtOnce() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        fixture.host.serverConfig = false
+        let stop = fixture.coordinator.observe { _ in }
+        await fixture.coordinator.refresh()
+        await settle { ticks.isWaiting }
+        fixture.host.serverConfig = true
+        await fixture.coordinator.refresh()
+        #expect(fixture.canEnterChannel)
+        await settle()
+        #expect(!ticks.isWaiting)
+        stop()
+    }
+
+    @Test
+    func aPendingLinkRevalidatesItsFingerprint() async {
+        let fixture = Fixture(pendingLinks: [link("pr-1", fingerprintHash: "old")])
+        await fixture.coordinator.refresh()
+        guard case .refused(.otherFingerprint) = fixture.coordinator.state.phase else {
+            Issue.record("expected a refusal")
+            return
+        }
+        #expect(fixture.store.pendingLinks.isEmpty)
+    }
+
+    @Test
+    func aScreenClosesOnlyOnceNothingIsLeftToAnswer() async {
+        let fixture = Fixture()
+        var closes = 0
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.coordinator.receiveLink(link("pr-2", fingerprintHash: "other"))
+        fixture.coordinator.receiveLink(link("pr-3"))
+
+        // Declined: the refusal behind it is on screen now.
+        fixture.coordinator.dismiss { closes += 1 }
+        guard case .refused = fixture.coordinator.state.phase else {
+            Issue.record("expected the refusal")
+            return
+        }
+        #expect(closes == 0)
+
+        // Acknowledged: the third link asks next.
+        fixture.coordinator.dismiss { closes += 1 }
+        guard case .confirming(let next) = fixture.coordinator.state.phase else {
+            Issue.record("expected the third link")
+            return
+        }
+        #expect(next.channel == "pr-3")
+        #expect(closes == 0)
+
+        fixture.coordinator.dismiss { closes += 1 }
+        #expect(fixture.coordinator.state.phase == .idle)
+        #expect(closes == 1)
+    }
+
+    @Test
+    func aDeclinedLinkIsForgotten() async {
+        let fixture = Fixture()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.coordinator.dismiss()
+        #expect(fixture.coordinator.state.phase == .idle)
+        #expect(fixture.store.pendingLinks.isEmpty)
+        #expect(fixture.host.calls.isEmpty)
+    }
+
+    @Test
+    func openDoesNotReadAsASwitch() async {
+        let fixture = Fixture()
+        await fixture.coordinator.open()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens[0] == (false, false))
+    }
+
+    @Test
+    func resetReturnsToTheBuiltInBundle() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        #expect(fixture.coordinator.resetToBuiltIn())
+        #expect(!fixture.coordinator.switchTo("pr-2"))
+        await settle()
+        #expect(fixture.host.calls == ["reset"])
+        #expect(fixture.coordinator.state.selection?.isBuiltIn == true)
+    }
+
+    @Test
+    func aFailedResetSaysSo() async {
+        let fixture = Fixture()
+        fixture.host.resetResult = .success(false)
+        fixture.coordinator.resetToBuiltIn()
+        await settle()
+        guard case .failed(_, _, .reset, .resetFailed, _) = fixture.coordinator.state.phase else {
+            Issue.record("expected the reset's failure")
+            return
+        }
+    }
+}
+
+struct HotUpdaterSandboxLinkTests {
+    private static let vectors: [String: Any] = {
+        let packages = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // Sandbox
+            .deletingLastPathComponent() // Test
+            .deletingLastPathComponent() // HotUpdater
+            .deletingLastPathComponent() // ios
+            .deletingLastPathComponent() // react-native
+            .deletingLastPathComponent() // packages
+        let url = packages.appendingPathComponent("test-utils/fixtures/sandbox-preview-links.json")
+        guard let data = try? Data(contentsOf: url),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            fatalError("Cannot read the vectors at \(url.path)")
+        }
+        return object
+    }()
+
+    @Test
+    func readsWhatTheProtocolReads() {
+        let valid = Self.vectors["valid"] as! [[String: String]]
+        #expect(!valid.isEmpty)
+        for vector in valid {
+            let parsed = HotUpdaterSandboxLink(url: vector["link"]!)
+            #expect(parsed?.urlScheme == vector["urlScheme"])
+            #expect(parsed?.channel == vector["channel"])
+            #expect(parsed?.fingerprintHash == vector["fingerprintHash"])
+            #expect(parsed?.platform == vector["platform"])
+        }
+    }
+
+    @Test
+    func refusesWhatTheProtocolRefuses() {
+        let invalid = Self.vectors["invalid"] as! [String]
+        #expect(!invalid.isEmpty)
+        for url in invalid {
+            #expect(HotUpdaterSandboxLink(url: url) == nil, "\(url)")
+        }
+    }
+
+    @Test
+    func readsItsOwnSchemeFromTheUrlTypeTheCliNames() {
+        let info: [String: Any] = [
+            "CFBundleURLTypes": [
+                ["CFBundleURLName": "com.example.app", "CFBundleURLSchemes": ["exampleapp"]],
+                ["CFBundleURLName": "hot-updater-sandbox", "CFBundleURLSchemes": ["Acme-Preview"]],
+            ],
+        ]
+        #expect(HotUpdaterSandboxLink.ownScheme(in: info) == "acme-preview")
+        #expect(HotUpdaterSandboxLink.ownScheme(in: ["CFBundleURLTypes": [["CFBundleURLSchemes": ["exampleapp"]]]]) == nil)
+        #expect(HotUpdaterSandboxLink.ownScheme(in: [:]) == nil)
+        #expect(HotUpdaterSandboxLink.ownScheme(in: nil) == nil)
+    }
+
+    @Test
+    func readsTheRecordedSchemeByTheProtocolsRuleWithNoFallback() {
+        func named(_ schemes: [String]) -> [String: Any] {
+            ["CFBundleURLName": "hot-updater-sandbox", "CFBundleURLSchemes": schemes]
+        }
+        func own(_ recorded: Any?, _ types: [[String: Any]]) -> String? {
+            var info: [String: Any] = ["CFBundleURLTypes": types]
+            if let recorded { info["HOT_UPDATER_SANDBOX_URL_SCHEME"] = recorded }
+            return HotUpdaterSandboxLink.ownScheme(in: info)
+        }
+        // Present and the one named type's alone.
+        #expect(own("acme-preview", [["CFBundleURLSchemes": ["exampleapp"]], named(["acme-preview"])]) == "acme-preview")
+        // Absent: a prerelease's build, read by the URL type's name.
+        #expect(own(nil, [named(["hu-sandbox-app"])]) == "hu-sandbox-app")
+        // Present but breaking the rule: no own scheme, and no fallback.
+        let none = HotUpdaterSandboxLink.noScheme
+        #expect(own("", [named(["acme-preview"])]) == none)
+        #expect(own(42, [named(["acme-preview"])]) == none)
+        #expect(own(true, [named(["acme-preview"])]) == none)
+        #expect(own("\u{212A}-preview", [named(["\u{212A}-preview"])]) == none)
+        #expect(own("Acme-Preview", [named(["Acme-Preview"])]) == none)
+        #expect(own("app-login", [named(["acme-preview"])]) == none)
+        #expect(own("acme-preview", [named(["acme-preview", "app-login"])]) == none)
+        #expect(own("acme-preview", []) == none)
+        #expect(own("acme-preview", [named(["acme-preview"]), named(["acme-preview"])]) == none)
+        // No own scheme refuses every link, the derived prefix's too.
+        for scheme in ["acme-preview", "app-login", "hu-sandbox-app", "k-preview", ""] {
+            #expect(!HotUpdaterSandboxLink.isOwnScheme(scheme, own: none), "\(scheme)")
+        }
+    }
+
+    @Test
+    func takesItsOwnSchemeAloneOrWithoutOneThePrefix() {
+        #expect(HotUpdaterSandboxLink.isOwnScheme("ACME-preview", own: "acme-preview"))
+        #expect(!HotUpdaterSandboxLink.isOwnScheme("hu-sandbox-com-example-app", own: "acme-preview"))
+        #expect(!HotUpdaterSandboxLink.isOwnScheme("exampleapp", own: "acme-preview"))
+        #expect(!HotUpdaterSandboxLink.isOwnScheme(nil, own: "acme-preview"))
+        // A build from before the scheme could be set names no URL type.
+        #expect(HotUpdaterSandboxLink.isOwnScheme("hu-sandbox-com-example-app", own: nil))
+        #expect(!HotUpdaterSandboxLink.isOwnScheme("acme-preview", own: nil))
+        // Lower-casing makes `K` (Kelvin) a `k`: a scheme is ASCII alone.
+        #expect(!HotUpdaterSandboxLink.isOwnScheme("\u{212A}-preview", own: "k-preview"))
+    }
+}
+
+struct HotUpdaterSandboxLaunchPolicyTests {
+    @Test
+    func anotherSchemesLinkIsTheApps() {
+        let link = ["UIApplicationLaunchOptionsURLKey", "UIApplicationLaunchOptionsSourceApplicationKey"]
+        #expect(!HotUpdaterSandboxLaunchPolicy.isForTheApp(optionKeys: link, urlScheme: "acme-preview", own: "acme-preview"))
+        #expect(HotUpdaterSandboxLaunchPolicy.isForTheApp(optionKeys: link, urlScheme: "hu-sandbox-app", own: "acme-preview"))
+    }
+
+    @Test
+    func anIconLaunchHasNoReason() {
+        #expect(!HotUpdaterSandboxLaunchPolicy.isForTheApp(optionKeys: [], urlScheme: nil))
+    }
+
+    @Test
+    func aSandboxLinkAloneIsntForTheApp() {
+        #expect(!HotUpdaterSandboxLaunchPolicy.isForTheApp(
+            optionKeys: ["UIApplicationLaunchOptionsURLKey", "UIApplicationLaunchOptionsSourceApplicationKey"],
+            urlScheme: "hu-sandbox-app"
+        ))
+    }
+
+    @Test
+    func everyOtherReasonIs() {
+        for key in [
+            "UIApplicationLaunchOptionsRemoteNotificationKey",
+            "UIApplicationLaunchOptionsUserActivityDictionaryKey",
+            "UIApplicationLaunchOptionsShortcutItemKey",
+            "UIApplicationLaunchOptionsLocationKey",
+            "SomethingNew",
+        ] {
+            #expect(HotUpdaterSandboxLaunchPolicy.isForTheApp(optionKeys: [key], urlScheme: nil))
+        }
+        #expect(HotUpdaterSandboxLaunchPolicy.isForTheApp(optionKeys: ["UIApplicationLaunchOptionsURLKey"], urlScheme: "myapp"))
+        // A sandbox link can't hide a notification.
+        #expect(HotUpdaterSandboxLaunchPolicy.isForTheApp(
+            optionKeys: ["UIApplicationLaunchOptionsURLKey", "UIApplicationLaunchOptionsRemoteNotificationKey"],
+            urlScheme: "hu-sandbox-app"
+        ))
+    }
+}
+private func selection(
+    channel: String = "pr-1",
+    bundleId: String = "ota",
+    defaultChannel: String = "sandbox-release",
+    builtIn: String = "built-in"
+) -> HotUpdaterSandboxSelection {
+    HotUpdaterSandboxSelection(
+        channel: channel,
+        defaultChannel: defaultChannel,
+        bundleId: bundleId,
+        isBuiltIn: bundleId == builtIn
+    )
+}
+
+/// Three launches the SDK can leave, as its own files state them. Each expectation
+/// comes from what happened to the device, not from what the derivation returns.
+struct HotUpdaterSandboxLastLaunchTests {
+    private typealias LastLaunch = HotUpdaterSandboxLastLaunch
+
+    @Test
+    func aCrashBeforeFirstContentRolledBack() {
+        let evidence = HotUpdaterSandboxLaunchEvidence(
+            marker: HotUpdaterSandboxCrashMarker(bundleId: "ota", shouldRollback: true),
+            rollback: HotUpdaterSandboxRollback(fromBundleId: "ota", toBundleId: "built-in")
+        )
+        #expect(LastLaunch.derive(evidence: evidence, launchBundleId: "built-in") == LastLaunch(
+            kind: .crashedBeforeContent,
+            bundleId: "ota",
+            rolledBackToBundleId: "built-in"
+        ))
+    }
+
+    @Test
+    func aRollbackKeepsTheReleasesItsReportNames() {
+        let evidence = HotUpdaterSandboxLaunchEvidence(
+            marker: HotUpdaterSandboxCrashMarker(bundleId: "ota", shouldRollback: true),
+            rollback: HotUpdaterSandboxRollback(
+                fromBundleId: "ota",
+                toBundleId: "stable",
+                fromReleaseId: "release-ota",
+                toReleaseId: "release-stable"
+            )
+        )
+        #expect(LastLaunch.derive(evidence: evidence, launchBundleId: "stable") == LastLaunch(
+            kind: .crashedBeforeContent,
+            bundleId: "ota",
+            rolledBackToBundleId: "stable",
+            releaseId: "release-ota",
+            rolledBackToReleaseId: "release-stable"
+        ))
+    }
+
+    /// What an earlier build stored decodes, with no releases.
+    @Test
+    func aStoredLastLaunchWithoutReleasesDecodes() throws {
+        let stored = #"{"kind":"crashed","bundleId":"ota"}"#
+        let decoded = try JSONDecoder().decode(LastLaunch.self, from: Data(stored.utf8))
+        #expect(decoded == LastLaunch(kind: .crashed, bundleId: "ota", rolledBackToBundleId: nil))
+    }
+
+    @Test
+    func aVerifiedCrashDidNotRollBack() {
+        let evidence = HotUpdaterSandboxLaunchEvidence(
+            marker: HotUpdaterSandboxCrashMarker(bundleId: "ota", shouldRollback: false)
+        )
+        #expect(LastLaunch.derive(evidence: evidence, launchBundleId: "ota") == LastLaunch(
+            kind: .crashed,
+            bundleId: "ota",
+            rolledBackToBundleId: nil
+        ))
+    }
+
+    @Test
+    func leavingBeforeFirstContentLeavesNoMarkerAndNoCrashIsClaimed() {
+        let evidence = HotUpdaterSandboxLaunchEvidence(
+            rollback: HotUpdaterSandboxRollback(fromBundleId: "ota", toBundleId: "built-in")
+        )
+        #expect(LastLaunch.derive(evidence: evidence, launchBundleId: "built-in") == LastLaunch(
+            kind: .endedBeforeContent,
+            bundleId: "ota",
+            rolledBackToBundleId: "built-in"
+        ))
+    }
+
+    @Test
+    func aMarkerOfAnotherBundleIsNotThatRollbacksCrash() {
+        let evidence = HotUpdaterSandboxLaunchEvidence(
+            marker: HotUpdaterSandboxCrashMarker(bundleId: "other", shouldRollback: true),
+            rollback: HotUpdaterSandboxRollback(fromBundleId: "ota", toBundleId: "built-in")
+        )
+        #expect(LastLaunch.derive(evidence: evidence, launchBundleId: "built-in")?.kind == .endedBeforeContent)
+    }
+
+    @Test
+    func noRollbackIsClaimedWhenTheSelectionIsSomewhereElse() {
+        let evidence = HotUpdaterSandboxLaunchEvidence(
+            marker: HotUpdaterSandboxCrashMarker(bundleId: "ota", shouldRollback: true),
+            rollback: HotUpdaterSandboxRollback(fromBundleId: "ota", toBundleId: "built-in")
+        )
+        let last = LastLaunch.derive(evidence: evidence, launchBundleId: "newer")
+        #expect(last?.kind == .crashed)
+        #expect(last?.rolledBackToBundleId == nil)
+    }
+
+    @Test
+    func nothingLeftSaysNothing() {
+        #expect(LastLaunch.derive(evidence: HotUpdaterSandboxLaunchEvidence(), launchBundleId: "ota") == nil)
+    }
+}
+
+@MainActor
+struct HotUpdaterSandboxScreenStateTests {
+    @Test
+    func openingTheScreenSendsNoRequestInAnyState() async {
+        let crashed = Fixture()
+        crashed.host.evidence = HotUpdaterSandboxLaunchEvidence(
+            marker: HotUpdaterSandboxCrashMarker(bundleId: "built-in", shouldRollback: false)
+        )
+        let fresh = Fixture()
+        fresh.host.serverConfig = false
+        let waiting = Fixture(pendingLinks: [link("pr-1")])
+        waiting.host.serverConfig = false
+        for fixture in [Fixture(), crashed, fresh, waiting, Fixture(pendingLinks: [link("pr-1")])] {
+            let stop = fixture.coordinator.observe { _ in }
+            await fixture.coordinator.refresh()
+            await fixture.coordinator.noteLastLaunch()
+            stop()
+            await settle()
+            #expect(fixture.host.calls.isEmpty)
+        }
+    }
+
+    @Test
+    func aCrashIsToldOnceAPersonMovesOnNotBefore() async {
+        let fixture = Fixture()
+        fixture.host.bundleId = "ota"
+        fixture.host.channel = "pr-1"
+        fixture.host.evidence = HotUpdaterSandboxLaunchEvidence(
+            marker: HotUpdaterSandboxCrashMarker(bundleId: "ota", shouldRollback: false)
+        )
+        await fixture.coordinator.refresh()
+        #expect(fixture.coordinator.state.lastLaunch?.kind == .crashed)
+        #expect(fixture.store.lastLaunch?.kind == .crashed)
+
+        await fixture.coordinator.open()
+        #expect(fixture.coordinator.state.lastLaunch == nil)
+        // The marker this process read stays readable, and it's not told again.
+        await fixture.coordinator.refresh()
+        #expect(fixture.coordinator.state.lastLaunch == nil)
+        #expect(fixture.store.lastLaunch == nil)
+    }
+
+    @Test
+    func anUnseenCrashSurvivesARestartWithNoEvidenceLeft() async {
+        let fixture = Fixture()
+        fixture.store.lastLaunch = HotUpdaterSandboxLastLaunch(
+            kind: .crashedBeforeContent,
+            bundleId: "ota",
+            rolledBackToBundleId: "built-in"
+        )
+        await fixture.coordinator.refresh()
+        #expect(fixture.coordinator.state.lastLaunch?.kind == .crashedBeforeContent)
+    }
+
+    @Test
+    func aSwitchEndsWhatTheLastLaunchLeft() async {
+        let fixture = Fixture()
+        fixture.host.evidence = HotUpdaterSandboxLaunchEvidence(
+            marker: HotUpdaterSandboxCrashMarker(bundleId: "built-in", shouldRollback: false)
+        )
+        await fixture.coordinator.refresh()
+        #expect(fixture.coordinator.state.lastLaunch != nil)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        #expect(fixture.coordinator.state.lastLaunch == nil)
+    }
+
+    @Test
+    func aSwitchKeepsTheReleaseIdTheCheckSelected() async {
+        let fixture = Fixture()
+        fixture.host.stageResult = .success(.update(bundleId: "ota", releaseId: releaseId))
+        fixture.coordinator.switchTo("pr-135")
+        await settle()
+        #expect(fixture.shelf.entries.map(\.releaseId) == [releaseId])
+        #expect(fixture.coordinator.state.downloaded.map(\.shownId) == [releaseId])
+        // The list on disk keeps it for the next launch; the files stay under the bundle's ID.
+        let reread = makeShelf(fixture.files)
+        #expect(reread.entries.map(\.releaseId) == [releaseId])
+        #expect(reread.stored("ota") != nil)
+    }
+
+    @Test
+    func aSwitchListsWhatItDownloadedWithItsMessage() async {
+        let fixture = Fixture()
+        fixture.host.stageResult = .success(.update(bundleId: "ota", message: "fix: login"))
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        #expect(fixture.shelf.entries == [HotUpdaterSandboxShelfEntry(
+            bundleId: "ota",
+            channel: "pr-1",
+            message: "fix: login",
+            isolationKey: "key",
+            downloadedAtMs: 1_000_000
+        )])
+        #expect(fixture.shelf.stored("ota") != nil)
+        #expect(fixture.coordinator.state.selectedMessage == "fix: login")
+        #expect(fixture.coordinator.state.downloaded.count == 1)
+    }
+
+    @Test
+    func aMessageBelongsToItsBundleNotItsChannel() async {
+        let fixture = Fixture()
+        install("older", in: fixture.shelf.source)
+        fixture.shelf.add(bundleId: "older", channel: "pr-1", message: "old words", nowMs: 0)
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota"
+        await fixture.coordinator.refresh()
+        #expect(fixture.coordinator.state.selectedMessage == nil)
+    }
+
+    @Test
+    func whatRunsAndWhatsNextAreReadApart() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-2"
+        fixture.host.bundleId = "staged"
+        fixture.host.runningBundleId = "running"
+        install("running", in: fixture.shelf.source)
+        install("staged", in: fixture.shelf.source)
+        fixture.shelf.add(bundleId: "running", channel: "pr-2", message: "what runs", nowMs: 0)
+        fixture.shelf.add(bundleId: "staged", channel: "pr-2", message: "what's next", nowMs: 1)
+        await fixture.coordinator.refresh()
+        let state = fixture.coordinator.state
+        #expect(state.selection?.bundleId == "staged")
+        #expect(state.runningBundleId == "running")
+        #expect(state.selectedMessage == "what's next")
+        #expect(state.runningMessage == "what runs")
+        let row = HotUpdaterSandboxHomeModel(state: state, isOverApp: true, nowMs: 0).bigRow
+        #expect(row.subtitle == "Running bundle running")
+        #expect(row.detail == "Next launch: bundle staged")
+        let over = HotUpdaterSandboxInfoModel(state: state, version: "1", configuration: "Release", isOverApp: true)
+        #expect(over.bundle.first { $0.name == "Current" }?.value == "running")
+        // Before the app starts, a fixed launch's Open reloads into what's next.
+        let before = HotUpdaterSandboxInfoModel(state: state, version: "1", configuration: "Release")
+        #expect(before.bundle.first { $0.name == "Current" }?.value == "staged")
+    }
+
+    @Test
+    func aRollbackIsClaimedAgainstWhatRunsNotWhatsNext() async {
+        let fixture = Fixture()
+        fixture.host.bundleId = "staged"
+        fixture.host.runningBundleId = "built-in"
+        fixture.host.evidence = HotUpdaterSandboxLaunchEvidence(
+            rollback: HotUpdaterSandboxRollback(fromBundleId: "ota", toBundleId: "built-in")
+        )
+        await fixture.coordinator.refresh()
+        #expect(fixture.coordinator.state.lastLaunch?.rolledBackToBundleId == "built-in")
+    }
+
+    @Test
+    func openReloadsAFixedLaunchOnlyBeforeTheAppStarts() async {
+        let over = Fixture()
+        over.host.channel = "pr-2"
+        over.host.bundleId = "staged"
+        over.host.runningBundleId = "running"
+        over.host.appRunning = true
+        await over.coordinator.open()
+        #expect(over.opens.last?.1 == false)
+
+        // Before the app starts, a fixed launch's Open reloads into what's selected.
+        let before = Fixture()
+        before.host.channel = "pr-2"
+        before.host.bundleId = "staged"
+        before.host.runningBundleId = "running"
+        await before.coordinator.open()
+        #expect(before.opens.last?.1 == true)
+    }
+
+    @Test
+    func openingListsNothing() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-3"
+        await fixture.coordinator.refresh()
+        await fixture.coordinator.open()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.shelf.entries.isEmpty)
+    }
+
+    @Test
+    func aRowRunsItsStoredBundleWithNoRequest() async {
+        let fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        fixture.host.calls = []
+        #expect(fixture.coordinator.openDownloaded("ota"))
+        await settle()
+        #expect(fixture.host.calls.isEmpty)
+        #expect(fixture.host.startedStored == ["ota"])
+        #expect(fixture.coordinator.state.storedSessionBundleId == "ota")
+        // Reload runs the same stored bundle again.
+        fixture.coordinator.reloadApp()
+        await settle()
+        #expect(fixture.host.startedStored == ["ota", "ota"])
+        #expect(fixture.host.calls.isEmpty)
+    }
+
+    @Test
+    func aRowWhoseFilesAreGoneChecksItsChannel() async {
+        let fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        try? FileManager.default.removeItem(at: fixture.shelf.root.appendingPathComponent("ota"))
+        fixture.host.calls = []
+        fixture.coordinator.openDownloaded("ota")
+        await settle()
+        #expect(fixture.host.startedStored.isEmpty)
+        #expect(fixture.host.calls == ["preflight pr-1", "check pr-1"])
+    }
+
+    @Test
+    func aRowWithoutFilesStaysWhenItsChannelHasNothingNew() async {
+        let fixture = Fixture(storesBundles: false)
+        fixture.host.stageResult = .success(.update(bundleId: "ota", message: "fix: login"))
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        let row = fixture.shelf.entries
+        #expect(row.map(\.bundleId) == ["ota"])
+        fixture.host.stageResult = .success(.noUpdate)
+        for _ in 0 ..< 2 {
+            fixture.host.calls = []
+            #expect(fixture.coordinator.openDownloaded("ota"))
+            await settle()
+            #expect(fixture.host.calls == ["preflight pr-1", "check pr-1"])
+            #expect(fixture.shelf.entries == row)
+            #expect(fixture.coordinator.state.downloaded == row)
+        }
+        #expect(fixture.host.startedStored.isEmpty)
+    }
+
+    @Test
+    func aRowWithoutFilesStaysWhenItsChannelCantBeChecked() async {
+        let fixture = Fixture(storesBundles: false)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        let row = fixture.shelf.entries
+        fixture.host.preflights["pr-1"] = .failure(FakeError.offline)
+        fixture.coordinator.openDownloaded("ota")
+        await settle()
+        guard case .failed = fixture.coordinator.state.phase else {
+            Issue.record("expected the check's failure")
+            return
+        }
+        #expect(fixture.shelf.entries == row)
+        #expect(fixture.coordinator.state.downloaded == row)
+    }
+
+    @Test
+    func aSameIdBuildListsRowsThatCheckTheirChannel() async {
+        let fixture = Fixture()
+        let shelf = makeShelf(fixture.files, storesBundles: false)
+        install("ota", in: shelf.source)
+        shelf.add(bundleId: "ota", channel: "pr-1", message: nil, nowMs: 0)
+        #expect(shelf.entries.map(\.channel) == ["pr-1"])
+        #expect(!FileManager.default.fileExists(atPath: shelf.root.appendingPathComponent("ota").path))
+        #expect(shelf.stored("ota") == nil)
+    }
+
+    @Test
+    func inAStoredSessionATypedChannelIsRefusedWithAWayBack() async {
+        let fixture = Fixture()
+        fixture.host.storedBundleId = "ota"
+        fixture.coordinator.switchTo("pr-2")
+        await settle()
+        guard case .failed(_, _, _, let failure, _) = fixture.coordinator.state.phase else {
+            Issue.record("expected a refusal")
+            return
+        }
+        #expect(failure == .inStoredSession)
+        #expect(HotUpdaterSandboxQuestion(phase: fixture.coordinator.state.phase, isOverApp: true, downloaded: [])?.accept == "Back")
+        #expect(fixture.host.calls.isEmpty)
+        fixture.coordinator.retry()
+        #expect(fixture.host.devExits == 1)
+        #expect(fixture.coordinator.state.phase == .idle)
+    }
+
+    @Test
+    func inAStoredSessionALinkExitsOnlyOnceConfirmed() async {
+        let fixture = Fixture()
+        fixture.host.storedBundleId = "ota"
+        fixture.coordinator.receiveLink(link("pr-1"))
+        guard case .confirming = fixture.coordinator.state.phase else {
+            Issue.record("expected the link's question")
+            return
+        }
+        #expect(fixture.host.devExits == 0)
+        fixture.coordinator.confirmLink()
+        #expect(fixture.host.devExits == 1)
+        #expect(fixture.host.calls.isEmpty)
+    }
+
+    @Test
+    func aRefreshDuringASwitchLeavesItsCopyAlone() async throws {
+        let fixture = Fixture()
+        let partial = fixture.shelf.root.appendingPathComponent("ota.tmp")
+        try FileManager.default.createDirectory(at: partial, withIntermediateDirectories: true)
+        fixture.host.stageGate = Gate()
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        await fixture.coordinator.refresh()
+        #expect(FileManager.default.fileExists(atPath: partial.path))
+        fixture.host.stageGate?.finish(.success(.update(bundleId: "ota")))
+        await settle()
+        await fixture.coordinator.refresh()
+        #expect(!FileManager.default.fileExists(atPath: partial.path))
+    }
+
+    @Test
+    func clearAndDeleteKeepTheRunningBundle() async {
+        let fixture = Fixture()
+        install("other", in: fixture.shelf.source)
+        install("third", in: fixture.shelf.source)
+        fixture.shelf.add(bundleId: "ota", channel: "pr-1", message: nil, nowMs: 0)
+        fixture.shelf.add(bundleId: "other", channel: "pr-2", message: nil, nowMs: 1)
+        fixture.shelf.add(bundleId: "third", channel: "pr-3", message: nil, nowMs: 2)
+        fixture.host.storedBundleId = "ota"
+        fixture.coordinator.deleteDownloaded("ota")
+        await settle()
+        #expect(fixture.shelf.stored("ota") != nil)
+        fixture.coordinator.deleteDownloaded("third")
+        await settle()
+        #expect(fixture.shelf.entries.map(\.bundleId) == ["other", "ota"])
+        fixture.coordinator.clearDownloaded()
+        await settle()
+        #expect(fixture.shelf.entries.map(\.bundleId) == ["ota"])
+        #expect(fixture.coordinator.state.downloaded.map(\.bundleId) == ["ota"])
+        #expect(fixture.shelf.stored("other") == nil)
+        #expect(fixture.host.calls.isEmpty)
+    }
+
+    @Test
+    func reloadAsksForTheReloadAndWaitsForASwitch() async {
+        let fixture = Fixture()
+        fixture.coordinator.reloadApp()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens[0] == (true, true))
+
+        let busy = Fixture()
+        busy.host.preflightGate = Gate()
+        busy.coordinator.switchTo("pr-1")
+        await settle()
+        busy.coordinator.reloadApp()
+        #expect(busy.opens.isEmpty)
+        busy.host.preflightGate?.finish(.success(false))
+        await settle()
+    }
+
+    @Test
+    func downloadedSaysWhenAndHowMuch() {
+        let minute = 60_000.0
+        #expect(HotUpdaterSandboxHomeModel.downloadedText(atMs: 0, nowMs: 30_000) == "downloaded just now")
+        #expect(HotUpdaterSandboxHomeModel.downloadedText(atMs: 0, nowMs: 5 * minute) == "downloaded 5 min ago")
+        #expect(HotUpdaterSandboxHomeModel.downloadedText(atMs: 0, nowMs: 125 * minute) == "downloaded 2 h ago")
+        #expect(HotUpdaterSandboxHomeModel.downloadedText(atMs: 0, nowMs: 1500 * minute) == "downloaded 1 day ago")
+        #expect(HotUpdaterSandboxHomeModel.downloadedText(atMs: 0, nowMs: 4400 * minute) == "downloaded 3 days ago")
+        #expect(HotUpdaterSandboxHomeModel.sizeText(400) == "1 KB")
+        #expect(HotUpdaterSandboxHomeModel.sizeText(2_340_000) == "2.3 MB")
+        #expect(HotUpdaterSandboxHomeModel.sizeText(120_400_000) == "120 MB")
+    }
+}
+
+struct HotUpdaterSandboxShelfTests {
+    @Test
+    func aPartialCopyListsNothing() {
+        let files = temporaryDirectory()
+        let shelf = makeShelf(files)
+        install("broken", in: shelf.source, skipping: "assets/logo.png")
+        shelf.add(bundleId: "broken", channel: "pr-1", message: nil, nowMs: 0)
+        #expect(shelf.entries.isEmpty)
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: shelf.root.path)) ?? []).isEmpty)
+    }
+
+    @Test
+    func aStoredBundleIsWhatMainAnswers() throws {
+        let files = temporaryDirectory()
+        let shelf = makeShelf(files)
+        install("a", in: shelf.source)
+        shelf.add(bundleId: "a", channel: "pr-1", message: nil, nowMs: 0)
+        let stored = try #require(shelf.stored("a"))
+        #expect(stored.bundleURL.lastPathComponent == "index.ios.bundle")
+        #expect(stored.baseURL == "file://\(shelf.root.appendingPathComponent("a").path)")
+        #expect(stored.manifest["bundleId"] as? String == "a")
+        // Main's store can prune its copy: the shelf's stays.
+        try FileManager.default.removeItem(at: shelf.source.appendingPathComponent("a"))
+        #expect(shelf.stored("a") != nil)
+    }
+
+    @Test
+    func theCapDropsTheOldestButNeverTheRunningOne() {
+        let files = temporaryDirectory()
+        let shelf = makeShelf(files)
+        for index in 0 ... HotUpdaterSandboxShelf.limit {
+            install("b\(index)", in: shelf.source)
+            shelf.add(bundleId: "b\(index)", channel: "pr-\(index)", message: nil, nowMs: Double(index), kept: ["b0"])
+        }
+        #expect(shelf.entries.count == HotUpdaterSandboxShelf.limit)
+        #expect(shelf.entries.first?.bundleId == "b10")
+        #expect(shelf.stored("b0") != nil)
+        #expect(shelf.entries.contains { $0.bundleId == "b1" } == false)
+        #expect(shelf.stored("b1") == nil)
+    }
+
+    @Test
+    func anotherBuildsEntriesAndStrayFilesGo() throws {
+        let files = temporaryDirectory()
+        let old = makeShelf(files, key: "old-build")
+        install("a", in: old.source)
+        old.add(bundleId: "a", channel: "pr-1", message: nil, nowMs: 0)
+        try FileManager.default.createDirectory(at: old.root.appendingPathComponent("b.tmp"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: old.root.appendingPathComponent("c"), withIntermediateDirectories: true)
+
+        let new = makeShelf(files, key: "new-build")
+        new.reconcile()
+        #expect(new.entries.isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: new.root.path) == ["index.json"])
+    }
+
+    /// The list and the files agree, and every listed bundle is whole.
+    private func expectAgreement(_ shelf: HotUpdaterSandboxShelf, _ round: Int) {
+        let names = ((try? FileManager.default.contentsOfDirectory(atPath: shelf.root.path)) ?? []).filter { $0 != "index.json" }
+        let listed = shelf.entries.map(\.bundleId)
+        #expect(Set(names) == Set(listed), "round \(round): files \(names), listed \(listed)")
+        for bundleId in listed {
+            #expect(shelf.stored(bundleId) != nil, "round \(round): \(bundleId) isn't whole")
+        }
+    }
+
+    @Test
+    func aRefreshWhileABundleIsShelvedKeepsIt() {
+        for round in 0 ..< 40 {
+            let shelf = makeShelf(temporaryDirectory())
+            install("b\(round)", in: shelf.source)
+            race({ shelf.add(bundleId: "b\(round)", channel: "pr-1", message: nil, nowMs: 0) }, against: { shelf.reconcile() })
+            expectAgreement(shelf, round)
+            #expect(shelf.entries.map(\.bundleId) == ["b\(round)"], "round \(round)")
+        }
+    }
+
+    @Test
+    func aClearWhileABundleIsShelvedLeavesTheListAndFilesInAgreement() {
+        for round in 0 ..< 40 {
+            let shelf = makeShelf(temporaryDirectory())
+            install("old", in: shelf.source)
+            shelf.add(bundleId: "old", channel: "pr-0", message: nil, nowMs: 0)
+            install("b\(round)", in: shelf.source)
+            race({ shelf.add(bundleId: "b\(round)", channel: "pr-1", message: nil, nowMs: 1) }, against: { shelf.clear(keeping: []) })
+            expectAgreement(shelf, round)
+        }
+    }
+
+    @Test
+    func aListThatCantBeSavedKeepsTheSwitchAndLastsThisProcess() throws {
+        let files = temporaryDirectory()
+        let shelf = makeShelf(files)
+        install("a", in: shelf.source)
+        // The list can't be written: a directory holds its name.
+        try FileManager.default.createDirectory(at: shelf.root.appendingPathComponent("index.json"), withIntermediateDirectories: true)
+        shelf.add(bundleId: "a", channel: "pr-1", message: nil, nowMs: 0)
+        #expect(shelf.entries.map(\.bundleId) == ["a"])
+        #expect(makeShelf(files).entries.isEmpty)
+    }
+
+    @Test @MainActor
+    func aLinkWaitsWhileARowOpensItsBundle() async {
+        let shelfQueue = DispatchQueue(label: "test.slow-shelf")
+        let fixture = Fixture(shelfQueue: shelfQueue)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        let slow = Suspended(shelfQueue)
+        defer { slow.resume() }
+        #expect(fixture.coordinator.openDownloaded("ota"))
+        fixture.coordinator.receiveLink(link("pr-new"))
+        #expect(fixture.coordinator.state.phase == .idle)
+        #expect(fixture.coordinator.state.queuedLinks == 1)
+        fixture.coordinator.confirmLink()
+        fixture.host.calls = []
+        slow.resume()
+        await settle()
+        // The session started first, then the link is asked about.
+        #expect(fixture.host.startedStored == ["ota"])
+        #expect(fixture.host.calls.isEmpty)
+        guard case .confirming = fixture.coordinator.state.phase else {
+            Issue.record("expected the link's question once the row opened")
+            return
+        }
+    }
+
+    @Test @MainActor
+    func theMainActorNeverWaitsForTheShelfsFiles() async {
+        let shelfQueue = DispatchQueue(label: "test.slow-shelf")
+        let fixture = Fixture(shelfQueue: shelfQueue)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        // The shelf is busy for as long as the test says: a slow disk.
+        install("other", in: fixture.shelf.source)
+        fixture.shelf.add(bundleId: "other", channel: "pr-2", message: nil, nowMs: 0)
+        let slow = Suspended(shelfQueue)
+        defer { slow.resume() }
+        #expect(fixture.coordinator.openDownloaded("ota"))
+        // The bundle being opened stays whole through Delete and Clear.
+        fixture.coordinator.deleteDownloaded("ota")
+        fixture.coordinator.clearDownloaded()
+        await settle()
+        #expect(fixture.host.startedStored.isEmpty)
+        #expect(fixture.shelf.stored("ota") != nil)
+        slow.resume()
+        await settle()
+        #expect(fixture.host.startedStored == ["ota"])
+        #expect(fixture.shelf.stored("ota") != nil)
+        #expect(fixture.shelf.stored("other") == nil)
+        #expect(fixture.coordinator.state.downloaded.map(\.bundleId) == ["ota"])
+    }
+
+    @Test
+    func aLinkOrAPathOutsideTheBundleFailsTheCheck() throws {
+        let files = temporaryDirectory()
+        let directory = files.appendingPathComponent("x")
+        install("x", in: files)
+        let logo = directory.appendingPathComponent("assets/logo.png")
+        try FileManager.default.removeItem(at: logo)
+        try FileManager.default.createSymbolicLink(at: logo, withDestinationURL: directory.appendingPathComponent("index.ios.bundle"))
+        #expect(HotUpdaterSandboxShelf.check(directory, bundleId: "x") == nil)
+
+        let manifest: [String: Any] = ["bundleId": "x", "assets": ["../x/index.ios.bundle": ["fileHash": "h"]]]
+        try JSONSerialization.data(withJSONObject: manifest).write(to: directory.appendingPathComponent("manifest.json"))
+        #expect(HotUpdaterSandboxShelf.check(directory, bundleId: "x") == nil)
+        #expect(HotUpdaterSandboxShelf.check(directory, bundleId: "y") == nil)
+    }
+}
+
+/// The stored files' ID and the release's, as pr-135's Android deploy had them.
+private let artifactId = "01a1be20-0000-7000-8000-0000000000c6"
+private let releaseId = "01a1be22-0000-7000-8000-000000005b2b"
+
+private func entry(_ bundleId: String, _ channel: String, message: String? = nil) -> HotUpdaterSandboxShelfEntry {
+    HotUpdaterSandboxShelfEntry(bundleId: bundleId, channel: channel, message: message, isolationKey: "key", downloadedAtMs: 0)
+}
+
+struct HotUpdaterSandboxHomeModelTests {
+    private func state(
+        selection: HotUpdaterSandboxSelection?,
+        running: String? = nil,
+        hasServerConfig: Bool = true,
+        phase: HotUpdaterSandboxPhase = .idle,
+        lastLaunch: HotUpdaterSandboxLastLaunch? = nil,
+        history: [HotUpdaterSandboxShelfEntry] = [],
+        storedSession: String? = nil,
+        message: String? = nil,
+        pending: String? = nil,
+        releaseIds: [String: String] = [:]
+    ) -> HotUpdaterSandboxState {
+        HotUpdaterSandboxState(
+            selection: selection,
+            hasServerConfig: hasServerConfig,
+            phase: phase,
+            queuedLinks: 0,
+            details: HotUpdaterSandboxDetails(
+                builtInBundleId: "built-in",
+                fingerprintHash: "abc",
+                pendingBundleId: pending,
+                releaseIds: releaseIds
+            ),
+            lastLaunch: lastLaunch,
+            downloaded: history,
+            storedSessionBundleId: storedSession,
+            selectedMessage: message,
+            runningBundleId: running
+        )
+    }
+
+    private func home(_ state: HotUpdaterSandboxState, isOverApp: Bool = false) -> HotUpdaterSandboxHomeModel {
+        HotUpdaterSandboxHomeModel(state: state, isOverApp: isOverApp, nowMs: 0)
+    }
+
+    @Test
+    func theBigRowFollowsTheBundleNotTheChannel() {
+        let otaOnDefault = home(state(selection: selection(channel: "sandbox-release", bundleId: "019a3f00aabbc2")))
+        #expect(otaOnDefault.bigRow.title == "Open sandbox-release")
+        #expect(otaOnDefault.bigRow.detail == "Bundle 019a3f…c2")
+
+        let builtInOnPreview = home(state(selection: selection(channel: "pr-1", bundleId: "built-in")))
+        #expect(builtInOnPreview.bigRow.title == "Open built-in bundle")
+        #expect(builtInOnPreview.bigRow.detail == "Channel pr-1")
+    }
+
+    @Test
+    func aMessageIsShownOnlyWhenKnown() {
+        #expect(home(state(selection: selection())).bigRow.subtitle == nil)
+        #expect(home(state(selection: selection(), message: "fix: login"))
+            .bigRow.subtitle == "fix: login")
+    }
+
+    @Test
+    func overTheAppItSaysRunningAndReload() {
+        let row = home(state(selection: selection()), isOverApp: true).bigRow
+        #expect(row.caption == "Running")
+        #expect(row.title == "Reload")
+        #expect(row.subtitle == "Running pr-1")
+        #expect(row.action == .reloadApp)
+    }
+
+    @Test
+    func overTheAppRunningAndNextAreSeparateWhenTheyDiffer() {
+        let toOta = home(state(selection: selection(bundleId: "ota"), running: "built-in"), isOverApp: true).bigRow
+        #expect(toOta.title == "Reload")
+        #expect(toOta.subtitle == "Running the built-in bundle")
+        #expect(toOta.detail == "Next launch: bundle ota")
+        #expect(toOta.action == .reloadApp)
+    }
+
+    @Test
+    func overTheAppABuiltInBundleNextIsOpenedByItsReload() {
+        let row = home(state(selection: selection(bundleId: "built-in"), running: "019a3f00aabbc2"), isOverApp: true).bigRow
+        #expect(row.caption == "Current bundle")
+        #expect(row.title == "Open built-in bundle")
+        #expect(row.subtitle == "The bundle this build shipped with")
+        #expect(row.detail == "Running bundle 019a3f…c2")
+        #expect(row.action == .openOverApp)
+    }
+
+    @Test
+    func overTheAppTheBuiltInBundleRunningStaysAReload() {
+        let row = home(state(selection: selection(bundleId: "built-in"), running: "built-in"), isOverApp: true).bigRow
+        #expect(row.caption == "Running")
+        #expect(row.title == "Reload")
+        #expect(row.subtitle == "Running the built-in bundle")
+        #expect(row.detail == "Channel pr-1")
+        #expect(row.action == .reloadApp)
+    }
+
+    @Test
+    func theRowsTapComesWithItsWords() {
+        func action(
+            _ state: HotUpdaterSandboxState,
+            isOverApp: Bool,
+            devServer: String? = nil
+        ) -> HotUpdaterSandboxHomeModel.Action {
+            HotUpdaterSandboxHomeModel(state: state, isOverApp: isOverApp, runningDevServerHost: devServer, nowMs: 0).bigRow.action
+        }
+        // Before the app starts, the row opens it, a dev server or not.
+        #expect(action(state(selection: nil), isOverApp: false) == .open)
+        #expect(action(state(selection: selection()), isOverApp: false) == .open)
+        #expect(action(state(selection: selection(bundleId: "built-in")), isOverApp: false) == .open)
+        #expect(action(state(selection: selection()), isOverApp: false, devServer: "localhost:8081") == .open)
+        // Over the app.
+        #expect(action(state(selection: nil), isOverApp: true) == .reloadApp)
+        #expect(action(state(selection: selection()), isOverApp: true) == .reloadApp)
+        #expect(action(state(selection: selection(bundleId: "ota"), running: "built-in"), isOverApp: true) == .reloadApp)
+        #expect(action(state(selection: selection(bundleId: "built-in"), running: "ota"), isOverApp: true) == .openOverApp)
+        #expect(action(state(selection: selection(bundleId: "built-in"), running: "built-in"), isOverApp: true) == .reloadApp)
+        let stored = state(selection: selection(), history: [entry("019a3f00aabbc2", "pr-12")], storedSession: "019a3f00aabbc2")
+        #expect(action(stored, isOverApp: true) == .reloadApp)
+        #expect(action(state(selection: selection()), isOverApp: true, devServer: "localhost:8081") == .reloadDevServer)
+        // Open's icon only where the row opens something.
+        #expect(HotUpdaterSandboxHomeModel.Action.open.opens)
+        #expect(HotUpdaterSandboxHomeModel.Action.openOverApp.opens)
+        #expect(!HotUpdaterSandboxHomeModel.Action.reloadApp.opens)
+        #expect(!HotUpdaterSandboxHomeModel.Action.reloadDevServer.opens)
+    }
+
+    @Test
+    func theDevServerIsWhatRunsWhenItRuns() {
+        let model = HotUpdaterSandboxHomeModel(
+            state: state(selection: selection()),
+            isOverApp: true,
+            runningDevServerHost: "localhost:8081",
+            nowMs: 0
+        )
+        #expect(model.bigRow.subtitle == "Running the dev server")
+        let info = HotUpdaterSandboxInfoModel(
+            state: state(selection: selection()),
+            version: "1.0 (1)",
+            configuration: "Release",
+            isOverApp: true,
+            runningDevServerHost: "localhost:8081"
+        )
+        #expect(info.bundle.first { $0.name == "Current" }?.value == "Dev server")
+    }
+
+    @Test
+    func aRollbackIsClaimedOnlyByItsOwnBanner() {
+        let rolledBack = home(state(
+            selection: selection(bundleId: "built-in"),
+            lastLaunch: HotUpdaterSandboxLastLaunch(kind: .crashedBeforeContent, bundleId: "ota", rolledBackToBundleId: "built-in"),
+            history: [entry("ota", "pr-9")]
+        )).banner
+        #expect(rolledBack?.text == "pr-9 crashed before its first screen. The device rolled back to the built-in bundle.")
+        #expect(rolledBack?.offersReset == false)
+
+        let verified = home(state(
+            selection: selection(bundleId: "ota"),
+            lastLaunch: HotUpdaterSandboxLastLaunch(kind: .crashed, bundleId: "ota", rolledBackToBundleId: nil)
+        )).banner
+        #expect(verified?.text == "Artifact ota crashed on its last launch, and it's still selected.")
+        #expect(verified?.offersReset == true)
+        #expect(verified?.text.contains("rolled back") == false)
+
+        let left = home(state(
+            selection: selection(bundleId: "built-in"),
+            lastLaunch: HotUpdaterSandboxLastLaunch(kind: .endedBeforeContent, bundleId: "ota", rolledBackToBundleId: "built-in")
+        )).banner
+        #expect(left?.text == "Artifact ota didn't reach its first screen. The device rolled back to the built-in bundle.")
+        #expect(left?.text.contains("crashed") == false)
+    }
+
+    @Test
+    func aCrashedBuiltInBundleHasNoResetToOffer() {
+        let banner = home(state(
+            selection: selection(bundleId: "built-in"),
+            lastLaunch: HotUpdaterSandboxLastLaunch(kind: .crashed, bundleId: "built-in", rolledBackToBundleId: nil)
+        )).banner
+        #expect(banner?.text == "The built-in bundle crashed on its last launch, and it's still selected.")
+        #expect(banner?.offersReset == false)
+    }
+
+    @Test
+    func aCrashedBundleThatsNoLongerSelectedSaysWhatIs() {
+        let banner = home(state(
+            selection: selection(bundleId: "newer"),
+            lastLaunch: HotUpdaterSandboxLastLaunch(kind: .crashed, bundleId: "ota", rolledBackToBundleId: nil)
+        )).banner
+        #expect(banner?.text == "Artifact ota crashed on its last launch. Bundle newer is selected now.")
+        #expect(banner?.offersReset == false)
+    }
+
+    /// Every row names a bundle by its release, the ID `HotUpdater.getBundleId()`
+    /// and the Console show, as the Downloaded rows do; artifacts stay identity.
+    @Test
+    func everyRowNamesABundleByItsRelease() {
+        let releases = [
+            "01a1deed-0000-7000-8000-00000000000a": "01b2c3d4-0000-7000-8000-0000000000r1",
+            "01a1deed-0000-7000-8000-00000000000b": "01b2c3d4-0000-7000-8000-0000000000r2",
+        ]
+        let artifactA = "01a1deed-0000-7000-8000-00000000000a"
+        let artifactB = "01a1deed-0000-7000-8000-00000000000b"
+
+        let current = home(state(selection: selection(bundleId: artifactA), releaseIds: releases)).bigRow
+        #expect(current.detail == "Bundle 01b2c3…r1")
+
+        let running = home(state(selection: selection(bundleId: artifactA), running: artifactA, releaseIds: releases), isOverApp: true).bigRow
+        #expect(running.detail == "Bundle 01b2c3…r1")
+
+        let staged = home(state(selection: selection(bundleId: artifactB), running: artifactA, releaseIds: releases), isOverApp: true).bigRow
+        #expect(staged.subtitle == "Running bundle 01b2c3…r1")
+        #expect(staged.detail == "Next launch: bundle 01b2c3…r2")
+
+        let builtInNext = home(state(selection: selection(bundleId: "built-in"), running: artifactA, releaseIds: releases), isOverApp: true).bigRow
+        #expect(builtInNext.detail == "Running bundle 01b2c3…r1")
+
+        let info = HotUpdaterSandboxInfoModel(
+            state: state(selection: selection(bundleId: artifactB), running: artifactA, pending: artifactB, releaseIds: releases),
+            version: "1.0 (1)",
+            configuration: "Release",
+            isOverApp: true
+        )
+        #expect(info.bundle.first { $0.name == "Current" }?.value == "01b2c3…r1")
+        #expect(info.bundle.first { $0.name == "Pending" }?.value == "01b2c3…r2")
+
+        // A rollback names the releases its report names.
+        let rolledBack = home(state(
+            selection: selection(bundleId: artifactA),
+            lastLaunch: HotUpdaterSandboxLastLaunch(
+                kind: .crashedBeforeContent,
+                bundleId: artifactB,
+                rolledBackToBundleId: artifactA,
+                releaseId: "01b2c3d4-0000-7000-8000-0000000000r2",
+                rolledBackToReleaseId: "01b2c3d4-0000-7000-8000-0000000000r1"
+            )
+        )).banner
+        #expect(rolledBack?.text == "Bundle 01b2c3…r2 crashed before its first screen. The device rolled back to bundle 01b2c3…r1.")
+
+        // A crash the receipts still name: the selected release.
+        let stillSelected = home(state(
+            selection: selection(bundleId: artifactA),
+            lastLaunch: HotUpdaterSandboxLastLaunch(kind: .crashed, bundleId: artifactA, rolledBackToBundleId: nil),
+            releaseIds: releases
+        )).banner
+        #expect(stillSelected?.text == "Bundle 01b2c3…r1 crashed on its last launch, and it's still selected.")
+    }
+
+    /// A receipt without a release: the artifact's ID, as `HotUpdater.getBundleId()` falls back to it.
+    @Test
+    func aBundleWithoutAReleaseKeepsItsArtifactsId() {
+        let row = home(state(selection: selection(bundleId: "019a3f00aabbc2"))).bigRow
+        #expect(row.detail == "Bundle 019a3f…c2")
+    }
+
+    @Test
+    func theFirstLaunchSaysAServerAnswerIsNeededAndWhatToDo() {
+        let model = home(state(selection: selection(bundleId: "built-in"), hasServerConfig: false))
+        // The link path's next step: one open doesn't promise a check.
+        #expect(model.previewHint == "No update server yet. Open the app so it can check for updates.")
+        #expect(model.previewHint == HotUpdaterSandboxHomeModel.noServer)
+    }
+
+    @Test
+    func enterAChannelOpensOnceAServerIsKnownAndNothingRuns() {
+        #expect(!home(state(selection: selection(bundleId: "built-in"), hasServerConfig: false)).canEnterChannel)
+        #expect(home(state(selection: selection(bundleId: "built-in"))).canEnterChannel)
+        let working = HotUpdaterSandboxPhase.working(operationId: 1, target: "pr-134", step: .check, progress: nil)
+        #expect(!home(state(selection: selection(bundleId: "built-in"), phase: working)).canEnterChannel)
+    }
+
+    @Test
+    func everyDownloadedBundleIsARowTheSelectedOneToo() {
+        let model = home(state(
+            selection: selection(channel: "pr-1"),
+            history: [entry("019a3f00aabbc2", "pr-1"), entry("b", "pr-2", message: "words")],
+            storedSession: "b"
+        ))
+        #expect(model.downloaded == [
+            HotUpdaterSandboxHomeModel.Downloaded(
+                bundleId: "019a3f00aabbc2",
+                channel: "pr-1",
+                message: nil,
+                detail: "Bundle 019a3f…c2 · downloaded just now",
+                isRunning: false
+            ),
+            HotUpdaterSandboxHomeModel.Downloaded(
+                bundleId: "b",
+                channel: "pr-2",
+                message: "words",
+                detail: "Bundle b · downloaded just now",
+                isRunning: true
+            ),
+        ])
+        #expect(model.downloadedFooter == "2 of 10")
+        #expect(home(state(selection: selection())).downloadedFooter == "Bundles you open from a QR code, a link, or a channel stay here.")
+    }
+
+    @Test
+    func aStoredSessionSaysWhatRunsAndTheWayBack() {
+        let current = state(selection: selection(), history: [entry("019a3f00aabbc2", "pr-12")], storedSession: "019a3f00aabbc2")
+        let row = home(current, isOverApp: true).bigRow
+        #expect(row.subtitle == "Running stored pr-12")
+        #expect(row.detail == "Bundle 019a3f…c2")
+        #expect(row.action == .reloadApp)
+        #expect(row.showsBack)
+        let info = HotUpdaterSandboxInfoModel(state: current, version: "1", configuration: "Release", isOverApp: true)
+        #expect(info.bundle.first { $0.name == "Current" }?.value == "Stored 019a3f…c2")
+        // Its row's deploy message, as a running row shows one.
+        let withMessage = state(
+            selection: selection(),
+            history: [entry("019a3f00aabbc2", "pr-12", message: "abc1234 · #12 Fix login")],
+            storedSession: "019a3f00aabbc2"
+        )
+        #expect(home(withMessage, isOverApp: true).bigRow.detail == "abc1234 · #12 Fix login")
+    }
+
+    /// QA of codex-relay pr-135: the list said bundle 01a1be…c6, the stored files'
+    /// ID, while the app's `HotUpdater.getBundleId()`, the PR comment and the
+    /// Console said 01a1be…2b, the release's ID.
+    @Test
+    func aStoredBundleIsNamedByTheReleaseIdTheAppAndTheConsoleShow() throws {
+        let files = temporaryDirectory()
+        let shelf = makeShelf(files)
+        try FileManager.default.createDirectory(at: shelf.root, withIntermediateDirectories: true)
+        try Data(#"[{"bundleId":"\#(artifactId)","releaseId":"\#(releaseId)","channel":"pr-135","isolationKey":"key","downloadedAtMs":0}]"#.utf8)
+            .write(to: shelf.root.appendingPathComponent("index.json"))
+        let current = state(selection: selection(), history: shelf.entries, storedSession: artifactId)
+        #expect(home(current).downloaded.first?.detail == "Bundle 01a1be…2b · downloaded just now")
+        #expect(home(current, isOverApp: true).bigRow.detail == "Bundle 01a1be…2b")
+        let info = HotUpdaterSandboxInfoModel(state: current, version: "1", configuration: "Release", isOverApp: true)
+        #expect(info.bundle.first { $0.name == "Current" }?.value == "Stored 01a1be…2b")
+    }
+
+    @Test
+    func aStoredBundleListedBeforeReleaseIdsKeepsItsBundleId() throws {
+        let files = temporaryDirectory()
+        let shelf = makeShelf(files)
+        try FileManager.default.createDirectory(at: shelf.root, withIntermediateDirectories: true)
+        try Data(#"[{"bundleId":"\#(artifactId)","channel":"pr-135","isolationKey":"key","downloadedAtMs":0}]"#.utf8)
+            .write(to: shelf.root.appendingPathComponent("index.json"))
+        let current = state(selection: selection(), history: shelf.entries, storedSession: artifactId)
+        #expect(home(current).downloaded.first?.detail == "Bundle 01a1be…c6 · downloaded just now")
+        #expect(home(current, isOverApp: true).bigRow.detail == "Bundle 01a1be…c6")
+    }
+
+    @Test
+    func aSwitchShowsItsStepAndHoldsTheRows() {
+        let model = home(state(
+            selection: selection(),
+            phase: .working(operationId: 1, target: "pr-2", step: .download, progress: 0.5)
+        ))
+        #expect(model.status == HotUpdaterSandboxHomeModel.Status(text: "Downloading pr-2… 50%", progress: 0.5))
+        #expect(model.isBusy)
+    }
+
+    @Test
+    func onlyARunningCheckSpinsNeverALinkThatWaitsForTheAppToBeOpened() {
+        let link = HotUpdaterSandboxLink(url: "hu-sandbox-app://hot-updater/preview?channel=pr-1&fingerprint=fp")!
+        // The app the sandbox started under the screen checks now.
+        #expect(home(state(selection: selection(), phase: .waitingForServer(link, checking: true))).status
+            == HotUpdaterSandboxHomeModel.Status(text: "Checking pr-1…", progress: nil, spins: true))
+        // Past its time, or on a host the app can't start under: the screen watches on, with nothing spinning.
+        let waiting = home(state(selection: selection(), phase: .waitingForServer(link, checking: false))).status
+        #expect(waiting?.spins == false)
+        #expect(waiting?.text == "pr-1 needs an answer from your update server first. Open the app so it can check for updates.")
+        #expect(home(state(selection: selection(), phase: .working(operationId: 1, target: "pr-2", step: .check, progress: nil))).status?.spins == true)
+        #expect(home(state(selection: selection(), phase: .working(operationId: 1, target: "", step: .reset, progress: nil))).status?.spins == true)
+        // A download shows its bar instead.
+        #expect(home(state(selection: selection(), phase: .working(operationId: 1, target: "pr-2", step: .download, progress: 0.5))).status?.spins == false)
+    }
+
+    @Test
+    func infoShowsWhatTheStoreHolds() {
+        var withPending = state(selection: selection(bundleId: "019a3f00aabbc2"))
+        withPending.details = HotUpdaterSandboxDetails(
+            builtInBundleId: "built-in",
+            fingerprintHash: nil,
+            pendingBundleId: "019a3f00aabbc2"
+        )
+        let info = HotUpdaterSandboxInfoModel(state: withPending, version: "1.0 (1)", configuration: "Release")
+        #expect(info.build.map(\.name) == ["Version", "Configuration", "Fingerprint", "Built-in bundle", "Default channel"])
+        #expect(info.build.first { $0.name == "Fingerprint" }?.value == "None")
+        #expect(info.bundle.map(\.name) == ["Channel", "Current", "Pending"])
+        #expect(info.bundle.first { $0.name == "Current" }?.value == "019a3f…c2")
+        #expect(info.bundle.first { $0.name == "Pending" }?.value == "019a3f…c2")
+    }
+
+    @Test
+    func aLinkSaysItReplacesTheRunningBundleOnlyOverTheApp() {
+        let link = HotUpdaterSandboxLink(url: "hu-sandbox-app://hot-updater/preview?channel=pr-1&fingerprint=fp")!
+        let over = HotUpdaterSandboxQuestion(phase: .confirming(link), isOverApp: true, downloaded: [])
+        let before = HotUpdaterSandboxQuestion(phase: .confirming(link), isOverApp: false, downloaded: [])
+        #expect(over?.message == "This replaces the running bundle. Downloaded bundles stay listed.")
+        #expect(before?.message == HotUpdaterSandboxHomeModel.switchNote)
+        // It opens the channel's latest bundle, and says so.
+        #expect(before?.title == "Open latest on pr-1?")
+        #expect(before?.accept == "Open latest")
+    }
+
+    @Test
+    func anAndroidLinkSaysWhichQrToScan() {
+        let android = HotUpdaterSandboxLink(url: "hu-sandbox-app://hot-updater/preview?channel=pr-12&fingerprint=fp&platform=android")!
+        let question = HotUpdaterSandboxQuestion(phase: .refused(.otherPlatform(link: android)), isOverApp: false, downloaded: [])
+        #expect(question?.title == "This QR is for Android")
+        #expect(question?.message == "Scan the iPhone QR code for pr-12.")
+        #expect(question?.accept == "Done")
+        #expect(question?.decline == nil)
+    }
+
+    @Test
+    func aLinkWithoutAPlatformKeepsTheFingerprintRefusal() {
+        let link = HotUpdaterSandboxLink(url: "hu-sandbox-app://hot-updater/preview?channel=pr-12&fingerprint=fp")!
+        let question = HotUpdaterSandboxQuestion(
+            phase: .refused(.otherFingerprint(link: link, buildFingerprintHash: "abc")),
+            isOverApp: false,
+            downloaded: []
+        )
+        #expect(question?.title == "pr-12 needs another build")
+        #expect(question?.message == "Its native code differs from this build. Install the sandbox build for that fingerprint.")
+    }
+
+    @Test
+    func aFailureNamesTheSelectedBundleAsTheDownloadedListDoes() {
+        let selection = HotUpdaterSandboxSelection(
+            channel: "qa-windows",
+            defaultChannel: "production",
+            bundleId: "01a1deed-0000-7000-8000-000000000001",
+            isBuiltIn: false
+        )
+        let phase = HotUpdaterSandboxPhase.failed(operationId: 1, target: "pr-2", step: .check, failure: .noBundle, selection: selection)
+        // The row lists the release's ID, which HotUpdater.getBundleId() reports.
+        let entry = HotUpdaterSandboxShelfEntry(
+            bundleId: "01a1deed-0000-7000-8000-000000000001",
+            channel: "qa-windows",
+            message: nil,
+            isolationKey: "key",
+            downloadedAtMs: 0,
+            releaseId: "01a1def0-0000-7000-8000-0000a497fa61"
+        )
+        #expect(
+            HotUpdaterSandboxQuestion(phase: phase, isOverApp: true, downloaded: [entry])?.message
+                == "pr-2 has no bundle for this build.\n\nSelected now: qa-windows, bundle 01a1def0-0000-7000-8000-0000a497fa61."
+        )
+        // A bundle the list doesn't hold keeps its own ID.
+        #expect(
+            HotUpdaterSandboxQuestion(phase: phase, isOverApp: true, downloaded: [])?.message
+                == "pr-2 has no bundle for this build.\n\nSelected now: qa-windows, bundle 01a1deed-0000-7000-8000-000000000001."
+        )
+    }
+
+    @Test
+    func theScannerSendsOnlyADeniedCameraToSettings() {
+        #expect(HotUpdaterSandboxScannerContent(access: .denied)
+            == .message("Allow camera access to scan QR codes.", opensSettings: true))
+        #expect(HotUpdaterSandboxScannerContent(access: .restricted)
+            == .message("Camera access is restricted on this device.", opensSettings: false))
+        #expect(HotUpdaterSandboxScannerContent(access: .allowed) == .camera)
+        #expect(HotUpdaterSandboxScannerContent(access: .allowed, problem: "No camera on this device.")
+            == .message("No camera on this device.", opensSettings: false))
+        #expect(HotUpdaterSandboxScannerContent(access: .undetermined) == .waiting)
+    }
+
+    @Test
+    func licenseReflowsIntoParagraphs() {
+        let text = """
+        Copyright 2024 The Authors
+
+        -----------------------------------------------------------
+        SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+        -----------------------------------------------------------
+
+        PREAMBLE
+        The goals of the Open Font License (OFL) are to stimulate\u{20}
+        worldwide development.
+
+        DISCLAIMER
+        THE FONT SOFTWARE IS PROVIDED "AS IS",
+        WITHOUT WARRANTY OF ANY KIND.
+        """
+        #expect(HotUpdaterSandboxInfoModel.reflow(text) == [
+            "Copyright 2024 The Authors",
+            "SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007",
+            "PREAMBLE",
+            "The goals of the Open Font License (OFL) are to stimulate worldwide development.",
+            "DISCLAIMER",
+            "THE FONT SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND.",
+        ].joined(separator: "\n\n"))
+    }
+}
+
+struct HotUpdaterSandboxDevHostTests {
+    @Test
+    func hostsNormalizeAsAPersonTypesThem() {
+        #expect(HotUpdaterSandboxDevHost.normalize(" 192.168.0.2 ") == "http://192.168.0.2:8081")
+        #expect(HotUpdaterSandboxDevHost.normalize("192.168.0.2:9000/") == "http://192.168.0.2:9000")
+        #expect(HotUpdaterSandboxDevHost.normalize("https://dev.example.com") == "https://dev.example.com:8081")
+        #expect(HotUpdaterSandboxDevHost.normalize("[::1]") == "http://[::1]:8081")
+        for bad in ["", "ftp://host", "host/path", "two words"] {
+            #expect(HotUpdaterSandboxDevHost.normalize(bad) == nil)
+        }
+    }
+
+    @Test
+    func recentHostsComeFirstEachOnce() {
+        #expect(HotUpdaterSandboxDevHost.listed(isSimulator: true, recent: ["http://a:1", "http://localhost:8081"]) == ["http://a:1", "http://localhost:8081"])
+        #expect(HotUpdaterSandboxDevHost.listed(isSimulator: false, recent: []) == [])
+    }
+
+    @Test
+    func anExpoManifestNamesTheEntryAndTheTransformNeverItsDevSettings() {
+        let manifest = #"{"launchAsset":{"url":"http://127.0.0.1:8099/examples/expo-52/index.ts.bundle?platform=ios&dev=true&hot=false&transform.engine=hermes&transform.bytecode=1&unstable_transformProfile=hermes-stable"}}"#
+        #expect(HotUpdaterSandboxDevHost.entry(ofManifest: Data(manifest.utf8)) == HotUpdaterSandboxDevEntry(
+            path: "examples/expo-52/index.ts",
+            query: "&transform.engine=hermes&unstable_transformProfile=hermes-stable"
+        ))
+        #expect(HotUpdaterSandboxDevHost.entry(ofManifest: Data("React Native packager is running.".utf8)) == nil)
+        #expect(HotUpdaterSandboxDevHost.entry(ofManifest: Data(#"{"launchAsset":{}}"#.utf8)) == nil)
+    }
+
+    @Test
+    func theBundleIsDevFalse() {
+        #expect(HotUpdaterSandboxDevHost.bundleURL(host: "http://a:1")?.absoluteString == "http://a:1/index.bundle?platform=ios&dev=false&minify=false")
+    }
+}
+/// A dev server whose answers wait for the test.
+@MainActor
+private final class SlowDevServer {
+    private var waiting: [CheckedContinuation<HotUpdaterSandboxDevResolved, Never>] = []
+    var pending: Int { waiting.count }
+
+    func resolve(_ host: String) async -> HotUpdaterSandboxDevResolved {
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    func answer(_ result: HotUpdaterSandboxDevResolved) {
+        waiting.removeFirst().resume(returning: result)
+    }
+}
+
+@MainActor
+private func settle(until done: () -> Bool = { false }) async {
+    for _ in 0 ..< 200 {
+        if done() { return }
+        await Task.yield()
+    }
+}
+
+@MainActor
+struct HotUpdaterSandboxDevConnectorTests {
+    @Test
+    func aConnectWhileASwitchRunsIsRefusedAndStartsNothing() async {
+        let server = SlowDevServer()
+        let lock = HotUpdaterSandboxLock()
+        var committed = 0
+        let connector = HotUpdaterSandboxDevConnector(
+            resolve: { await server.resolve($0) },
+            commit: { _, _ in committed += 1 },
+            lock: lock
+        )
+        #expect(lock.take(.switching))
+        var failure: String?
+        connector.connect("http://a:1") { failure = $0 }
+        await settle { failure != nil }
+        #expect(failure == "A bundle is being opened. Wait for it, then connect.")
+        #expect(server.pending == 0)
+        #expect(committed == 0)
+        #expect(lock.holder == .switching)
+    }
+
+    @Test
+    func aConnectionHoldsTheLockWhileItFetchesAndReleasesItEitherWay() async {
+        let server = SlowDevServer()
+        let lock = HotUpdaterSandboxLock()
+        var committed = 0
+        let connector = HotUpdaterSandboxDevConnector(
+            resolve: { await server.resolve($0) },
+            commit: { _, _ in committed += 1 },
+            lock: lock
+        )
+        var failure: String? = "unanswered"
+        connector.connect("http://a:1") { failure = $0 }
+        await settle { server.pending == 1 }
+        #expect(lock.holder == .devServer)
+        server.answer(.failure("a:1 answered 500 for its JavaScript."))
+        await settle { failure != "unanswered" }
+        #expect(lock.holder == nil)
+        failure = "unanswered"
+        connector.connect("http://a:1") { failure = $0 }
+        await settle { server.pending == 1 }
+        server.answer(.bundle(URL(string: "http://a:1/index.bundle")!))
+        await settle { failure == nil }
+        #expect(committed == 1)
+        #expect(lock.holder == nil)
+    }
+
+    @Test
+    func exitDuringAReloadStillFetchingStartsNothing() async {
+        let server = SlowDevServer()
+        var committed: [URL] = []
+        let connector = HotUpdaterSandboxDevConnector(
+            resolve: { await server.resolve($0) },
+            commit: { _, url in committed.append(url) },
+            lock: HotUpdaterSandboxLock()
+        )
+        connector.reload("http://a:1")
+        await settle { server.pending == 1 }
+        connector.ended()
+        server.answer(.bundle(URL(string: "http://a:1/index.bundle")!))
+        await settle()
+        #expect(committed.isEmpty)
+    }
+
+    @Test
+    func aConnectAfterExitStartsASessionAsUsual() async {
+        let server = SlowDevServer()
+        var committed: [URL] = []
+        let connector = HotUpdaterSandboxDevConnector(
+            resolve: { await server.resolve($0) },
+            commit: { _, url in committed.append(url) },
+            lock: HotUpdaterSandboxLock()
+        )
+        connector.ended()
+        var failure: String? = "unanswered"
+        connector.connect("http://a:1") { failure = $0 }
+        await settle { server.pending == 1 }
+        server.answer(.bundle(URL(string: "http://a:1/index.bundle")!))
+        await settle { failure == nil }
+        #expect(failure == nil)
+        #expect(committed.count == 1)
+    }
+
+    @Test
+    func aFailedReloadIsShownOnTheScreen() async {
+        let server = SlowDevServer()
+        var changes = 0
+        let connector = HotUpdaterSandboxDevConnector(resolve: { await server.resolve($0) }, commit: { _, _ in }, lock: HotUpdaterSandboxLock())
+        connector.onChange = { changes += 1 }
+        connector.reload("http://a:1")
+        await settle { server.pending == 1 }
+        server.answer(.failure("a:1 answered 500 for its JavaScript."))
+        await settle { changes > 0 }
+        #expect(connector.lastError == "a:1 answered 500 for its JavaScript.")
+        #expect(changes == 1)
+    }
+
+    @Test
+    func connectionsRunOneAtATime() async {
+        let server = SlowDevServer()
+        var committed: [String] = []
+        let connector = HotUpdaterSandboxDevConnector(
+            resolve: { await server.resolve($0) },
+            commit: { host, _ in committed.append(host) },
+            lock: HotUpdaterSandboxLock()
+        )
+        connector.connect("http://a:1") { _ in }
+        connector.connect("http://b:2") { _ in }
+        await settle { server.pending == 1 }
+        #expect(server.pending == 1)
+        server.answer(.bundle(URL(string: "http://a:1/index.bundle")!))
+        await settle { server.pending == 1 && committed.count == 1 }
+        server.answer(.bundle(URL(string: "http://b:2/index.bundle")!))
+        await settle { committed.count == 2 }
+        #expect(committed == ["http://a:1", "http://b:2"])
+    }
+}
+
+@MainActor
+struct HotUpdaterSandboxStoredReleaseTests {
+    @Test
+    func everyStoredSessionNamesTheReleaseItsRowKeptAndALegacyRowNamesNone() async {
+        let fixture = Fixture()
+        fixture.host.stageResult = .success(.update(bundleId: "ota", message: nil, releaseId: "019a0000-0000-7000-8000-0000000000a2"))
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        fixture.host.storedBundleId = nil
+        fixture.coordinator.openDownloaded("ota")
+        await settle()
+        #expect(fixture.host.startedBundles.last?.releaseId == "019a0000-0000-7000-8000-0000000000a2")
+
+        let legacy = Fixture()
+        legacy.shelf.add(bundleId: "ota", channel: "pr-1", message: nil, nowMs: 0)
+        await legacy.coordinator.refresh()
+        legacy.coordinator.openDownloaded("ota")
+        await settle()
+        #expect(legacy.host.startedBundles.count == 1)
+        #expect(legacy.host.startedBundles.first?.releaseId == nil)
+    }
+
+    @Test
+    func aStoredSessionNamesItsReleaseWithNoCatalogScopeOrGeneration() throws {
+        let state = hotUpdaterSandboxStoredActiveState(
+            releaseId: "019a0000-0000-7000-8000-0000000000a1",
+            bundleId: "b-r1",
+            channel: "hot-updater-sandbox-stored-bundle"
+        )
+        let active = try #require(state["activeSelection"] as? [String: Any])
+        #expect(active["releaseId"] as? String == "019a0000-0000-7000-8000-0000000000a1")
+        #expect(active["bundleId"] as? String == "b-r1")
+        #expect(active["kind"] as? String == "BUNDLE")
+        #expect(active["channel"] as? String == "hot-updater-sandbox-stored-bundle")
+        for key in ["catalogId", "scopeKey", "generation", "catalogHash", "selectionContextHash"] {
+            #expect(active[key] is NSNull, "\(key)")
+        }
+        #expect(state["stableSelection"] is NSNull)
+        #expect(state["verificationPending"] as? Bool == false)
+        // It goes to JavaScript as JSON.
+        #expect(JSONSerialization.isValidJSONObject(state))
+    }
+}
+
+@MainActor
+struct HotUpdaterSandboxStartUnderScreenTests {
+    @Test
+    func aFreshLinkWithNoServerStartsTheAppUnderTheScreenOnceAndAsksOnceItsCheckAnswers() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        #expect(fixture.host.startsUnderScreen == 0, "opening Home starts nothing")
+
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.host.startsUnderScreen == 1)
+        #expect(fixture.checking == true)
+        #expect(fixture.statusText == "Checking pr-1…")
+
+        // The app's own check answers under the screen, which stays up: nothing opens.
+        fixture.host.serverConfig = true
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { if case .confirming = fixture.coordinator.state.phase { return true } else { return false } }
+        guard case .confirming = fixture.coordinator.state.phase else {
+            Issue.record("expected the link's confirmation")
+            return
+        }
+        #expect(fixture.host.startsUnderScreen == 1)
+        #expect(fixture.opens.isEmpty)
+        stop()
+    }
+
+    @Test
+    func theAppHas60sFromItsStartToAnswerThenTheScreenSaysToOpenItAndALateAnswerStillAsks() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.coordinator.receiveLink(link("pr-1"))
+
+        fixture.advance(59_999)
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { ticks.isWaiting }
+        #expect(fixture.checking == true)
+        fixture.advance(1)
+        ticks.tick()
+        await settle { fixture.checking == false }
+        #expect(fixture.checking == false)
+        #expect(fixture.statusText == "pr-1 needs an answer from your update server first. Open the app so it can check for updates.")
+
+        // The screen keeps looking: an answer after the fallback still asks.
+        await settle { ticks.isWaiting }
+        #expect(ticks.isWaiting)
+        fixture.host.serverConfig = true
+        ticks.tick()
+        await settle { if case .confirming = fixture.coordinator.state.phase { return true } else { return false } }
+        guard case .confirming = fixture.coordinator.state.phase else {
+            Issue.record("expected the late answer to ask")
+            return
+        }
+        stop()
+    }
+
+    @Test
+    func theAppsTimeCountsFromItsStartNotFromWhenHomeOpenedAndNothingRenewsIt() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        // Home was up for two minutes before the link.
+        for _ in 0 ..< 120 {
+            await settle { ticks.isWaiting }
+            ticks.tick()
+        }
+        fixture.advance(120_000)
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.checking == true)
+        // While the app checks, the watch looks every second, past its first minute too.
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { ticks.isWaiting }
+        #expect(ticks.pauses.last == 1_000)
+
+        // Near the end, a second link, a new Home and a refresh don't renew it.
+        fixture.advance(50_000)
+        fixture.coordinator.receiveLink(link("pr-2"))
+        stop()
+        let again = fixture.coordinator.observe { _ in }
+        await fixture.coordinator.refresh()
+        #expect(fixture.checking == true)
+        fixture.advance(10_000)
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { fixture.checking == false }
+        #expect(fixture.checking == false)
+        #expect(fixture.host.startsUnderScreen == 1)
+        again()
+    }
+
+    @Test
+    func aSuspendedProcessPastTheAppsTimeShowsTheFallbackAtItsNextRefreshWithNoLook() async {
+        let fixture = Fixture()
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.checking == true)
+        // Suspended for five minutes: no look ran.
+        fixture.advance(300_000)
+        await fixture.coordinator.refresh()
+        #expect(fixture.checking == false)
+        stop()
+    }
+
+    @Test
+    func nothingStartsUnderTheScreenWhileTheAppRunsInASessionWithNoScreenOrBeforeTheFirstRead() async {
+        let running = Fixture()
+        let stopRunning = await running.freshHomeThatCanStartTheApp()
+        running.host.appRunning = true
+        running.coordinator.receiveLink(link("pr-1"))
+        #expect(running.host.startsUnderScreen == 0)
+        #expect(running.checking == false)
+        stopRunning()
+
+        let session = Fixture()
+        let stopSession = await session.freshHomeThatCanStartTheApp()
+        session.host.runsDevServer = true
+        session.coordinator.receiveLink(link("pr-1"))
+        #expect(session.host.startsUnderScreen == 0)
+        stopSession()
+
+        // A link before any screen: the screen's first read comes first.
+        let unseen = Fixture()
+        unseen.host.serverConfig = false
+        unseen.host.canStartUnderScreen = true
+        unseen.coordinator.receiveLink(link("pr-1"))
+        #expect(unseen.host.startsUnderScreen == 0)
+        #expect(unseen.checking == false)
+        let stopUnseen = unseen.coordinator.observe { _ in }
+        await unseen.coordinator.refresh()
+        #expect(unseen.host.startsUnderScreen == 1)
+        #expect(unseen.checking == true)
+        stopUnseen()
+    }
+
+    @Test
+    func aHostThatCantStartTheAppUnderTheScreenSaysToOpenTheAppAtOnce() async {
+        let fixture = Fixture()
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.host.canStartUnderScreen = false
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.host.startsUnderScreen == 0)
+        #expect(fixture.checking == false)
+        stop()
+    }
+
+    @Test
+    func aCrashTheLastLaunchLeftBlocksTheStartStaysToTellAndKeepsTheLink() async {
+        let fixture = Fixture()
+        // The hidden start of the last process crashed the built-in bundle.
+        fixture.host.evidence = HotUpdaterSandboxLaunchEvidence(marker: HotUpdaterSandboxCrashMarker(bundleId: "built-in", shouldRollback: false))
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.host.startsUnderScreen == 0)
+        #expect(fixture.checking == false)
+        #expect(fixture.store.lastLaunch != nil)
+        #expect(fixture.store.pendingLinks == [link("pr-1")])
+        stop()
+    }
+
+    @Test
+    func theStartReadsTheLastLaunchFirstAndLeavesWhatItFoundToTell() async {
+        let fixture = Fixture()
+        fixture.host.evidence = HotUpdaterSandboxLaunchEvidence(marker: HotUpdaterSandboxCrashMarker(bundleId: "ota", shouldRollback: false))
+        var lastLaunchAtStart: HotUpdaterSandboxLastLaunch?
+        fixture.host.onStartUnderScreen = { lastLaunchAtStart = fixture.store.lastLaunch }
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        // A person moved on from that crash: the start may run, and finds nothing new to tell.
+        fixture.coordinator.acknowledgeLastLaunch()
+        fixture.host.evidence = HotUpdaterSandboxLaunchEvidence()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.host.startsUnderScreen == 1)
+        #expect(lastLaunchAtStart == nil)
+
+        // A crash the app's run under the screen recovers from in this process is told, and the link stays.
+        fixture.host.evidence = HotUpdaterSandboxLaunchEvidence(rollback: HotUpdaterSandboxRollback(fromBundleId: "ota-2", toBundleId: "built-in"))
+        await fixture.coordinator.noteLastLaunch()
+        #expect(fixture.store.lastLaunch != nil)
+        #expect(fixture.store.pendingLinks == [link("pr-1")])
+        stop()
+    }
+
+    @Test
+    func oneStartPerProcessWhateverLinksFallbacksAndRepeatsComeAfter() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appRunning = false }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.advance(60_000)
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { fixture.checking == false }
+        #expect(fixture.checking == false)
+        fixture.coordinator.dismiss()
+        fixture.coordinator.receiveLink(link("pr-2"))
+        #expect(fixture.host.startsUnderScreen == 1)
+        #expect(fixture.checking == false)
+        stop()
+    }
+
+    @Test
+    func openAfterTheStartShowsTheAppItStartedWithNoReload() async {
+        let fixture = Fixture()
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.host.appRunning)
+        await fixture.coordinator.open()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, false]])
+        // The link still waits for the app's answer.
+        #expect(fixture.store.pendingLinks == [link("pr-1")])
+        stop()
+    }
+
+    @Test
+    func openAfterTheHiddenAppStagedAnotherBundleRestartsOntoItAndOverAnAppAPersonSawItDoesnt() async {
+        let fixture = Fixture()
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        // The app's own check under the screen staged an update: the next launch selects it.
+        fixture.host.runningBundleId = "built-in"
+        fixture.host.bundleId = "ota"
+        await fixture.coordinator.open()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, true]], "the reload applies what's selected")
+
+        // A person has seen the app: Open shows what it runs, as before.
+        fixture.host.appHidden = false
+        await fixture.coordinator.open()
+        #expect(fixture.opens.last.map { [$0.0, $0.1] } == [false, false])
+        stop()
+    }
+
+    @Test
+    func openAfterResetUnderAHiddenAppThatRunsAnotherBundleReloadsOntoTheBuiltInBundle() async {
+        let fixture = Fixture()
+        fixture.host.bundleId = "ota"
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.host.runningBundleId = "ota"
+        fixture.host.serverConfig = true
+        fixture.coordinator.dismiss()
+        fixture.coordinator.resetToBuiltIn()
+        await settle { fixture.coordinator.state.selection?.bundleId == "built-in" }
+        #expect(fixture.coordinator.state.selection?.bundleId == "built-in")
+        await fixture.coordinator.open()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, true]])
+        stop()
+    }
+
+    @Test
+    func openAfterTheAppsTimePassedWithNoAnswerReloadsTheAppItHidSoItsLaunchCheckRunsAgain() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        // The app's one check under the screen failed: no server config, and its time runs out.
+        fixture.advance(60_000)
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { fixture.checking == false }
+        #expect(fixture.checking == false)
+
+        await fixture.coordinator.open()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, true]])
+        // The link waits for the reloaded app's answer.
+        #expect(fixture.store.pendingLinks == [link("pr-1")])
+        stop()
+    }
+
+    @Test
+    func openAfterTheDeadlineReloadsTheAppEvenAfterAPersonSawItAndTheOriginalLinkAsks() async {
+        let ticks = ServerTicks()
+        let fixture = Fixture(serverPoll: { await ticks.next($0) })
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        // Open while Checking: the check may still answer, so the app is only shown.
+        await fixture.coordinator.open()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, false]])
+        fixture.host.appHidden = false
+        // Its one check fails; the deadline passes.
+        fixture.advance(60_000)
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { fixture.checking == false }
+        #expect(fixture.checking == false)
+        let selection = fixture.coordinator.state.selection
+        // Open from the message reloads the app, on what a launch selects.
+        await fixture.coordinator.open()
+        #expect(fixture.opens.last.map { [$0.0, $0.1] } == [false, true])
+        #expect(fixture.coordinator.state.selection == selection)
+        #expect(fixture.store.lastLaunch == nil)
+        #expect(fixture.store.pendingLinks == [link("pr-1")])
+        // The reloaded app's check answers: the original link asks.
+        fixture.host.serverConfig = true
+        await settle { ticks.isWaiting }
+        ticks.tick()
+        await settle { if case .confirming = fixture.coordinator.state.phase { return true } else { return false } }
+        guard case .confirming(let asked) = fixture.coordinator.state.phase else {
+            Issue.record("expected the original link to ask")
+            return
+        }
+        #expect(asked.url == link("pr-1"))
+        #expect(fixture.serverAnswers == 1)
+        // With the answer in, Open reloads nothing more.
+        fixture.coordinator.dismiss()
+        await fixture.coordinator.open()
+        #expect(fixture.opens.last.map { [$0.0, $0.1] } == [false, false])
+        stop()
+    }
+
+    @Test
+    func beforeTheDeadlineOpenOverAnAppAPersonSawReloadsNothing() async {
+        let fixture = Fixture()
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.host.appHidden = false
+        fixture.advance(59_999)
+        await fixture.coordinator.open()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, false]])
+        stop()
+    }
+
+    @Test
+    func aPastDeadlineNoLookSawYetCountsAtOpen() async {
+        let fixture = Fixture()
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.advance(60_000)
+        await fixture.coordinator.open()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, true]])
+        stop()
+    }
+
+    @Test
+    func anAnswerThatCameInTimeKeepsOpenFromReloading() async {
+        let fixture = Fixture()
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.host.onStartUnderScreen = { fixture.host.appHidden = true }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.host.serverConfig = true
+        await fixture.coordinator.refresh()
+        fixture.coordinator.dismiss()
+        fixture.advance(60_000)
+        await fixture.coordinator.open()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[false, false]])
+        stop()
+    }
+
+    @Test
+    func overAnAppAPersonSawReloadWhileALinkWaitsForAServerRunsTheAppAnew() async {
+        let fixture = Fixture()
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.host.appRunning = true
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.checking == false)
+        fixture.coordinator.reloadApp()
+        #expect(fixture.opens.map { [$0.0, $0.1] } == [[true, true]])
+        #expect(fixture.store.pendingLinks == [link("pr-1")])
+
+        // A question on screen still holds it back.
+        let asking = Fixture()
+        asking.host.appRunning = true
+        asking.coordinator.receiveLink(link("pr-1"))
+        guard case .confirming = asking.coordinator.state.phase else {
+            Issue.record("expected the link's confirmation")
+            return
+        }
+        asking.coordinator.reloadApp()
+        #expect(asking.opens.isEmpty)
+        stop()
+    }
+
+    @Test
+    func aLinkTheAppWillStartForSaysCheckingFromTheScreensFirstFrameBeforeTheFirstRead() async {
+        let fixture = Fixture()
+        fixture.host.serverConfig = false
+        fixture.host.canStartUnderScreen = true
+        var shown: [Bool] = []
+        // A cold link's order: the screen observes, takes the link, then reads.
+        let stop = fixture.coordinator.observe { state in
+            if case .waitingForServer(_, let checking) = state.phase { shown.append(checking) }
+        }
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.checking == true)
+        #expect(fixture.host.startsUnderScreen == 0)
+        await fixture.coordinator.refresh()
+        #expect(fixture.host.startsUnderScreen == 1)
+        #expect(fixture.checking == true)
+        #expect(!shown.contains(false), "never the message before Checking")
+        stop()
+    }
+
+    @Test
+    func aLinkThatCameBeforeTheScreenSaysCheckingInTheScreensFirstRender() async {
+        let fixture = Fixture()
+        fixture.host.serverConfig = false
+        fixture.host.canStartUnderScreen = true
+        // A cold link reaches the coordinator from the scene's options, before the screen.
+        fixture.coordinator.receiveLink(link("pr-1"))
+        #expect(fixture.checking == false)
+        var shown: [Bool] = []
+        let stop = fixture.coordinator.observe { state in
+            if case .waitingForServer(_, let checking) = state.phase { shown.append(checking) }
+        }
+        #expect(shown == [true])
+        await fixture.coordinator.refresh()
+        #expect(fixture.host.startsUnderScreen == 1)
+        #expect(!shown.contains(false))
+        stop()
+    }
+
+    @Test
+    func beforeTheFirstReadCheckingTurnsIntoTheMessageWhenTheReadRefusesTheStart() async {
+        // The last launch crashed: the read finds it, and nothing starts.
+        let crashed = Fixture()
+        crashed.host.serverConfig = false
+        crashed.host.canStartUnderScreen = true
+        crashed.host.evidence = HotUpdaterSandboxLaunchEvidence(marker: HotUpdaterSandboxCrashMarker(bundleId: "built-in", shouldRollback: false))
+        let stopCrashed = crashed.coordinator.observe { _ in }
+        crashed.coordinator.receiveLink(link("pr-1"))
+        await crashed.coordinator.refresh()
+        #expect(crashed.host.startsUnderScreen == 0)
+        #expect(crashed.checking == false)
+        stopCrashed()
+
+        // A banner still to tell, from an earlier process: the message at once.
+        let told = Fixture()
+        told.host.serverConfig = false
+        told.host.canStartUnderScreen = true
+        told.store.lastLaunch = HotUpdaterSandboxLastLaunch(kind: .crashed, bundleId: "built-in", rolledBackToBundleId: nil)
+        let stopTold = told.coordinator.observe { _ in }
+        told.coordinator.receiveLink(link("pr-1"))
+        #expect(told.checking == false)
+        stopTold()
+
+        // A host that can't start the app under the screen: the message at once.
+        let cannot = Fixture()
+        cannot.host.serverConfig = false
+        let stopCannot = cannot.coordinator.observe { _ in }
+        cannot.coordinator.receiveLink(link("pr-1"))
+        #expect(cannot.checking == false)
+        await cannot.coordinator.refresh()
+        #expect(cannot.checking == false)
+        stopCannot()
+    }
+
+    @Test
+    func anAppUpdateRacingTheConfirmedSwitchFailsItAsSupersededAndKeepsTheSelectionStorageHas() async {
+        let fixture = Fixture()
+        let stop = await fixture.freshHomeThatCanStartTheApp()
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.host.serverConfig = true
+        await fixture.coordinator.refresh()
+        guard case .confirming = fixture.coordinator.state.phase else {
+            Issue.record("expected the link's confirmation")
+            return
+        }
+        // The app's own check under the screen moved the device back to its channel mid-switch.
+        fixture.host.channelAfterStaging = "sandbox-release"
+        fixture.coordinator.confirmLink()
+        await settle { if case .failed = fixture.coordinator.state.phase { return true } else { return false } }
+        guard case .failed(_, _, _, let failure, let selection) = fixture.coordinator.state.phase else {
+            Issue.record("expected the switch to fail")
+            return
+        }
+        #expect(failure == .superseded)
+        #expect(selection.channel == "sandbox-release")
+        stop()
+    }
+}
+#endif

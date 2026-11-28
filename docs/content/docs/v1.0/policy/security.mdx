@@ -1,0 +1,80 @@
+---
+title: "Security"
+description: "Keep client access, infrastructure credentials, admin access, and signing keys in the right places."
+icon: Shield
+---
+
+<span id="plugin-token-protection" />
+
+## Credential boundaries
+
+`hot-updater.config.ts` configures CLI access to your infrastructure. It is not
+included in the React Native app unless you import or inject its values into
+app code. The client handler URL and client API key are included in the app.
+
+| Value | Where it belongs | What it controls |
+| --- | --- | --- |
+| Client handler URL | React Native configuration | The update server the app contacts. |
+| Client API key | React Native configuration; provisioned through provider setup or the client access API | OTA reads and Insights writes. It is extractable from a distributed app and grants no admin access. |
+| Provider credentials | Local CLI, CI secret storage, or server configuration | Cloud resources, storage, and database access. Never embed them in the app. |
+| Admin bearer token | Server-side admin clients, such as a standalone repository configuration | Administrative operations. Never send it to React Native or Console browser code. |
+| Signing public key | Native app configuration | Verifies the publisher of downloaded artifacts. |
+| Signing private key or signing-service credentials | Local/CI private storage or a protected signing service | Produces artifact signatures. Never embed them in the app. |
+
+A Supabase service-role key or Cloudflare API token is a provider credential,
+not a client API key. See [API key authentication](/docs/v1.0/custom/api-key-authentication#security-boundary)
+for the client/admin access boundary, [Console security](/docs/v1.0/guides/console#security-model)
+for administrative access, and [bundle signing](/docs/v1.0/guides/bundle-signing)
+for publisher verification.
+
+## Configure client access
+
+Use the client key produced by your infrastructure setup. Keep provider and
+admin credentials in separate configuration:
+
+```tsx title="src/hotUpdater.ts"
+import { HotUpdater } from "@hot-updater/react-native";
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  // [!code ++:3]
+  requestHeaders: {
+    "x-api-key": "<client-api-key>",
+  },
+});
+```
+
+Call `init` once, at the top level of its own module, and export the instance
+it returns. It configures access and native launch handling; follow
+[custom update flows](/docs/v1.0/guides/custom-update) to check, download, and apply
+updates.
+
+Managed providers require a client key. A custom server can deliberately choose
+public client access; follow its [access policy setup](/docs/v1.0/custom/api-key-authentication).
+
+## Keep private configuration out of the app
+
+Keep local provider credentials in `.env.hotupdater` and out of version control.
+Use your CI or provider's private credential storage for automated operations.
+The [agent infrastructure workflow](/docs/v1.0/guides/agent-infrastructure) uses
+provider login and local credential sources; credentials do not belong in chat.
+
+An environment-variable inliner or native key manager can expose any value you
+include in the distributed app. Configure an explicit allowlist of app-safe
+values and keep provider credentials, admin tokens, and signing private keys
+out of it. A separate environment filename alone does not prevent exposure.
+
+## Insights data
+
+An app sends Insights reports only when it runs the
+[Insights plugin](/docs/v1.0/react-native-api/insights). Reports identify the app
+installation and its update state; the plugin's optional `setUser` also sends
+your application's user ID. Choose that ID deliberately and clear it on
+logout. Leave the plugin out to send no reports; native app-ready handling and
+recovery run either way.
+
+The installation ID and plugin storage stay on the device, outside device
+backups, so restoring a backup onto another device does not copy them.
+
+See [Insights](/docs/v1.0/guides/insights) for report contents, identity handling,
+verification, and the limits of reported adoption counts.

@@ -3,8 +3,26 @@
   "overrides": [
     {
       "files": [
+        "packages/console/src/components/ArtifactIdDisplay.tsx",
+        "packages/console/src/components/BuiltinBundleDisplay.tsx",
+        "packages/console/src/components/ChannelBadge.tsx",
+        "packages/console/src/components/ChannelPicker.tsx",
+        "packages/console/src/components/FoldedRows.tsx",
+        "packages/console/src/components/IdTail.tsx",
+        "packages/console/src/components/InstallIdDisplay.tsx",
+        "packages/console/src/components/DataTable.tsx",
+        "packages/console/src/components/RelativeTime.tsx",
+        "packages/console/src/components/ReleaseIdDisplay.tsx",
+        "packages/console/src/components/RowReason.tsx",
+        "packages/console/src/components/TargetDisplay.tsx",
+        "packages/console/src/components/features/bundles/BundleChildrenPanel.tsx",
         "packages/console/src/components/features/insights/**/*.tsx",
-        "packages/console/src/components/features/remote-config/**/*.tsx"
+        "packages/console/src/components/features/native-builds/**/*.tsx",
+        "packages/console/src/components/features/releases/ReleaseEditorSheet.tsx",
+        "packages/console/src/components/features/remote-config/**/*.tsx",
+        "packages/console/src/routes/index.tsx",
+        "packages/console/src/routes/insights.tsx",
+        "packages/console/src/routes/insights_.distribution.tsx"
       ],
       "rules": {
         "shadcn/no-raw-colors": "error",

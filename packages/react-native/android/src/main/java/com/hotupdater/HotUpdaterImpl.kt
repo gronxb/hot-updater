@@ -551,13 +551,14 @@ class HotUpdaterImpl {
     fun clearCrashHistory(): Boolean = bundleStorage.clearCrashHistory()
 
     /**
-     * Gets the base URL for the current active bundle directory.
+     * Gets the base URL for the running bundle's directory.
      * Returns the file:// URL to the bundle directory with trailing slash.
      * This is used for Expo DOM components to construct full asset paths.
+     * A channel reset or built-in commit keeps it until React Native reloads.
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123/") or null
      */
     fun getBaseURL(): String? {
-        val launchSelection = currentLaunchSelection
+        val launchSelection = runningLaunchSelection
         if (launchSelection != null) {
             val baseURL = bundleStorage.getBaseURLForBundle(launchSelection.launchedBundleId)
             return baseURL
@@ -568,7 +569,8 @@ class HotUpdaterImpl {
     }
 
     /**
-     * Gets the current launched bundle ID.
+     * Gets the selected bundle's ID, null for the built-in bundle. A channel
+     * reset or built-in commit changes it before React Native reloads.
      * Built-in bundle fallback is handled in JS.
      */
     fun getBundleId(): String? {
@@ -585,6 +587,49 @@ class HotUpdaterImpl {
      * for the next launch, but the running bundle stays until React Native reloads.
      */
     fun getRunningBundleId(): String? = (currentLaunchSelection ?: runningLaunchSelection)?.launchedBundleId
+
+    /**
+     * The label of the release this launch runs: the receipt its launch
+     * recorded, which a commit of the next launch's selection leaves, or
+     * before a launch, the active or stable receipt of the bundle it would
+     * pick. Null for the built-in bundle, a release without one, and before
+     * the launch's bundle is read.
+     */
+    fun getRunningReleaseLabel(): Long? {
+        val bundleId = getRunningBundleId() ?: return null
+        return runningReceipt(bundleId)?.let { releaseLabel(it["label"]) }
+    }
+
+    /**
+     * The ID of the release this launch runs, as JavaScript's `getBundleId()`
+     * names a release: the receipt's release ID, a promote that reuses the
+     * running artifact included; the artifact ID for a receipt without one;
+     * and MIN_BUNDLE_ID for the built-in bundle. Null before the launch's
+     * bundle is read.
+     */
+    fun getRunningReleaseId(): String? {
+        val launchSelection = currentLaunchSelection ?: runningLaunchSelection ?: return null
+        val bundleId = launchSelection.launchedBundleId ?: return getMinBundleId()
+        return runningReceipt(bundleId)?.get("releaseId") as? String ?: bundleId
+    }
+
+    /**
+     * The receipt of [bundleId], the bundle this launch runs: the one its
+     * launch recorded, which a commit of the next launch's selection leaves,
+     * or before a launch, the active or stable receipt of that bundle.
+     */
+    private fun runningReceipt(bundleId: String): Map<*, *>? {
+        val state = getActiveUpdateState()
+        val receipts =
+            if (state.containsKey("runningSelection")) {
+                listOf("runningSelection")
+            } else {
+                listOf("activeSelection", "stableSelection")
+            }
+        return receipts
+            .mapNotNull { state[it] as? Map<*, *> }
+            .firstOrNull { it["kind"] == SelectionKind.BUNDLE.name && it["bundleId"] == bundleId }
+    }
 
     /** Takes the queued native update events for JavaScript's `takeNativeUpdateEvents`. */
     fun takeNativeUpdateEvents(): String? =
@@ -613,10 +658,10 @@ class HotUpdaterImpl {
         }
 
     /**
-     * Gets the current manifest from bundle storage.
+     * Gets the running bundle's manifest, kept as [getBaseURL] is.
      */
     fun getManifest(): Map<String, Any?> {
-        val launchSelection = currentLaunchSelection
+        val launchSelection = runningLaunchSelection
         if (launchSelection != null) {
             return bundleStorage.getManifestForBundle(launchSelection.launchedBundleId)
         }
@@ -631,6 +676,32 @@ class HotUpdaterImpl {
             // thread, so blocking this one cannot deadlock.
             synchronized(launchPreparationLock) {
                 val success = runBlocking { bundleStorage.resetChannel() }
+                if (success) {
+                    preferences.setItem(CHANNEL_STORAGE_KEY, null)
+                    currentLaunchSelection = null
+                }
+                success
+            }
+        }
+
+    /**
+     * Resets the channel while the Release selection [guard] names is
+     * current, as [resetChannel] does; false for a stale one.
+     */
+    internal suspend fun resetChannelIfSelectionCurrent(guard: ReleaseSelectionGuard): Boolean =
+        withContext(Dispatchers.IO) {
+            synchronized(launchPreparationLock) {
+                val success =
+                    runBlocking {
+                        bundleStorage.resetChannelIfSelectionCurrent(
+                            catalogId = guard.catalogId,
+                            scopeKey = guard.scopeKey,
+                            generation = guard.generation,
+                            catalogHash = guard.catalogHash,
+                            channel = guard.channel,
+                            selectionContextHash = guard.selectionContextHash,
+                        )
+                    }
                 if (success) {
                     preferences.setItem(CHANNEL_STORAGE_KEY, null)
                     currentLaunchSelection = null

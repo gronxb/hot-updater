@@ -12,6 +12,7 @@ import {
 } from "sql-formatter";
 
 import { ui } from "../utils/cli-ui";
+import { canPrompt } from "../utils/prompt";
 import { findPluginList } from "./utils/load-hot-updater";
 
 const SUPPORTED_PROVIDERS = ["postgresql", "mysql", "sqlite"] as const;
@@ -97,6 +98,14 @@ const getProvider = async (
 
   if (skipConfirm) return "postgresql";
 
+  if (
+    !canPrompt(
+      "Select database type.",
+      `Re-run with --sql <${SUPPORTED_PROVIDERS.join(" | ")}> or -y`,
+    )
+  ) {
+    process.exit(1);
+  }
   const selected = await p.select({
     message: "Select database type",
     options: [
@@ -235,6 +244,7 @@ export async function generateStandaloneSQL(options: {
         p.log.warn("This will overwrite existing hot-updater.sql");
       }
 
+      if (!canPrompt("Save to hot-updater.sql?")) process.exit(1);
       const shouldContinue = await p.confirm({
         message: "Save to hot-updater.sql?",
         initialValue: true,

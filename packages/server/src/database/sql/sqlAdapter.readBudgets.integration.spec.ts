@@ -5,6 +5,8 @@ import {
   mysqlRowsExamined,
   postgresRowsExamined,
   setupReadBudgetTestSuite,
+  setupReleaseLabelEngineTestSuite,
+  type ReadBudgetSuiteOptions,
 } from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
@@ -15,6 +17,8 @@ import { execa } from "execa";
 import mysql from "mysql2/promise";
 import pg from "pg";
 import { afterAll, beforeAll } from "vitest";
+
+import { composeUp } from "../../docker.testFixtures";
 
 assertDockerComposeAvailable(
   "SQL core read-budget tests need Docker Compose and a running Docker daemon.",
@@ -41,16 +45,16 @@ const ready = async (connect: () => Promise<unknown>) => {
   }
 };
 
-const MYSQL_URI = "mysql://root:hot_updater@127.0.0.1:53306/hot_updater";
+const MYSQL_URI = "mysql://root:hot_updater@127.0.0.1:13306/hot_updater";
 
 let postgres: pg.Pool;
 let mariadb: mysql.Pool;
 
 beforeAll(async () => {
-  await execa("docker", [...compose, "up", "-d", "--wait"]);
+  await composeUp({ compose });
   postgres = new pg.Pool({
     connectionString:
-      "postgres://postgres:hot_updater@127.0.0.1:55432/hot_updater",
+      "postgres://postgres:hot_updater@127.0.0.1:15432/hot_updater",
     max: 16,
   });
   await ready(() => postgres.query("SELECT 1"));
@@ -80,7 +84,7 @@ afterAll(async () => {
 }, 60_000);
 
 /** The SQL core over a pool; reads are explained on one connection of it. */
-setupReadBudgetTestSuite({
+const backend: ReadBudgetSuiteOptions = {
   name: "sql (pooled PostgreSQL)",
   createAdapter: async ({ tables }) => {
     const session = await postgres.connect();
@@ -98,9 +102,11 @@ setupReadBudgetTestSuite({
       cleanup: async () => session.release(),
     };
   },
-});
+};
+setupReadBudgetTestSuite(backend);
+setupReleaseLabelEngineTestSuite(backend);
 
-setupReadBudgetTestSuite({
+const backend2: ReadBudgetSuiteOptions = {
   name: "sql (pooled MySQL)",
   createAdapter: async ({ tables }) => {
     const session = await mariadb.getConnection();
@@ -119,4 +125,6 @@ setupReadBudgetTestSuite({
       cleanup: async () => session.release(),
     };
   },
-});
+};
+setupReadBudgetTestSuite(backend2);
+setupReleaseLabelEngineTestSuite(backend2);

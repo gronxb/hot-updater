@@ -1,4 +1,7 @@
-import { canonicalizeAppVersion } from "@hot-updater/plugin-core";
+import {
+  canonicalizeAppVersion,
+  type ReleaseCatalogRequest,
+} from "@hot-updater/plugin-core";
 import {
   ARTIFACT_FILES_REQUEST_LIMIT,
   createReleaseCatalogScopeKey,
@@ -6,8 +9,14 @@ import {
   type ReleaseCatalogScopeKeyInput,
 } from "@hot-updater/protocol";
 
+import {
+  type ParsedReleaseCatalogRow,
+  parseReleaseCatalogRow,
+  projectParsedReleaseCatalogRow,
+  releaseCatalogScopeKeyOf,
+} from "./db/releaseCatalog";
 import { requirePlatformParam, requireRouteParam } from "./handlerParameters";
-import type { RouteHandler } from "./handlerTypes";
+import type { HandlerAPI, RouteHandler } from "./handlerTypes";
 
 const CATALOG_CONTENT_TYPE =
   "application/vnd.hot-updater.release-catalog+json; version=1";
@@ -30,9 +39,9 @@ const CATALOG_CACHE_CONTROL = "public, max-age=0, s-maxage=5";
  * background. `stale-if-error=0` keeps origin errors visible: without it,
  * Cloudflare serves a stale copy on error indefinitely.
  *
- * A device can see a catalog up to 15 seconds after a deploy or a Roll back
- * replaced it: the origin's 5-second catalog memo, then 5 seconds fresh and
- * 5 stale at the CDN. A revoked API key can read a cached catalog up to
+ * A device can see a catalog, or a scope's lack of one, up to 15 seconds
+ * after a deploy or a Roll back replaced it: the origin's 5-second catalog
+ * memo, then 5 seconds fresh and 5 stale at the CDN. A revoked API key can read a cached catalog up to
  * 10 seconds. Devices and caches that don't read the header keep
  * `Cache-Control`.
  */
@@ -150,45 +159,76 @@ export const createReleaseCatalogRouteHandlers = (): Record<
   string,
   RouteHandler
 > => {
+  // Keyed by the scope's catalog key, the row an update check reads: every
+  // app version of a scope shares one read and one parse, and each check
+  // projects its own version from the parsed row. A scope without a catalog
+  // is remembered as null for the same five seconds, since a store without a
+  // CDN in front would otherwise read it on every check. Past the limit,
+  // expired entries go first, then the oldest miss; a miss never evicts a
+  // live catalog, so a new miss with only live catalogs ahead of it goes
+  // itself.
   const cache = new Map<
     string,
-    { readonly catalog: ReleaseCatalog; readonly expiresAt: number }
-  >();
-  const inFlight = new Map<string, Promise<ReleaseCatalog | null>>();
-  const loadCatalog = async (
-    key: string,
-    load: () => Promise<ReleaseCatalog | null>,
-  ): Promise<ReleaseCatalog | null> => {
-    const cached = cache.get(key);
-    if (cached !== undefined && cached.expiresAt > Date.now()) {
-      cache.delete(key);
-      cache.set(key, cached);
-      return cached.catalog;
+    {
+      readonly row: ParsedReleaseCatalogRow | null;
+      readonly expiresAt: number;
     }
-    if (cached !== undefined) cache.delete(key);
-    const pending = inFlight.get(key);
+  >();
+  const evict = (insertedHit: boolean) => {
+    const now = Date.now();
+    let oldestMiss: string | undefined;
+    let oldest: string | undefined;
+    for (const [key, entry] of cache) {
+      if (entry.expiresAt <= now) cache.delete(key);
+      else {
+        if (entry.row === null) oldestMiss ??= key;
+        oldest ??= key;
+      }
+    }
+    if (cache.size <= ORIGIN_CACHE_MAX_ENTRIES) return;
+    const victim = oldestMiss ?? (insertedHit ? oldest : undefined);
+    if (victim !== undefined) cache.delete(victim);
+  };
+  const inFlight = new Map<string, Promise<ParsedReleaseCatalogRow | null>>();
+  const loadRow = async (
+    scopeKey: string,
+    load: () => Promise<ParsedReleaseCatalogRow | null>,
+  ): Promise<ParsedReleaseCatalogRow | null> => {
+    const cached = cache.get(scopeKey);
+    if (cached !== undefined && cached.expiresAt > Date.now()) {
+      cache.delete(scopeKey);
+      cache.set(scopeKey, cached);
+      return cached.row;
+    }
+    if (cached !== undefined) cache.delete(scopeKey);
+    const pending = inFlight.get(scopeKey);
     if (pending !== undefined) return pending;
 
-    const next = load().then((catalog) => {
-      if (catalog !== null) {
-        cache.set(key, {
-          catalog,
-          expiresAt: Date.now() + ORIGIN_CACHE_TTL_MS,
-        });
-        while (cache.size > ORIGIN_CACHE_MAX_ENTRIES) {
-          const oldestKey = cache.keys().next().value as string | undefined;
-          if (oldestKey === undefined) break;
-          cache.delete(oldestKey);
-        }
-      }
-      return catalog;
+    const next = load().then((row) => {
+      cache.set(scopeKey, {
+        row,
+        expiresAt: Date.now() + ORIGIN_CACHE_TTL_MS,
+      });
+      if (cache.size > ORIGIN_CACHE_MAX_ENTRIES) evict(row !== null);
+      return row;
     });
-    inFlight.set(key, next);
+    inFlight.set(scopeKey, next);
     try {
       return await next;
     } finally {
-      inFlight.delete(key);
+      inFlight.delete(scopeKey);
     }
+  };
+  const loadCatalog = async (
+    core: HandlerAPI["core"],
+    input: ReleaseCatalogRequest,
+  ): Promise<ReleaseCatalog | null> => {
+    const scopeKey = releaseCatalogScopeKeyOf(input);
+    const parsed = await loadRow(scopeKey, async () => {
+      const row = await core.getReleaseCatalogRow(scopeKey);
+      return row === null ? null : parseReleaseCatalogRow(row);
+    });
+    return projectParsedReleaseCatalogRow(parsed, input, scopeKey);
   };
 
   return {
@@ -206,12 +246,7 @@ export const createReleaseCatalogRouteHandlers = (): Record<
       } as const;
       const invalid = invalidScope(input);
       if (invalid) return invalid;
-      return catalogResponse(
-        await loadCatalog(`app-version:${JSON.stringify(input)}`, () =>
-          core.getReleaseCatalog(input),
-        ),
-        request,
-      );
+      return catalogResponse(await loadCatalog(core, input), request);
     },
 
     fingerprintReleaseCatalog: async (params, request, { core }) => {
@@ -223,12 +258,7 @@ export const createReleaseCatalogRouteHandlers = (): Record<
       } as const;
       const invalid = invalidScope(input);
       if (invalid) return invalid;
-      return catalogResponse(
-        await loadCatalog(`fingerprint:${JSON.stringify(input)}`, () =>
-          core.getReleaseCatalog(input),
-        ),
-        request,
-      );
+      return catalogResponse(await loadCatalog(core, input), request);
     },
 
     artifactV2: async (params, _request, { core }) => {

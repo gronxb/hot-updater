@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  backfillInsightsReleaseRefs: vi.fn(async () => 0),
   api: {
     createBucket: vi.fn(),
     getInfrastructureState: vi.fn(),
@@ -75,6 +76,9 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     ...actual,
     confirmInitInputPersistence: vi.fn(async () => false),
     // The managed server's plugins, over the project's database.
+    // Labels releases over the assembled server; its database is mocked.
+    backfillInsightsReleaseRefs: mocks.backfillInsightsReleaseRefs,
+    fillReleaseLabels: vi.fn(async () => ({ releases: 0, catalogs: 0 })),
     provisionClientCredential: mocks.provisionClientCredential,
     makeEnv: mocks.makeEnv,
     printAppSetup: mocks.printAppSetup,
@@ -195,7 +199,17 @@ describe("Supabase init", () => {
   it("deploys the prebuilt Edge Function on the bucket, with the import map of what it vendors", async () => {
     root = await project();
 
-    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+    const result = await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    // Init's closing prints the next steps and Done, after every step.
+    expect(result).toEqual({
+      nextSteps: [
+        expect.stringContaining(
+          "hot-updater.dev/docs/managed/supabase#step-3-add-hotupdater-to-your-project",
+        ),
+      ],
+    });
+    expect(mocks.log.success).not.toHaveBeenCalledWith("Done! 🎉");
 
     const { index, imports } = deployed.function!;
     expect(index).toContain('"bundles"');
@@ -210,33 +224,64 @@ describe("Supabase init", () => {
     await expect(fs.access(path.join(root, ".hot-updater"))).rejects.toThrow();
   });
 
-  it("runs every Supabase CLI command with the pinned CLI", async () => {
+  it("runs every Supabase CLI command with the pinned CLI on the selected project", async () => {
     root = await project();
 
     await runInit({ build: "bare", envFile: ".env.hotupdater" });
 
-    // Supabase CLI 3.0 fails an unattended `functions deploy` without `--yes`.
+    // Supabase CLI 3 deprecates `--project-ref` for `--remote=<ref>`, and
+    // fails an unattended `functions deploy` without `--yes`.
     const commands = mocks.execa.mock.calls
       .filter(([command]) => command === "npx")
-      .map(([, args]) => (args as readonly string[]).slice(0, 4));
+      .map(([, args]) => args);
     expect(commands).toEqual([
-      ["-y", "supabase@2.122.1", "projects", "list"],
-      ["-y", "supabase@2.122.1", "projects", "api-keys"],
-      ["-y", "supabase@2.122.1", "functions", "deploy"],
+      ["-y", "supabase@3.0.0", "projects", "list", "--output", "json"],
+      [
+        "-y",
+        "supabase@3.0.0",
+        "projects",
+        "api-keys",
+        "--remote=project-ref",
+        "--output",
+        "json",
+      ],
+      [
+        "-y",
+        "supabase@3.0.0",
+        "functions",
+        "deploy",
+        "hot-updater-v1",
+        "--remote=project-ref",
+        "--no-verify-jwt",
+        "--yes",
+        "--workdir",
+        expect.any(String),
+      ],
     ]);
   });
 
-  it("pushes the package's migration alone, which holds the managed plugins' tables", async () => {
+  it("pushes the package's migrations, which hold the managed plugins' tables", async () => {
     root = await project();
 
     await runInit({ build: "bare", envFile: ".env.hotupdater" });
 
-    expect(deployed.migrations).toEqual({
-      [MIGRATION]: await fs.readFile(
-        path.resolve(import.meta.dirname, "../supabase/migrations", MIGRATION),
-        "utf-8",
+    const migrations = path.resolve(
+      import.meta.dirname,
+      "../supabase/migrations",
+    );
+    const names = (await fs.readdir(migrations)).filter((name) =>
+      name.endsWith(".sql"),
+    );
+    expect(deployed.migrations).toEqual(
+      Object.fromEntries(
+        await Promise.all(
+          names.map(async (name) => [
+            name,
+            await fs.readFile(path.join(migrations, name), "utf-8"),
+          ]),
+        ),
       ),
-    });
+    );
     expect(deployed.migrations![MIGRATION]).toContain("'schema.insights'");
     expect(deployed.migrations![MIGRATION]).toContain("'schema.apiKeys'");
   });
@@ -264,6 +309,30 @@ describe("Supabase init", () => {
         expect.objectContaining({ module: "@hot-updater/react-native" }),
       ],
     });
+  });
+
+  it("moves the Insights events once the new function is deployed, on the managed server's plugins", async () => {
+    root = await project();
+
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    expect(mocks.backfillInsightsReleaseRefs).toHaveBeenCalledOnce();
+    const [server] = mocks.backfillInsightsReleaseRefs.mock
+      .calls[0] as never as [
+      { readonly plugins: readonly { readonly id: string }[] },
+    ];
+    expect(server.plugins.map(({ id }) => id)).toEqual([
+      "insights",
+      "apiKeys",
+      "remoteConfig",
+    ]);
+    const deploy = mocks.execa.mock.calls.findIndex(([, args]) =>
+      (args as readonly string[] | undefined)?.includes("deploy"),
+    );
+    expect(deploy).not.toBe(-1);
+    expect(
+      mocks.backfillInsightsReleaseRefs.mock.invocationCallOrder[0],
+    ).toBeGreaterThan(mocks.execa.mock.invocationCallOrder[deploy]!);
   });
 
   it("writes hot-updater.config.ts with the provider's plugins, and no server code", async () => {

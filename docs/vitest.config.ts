@@ -8,5 +8,7 @@ export default defineConfig({
   },
   test: {
     include: ["plugins/**/*.spec.ts"],
+    // The content specs parse every page of latest and of each archive.
+    testTimeout: 30_000,
   },
 });

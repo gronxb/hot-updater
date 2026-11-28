@@ -1,7 +1,7 @@
 import { Check, ChevronDown } from "lucide-react";
 import { useId, useRef, useState } from "react";
 
-import { shortenIdentifier } from "@/components/HashValueDisplay";
+import { InstallIdDisplay } from "@/components/InstallIdDisplay";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type {
@@ -12,9 +12,11 @@ import { cn } from "@/lib/utils";
 
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InsightsPagination } from "./InsightsPagination";
+import { ReportedBundleId } from "./ReportedBundleId";
 
-const getLastKnownBundleId = (event: InsightsInstallationViewRow) =>
-  event.lastKnownBundleId;
+/** The bundle the installation runs: its release ID, or the bundle ID it reports for none. */
+const getLastKnownId = (event: InsightsInstallationViewRow) =>
+  event.lastKnownReleaseId ?? event.lastKnownBundleId;
 
 const getUserLabel = (event: InsightsInstallationViewRow) =>
   event.userId ?? "—";
@@ -92,7 +94,7 @@ export function InstallationMatchesCard({
         ) : results && results.data.length > 0 ? (
           <ul aria-label="Matching installations" className="divide-y">
             {results.data.map((event) => {
-              const currentBundleId = getLastKnownBundleId(event);
+              const currentBundleId = getLastKnownId(event);
               const isSelected = event.installId === selectedInstallId;
               return (
                 <li key={event.installId}>
@@ -119,24 +121,25 @@ export function InstallationMatchesCard({
                       ) : null}
                     </span>
                     <span className="flex flex-wrap items-center gap-2">
-                      <span
-                        className="font-mono text-xs"
-                        title={event.installId}
-                      >
-                        {shortenIdentifier(event.installId)}
-                      </span>
+                      {/* Inside the option's button: text, not a copy button. */}
+                      <InstallIdDisplay
+                        copyable={false}
+                        installId={event.installId}
+                      />
                     </span>
                     <span className="flex min-w-0 flex-wrap items-center gap-2">
                       <span className="text-xs text-muted-foreground">
                         Bundle
                       </span>
                       {currentBundleId ? (
-                        <span
-                          className="font-mono text-xs"
-                          title={currentBundleId}
-                        >
-                          {shortenIdentifier(currentBundleId)}
-                        </span>
+                        // Inside the option's button: text, not a copy button.
+                        <ReportedBundleId
+                          appVersion={event.appVersion}
+                          bundleId={event.lastKnownBundleId ?? currentBundleId}
+                          copyable={false}
+                          minBundleId={event.minBundleId}
+                          releaseId={event.lastKnownReleaseId}
+                        />
                       ) : (
                         <span className="text-sm text-muted-foreground">—</span>
                       )}

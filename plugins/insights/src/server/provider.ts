@@ -157,20 +157,20 @@ const bundleFilter = (
   input: InsightsBundleSelection,
 ): InsightsBundleEventFilter => {
   const scope = readScope(input);
-  const bundleId = requireString(
-    input.bundleId,
+  const releaseId = requireString(
+    input.releaseId,
     "bundle ID",
     MAX_EVENT_ID_LENGTH,
   );
   switch (input.outcome) {
     case "downloaded":
-      return { ...scope, type: "UPDATE_DOWNLOADED", toBundleId: bundleId };
+      return { ...scope, type: "UPDATE_DOWNLOADED", toReleaseId: releaseId };
     case "applied":
-      return { ...scope, type: "UPDATE_APPLIED", toBundleId: bundleId };
+      return { ...scope, type: "UPDATE_APPLIED", toReleaseId: releaseId };
     case "recovered":
-      return { ...scope, type: "RECOVERED", fromBundleId: bundleId };
+      return { ...scope, type: "RECOVERED", fromReleaseId: releaseId };
     case "failed":
-      return { ...scope, type: "UPDATE_FAILED", toBundleId: bundleId };
+      return { ...scope, type: "UPDATE_FAILED", toReleaseId: releaseId };
     default:
       throw new InsightsBadRequestError("Invalid Insights outcome.");
   }
@@ -189,8 +189,8 @@ const sameFilter = (left: unknown, right: InsightsEventFilter): boolean => {
         left.channel === right.channel &&
         left.type === right.type &&
         (right.type === "RECOVERED"
-          ? left.fromBundleId === right.fromBundleId
-          : left.toBundleId === right.toBundleId)
+          ? left.fromReleaseId === right.fromReleaseId
+          : left.toReleaseId === right.toReleaseId)
       );
   }
 };
@@ -309,8 +309,10 @@ const assertEventRows = (
           row.channel !== input.filter.channel ||
           row.type !== input.filter.type ||
           (input.filter.type === "RECOVERED"
-            ? row.from_bundle_id !== input.filter.fromBundleId
-            : row.to_bundle_id !== input.filter.toBundleId)))
+            ? (row.from_release_id ?? row.from_bundle_id) !==
+              input.filter.fromReleaseId
+            : (row.to_release_id ?? row.to_bundle_id) !==
+              input.filter.toReleaseId)))
     ) {
       throw new Error("Insights database returned invalid event rows.");
     }
@@ -389,6 +391,9 @@ const eventDetails = ({ type, metadata }: BundleEventRow) => ({
 });
 
 const toEventHistoryRow = (row: BundleEventRow): EventHistoryRow => ({
+  ...(row.from_release_id == null
+    ? {}
+    : { fromReleaseId: row.from_release_id }),
   ...(row.to_release_id == null ? {} : { toReleaseId: row.to_release_id }),
   ...(row.metadata.sdk_version == null
     ? {}
@@ -423,6 +428,8 @@ const toInstallationRow = (row: BundleEventRow): InstallationRow => ({
   installId: row.install_id,
   lastKnownBundleId:
     row.type === "UPDATE_DOWNLOADED" ? row.from_bundle_id : row.to_bundle_id,
+  lastKnownReleaseId:
+    row.type === "UPDATE_DOWNLOADED" ? row.from_release_id : row.to_release_id,
   pendingBundleId: row.type === "UPDATE_DOWNLOADED" ? row.to_bundle_id : null,
   pendingReleaseId: row.type === "UPDATE_DOWNLOADED" ? row.to_release_id : null,
   latestStatus: row.type,
@@ -679,55 +686,48 @@ export const createInsightsProvider = (
         }
         return { count: value, measuredAtMs: Date.now() };
       };
-      const bundleId =
-        input.bundleId === undefined
+      const releaseId =
+        input.releaseId === undefined
           ? undefined
-          : requireString(input.bundleId, "bundle ID", MAX_EVENT_ID_LENGTH);
-      const reporting = measure(model.countLatestEvents({ ...scope, sinceMs }));
-      if (bundleId === undefined) {
+          : requireString(input.releaseId, "bundle ID", MAX_EVENT_ID_LENGTH);
+      if (releaseId === undefined) {
         return {
           ...scope,
           window,
           sinceMs,
           beforeReceivedAtMs,
-          reportingInstallations: await reporting,
+          reportingInstallations: await measure(
+            model.countLatestEvents({ ...scope, sinceMs }),
+          ),
         };
       }
+      // The scope's installations and the bundle's, from one read of the
+      // distribution rows.
+      const installations = model
+        .countReleaseInstallations({ ...scope, sinceMs, releaseId })
+        .then(
+          async (counts) =>
+            [
+              await measure(Promise.resolve(counts.installations)),
+              await measure(Promise.resolve(counts.release)),
+            ] as const,
+        );
       const countOutcome = (outcome: InsightsBundleSelection["outcome"]) =>
         measure(
           model.countEvents({
-            filter: bundleFilter({ ...scope, bundleId, outcome }),
+            filter: bundleFilter({ ...scope, releaseId, outcome }),
             sinceMs,
             beforeReceivedAtMs,
           }),
         );
       const [
-        reportingInstallations,
-        bundleInstallations,
+        [reportingInstallations, bundleInstallations],
         downloadedReports,
         appliedReports,
         recoveredReports,
         failedReports,
       ] = await Promise.all([
-        reporting,
-        measure(
-          model.countLatestEvents({
-            ...scope,
-            sinceMs,
-            bundle: [
-              {
-                field: "from_bundle_id",
-                value: bundleId,
-                types: ["UPDATE_DOWNLOADED"],
-              },
-              {
-                field: "to_bundle_id",
-                value: bundleId,
-                types: ["UNCHANGED", "UPDATE_APPLIED", "RECOVERED"],
-              },
-            ],
-          }),
-        ),
+        installations,
         countOutcome("downloaded"),
         countOutcome("applied"),
         countOutcome("recovered"),
@@ -740,7 +740,7 @@ export const createInsightsProvider = (
         beforeReceivedAtMs,
         reportingInstallations,
         bundle: {
-          bundleId,
+          releaseId,
           reportingInstallations: bundleInstallations,
           downloadedReports,
           appliedReports,

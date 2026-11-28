@@ -81,7 +81,8 @@ src/
 │   │   ├── bundles/            # Bundle metadata and rollout details
 │   │   └── releases/           # Release policy editor
 │   ├── PlatformIcon.tsx        # iOS/Android icons
-│   ├── BundleIdDisplay.tsx     # Truncated bundle ID with tooltip
+│   ├── ReleaseIdDisplay.tsx    # A release's label and ID (its bundle ID)
+│   ├── ArtifactIdDisplay.tsx   # An artifact's ID, with no label
 │   ├── RolloutPercentageBadge.tsx
 │   ├── TimestampDisplay.tsx    # UUIDv7 timestamp formatting
 │   ├── ChannelBadge.tsx

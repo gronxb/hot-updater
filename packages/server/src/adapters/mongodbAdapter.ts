@@ -119,6 +119,12 @@ const mongoError = (error: unknown) =>
   error instanceof MongoError ? error : undefined;
 
 /**
+ * Every read goes to the primary, whatever the client's read preference: a
+ * secondary can lag, and `get` and `query` promise every committed write.
+ */
+const PRIMARY = { readPreference: "primary" } as const;
+
+/**
  * The storage engine's adapter over MongoDB: one collection per table, the
  * key as `_id`, and indexes as declared, with multi-valued fields as multikey
  * indexes. A write runs in one transaction. Guards are conditional updates,
@@ -198,7 +204,7 @@ export const createMongoAdapter = (
       if (keys.length === 0) return [];
       const ids = keys.map((key) => idOf(table, key));
       const documents = await collection(table)
-        .find(byId({ $in: ids }))
+        .find(byId({ $in: ids }), PRIMARY)
         .toArray();
       const found = new Map(
         documents.map((document) => [JSON.stringify(document._id), document]),
@@ -226,6 +232,7 @@ export const createMongoAdapter = (
             ...(bounds.length > 0 && { $and: bounds }),
           },
           {
+            ...PRIMARY,
             sort: Object.fromEntries(
               columns.map((column) => [column, direction]),
             ),
@@ -296,10 +303,16 @@ export const createMongoAdapter = (
               if (mongoError(error)?.code !== 48) throw error;
             });
           if (table.retention) await collection(table).createIndexes([TTL]);
-          if (table.indexes.length === 0) continue;
-          await collection(table).createIndexes(
-            table.indexes.map((index) => indexDescription(table, index)),
-          );
+          // MongoDB refuses a second index over the same keys, and a query
+          // reads through the first, as `releases.scopes` through `byScope`.
+          const indexes = new Map<string, IndexDescription>();
+          for (const index of table.indexes) {
+            const description = indexDescription(table, index);
+            const keys = JSON.stringify([description.key, description.unique]);
+            if (!indexes.has(keys)) indexes.set(keys, description);
+          }
+          if (indexes.size === 0) continue;
+          await collection(table).createIndexes([...indexes.values()]);
         }
       },
     },

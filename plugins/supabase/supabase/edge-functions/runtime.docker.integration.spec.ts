@@ -465,6 +465,13 @@ describe.sequential("supabase edge runtime acceptance", () => {
       ),
     plugins: [
       insightsTestSuite({
+        createApi: (database, plugin = insights()) =>
+          createHotUpdater({
+            database,
+            storage: createReleaseCatalogTestStorage(),
+            plugins: [plugin],
+            clientAccess: "public",
+          }).api.insights,
         createModel: (database) =>
           createInsightsModel(
             createHotUpdater({

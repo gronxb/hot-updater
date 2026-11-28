@@ -1,0 +1,528 @@
+// @ts-check
+
+import { PLAY_TRACKS } from "../../shared/playTracks.mjs";
+
+/**
+ * The first line of the one comment the action keeps on a pull request,
+ * which finds it again to edit it in place.
+ */
+export const COMMENT_MARKER = "<!-- hot-updater-preview -->";
+
+const CREDIT = "Preview by [hot-updater](https://hot-updater.dev)";
+
+/**
+ * @typedef {"android" | "ios"} Platform
+ * @typedef {"apk" | "aab" | "ipa" | "app"} ArtifactKind
+ *
+ * @typedef {object} PlatformPreview What one platform's run deployed.
+ * @property {Platform} platform
+ * @property {{ fingerprintHash: string | null, appVersion: string | null }} target
+ *   What the native build was matched by.
+ * @property {{ id: string, artifactKind: ArtifactKind, fileName: string, version?: string | null, expiresAtMs?: number }} nativeBuild
+ *   The tracked build, and its artifact's file name.
+ * @property {boolean} built Whether this run built and registered the
+ *   native build, rather than reusing a registered one.
+ * @property {string | null} bundleId The bundle deployed to the pull
+ *   request's channel; null for a build-only lane's build that no lane
+ *   deployed a bundle to.
+ * @property {number | null} [bundleLabel] Its release's label, `vN` on the
+ *   channel and platform; null when the project's CLI lists none.
+ * @property {import("../../shared/nativeBuild.mjs").StoreStatus | null} [store]
+ *   The store a sandbox build went to, which installs it instead of a download.
+ * @property {SandboxPreview} [sandbox] Present when a sandbox build runs the bundle.
+ *
+ * @typedef {object} SandboxPreview
+ * @property {string} appId The scheme's app ID, before Android's `.sandbox` suffix.
+ * @property {string} urlScheme The URL scheme the sandbox build registers,
+ *   which its link opens.
+ * @property {string | null} link The link a QR code holds; a build matched by
+ *   app version has none, since a link names a fingerprint.
+ * @property {string | null} minBundleId The oldest bundle ID the build runs.
+ * @property {string | null} [fromChannel] The other pull request's channel a
+ *   reused build embeds, or null for one this pull request's channel embeds.
+ *
+ * @typedef {{ platform: Platform, scheme?: string, deployed: boolean } | { lane: string, status: "skipped" | "missing" } | { platform: Platform, undeployed: true }} FailedPreview
+ *   A platform that failed on this run, a lane's job that gave no result (one
+ *   GitHub skipped, or one that failed, was cancelled, or set no output), or
+ *   a platform whose builds no job deployed a bundle to.
+ */
+
+/**
+ * `value` as one POSIX shell word: as it is when it holds only characters
+ * no shell treats specially, else in single quotes. The Console's
+ * `lib/shell.ts` quotes the commands it shows the same way.
+ * @param {string} value
+ */
+export const shellQuote = (value) =>
+  /^[\w@%+=:,./-]+$/.test(value)
+    ? value
+    : `'${value.replaceAll("'", `'\\''`)}'`;
+
+/** @param {ArtifactKind} kind */
+const platformLabel = (kind) =>
+  ({
+    apk: "Android",
+    aab: "Android (AAB)",
+    ipa: "iOS",
+    app: "iOS Simulator",
+  })[kind];
+
+/**
+ * A path under the Console, whose URL may have a path of its own.
+ * @param {string} consoleUrl
+ * @param {string} path
+ */
+export const consolePath = (consoleUrl, path) =>
+  `${consoleUrl.replace(/\/+$/, "")}/${path}`;
+
+/**
+ * The Console's download of a native build, which signs a person in first
+ * and fetches a fresh storage URL each time.
+ * @param {string} consoleUrl
+ * @param {string} id
+ */
+export const nativeBuildDownloadLink = (consoleUrl, id) =>
+  consolePath(
+    consoleUrl,
+    `api/native-builds/${encodeURIComponent(id)}/download`,
+  );
+
+/**
+ * A native build's Console page, where an iPhone checks and installs an IPA.
+ * @param {string} consoleUrl
+ * @param {string} id
+ */
+export const nativeBuildPageLink = (consoleUrl, id) =>
+  consolePath(consoleUrl, `native-builds/${encodeURIComponent(id)}`);
+
+/**
+ * The command that downloads a simulator build, installs it on the booted
+ * Simulator, and opens it, in the project with its `hot-updater.config.ts`:
+ * with `open`, a sandbox build on that channel's latest bundle, as its QR
+ * code opens it on a phone. The Console's `nativeBuildInstallCommand` shows
+ * the same one without it.
+ * @param {string} id
+ * @param {string} [open]
+ */
+const nativeBuildInstallCommand = (id, open) =>
+  `npx hot-updater native-build install ${shellQuote(id)}${open === undefined ? "" : ` --open ${shellQuote(open)}`}`;
+
+/**
+ * What a person opens to install a native build: the install command for a
+ * simulator build, which no link installs, the build's Console page for an
+ * `.ipa`, where "Install on iPhone" checks the device, else the comment's
+ * Download link.
+ * @param {string} consoleUrl
+ * @param {{ id: string, artifactKind: ArtifactKind }} nativeBuild
+ * @param {string} [open] The channel a sandbox simulator build opens.
+ */
+export const nativeBuildInstallUrl = (consoleUrl, { id, artifactKind }, open) =>
+  artifactKind === "app"
+    ? nativeBuildInstallCommand(id, open)
+    : artifactKind === "ipa"
+      ? nativeBuildPageLink(consoleUrl, id)
+      : nativeBuildDownloadLink(consoleUrl, id);
+
+/**
+ * The channel a preview's install command opens: a sandbox Simulator build's,
+ * whose link no Simulator scans; none for any other.
+ * @param {Pick<PlatformPreview, "nativeBuild" | "sandbox">} preview
+ * @param {string} channel
+ */
+export const simulatorOpens = ({ nativeBuild, sandbox }, channel) =>
+  nativeBuild.artifactKind === "app" && sandbox?.link ? channel : undefined;
+
+/**
+ * The link a sandbox build opens a channel from, of the URL scheme the build
+ * registered. `@hot-updater/protocol` has the same `createPreviewLink`, which
+ * an action, with no dependencies, can't import; the specs hold the two
+ * together. It names the platform, so the other platform's sandbox build,
+ * which can register the same scheme, says which QR code to scan.
+ * @param {{ urlScheme: string, channel: string, fingerprintHash: string, platform: Platform }} link
+ */
+export const previewLink = ({
+  urlScheme,
+  channel,
+  fingerprintHash,
+  platform,
+}) =>
+  `${urlScheme.toLowerCase()}://hot-updater/preview?channel=${encodeURIComponent(channel)}&fingerprint=${encodeURIComponent(fingerprintHash)}&platform=${platform}`;
+
+/**
+ * What each QR code of the comment holds: a sandbox build's link, which opens
+ * the pull request's bundle in the sandbox app. Native builds get links, not
+ * QR codes.
+ *
+ * @param {PlatformPreview[]} previews
+ */
+export const qrCodeValues = (previews) =>
+  previews.flatMap((preview) =>
+    isScannable(preview) ? [/** @type {string} */ (preview.sandbox?.link)] : [],
+  );
+
+/**
+ * Whether a phone scans the preview's link: a sandbox build's, but not a
+ * Simulator's, whose install command opens it.
+ * @param {PlatformPreview} preview
+ */
+const isScannable = ({ sandbox, nativeBuild }) =>
+  Boolean(sandbox?.link) && nativeBuild.artifactKind !== "app";
+
+/** Each store's name in the comment, and what its testers do. */
+const STORE_NAMES = {
+  testflight: "TestFlight",
+};
+
+/**
+ * What a store's state means to a person reading the comment, or none for a
+ * build whose store said nothing.
+ * @type {Record<string, string>}
+ */
+const STORE_STATES = {
+  ready: "ready to install",
+  processing: "processing",
+  "missing-compliance": "waiting on export compliance in App Store Connect",
+  draft: "a draft: roll it out in Play Console",
+};
+
+/**
+ * How a person installs a native build, as one line of links: its store, or
+ * its Console download and page. A simulator build installs with the command
+ * under the comment.
+ *
+ * @param {string} consoleUrl
+ * @param {string} channel The pull request's channel.
+ * @param {PlatformPreview} preview
+ */
+const installLinks = (consoleUrl, channel, preview) => {
+  const {
+    nativeBuild: { id, artifactKind },
+    store,
+  } = preview;
+  const download = nativeBuildDownloadLink(consoleUrl, id);
+  const details = `[Details](${nativeBuildPageLink(consoleUrl, id)})`;
+  if (store) {
+    const storeName =
+      store.destination === "testflight"
+        ? STORE_NAMES.testflight
+        : PLAY_TRACKS[store.destination].name;
+    return [
+      store.url ? `[${storeName}](${store.url})` : storeName,
+      ...(store.version ? [code(store.version)] : []),
+      ...(store.state && STORE_STATES[store.state]
+        ? [STORE_STATES[store.state]]
+        : []),
+      details,
+    ].join(" · ");
+  }
+  // The build as the stores show it, as a store's row names it.
+  const version = preview.nativeBuild.version
+    ? ` · ${code(preview.nativeBuild.version)}`
+    : "";
+  return {
+    apk: `[Download APK](${download})${version} · ${details} · allow "Install unknown apps" when Android asks`,
+    aab: `[Download AAB](${download})${version} · ${details}`,
+    ipa: `[Install on iPhone](${nativeBuildPageLink(consoleUrl, id)}) · [Download IPA](${download})${version} · registered devices only`,
+    app:
+      simulatorOpens(preview, channel) === undefined
+        ? `${details}${version} · install with the command below`
+        : `${details}${version} · the command below installs it and opens ${code(channel)}`,
+  }[artifactKind];
+};
+
+/** @param {PlatformPreview} preview */
+const installLabel = ({ platform, nativeBuild, store }) =>
+  store
+    ? platform === "ios"
+      ? "iOS"
+      : "Android"
+    : platformLabel(nativeBuild.artifactKind);
+
+/** @param {string} text */
+const code = (text) => `\`${text}\``;
+
+/** @param {string} text */
+const escapeHtml = (text) =>
+  text
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+
+/**
+ * The last line: `notes`, then the credit unless it is off; none when both
+ * are empty.
+ * @param {string[]} notes
+ * @param {boolean} credit
+ */
+const footer = (notes, credit) => {
+  const parts = [...notes, ...(credit ? [CREDIT] : [])];
+  return parts.length === 0 ? [] : [`<sub>${parts.join(" · ")}</sub>`];
+};
+
+/**
+ * How to install the builds on an emulator or simulator, or none when no
+ * build installs that way: an APK once it is downloaded, and a simulator build
+ * with the command that downloads it too.
+ * @param {PlatformPreview[]} allPreviews
+ * @param {string} channel The pull request's channel.
+ */
+const installCommands = (allPreviews, channel) => {
+  const previews = allPreviews.filter(({ store }) => !store);
+  const opens = previews.some(
+    (preview) => simulatorOpens(preview, channel) !== undefined,
+  );
+  /**
+   * @param {string} lead
+   * @param {string[]} lines
+   */
+  const section = (lead, lines) =>
+    lines.length === 0 ? [] : [lead, "", "```sh", ...lines, "```", ""];
+  const sections = [
+    ...section(
+      "Download the build, then:",
+      previews.flatMap(({ nativeBuild: { artifactKind, fileName } }) =>
+        artifactKind === "apk"
+          ? [`adb install -r ${shellQuote(fileName)}`]
+          : [],
+      ),
+    ),
+    ...section(
+      opens
+        ? `In your project, this downloads the build, installs it on the booted Simulator, and opens the latest bundle on ${code(channel)}:`
+        : "In your project, this downloads the build, installs it on the booted Simulator, and opens it:",
+      previews.flatMap((preview) =>
+        preview.nativeBuild.artifactKind === "app"
+          ? [
+              nativeBuildInstallCommand(
+                preview.nativeBuild.id,
+                simulatorOpens(preview, channel),
+              ),
+            ]
+          : [],
+      ),
+    ),
+  ];
+  return sections.length === 0
+    ? []
+    : [
+        [
+          "<details>",
+          "<summary>Install on an emulator or simulator</summary>",
+          "",
+          ...sections,
+          "</details>",
+        ].join("\n"),
+      ];
+};
+
+/**
+ * The deployed bundle, after its label as the Console shows it.
+ * @param {Pick<PlatformPreview, "bundleId" | "bundleLabel">} preview
+ */
+const bundleCell = ({ bundleId, bundleLabel }) =>
+  bundleId === null
+    ? "—"
+    : `${typeof bundleLabel === "number" ? `${code(`v${bundleLabel}`)} · ` : ""}${code(bundleId)}`;
+
+/**
+ * The rows of the collapsed Builds table: each platform's native build, the
+ * fingerprint or app version it was matched by, and the deployed bundle.
+ * @param {PlatformPreview[]} previews
+ */
+const buildsTable = (previews) => {
+  const strategies = new Set(
+    previews.map(({ target }) =>
+      target.fingerprintHash === null ? "App version" : "Fingerprint",
+    ),
+  );
+  // A config can pick each platform's strategy.
+  const targetHeading =
+    strategies.size === 1 ? [...strategies][0] : "Fingerprint or app version";
+  return [
+    "<details>",
+    "<summary>Builds</summary>",
+    "",
+    `| Platform | Native build | ${targetHeading} | Bundle |`,
+    "| --- | --- | --- | --- |",
+    ...previews.map(
+      (preview) =>
+        `| ${installLabel(preview)} | ${preview.nativeBuild.version ? `${code(preview.nativeBuild.version)} · ` : ""}${code(preview.nativeBuild.id)} · ${preview.built ? "built for this commit" : "reused"} | ${code(
+          preview.target.fingerprintHash === null
+            ? String(preview.target.appVersion)
+            : preview.target.fingerprintHash.slice(0, 12),
+        )} | ${bundleCell(preview)} |`,
+    ),
+    "",
+    "</details>",
+  ].join("\n");
+};
+
+/**
+ * The comment of a pull request whose bundles were deployed, in the order a
+ * tester works: install the app, then, on a sandbox build, scan the QR code
+ * of the sandbox link, which opens the latest bundle on the pull request's
+ * channel, from the commit it names. Native builds get links only; the
+ * sandbox link is the only QR code.
+ *
+ * @param {object} input
+ * @param {string} input.consoleUrl
+ * @param {string} input.channel The pull request's channel.
+ * @param {PlatformPreview[]} input.previews
+ * @param {Record<string, string>} [input.qrImages] The image of each sandbox
+ *   link's QR code that the action wrote, by the link; a link without one is
+ *   shown as text only.
+ * @param {string} input.commitSha The commit whose bundles the run deployed,
+ *   which each bundle's deploy message names too.
+ * @param {string | null} [input.repositoryUrl] The repository's web URL, which
+ *   the commit links under; without it, the commit is not a link.
+ * @param {FailedPreview[]} [input.failed]
+ *   The platforms that failed on this run, which the comment shows nothing
+ *   else of, and names no commit for: `deployed` when the bundle reached the
+ *   channel before the failure, and `scheme` when the platform has several.
+ *   A lane's job that gave no result is named by the job.
+ * @param {string | null} [input.runUrl] The run's page, which a failed
+ *   platform links to.
+ * @param {boolean} input.credit Whether to end with "Preview by hot-updater".
+ */
+export const renderPreviewComment = ({
+  consoleUrl,
+  channel,
+  previews,
+  qrImages = {},
+  commitSha,
+  repositoryUrl = null,
+  failed = [],
+  runUrl = null,
+  credit,
+}) => {
+  const sha7 = code(commitSha.slice(0, 7));
+  // A tester opens the channel's latest bundle, and this names its commit.
+  const latestCommit = `<sub>Latest commit: ${
+    repositoryUrl === null
+      ? sha7
+      : `[${sha7}](${repositoryUrl}/commit/${encodeURIComponent(commitSha)})`
+  }</sub>`;
+  /** @param {PlatformPreview} preview */
+  const line = (preview) =>
+    `- **${installLabel(preview)}**: ${installLinks(consoleUrl, channel, preview)}`;
+  const sandboxes = previews.filter(({ sandbox }) => sandbox);
+  const own = previews.filter(({ sandbox }) => !sandbox);
+  // A Simulator build's link opens through its command, not a QR code.
+  const linked = sandboxes.filter(isScannable);
+  const simulator = sandboxes.some(
+    ({ nativeBuild }) => nativeBuild.artifactKind === "app",
+  );
+  const scannable = linked.some(
+    ({ sandbox }) => qrImages[/** @type {string} */ (sandbox?.link)],
+  );
+  // The other pull requests' channels whose sandbox builds this one reuses.
+  const reusedFrom = [
+    ...new Set(sandboxes.flatMap(({ sandbox }) => sandbox?.fromChannel ?? [])),
+  ];
+  return [
+    COMMENT_MARKER,
+    `### Preview on ${code(channel)}`,
+    ...failed.map((failure) => {
+      const logs = runUrl === null ? "." : `: [see the logs](${runUrl}).`;
+      if ("lane" in failure) {
+        return failure.status === "skipped"
+          ? `**${failure.lane}** was skipped on this run.`
+          : `**${failure.lane}** gave no preview result on this run${logs}`;
+      }
+      if ("undeployed" in failure) {
+        return `**${failure.platform === "ios" ? "iOS" : "Android"}** was built, but its deploy didn't run on this run${logs}`;
+      }
+      const { platform, scheme, deployed } = failure;
+      return `**${platform === "ios" ? "iOS" : "Android"}**${scheme === undefined ? "" : ` (${code(scheme)})`} failed on this run${deployed ? ", after deploying its bundle" : ""}${logs}`;
+    }),
+    ...(sandboxes.length === 0
+      ? []
+      : [
+          `**${linked.length === 0 ? "" : "1. "}Install the sandbox app** once. Pull requests with the same native code share it.`,
+          sandboxes.map(line).join("\n"),
+          ...reusedFrom.map(
+            (from) =>
+              `Sandbox build from ${code(from)}, with the same native code.${linked.length === 0 ? "" : simulator ? " Already installed on a phone? Skip to step 2." : " Already installed? Skip to step 2."}`,
+          ),
+          ...(sandboxes.some(({ built }) => built)
+            ? [
+                "This run made a new sandbox build: push the other open pull requests again.",
+              ]
+            : []),
+        ]),
+    ...(linked.length === 0
+      ? []
+      : [
+          [
+            scannable
+              ? `**2. Scan to open the latest bundle on ${code(channel)}** with the sandbox app.`
+              : `**2. Open the latest bundle on ${code(channel)}**: open the link on the phone with the sandbox app.`,
+            latestCommit,
+          ].join("\n"),
+          ...linked.map(({ platform, sandbox }) => {
+            const link = /** @type {string} */ (sandbox?.link);
+            return [
+              `**${platform === "ios" ? "iOS" : "Android"}**`,
+              ...(qrImages[link]
+                ? [
+                    `<img src="${escapeHtml(qrImages[link])}" alt="${escapeHtml(`QR code of the sandbox link of ${channel}`)}" width="180" height="180">`,
+                  ]
+                : []),
+              code(link),
+            ].join("\n\n");
+          }),
+        ]),
+    ...(own.length === 0
+      ? []
+      : [
+          sandboxes.length === 0
+            ? `**Install this pull request's build.** It opens the latest bundle on ${code(channel)} on its first launch.`
+            : `**This pull request's own build** opens the latest bundle on ${code(channel)} on its first launch.`,
+          own.map(line).join("\n"),
+        ]),
+    // Without step 2, the commit still goes once, beside a platform it reached.
+    ...(linked.length === 0 && previews.length > 0 ? [latestCommit] : []),
+    ...(previews.length === 0 ? [] : [buildsTable(previews)]),
+    ...installCommands(previews, channel),
+    ...footer([], credit),
+  ].join("\n\n");
+};
+
+/**
+ * The comment of a closed pull request, once its channel is deleted: its
+ * bundles and native builds are gone.
+ *
+ * @param {object} input
+ * @param {string} input.channel
+ * @param {"deleted" | "kept" | "kept-sandbox" | "missing"} input.outcome
+ *   `kept` when a bundle or a build was added to the channel during the
+ *   cleanup, `kept-sandbox` when only its sandbox builds stay, which other
+ *   pull requests reuse, and `missing` when it was already gone.
+ * @param {number} input.deletedBundles
+ * @param {number} input.deletedNativeBuilds
+ * @param {number} [input.keptSandboxBuilds]
+ * @param {boolean} input.credit
+ */
+export const renderClosedComment = ({
+  channel,
+  outcome,
+  deletedBundles,
+  deletedNativeBuilds,
+  keptSandboxBuilds = 0,
+  credit,
+}) => {
+  const bundles = `${deletedBundles} bundle${deletedBundles === 1 ? "" : "s"}`;
+  const builds = `${deletedNativeBuilds} native build${deletedNativeBuilds === 1 ? "" : "s"}`;
+  return [
+    COMMENT_MARKER,
+    `### Preview on ${code(channel)}`,
+    {
+      deleted: `This pull request is closed: its channel ${code(channel)}, its ${bundles}, and its ${builds} are deleted.`,
+      kept: `This pull request is closed: its ${bundles} and its ${builds} are deleted, and its channel ${code(channel)} is kept, because a bundle or a build was added to it during the cleanup. Run the cleanup again.`,
+      "kept-sandbox": `This pull request is closed: its ${bundles} and its ${builds} are deleted. ${keptSandboxBuilds === 1 ? "Its sandbox build stays" : `Its ${keptSandboxBuilds} sandbox builds stay`} for pull requests with the same native code, and so does its channel ${code(channel)}.`,
+      missing: `This pull request is closed, and its channel ${code(channel)} is already deleted.`,
+    }[outcome],
+    ...footer([], credit),
+  ].join("\n\n");
+};

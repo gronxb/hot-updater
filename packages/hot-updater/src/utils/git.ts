@@ -114,3 +114,15 @@ export const isProjectFileTracked = ({
     cwd: cwd ?? getCwd(),
     stdio: "ignore",
   }).status === 0;
+
+/**
+ * Whether `file`, an absolute path, is in a git work tree that doesn't ignore
+ * it: false outside one, or without git. A tracked file counts, whatever
+ * `.gitignore` lists, since git ignores only untracked files.
+ */
+export const isFileUnignoredByGit = (file: string): boolean =>
+  spawnSync("git", ["check-ignore", "--quiet", "--", path.basename(file)], {
+    cwd: path.dirname(file),
+    stdio: "ignore",
+    timeout: 10_000,
+  }).status === 1;

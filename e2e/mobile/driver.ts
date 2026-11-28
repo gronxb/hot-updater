@@ -14,6 +14,7 @@ import {
   TEST_ID_SCREEN_PATHS,
 } from "../shared/screen-routes/index.js";
 import type { IosAlert } from "./ios-alert.ts";
+import { isIosLinkMaybeSent, isIosLinkNotSent } from "./ios-link-timeout.ts";
 
 const inputFields: Record<string, string> = {
   "cohort-input": "cohortInput",
@@ -89,9 +90,14 @@ export class MobileAppDriver implements ScenarioAppDriver {
   private pendingRecovery?: "crash" | "reload";
   private pendingLaunchFailure = false;
   private verifiedLaunchFailures = 0;
+  private caughtLinkTimeouts = 0;
 
   get expectedLaunchFailures() {
     return this.verifiedLaunchFailures;
+  }
+
+  get expectedLinkTimeouts() {
+    return this.caughtLinkTimeouts;
   }
 
   get platform() {
@@ -351,11 +357,8 @@ export class MobileAppDriver implements ScenarioAppDriver {
         await this.openApp({ relaunch: false });
       if (opensRoute) {
         this.options.signal.throwIfAborted();
-        await this.options.device.openLink(
+        await this.openRouteLink(
           (E2E_SCREEN_URLS as Record<string, string>)[screenPath],
-          {
-            app: this.options.appId,
-          },
         );
         openedLink = true;
         this.activeScreenPath = screenPath;
@@ -368,6 +371,32 @@ export class MobileAppDriver implements ScenarioAppDriver {
     if (openedLink && this.options.platform === "ios")
       await this.acceptAppLinkUntil(() => target.isVisible());
     return target;
+  }
+
+  // A slow Simulator does not fail a route by itself. A link that was never sent
+  // goes out once more. One that may have arrived is not sent again, since an
+  // action route runs on entry: the caller's wait for the route decides, and fails
+  // as it would have if the link never got through.
+  private async openRouteLink(url: string) {
+    const open = () =>
+      this.options.device.openLink(url, { app: this.options.appId });
+    try {
+      await open();
+    } catch (error) {
+      if (this.options.platform !== "ios") throw error;
+      const message = String(error);
+      const maybeSent = isIosLinkMaybeSent(message);
+      if (!maybeSent && !isIosLinkNotSent(message)) throw error;
+      // The SDK recorded the failed step; the run's result accepts this many.
+      this.caughtLinkTimeouts += 1;
+      if (maybeSent) {
+        console.log(`[e2e-link:maybe-sent] ${url} ${message}`);
+        return;
+      }
+      console.log(`[e2e-link:resend] ${url} ${message}`);
+      this.options.signal.throwIfAborted();
+      await open();
+    }
   }
 
   // iOS may ask to open a route in the app first. The poll only reads

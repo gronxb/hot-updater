@@ -1,12 +1,17 @@
-import { loadConfig, readPackageUp } from "@hot-updater/cli-tools";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
+
+import { loadConfig, p, readPackageUp } from "@hot-updater/cli-tools";
 import { createEngine } from "@hot-updater/plugin-core";
-import { storeBundles } from "@hot-updater/test-utils";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { writeCatalogFromLaterRelease } from "@hot-updater/test-utils";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadServer } from "../utils/loadServer";
 import { testServer } from "../utils/testServer";
 import { createDatabaseHarness } from "./database.testFixtures";
 import { doctor, handleDoctor } from "./doctor";
+import { INIT_PROVIDER_PACKAGES } from "./initProviders";
 
 vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
 
@@ -49,7 +54,13 @@ const bundle = (index: number, platform: "ios" | "android" = "ios") => ({
 /** Deploys one release, whose scope gets a catalog. */
 const deploy = async (
   index = 1,
-  { platform = "ios" }: { readonly platform?: "ios" | "android" } = {},
+  {
+    platform = "ios",
+    message = null,
+  }: {
+    readonly platform?: "ios" | "android";
+    readonly message?: string | null;
+  } = {},
 ) => {
   const [result] = await harness.core.deploy([
     {
@@ -58,7 +69,7 @@ const deploy = async (
         channel: "production",
         enabled: true,
         fingerprintHash: null,
-        message: null,
+        message,
         shouldForceUpdate: false,
         targetAppVersion: "1.0.x",
       },
@@ -70,33 +81,50 @@ const deploy = async (
 /** Deletes a scope's catalog row, leaving its releases. */
 const loseCatalogRow = async (scopeKey: string) => {
   const engine = createEngine(harness.database);
-  try {
-    await engine.core.transaction(async (tx) => {
-      const row = await tx.findOne("release_catalogs", {
-        scope_key: scopeKey,
-      });
-      await tx.delete("release_catalogs", row!);
+  await engine.core.transaction(async (tx) => {
+    const row = await tx.findOne("release_catalogs", {
+      scope_key: scopeKey,
     });
-  } finally {
-    await engine.dispose();
-  }
+    await tx.delete("release_catalogs", row!);
+  });
 };
 
 /** Makes a scope's stored catalog differ from what its releases compile to. */
 const makeStale = async (scopeKey: string) => {
   const engine = createEngine(harness.database);
-  try {
-    await engine.core.transaction(async (tx) => {
-      const row = await tx.findOne("release_catalogs", {
-        scope_key: scopeKey,
-      });
-      tx.update("release_catalogs", row!, {
-        catalog_hash: `sha256:${"0".repeat(64)}`,
-      });
+  await engine.core.transaction(async (tx) => {
+    const row = await tx.findOne("release_catalogs", {
+      scope_key: scopeKey,
     });
-  } finally {
-    await engine.dispose();
-  }
+    tx.update("release_catalogs", row!, {
+      catalog_hash: `sha256:${"0".repeat(64)}`,
+    });
+  });
+};
+
+/** Takes every release's label and every counter off, as a 1.1 database holds them. */
+const asBeforeLabels = async () => {
+  const engine = createEngine(harness.database);
+  const { rows } = await engine.core.findMany("releases", {
+    index: "all",
+    where: {},
+    limit: 100,
+  });
+  const { rows: counters } = await engine.core.findMany("label_sequences", {
+    index: "all",
+    where: {},
+    limit: 100,
+  });
+  await engine.core.transaction(async (tx) => {
+    for (const { id } of rows) {
+      const row = await tx.findOne("releases", { id });
+      tx.update("releases", row!, { label: null });
+    }
+    for (const { id } of counters) {
+      const counter = await tx.findOne("label_sequences", { id });
+      await tx.delete("label_sequences", counter!);
+    }
+  });
 };
 
 describe("doctor's release catalog check", () => {
@@ -106,10 +134,16 @@ describe("doctor's release catalog check", () => {
     serverProject();
   });
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("skips the check when hot-updater.config.ts names no database", async () => {
     vi.mocked(loadConfig).mockResolvedValue({ plugins: [] } as never);
 
-    await expect(doctor()).resolves.toBe(true);
+    const result = await doctor();
+    expect(result).toMatchObject({ success: true });
+    expect(result).not.toHaveProperty("details.releaseCatalogs");
     expect(loadServer).not.toHaveBeenCalled();
   });
 
@@ -130,7 +164,6 @@ describe("doctor's release catalog check", () => {
               message: expect.stringContaining("ECONNREFUSED"),
               resolution:
                 "Check that database in hot-updater.config.ts is reachable from here, then rerun doctor.",
-              fixability: "blocked",
             },
           ],
         },
@@ -147,6 +180,66 @@ describe("doctor's release catalog check", () => {
         releaseCatalogs: {
           scopes: [{ scopeKey, state: "verified", generation: 1 }],
           issues: [],
+        },
+      },
+    });
+  });
+
+  it("verifies a catalog a later Hot Updater compiled with a field this one doesn't know", async () => {
+    const scopeKey = await deploy();
+    await writeCatalogFromLaterRelease(
+      createEngine(harness.database).core,
+      scopeKey,
+    );
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: true,
+      details: {
+        releaseCatalogs: {
+          scopes: [{ scopeKey, state: "verified", generation: 1 }],
+          issues: [],
+        },
+      },
+    });
+  });
+
+  it("warns once a scope's catalog reaches 80% of its size limit, and not before", async () => {
+    // 60 KB messages: three compile to under 80% of 256 KiB, four to over it.
+    const message = "m".repeat(60_000);
+    for (let index = 1; index <= 3; index += 1) {
+      await deploy(index, { message });
+    }
+    const under = await doctor();
+    expect(under).toMatchObject({
+      success: true,
+      details: { releaseCatalogs: { issues: [] } },
+    });
+    expect(
+      (
+        under as {
+          details: { releaseCatalogs: { scopes: { byteSize: number }[] } };
+        }
+      ).details.releaseCatalogs.scopes[0]!.byteSize,
+    ).toBeLessThan(0.8 * 256 * 1024);
+
+    const scopeKey = await deploy(4, { message });
+    await expect(doctor()).resolves.toMatchObject({
+      success: true,
+      details: {
+        releaseCatalogs: {
+          scopes: [{ scopeKey, state: "verified" }],
+          issues: [
+            {
+              type: "warning",
+              code: "RELEASE_CATALOG_NEAR_LIMIT",
+              scopeKey,
+              message: expect.stringMatching(
+                /^The ios release catalog of channel "production" is \d+% of its 256 KiB limit\.$/u,
+              ),
+              resolution:
+                "Disable or delete old bundles on that channel before a deploy to it fails.",
+            },
+          ],
         },
       },
     });
@@ -173,8 +266,13 @@ describe("doctor's release catalog check", () => {
               type: "error",
               code: "RELEASE_CATALOG_STALE",
               scopeKey,
-              fixability: "command",
-              commands: ["npx hot-updater doctor --fix"],
+              resolution: expect.stringContaining(
+                "Every release change in the scope recompiles its catalog",
+              ),
+              commands: [
+                "npx hot-updater deploy",
+                "npx hot-updater bundle update <id>",
+              ],
             },
           ],
         },
@@ -182,25 +280,263 @@ describe("doctor's release catalog check", () => {
     });
   });
 
-  it("rebuilds a stale catalog with --fix, names it, and checks again", async () => {
-    const scopeKey = await deploy();
-    await makeStale(scopeKey);
-    const output = vi.spyOn(console, "log").mockImplementation(() => {});
-
-    await handleDoctor({ json: true, fix: true });
-
-    expect(JSON.parse(String(output.mock.calls[0]?.[0]))).toMatchObject({
+  it("reports releases without labels and catalogs without them, names the command that migrates, and nothing once it ran", async () => {
+    const ios = await deploy(1);
+    const android = await deploy(2, { platform: "android" });
+    await asBeforeLabels();
+    // Catalogs compiled while the releases had none, then a fill of the
+    // releases alone: the catalogs now lack their labels.
+    await harness.core.rebuildReleaseCatalog(ios);
+    await harness.core.rebuildReleaseCatalog(android);
+    await expect(doctor()).resolves.toMatchObject({
       success: true,
       details: {
-        fixes: [
-          {
-            repair: "release-catalogs",
-            codes: ["RELEASE_CATALOG_STALE"],
-            status: "applied",
-            wrote: [`release catalog ${scopeKey}, generation 2`],
-            native: false,
-          },
-        ],
+        releaseCatalogs: {
+          issues: [
+            {
+              type: "warning",
+              code: "RELEASE_LABELS_MISSING",
+              message: "2 releases have no label.",
+              commands: ["npx hot-updater db migrate"],
+            },
+          ],
+        },
+      },
+    });
+    await harness.core.fillReleaseLabels({ catalogs: false });
+    await expect(doctor()).resolves.toMatchObject({
+      success: true,
+      details: {
+        releaseCatalogs: {
+          scopes: [
+            { scopeKey: android, state: "stale" },
+            { scopeKey: ios, state: "stale" },
+          ],
+          issues: [
+            {
+              type: "warning",
+              code: "RELEASE_CATALOGS_WITHOUT_LABELS",
+              message:
+                "2 release catalogs lack the labels of their releases, so apps don't get them.",
+              commands: ["npx hot-updater db migrate"],
+            },
+          ],
+        },
+      },
+    });
+
+    // What `db migrate` and init run once the schema is migrated.
+    await harness.core.fillReleaseLabels();
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: true,
+      details: {
+        releaseCatalogs: {
+          scopes: [
+            { scopeKey: android, state: "verified" },
+            { scopeKey: ios, state: "verified" },
+          ],
+          issues: [],
+        },
+      },
+    });
+  });
+
+  it("names db migrate, which deploys nothing, for releases without labels on the database init's record names, as an agent infrastructure deployment's", async () => {
+    // A deployment init's record names, or one agent infrastructure
+    // deployed with the same inputs: init would redeploy its server.
+    vi.stubEnv("HOT_UPDATER_INIT_PROVIDER", "cloudflare");
+    vi.stubEnv("HOT_UPDATER_INIT_BUILD", "expo");
+    vi.stubEnv("HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID", "database");
+    const database = {
+      ...harness.database,
+      name: "d1Database",
+      [Symbol.for("@hot-updater/database-target")]: "d1/database",
+    };
+    vi.mocked(loadConfig).mockResolvedValue({
+      database,
+      plugins: [],
+    } as never);
+    vi.mocked(loadServer).mockImplementation(async () =>
+      testServer({ database }),
+    );
+    await deploy(1);
+    await asBeforeLabels();
+
+    const result = await doctor();
+
+    expect(result).toMatchObject({
+      details: {
+        releaseCatalogs: {
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: "RELEASE_LABELS_MISSING",
+              commands: ["npx hot-updater db migrate"],
+            }),
+          ]),
+        },
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("hot-updater init");
+  });
+
+  it("prints each command an issue names under its resolution, once", async () => {
+    await deploy(1);
+    await asBeforeLabels();
+    const warn = vi.spyOn(p.log, "warn");
+
+    await handleDoctor({});
+
+    const block = warn.mock.calls
+      .map(([message]) => stripVTControlCharacters(String(message)))
+      .find((message) => message.startsWith("1 release has no label."));
+    expect(block).toBe(
+      [
+        "1 release has no label.",
+        "Label them in the order they were created:",
+        "npx hot-updater db migrate",
+      ].join("\n"),
+    );
+  });
+
+  it("reports a database without release labels' schema as unchecked, with the error and its provider's repair, not as releases without a label", async () => {
+    await deploy(1);
+    await asBeforeLabels();
+    // A D1 database a 1.2 prerelease migrated: no counters table.
+    harness.read.mockImplementation(async (table) => {
+      if (table === "label_sequences") {
+        throw new Error("no such table: label_sequences: SQLITE_ERROR");
+      }
+    });
+    vi.mocked(loadServer).mockImplementation(async () =>
+      testServer({ database: { ...harness.database, name: "d1Database" } }),
+    );
+
+    const result = await doctor();
+
+    const { issues } = (
+      result as {
+        details: { releaseCatalogs: { issues: { code: string }[] } };
+      }
+    ).details.releaseCatalogs;
+    expect(issues).toContainEqual({
+      type: "warning",
+      code: "RELEASE_LABELS_UNCHECKED",
+      message:
+        "Could not check release labels: no such table: label_sequences: SQLITE_ERROR",
+      resolution:
+        "Add release labels' schema, which a 1.2 prerelease's migration left out:",
+      commands: INIT_PROVIDER_PACKAGES.cloudflare.labelSchemaRepair!(
+        () => undefined,
+      ),
+    });
+    expect(issues.map(({ code }) => code)).not.toContain(
+      "RELEASE_LABELS_MISSING",
+    );
+  });
+
+  it("names the D1 database in its label schema repair when the environment names the configured one", async () => {
+    vi.stubEnv("HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID", "database");
+    vi.stubEnv("HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME", "ota");
+    await deploy(1);
+    harness.read.mockImplementation(async (table) => {
+      if (table === "label_sequences") {
+        throw new Error("no such table: label_sequences: SQLITE_ERROR");
+      }
+    });
+    const d1 = (target: string) => ({
+      ...harness.database,
+      name: "d1Database",
+      [Symbol.for("@hot-updater/database-target")]: target,
+    });
+    const commands = async () => {
+      const result = (await doctor()) as {
+        details: {
+          releaseCatalogs: { issues: { code: string; commands?: string[] }[] };
+        };
+      };
+      return result.details.releaseCatalogs.issues.find(
+        ({ code }) => code === "RELEASE_LABELS_UNCHECKED",
+      )?.commands;
+    };
+
+    vi.mocked(loadServer).mockImplementation(async () =>
+      testServer({ database: d1("d1/database") }),
+    );
+    const placeholders = INIT_PROVIDER_PACKAGES.cloudflare.labelSchemaRepair!(
+      () => undefined,
+    );
+    await expect(commands()).resolves.toEqual(
+      placeholders.map((command) => command.replace("<database-name>", "ota")),
+    );
+
+    // The name the environment holds is another database's.
+    vi.mocked(loadServer).mockImplementation(async () =>
+      testServer({ database: d1("d1/another") }),
+    );
+    await expect(commands()).resolves.toEqual(placeholders);
+  });
+
+  it("names the Supabase project in its label schema repair when the environment names the configured one", async () => {
+    vi.stubEnv("HOT_UPDATER_SUPABASE_PROJECT_ID", "abcdefgh");
+    await deploy(1);
+    harness.read.mockImplementation(async (table) => {
+      if (table === "label_sequences") {
+        throw new Error(
+          'relation "hot_updater_v1_label_sequences" does not exist',
+        );
+      }
+    });
+    vi.mocked(loadServer).mockImplementation(async () =>
+      testServer({
+        database: {
+          ...harness.database,
+          name: "supabaseDatabase",
+          [Symbol.for("@hot-updater/database-target")]:
+            "supabase/abcdefgh.supabase.co",
+        },
+      }),
+    );
+
+    await expect(doctor()).resolves.toMatchObject({
+      details: {
+        releaseCatalogs: {
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: "RELEASE_LABELS_UNCHECKED",
+              commands: [
+                "npx supabase@3.0.0 db query --remote=abcdefgh -f node_modules/@hot-updater/supabase/supabase/migrations/0002_hot-updater_1.2.0.sql",
+              ],
+            }),
+          ]),
+        },
+      },
+    });
+  });
+
+  it("names each provider's label schema repair as the packaged 1.2.0 upgrade guide prints it", async () => {
+    const guide = await fs.readFile(
+      path.resolve("packages/hot-updater/infrastructure-upgrades/1.2.0.md"),
+      "utf8",
+    );
+    for (const command of [
+      ...INIT_PROVIDER_PACKAGES.cloudflare.labelSchemaRepair!(() => undefined),
+      ...INIT_PROVIDER_PACKAGES.supabase.labelSchemaRepair!(() => undefined),
+    ]) {
+      expect(guide).toContain(command);
+    }
+  });
+
+  it("verifies a stale catalog once a deploy to its scope recompiles it", async () => {
+    const scopeKey = await deploy();
+    await makeStale(scopeKey);
+
+    // What the resolution names: the scope's next release change.
+    await expect(deploy(2)).resolves.toBe(scopeKey);
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: true,
+      details: {
         releaseCatalogs: {
           scopes: [{ scopeKey, state: "verified", generation: 2 }],
           issues: [],
@@ -262,22 +598,38 @@ describe("doctor's release catalog check", () => {
     ).toHaveLength(2);
   });
 
-  it("finds a scope whose releases have no catalog row, and leaves it to a backup restore under --fix", async () => {
-    const scopeKey = await deploy();
+  it("finds the newest fingerprint scope of a channel's platform without its catalog row", async () => {
+    await deploy(1);
+    // Release IDs are UUIDv7s: a later millisecond makes this one newest.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const [fingerprinted] = await harness.core.deploy([
+      {
+        bundle: bundle(2),
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: "fingerprint-2",
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: null,
+        },
+      },
+    ]);
+    const scopeKey = fingerprinted!.release!.scope_key;
     await loseCatalogRow(scopeKey);
 
-    await expect(doctor({ fix: true })).resolves.toMatchObject({
+    await expect(doctor()).resolves.toMatchObject({
       success: false,
       details: {
-        fixes: [],
         releaseCatalogs: {
-          scopes: [{ scopeKey, state: "missing", generation: null }],
+          scopes: expect.arrayContaining([
+            expect.objectContaining({ scopeKey, state: "missing" }),
+          ]),
           issues: [
             {
               type: "error",
               code: "RELEASE_CATALOG_IDENTITY_MISSING",
               scopeKey,
-              fixability: "blocked",
             },
           ],
         },
@@ -285,43 +637,103 @@ describe("doctor's release catalog check", () => {
     });
   });
 
-  it("warns about artifact records no release uses, and --fix deletes them", async () => {
-    const orphan = bundle(9);
-    await deploy();
-    await storeBundles(harness.database, [orphan]);
+  it("finds a channel's app-version scope without its catalog row behind a newer fingerprint release", async () => {
+    const scopeKey = await deploy(1);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await harness.core.deploy([
+      {
+        bundle: bundle(2),
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: "fingerprint-2",
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: null,
+        },
+      },
+    ]);
+    await loseCatalogRow(scopeKey);
 
     await expect(doctor()).resolves.toMatchObject({
-      success: true,
+      success: false,
       details: {
-        artifacts: {
-          unreferenced: [orphan.id],
+        releaseCatalogs: {
+          scopes: expect.arrayContaining([
+            expect.objectContaining({ scopeKey, state: "missing" }),
+          ]),
           issues: [
             {
-              type: "warning",
-              code: "UNREFERENCED_ARTIFACTS",
-              artifactIds: [orphan.id],
-              commands: ["npx hot-updater doctor --fix"],
+              type: "error",
+              code: "RELEASE_CATALOG_IDENTITY_MISSING",
+              scopeKey,
             },
           ],
         },
       },
     });
+  });
 
-    await expect(doctor({ fix: true })).resolves.toMatchObject({
-      success: true,
-      details: {
-        fixes: [
-          {
-            repair: "unreferenced-artifacts",
-            status: "applied",
-            wrote: [`artifact record ${orphan.id}`],
-            native: false,
+  it("finds an older fingerprint scope without its catalog row behind newer releases", async () => {
+    const fingerprint = (index: number, hash: string) =>
+      harness.core.deploy([
+        {
+          bundle: bundle(index),
+          release: {
+            channel: "production",
+            enabled: true,
+            fingerprintHash: hash,
+            message: null,
+            shouldForceUpdate: false,
+            targetAppVersion: null,
           },
-        ],
-        artifacts: { unreferenced: [], issues: [] },
+        },
+      ]);
+    await deploy(1);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const [older] = await fingerprint(2, "fingerprint-a");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await fingerprint(3, "fingerprint-b");
+    const scopeKey = older!.release!.scope_key;
+    await loseCatalogRow(scopeKey);
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: false,
+      details: {
+        releaseCatalogs: {
+          scopes: expect.arrayContaining([
+            expect.objectContaining({ scopeKey, state: "missing" }),
+          ]),
+          issues: [
+            {
+              type: "error",
+              code: "RELEASE_CATALOG_IDENTITY_MISSING",
+              scopeKey,
+            },
+          ],
+        },
       },
     });
-    await expect(harness.core.getBundle(orphan.id)).resolves.toBeNull();
-    expect(loadServer).toHaveBeenCalledTimes(2);
+  });
+
+  it("finds a scope whose releases have no catalog row, and leaves it to a backup restore", async () => {
+    const scopeKey = await deploy();
+    await loseCatalogRow(scopeKey);
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: false,
+      details: {
+        releaseCatalogs: {
+          scopes: [{ scopeKey, state: "missing", generation: null }],
+          issues: [
+            {
+              type: "error",
+              code: "RELEASE_CATALOG_IDENTITY_MISSING",
+              scopeKey,
+            },
+          ],
+        },
+      },
+    });
   });
 });

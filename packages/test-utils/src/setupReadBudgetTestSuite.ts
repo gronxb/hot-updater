@@ -2,6 +2,7 @@ import {
   type DatabaseAdapter,
   type DatabaseReadCount,
   type HotUpdaterCoreApi,
+  type NativeBuildRow,
   type PhysicalTable,
   SETTINGS_TABLE,
   targetBaseCandidateKey,
@@ -12,6 +13,8 @@ import type {
   InsightsCountEventsInput,
   InsightsCountEventSeriesInput,
   InsightsCountLatestEventsInput,
+  InsightsCountReleaseInstallationsInput,
+  InsightsReleaseInstallations,
   InsightsEventSeriesPoint,
   InsightsFindLatestEventsInput,
   InsightsGetAppUsageInput,
@@ -73,6 +76,9 @@ interface ReadBudgetInsights {
     input: InsightsFindLatestEventsInput,
   ): Promise<readonly BundleEventRow[]>;
   countLatestEvents(input: InsightsCountLatestEventsInput): Promise<number>;
+  countReleaseInstallations(
+    input: InsightsCountReleaseInstallationsInput,
+  ): Promise<InsightsReleaseInstallations>;
   countEvents(input: InsightsCountEventsInput): Promise<number>;
   countEventSeries(
     input: InsightsCountEventSeriesInput,
@@ -246,6 +252,50 @@ const failureOf = (n: number, install: number, check = false) =>
     received_at_ms: T0 + 3 * DAY + n * 10 * 60_000,
   } as Partial<BundleEventRow>);
 
+/** Where a client floods update failures: Android `flood`, day 5. */
+const FLOOD = {
+  platform: "android",
+  channel: "flood",
+  start: T0 + 5 * DAY,
+} as const;
+
+/** The flood's failed checks: more breakdown rows than a read takes from an hour. */
+const FLOOD_CHECKS = 24;
+/**
+ * Installations whose IDs fall on all 8 counter shards: each flood row is
+ * reported by all of them, so it is stored on every shard.
+ */
+const FLOOD_INSTALLS = Array.from({ length: 8 }, (_, n) => `flood-${n}`);
+
+/**
+ * Flood failure `n`: below {@link FLOOD_CHECKS} × 8, a failed check of HTTP
+ * status 100 + n / 8 by installation n % 8, all in day 5's first hour; at
+ * it, a real failure, a failed download in the hour after.
+ */
+const floodFailureOf = (n: number) => {
+  const real = n === FLOOD_CHECKS * FLOOD_INSTALLS.length;
+  return eventOf(1_000 + n, {
+    type: "UPDATE_FAILED",
+    install_id: real ? "flood-real" : FLOOD_INSTALLS[n % 8]!,
+    user_id: null,
+    to_release_id: real ? "release-b" : null,
+    to_bundle_id: real ? "bundle-b" : "bundle-a",
+    platform: FLOOD.platform,
+    channel: FLOOD.channel,
+    metadata: {
+      ...eventOf(0).metadata,
+      failure: real
+        ? { stage: "download", reason: "http", http_status: 403 }
+        : {
+            stage: "check",
+            reason: "http",
+            http_status: 100 + Math.floor(n / 8),
+          },
+    },
+    received_at_ms: FLOOD.start + (real ? HOUR : n * 1_000),
+  } as Partial<BundleEventRow>);
+};
+
 /**
  * History event `n` of the day before T0, three an hour, on its own release
  * and bundles: every windowed read, which starts at T0 or later, skips it.
@@ -274,12 +324,55 @@ const scopeKey = createReleaseCatalogScopeKey({
   platform: "ios",
   strategy: "APP_VERSION",
 });
+const nativeBuildScope = {
+  platform: "ios",
+  channel: "production",
+  fingerprintHash: "native-fingerprint",
+  appVersion: null,
+} as const;
+/** A sandbox scope of `nativeBuildScope`'s fingerprint, which no build has. */
+const nativeBuildSandboxScope = {
+  appId: "com.example.app",
+  urlScheme: "acme-preview",
+  artifactKind: "ipa",
+  distribution: "direct",
+} as const;
+/**
+ * A sandbox ad hoc .ipa of `nativeBuildScope`'s fingerprint, as a build page
+ * holds its row: the source of a sibling read.
+ */
+const sandboxIpaRow: NativeBuildRow = {
+  id: "01ffffff-ffff-7fff-bfff-ffffffffffff",
+  scope_key: `v1:sandbox:ios:${nativeBuildSandboxScope.appId}:${nativeBuildSandboxScope.urlScheme}:ipa:direct:fingerprint:${nativeBuildScope.fingerprintHash}`,
+  platform: "ios",
+  channel_id: "channel:pr-140",
+  fingerprint_hash: nativeBuildScope.fingerprintHash,
+  app_version: null,
+  min_bundle_id: "01ffffff-ffff-7fff-bfff-fffffffffffe",
+  artifact_kind: "ipa",
+  artifact_storage_uri: "storage://read-budgets/native-builds/ipa/App.ipa",
+  byte_size: 1_000,
+  git_commit_hash: null,
+  created_at_ms: 0,
+  build_key: null,
+  build_number: null,
+  submitted_to: null,
+  submitted_at_ms: null,
+  submitted_version: null,
+  is_store_build: false,
+  is_sandbox: true,
+  sandbox_url_scheme: nativeBuildSandboxScope.urlScheme,
+  export_method: "ad-hoc",
+  native_app_version: null,
+};
+/** The native build key the older of the two native builds is registered with. */
+const nativeBuildKey = `nbk1:${"0".repeat(64)}`;
 const bundleEvents = {
   kind: "bundle",
   platform: "ios",
   channel: "production",
   type: "UPDATE_APPLIED",
-  toBundleId: "bundle-b",
+  toReleaseId: "release-b",
 } as const;
 
 /** The target bundle's manifest, which artifact resolution reads from storage. */
@@ -296,7 +389,7 @@ const storage: MeasuredDatabaseStorage = {
 };
 
 /**
- * Core's bundles, releases, channels, and a client API key, and 26 Insights
+ * Core's bundles, releases, channels, a client API key, and 26 Insights
  * events: installs 1–24 ten minutes apart from T0, then install 1 again two
  * days later, back on bundle-a and then on bundle-b; and the day of history
  * before T0, as a production database holds, so a read that scans beyond its
@@ -333,6 +426,69 @@ const seed = async (database: MeasuredDatabase) => {
   await deploy(bundleOf("202", "android"));
   await deploy(bundleOf("091"), "staging");
   await deploy(bundleOf("092"), "staging");
+  // Two native builds of one scope, whose built-in bundles sort before every
+  // deployed one and stay out of the bundle totals.
+  for (const suffix of ["011", "012"]) {
+    await core.registerNativeBuild({
+      ...nativeBuildScope,
+      id: createBundleFixture(`8${suffix}`).id,
+      minBundleId: createBundleFixture(suffix).id,
+      gitCommitHash: null,
+      buildKey: suffix === "011" ? nativeBuildKey : null,
+      artifact: {
+        kind: "ipa",
+        storageUri: `storage://read-budgets/native-builds/${suffix}/App.ipa`,
+        byteSize: 1_000,
+      },
+      embeddedBundle: {
+        manifestStorageUri: `storage://bundles/${suffix}/manifest.json`,
+        manifestFileHash: `manifest-hash-${suffix}`,
+        assetBaseStorageUri: "storage://read-budgets/assets",
+      },
+    });
+  }
+  await core.markNativeBuild(createBundleFixture("8011").id, {
+    storeBuild: true,
+  });
+  // A sandbox Simulator build of that fingerprint, on another channel: the
+  // other install target of a sandbox ad hoc .ipa of it.
+  await core.registerNativeBuild({
+    ...nativeBuildScope,
+    channel: "beta",
+    id: createBundleFixture("8005").id,
+    minBundleId: createBundleFixture("005").id,
+    gitCommitHash: null,
+    buildKey: null,
+    isSandbox: true,
+    sandboxAppId: nativeBuildSandboxScope.appId,
+    sandboxUrlScheme: nativeBuildSandboxScope.urlScheme,
+    artifact: {
+      kind: "app",
+      storageUri: "storage://read-budgets/native-builds/005/App.app.zip",
+      byteSize: 1_000,
+    },
+    embeddedBundle: {
+      manifestStorageUri: "storage://bundles/005/manifest.json",
+      manifestFileHash: "manifest-hash-005",
+      assetBaseStorageUri: "storage://read-budgets/assets",
+    },
+  });
+  // Two requested iPhones, one approved and one still pending.
+  const pendingDevice = (
+    await core.requestIosDevice({
+      udid: BUDGET_PENDING_UDID,
+      name: "Pending iPhone",
+      requestedBy: "kim@team.dev",
+    })
+  ).device;
+  const { device: requestedDevice } = await core.requestIosDevice({
+    udid: BUDGET_APPROVED_UDID,
+    name: "Approved iPhone",
+    requestedBy: "kim@team.dev",
+  });
+  const approvedDevice = (await core.approveIosDevice(requestedDevice.id, {
+    approvedBy: "lead@team.dev",
+  }))!;
   const { apiKey } = await api.apiKeys.create({ name: "Read budgets" });
   for (let n = 1; n <= 24; n += 1) await api.insights.recordEvent(eventOf(n));
   // Install 1 leaves bundle-b before it applies it again: an apply of the
@@ -361,6 +517,9 @@ const seed = async (database: MeasuredDatabase) => {
   await api.insights.recordEvent(failureOf(1, 3));
   await api.insights.recordEvent(failureOf(2, 5));
   await api.insights.recordEvent(failureOf(3, 7, true));
+  for (let n = 0; n <= FLOOD_CHECKS * FLOOD_INSTALLS.length; n += 1) {
+    await api.insights.recordEvent(floodFailureOf(n));
+  }
   // Three Remote Config versions; the last is active.
   for (const [baseVersion, greeting] of ["Hi", "Hello", "Hey"].entries()) {
     await api.remoteConfig.publish({
@@ -379,6 +538,8 @@ const seed = async (database: MeasuredDatabase) => {
     apiKey,
     productionId,
     nightlyId: (await channel("nightly")).id,
+    pendingDevice,
+    approvedDevice,
     /** The auto-patch base key of a new production iOS 1.0.0 bundle. */
     candidateKey: targetBaseCandidateKey({
       channel: "production",
@@ -409,6 +570,9 @@ interface ReadBudget<T = unknown> {
 }
 
 const budget = <T>(entry: ReadBudget<T>): ReadBudget => entry;
+
+const BUDGET_PENDING_UDID = "00008030-000000000000000a";
+const BUDGET_APPROVED_UDID = "00008030-000000000000000b";
 
 const reads = (
   gets: number,
@@ -574,11 +738,253 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     engine: { calls: 1, rows: 1 },
   }),
   budget({
+    api: "catalog preflight: 1 catalog point read and the scope's enabled releases",
+    // Doctor's check of each scope: it writes nothing, so it reads the
+    // catalog once, without a transaction's guard reads, and no newest
+    // release, which matters only to a scope without a catalog.
+    read: ({ core }) => core.preflightReleaseCatalogRebuild(scopeKey),
+    // Production iOS holds 4 enabled releases.
+    adapter: reads(1, 1, 1, 4),
+    engine: { calls: 2, rows: 5 },
+    check: (preflight) => expect(preflight.changed).toBe(false),
+  }),
+  budget({
+    api: "release scopes: one limit-1 seek per scope, past each scope's releases",
+    // Production Android and staging hold 2 releases each, beta 1, and
+    // production iOS 6: 4 rows, one per scope, not 11.
+    read: ({ core }) => core.listReleaseScopeKeys({ limit: 4 }),
+    adapter: reads(0, 0, 4, 4),
+    engine: { calls: 4, rows: 4 },
+    returned: (scopeKeys) => scopeKeys.length,
+    check: (scopeKeys) =>
+      expect(scopeKeys).toEqual([
+        "v1:app-version:android:cHJvZHVjdGlvbg",
+        "v1:app-version:ios:YmV0YQ",
+        "v1:app-version:ios:c3RhZ2luZw",
+        scopeKey,
+      ]),
+  }),
+  budget({
+    api: "release scopes past the last: 1 empty query",
+    read: ({ core }) =>
+      core.listReleaseScopeKeys({ after: scopeKey, limit: 4 }),
+    adapter: reads(0, 0, 1, 0),
+    engine: { calls: 1, rows: 0 },
+    returned: (scopeKeys) => scopeKeys.length,
+    check: (scopeKeys) => expect(scopeKeys).toEqual([]),
+  }),
+  budget({
+    api: "native build by ID: 1 point read",
+    read: ({ core }) => core.getNativeBuild(createBundleFixture("8012").id),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("012").id,
+      }),
+  }),
+  budget({
+    api: "native build by its built-in bundle: 1 unique read",
+    read: ({ core }) =>
+      core.findNativeBuildByBuiltInBundle(createBundleFixture("011").id),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({ id: createBundleFixture("8011").id }),
+  }),
+  budget({
+    api: "native build by scope: byScope descending, limit 1",
+    read: ({ core }) => core.findNativeBuild(nativeBuildScope),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("012").id,
+      }),
+  }),
+  budget({
+    api: "native build store mark: byStoreBuild, 1 row",
+    read: ({ core }) =>
+      core.findNativeBuild(nativeBuildScope, { storeBuild: true }),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("011").id,
+        is_store_build: true,
+      }),
+  }),
+  budget({
+    api: "native build store mark of a scope with none: byStoreBuild, no row",
+    read: ({ core }) =>
+      core.findNativeBuild(
+        { ...nativeBuildScope, channel: "no-such-channel" },
+        { storeBuild: true },
+      ),
+    adapter: reads(0, 0, 1, 0),
+    engine: { calls: 1, rows: 0 },
+    check: (build) => expect(build).toBeNull(),
+  }),
+  budget({
+    api: "native build older than a bundle, the newest is: byScope, limit 1",
+    read: ({ core }) =>
+      core.findNativeBuild(nativeBuildScope, {
+        builtInOlderThan: "ffffffff-ffff-7fff-bfff-ffffffffffff",
+      }),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("012").id,
+      }),
+  }),
+  budget({
+    api: "native build older than a bundle, past the newest: byScope twice",
+    // The newest, then a page of the older builds: only when the newest was
+    // built after the bundle.
+    read: ({ core }) =>
+      core.findNativeBuild(nativeBuildScope, {
+        builtInOlderThan: createBundleFixture("012").id,
+      }),
+    adapter: reads(0, 0, 2, 2),
+    engine: { calls: 2, rows: 2 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("011").id,
+      }),
+  }),
+  budget({
+    api: "native build older than a bundle in a sandbox scope: no read",
+    // A sandbox build's built-in bundle is no patch base.
+    read: ({ core }) =>
+      core.findNativeBuild(
+        { ...nativeBuildScope, sandbox: nativeBuildSandboxScope },
+        { builtInOlderThan: "ffffffff-ffff-7fff-bfff-ffffffffffff" },
+      ),
+    adapter: reads(0, 0, 0, 0),
+    engine: { calls: 0, rows: 0 },
+    check: (build) => expect(build).toBeNull(),
+  }),
+  budget({
+    api: "sandbox build on any channel: byScope descending, limit 1",
+    read: ({ core }) =>
+      core.findNativeBuild({
+        ...nativeBuildScope,
+        channel: "pr-140",
+        sandbox: nativeBuildSandboxScope,
+      }),
+    adapter: reads(0, 0, 1, 0),
+    engine: { calls: 1, rows: 0 },
+    check: (build) => expect(build).toBeNull(),
+  }),
+  budget({
+    api: "native build by key: byBuildKey descending, limit 1",
+    read: ({ core }) =>
+      core.findNativeBuild(nativeBuildScope, { buildKey: nativeBuildKey }),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("011").id,
+        build_key: nativeBuildKey,
+      }),
+  }),
+  budget({
+    api: "native build of a kind: byScopeKind descending, limit 1",
+    read: ({ core }) =>
+      core.findNativeBuild(nativeBuildScope, { artifactKind: "ipa" }),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("012").id,
+      }),
+  }),
+  budget({
+    api: "native build of a kind with none: byScopeKind, then byScope, limit 1",
+    // The scope's newest stands for a row written before byScopeKind.
+    read: ({ core }) =>
+      core.findNativeBuild(nativeBuildScope, { artifactKind: "app" }),
+    adapter: reads(0, 0, 2, 1),
+    engine: { calls: 2, rows: 1 },
+    check: (build) => expect(build).toBeNull(),
+  }),
+  budget({
+    api: "sandbox build's other install target: byScope descending, limit 1",
+    read: ({ core }) => core.findNativeBuildSibling(sandboxIpaRow),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        id: createBundleFixture("8005").id,
+        artifact_kind: "app",
+      }),
+  }),
+  budget({
+    api: "normal build's other install target: no read",
+    read: ({ core }) =>
+      core.findNativeBuildSibling({
+        ...sandboxIpaRow,
+        is_sandbox: false,
+        scope_key: "normal",
+      }),
+    adapter: reads(0, 0, 0, 0),
+    engine: { calls: 0, rows: 0 },
+    check: (build) => expect(build).toBeNull(),
+  }),
+  budget({
+    api: "native build list: all descending, limit rows",
+    read: ({ core }) => core.listNativeBuilds({ order: "desc", limit: 2 }),
+    adapter: reads(0, 0, 1, 2),
+    engine: { calls: 1, rows: 2 },
+    check: (builds) =>
+      expect(builds.map(({ min_bundle_id }) => min_bundle_id)).toEqual(
+        ["012", "011"].map((suffix) => createBundleFixture(suffix).id),
+      ),
+  }),
+  budget({
+    api: "native build list of a channel: byChannel descending, limit rows",
+    read: ({ core, productionId }) =>
+      core.listNativeBuilds({
+        channelId: productionId,
+        order: "desc",
+        limit: 1,
+      }),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (builds) =>
+      expect(builds).toMatchObject([
+        { min_bundle_id: createBundleFixture("012").id },
+      ]),
+  }),
+  budget({
     api: "channel by name: 1 read",
     read: ({ core }) => core.findChannelByName("staging"),
     adapter: reads(0, 0, 1, 1),
     engine: { calls: 1, rows: 1 },
     returned: (channel) => (channel === null ? 0 : 1),
+  }),
+  budget({
+    api: "channels by ID: 1 batch get of their keys",
+    read: ({ core, productionId, nightlyId }) =>
+      core.getChannels([nightlyId, productionId, nightlyId]),
+    adapter: reads(1, 2, 0, 0),
+    engine: { calls: 1, rows: 2 },
+    returned: (channels) => channels.length,
+    check: (channels) =>
+      expect(channels.map(({ name }) => name)).toEqual([
+        "nightly",
+        "production",
+      ]),
+  }),
+  budget({
+    api: "channel page by name: limit rows from one query",
+    read: ({ core }) => core.listChannels({ limit: 2, after: "beta" }),
+    adapter: reads(0, 0, 1, 2),
+    engine: { calls: 1, rows: 2 },
+    returned: (channels) => channels.length,
+    check: (channels) =>
+      expect(channels.map(({ name }) => name)).toEqual(["canary", "nightly"]),
   }),
   budget({
     api: "list events of a dense day: limit rows from one query",
@@ -657,7 +1063,7 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "countEventSeries: buckets in the window × shards, all used",
-    // The hours with an apply to bundle-b: hours 0–4 of day 0, installs 1–24
+    // The hours with an apply to release-b: hours 0–4 of day 0, installs 1–24
     // on 24 outcome shard rows, and hour 0 of day 2, install 1's on 1.
     read: ({ insights }) =>
       insights.countEventSeries({
@@ -685,24 +1091,20 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     check: (count) => expect(count).toBe(24),
   }),
   budget({
-    api: "countLatestEvents by bundle: buckets in the window × shards, all used",
-    // Days 0 and 2, like the distribution: 14 shards and 1.
+    api: "countReleaseInstallations: the scope's rows, read once for both counts",
+    // The distribution rows of days 0 and 2, as without a release: 14
+    // shards and 1, which name release-b, so no built-in row is read.
     read: ({ insights }) =>
-      insights.countLatestEvents({
+      insights.countReleaseInstallations({
         platform: "ios",
         channel: "production",
         sinceMs: T0,
-        bundle: [
-          {
-            field: "to_bundle_id",
-            value: "bundle-b",
-            types: ["UPDATE_APPLIED"],
-          },
-        ],
+        releaseId: "release-b",
       }),
     adapter: reads(0, 0, 1, 15),
     engine: { calls: 1, rows: 2 },
-    check: (count) => expect(count).toBe(24),
+    check: (counts) =>
+      expect(counts).toEqual({ installations: 24, release: 24 }),
   }),
   budget({
     api: "release activity: buckets × shards, all used",
@@ -782,6 +1184,32 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       }),
   }),
   budget({
+    api: "update failures of a flooded channel: 20 breakdown rows of the flooded hour, every other hour whole",
+    // 24 failed checks in hour 0, each on all 8 shards, and a failed download
+    // in hour 1. One query of 168 stored rows reads hour 1's row, 20 of hour
+    // 0's, and 7 shards of a 21st, whose last shard one get completes; the
+    // 21st passes the hour's bound, so the read ends there. Counters and
+    // sketches cover both hours: hour 0's check sketch on the 8 shards of its
+    // installations, and hour 1's failure sketch on 1.
+    read: ({ insights }) =>
+      insights.getUpdateFailures({
+        platform: FLOOD.platform,
+        channel: FLOOD.channel,
+        timeRange: { start: FLOOD.start, end: FLOOD.start + 2 * HOUR },
+      }),
+    adapter: reads(1, 1, 5, 177),
+    engine: { calls: 5, rows: 24 },
+    check: (failures) =>
+      expect(failures).toMatchObject({
+        coverage: { kind: "partial" },
+        cappedHours: [FLOOD.start],
+        failedUpdates: 1,
+        failedInstallations: 1,
+        // 20 rows of 8 reports each: at least that many.
+        checks: { failures: 160, failedInstallations: 8 },
+      }),
+  }),
+  budget({
     api: "update failures of a release since its first: two kept rows × shards, all used",
     // The lifetime counters on all 8 shards, and the failure sketch on 2.
     read: ({ insights }) =>
@@ -801,13 +1229,28 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   budget({
     api: "catalog compile: the scope's enabled releases, all used",
     // A deploy reads the channel, the scope's catalog (once, then as the root
-    // of each range), its 4 enabled releases, and its latest release; with
-    // copies, it reads those 5 releases whole.
+    // of each range), its 4 enabled releases, its latest release, and its
+    // channel and platform's label counter; with copies, it reads those 5
+    // releases whole.
     read: ({ core }) =>
       core.deploy([{ bundle: bundleOf("107"), release: production }]),
-    adapter: (copies) => reads(copies ? 5 : 3, copies ? 8 : 3, 3, 6),
-    engine: { calls: 6, rows: 9 },
+    adapter: (copies) => reads(copies ? 6 : 4, copies ? 9 : 4, 3, 6),
+    engine: { calls: 7, rows: 10 },
     writes: 1,
+  }),
+  budget({
+    api: "release by label: its unique index, then the release",
+    // The label's index names the release; a key-value store's index copy
+    // can outlive a row an earlier server changed, so the row is read too.
+    read: ({ core }) =>
+      core.getReleaseByLabel({
+        channel: "production",
+        platform: "ios",
+        label: 2,
+      }),
+    adapter: reads(1, 1, 1, 1),
+    engine: { calls: 2, rows: 2 },
+    check: (release) => expect(release).toMatchObject({ label: 2 }),
   }),
   budget({
     api: "channel insert: 1 write, after the name's read finds nothing",
@@ -817,20 +1260,181 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     writes: 1,
   }),
   budget({
-    api: "channel delete: 1 read and 1 write",
+    api: "channel delete: the channel, its native builds under it, its label counters, and 1 write",
+    // The channel, then again as the root of its native build range, which
+    // is empty, and its two platforms' label counters, which it never had.
     read: ({ core, nightlyId }) => core.deleteChannel(nightlyId),
+    adapter: reads(4, 4, 1, 0),
+    engine: { calls: 5, rows: 2 },
+    writes: 1,
+    check: (result) => expect(result).toEqual({ deleted: true }),
+  }),
+  budget({
+    api: "native build submission: the build and 1 write",
+    read: ({ core }) =>
+      core.recordNativeBuildSubmission(createBundleFixture("8012").id, {
+        destination: "testflight",
+        version: "1.0.0 (12)",
+      }),
     adapter: reads(1, 1, 0, 0),
     engine: { calls: 1, rows: 1 },
     writes: 1,
-    check: (result) => expect(result).toEqual({ deleted: true }),
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("012").id,
+        submitted_to: "testflight",
+        submitted_version: "1.0.0 (12)",
+      }),
+  }),
+  budget({
+    api: "native build store mark write: the build, the holder, and 1 write",
+    // A store's index copy holds no version, so a transaction reads the holder's
+    // row for its guard.
+    read: ({ core }) =>
+      core.markNativeBuild(createBundleFixture("8012").id, {
+        storeBuild: true,
+      }),
+    adapter: (indexCopies) =>
+      indexCopies ? reads(2, 2, 1, 1) : reads(1, 1, 1, 1),
+    engine: { calls: 2, rows: 2 },
+    writes: 1,
+    check: (result) =>
+      expect(result).toMatchObject({
+        nativeBuild: {
+          min_bundle_id: createBundleFixture("012").id,
+          is_store_build: true,
+        },
+        previous: { min_bundle_id: createBundleFixture("011").id },
+      }),
+  }),
+  budget({
+    api: "native build delete: the build, its built-in bundle, and 1 write",
+    // Two point reads; the built-in bundle's counters say no patch names it,
+    // so its delete reads no patches.
+    read: ({ core }) => core.deleteNativeBuild(createBundleFixture("8011").id),
+    adapter: reads(2, 2, 0, 0),
+    engine: { calls: 2, rows: 2 },
+    writes: 1,
+    check: (result) =>
+      expect(result).toMatchObject({
+        deleted: true,
+        nativeBuild: { min_bundle_id: createBundleFixture("011").id },
+      }),
+  }),
+  budget({
+    api: "iOS devices by status: 1 query, the rows used",
+    read: ({ core }) => core.listIosDevices({ status: "approved", limit: 50 }),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    returned: (rows) => rows.length,
+    check: (rows) =>
+      expect(rows.map((row) => row.udid)).toEqual([BUDGET_APPROVED_UDID]),
+  }),
+  budget({
+    api: "iOS device by UDID: 1 unique read",
+    read: ({ core }) => core.findIosDevice(BUDGET_PENDING_UDID.toUpperCase()),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (device) => expect(device?.status).toBe("pending"),
+  }),
+  budget({
+    api: "iOS device request: the UDID's read and 1 write",
+    read: ({ core }) =>
+      core.requestIosDevice({
+        udid: "00008030-000000000000000c",
+        name: "New iPhone",
+        requestedBy: null,
+      }),
+    adapter: reads(0, 0, 1, 0),
+    engine: { calls: 1, rows: 0 },
+    writes: 1,
+    check: (result) => expect(result.created).toBe(true),
+  }),
+  budget({
+    api: "iOS device approval: the row and 1 write",
+    read: ({ core, pendingDevice }) =>
+      core.approveIosDevice(pendingDevice.id, { approvedBy: null }),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    writes: 1,
+    check: (device) => expect(device?.status).toBe("approved"),
+  }),
+  budget({
+    api: "iOS device outcome: the row and 1 write",
+    read: ({ core, approvedDevice }) =>
+      core.recordIosDeviceOutcome({
+        id: approvedDevice.id,
+        seen: {
+          status: "approved",
+          approvedAtMs: approvedDevice.approved_at_ms,
+        },
+        issuerId: "issuer-a",
+        outcome: "registered",
+      }),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    writes: 1,
+    check: (device) => expect(device?.status).toBe("registered"),
+  }),
+  budget({
+    api: "iOS devices in a build: the row and 1 write each",
+    read: ({ core, approvedDevice }) =>
+      core.markIosDevicesInBuild({
+        buildId: createBundleFixture("8012").id,
+        ids: [approvedDevice.id],
+      }),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    writes: 1,
+  }),
+  budget({
+    api: "iOS device delete: the row and 1 write",
+    read: ({ core, pendingDevice }) => core.deleteIosDevice(pendingDevice.id),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    writes: 1,
+    check: (device) => expect(device?.udid).toBe(BUDGET_PENDING_UDID),
+  }),
+  budget({
+    api: "iOS device account read, no claim yet: its row, then the earliest registration",
+    read: ({ core }) => core.findIosDeviceAccount(),
+    adapter: reads(1, 1, 1, 1),
+    engine: { calls: 2, rows: 1 },
+    check: (account) => expect(account).toEqual({ issuerId: "issuer-a" }),
+  }),
+  budget({
+    api: "iOS device account, first claim: its one row's read, the earliest registration, and 1 write",
+    // No account yet: the registry's earliest registration (issuer-a's; the
+    // requested iPhone has none) says whose it is, before the claim writes.
+    read: ({ core }) => core.claimIosDeviceAccount("issuer-a"),
+    adapter: reads(1, 1, 1, 1),
+    engine: { calls: 2, rows: 1 },
+    writes: 1,
+    check: (claim) =>
+      expect(claim).toEqual({ issuerId: "issuer-a", claimed: true }),
+  }),
+  budget({
+    api: "iOS device account read, claimed: its one row's read",
+    read: ({ core }) => core.findIosDeviceAccount(),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    check: (account) => expect(account).toEqual({ issuerId: "issuer-a" }),
+  }),
+  budget({
+    api: "iOS device account, claimed: its one row's read",
+    read: ({ core }) => core.claimIosDeviceAccount("issuer-b"),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    check: (claim) =>
+      expect(claim).toEqual({ issuerId: "issuer-a", claimed: false }),
   }),
   budget({
     api: "record an insights event: 2 dependent rounds of batch gets and 1 write",
     // The event and install 2's head; then, in one batch get per aggregate,
     // the event's 4 sketch rows (its platform's usage of every app version
     // and of its own by hour, and by day, which keeps its own retention) and
-    // the gauge rows its head leaves and enters as it moves on to bundle-c:
-    // 2 of the distribution, and 6 by bundle, for its from, to and pair.
+    // the 2 distribution gauge rows its head leaves and enters as it moves
+    // on to release-c, the only installation gauge it keeps.
     read: ({ insights }) =>
       insights.recordEvent(
         eventOf(27, {
@@ -843,7 +1447,7 @@ const READ_BUDGETS: readonly ReadBudget[] = [
           received_at_ms: T0 + 3 * HOUR,
         }),
       ),
-    adapter: reads(6, 14, 0, 0),
+    adapter: reads(5, 8, 0, 0),
     engine: { calls: 2, rows: 1 },
     writes: 1,
   }),

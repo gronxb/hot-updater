@@ -1,0 +1,95 @@
+---
+title: "Azure Blob Storage"
+description: Store your Hot Updater bundles in Azure Blob Storage.
+icon: Cloud
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/azure --save-dev
+```
+
+The Azure SDKs the package uses require Node.js 22 or later.
+
+For a deployed server, install the package as a runtime dependency instead of
+a development dependency.
+
+## Setup
+
+For a complete provider deployment, follow the [Azure setup](/docs/v1.0/managed/azure#step-2-configure-azure).
+For an existing storage account or a custom server, use the storage
+configuration below; you do not need to provision the provider's database and
+server to use this adapter. Create the container first: the adapter does not
+create it.
+
+## Configuration
+
+```typescript
+import type { TokenCredential } from "@azure/core-auth";
+import type { StorageSharedKeyCredential } from "@azure/storage-blob";
+
+type AzureBlobStorageConfig = (
+  | { connectionString: string }
+  | {
+      accountUrl: string; // https://<account>.blob.core.windows.net
+      credential: StorageSharedKeyCredential | TokenCredential;
+    }
+) & {
+  containerName: string; // The Blob container that keeps the bundles
+  basePath?: string; // Optional base path within the container
+  getDownloadUrl?: StorageAdapter["getDownloadUrl"]; // Optional, such as a CDN's URL
+};
+```
+
+Without `getDownloadUrl`, devices download each bundle through a read-only SAS
+URL that expires after an hour. The adapter signs it with the account key when
+the connection has one: a connection string, or a `StorageSharedKeyCredential`.
+With a Microsoft Entra `TokenCredential`, such as `DefaultAzureCredential` from
+`@azure/identity`, it signs with a user delegation key, which needs the
+identity's Storage Blob Delegator role besides read and write access to the
+container's blobs. A SAS connection string can upload, but it cannot sign
+download URLs: pass `getDownloadUrl` with one.
+
+## Environment variables
+
+```bash title=".env.hotupdater"
+HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=...
+```
+
+Read the connection string with
+`az storage account show-connection-string --name <account> --resource-group <group>`.
+Keep it out of the app bundle and exclude local environment files from Git.
+
+## Usage
+
+```typescript title="hot-updater.config.ts (excerpt)"
+import { existsSync } from "node:fs";
+import { azureBlobStorage } from "@hot-updater/azure"; // [!code ++]
+import { defineConfig } from "hot-updater";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
+export default defineConfig({
+  // ... build, database, plugins, and updateStrategy
+  storage: azureBlobStorage({ // [!code ++]
+    connectionString: process.env.HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING!, // [!code ++]
+    containerName: "hot-updater", // [!code ++]
+  }), // [!code ++]
+});
+```
+
+## Protocol
+
+`azblob://container/encoded/key`
+
+For example, `azblob://hot-updater/releases/1.0.0/bundle%20ios.zip` is stored in
+the `storageUri` field. Keys retain their slash hierarchy and encode each segment.
+
+## Capabilities
+
+`azureBlobStorage` buffers each upload in memory and streams each download. It
+also implements download URL generation, existence checks, exact deletion,
+listing below a prefix, and batched deletion of exact keys.

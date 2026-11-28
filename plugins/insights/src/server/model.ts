@@ -12,6 +12,7 @@ export const createInsightsModel = (api: InsightsApi): InsightsModel =>
     listEvents: api.listEvents,
     findLatestEvents: api.findLatestEvents,
     countLatestEvents: api.countLatestEvents,
+    countReleaseInstallations: api.countReleaseInstallations,
     countEvents: api.countEvents,
     countEventSeries: api.countEventSeries,
     getReleaseActivity: api.getReleaseActivity,

@@ -35,13 +35,14 @@ interface SupabaseStorageConfig {
 
 ```typescript title="hot-updater.config.ts (excerpt)"
 import { supabaseStorage } from "@hot-updater/supabase"; // [!code ++]
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
 export default defineConfig({
   // ... build, database, plugins, and updateStrategy
-  storage: supabaseStorage({ // [!code ++]
+  storage: supabaseStorage({
+    // [!code ++]
     supabaseUrl: process.env.SUPABASE_URL!, // [!code ++]
-    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY!, // [!code ++]
+    supabaseServiceRoleKey: secret("SUPABASE_SERVICE_ROLE_KEY"), // [!code ++]
     bucketName: "hot-updater-bundles", // [!code ++]
     basePath: "bundles", // Optional // [!code ++]
   }), // [!code ++]

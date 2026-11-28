@@ -330,6 +330,31 @@ describe("s3Storage", () => {
     );
   });
 
+  it("signs with access keys whose fields are lazy, read once on first use", async () => {
+    const accessKeyId = vi.fn(async () => "lazy-access-key-id");
+    const secretAccessKey = vi.fn(async () => "lazy-secret-access-key");
+    const storage = s3Storage({
+      bucketName: "updates",
+      region: "us-east-1",
+      credentials: { accessKeyId, secretAccessKey },
+    });
+    expect(accessKeyId).not.toHaveBeenCalled();
+
+    const urls = await Promise.all(
+      ["a.png", "b.png"].map((key) =>
+        storage.getDownloadUrl({ storageUri: `s3://updates/${key}` }),
+      ),
+    );
+
+    for (const { url } of urls) {
+      expect(new URL(url).searchParams.get("X-Amz-Credential")).toMatch(
+        /^lazy-access-key-id\//,
+      );
+    }
+    expect(accessKeyId).toHaveBeenCalledTimes(1);
+    expect(secretAccessKey).toHaveBeenCalledTimes(1);
+  });
+
   it("returns the configured getDownloadUrl's URL for its own bucket only", async () => {
     const getDownloadUrl = vi.fn(async ({ storageUri }) => ({
       url: `https://cdn.example.com/${encodeURIComponent(storageUri)}`,

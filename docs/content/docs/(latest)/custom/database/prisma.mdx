@@ -117,8 +117,9 @@ npx hot-updater db migrate src/hotUpdater.ts --yes
 Prisma creates the tables, or `prisma migrate` does when you use migrations.
 `db migrate` then sets the collations Prisma cannot declare on PostgreSQL and
 MySQL, so strings compare by their bytes, and writes the settings rows. It
-asks you to apply the tables first when they are missing, and it refuses a
-database created by an older Hot Updater schema instead of converting it.
+names any table or index that is missing and writes nothing, and it refuses a
+database created by an older Hot Updater schema, or migrated by a newer Hot
+Updater, instead of converting it.
 
 The server checks the settings rows before its first read or write. Until
 they exist, it throws `HotUpdaterSchemaMigrationRequiredError` and its

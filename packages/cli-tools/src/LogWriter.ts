@@ -4,10 +4,13 @@ import type { Readable } from "stream";
 
 import { getCwd } from "./cwd";
 import { p } from "./prompts";
+import { maskSecretValues } from "./secretMasking";
 
 export type HotUpdaterLogWriter = {
   logFilePath: string | null;
   writeStream: (input: Readable) => Promise<void>;
+  /** Writes lines of its own, such as the command a build runs. */
+  writeLines: (lines: readonly string[]) => void;
   writeError: (error: unknown) => void;
   close: () => Promise<void>;
 };
@@ -113,17 +116,32 @@ export const createLogWriter = async ({
       if (!stream.writable || stream.destroyed) {
         return;
       }
-      const plainText = stripAnsi(normalizeChunk({ chunk: value })).replace(
-        /\r/g,
-        "",
+      const plainText = maskSecretValues(
+        stripAnsi(normalizeChunk({ chunk: value })).replace(/\r/g, ""),
       );
       stream.write(plainText);
     };
 
+    // Writes whole lines (progress output ends them with \r), so a credential
+    // value split across two chunks is still masked.
     const writeStream = async (input: Readable) => {
+      let partialLine = "";
       for await (const chunk of input) {
-        writeChunk(normalizeChunk({ chunk }));
+        const text = partialLine + normalizeChunk({ chunk });
+        const lineEnd =
+          Math.max(text.lastIndexOf("\n"), text.lastIndexOf("\r")) + 1;
+        partialLine = text.slice(lineEnd);
+        if (lineEnd > 0) {
+          writeChunk(text.slice(0, lineEnd));
+        }
       }
+      if (partialLine) {
+        writeChunk(partialLine);
+      }
+    };
+
+    const writeLines = (lines: readonly string[]) => {
+      writeChunk(`${lines.join("\n")}\n`);
     };
 
     const writeError = (error: unknown) => {
@@ -145,6 +163,7 @@ export const createLogWriter = async ({
     return {
       logFilePath: resolvedLogFilePath,
       writeStream,
+      writeLines,
       writeError,
       close,
     };
@@ -155,6 +174,7 @@ export const createLogWriter = async ({
     return {
       logFilePath: null,
       writeStream: async () => {},
+      writeLines: () => {},
       writeError: () => {},
       close: async () => {},
     };

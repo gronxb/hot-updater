@@ -9,6 +9,9 @@ import {
   useCreateChannelMutation,
   useDeleteChannelMutation,
   useDeleteReleaseMutation,
+  useNativeBuildInstallEligibilityQuery,
+  useNativeBuildPatchesQuery,
+  useReleaseFoldQuery,
   useReleasesQuery,
   useUpdateReleaseMutation,
 } from "./api";
@@ -16,6 +19,9 @@ import {
   createChannel as createChannelApi,
   deleteChannel as deleteChannelApi,
   deleteRelease as deleteReleaseApi,
+  getNativeBuildInstallEligibility,
+  getNativeBuildPatches,
+  getReleaseFold,
   getReleases as getReleasesApi,
   updateRelease as updateReleaseApi,
 } from "./api-rpc";
@@ -29,8 +35,11 @@ vi.mock("./api-rpc", () => ({
   getBundleChildren: vi.fn(),
   getChannels: vi.fn(),
   getConfig: vi.fn(),
+  getNativeBuildInstallEligibility: vi.fn(),
+  getNativeBuildPatches: vi.fn(),
   getRelease: vi.fn(),
   getReleaseCatalogDiagnostics: vi.fn(),
+  getReleaseFold: vi.fn(),
   getReleases: vi.fn(),
   preflightRelease: vi.fn(),
   updateRelease: vi.fn(),
@@ -56,40 +65,39 @@ it("refreshes the active release table before a successful update resolves", asy
       platform: "ios" as const,
     },
   };
+  const release = {
+    bundle_id: bundle.id,
+    channel_id: "channel-1",
+    created_at_ms: 1,
+    currentlyUnreachable: false,
+    enabled: true,
+    fingerprint_hash: null,
+    id: "release-1",
+    kind: "BUNDLE",
+    message: "Initial message",
+    operation: "DEPLOY",
+    platform: "ios",
+    revision: 1,
+    rollout_cohort_count: 1_000,
+    scope_key: "scope-1",
+    should_force_update: false,
+    source_release_id: null,
+    strategy: "APP_VERSION",
+    target_app_version: "1.2.x",
+    target_cohorts: [],
+    updated_at_ms: 1,
+  } as const;
   const page: Awaited<ReturnType<typeof getReleasesApi>> = {
-    data: [
-      {
-        bundle_id: bundle.id,
-        channel_id: "channel-1",
-        created_at_ms: 1,
-        currentlyUnreachable: false,
-        enabled: true,
-        fingerprint_hash: null,
-        id: "release-1",
-        kind: "BUNDLE",
-        message: "Initial message",
-        operation: "DEPLOY",
-        platform: "ios",
-        revision: 1,
-        rollout_cohort_count: 1_000,
-        scope_key: "scope-1",
-        should_force_update: false,
-        source_release_id: null,
-        strategy: "APP_VERSION",
-        target_app_version: "1.2.x",
-        target_cohorts: [],
-        updated_at_ms: 1,
-      },
-    ],
+    entries: [{ kind: "row", row: release }],
   };
   queryClient.setQueryData(queryKeys.releases.list(filters), page);
+  const refreshedRelease = {
+    ...release,
+    message: "Updated message",
+    revision: 2,
+  };
   const refreshedPage = {
-    ...page,
-    data: page.data.map((release) => ({
-      ...release,
-      message: "Updated message",
-      revision: 2,
-    })),
+    entries: [{ kind: "row" as const, row: refreshedRelease }],
   };
   let finishRefresh!: () => void;
   vi.mocked(getReleasesApi).mockImplementationOnce(
@@ -115,7 +123,7 @@ it("refreshes the active release table before a successful update resolves", asy
       is_tombstone: false,
       updated_at_ms: 2,
     },
-    release: refreshedPage.data[0]!,
+    release: refreshedRelease,
   });
   const wrapper = ({ children }: PropsWithChildren) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -143,9 +151,9 @@ it("refreshes the active release table before a successful update resolves", asy
     );
     expect(updateReleaseApi).toHaveBeenCalledWith({ data: input });
     expect(result.current.update.isPending).toBe(true);
-    expect(result.current.releases.data?.data[0]?.message).toBe(
-      "Initial message",
-    );
+    expect(result.current.releases.data?.entries[0]).toMatchObject({
+      row: { message: "Initial message" },
+    });
 
     await act(async () => {
       finishRefresh();
@@ -262,10 +270,123 @@ describe("useDeleteReleaseMutation", () => {
       });
     });
 
-    for (const queryKey of [["bundle"], queryKeys.bundleChildren.all]) {
+    for (const queryKey of [
+      ["bundle"],
+      queryKeys.bundleChildren.all,
+      // A build page's older patch pages, which stay fresh for a minute.
+      ["native-build-patches"],
+    ]) {
       expect(invalidateQueries).toHaveBeenCalledWith({ queryKey });
     }
 
     queryClient.clear();
+  });
+});
+
+describe("useNativeBuildInstallEligibilityQuery", () => {
+  const MINUTE = 60_000;
+  const LINK_LIFETIME = 60 * MINUTE;
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  const open = async () => {
+    vi.useFakeTimers();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    vi.mocked(getNativeBuildInstallEligibility).mockReset();
+    vi.mocked(getNativeBuildInstallEligibility).mockResolvedValue({
+      status: "store",
+    });
+    renderHook(() => useNativeBuildInstallEligibilityQuery("build-1", null), {
+      wrapper: ({ children }: PropsWithChildren) => (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      ),
+    });
+    await act(() => vi.advanceTimersByTimeAsync(0));
+  };
+
+  it("asks for a new link before an open page's link expires, however long it stays open", async () => {
+    await open();
+    const calls = vi.mocked(getNativeBuildInstallEligibility).mock.calls;
+    expect(calls).toHaveLength(1);
+
+    await act(() => vi.advanceTimersByTimeAsync(LINK_LIFETIME - MINUTE));
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+
+    await act(() => vi.advanceTimersByTimeAsync(2 * LINK_LIFETIME));
+    expect(calls.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("reads nothing more while the tab is hidden", async () => {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    await open();
+    const calls = vi.mocked(getNativeBuildInstallEligibility).mock.calls;
+    const before = calls.length;
+
+    await act(() => vi.advanceTimersByTimeAsync(3 * LINK_LIFETIME));
+
+    expect(calls).toHaveLength(before);
+  });
+});
+
+describe("a window focus", () => {
+  // What React Query hears when the person comes back to the tab.
+  const focus = () =>
+    act(async () => {
+      window.dispatchEvent(new Event("visibilitychange"));
+    });
+
+  it("reads no release or patch list again", async () => {
+    vi.mocked(getReleasesApi)
+      .mockReset()
+      .mockResolvedValue({
+        data: [],
+      } as never);
+    vi.mocked(getReleaseFold)
+      .mockReset()
+      .mockResolvedValue({
+        data: [],
+      } as never);
+    vi.mocked(getNativeBuildPatches)
+      .mockReset()
+      .mockResolvedValue({
+        data: [],
+      } as never);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderHook(
+      () => [
+        useReleasesQuery(),
+        useReleaseFoldQuery(undefined, { to: "release-9" }, true),
+        useNativeBuildPatchesQuery("bundle-1", {}, true),
+      ],
+      {
+        wrapper: ({ children }: PropsWithChildren) => (
+          <QueryClientProvider client={queryClient}>
+            {children}
+          </QueryClientProvider>
+        ),
+      },
+    );
+    const reads = () => ({
+      releases: vi.mocked(getReleasesApi).mock.calls.length,
+      folds: vi.mocked(getReleaseFold).mock.calls.length,
+      patches: vi.mocked(getNativeBuildPatches).mock.calls.length,
+    });
+    await waitFor(() =>
+      expect(reads()).toEqual({ releases: 1, folds: 1, patches: 1 }),
+    );
+
+    await focus();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+    expect(reads()).toEqual({ releases: 1, folds: 1, patches: 1 });
   });
 });

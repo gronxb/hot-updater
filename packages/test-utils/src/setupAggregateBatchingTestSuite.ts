@@ -172,8 +172,8 @@ const snapshot = async (db: Database) => {
 
 /**
  * Aggregates declared `batched` on a key-value store: log rows the store
- * writes with each transaction and a compaction merges once, and a memory
- * buffer, read back exactly as transactional writes read.
+ * writes with each transaction and a compaction merges once, read back
+ * exactly as transactional writes read.
  */
 export const setupAggregateBatchingTestSuite = ({
   name,
@@ -222,18 +222,16 @@ export const setupAggregateBatchingTestSuite = ({
       for (const cleanup of cleanups.splice(0)) await cleanup();
     });
 
-    for (const mode of ["log", "memory"] as const) {
-      it(`reads what transactional writes read, in ${mode} mode`, async () => {
-        const { db } = server(await store(), { mode });
-        for (let step = 0; step < 36; step += 1) await open(db, step);
-        expect(await snapshot(db)).toEqual(await expected(36));
-      }, 120_000);
-    }
+    it("reads what transactional writes read", async () => {
+      const { db } = server(await store(), {});
+      for (let step = 0; step < 36; step += 1) await open(db, step);
+      expect(await snapshot(db)).toEqual(await expected(36));
+    }, 120_000);
 
     it("applies each log row once when two servers compact while 16 writers commit", async () => {
       const adapter = await store();
-      const first = server(adapter, { mode: "log", windowMs: 0 });
-      const second = server(adapter, { mode: "log", windowMs: 0 });
+      const first = server(adapter, { windowMs: 0 });
+      const second = server(adapter, { windowMs: 0 });
       // Each installation's opens run in order; installations run at once.
       const report = await runContentionHarness({
         transactions: 12,
@@ -253,7 +251,7 @@ export const setupAggregateBatchingTestSuite = ({
     }, 300_000);
 
     it("applies a log row larger than one write in parts, each change once", async () => {
-      const { db, flush } = server(await store(), { mode: "log" });
+      const { db, flush } = server(await store(), {});
       await db.transaction(async (tx) => {
         for (let day = 1; day <= oversizedRows; day += 1) {
           tx.aggregate("opens", { day }, { opens: day }, { shardBy: "i" });

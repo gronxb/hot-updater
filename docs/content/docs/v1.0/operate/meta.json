@@ -1,0 +1,12 @@
+{
+  "title": "Operate",
+  "description": "Inspect adoption, diagnose updates, and maintain artifacts.",
+  "icon": "Activity",
+  "pages": [
+    "../guides/console",
+    "../guides/insights",
+    "../guides/console-deployment",
+    "../guides/doctor",
+    "../guides/storage-cleanup"
+  ]
+}

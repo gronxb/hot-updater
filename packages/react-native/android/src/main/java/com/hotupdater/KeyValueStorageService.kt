@@ -31,6 +31,11 @@ class KeyValueStorageService(
 
     private var values: MutableMap<String, String>? = null
 
+    // Whether the file holds [values]: a set that changes nothing then skips
+    // the write, and its fsync. A failed write or an unreadable file clears it,
+    // so the next set writes again.
+    private var persisted = true
+
     @Synchronized
     fun getItem(key: String): String? = loadValues()[key]
 
@@ -41,12 +46,13 @@ class KeyValueStorageService(
         value: String?,
     ) {
         val values = loadValues()
+        if (persisted && values[key] == value) return
         if (value == null) {
             values.remove(key)
         } else {
             values[key] = value
         }
-        write(values)
+        persisted = write(values)
     }
 
     private fun loadValues(): MutableMap<String, String> = values ?: read().also { values = it }
@@ -67,20 +73,24 @@ class KeyValueStorageService(
         } catch (e: Exception) {
             // The message of a parse error can quote stored values, so it is not logged.
             Log.w(TAG, "Ignoring unreadable storage file (${e.javaClass.simpleName})")
+            persisted = false
             linkedMapOf()
         }
 
-    private fun write(values: Map<String, String>) {
+    private fun write(values: Map<String, String>): Boolean {
         val atomicFile = AtomicFile(file)
         var output: FileOutputStream? = null
-        try {
+        return try {
             file.parentFile?.mkdirs()
             output = atomicFile.startWrite()
             output.write(JSONObject(values).toString().toByteArray(Charsets.UTF_8))
             atomicFile.finishWrite(output)
+            // finishWrite logs a failed rename instead of throwing, leaving the new file behind.
+            file.isFile && !File("${file.path}.new").exists()
         } catch (e: Exception) {
             output?.let(atomicFile::failWrite)
             Log.w(TAG, "Failed to persist storage", e)
+            false
         }
     }
 }

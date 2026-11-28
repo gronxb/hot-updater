@@ -405,8 +405,7 @@ describe("Insights write budgets on DynamoDB Local", () => {
  * did when the daily heads, hourly launches, and release launch sketches
  * stopped being written. Each event is a returning installation's first launch of the
  * UTC day, or one in 20 a download and one in 20 an apply, across ios and
- * android. Log mode compacts on its 60-second window; memory mode flushes
- * every 15 simulated seconds, as its timer would. With
+ * android. Log mode compacts on its 60-second window. With
  * HOT_UPDATER_WRITE_BUDGET_RATES=1 it measures 1, 10, and 100 events a second,
  * appending one JSON line per run to HOT_UPDATER_WRITE_BUDGET_OUT when set
  * (recorded at
@@ -418,11 +417,8 @@ const BATCHED_RATES =
 const BATCHED_SECONDS = 60;
 /** Aggregate write units an event may cost in log mode at 10/s and above. */
 const LOG_AGGREGATE_WRU = 3.5;
-/** Aggregate write units an event may cost in memory mode at 10/s and above. */
-const MEMORY_AGGREGATE_WRU = 1;
-const MEMORY_WINDOW_MS = 15_000;
 
-type Mode = "transaction" | "log" | "memory";
+type Mode = "transaction" | "log";
 
 interface BatchItem {
   readonly DeleteRequest?: { readonly Key: Record<string, unknown> };
@@ -482,7 +478,6 @@ const measureBatching = async (mode: Mode, rate: number) => {
     aggregateItems: 0,
     logPuts: 0,
     leaseWrites: 0,
-    memoryFlushes: 0,
   };
   let metering = false;
   client.middlewareStack.add(
@@ -566,24 +561,11 @@ const measureBatching = async (mode: Mode, rate: number) => {
       ),
     );
   }
-  const run = apiOf(
-    mode === "transaction"
-      ? undefined
-      : mode === "log"
-        ? { mode }
-        : // Flushed below at each simulated window, not on its timer.
-          { mode, windowMs: 3_600_000 },
-  );
+  const run = apiOf(mode === "transaction" ? undefined : {});
   metering = true;
   const start = D0 + DAY + 10 * HOUR;
   for (let n = 0; n < count; n += 1) {
     const at = start + Math.floor((n * 1000) / rate);
-    const window = (ms: number) => Math.floor((ms - start) / MEMORY_WINDOW_MS);
-    if (mode === "memory" && n > 0 && window(at) > window(clock)) {
-      const before = cost.aggregate;
-      await run.flush();
-      if (cost.aggregate > before) cost.memoryFlushes += 1;
-    }
     clock = at;
     const type =
       n % 20 === 0
@@ -594,13 +576,11 @@ const measureBatching = async (mode: Mode, rate: number) => {
     await run.api.recordEvent(populationEvent(count + n, n, clock, type));
   }
   clock = start + BATCHED_SECONDS * 1000;
-  const before = cost.aggregate;
   await run.flush();
-  if (mode === "memory" && cost.aggregate > before) cost.memoryFlushes += 1;
   metering = false;
   client.destroy();
   await local.dropTable(tableName);
-  const flushes = mode === "log" ? cost.leaseWrites / 2 : cost.memoryFlushes;
+  const flushes = cost.leaseWrites / 2;
   return {
     mode,
     rate,
@@ -618,7 +598,7 @@ describe("Insights write budgets with batched aggregates on DynamoDB Local", () 
     const rows = [];
     for (const rate of BATCHED_RATES) {
       const runs = [];
-      for (const mode of ["transaction", "log", "memory"] as const) {
+      for (const mode of ["transaction", "log"] as const) {
         const row = await measureBatching(mode, rate);
         runs.push(row);
         if (process.env.HOT_UPDATER_WRITE_BUDGET_OUT) {
@@ -629,19 +609,14 @@ describe("Insights write budgets with batched aggregates on DynamoDB Local", () 
         }
       }
       rows.push(...runs);
-      const [transaction, log, memory] = runs as [
-        (typeof runs)[number],
+      const [transaction, log] = runs as [
         (typeof runs)[number],
         (typeof runs)[number],
       ];
       if (rate < 10) continue;
-      // Log mode pays about 3 units for each event's log put and delete; a
-      // flush from memory, a fraction of one.
+      // Log mode pays about 3 units for each event's log put and delete.
       expect(log.aggregateWru, `log at ${rate}/s`).toBeLessThanOrEqual(
         LOG_AGGREGATE_WRU,
-      );
-      expect(memory.aggregateWru, `memory at ${rate}/s`).toBeLessThanOrEqual(
-        MEMORY_AGGREGATE_WRU,
       );
       // Batching still saves most of what a transaction writes.
       expect(log.aggregateWru * 5, `log at ${rate}/s`).toBeLessThanOrEqual(

@@ -135,19 +135,29 @@ describe("E2E Insights HTTP client", () => {
         {
           type: "UPDATE_APPLIED",
           fromBundleId: "bundle-a",
+          fromReleaseId: "release-a",
           toBundleId: "bundle-b",
+          toReleaseId: "release-b",
         },
         {
           type: "UNCHANGED",
           fromBundleId: null,
           updateStrategy: null,
           toBundleId: "bundle-b",
+          toReleaseId: "release-b",
         },
-        { type: "RECOVERED", fromBundleId: "bundle-b", toBundleId: "bundle-a" },
+        {
+          type: "RECOVERED",
+          fromBundleId: "bundle-b",
+          fromReleaseId: "release-b",
+          toBundleId: "bundle-a",
+          toReleaseId: "release-a",
+        },
         {
           type: "UNCHANGED",
           fromBundleId: null,
           toBundleId: "bundle-a",
+          toReleaseId: "release-a",
           updateStrategy: null,
         },
       ]) {
@@ -196,15 +206,15 @@ describe("E2E Insights HTTP client", () => {
         selectedBundleInstallations: 1,
         eventType: "RECOVERED",
         outcomes: [
-          { bundleId: "bundle-b", count: 1, outcome: "recovered" },
-          { bundleId: "bundle-b", count: 1, outcome: "applied" },
+          { bundleId: "release-b", count: 1, outcome: "recovered" },
+          { bundleId: "release-b", count: 1, outcome: "applied" },
         ],
       });
       const source = await client.getReportingOverview({
         platform: "ios",
         channel: "production",
         window: "24h",
-        bundleId: "bundle-b",
+        bundleId: "release-b",
       });
       expect(source.bundle).toMatchObject({
         reportingInstallations: { count: 0 },
@@ -216,7 +226,7 @@ describe("E2E Insights HTTP client", () => {
         platform: "ios",
         channel: "production",
         window: "24h",
-        bundleId: "bundle-a",
+        bundleId: "release-a",
       });
       expect(destination.bundle).toMatchObject({
         reportingInstallations: { count: 1 },
@@ -230,7 +240,7 @@ describe("E2E Insights HTTP client", () => {
           bundle: {
             platform: "ios",
             channel: "production",
-            bundleId: "bundle-a",
+            bundleId: "release-a",
             outcome: "recovered",
           },
         }),

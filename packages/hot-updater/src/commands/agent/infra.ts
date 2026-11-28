@@ -1,3 +1,5 @@
+import { fitText } from "@hot-updater/cli-tools";
+
 import { CLIENT_CREDENTIAL_SCRIPT } from "../infra/clientAuth";
 import {
   handleInfraScaffold,
@@ -41,7 +43,7 @@ export async function handleAgentInfra(
             builds: INFRA_BUILDS,
             instructions,
           })
-        : instructions,
+        : fitText(instructions),
     );
     return;
   }

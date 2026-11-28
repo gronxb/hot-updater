@@ -48,6 +48,7 @@ jobs:
         run: pnpm nx run-many -t build -p @hot-updater/react-native hot-updater @hot-updater/bare
 
       - name: Swift Tests
+        timeout-minutes: 15
         run: pnpm test:swift
 
       - name: Build iOS
@@ -88,6 +89,7 @@ jobs:
         run: pnpm nx run-many -t build -p @hot-updater/react-native hot-updater @hot-updater/bare
 
       - name: Swift Tests
+        timeout-minutes: 15
         run: pnpm test:swift
 
       - name: Build iOS

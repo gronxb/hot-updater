@@ -3,8 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CircleOff } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
-import { PlatformIcon } from "@/components/PlatformIcon";
+import { ReleaseIdDisplay } from "@/components/ReleaseIdDisplay";
 import { Badge } from "@/components/ui/badge";
 import {
   Combobox,
@@ -31,25 +30,46 @@ type ReleaseGroup = {
   readonly items: readonly AdoptionRelease[];
 };
 
-/** Whether a bundle deployment matches what was typed: its IDs or target app version. */
-const matches = (release: AdoptionRelease, typed: string) =>
-  typed === "" ||
-  release.releaseId.includes(typed) ||
-  release.bundleId.toLowerCase().includes(typed) ||
-  (release.targetAppVersion ?? "").toLowerCase().includes(typed);
+/**
+ * Whether a bundle deployment matches what was typed, lowercased: each word
+ * its label (`v12`), part of its release ID, or part of its target app
+ * version, so `v12 · a1b2c3`, as the Console shows a bundle, matches it. An
+ * artifact ID matches nothing: apps report release IDs.
+ */
+export const matchesRelease = (
+  release: Pick<AdoptionRelease, "label" | "releaseId" | "targetAppVersion">,
+  typed: string,
+): boolean =>
+  typed
+    .split(/[\s·]+/)
+    .filter((word) => word !== "")
+    .every(
+      (word) =>
+        (release.label !== null && `v${release.label}` === word) ||
+        release.releaseId.includes(word) ||
+        (release.targetAppVersion ?? "").toLowerCase().includes(word),
+    );
 
 /** A bundle deployment as a picker names it: ID, platform, deployment, target, and state. */
 export function ReleaseOption({
   release,
+  showPlatform,
 }: {
   readonly release: AdoptionRelease;
+  /** Whether the picker lists both platforms, so a label needs its platform. */
+  readonly showPlatform: boolean;
 }) {
   return (
     <span className="flex min-w-0 flex-col gap-0.5">
       <span className="flex min-w-0 items-center gap-1.5">
-        <PlatformIcon platform={release.platform} className="size-3 shrink-0" />
-        <span className="sr-only">{platformLabel(release.platform)}</span>
-        <BundleIdDisplay bundleId={release.releaseId} className="min-w-0" />
+        {/* An option holds no button: picking it takes every click. */}
+        <ReleaseIdDisplay
+          releaseId={release.releaseId}
+          className="min-w-0"
+          copyable={false}
+          label={release.label}
+          platform={showPlatform ? release.platform : undefined}
+        />
       </span>
       <span className="text-xs text-muted-foreground">
         Deployed {formatDeployedAt(release.deployedAtMs)}
@@ -76,7 +96,7 @@ export function ReleaseOption({
 
 /**
  * Picks one of a channel's bundle deployments: live ones first, searchable
- * by ID or target app version. A full release ID the list leaves out is
+ * by label, release ID or target app version. A full release ID the list leaves out is
  * looked up in the scope, with the read Release health uses for it.
  */
 export function ReleaseCombobox({
@@ -104,7 +124,7 @@ export function ReleaseCombobox({
   const typed = query.trim().toLowerCase();
   const offered = candidates.filter(
     (release) =>
-      !excluded.includes(release.releaseId) && matches(release, typed),
+      !excluded.includes(release.releaseId) && matchesRelease(release, typed),
   );
   const lookupId =
     offered.length === 0 &&
@@ -136,7 +156,7 @@ export function ReleaseCombobox({
       className={
         trigger
           ? undefined
-          : "h-11 w-full sm:h-9 sm:w-96 [&_input]:h-full [&_input]:text-base sm:[&_input]:text-xs"
+          : "h-11 w-full sm:h-9 sm:w-96 [&_input]:h-full [&_input]:text-base max-md:[&_[data-slot=input-group-button]]:size-11 max-md:[&_input]:min-h-11 sm:[&_input]:text-xs"
       }
       disabled={disabled}
       placeholder={placeholder}
@@ -183,7 +203,10 @@ export function ReleaseCombobox({
                     key={release.releaseId}
                     value={release}
                   >
-                    <ReleaseOption release={release} />
+                    <ReleaseOption
+                      release={release}
+                      showPlatform={scope.platform === "all"}
+                    />
                   </ComboboxItem>
                 )}
               </ComboboxCollection>

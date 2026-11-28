@@ -12,7 +12,7 @@ import type {
 
 import {
   generatePrismaEngineSchema,
-  prismaCollationStatements,
+  prismaCollates,
   type PrismaProvider,
 } from "../db/enginePrismaSchema";
 import {
@@ -56,24 +56,15 @@ export const prismaAdapter = (config: PrismaConfig): ToolingDatabase => {
         path: "prisma/schema.prisma",
       };
     }) satisfies SchemaGenerator,
-    createMigrator: ({ schema, settings, ordered } = coreTarget) => {
-      const collations = prismaCollationStatements(provider, schema);
-      return createSettingsMigrator({
+    createMigrator: ({ schema, settings, ordered } = coreTarget) =>
+      createSettingsMigrator({
         adapterName: "prisma",
         executor,
+        schema,
         settings,
         ordered,
-        applyTables: "`prisma db push` (or `prisma migrate`)",
-        ...(collations.length === 0
-          ? {}
-          : {
-              fixups: {
-                description:
-                  "Set the collations Prisma cannot declare, so strings compare by their bytes",
-                statements: collations,
-              },
-            }),
-      });
-    },
+        applyTables: "`npx prisma db push`",
+        collate: (column) => prismaCollates(provider, column),
+      }),
   };
 };

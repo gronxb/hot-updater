@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   api: {
@@ -133,7 +133,12 @@ beforeEach(() => {
   mocks.readHotUpdaterTables.mockResolvedValue([]);
   mocks.migratePostgres.mockResolvedValue("1.0.0");
   mocks.postgres.mockReturnValue({ dispose: mocks.dispose });
-  mocks.assembleServer.mockReturnValue({ clientPlugins: [] });
+  mocks.assembleServer.mockReturnValue({
+    clientPlugins: [],
+    core: {
+      fillReleaseLabels: vi.fn(async () => ({ releases: 0, catalogs: 0 })),
+    },
+  });
   mocks.provisionClientCredential.mockResolvedValue({
     env: "HOT_UPDATER_API_KEY",
     header: "x-api-key",
@@ -153,11 +158,43 @@ beforeEach(() => {
   );
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe("Vercel init", () => {
+  it("reads an input the environment sets over the env files, as init's preflight does", async () => {
+    const { HOT_UPDATER_VERCEL_DATABASE_URL: _, ...withoutUrl } = replayEnv;
+    givenInitEnv(withoutUrl);
+    vi.stubEnv("HOT_UPDATER_VERCEL_DATABASE_URL", DATABASE_URL);
+
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    expect(mocks.migratePostgres).toHaveBeenCalledWith(
+      DATABASE_URL,
+      expect.any(Array),
+    );
+    expect(mocks.api.setProductionEnv).toHaveBeenCalledWith(
+      "prj_1",
+      "HOT_UPDATER_VERCEL_DATABASE_URL",
+      DATABASE_URL,
+    );
+  });
+
   it("replays saved inputs: creates the project and Blob store, migrates, deploys, and writes the config", async () => {
     givenInitEnv(replayEnv);
 
-    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+    const result = await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    // Init's closing prints the next steps and Done, after every step.
+    expect(result).toEqual({
+      nextSteps: [
+        expect.stringContaining(
+          "hot-updater.dev/docs/managed/vercel#step-3-add-hotupdater-to-your-project",
+        ),
+      ],
+    });
+    expect(mocks.log.success).not.toHaveBeenCalledWith("Done! 🎉");
 
     expect(mocks.createVercelApi).toHaveBeenCalledWith({
       teamId: "team_1",

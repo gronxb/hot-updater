@@ -1,0 +1,193 @@
+---
+title: "Cosmos DB Database"
+description: Run Hot Updater's database in one Azure Cosmos DB for NoSQL container.
+icon: Cloud
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/azure --save-dev
+```
+
+The Azure SDKs the package uses require Node.js 22 or later.
+
+For a custom server, install the runtime dependencies in the server project:
+
+```package-install
+npm install @hot-updater/server @hot-updater/azure
+```
+
+## Setup
+
+Set up the backend with an [AI agent or the interactive
+CLI](/docs/v1.0/managed/azure#step-2-configure-azure), then use the configuration
+below. To bring your own account, use an Azure Cosmos DB for NoSQL account with
+strong default consistency: the database's guarded writes read under it. For
+the same reason, `cosmosDatabase` takes no `consistencyLevel` weaker than
+`"Strong"`.
+
+## Configuration
+
+```typescript
+import type { CosmosClientOptions } from "@azure/cosmos";
+
+type CosmosDatabaseConfig = CosmosClientOptions & {
+  databaseId?: string; // defaults to "hot-updater"
+  containerId?: string; // The one container it uses; defaults to "hot_updater_v1"
+  aggregateBatching?:
+    | { mode?: "log" | "memory"; windowMs?: number }
+    | false; // default: {}, see Batched Insights totals
+};
+```
+
+Pass the account's `connectionString`, or its `endpoint` with a `key` or a
+Microsoft Entra `aadCredentials`, as for any `CosmosClient`.
+
+## Container
+
+The database keeps every row in one container, `hot_updater_v1` by default, as
+`{ pk, sk, row }` items partitioned by `/partition`. Each index a row belongs to
+adds an item holding a copy of it, written in the same transactional batch.
+Cosmos DB commits a transactional batch only inside one logical partition, so
+every item shares one partition key value. One logical partition holds at most
+20 GB and serves at most 10,000 RU/s; Insights rows expire with their
+[retention](/docs/v1.0/custom/server-plugins#retention), which bounds what the
+container keeps.
+
+The container indexes only `pk` and `sk`, through one composite index that
+serves range reads in either order; rows are not indexed. Every item of a row
+with retention, such as Insights events and rollups, carries a TTL that Cosmos
+DB deletes it by, at least a day after it was written, since Cosmos DB hides
+an item the moment its TTL passes.
+
+Create the database and container, and write the schema settings the database
+checks before its first read:
+
+```typescript
+import { migrateCosmosDatabase } from "@hot-updater/azure";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+
+await migrateCosmosDatabase(
+  { connectionString: process.env.HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING! },
+  [apiKeys(), insights(), remoteConfig()],
+);
+```
+
+`migrateCosmosDatabase` takes the same configuration as `cosmosDatabase`, and
+an explicit array of the plugins the server runs: here the managed server's
+API keys, Insights, and Remote Config. It creates the database and container
+when they are missing. It refuses a container partitioned by another path, one
+whose `schema.engine` setting names another storage layout, and a populated
+one without that setting. On a container it reuses, it turns on consistent,
+automatic indexing, adds the composite index and a default TTL when they are
+missing, and waits until Cosmos DB has applied the indexing.
+`hot-updater init` and the managed setup's key script both run it.
+`hot-updater db migrate`, run with the file that exports a server's
+`hotUpdater`, does the same for the server's
+[plugins](/docs/v1.0/custom/server-plugins#create-the-plugins-tables).
+
+## Schema settings
+
+The settings are the rows `schema.engine`, `schema.core`, and one
+`schema.<id>` for each plugin the server runs, such as `schema.insights` and
+`schema.apiKeys`. Before its first read or write, the database checks core's
+rows in one batch read, and the server checks its plugins' rows in another.
+While one is missing or different, it throws
+`HotUpdaterSchemaMigrationRequiredError`, which names the setting, and the
+server's handlers answer 503. A running server checks again on its next
+request, so it recovers without a restart once the settings exist.
+
+## How the container is used
+
+`cosmosDatabase(config)` returns an engine database,
+`{ name, adapter, dispose }`, which `defineConfig` and `createHotUpdater` both
+accept. Its adapter is the key-value helper over the container, behind the
+schema settings check:
+
+- Each item's id is a hash of its `pk` and `sk`. Maps and arrays are stored as
+  JSON text, so a read returns them exactly as written.
+- A write is one transactional batch whose operations carry the conditions
+  themselves: a create fails on an item that exists, and a patch on a `_v`
+  that differs. Deletes and version checks read their items first. Counters
+  increment with patch operations.
+- A batch holds at most 100 operations and 2 MB, and a write over these limits
+  is refused before anything is written.
+
+The container holds core's rows (Bundles, patches, Releases, Release Catalogs,
+Channels and their counters) and the rows of the plugins the server runs,
+such as Insights, API keys, and Remote Config.
+
+## Batched Insights totals
+
+Cosmos DB bills each item a write touches, so `cosmosDatabase` batches
+Insights' totals (its counters, gauges, and sketches) instead of writing them
+in each event's transaction:
+
+- The event's transaction writes the event's own items and one compressed log
+  item.
+- A compaction merges pending log items into the totals, one write for each
+  total and one lock item, which lists the log items it applied. It then
+  deletes them in bulk. So no crash loses an event's totals or counts one
+  twice.
+- After an event, the server compacts when a minute has passed since the last
+  compaction. A read of the totals, such as the Console's, compacts first.
+
+Set `aggregateBatching: { mode: "memory" }` on a long-lived server to keep
+totals in the process and write them every 15 seconds, without log items. A
+crash then loses up to one window; call `hotUpdater.flush()` before the process
+exits. `aggregateBatching: false` writes the totals in each event's
+transaction.
+
+## Environment variables
+
+```bash title=".env.hotupdater"
+HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING=AccountEndpoint=https://...;AccountKey=...
+```
+
+Read the connection string with
+`az cosmosdb keys list --name <account> --resource-group <group> --type connection-strings`.
+Keep it out of the app bundle and exclude local environment files from Git.
+
+## Usage
+
+```typescript title="hot-updater.config.ts (excerpt)"
+import { existsSync } from "node:fs";
+import { cosmosDatabase } from "@hot-updater/azure"; // [!code ++]
+import { defineConfig } from "hot-updater";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
+export default defineConfig({
+  // ... build, storage, plugins, and updateStrategy
+  database: cosmosDatabase({ // [!code ++]
+    connectionString: process.env.HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING!, // [!code ++]
+  }), // [!code ++]
+});
+```
+
+## Custom server usage
+
+Use `cosmosDatabase` with `createHotUpdater` for self-hosted servers:
+
+```typescript title="src/hotUpdater.ts (excerpt)"
+import { cosmosDatabase } from "@hot-updater/azure"; // [!code ++]
+import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+
+export const hotUpdater = createHotUpdater({
+  database: cosmosDatabase({ // [!code ++]
+    connectionString: process.env.HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING!, // [!code ++]
+  }), // [!code ++]
+  storage, // The adapter hot-updater.config.ts uploads with, such as azureBlobStorage(...).
+  plugins: [insights(), apiKeys(), remoteConfig()],
+});
+```
+
+`insights()` records app events, `apiKeys()` protects client routes with
+the `x-api-key` header, and `remoteConfig()` serves Remote Config. The managed
+Function runs the same list. List the server's plugins in
+`hot-updater.config.ts` too; see
+[CLI Configuration](/docs/v1.0/custom/cli-configuration#mirror-the-server).

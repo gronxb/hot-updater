@@ -5,6 +5,7 @@ import {
   INVALID_COHORT_ERROR_MESSAGE,
   isValidCohort,
   normalizeCohortValue,
+  readReleaseLabel,
   type UpdateStatus,
   type PersistedSelectionReceipt,
 } from "@hot-updater/protocol";
@@ -19,6 +20,18 @@ import HotUpdaterNative, {
 export { HotUpdaterErrorCode, isHotUpdaterError };
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+
+type NativeConstants = ReturnType<typeof HotUpdaterNative.getConstants>;
+let nativeConstants: NativeConstants | undefined;
+
+/**
+ * The native module's constants, read once per runtime. They are fixed for
+ * it: the build's MIN_BUNDLE_ID, app version and fingerprint, and the channel
+ * this runtime started on, which only the session state reads, once. Android
+ * computes them again, reading the bundle metadata, on every call.
+ */
+const getNativeConstants = (): NativeConstants =>
+  (nativeConstants ??= HotUpdaterNative.getConstants());
 type PersistedUpdateStrategy = "fingerprint" | "appVersion";
 
 const normalizeAndValidateCohort = (cohort: string): string => {
@@ -62,7 +75,7 @@ class HotUpdaterSessionState {
   >();
 
   constructor() {
-    const constants = HotUpdaterNative.getConstants();
+    const constants = getNativeConstants();
     this.defaultChannel = constants.DEFAULT_CHANNEL ?? constants.CHANNEL;
     this.currentChannel = constants.CHANNEL;
   }
@@ -306,6 +319,12 @@ type ActiveUpdateSelection = Pick<
 export interface InternalActiveUpdateState {
   readonly activeSelection: PersistedSelectionReceipt | null;
   readonly stableSelection: PersistedSelectionReceipt | null;
+  /**
+   * The receipt of the bundle this launch runs, null for the built-in bundle
+   * or one without a receipt. Native before labels, and native before its
+   * launch is prepared, leave it out.
+   */
+  readonly runningSelection?: PersistedSelectionReceipt | null;
   readonly verificationPending: boolean;
   readonly highestSeenCatalogs: Readonly<Record<string, CatalogHighWater>>;
 }
@@ -507,7 +526,7 @@ export async function updateBundle(params: UpdateParams): Promise<boolean> {
  * Fetches the current app version.
  */
 export const getAppVersion = (): string | null => {
-  const constants = HotUpdaterNative.getConstants();
+  const constants = getNativeConstants();
   return constants?.APP_VERSION ?? null;
 };
 
@@ -535,8 +554,34 @@ export const reload = async () => {
  * @returns {string} The minimum bundle id.
  */
 export const getMinBundleId = (): string => {
-  const constants = HotUpdaterNative.getConstants();
+  const constants = getNativeConstants();
   return constants.MIN_BUNDLE_ID;
+};
+
+/**
+ * The label of the release the app runs now, shown `v<label>`: the receipt
+ * native keeps with the running bundle, so it reads the same after a restart
+ * and offline. A staged update changes it once it launches. Null for the
+ * built-in bundle, a release without one, and native built before labels,
+ * whose receipts have none.
+ */
+export const getReleaseLabel = (): number | null => {
+  const running = getBundleId();
+  const state = getActiveUpdateState();
+  // The receipt the launch recorded, which a commit of the next launch's
+  // selection, such as a built-in rollback that waits for a restart, leaves.
+  // Native before it reports only the next launch's receipts.
+  const receipts =
+    state.runningSelection === undefined
+      ? [state.activeSelection, state.stableSelection]
+      : [state.runningSelection];
+  const receipt = receipts.find(
+    (selection) =>
+      selection !== null &&
+      selection.kind === "BUNDLE" &&
+      selection.bundleId === running,
+  );
+  return readReleaseLabel(receipt?.label);
 };
 
 /** Returns the selected update ID shown in the console, including staged updates. */
@@ -628,7 +673,7 @@ export const isChannelSwitched = (): boolean => {
  * @returns {string | null} Resolves with the fingerprint hash
  */
 export const getFingerprintHash = (): string | null => {
-  const constants = HotUpdaterNative.getConstants();
+  const constants = getNativeConstants();
   return constants.FINGERPRINT_HASH ?? null;
 };
 
@@ -643,6 +688,34 @@ export const getStorageItem = (key: string): string | null => {
 /** Writes a value to the SDK's native key-value store; null removes it. */
 export const setStorageItem = (key: string, value: string | null): void => {
   HotUpdaterNative.setStorageItem(key, value);
+};
+
+/**
+ * Runs `work`, the requests of an update check or download, with background
+ * time from native, so iOS doesn't suspend an app that leaves the foreground
+ * before the response reaches it and the download finishes. Native
+ * built from an earlier SDK has no `beginBackgroundTask`, and an OTA can
+ * bring this JavaScript to such native code, which then runs `work` alone.
+ */
+export const withBackgroundTask = async <T>(
+  work: () => Promise<T>,
+): Promise<T> => {
+  const native = HotUpdaterNative as {
+    beginBackgroundTask?: unknown;
+    endBackgroundTask?: unknown;
+  };
+  if (
+    typeof native.beginBackgroundTask !== "function" ||
+    typeof native.endBackgroundTask !== "function"
+  ) {
+    return work();
+  }
+  const taskId = HotUpdaterNative.beginBackgroundTask();
+  try {
+    return await work();
+  } finally {
+    HotUpdaterNative.endBackgroundTask(taskId);
+  }
 };
 
 /**
@@ -983,6 +1056,27 @@ export const getBaseURL = (): string | null => {
  */
 export const resetChannel = async (): Promise<boolean> => {
   const ok = await HotUpdaterNative.resetChannel();
+  if (ok) {
+    sessionState.resetChannelState();
+  }
+  return ok;
+};
+
+/**
+ * Clears the runtime channel only while the Release selection `guard` names
+ * is current. Native that checks and resets in one step does so; native from
+ * an earlier SDK is checked first, then reset. Returns false for a stale
+ * selection.
+ */
+export const resetChannelIfSelectionCurrent = async (
+  guard: ReleaseSelectionGuard,
+): Promise<boolean> => {
+  const native = HotUpdaterNative as Partial<typeof HotUpdaterNative>;
+  if (typeof native.resetChannelIfSelectionCurrent !== "function") {
+    // Earlier native: the check and the reset are two steps.
+    return isReleaseSelectionCurrent(guard) && (await resetChannel());
+  }
+  const ok = await native.resetChannelIfSelectionCurrent(guard);
   if (ok) {
     sessionState.resetChannelState();
   }

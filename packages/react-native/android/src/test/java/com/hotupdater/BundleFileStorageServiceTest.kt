@@ -230,6 +230,325 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `a channel reset keeps the running bundle until the next launch`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val running = createCompleteBundle(rootDir, "running-bundle", "running")
+            val older = createCompleteBundle(rootDir, "older-bundle", "older")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "running-bundle"))
+            val service = createService(rootDir)
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+
+            assertTrue(service.resetChannel())
+            // The running JavaScript still loads its files until React Native reloads.
+            assertTrue(File(running, "index.android.bundle").exists())
+            assertFalse(older.exists())
+            assertNull(service.peekLaunchBundleId())
+
+            // The next launch runs the built-in bundle and removes them.
+            assertNull(service.prepareLaunch(null).launchedBundleId)
+            assertFalse(running.exists())
+            assertTrue(File(bundleStoreDir(rootDir), BundleMetadata.METADATA_FILENAME).exists())
+        }
+
+    @Test
+    fun `accepting the same catalog again leaves the metadata alone`() {
+        val rootDir = temporaryFolder.newFolder()
+        var writes = 0
+        val service =
+            createService(
+                rootDir,
+                metadataWriter = { metadata, file ->
+                    writes++
+                    metadata.saveToFile(file)
+                },
+            )
+
+        fun accept(
+            generation: Long,
+            context: String,
+        ) = service.acceptReleaseCatalog("project-a", "scope-production", generation, "hash-$generation", "production", context)
+
+        assertTrue(accept(1, "context-1"))
+        val first = writes
+        // Every launch's check sees the same catalog until a deploy.
+        assertTrue(accept(1, "context-1"))
+        assertTrue(accept(1, "context-1"))
+        assertEquals(first, writes)
+
+        // A new context or generation is stored.
+        assertTrue(accept(1, "context-2"))
+        assertEquals(first + 1, writes)
+        assertTrue(accept(2, "context-2"))
+        assertEquals(first + 2, writes)
+        val metadata = loadMetadata(rootDir)
+        assertEquals(CatalogHighWater(2, "hash-2"), metadata?.highestSeenCatalogs?.get("project-a|scope-production"))
+        assertEquals("production\ncontext-2", metadata?.currentSelectionContexts?.get("project-a|scope-production"))
+    }
+
+    @Test
+    fun `a built-in commit keeps the running bundle until the next launch`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val running = createCompleteBundle(rootDir, "running-bundle", "running")
+            val older = createCompleteBundle(rootDir, "older-bundle", "older")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "running-bundle"))
+            val service = createService(rootDir)
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 1, "hash-1", "production", "context-1"))
+
+            // The running bundle's own update check selects the built-in bundle.
+            assertTrue(
+                service.commitReleaseSelection(
+                    PersistedSelection(
+                        kind = "BUILTIN",
+                        releaseId = "release-builtin",
+                        bundleId = "builtin-bundle",
+                        catalogId = "project-a",
+                        scopeKey = "scope-production",
+                        generation = 1,
+                        catalogHash = "hash-1",
+                        channel = "production",
+                        selectionContextHash = "context-1",
+                    ),
+                ),
+            )
+            // The running JavaScript still loads its files until React Native reloads.
+            assertTrue(File(running, "index.android.bundle").exists())
+            assertEquals("file://${running.absolutePath}", service.getBaseURLForBundle("running-bundle"))
+            assertFalse(older.exists())
+            assertNull(service.peekLaunchBundleId())
+
+            // The next launch runs the built-in bundle and removes them.
+            assertNull(service.prepareLaunch(null).launchedBundleId)
+            assertFalse(running.exists())
+        }
+
+    @Test
+    fun `a committed receipt keeps its label for the next process`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            createCompleteBundle(rootDir, "running-bundle", "running")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "running-bundle"))
+            val service = createService(rootDir)
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 2, "hash-2", "production", "context-2"))
+
+            // A metadata-only adoption of the running bundle's Release, labeled.
+            assertTrue(
+                service.commitReleaseSelection(
+                    PersistedSelection(
+                        kind = "BUNDLE",
+                        releaseId = "release-12",
+                        bundleId = "running-bundle",
+                        catalogId = "project-a",
+                        scopeKey = "scope-production",
+                        generation = 2,
+                        catalogHash = "hash-2",
+                        channel = "production",
+                        selectionContextHash = "context-2",
+                        label = 12,
+                    ),
+                ),
+            )
+
+            // A new process reads the receipt from the metadata file.
+            val active = createService(rootDir).getActiveUpdateState()["activeSelection"] as Map<*, *>
+            assertEquals(12.0, active["label"])
+            assertEquals(12L, loadMetadata(rootDir)?.stableSelection?.label)
+        }
+
+    @Test
+    fun `the running receipt keeps its label while a built-in rollback waits for a restart`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            createCompleteBundle(rootDir, "running-bundle", "running")
+            val labeled =
+                PersistedSelection(
+                    kind = "BUNDLE",
+                    releaseId = "release-12",
+                    bundleId = "running-bundle",
+                    catalogId = "project-a",
+                    scopeKey = "scope-production",
+                    generation = 1,
+                    catalogHash = "hash-1",
+                    channel = "production",
+                    selectionContextHash = "context-1",
+                    label = 12,
+                )
+            writeMetadata(
+                rootDir,
+                BundleMetadata(
+                    isolationKey = TEST_ISOLATION_KEY,
+                    stableBundleId = "running-bundle",
+                    stableSelection = labeled,
+                ),
+            )
+            val service = createService(rootDir)
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 2, "hash-2", "production", "context-2"))
+
+            // A rollback to the built-in bundle, for the next launch.
+            assertTrue(
+                service.commitReleaseSelection(
+                    PersistedSelection(
+                        kind = "BUILTIN",
+                        releaseId = "release-builtin",
+                        bundleId = "builtin-bundle",
+                        catalogId = "project-a",
+                        scopeKey = "scope-production",
+                        generation = 2,
+                        catalogHash = "hash-2",
+                        channel = "production",
+                        selectionContextHash = "context-2",
+                    ),
+                ),
+            )
+
+            val state = service.getActiveUpdateState()
+            assertEquals("BUILTIN", (state["activeSelection"] as Map<*, *>)["kind"])
+            val running = state["runningSelection"] as Map<*, *>
+            assertEquals("running-bundle", running["bundleId"])
+            assertEquals(12.0, running["label"])
+            // A new process runs the built-in bundle.
+            val restarted = createService(rootDir)
+            assertFalse(restarted.getActiveUpdateState().containsKey("runningSelection"))
+            restarted.prepareLaunch(null)
+            assertTrue(restarted.getActiveUpdateState().containsKey("runningSelection"))
+            assertNull(restarted.getActiveUpdateState()["runningSelection"])
+        }
+
+    @Test
+    fun `a receipt an earlier SDK wrote has no label`() {
+        val selection =
+            PersistedSelection.fromJson(
+                JSONObject(
+                    """{"kind":"BUNDLE","releaseId":"release-3","bundleId":"running-bundle","catalogId":"project-a",""" +
+                        """"scopeKey":"scope-production","generation":1,"catalogHash":"hash-1","channel":"production",""" +
+                        """"selectionContextHash":"context-1"}""",
+                ),
+            )
+        assertEquals("release-3", selection.releaseId)
+        assertNull(selection.label)
+        assertNull(selection.toMap()["label"])
+        assertTrue(selection.toJson().isNull("label"))
+        // Receipts that differ only by their label select the same thing.
+        assertTrue(selection.copy(label = 3).sameSelection(selection))
+        assertFalse(selection.copy(generation = 2).sameSelection(selection))
+    }
+
+    @Test
+    fun `a new process removes the bundle a reset kept`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val running = createCompleteBundle(rootDir, "running-bundle", "running")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "running-bundle"))
+            val service = createService(rootDir)
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertTrue(service.resetChannel())
+            assertTrue(running.exists())
+
+            // Android's reload restarts the process, which launches from a new store.
+            val nextProcess = createService(rootDir)
+            assertNull(nextProcess.prepareLaunch(null).launchedBundleId)
+            assertFalse(running.exists())
+            assertEquals(listOf(BundleMetadata.METADATA_FILENAME), bundleStoreDir(rootDir).list()?.sorted())
+        }
+
+    @Test
+    fun `an install after a channel reset keeps the running bundle until the next launch`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val running = createCompleteBundle(rootDir, "running-bundle", "running")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "running-bundle"))
+            val bundleContent = "next-bundle"
+            val assets = linkedMapOf("index.android.bundle" to sha256(rootDir, bundleContent))
+            val manifest = manifestJson("next-bundle", assets)
+            val service =
+                createService(
+                    rootDir,
+                    downloadService =
+                        MappingDownloadService(
+                            mapOf(
+                                "https://example.com/manifest.json" to manifest,
+                                "https://example.com/index.android.bundle" to bundleContent,
+                            ),
+                        ),
+                )
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertTrue(service.resetChannel())
+            val stale = createCompleteBundle(rootDir, "stale-bundle", "stale")
+
+            // The app stages the next bundle without a reload, as the running JavaScript does after a reset.
+            service.updateBundle(
+                bundleId = "next-bundle",
+                manifestUrl = "https://example.com/manifest.json",
+                manifestFileHash = sha256(rootDir, manifest),
+                assets = assets.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) },
+                progressCallback = {},
+            )
+
+            // The install's cleanup ran, and the running JavaScript still loads its files.
+            assertFalse(stale.exists())
+            assertTrue(File(running, "index.android.bundle").exists())
+            assertEquals("file://${running.absolutePath}", service.getBaseURLForBundle("running-bundle"))
+            assertEquals("next-bundle", loadMetadata(rootDir)?.stagingBundleId)
+
+            // The next launch runs the staged bundle and removes the one the reset kept.
+            assertEquals("next-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertFalse(running.exists())
+            assertTrue(File(bundleStoreDir(rootDir), "next-bundle/index.android.bundle").exists())
+        }
+
+    @Test
+    fun `an install keeps the running bundle even when the reset could not name it`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val running = createCompleteBundle(rootDir, "running-bundle", "running")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "running-bundle"))
+            val bundleContent = "next-bundle"
+            val assets = linkedMapOf("index.android.bundle" to sha256(rootDir, bundleContent))
+            val manifest = manifestJson("next-bundle", assets)
+            val service =
+                createService(
+                    rootDir,
+                    downloadService =
+                        MappingDownloadService(
+                            mapOf(
+                                "https://example.com/manifest.json" to manifest,
+                                "https://example.com/index.android.bundle" to bundleContent,
+                            ),
+                        ),
+                )
+            assertEquals("running-bundle", service.prepareLaunch(null).launchedBundleId)
+            assertTrue(service.resetChannel())
+            // The retained-bundle marker is lost; the running bundle still runs.
+            File(bundleStoreDir(rootDir), "retained-bundle").delete()
+
+            service.updateBundle(
+                bundleId = "next-bundle",
+                manifestUrl = "https://example.com/manifest.json",
+                manifestFileHash = sha256(rootDir, manifest),
+                assets = assets.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) },
+                progressCallback = {},
+            )
+
+            assertTrue(File(running, "index.android.bundle").exists())
+        }
+
+    @Test
+    fun `a channel reset before a launch removes every bundle`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val stable = createCompleteBundle(rootDir, "stable-bundle", "stable")
+            writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = "stable-bundle"))
+            val service = createService(rootDir)
+
+            assertTrue(service.resetChannel())
+            assertFalse(stable.exists())
+        }
+
+    @Test
     fun `settling keeps the stable bundle when only the staged one lost its files`() {
         val rootDir = temporaryFolder.newFolder()
         val stable = createBundleDir(rootDir, "stable-bundle")
@@ -1172,6 +1491,65 @@ class BundleFileStorageServiceTest {
                 File(bundleStoreDir(rootDir), "target-bundle/index.android.bundle").readText(),
             )
             assertTrue(downloads.calls.contains("https://example.com/index.android.bundle"))
+        }
+
+    @Test
+    fun `a guarded channel reset keeps the channel for a stale selection`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder("guarded-reset")
+            val service = createService(rootDir)
+
+            fun accept(
+                generation: Long,
+                context: String,
+            ) = service.acceptReleaseCatalog(
+                catalogId = "project-a",
+                scopeKey = "scope-pr-2",
+                generation = generation,
+                catalogHash = "hash-$generation",
+                channel = "pr-2",
+                selectionContextHash = context,
+            )
+
+            suspend fun reset(
+                generation: Long,
+                context: String,
+            ) = service.resetChannelIfSelectionCurrent(
+                catalogId = "project-a",
+                scopeKey = "scope-pr-2",
+                generation = generation,
+                catalogHash = "hash-$generation",
+                channel = "pr-2",
+                selectionContextHash = context,
+            )
+            assertTrue(accept(3, "context-3"))
+            // A newer catalog of the channel arrives before the leave.
+            assertTrue(accept(4, "context-4"))
+
+            assertFalse(reset(3, "context-3"))
+            // Nothing was reset: the newer catalog's selection still stages.
+            assertTrue(
+                service.isReleaseSelectionCurrent(
+                    catalogId = "project-a",
+                    scopeKey = "scope-pr-2",
+                    generation = 4,
+                    catalogHash = "hash-4",
+                    channel = "pr-2",
+                    selectionContextHash = "context-4",
+                ),
+            )
+
+            assertTrue(reset(4, "context-4"))
+            assertFalse(
+                service.isReleaseSelectionCurrent(
+                    catalogId = "project-a",
+                    scopeKey = "scope-pr-2",
+                    generation = 4,
+                    catalogHash = "hash-4",
+                    channel = "pr-2",
+                    selectionContextHash = "context-4",
+                ),
+            )
         }
 
     @Test
@@ -2599,7 +2977,7 @@ class BundleFileStorageServiceTest {
                                 fileHash = hash,
                                 patch =
                                     if (path == "index.android.bundle") {
-                                        BsdiffPatchDescriptor("bsdiff", "base", "a", "b", "https://example.com/patch")
+                                        BsdiffPatchDescriptor("bsdiff", MIN_BUNDLE_ID, "a", "b", "https://example.com/patch")
                                     } else {
                                         null
                                     },
@@ -2613,7 +2991,7 @@ class BundleFileStorageServiceTest {
                                 fileHash = hash,
                                 patch =
                                     if (path == "index.android.bundle") {
-                                        BsdiffPatchDescriptor("bsdiff", "base", "a", "b", "https://example.com/patch", byteSize = 1)
+                                        BsdiffPatchDescriptor("bsdiff", MIN_BUNDLE_ID, "a", "b", "https://example.com/patch", byteSize = 1)
                                     } else {
                                         null
                                     },
@@ -2627,7 +3005,7 @@ class BundleFileStorageServiceTest {
                                 fileHash = hash,
                                 patch =
                                     if (path == "index.android.bundle") {
-                                        BsdiffPatchDescriptor("bsdiff", "base", "a", "b", "https://example.com/patch", byteSize = -1)
+                                        BsdiffPatchDescriptor("bsdiff", MIN_BUNDLE_ID, "a", "b", "https://example.com/patch", byteSize = -1)
                                     } else {
                                         null
                                     },
@@ -2643,7 +3021,7 @@ class BundleFileStorageServiceTest {
                                     if (path == "index.android.bundle") {
                                         BsdiffPatchDescriptor(
                                             "bsdiff",
-                                            "base",
+                                            MIN_BUNDLE_ID,
                                             "a",
                                             "b",
                                             "https://example.com/patch",
@@ -2682,8 +3060,15 @@ class BundleFileStorageServiceTest {
                         mapOf(MANIFEST_URL to manifest.toByteArray()) +
                             contents.mapKeys { "https://example.com/${it.key}" }.mapValues { it.value.toByteArray() },
                     )
+                // The patches are for the built-in bundle, which runs and is
+                // their base: they count.
                 val service =
-                    createService(root, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
+                    createService(
+                        root,
+                        downloadService = downloads,
+                        builtInAssetResolver = PatchBaseBuiltInAssetResolver(baseFileHash = "a"),
+                        minBundleId = MIN_BUNDLE_ID,
+                    )
 
                 service.updateBundle(
                     bundleId = "target",
@@ -2960,6 +3345,218 @@ class BundleFileStorageServiceTest {
             assertEquals(listOf(MANIFEST_URL, BUNDLE_URL), otherBase.downloads.calls)
         }
 
+    @Test
+    fun `with no OTA bundle, a patch for the built-in bundle applies to its packaged file`() =
+        runBlocking {
+            val builtInPatch = BuiltInPatchUpdate(temporaryFolder.newFolder("built-in-patch"))
+
+            val result = builtInPatch.run(packagedContent = BASE_CONTENT)
+
+            assertEquals(UpdateBundleResult(BundleDelivery.PATCH, patchFallback = false), result)
+            assertEquals(listOf(MANIFEST_URL, PATCH_URL), builtInPatch.downloads.calls)
+            assertEquals(PATCHED_CONTENT, File(bundleStoreDir(builtInPatch.root), "target/index.android.bundle").readText())
+            assertFalse(File(builtInPatch.root, "bundle-manifest-temp").walk().any { it.name.endsWith(".base") })
+        }
+
+    @Test
+    fun `a built-in bundle whose packaged bytes differ downloads the file instead`() =
+        runBlocking {
+            val builtInPatch = BuiltInPatchUpdate(temporaryFolder.newFolder("built-in-patch-mismatch"))
+
+            // Store processing rewrote the packaged file the patch was made from.
+            val result = builtInPatch.run(packagedContent = "console.log(\"store-processed\");\n")
+
+            assertEquals(UpdateBundleResult(BundleDelivery.MANIFEST, patchFallback = true), result)
+            assertEquals(listOf(MANIFEST_URL, BUNDLE_URL), builtInPatch.downloads.calls)
+            assertEquals(PATCHED_CONTENT, File(bundleStoreDir(builtInPatch.root), "target/index.android.bundle").readText())
+        }
+
+    @Test
+    fun `a patch for the built-in bundle is not attempted while an OTA bundle runs or in a Debug build`() =
+        runBlocking {
+            val otaRunning = PatchUpdate(temporaryFolder.newFolder("built-in-patch-ota-running"))
+            assertEquals(
+                UpdateBundleResult(BundleDelivery.MANIFEST, patchFallback = false),
+                otaRunning.run(servedPatch = otaRunning.patchBytes, patchBaseBundleId = MIN_BUNDLE_ID).getOrThrow(),
+            )
+            assertEquals(listOf(MANIFEST_URL, BUNDLE_URL), otaRunning.downloads.calls)
+
+            // A Debug build reports the nil UUID, and has no built-in bundle.
+            val debugBuild = BuiltInPatchUpdate(temporaryFolder.newFolder("built-in-patch-debug"), minBundleId = NIL_UUID)
+            assertEquals(
+                UpdateBundleResult(BundleDelivery.MANIFEST, patchFallback = false),
+                debugBuild.run(packagedContent = BASE_CONTENT, patchBaseBundleId = NIL_UUID),
+            )
+            assertEquals(listOf(MANIFEST_URL, BUNDLE_URL), debugBuild.downloads.calls)
+        }
+
+    @Test
+    fun `the archive choice leaves out a patch this device cannot apply`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("archive-ignores-inapplicable-patch")
+            val archiveBytes = Base64.getDecoder().decode(TarBrArchiveExtractorTest.VALID)
+            val contents = mapOf("assets/image.png" to "image", "index.android.bundle" to "bundle")
+            val hashes = contents.mapValues { sha256(root, it.value) }
+            val manifest =
+                manifestJson(
+                    bundleId = "target",
+                    assets = hashes,
+                    byteSizes = contents.mapValues { it.value.length.toLong() },
+                    downloadByteSizes = mapOf("assets/image.png" to 50, "index.android.bundle" to 55),
+                    archive = archiveJson(root, archiveBytes, tarByteSize = 3072),
+                )
+            val downloads =
+                BinaryMappingDownloadService(mapOf(MANIFEST_URL to manifest.toByteArray(), ARCHIVE_URL to archiveBytes))
+            // A tiny patch, but for a bundle this device does not run.
+            val otherBasePatch =
+                BsdiffPatchDescriptor(
+                    algorithm = "bsdiff",
+                    baseBundleId = "other-bundle",
+                    baseFileHash = sha256(root, BASE_CONTENT),
+                    patchFileHash = sha256(root, "patch"),
+                    patchUrl = PATCH_URL,
+                    byteSize = 1,
+                )
+
+            val result =
+                createService(root, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
+                    .updateBundle(
+                        bundleId = "target",
+                        manifestUrl = MANIFEST_URL,
+                        manifestFileHash = sha256(root, manifest),
+                        assets =
+                            hashes.mapValues { (path, hash) ->
+                                ChangedAssetDescriptor(
+                                    "https://example.com/$path",
+                                    hash,
+                                    patch = otherBasePatch.takeIf { path == "index.android.bundle" },
+                                )
+                            },
+                        archiveUrl = ARCHIVE_URL,
+                        progressCallback = {},
+                    )
+
+            assertEquals(UpdateBundleResult(BundleDelivery.ARCHIVE, patchFallback = false), result)
+            assertEquals(listOf(MANIFEST_URL, ARCHIVE_URL), downloads.calls)
+        }
+
+    @Test
+    fun `the archive choice prices a built-in patch only when the packaged file is its base`() =
+        runBlocking {
+            suspend fun install(packagedContent: String): Pair<UpdateBundleResult, List<String>> {
+                val root = temporaryFolder.newFolder()
+                val archiveBytes = Base64.getDecoder().decode(TarBrArchiveExtractorTest.VALID)
+                val contents = mapOf("assets/image.png" to "image", "index.android.bundle" to "bundle")
+                val hashes = contents.mapValues { sha256(root, it.value) }
+                val manifest =
+                    manifestJson(
+                        bundleId = "target",
+                        assets = hashes,
+                        byteSizes = contents.mapValues { it.value.length.toLong() },
+                        downloadByteSizes = mapOf("assets/image.png" to 50, "index.android.bundle" to 55),
+                        archive = archiveJson(root, archiveBytes, tarByteSize = 3072),
+                    )
+                val downloads =
+                    BinaryMappingDownloadService(
+                        mapOf(MANIFEST_URL to manifest.toByteArray(), ARCHIVE_URL to archiveBytes) +
+                            contents.mapKeys { "https://example.com/${it.key}" }.mapValues { it.value.toByteArray() },
+                    )
+                val builtInPatch =
+                    BsdiffPatchDescriptor(
+                        algorithm = "bsdiff",
+                        baseBundleId = MIN_BUNDLE_ID,
+                        baseFileHash = sha256(root, BASE_CONTENT),
+                        patchFileHash = sha256(root, "patch"),
+                        patchUrl = PATCH_URL,
+                        byteSize = 1,
+                    )
+                val result =
+                    createService(
+                        root,
+                        downloadService = downloads,
+                        builtInAssetResolver = MappingBuiltInAssetResolver(mapOf("index.android.bundle" to packagedContent)),
+                        minBundleId = MIN_BUNDLE_ID,
+                    ).updateBundle(
+                        bundleId = "target",
+                        manifestUrl = MANIFEST_URL,
+                        manifestFileHash = sha256(root, manifest),
+                        assets =
+                            hashes.mapValues { (path, hash) ->
+                                ChangedAssetDescriptor(
+                                    "https://example.com/$path",
+                                    hash,
+                                    patch = builtInPatch.takeIf { path == "index.android.bundle" },
+                                )
+                            },
+                        archiveUrl = ARCHIVE_URL,
+                        progressCallback = {},
+                    )
+                return result to downloads.calls
+            }
+
+            // Store processing rewrote the packaged file: the patch would
+            // fall back to the whole file, so the archive is cheaper.
+            val (rewritten, rewrittenCalls) = install("console.log(\"store-processed\");\n")
+            assertEquals(UpdateBundleResult(BundleDelivery.ARCHIVE, patchFallback = false), rewritten)
+            assertEquals(listOf(MANIFEST_URL, ARCHIVE_URL), rewrittenCalls)
+
+            // The packaged file is the patch's base: the tiny patch wins.
+            val (_, matchingCalls) = install(BASE_CONTENT)
+            assertTrue(PATCH_URL in matchingCalls)
+            assertFalse(ARCHIVE_URL in matchingCalls)
+        }
+
+    /**
+     * Bundle "target" whose index.android.bundle can be produced by a bsdiff
+     * patch against the built-in bundle, with no OTA bundle installed, or
+     * downloaded whole.
+     */
+    private inner class BuiltInPatchUpdate(
+        val root: File,
+        private val minBundleId: String = MIN_BUNDLE_ID,
+    ) {
+        private val patchBytes: ByteArray = Base64.getDecoder().decode(BsdiffPatchTest.BSDIFF_PATCH_FIXTURE_BASE64)
+        lateinit var downloads: BinaryMappingDownloadService
+
+        suspend fun run(
+            packagedContent: String,
+            patchBaseBundleId: String = minBundleId,
+        ): UpdateBundleResult {
+            val targetHash = sha256(root, PATCHED_CONTENT)
+            val manifest = manifestJson("target", mapOf("index.android.bundle" to targetHash))
+            downloads =
+                BinaryMappingDownloadService(
+                    mapOf(
+                        MANIFEST_URL to manifest.toByteArray(),
+                        BUNDLE_URL to PATCHED_CONTENT.toByteArray(),
+                        PATCH_URL to patchBytes,
+                    ),
+                )
+            val service =
+                createService(
+                    root,
+                    downloadService = downloads,
+                    builtInAssetResolver = MappingBuiltInAssetResolver(mapOf("index.android.bundle" to packagedContent)),
+                    minBundleId = minBundleId,
+                )
+            val descriptor =
+                ChangedAssetDescriptor(
+                    fileUrl = BUNDLE_URL,
+                    fileHash = targetHash,
+                    patch =
+                        BsdiffPatchDescriptor(
+                            algorithm = "bsdiff",
+                            baseBundleId = patchBaseBundleId,
+                            // The packaged file's hash, recorded when its native build was registered.
+                            baseFileHash = sha256(root, BASE_CONTENT),
+                            patchFileHash = sha256(root, patchBytes),
+                            patchUrl = PATCH_URL,
+                        ),
+                )
+            return service.updateBundle("target", MANIFEST_URL, sha256(root, manifest), mapOf("index.android.bundle" to descriptor)) {}
+        }
+    }
+
     /**
      * Bundle "target" whose index.android.bundle can be produced by a bsdiff
      * patch against the running bundle "base-bundle", or downloaded whole.
@@ -3120,13 +3717,17 @@ class BundleFileStorageServiceTest {
             val bundleHash = sha256(root, BUNDLE_CONTENT)
             val imageHash = sha256(root, "image")
             val manifest = manifestJson("target", mapOf("index.android.bundle" to bundleHash, "assets/image.png" to imageHash))
+            val bundleStarted = CountDownLatch(1)
             val imageFailed = CountDownLatch(1)
             val served =
                 BinaryMappingDownloadService(
                     mapOf(MANIFEST_URL to manifest.toByteArray(), BUNDLE_URL to "tampered".toByteArray()),
                     mapOf(imageUrl to HttpStatusException(404, "Not Found")),
                 )
-            // Both downloads run; the image fails first, the tampered bundle after.
+            // Both downloads run; the image fails first, the tampered bundle
+            // after. The image waits for the bundle's download to start: its
+            // failure cancels the downloads, and one cancelled before it
+            // starts never proves its file bad.
             val downloads =
                 object : DownloadService {
                     override suspend fun downloadFile(
@@ -3136,8 +3737,11 @@ class BundleFileStorageServiceTest {
                         progressCallback: (DownloadProgress) -> Unit,
                     ): DownloadResult {
                         if (fileUrl.toString() == BUNDLE_URL) {
+                            bundleStarted.countDown()
                             imageFailed.await(5, TimeUnit.SECONDS)
                             Thread.sleep(200)
+                        } else if (fileUrl.toString() == imageUrl) {
+                            assertTrue(bundleStarted.await(5, TimeUnit.SECONDS))
                         }
                         return served.downloadFile(fileUrl, destination, fileSizeCallback, progressCallback).also {
                             if (fileUrl.toString() == imageUrl) imageFailed.countDown()
@@ -3336,6 +3940,79 @@ class BundleFileStorageServiceTest {
 
             assertTrue("Expected a stale selection, got $staleResult", staleResult is StaleReleaseSelectionException)
             assertNull(loadMetadata(staleRoot)?.stagingBundleId)
+        }
+
+    @Test
+    fun `a staging another check made stale keeps its verified files for the next staging`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("stale-keeps-files")
+            val hash = sha256(root, BUNDLE_CONTENT)
+            val manifest = manifestJson("target", mapOf("index.android.bundle" to hash))
+            val served =
+                BinaryMappingDownloadService(
+                    mapOf(MANIFEST_URL to manifest.toByteArray(), BUNDLE_URL to BUNDLE_CONTENT.toByteArray()),
+                )
+            lateinit var service: BundleFileStorageService
+            var sandboxChecked = false
+            val downloads =
+                object : DownloadService {
+                    override suspend fun downloadFile(
+                        fileUrl: URL,
+                        destination: File,
+                        fileSizeCallback: ((Long) -> Unit)?,
+                        progressCallback: (DownloadProgress) -> Unit,
+                    ): DownloadResult {
+                        if (fileUrl.toString() == BUNDLE_URL && !sandboxChecked) {
+                            sandboxChecked = true
+                            // The sandbox's channel open checks the same catalog
+                            // without the built-in floor while the app's own
+                            // check downloads: another selection context.
+                            assertTrue(
+                                service.acceptReleaseCatalog("project-a", "scope-production", 1, "hash-1", "production", "context-sandbox"),
+                            )
+                        }
+                        return served.downloadFile(fileUrl, destination, fileSizeCallback, progressCallback)
+                    }
+                }
+            service = createService(root, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 1, "hash-1", "production", "context-app"))
+            val stale =
+                runCatching {
+                    service.updateBundle(
+                        bundleId = "target",
+                        manifestUrl = MANIFEST_URL,
+                        manifestFileHash = sha256(root, manifest),
+                        assets = emptyMap(),
+                        fileResolver = RecordingArtifactFileResolver { BUNDLE_URL },
+                        selection = releaseSelection("release-one", "target", 1, "hash-1", "context-app"),
+                        progressCallback = {},
+                    )
+                }.exceptionOrNull()
+            assertTrue("Expected a stale selection, got $stale", stale is StaleReleaseSelectionException)
+            assertEquals(1, served.calls.count { it == BUNDLE_URL })
+
+            // The sandbox's staging of the same bundle reuses the downloaded
+            // file: it asks for no file URLs, so a failing files request
+            // (a server 500) can't fail it.
+            var fileRequests = 0
+            service.updateBundle(
+                bundleId = "target",
+                manifestUrl = MANIFEST_URL,
+                manifestFileHash = sha256(root, manifest),
+                assets = emptyMap(),
+                fileResolver =
+                    object : ArtifactFileResolver {
+                        override suspend fun resolve(paths: List<String>): Map<String, ResolvedArtifactFile> {
+                            fileRequests += 1
+                            throw java.io.IOException("HTTP error 500")
+                        }
+                    },
+                selection = releaseSelection("release-one", "target", 1, "hash-1", "context-sandbox"),
+                progressCallback = {},
+            )
+            assertEquals(0, fileRequests)
+            assertEquals(1, served.calls.count { it == BUNDLE_URL })
+            assertEquals("target", loadMetadata(root)?.stagingBundleId)
         }
 
     @Test
@@ -4027,6 +4704,22 @@ class BundleFileStorageServiceTest {
         }
     }
 
+    /** Packaged files that are the base of every patch made from [baseFileHash], and of nothing else. */
+    private class PatchBaseBuiltInAssetResolver(
+        private val baseFileHash: String,
+    ) : BuiltInAssetResolver {
+        override fun copyIfMatches(
+            assetPath: String,
+            expectedHash: String,
+            destination: File,
+        ): Boolean {
+            if (expectedHash != baseFileHash) return false
+            destination.parentFile?.mkdirs()
+            destination.writeText("packaged $assetPath")
+            return true
+        }
+    }
+
     private class MappingBuiltInAssetResolver(
         private val contents: Map<String, String>,
     ) : BuiltInAssetResolver {
@@ -4113,6 +4806,7 @@ class BundleFileStorageServiceTest {
     companion object {
         private const val TEST_ISOLATION_KEY = "test-isolation-key"
         private const val MIN_BUNDLE_ID = "0190a1b2-c3d4-7000-8000-000000000000"
+        private const val NIL_UUID = "00000000-0000-0000-0000-000000000000"
         private const val MANIFEST_URL = "https://example.com/manifest.json"
         private const val ARCHIVE_URL = "https://example.com/bundle.tar.br"
         private const val BUNDLE_URL = "https://example.com/index.android.bundle"

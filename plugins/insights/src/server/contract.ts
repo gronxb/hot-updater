@@ -56,14 +56,14 @@ const isBundleFilter = (value: unknown, withKind = false): boolean => {
   if (!isRecord(value) || !hasScope(value)) return false;
   const keys = ["platform", "channel", "type", ...(withKind ? ["kind"] : [])];
   return value.type === "RECOVERED"
-    ? isText(value.fromBundleId) &&
-        hasOnlyKeys(value, [...keys, "fromBundleId"])
+    ? isText(value.fromReleaseId) &&
+        hasOnlyKeys(value, [...keys, "fromReleaseId"])
     : (value.type === "UPDATE_DOWNLOADED" ||
         value.type === "UPDATE_APPLIED" ||
         value.type === "UPDATE_FAILED" ||
         value.type === "UNCHANGED") &&
-        isText(value.toBundleId) &&
-        hasOnlyKeys(value, [...keys, "toBundleId"]);
+        isText(value.toReleaseId) &&
+        hasOnlyKeys(value, [...keys, "toReleaseId"]);
 };
 
 const isEventFilter = (value: unknown): boolean => {
@@ -269,35 +269,29 @@ export const createValidatedInsightsModel = (
   async countLatestEvents(input) {
     if (
       !isRecord(input) ||
-      !hasOnlyKeys(input, ["platform", "channel", "sinceMs", "bundle"]) ||
+      !hasOnlyKeys(input, ["platform", "channel", "sinceMs"]) ||
       !hasScope(input) ||
-      !isTimestamp(input.sinceMs) ||
-      (input.bundle !== undefined &&
-        (!Array.isArray(input.bundle) ||
-          input.bundle.length < 1 ||
-          input.bundle.length > 2 ||
-          input.bundle.some(
-            (bundle) =>
-              !isRecord(bundle) ||
-              !hasOnlyKeys(bundle, ["field", "value", "types"]) ||
-              (bundle.field !== "from_bundle_id" &&
-                bundle.field !== "to_bundle_id") ||
-              !isText(bundle.value) ||
-              !Array.isArray(bundle.types) ||
-              bundle.types.length === 0 ||
-              bundle.types.some(
-                (type) =>
-                  ![
-                    "UNCHANGED",
-                    "UPDATE_DOWNLOADED",
-                    "UPDATE_APPLIED",
-                    "RECOVERED",
-                  ].includes(type),
-              ),
-          )))
+      !isTimestamp(input.sinceMs)
     )
       invalidQuery();
     return validateCount(await model.countLatestEvents(input));
+  },
+  async countReleaseInstallations(input) {
+    if (
+      !isRecord(input) ||
+      !hasOnlyKeys(input, ["platform", "channel", "sinceMs", "releaseId"]) ||
+      !hasScope(input) ||
+      !isTimestamp(input.sinceMs) ||
+      !isText(input.releaseId)
+    )
+      invalidQuery();
+    const counts = await model.countReleaseInstallations(input);
+    if (!isRecord(counts) || !hasOnlyKeys(counts, ["installations", "release"]))
+      invalidResult();
+    return {
+      installations: validateCount(counts.installations as number),
+      release: validateCount(counts.release as number),
+    };
   },
   async countEvents(input) {
     if (

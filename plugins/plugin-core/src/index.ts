@@ -8,8 +8,18 @@ export type {
   Deployment,
   DeployReleasePolicy,
   HotUpdaterCoreApi,
+  IosDeviceAccount,
+  IosDeviceAccountClaim,
+  IosDeviceOutcome,
+  IosDeviceOutcomeInput,
+  IosDeviceRequestResult,
   KeysetInput,
+  NativeBuildDistribution,
+  NativeBuildRegistration,
+  NativeBuildSandboxScope,
+  NativeBuildScope,
   ReleaseFilter,
+  ReleaseLabelFill,
   ReleaseTarget,
   StoredBundleDeployment,
 } from "./coreApi";
@@ -31,7 +41,6 @@ export * from "./parseStorageUri";
 export * from "./releaseCatalogCompiler";
 export * from "./releaseManagement";
 export * from "./releaseCatalogMutation";
-export * from "./remoteBundleSigning";
 export * from "./semverSatisfies";
 export * from "./types";
 export * from "./uuidv7";
@@ -228,6 +237,7 @@ export {
 export {
   type EngineSqlOptions,
   generateEngineSql,
+  lateColumnStatements,
 } from "./engine/db/engineSql";
 export {
   type EngineSqlMigratorOptions,

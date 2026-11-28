@@ -1,6 +1,6 @@
 import { RefreshCw } from "lucide-react";
 
-import { HashValueDisplay } from "@/components/HashValueDisplay";
+import { InstallIdDisplay } from "@/components/InstallIdDisplay";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -30,7 +30,6 @@ import type {
   InsightsViewPage,
 } from "@/lib/insights-view";
 
-import { BuiltinBundleBadge, isBuiltinBundle } from "./BuiltinBundle";
 import {
   EventBundleTransition,
   EventTimestamp,
@@ -41,19 +40,30 @@ import {
 import { EventHistoryList } from "./EventHistoryList";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InsightsPagination } from "./InsightsPagination";
+import { ReportedBundleId } from "./ReportedBundleId";
 
 const getUserLabel = (event: { readonly userId: string | null }) =>
   event.userId ?? "—";
 
-/** A download or a failed update leaves the installation on the bundle it ran. */
-const getLastKnownBundleId = (
+/**
+ * The bundle the installation runs, which a download or a failed update
+ * leaves as it was: its release ID, the ID users see, and the bundle ID it
+ * reports, which names the built-in bundle when it runs no release.
+ */
+const getLastKnown = (
   event: InsightsEventRow | InsightsInstallationViewRow,
-) =>
+): { readonly releaseId: string | null; readonly bundleId: string | null } =>
   "lastKnownBundleId" in event
-    ? event.lastKnownBundleId
+    ? {
+        releaseId: event.lastKnownReleaseId ?? null,
+        bundleId: event.lastKnownBundleId,
+      }
     : event.type === "UPDATE_DOWNLOADED" || event.type === "UPDATE_FAILED"
-      ? event.fromBundleId
-      : event.toBundleId;
+      ? {
+          releaseId: event.fromReleaseId ?? null,
+          bundleId: event.fromBundleId,
+        }
+      : { releaseId: event.toReleaseId ?? null, bundleId: event.toBundleId };
 
 export function InstallationHistoryCard({
   error,
@@ -83,18 +93,26 @@ export function InstallationHistoryCard({
   readonly selectedInstallId: string | undefined;
 }) {
   const dateTimeFormat = useInsightsTimeFormat();
-  const lastKnownBundleId = selectedEvent
-    ? getLastKnownBundleId(selectedEvent)
-    : undefined;
+  const lastKnown = selectedEvent ? getLastKnown(selectedEvent) : undefined;
+  const lastKnownBundleId = lastKnown?.bundleId ?? undefined;
+  const lastKnownId = lastKnown?.releaseId ?? lastKnownBundleId;
 
-  const pendingBundleId =
+  // The release downloaded and not launched yet.
+  const pending =
     selectedEvent && "pendingBundleId" in selectedEvent
-      ? selectedEvent.pendingBundleId
+      ? {
+          releaseId: selectedEvent.pendingReleaseId,
+          bundleId: selectedEvent.pendingBundleId,
+        }
       : selectedEvent &&
           "type" in selectedEvent &&
           selectedEvent.type === "UPDATE_DOWNLOADED"
-        ? selectedEvent.toBundleId
+        ? {
+            releaseId: selectedEvent.toReleaseId,
+            bundleId: selectedEvent.toBundleId,
+          }
         : null;
+  const pendingId = pending ? (pending.releaseId ?? pending.bundleId) : null;
 
   return (
     <Card className="@container min-h-0 min-w-0 shadow-sm">
@@ -150,41 +168,37 @@ export function InstallationHistoryCard({
                 </div>
                 <div className="min-w-0">
                   <dt className="text-xs text-muted-foreground">Install ID</dt>
-                  <dd className="mt-1 font-mono text-xs">
-                    <HashValueDisplay
-                      value={selectedInstallId}
-                      buttonClassName="min-h-11 px-3 lg:min-h-0 lg:px-1.5"
-                    />
+                  <dd className="mt-1 flex items-center max-sm:min-h-11">
+                    <InstallIdDisplay installId={selectedInstallId} />
                   </dd>
                 </div>
                 <div className="min-w-0">
                   <dt className="text-xs text-muted-foreground">
                     Last known bundle
                   </dt>
-                  <dd className="mt-1 flex min-w-0 flex-wrap items-center gap-2 font-mono text-xs">
-                    {lastKnownBundleId ? (
-                      <HashValueDisplay
-                        value={lastKnownBundleId}
-                        buttonClassName="min-h-11 px-3 lg:min-h-0 lg:px-1.5"
+                  <dd className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs">
+                    {lastKnownId ? (
+                      <ReportedBundleId
+                        appVersion={selectedEvent.appVersion}
+                        bundleId={lastKnownBundleId ?? lastKnownId}
+                        minBundleId={selectedEvent.minBundleId}
+                        releaseId={lastKnown?.releaseId}
                       />
                     ) : (
                       "—"
                     )}
-                    {isBuiltinBundle(
-                      lastKnownBundleId,
-                      selectedEvent.minBundleId,
-                    ) ? (
-                      <BuiltinBundleBadge />
-                    ) : null}
                   </dd>
                 </div>
-                {pendingBundleId ? (
+                {pending && pendingId ? (
                   <div className="col-span-2 min-w-0">
                     <dt className="text-xs text-muted-foreground">
                       Downloaded · Not launched yet
                     </dt>
                     <dd className="mt-1 text-xs">
-                      <HashValueDisplay value={pendingBundleId} />
+                      <ReportedBundleId
+                        bundleId={pending.bundleId ?? pendingId}
+                        releaseId={pending.releaseId}
+                      />
                     </dd>
                   </div>
                 ) : null}

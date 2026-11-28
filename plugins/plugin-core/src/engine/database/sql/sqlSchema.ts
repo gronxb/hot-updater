@@ -111,7 +111,7 @@ export interface SqlTableShape {
 
 /**
  * Each table as the DDL creates it, for the DDL below and for ORM schema
- * generators, such as the Drizzle and Prisma adapters': binary collation, one index per declared index, and an index
+ * generators, such as the Drizzle and Prisma adapters': binary collation, one index per declared index (an index whose columns the key or an earlier index already orders by needs none), and an index
  * table `<table>__<index>` for each index over a multi-valued field, keyed by
  * every column it holds.
  */
@@ -127,6 +127,9 @@ export const sqlTableShapes = (
       ...table.indexes.flatMap(({ eq, sort }) => [...eq, ...sort]),
     ]);
     if (dialect === "mysql") checkMysqlKey(table, "key", table.key);
+    // Column lists an index already covers: an index over the same columns
+    // reads through it, as `releases.scopes` reads through `byScope`.
+    const covered = new Set([JSON.stringify(table.key)]);
     const indexes = table.indexes.flatMap((index): SqlTableShape["indexes"] => {
       const columns = [...index.eq, ...indexOrderColumns(table, index)];
       if (dialect === "mysql") {
@@ -143,15 +146,28 @@ export const sqlTableShapes = (
           ),
           notNull: true,
         }));
-        const indexTable = {
+        const indexTable: SqlTableShape = {
           name: `${name}__${index.name}`,
           columns: entries,
           key: columns,
-          indexes: [],
+          // A row's entries go by the row's key, which ends the table's key:
+          // without an index that leads with it, replacing or pruning them
+          // reads the whole table.
+          indexes: [
+            {
+              kind: "index",
+              name: shortSqlName(`${name}__${index.name}__key`),
+              unique: false,
+              columns: table.key,
+            },
+          ],
         };
         return [{ kind: "table", table: indexTable }];
       }
-      if (!index.unique && columns.join() === table.key.join()) return [];
+      if (!index.unique) {
+        if (covered.has(JSON.stringify(columns))) return [];
+        covered.add(JSON.stringify(columns));
+      }
       return [
         {
           kind: "index",

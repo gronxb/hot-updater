@@ -1,5 +1,6 @@
 import {
   compileReleaseCatalog,
+  ReleaseCatalogCompilationError,
   releaseRowToRelease,
   type BundleRow,
   type ReleaseCatalogScope,
@@ -142,6 +143,37 @@ describe("release changes rooted at the catalog", () => {
     await expect(reads.findBaseBundleIds(baseKey, NEWEST, 3)).resolves.toEqual([
       bundle.id,
     ]);
+  });
+
+  it("refuses a deploy whose catalog would be over the size limit, naming its channel and platform", async () => {
+    const { db } = await setup();
+    // Four 60 KB messages fit in the 256 KB catalog; a fifth doesn't.
+    const withMessage = (sequence: number): ReleaseChangeInput => {
+      const input = deploy(createBundleRowFixture(String(600 + sequence)));
+      const change = input.change as { row: Omit<ReleaseRow, "id"> };
+      return {
+        ...input,
+        change: {
+          operation: "insert",
+          row: { ...change.row, message: "m".repeat(60_000) },
+        },
+      };
+    };
+    for (let sequence = 1; sequence <= 4; sequence += 1) {
+      await changeReleases(db, [withMessage(sequence)]);
+    }
+    const refused = changeReleases(db, [withMessage(5)]);
+    await expect(refused).rejects.toBeInstanceOf(
+      ReleaseCatalogCompilationError,
+    );
+    await expect(refused).rejects.toMatchObject({
+      code: "CATALOG_OVERSIZE",
+      message:
+        'The ios release catalog of channel "production" would be over its 256 KiB limit.\nDisable or delete old bundles on that channel, then try again.',
+    });
+    await expect(
+      db.findOne("release_catalogs", { scope_key: scope.scopeKey }),
+    ).resolves.toMatchObject({ generation: 4 });
   });
 
   it("updates and deletes a release with the next catalog generation each", async () => {

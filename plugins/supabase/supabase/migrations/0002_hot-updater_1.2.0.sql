@@ -1,0 +1,101 @@
+-- HotUpdater.schema
+
+ALTER TABLE "hot_updater_v1_releases" ADD COLUMN IF NOT EXISTS "label" bigint;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_releases_byLabel" ON "hot_updater_v1_releases" ("channel_id", "platform", "label");
+
+CREATE TABLE IF NOT EXISTS "hot_updater_v1_native_builds" ("id" varchar(36) COLLATE "C" NOT NULL, "scope_key" varchar(2048) COLLATE "C" NOT NULL, "platform" varchar(16) COLLATE "C" NOT NULL, "channel_id" varchar(1408) COLLATE "C" NOT NULL, "fingerprint_hash" varchar(255) COLLATE "C", "app_version" text COLLATE "C", "min_bundle_id" varchar(36) COLLATE "C" NOT NULL, "artifact_kind" varchar(16) COLLATE "C" NOT NULL, "artifact_storage_uri" text COLLATE "C" NOT NULL, "byte_size" bigint NOT NULL, "git_commit_hash" varchar(255) COLLATE "C", "created_at_ms" bigint NOT NULL, "build_key" varchar(69) COLLATE "C", "build_number" varchar(64) COLLATE "C", "submitted_to" varchar(16) COLLATE "C", "submitted_at_ms" bigint, "submitted_version" varchar(255) COLLATE "C", "is_store_build" boolean NOT NULL, "is_sandbox" boolean NOT NULL, "sandbox_url_scheme" varchar(255) COLLATE "C", "export_method" varchar(16) COLLATE "C", "native_app_version" text COLLATE "C", "store_build_scope_key" varchar(2048) COLLATE "C", "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
+CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byScope" ON "hot_updater_v1_native_builds" ("scope_key", "id");
+
+CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byBuildKey" ON "hot_updater_v1_native_builds" ("scope_key", "build_key", "id");
+
+CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byScopeKind" ON "hot_updater_v1_native_builds" ("scope_key", "artifact_kind", "id");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byStoreBuild" ON "hot_updater_v1_native_builds" ("store_build_scope_key");
+
+CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byChannel" ON "hot_updater_v1_native_builds" ("channel_id", "id");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_min_bundle_id" ON "hot_updater_v1_native_builds" ("min_bundle_id");
+
+CREATE TABLE IF NOT EXISTS "hot_updater_v1_ios_devices" ("id" varchar(36) COLLATE "C" NOT NULL, "udid" varchar(40) COLLATE "C" NOT NULL, "name" varchar(100) COLLATE "C" NOT NULL, "status" varchar(16) COLLATE "C" NOT NULL, "requested_by" varchar(320) COLLATE "C", "created_at_ms" bigint NOT NULL, "approved_by" varchar(320) COLLATE "C", "approved_at_ms" bigint, "registered_at_ms" bigint, "apple_issuer_id" varchar(64) COLLATE "C", "apple_error" varchar(512) COLLATE "C", "build_id" varchar(36) COLLATE "C", "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
+CREATE INDEX IF NOT EXISTS "hot_updater_v1_ios_devices_byStatus" ON "hot_updater_v1_ios_devices" ("status", "id");
+
+CREATE INDEX IF NOT EXISTS "hot_updater_v1_ios_devices_byRegistration" ON "hot_updater_v1_ios_devices" ("registered_at_ms", "id");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_ios_devices_udid" ON "hot_updater_v1_ios_devices" ("udid");
+
+CREATE TABLE IF NOT EXISTS "hot_updater_v1_ios_device_account" ("id" varchar(16) COLLATE "C" NOT NULL, "apple_issuer_id" varchar(64) COLLATE "C" NOT NULL, "claimed_at_ms" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
+CREATE TABLE IF NOT EXISTS "hot_updater_v1_label_sequences" ("id" varchar(1440) COLLATE "C" NOT NULL, "last_label" bigint NOT NULL, "is_filled" boolean NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
+CREATE INDEX IF NOT EXISTS "hot_updater_v1_bundle_events__byBundle__key" ON "hot_updater_v1_bundle_events__byBundle" ("id");
+
+ALTER TABLE "hot_updater_v1_native_builds" ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE "hot_updater_v1_ios_devices" ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE "hot_updater_v1_ios_device_account" ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE "hot_updater_v1_label_sequences" ENABLE ROW LEVEL SECURITY;
+
+CREATE OR REPLACE FUNCTION public.hot_updater_v1_apply(p_statements jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public, pg_temp
+AS $apply$
+DECLARE
+  item jsonb;
+  statement text;
+  shape text;
+  target text;
+  found record;
+  rows jsonb;
+  changed bigint;
+  results jsonb := '[]'::jsonb;
+BEGIN
+  FOR item IN SELECT value FROM jsonb_array_elements(p_statements) LOOP
+    statement := item->>'sql';
+    FOR target IN SELECT (regexp_matches(statement, '(?:FROM|INTO|UPDATE|JOIN) "([^"]+)"', 'g'))[1] LOOP
+      IF NOT target = ANY (ARRAY['hot_updater_v1_bundles', 'hot_updater_v1_bundle_patches', 'hot_updater_v1_releases', 'hot_updater_v1_release_catalogs', 'hot_updater_v1_channels', 'hot_updater_v1_bundle_totals', 'hot_updater_v1_native_builds', 'hot_updater_v1_ios_devices', 'hot_updater_v1_ios_device_account', 'hot_updater_v1_label_sequences', 'hot_updater_v1_bundle_events', 'hot_updater_v1_bundle_events__byBundle', 'hot_updater_v1_bundle_event_heads', 'hot_updater_v1_insights_overview', 'hot_updater_v1_insights_sketches', 'hot_updater_v1_insights_overview_daily', 'hot_updater_v1_insights_sketches_daily', 'hot_updater_v1_insights_overview_lifetime', 'hot_updater_v1_insights_sketches_lifetime', 'hot_updater_v1_insights_distribution', 'hot_updater_v1_insights_builtin_distribution', 'hot_updater_v1_insights_latest_by_bundle', 'hot_updater_v1_insights_outcomes', 'hot_updater_v1_insights_failures', 'hot_updater_v1_api_keys', 'hot_updater_v1_remote_config_active', 'hot_updater_v1_remote_config_versions', 'hot_updater_v1_private_hot_updater_settings', 'hot_updater_v1__hu_write']) THEN
+        RAISE EXCEPTION 'hot_updater_v1_apply: % is not a Hot Updater table', target USING ERRCODE = '42501';
+      END IF;
+    END LOOP;
+    shape := regexp_replace(regexp_replace(statement, '^INSERT INTO "[^"]+" \(', 'INSERT INTO ('), '"[^"]*"', '"', 'g');
+    IF shape !~ '^(SELECT|INSERT INTO|UPDATE|DELETE FROM) '
+      OR shape ~ '"[[:space:]]*\('
+      OR shape ~ '[;''\\]|--|/\*'
+      OR regexp_replace(shape, '\m(SELECT|FROM|WHERE|AND|OR|NOT|EXISTS|INSERT|INTO|VALUES|UPDATE|SET|DELETE|ORDER|BY|ASC|DESC|LIMIT|IS|NULL|ON|CONFLICT|DO|JOIN|FOR|bigint|double|precision|boolean|jsonb|i|b)\M', '', 'gi') !~ '^[[:space:]"(),.*=<>+0-9$:-]*$' THEN
+      RAISE EXCEPTION 'hot_updater_v1_apply: statement not allowed' USING ERRCODE = '42501';
+    END IF;
+    IF statement ~ '^SELECT ' THEN
+      rows := '[]'::jsonb;
+      FOR found IN EXECUTE statement USING item->'params' LOOP
+        rows := rows || jsonb_build_array(to_jsonb(found));
+      END LOOP;
+      results := results || jsonb_build_array(jsonb_build_object('rows', rows, 'changes', 0));
+    ELSE
+      EXECUTE statement USING item->'params';
+      GET DIAGNOSTICS changed = ROW_COUNT;
+      results := results || jsonb_build_array(jsonb_build_object('rows', '[]'::jsonb, 'changes', changed));
+    END IF;
+  END LOOP;
+  RETURN results;
+END;
+$apply$;
+
+REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_apply(jsonb) FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.hot_updater_v1_apply(jsonb) TO service_role;
+
+INSERT INTO "hot_updater_v1_private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.engine', '1', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
+
+INSERT INTO "hot_updater_v1_private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.core', '1.2.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
+
+INSERT INTO "hot_updater_v1_private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.insights', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
+
+INSERT INTO "hot_updater_v1_private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.apiKeys', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
+
+INSERT INTO "hot_updater_v1_private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.remoteConfig', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";

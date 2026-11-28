@@ -75,6 +75,7 @@ export const createReleaseRowFixture = (
   revision: 1,
   created_at_ms: Number(suffix),
   updated_at_ms: Number(suffix),
+  label: null,
 });
 
 export const createBundleFixture = (

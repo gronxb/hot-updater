@@ -46,10 +46,13 @@ if (!adminToken) {
 
 const app = express();
 
-app.use( // [!code ++]
+app.use(
+  // [!code ++]
   "/hot-updater/admin", // [!code ++]
-  (req, res, next) => { // [!code ++]
-    if (req.get("Authorization") !== `Bearer ${adminToken}`) { // [!code ++]
+  (req, res, next) => {
+    // [!code ++]
+    if (req.get("Authorization") !== `Bearer ${adminToken}`) {
+      // [!code ++]
       return res.status(401).json({ error: "Unauthorized" }); // [!code ++]
     } // [!code ++]
     next(); // [!code ++]
@@ -57,7 +60,8 @@ app.use( // [!code ++]
   express.json({ limit: "1mb" }), // [!code ++]
   toNodeHandler(hotUpdater.handlers.admin), // [!code ++]
 ); // [!code ++]
-app.use( // [!code ++]
+app.use(
+  // [!code ++]
   "/hot-updater", // [!code ++]
   express.json({ limit: "1mb" }), // [!code ++]
   toNodeHandler(hotUpdater.handlers.client), // [!code ++]
@@ -78,19 +82,18 @@ the config's storage and plugins; see
 
 ```typescript title="hot-updater.config.ts (excerpt)"
 import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-if (!adminToken) {
-  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
-}
+const adminToken = secret("HOT_UPDATER_ADMIN_TOKEN");
 
 export default defineConfig({
   // ... build, storage, plugins, and updateStrategy
-  database: standaloneRepository({ // [!code ++]
+  database: standaloneRepository({
+    // [!code ++]
     baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
-    commonHeaders: { // [!code ++]
-      Authorization: `Bearer ${adminToken}`, // [!code ++]
+    commonHeaders: {
+      // [!code ++]
+      Authorization: async () => `Bearer ${await adminToken()}`, // [!code ++]
     }, // [!code ++]
   }), // [!code ++]
 });

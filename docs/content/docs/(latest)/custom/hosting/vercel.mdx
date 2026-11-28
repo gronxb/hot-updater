@@ -120,11 +120,11 @@ export default app;
 ```
 
 <Callout type="warn">
-With Hono `mount()`, client routes such as `/hot-updater/release-catalogs/*` and
-`/hot-updater/artifacts/*` are usually exposed for React Native clients,
-but that is a deployment choice. `/hot-updater/version` is always mounted for
-diagnostics. The specific admin middleware and mount must be registered before
-the broader client mount. Omit both to deploy a client-only server.
+  With Hono `mount()`, client routes such as `/hot-updater/release-catalogs/*`
+  and `/hot-updater/artifacts/*` are usually exposed for React Native clients,
+  but that is a deployment choice. `/hot-updater/version` is always mounted for
+  diagnostics. The specific admin middleware and mount must be registered before
+  the broader client mount. Omit both to deploy a client-only server.
 </Callout>
 
 ## Schema generation

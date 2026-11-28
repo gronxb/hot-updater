@@ -5,14 +5,15 @@ import {
   type PersistedSelectionReceipt,
   type ReleaseCatalog,
 } from "@hot-updater/protocol";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LaunchReporter } from "./appReady";
 import type { HotUpdaterClientHooks } from "./clientPlugin";
 import type { HotUpdaterHttpClient } from "./httpClient";
 import { InvalidUpdateResponseError, UpdateHttpError } from "./updateError";
 
-const MINIMUM_RELEASE_ID = "00000000-0000-7000-8000-000000000001";
+const MIN_BUNDLE_ID = "00000000-0000-7000-8000-000000000001";
+const OLD_RELEASE_ID = "00000000-0000-7000-8000-000000000000";
 const RELEASE_ID = "00000000-0000-7000-8000-000000000002";
 const ACTIVE_RELEASE_ID = "00000000-0000-7000-8000-000000000003";
 const CURRENT_BUNDLE_ID = "00000000-0000-7001-8000-000000000001";
@@ -28,6 +29,8 @@ const SCOPE_KEY = createReleaseCatalogScopeKey({
 
 const mocks = vi.hoisted(() => {
   Reflect.set(globalThis, "HotUpdater", { SDK_VERSION: "test-sdk-version" });
+  /** How many background tasks the check holds. */
+  const backgroundTasks = { held: 0 };
   return {
     addListener: vi.fn(() => () => {}),
     acceptReleaseCatalog: vi.fn(() => true),
@@ -46,10 +49,11 @@ const mocks = vi.hoisted(() => {
     getDefaultChannel: vi.fn(() => CHANNEL),
     getFingerprintHash: vi.fn((): string | null => null),
     getInstallId: vi.fn(() => "install-id"),
-    getMinBundleId: vi.fn(() => MINIMUM_RELEASE_ID),
+    getMinBundleId: vi.fn(() => MIN_BUNDLE_ID),
     isChannelSwitched: vi.fn(() => false),
     isReleaseSelectionCurrent: vi.fn(() => true),
     resetChannel: vi.fn(),
+    resetChannelIfSelectionCurrent: vi.fn(),
     setStorageItem: vi.fn(),
     supportsArtifactFiles: vi.fn(() => true),
     stageBundle: vi.fn(
@@ -58,6 +62,15 @@ const mocks = vi.hoisted(() => {
         patchFallback: boolean;
       } | null> => ({ delivery: "manifest", patchFallback: false }),
     ),
+    backgroundTasks,
+    withBackgroundTask: vi.fn(async <T>(work: () => Promise<T>) => {
+      backgroundTasks.held += 1;
+      try {
+        return await work();
+      } finally {
+        backgroundTasks.held -= 1;
+      }
+    }),
   };
 });
 
@@ -174,6 +187,63 @@ describe("checkForUpdate Release catalog protocol", () => {
       patchFallback: false,
     });
   });
+
+  // iOS suspends an app soon after it leaves the foreground: the check and
+  // the download each hold background time until their requests are answered
+  // and the download is staged, on success and failure alike.
+  it("holds background time over the catalog request", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client, fetchReleaseCatalog } = createClient();
+    let heldDuringRequest = 0;
+    fetchReleaseCatalog.mockImplementationOnce(async () => {
+      heldDuringRequest = mocks.backgroundTasks.held;
+      throw new Error("offline");
+    });
+
+    await checkForUpdate({ emit, client, updateStrategy: "appVersion" });
+
+    expect(heldDuringRequest).toBe(1);
+    expect(mocks.backgroundTasks.held).toBe(0);
+  });
+
+  it.each(["staged", "failed"] as const)(
+    "holds background time from the artifact request until the download is %s",
+    async (outcome) => {
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const { client, resolveArtifact } = createClient();
+      const update = await checkForUpdate({
+        emit,
+        client,
+        updateStrategy: "appVersion",
+      });
+      expect(mocks.backgroundTasks.held).toBe(0);
+      const held: number[] = [];
+      resolveArtifact.mockImplementationOnce(async () => {
+        held.push(mocks.backgroundTasks.held);
+        return {
+          artifactProtocolVersion: 1,
+          assets: {},
+          manifestFileHash: "manifest-hash",
+          manifestUrl: "https://updates.example.com/manifest.json",
+        };
+      });
+      mocks.stageBundle.mockImplementationOnce(async () => {
+        held.push(mocks.backgroundTasks.held);
+        if (outcome === "failed") throw new Error("download failed");
+        return { delivery: "manifest", patchFallback: false };
+      });
+
+      const pending = update!.updateBundle();
+      if (outcome === "failed") {
+        await expect(pending).rejects.toThrow("download failed");
+      } else {
+        await expect(pending).resolves.toBe(true);
+      }
+
+      expect(held).toEqual([1, 1]);
+      expect(mocks.backgroundTasks.held).toBe(0);
+    },
+  );
 
   it("reports the check, then the download only after staging", async () => {
     const { checkForUpdate } = await import("./checkForUpdate");
@@ -406,6 +476,50 @@ describe("checkForUpdate Release catalog protocol", () => {
     );
   });
 
+  it("gives the update its release's label, and stages it with the receipt", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const labeled = createCatalog({
+      releases: [{ ...createCatalog().releases[0]!, label: 12 }],
+    });
+    const { client } = createClient(labeled);
+
+    const result = await checkForUpdate({
+      emit,
+      client,
+      updateStrategy: "appVersion",
+    });
+
+    expect(result).toMatchObject({ releaseId: RELEASE_ID, label: 12 });
+    await expect(result?.updateBundle()).resolves.toBe(true);
+    expect(mocks.stageBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selection: expect.objectContaining({
+          releaseId: RELEASE_ID,
+          label: 12,
+        }),
+      }),
+    );
+  });
+
+  it("gives an update from a catalog without labels none", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client } = createClient();
+
+    const result = await checkForUpdate({
+      emit,
+      client,
+      updateStrategy: "appVersion",
+    });
+
+    expect(result).toMatchObject({ releaseId: RELEASE_ID, label: null });
+    await result?.updateBundle();
+    expect(mocks.stageBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selection: expect.objectContaining({ label: null }),
+      }),
+    );
+  });
+
   it("lets native ask for the files it downloads, with the check's headers", async () => {
     const { checkForUpdate } = await import("./checkForUpdate");
     const { client, resolveArtifact } = createClient();
@@ -465,7 +579,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       channel: CHANNEL,
       generation: 1,
       kind: "BUNDLE",
-      releaseId: MINIMUM_RELEASE_ID,
+      releaseId: OLD_RELEASE_ID,
       scopeKey: SCOPE_KEY,
       selectionContextHash: "old-context",
     };
@@ -509,6 +623,47 @@ describe("checkForUpdate Release catalog protocol", () => {
         bundleId: TARGET_BUNDLE_ID,
         releaseId: RELEASE_ID,
       }),
+    });
+  });
+
+  it("commits the label of a Release it adopts for the running bundle", async () => {
+    // The running Release, installed before its catalog carried labels.
+    const active: PersistedSelectionReceipt = {
+      catalogId: CATALOG_ID,
+      bundleId: TARGET_BUNDLE_ID,
+      catalogHash: `sha256:${"b".repeat(64)}`,
+      channel: CHANNEL,
+      generation: 1,
+      kind: "BUNDLE",
+      releaseId: RELEASE_ID,
+      scopeKey: SCOPE_KEY,
+      selectionContextHash: "old-context",
+    };
+    mocks.getBundleId.mockReturnValueOnce(TARGET_BUNDLE_ID);
+    mocks.getActiveUpdateState.mockReturnValueOnce({
+      activeSelection: active,
+      highestSeenCatalogs: {},
+      stableSelection: active,
+      verificationPending: false,
+    });
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client } = createClient(
+      createCatalog({
+        releases: [{ ...createCatalog().releases[0]!, label: 4 }],
+      }),
+    );
+
+    const result = await checkForUpdate({
+      emit,
+      client,
+      updateStrategy: "appVersion",
+    });
+
+    expect(result).toMatchObject({ transitionKind: "ADOPT_RELEASE", label: 4 });
+    await expect(result?.updateBundle()).resolves.toBe(true);
+    expect(mocks.commitReleaseSelection).toHaveBeenCalledWith({
+      guard: expect.anything(),
+      selection: expect.objectContaining({ releaseId: RELEASE_ID, label: 4 }),
     });
   });
 
@@ -570,7 +725,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     mocks.getActiveUpdateState.mockReturnValueOnce({
       activeSelection: receipt(ACTIVE_RELEASE_ID, stagedBundleId),
       highestSeenCatalogs: {},
-      stableSelection: receipt(MINIMUM_RELEASE_ID, CURRENT_BUNDLE_ID),
+      stableSelection: receipt(MIN_BUNDLE_ID, CURRENT_BUNDLE_ID),
       verificationPending: false,
     });
     const { checkForUpdate } = await import("./checkForUpdate");
@@ -611,7 +766,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       channel: CHANNEL,
       generation: 1,
       kind: "BUNDLE",
-      releaseId: MINIMUM_RELEASE_ID,
+      releaseId: OLD_RELEASE_ID,
       scopeKey: SCOPE_KEY,
       selectionContextHash: "old-context",
     };
@@ -640,7 +795,7 @@ describe("checkForUpdate Release catalog protocol", () => {
         channel: CHANNEL,
         bundleId: TARGET_BUNDLE_ID,
         releaseId: RELEASE_ID,
-        previousReleaseId: MINIMUM_RELEASE_ID,
+        previousReleaseId: OLD_RELEASE_ID,
       },
     ]);
   });
@@ -653,7 +808,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       channel: CHANNEL,
       generation: 1,
       kind: "BUNDLE",
-      releaseId: MINIMUM_RELEASE_ID,
+      releaseId: OLD_RELEASE_ID,
       scopeKey: SCOPE_KEY,
       selectionContextHash: "old-context",
     };
@@ -910,7 +1065,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       channel: CHANNEL,
       generation: 1,
       kind: "BUNDLE",
-      releaseId: MINIMUM_RELEASE_ID,
+      releaseId: OLD_RELEASE_ID,
       scopeKey: SCOPE_KEY,
       selectionContextHash: "old-context",
     };
@@ -932,7 +1087,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
 
     expect(result).toMatchObject({
-      id: MINIMUM_RELEASE_ID,
+      id: MIN_BUNDLE_ID,
       releaseId: null,
       shouldForceUpdate: true,
       status: "ROLLBACK",
@@ -942,7 +1097,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     expect(mocks.commitReleaseSelection).toHaveBeenCalledWith(
       expect.objectContaining({
         selection: expect.objectContaining({
-          bundleId: MINIMUM_RELEASE_ID,
+          bundleId: MIN_BUNDLE_ID,
           kind: "BUILTIN",
           releaseId: null,
         }),
@@ -953,7 +1108,7 @@ describe("checkForUpdate Release catalog protocol", () => {
   });
 
   it("does not surface a rollback when the app already uses built-in bytes", async () => {
-    mocks.getBundleId.mockReturnValueOnce(MINIMUM_RELEASE_ID);
+    mocks.getBundleId.mockReturnValueOnce(MIN_BUNDLE_ID);
     const { checkForUpdate } = await import("./checkForUpdate");
     const { client } = createClient(
       createCatalog({ releases: [], rollbackReleases: [] }),
@@ -1044,8 +1199,44 @@ describe("checkForUpdate Release catalog protocol", () => {
     );
     expect(mocks.acceptReleaseCatalog).not.toHaveBeenCalled();
   });
+
+  it("checks as usual in a sandbox stored session, whose receipt names its Release with no Catalog", async () => {
+    // What a sandbox build's native side reports while it runs a stored bundle:
+    // in memory, on the session's own channel, with no catalog, scope, or generation.
+    const session: PersistedSelectionReceipt = {
+      bundleId: CURRENT_BUNDLE_ID,
+      catalogHash: null,
+      catalogId: null,
+      channel: "hot-updater-sandbox-stored-bundle",
+      generation: null,
+      kind: "BUNDLE",
+      releaseId: ACTIVE_RELEASE_ID,
+      scopeKey: null,
+      selectionContextHash: null,
+    };
+    mocks.getActiveUpdateState.mockReturnValue({
+      activeSelection: session,
+      highestSeenCatalogs: {},
+      stableSelection: null,
+      verificationPending: false,
+    });
+    const onError = vi.fn();
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client } = createClient();
+
+    await checkForUpdate({
+      emit,
+      client,
+      onError,
+      updateStrategy: "appVersion",
+    });
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(mocks.acceptReleaseCatalog).toHaveBeenCalledOnce();
+  });
+
   it("reports a check that found nothing to install as UNCHANGED", async () => {
-    mocks.getBundleId.mockReturnValueOnce(MINIMUM_RELEASE_ID);
+    mocks.getBundleId.mockReturnValueOnce(MIN_BUNDLE_ID);
     const { checkForUpdate } = await import("./checkForUpdate");
     const events = await recordPluginEvents();
     const { client } = createClient(
@@ -1062,7 +1253,7 @@ describe("checkForUpdate Release catalog protocol", () => {
         {
           status: "UNCHANGED",
           channel: CHANNEL,
-          bundleId: MINIMUM_RELEASE_ID,
+          bundleId: MIN_BUNDLE_ID,
           releaseId: null,
           previousReleaseId: null,
         },
@@ -1274,5 +1465,348 @@ describe("checkForUpdate Release catalog protocol", () => {
     await expect(result!.updateBundle()).rejects.toThrow();
 
     expect(events.map(([name]) => name)).toEqual(["onUpdateCheck"]);
+  });
+
+  describe("a switched channel that holds nothing for this build", () => {
+    const PR_CHANNEL = "pr-2";
+    const PR_SCOPE_KEY = createReleaseCatalogScopeKey({
+      channelKey: encodeChannelKey(PR_CHANNEL),
+      platform: "ios",
+      strategy: "APP_VERSION",
+    });
+    // The pull request's bundle the device switched to.
+    const runningInPr: PersistedSelectionReceipt = {
+      catalogId: CATALOG_ID,
+      bundleId: CURRENT_BUNDLE_ID,
+      catalogHash: `sha256:${"b".repeat(64)}`,
+      channel: PR_CHANNEL,
+      generation: 1,
+      kind: "BUNDLE",
+      releaseId: RELEASE_ID,
+      scopeKey: PR_SCOPE_KEY,
+      selectionContextHash: "context",
+    };
+    // What the server answers for a deleted channel's scope: the catalog,
+    // a newer generation, with no releases (server spec "answers a deleted
+    // channel's scope with an empty catalog").
+    const deletedChannelCatalog = createCatalog({
+      generation: 3,
+      releases: [],
+      rollbackReleases: [],
+      scopeKey: PR_SCOPE_KEY,
+    });
+
+    const switchToPr = () => {
+      mocks.isChannelSwitched.mockReturnValue(true);
+      mocks.getChannel.mockReturnValue(PR_CHANNEL);
+      mocks.getActiveUpdateState.mockReturnValue({
+        activeSelection: runningInPr,
+        highestSeenCatalogs: {},
+        stableSelection: runningInPr,
+        verificationPending: false,
+      });
+    };
+
+    beforeEach(() => {
+      mocks.resetChannelIfSelectionCurrent.mockResolvedValue(true as never);
+    });
+
+    afterEach(() => {
+      mocks.isChannelSwitched.mockReturnValue(false);
+      mocks.getChannel.mockReturnValue(CHANNEL);
+    });
+
+    it("leaves the channel when its scope answers an empty catalog: a built-in rollback that resets the channel", async () => {
+      switchToPr();
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const { client, fetchReleaseCatalog, resolveArtifact } = createClient(
+        deletedChannelCatalog,
+      );
+
+      const result = await checkForUpdate({
+        emit,
+        client,
+        updateStrategy: "appVersion",
+      });
+
+      expect(fetchReleaseCatalog).toHaveBeenCalledWith(
+        expect.objectContaining({ channel: PR_CHANNEL }),
+      );
+      // The empty catalog passed the same freshness check as any other.
+      expect(mocks.acceptReleaseCatalog).toHaveBeenCalledWith(
+        expect.objectContaining({ generation: 3, scopeKey: PR_SCOPE_KEY }),
+      );
+      expect(result).toMatchObject({
+        id: MIN_BUNDLE_ID,
+        releaseId: null,
+        shouldForceUpdate: true,
+        status: "ROLLBACK",
+        transitionKind: "USE_BUILTIN",
+      });
+      // The check itself changes nothing.
+      expect(mocks.resetChannelIfSelectionCurrent).not.toHaveBeenCalled();
+      await expect(result?.updateBundle()).resolves.toBe(true);
+      // Native resets only while the accepted empty catalog is current.
+      expect(mocks.resetChannelIfSelectionCurrent).toHaveBeenCalledWith({
+        catalogId: CATALOG_ID,
+        catalogHash: CATALOG_HASH,
+        channel: PR_CHANNEL,
+        generation: 3,
+        scopeKey: PR_SCOPE_KEY,
+        selectionContextHash: expect.any(String),
+      });
+      expect(mocks.resetChannelIfSelectionCurrent).toHaveBeenCalledTimes(1);
+      // Nothing is selected inside the channel it leaves.
+      expect(mocks.commitReleaseSelection).not.toHaveBeenCalled();
+      expect(mocks.stageBundle).not.toHaveBeenCalled();
+      expect(resolveArtifact).not.toHaveBeenCalled();
+    });
+
+    it("saves the recovery request on the empty catalog, without the channel it leaves", async () => {
+      switchToPr();
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const { client } = createClient(deletedChannelCatalog);
+
+      const result = await checkForUpdate({
+        emit,
+        client,
+        requestHeaders: { "x-api-key": "key" },
+        requestTimeout: 8000,
+        updateStrategy: "appVersion",
+      });
+      await expect(result?.updateBundle()).resolves.toBe(true);
+
+      // The server answered, so a native check after a crash repeats this
+      // request on the device's own channel: the one the leave restores.
+      expect(mocks.setStorageItem).toHaveBeenCalledWith(
+        "hot-updater/recovery-check-config",
+        JSON.stringify({
+          version: 1,
+          baseURL: "https://updates.example.com/api",
+          requestHeaders: { "x-api-key": "key" },
+          requestTimeoutMs: 8000,
+          updateStrategy: "appVersion",
+        }),
+      );
+      expect(mocks.resetChannelIfSelectionCurrent).toHaveBeenCalledTimes(1);
+    });
+
+    it("lets another result of the same check target count the leave as done", async () => {
+      switchToPr();
+      mocks.resetChannelIfSelectionCurrent.mockImplementation(async () => {
+        mocks.isChannelSwitched.mockReturnValue(false);
+        mocks.getChannel.mockReturnValue(CHANNEL);
+        return true as never;
+      });
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const first = await checkForUpdate({
+        emit,
+        client: createClient(deletedChannelCatalog).client,
+        updateStrategy: "appVersion",
+      });
+      const second = await checkForUpdate({
+        emit,
+        client: createClient(deletedChannelCatalog).client,
+        updateStrategy: "appVersion",
+      });
+
+      await expect(first?.updateBundle()).resolves.toBe(true);
+      await expect(second?.updateBundle()).resolves.toBe(true);
+      expect(mocks.resetChannelIfSelectionCurrent).toHaveBeenCalledTimes(1);
+    });
+
+    it("joins two results of the same catalog left at once", async () => {
+      switchToPr();
+      let finishReset: (value: boolean) => void = () => {};
+      mocks.resetChannelIfSelectionCurrent.mockImplementation(
+        () =>
+          new Promise<boolean>((resolve) => {
+            finishReset = (value) => {
+              mocks.isChannelSwitched.mockReturnValue(false);
+              mocks.getChannel.mockReturnValue(CHANNEL);
+              resolve(value);
+            };
+          }) as never,
+      );
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const check = () =>
+        checkForUpdate({
+          emit,
+          client: createClient(deletedChannelCatalog).client,
+          updateStrategy: "appVersion",
+        });
+      const [first, second] = [await check(), await check()];
+
+      const both = Promise.all([first?.updateBundle(), second?.updateBundle()]);
+      finishReset(true);
+
+      await expect(both).resolves.toEqual([true, true]);
+      expect(mocks.resetChannelIfSelectionCurrent).toHaveBeenCalledTimes(1);
+    });
+
+    it("stays when its scope answers no catalog, which proves nothing", async () => {
+      switchToPr();
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const { client, fetchReleaseCatalog } = createClient();
+      fetchReleaseCatalog.mockResolvedValueOnce(null as never);
+
+      await expect(
+        checkForUpdate({ emit, client, updateStrategy: "appVersion" }),
+      ).resolves.toBeNull();
+      expect(mocks.resetChannelIfSelectionCurrent).not.toHaveBeenCalled();
+    });
+
+    it("stays when the empty catalog is stale", async () => {
+      switchToPr();
+      mocks.acceptReleaseCatalog.mockReturnValueOnce(false);
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const { client } = createClient(deletedChannelCatalog);
+
+      await expect(
+        checkForUpdate({ emit, client, updateStrategy: "appVersion" }),
+      ).resolves.toBeNull();
+      expect(mocks.resetChannelIfSelectionCurrent).not.toHaveBeenCalled();
+    });
+
+    it("stays when a newer catalog arrived before the update", async () => {
+      switchToPr();
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const { client } = createClient(deletedChannelCatalog);
+      const result = await checkForUpdate({
+        emit,
+        client,
+        updateStrategy: "appVersion",
+      });
+      // Native finds the catalog stale in the step that would reset.
+      mocks.resetChannelIfSelectionCurrent.mockResolvedValueOnce(
+        false as never,
+      );
+
+      const { StaleReleaseCatalogError } = await import("./error");
+      await expect(result?.updateBundle()).rejects.toBeInstanceOf(
+        StaleReleaseCatalogError,
+      );
+      expect(mocks.resetChannelIfSelectionCurrent).toHaveBeenCalledWith(
+        expect.objectContaining({ generation: 3, scopeKey: PR_SCOPE_KEY }),
+      );
+    });
+
+    it("needs no reload when the device already runs the built-in bundle", async () => {
+      switchToPr();
+      mocks.getBundleId.mockReturnValueOnce(MIN_BUNDLE_ID);
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const { client } = createClient(deletedChannelCatalog);
+
+      const result = await checkForUpdate({
+        emit,
+        client,
+        updateStrategy: "appVersion",
+      });
+
+      expect(result).toMatchObject({
+        shouldForceUpdate: false,
+        transitionKind: "USE_BUILTIN",
+      });
+      await result?.updateBundle();
+      expect(mocks.resetChannelIfSelectionCurrent).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps a channel the device left or changed before the update", async () => {
+      switchToPr();
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const { client } = createClient(deletedChannelCatalog);
+      const result = await checkForUpdate({
+        emit,
+        client,
+        updateStrategy: "appVersion",
+      });
+      mocks.getChannel.mockReturnValue("pr-3");
+
+      const { StaleReleaseCatalogError } = await import("./error");
+      await expect(result?.updateBundle()).rejects.toBeInstanceOf(
+        StaleReleaseCatalogError,
+      );
+      expect(mocks.resetChannelIfSelectionCurrent).not.toHaveBeenCalled();
+    });
+
+    it("stays on a switched channel whose releases exclude this device", async () => {
+      switchToPr();
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const { client } = createClient(
+        createCatalog({
+          generation: 3,
+          scopeKey: PR_SCOPE_KEY,
+          releases: [
+            {
+              bundleId: TARGET_BUNDLE_ID,
+              kind: "BUNDLE",
+              message: null,
+              releaseId: ACTIVE_RELEASE_ID,
+              rolloutCohortCount: 0,
+              shouldForceUpdate: false,
+              targetCohorts: [],
+            },
+          ],
+        }),
+      );
+
+      const result = await checkForUpdate({
+        emit,
+        client,
+        updateStrategy: "appVersion",
+      });
+      await result?.updateBundle();
+
+      expect(mocks.resetChannelIfSelectionCurrent).not.toHaveBeenCalled();
+    });
+
+    it("rolls back on the default channel without resetting it", async () => {
+      // Not switched: the build's own channel emptied, as before.
+      const active = { ...runningInPr, channel: CHANNEL, scopeKey: SCOPE_KEY };
+      mocks.getActiveUpdateState.mockReturnValue({
+        activeSelection: active,
+        highestSeenCatalogs: {},
+        stableSelection: active,
+        verificationPending: false,
+      });
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const { client } = createClient(
+        createCatalog({ generation: 3, releases: [], rollbackReleases: [] }),
+      );
+
+      const result = await checkForUpdate({
+        emit,
+        client,
+        updateStrategy: "appVersion",
+      });
+      await result?.updateBundle();
+
+      expect(result).toMatchObject({ transitionKind: "USE_BUILTIN" });
+      expect(mocks.commitReleaseSelection).toHaveBeenCalledTimes(1);
+      expect(mocks.resetChannelIfSelectionCurrent).not.toHaveBeenCalled();
+    });
+
+    it("leaves an explicit check of an empty channel unchanged", async () => {
+      // On the default channel, running its bundle.
+      const active = { ...runningInPr, channel: CHANNEL, scopeKey: SCOPE_KEY };
+      mocks.getActiveUpdateState.mockReturnValue({
+        activeSelection: active,
+        highestSeenCatalogs: {},
+        stableSelection: active,
+        verificationPending: false,
+      });
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const { client } = createClient(deletedChannelCatalog);
+
+      await expect(
+        checkForUpdate({
+          emit,
+          client,
+          channel: PR_CHANNEL,
+          updateStrategy: "appVersion",
+        }),
+      ).resolves.toBeNull();
+      expect(mocks.resetChannelIfSelectionCurrent).not.toHaveBeenCalled();
+    });
   });
 });

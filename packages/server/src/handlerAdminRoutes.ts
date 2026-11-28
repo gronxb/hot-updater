@@ -1,16 +1,27 @@
 import {
   DatabaseBundleNotFoundError,
+  type NativeBuildSubmissionDestination,
+  DatabaseConstraintError,
+  ReleaseCatalogCompilationError,
   ReleaseCatalogMutationError,
   ReleaseManagementError,
   type Deployment,
   type KeysetInput,
+  type NativeBuildRegistration,
+  type NativeBuildSandboxScope,
+  type NativeBuildScope,
   type ReleaseFilter,
   type ReleasePolicyPatch,
   DatabaseRowReferencedError,
+  type IosDeviceOutcome,
+  type IosDeviceStatus,
 } from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
 
 import type { CoreApi } from "./core/api";
+import { IosDeviceInputError } from "./core/iosDevices";
+import { NATIVE_BUILD_SUBMISSION_DESTINATIONS } from "./core/nativeBuildDestinations";
+import { NativeBuildInputError } from "./core/nativeBuilds";
 import { HandlerBadRequestError } from "./handlerErrors";
 import {
   decodeMaybe,
@@ -65,11 +76,30 @@ export const answer = async (
             : 400;
       return json({ code: error.code, error: error.message }, status);
     }
+    if (
+      error instanceof ReleaseCatalogCompilationError &&
+      error.code === "CATALOG_OVERSIZE"
+    ) {
+      return json({ code: error.code, error: error.message }, 400);
+    }
     if (error instanceof DatabaseBundleNotFoundError) {
       return json({ code: "BUNDLE_NOT_FOUND", error: error.message }, 404);
     }
     if (error instanceof DatabaseRowReferencedError) {
       return json({ code: "REFERENCED", error: error.message }, 409);
+    }
+    if (
+      error instanceof DatabaseConstraintError &&
+      error.model === "native_builds"
+    ) {
+      return json(
+        {
+          code: "NATIVE_BUILD_EXISTS",
+          error:
+            "A native build with this ID or built-in bundle ID is already registered.",
+        },
+        409,
+      );
     }
     throw error;
   }
@@ -77,9 +107,16 @@ export const answer = async (
 
 const LIMITS = { defaultValue: 50, maxValue: 500 } as const;
 
+/** The most IDs one request names: a lookup's, or a write's. */
+const MAX_IDS = 100;
+
 /** `order`, `cursor`, and `limit`: one keyset page. */
-const keyset = (url: URL, maxValue: number = LIMITS.maxValue): KeysetInput => {
-  const order = url.searchParams.get("order") ?? "desc";
+const keyset = (
+  url: URL,
+  maxValue: number = LIMITS.maxValue,
+  defaultOrder: "asc" | "desc" = "desc",
+): KeysetInput => {
+  const order = url.searchParams.get("order") ?? defaultOrder;
   if (order !== "asc" && order !== "desc") {
     throw new HandlerBadRequestError("order must be 'asc' or 'desc'.");
   }
@@ -94,7 +131,13 @@ const keyset = (url: URL, maxValue: number = LIMITS.maxValue): KeysetInput => {
     );
   }
   const cursor = url.searchParams.get("cursor");
-  return { order, limit, ...(cursor === null ? {} : { after: cursor }) };
+  const through = url.searchParams.get("through");
+  return {
+    order,
+    limit,
+    ...(cursor === null ? {} : { after: cursor }),
+    ...(through === null ? {} : { through }),
+  };
 };
 
 /** A page and the cursor of the next one, when the page is full. */
@@ -244,6 +287,118 @@ const bundleUpdateOf = (value: unknown, bundleId: string): BundleUpdate => {
   return update as BundleUpdate;
 };
 
+const NATIVE_BUILD_ARTIFACT_KINDS = new Set(["apk", "aab", "ipa", "app"]);
+
+/** A native build's scope: `fingerprintHash` or `appVersion`, never both. */
+const nativeBuildScopeOf = (url: URL): NativeBuildScope => {
+  const params = url.searchParams;
+  const platform = platformOf(url);
+  const channel = params.get("channel");
+  const fingerprintHash = params.get("fingerprintHash");
+  const appVersion = params.get("appVersion");
+  if (
+    platform === undefined ||
+    !isText(channel) ||
+    (fingerprintHash === null) === (appVersion === null) ||
+    fingerprintHash === "" ||
+    appVersion === ""
+  ) {
+    throw new HandlerBadRequestError(
+      "A native build lookup needs platform, channel, and fingerprintHash or appVersion.",
+    );
+  }
+  const sandbox = sandboxScopeOf(params);
+  const scope: NativeBuildScope =
+    fingerprintHash !== null
+      ? { platform, channel, fingerprintHash, appVersion: null }
+      : { platform, channel, fingerprintHash: null, appVersion: appVersion! };
+  return sandbox === null ? scope : { ...scope, sandbox };
+};
+
+/** The query parameters a sandbox lookup names, all four or none. */
+const SANDBOX_SCOPE_PARAMS = [
+  "sandboxAppId",
+  "sandboxUrlScheme",
+  "artifactKind",
+  "distribution",
+] as const;
+
+/**
+ * A lookup's sandbox scope: null without one, and a bad request for one
+ * named in part. Core checks each value.
+ */
+const sandboxScopeOf = (
+  params: URLSearchParams,
+): NativeBuildSandboxScope | null => {
+  const [appId, urlScheme, artifactKind, distribution] =
+    SANDBOX_SCOPE_PARAMS.map((name) => params.get(name));
+  const named = [appId, urlScheme, artifactKind, distribution].filter(
+    (value) => value !== null,
+  ).length;
+  if (named === 0) return null;
+  if (named !== SANDBOX_SCOPE_PARAMS.length) {
+    throw new HandlerBadRequestError(
+      `A sandbox build lookup needs ${SANDBOX_SCOPE_PARAMS.join(", ")}.`,
+    );
+  }
+  return {
+    appId: appId!,
+    urlScheme: urlScheme!,
+    artifactKind: artifactKind as NativeBuildSandboxScope["artifactKind"],
+    distribution: distribution as NativeBuildSandboxScope["distribution"],
+  };
+};
+
+/** A native build or scope core refuses: a bad request. */
+const refusingInvalid = async <T>(operation: () => Promise<T>): Promise<T> => {
+  try {
+    return await operation();
+  } catch (error) {
+    if (
+      error instanceof NativeBuildInputError ||
+      error instanceof IosDeviceInputError
+    ) {
+      throw new HandlerBadRequestError(error.message);
+    }
+    throw error;
+  }
+};
+
+const isNativeBuildRegistration = (
+  value: unknown,
+): value is NativeBuildRegistration =>
+  isRecord(value) &&
+  isText(value.id) &&
+  isText(value.minBundleId) &&
+  typeof value.platform === "string" &&
+  isPlatform(value.platform) &&
+  isText(value.channel) &&
+  isTextOrNull(value.fingerprintHash) &&
+  isTextOrNull(value.appVersion) &&
+  (value.fingerprintHash === null) !== (value.appVersion === null) &&
+  isTextOrNull(value.gitCommitHash) &&
+  isTextOrNull(value.buildKey) &&
+  (value.buildNumber === undefined || isTextOrNull(value.buildNumber)) &&
+  (value.isSandbox === undefined || typeof value.isSandbox === "boolean") &&
+  (value.sandboxUrlScheme === undefined ||
+    isTextOrNull(value.sandboxUrlScheme)) &&
+  (value.sandboxAppId === undefined || isTextOrNull(value.sandboxAppId)) &&
+  (value.exportMethod === undefined || isTextOrNull(value.exportMethod)) &&
+  (value.nativeAppVersion === undefined ||
+    isTextOrNull(value.nativeAppVersion)) &&
+  isRecord(value.artifact) &&
+  typeof value.artifact.kind === "string" &&
+  NATIVE_BUILD_ARTIFACT_KINDS.has(value.artifact.kind) &&
+  isText(value.artifact.storageUri) &&
+  Number.isSafeInteger(value.artifact.byteSize) &&
+  (value.artifact.byteSize as number) >= 0 &&
+  isRecord(value.embeddedBundle) &&
+  isText(value.embeddedBundle.manifestStorageUri) &&
+  isText(value.embeddedBundle.manifestFileHash) &&
+  isText(value.embeddedBundle.assetBaseStorageUri) &&
+  (value.embeddedBundle.metadata === undefined ||
+    isRecord(value.embeddedBundle.metadata));
+
 const scopeKeyOf = (params: Record<string, string>) =>
   decodeMaybe(requireRouteParam(params, "scopeKey")) ?? "";
 
@@ -287,12 +442,49 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     return page(rows, input, (row) => row.scope_key);
   }),
 
-  /** With `name`, the one channel of that name: 1 read. */
+  /** Up to 100 scope keys that have releases, after `cursor`: one seek each. */
+  listReleaseScopeKeys: onCore(async (core, request) => {
+    const input = keyset(new URL(request.url), 100, "asc");
+    if (input.order !== "asc" || input.through !== undefined) {
+      throw new HandlerBadRequestError(
+        "Release scopes are listed ascending, by limit and cursor only.",
+      );
+    }
+    const rows = await core.listReleaseScopeKeys({
+      limit: input.limit,
+      ...(input.after === undefined ? {} : { after: input.after }),
+    });
+    return page(rows, input, (scopeKey) => scopeKey);
+  }),
+
+  /**
+   * With `name`, the one channel of that name: 1 read. With `ids`, the
+   * channels of up to 100 IDs: 1 batch read. With `limit` or `cursor`, one
+   * page by name. With none, every channel, as servers before pages answered.
+   */
   getChannels: onCore(async (core, request) => {
-    const name = new URL(request.url).searchParams.get("name");
-    if (name === null) return json({ data: await core.listChannels() });
-    const channel = await core.findChannelByName(name);
-    return channel === null ? notFound() : json({ data: channel });
+    const url = new URL(request.url);
+    const name = url.searchParams.get("name");
+    if (name !== null) {
+      const channel = await core.findChannelByName(name);
+      return channel === null ? notFound() : json({ data: channel });
+    }
+    const ids = url.searchParams.get("ids");
+    if (ids !== null) {
+      const list = ids.split(",").filter((id) => id.length > 0);
+      if (list.length === 0 || list.length > MAX_IDS) {
+        throw new HandlerBadRequestError(
+          `Channels by ID take ids=<channel id>,... with 1 to ${MAX_IDS} ids.`,
+        );
+      }
+      return json({ data: await core.getChannels(list) });
+    }
+    if (url.searchParams.has("limit") || url.searchParams.has("cursor")) {
+      const input = keyset(url, LIMITS.maxValue, "asc");
+      const rows = await core.listChannels(input);
+      return page(rows, input, (row) => row.name);
+    }
+    return json({ data: await core.listChannels() });
   }),
 
   /** The channel named in the body, created when missing. */
@@ -365,12 +557,48 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     json({ data: await core.rebuildReleaseCatalog(scopeKeyOf(params)) }),
   ),
 
+  /**
+   * The release a label names, or `null`: never 404, which tells a client
+   * the server has no such route.
+   */
+  getReleaseByLabel: onCore(async (core, request) => {
+    const url = new URL(request.url);
+    const channel = url.searchParams.get("channel");
+    const platform = platformOf(url);
+    const label = Number(url.searchParams.get("label"));
+    if (
+      channel === null ||
+      channel.length === 0 ||
+      platform === undefined ||
+      !Number.isSafeInteger(label) ||
+      label < 1
+    ) {
+      throw new HandlerBadRequestError(
+        "A release label lookup takes channel, platform, and a label of 1 or more.",
+      );
+    }
+    return json({
+      data: await core.getReleaseByLabel({ channel, platform, label }),
+    });
+  }),
+
+  fillReleaseLabels: onCore(async (core, request) => {
+    const body: unknown = await request.json().catch(() => ({}));
+    const input = (
+      body !== null && typeof body === "object" ? body : {}
+    ) as Record<string, unknown>;
+    return json({
+      data: await core.fillReleaseLabels({
+        dryRun: input.dryRun === true,
+        catalogs: input.catalogs !== false,
+      }),
+    });
+  }),
+
   updateBundle: onCore(async (core, request, params) => {
     const bundleId = requireRouteParam(params, "id");
-    await core.updateBundle(
-      bundleId,
-      bundleUpdateOf(await request.json(), bundleId),
-    );
+    const update = bundleUpdateOf(await request.json(), bundleId);
+    await refusingInvalid(() => core.updateBundle(bundleId, update));
     return noContent();
   }),
 
@@ -382,9 +610,9 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     const ids = (new URL(request.url).searchParams.get("ids") ?? "")
       .split(",")
       .filter((id) => id.length > 0);
-    if (ids.length === 0 || ids.length > 100) {
+    if (ids.length === 0 || ids.length > MAX_IDS) {
       throw new HandlerBadRequestError(
-        "Bundle child counts take ids=<bundle id>,... with 1 to 100 ids.",
+        `Bundle child counts take ids=<bundle id>,... with 1 to ${MAX_IDS} ids.`,
       );
     }
     return json({ data: await core.countBundleChildren(ids) });
@@ -433,7 +661,10 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
         "Deploy needs deployments, each a bundle and its release policy.",
       );
     }
-    return json({ data: await core.deploy(deployments) }, 201);
+    return json(
+      { data: await refusingInvalid(() => core.deploy(deployments)) },
+      201,
+    );
   }),
 
   promoteRelease: onCore(async (core, request, params) => {
@@ -463,6 +694,310 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     }),
   ),
 
+  registerNativeBuild: onCore(async (core, request) => {
+    const input = await body(request);
+    if (!isNativeBuildRegistration(input)) {
+      throw new HandlerBadRequestError("Invalid native build");
+    }
+    return json(
+      { data: await refusingInvalid(() => core.registerNativeBuild(input)) },
+      201,
+    );
+  }),
+
+  // A scope without a build answers 200 with null data, so a 404 means a
+  // server without these routes.
+  // With `buildKey`, the newest build of the scope with that native build key;
+  // with `storeBuild=true`, its marked build; with `builtInOlderThan`, its newest
+  // build older than that bundle among the newest and the 100 before it; with
+  // `kind`, its newest build of that artifact kind (`artifactKind` names a
+  // sandbox scope's).
+  findNativeBuild: onCore(async (core, request) => {
+    const url = new URL(request.url);
+    const scope = nativeBuildScopeOf(url);
+    const buildKey = url.searchParams.get("buildKey");
+    const builtInOlderThan = url.searchParams.get("builtInOlderThan");
+    // Core refuses a kind the platform doesn't build.
+    const kind = url.searchParams.get("kind");
+    const options = {
+      ...(buildKey === null ? {} : { buildKey }),
+      ...(url.searchParams.get("storeBuild") === "true"
+        ? { storeBuild: true as const }
+        : {}),
+      ...(builtInOlderThan === null ? {} : { builtInOlderThan }),
+      ...(kind === null
+        ? {}
+        : { artifactKind: kind as NativeBuildSandboxScope["artifactKind"] }),
+    };
+    return json({
+      data: await refusingInvalid(() =>
+        Object.keys(options).length === 0
+          ? core.findNativeBuild(scope)
+          : core.findNativeBuild(scope, options),
+      ),
+    });
+  }),
+
+  // The other install target of a sandbox build's native code; an unknown ID,
+  // or a build with none, answers 200 with null data.
+  findNativeBuildSibling: onCore(async (core, _request, params) => {
+    const build = await core.getNativeBuild(requireRouteParam(params, "id"));
+    return json({
+      data: build === null ? null : await core.findNativeBuildSibling(build),
+    });
+  }),
+
+  // An unknown ID answers 200 with null data, as a scope without a build
+  // does, so a 404 means a server without the route.
+  getNativeBuild: onCore(async (core, _request, params) =>
+    json({
+      data: await core.getNativeBuild(requireRouteParam(params, "id")),
+    }),
+  ),
+
+  // The build that compiled in this bundle; none answers 200 with null data.
+  findNativeBuildByBuiltInBundle: onCore(async (core, _request, params) =>
+    json({
+      data: await core.findNativeBuildByBuiltInBundle(
+        requireRouteParam(params, "bundleId"),
+      ),
+    }),
+  ),
+
+  listNativeBuilds: onCore(async (core, request) => {
+    const url = new URL(request.url);
+    const input = keyset(url);
+    const channelId = url.searchParams.get("channelId");
+    return page(
+      await core.listNativeBuilds({
+        ...input,
+        ...(channelId === null ? {} : { channelId }),
+      }),
+      input,
+      ({ id }) => id,
+    );
+  }),
+
+  // An unknown ID answers 200 with the not_found result, so a 404 means a
+  // server without the route.
+  // An unknown ID answers 200 with null data, so a 404 means a server
+  // without the route.
+  recordNativeBuildSubmission: onCore(async (core, request, params) => {
+    const input = await body(request);
+    if (
+      !isRecord(input) ||
+      !Object.values(NATIVE_BUILD_SUBMISSION_DESTINATIONS)
+        .flat()
+        .includes(input.destination as NativeBuildSubmissionDestination) ||
+      !isText(input.version)
+    ) {
+      throw new HandlerBadRequestError(
+        "A native build submission needs a valid store destination and version.",
+      );
+    }
+    const submission = {
+      destination: input.destination as NativeBuildSubmissionDestination,
+      version: input.version,
+    } as const;
+    return json({
+      data: await refusingInvalid(() =>
+        core.recordNativeBuildSubmission(
+          requireRouteParam(params, "id"),
+          submission,
+        ),
+      ),
+    });
+  }),
+
+  // An unknown ID answers 200 with null data, so a 404 means a server without
+  // the route.
+  markNativeBuild: onCore(async (core, request, params) => {
+    const input = await body(request);
+    if (!isRecord(input) || typeof input.storeBuild !== "boolean") {
+      throw new HandlerBadRequestError(
+        "A native build's store build mark needs storeBuild, true or false.",
+      );
+    }
+    const mark = { storeBuild: input.storeBuild };
+    return json({
+      data: await refusingInvalid(() =>
+        core.markNativeBuild(requireRouteParam(params, "id"), mark),
+      ),
+    });
+  }),
+
+  deleteNativeBuild: onCore(async (core, _request, params) =>
+    json({
+      data: await core.deleteNativeBuild(requireRouteParam(params, "id")),
+    }),
+  ),
+
+  // The iOS device registry. An unknown ID or UDID answers 200 with null
+  // data, so a 404 means a server without these routes.
+  listIosDevices: onCore(async (core, request) => {
+    const url = new URL(request.url);
+    const input = keyset(url);
+    const status = url.searchParams.get("status");
+    return page(
+      await refusingInvalid(() =>
+        core.listIosDevices({
+          ...input,
+          ...(status === null ? {} : { status: status as IosDeviceStatus }),
+        }),
+      ),
+      input,
+      ({ id }) => id,
+    );
+  }),
+
+  findIosDevice: onCore(async (core, _request, params) =>
+    json({ data: await core.findIosDevice(requireRouteParam(params, "udid")) }),
+  ),
+
+  requestIosDevice: onCore(async (core, request) => {
+    const input = await body(request);
+    if (
+      !isText(input.udid) ||
+      !isText(input.name) ||
+      !isTextOrNull(input.requestedBy)
+    ) {
+      throw new HandlerBadRequestError(
+        "An iOS device request needs udid, name, and requestedBy, an email or null.",
+      );
+    }
+    const device = {
+      udid: input.udid,
+      name: input.name,
+      requestedBy: input.requestedBy as string | null,
+    };
+    return json({
+      data: await refusingInvalid(() => core.requestIosDevice(device)),
+    });
+  }),
+
+  approveIosDevice: onCore(async (core, request, params) => {
+    const input = await body(request);
+    if (
+      !isTextOrNull(input.approvedBy) ||
+      (input.name !== undefined && !isText(input.name))
+    ) {
+      throw new HandlerBadRequestError(
+        "An iOS device approval needs approvedBy, an email or null, and an optional name.",
+      );
+    }
+    const approval = {
+      approvedBy: input.approvedBy as string | null,
+      ...(input.name === undefined ? {} : { name: input.name as string }),
+    };
+    return json({
+      data: await refusingInvalid(() =>
+        core.approveIosDevice(requireRouteParam(params, "id"), approval),
+      ),
+    });
+  }),
+
+  renameIosDevice: onCore(async (core, request, params) => {
+    const input = await body(request);
+    if (!isText(input.name)) {
+      throw new HandlerBadRequestError("An iOS device's new name is required.");
+    }
+    const name = input.name;
+    return json({
+      data: await refusingInvalid(() =>
+        core.renameIosDevice(requireRouteParam(params, "id"), name),
+      ),
+    });
+  }),
+
+  recordIosDeviceOutcome: onCore(async (core, request, params) => {
+    const input = await body(request);
+    const seen = input.seen;
+    if (
+      !isRecord(seen) ||
+      typeof seen.status !== "string" ||
+      !(
+        seen.approvedAtMs === null || Number.isSafeInteger(seen.approvedAtMs)
+      ) ||
+      !isText(input.issuerId) ||
+      typeof input.outcome !== "string" ||
+      (input.reason !== undefined && typeof input.reason !== "string")
+    ) {
+      throw new HandlerBadRequestError(
+        "An iOS device outcome needs seen { status, approvedAtMs }, issuerId, outcome, and an optional reason.",
+      );
+    }
+    const outcome = {
+      id: requireRouteParam(params, "id"),
+      seen: {
+        status: seen.status as IosDeviceStatus,
+        approvedAtMs: seen.approvedAtMs as number | null,
+      },
+      issuerId: input.issuerId,
+      outcome: input.outcome as IosDeviceOutcome,
+      ...(input.reason === undefined ? {} : { reason: input.reason as string }),
+    };
+    return json({
+      data: await refusingInvalid(() => core.recordIosDeviceOutcome(outcome)),
+    });
+  }),
+
+  claimIosDeviceAccount: onCore(async (core, request) => {
+    const { issuerId } = await body(request);
+    if (!isText(issuerId)) {
+      throw new HandlerBadRequestError(
+        "Claiming the iOS device account needs issuerId.",
+      );
+    }
+    return json({
+      data: await refusingInvalid(() => core.claimIosDeviceAccount(issuerId)),
+    });
+  }),
+
+  // No account yet answers 200 with null data, so a 404 means a server
+  // without the route.
+  findIosDeviceAccount: onCore(async (core) =>
+    json({ data: await core.findIosDeviceAccount() }),
+  ),
+
+  markIosDevicesInBuild: onCore(async (core, request) => {
+    const input = await body(request);
+    const { buildId, ids } = input;
+    if (
+      !isText(buildId) ||
+      !Array.isArray(ids) ||
+      !ids.every((id): id is string => isText(id))
+    ) {
+      throw new HandlerBadRequestError(
+        "Marking iOS devices in a build needs buildId and ids.",
+      );
+    }
+    if (ids.length > MAX_IDS) {
+      throw new HandlerBadRequestError(
+        `Marking iOS devices in a build takes at most ${MAX_IDS} ids a request.`,
+      );
+    }
+    await core.markIosDevicesInBuild({ buildId, ids });
+    return noContent();
+  }),
+
+  // With `status` or `requestedBy`, only a row that still has them.
+  deleteIosDevice: onCore(async (core, request, params) => {
+    const url = new URL(request.url);
+    const status = url.searchParams.get("status");
+    const requestedBy = url.searchParams.get("requestedBy");
+    const only = {
+      ...(status === null ? {} : { status: status as IosDeviceStatus }),
+      ...(requestedBy === null ? {} : { requestedBy }),
+    };
+    return json({
+      data: await refusingInvalid(() =>
+        Object.keys(only).length === 0
+          ? core.deleteIosDevice(requireRouteParam(params, "id"))
+          : core.deleteIosDevice(requireRouteParam(params, "id"), only),
+      ),
+    });
+  }),
+
   deleteBundles: onCore(async (core, request) => {
     const { ids } = await body(request);
     if (
@@ -471,6 +1006,8 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     ) {
       throw new HandlerBadRequestError("Bundle deletion needs ids");
     }
+    // Uncapped: a released 1.1.x `doctor --fix` sends every unreferenced
+    // artifact in one request.
     await core.deleteBundles(ids);
     return noContent();
   }),
@@ -499,6 +1036,13 @@ export const ADMIN_ROUTES: readonly {
     handler: "getReleaseCatalogRow",
   },
   { method: "GET", path: "/release-catalogs", handler: "listReleaseCatalogs" },
+  { method: "GET", path: "/release-scopes", handler: "listReleaseScopeKeys" },
+  { method: "GET", path: "/release-labels", handler: "getReleaseByLabel" },
+  {
+    method: "POST",
+    path: "/release-labels/fill",
+    handler: "fillReleaseLabels",
+  },
   {
     method: "POST",
     path: "/release-catalogs/:scopeKey/rebuild",
@@ -532,4 +1076,67 @@ export const ADMIN_ROUTES: readonly {
     path: "/base-candidates/:candidateKey",
     handler: "findBaseCandidates",
   },
+  { method: "POST", path: "/native-builds", handler: "registerNativeBuild" },
+  { method: "GET", path: "/native-builds/latest", handler: "findNativeBuild" },
+  {
+    method: "GET",
+    path: "/native-builds/built-in/:bundleId",
+    handler: "findNativeBuildByBuiltInBundle",
+  },
+  {
+    method: "GET",
+    path: "/native-builds/:id/sibling",
+    handler: "findNativeBuildSibling",
+  },
+  { method: "GET", path: "/native-builds/:id", handler: "getNativeBuild" },
+  { method: "GET", path: "/native-builds", handler: "listNativeBuilds" },
+  {
+    method: "POST",
+    path: "/native-builds/:id/submission",
+    handler: "recordNativeBuildSubmission",
+  },
+  {
+    method: "POST",
+    path: "/native-builds/:id/store-build",
+    handler: "markNativeBuild",
+  },
+  {
+    method: "DELETE",
+    path: "/native-builds/:id",
+    handler: "deleteNativeBuild",
+  },
+  { method: "GET", path: "/ios-devices", handler: "listIosDevices" },
+  { method: "POST", path: "/ios-devices", handler: "requestIosDevice" },
+  {
+    method: "GET",
+    path: "/ios-devices/udid/:udid",
+    handler: "findIosDevice",
+  },
+  {
+    method: "POST",
+    path: "/ios-devices/in-build",
+    handler: "markIosDevicesInBuild",
+  },
+  {
+    method: "GET",
+    path: "/ios-devices/account",
+    handler: "findIosDeviceAccount",
+  },
+  {
+    method: "POST",
+    path: "/ios-devices/account",
+    handler: "claimIosDeviceAccount",
+  },
+  {
+    method: "POST",
+    path: "/ios-devices/:id/approval",
+    handler: "approveIosDevice",
+  },
+  {
+    method: "POST",
+    path: "/ios-devices/:id/outcome",
+    handler: "recordIosDeviceOutcome",
+  },
+  { method: "PATCH", path: "/ios-devices/:id", handler: "renameIosDevice" },
+  { method: "DELETE", path: "/ios-devices/:id", handler: "deleteIosDevice" },
 ];

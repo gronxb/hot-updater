@@ -147,10 +147,8 @@ export async function loadHotUpdater(
   configPath: string,
   options: LoadHotUpdaterOptions = {},
 ): Promise<LoadHotUpdaterResult> {
-  const absoluteConfigPath = resolveConfigPath(
-    configPath,
-    options.cwd ?? process.cwd(),
-  );
+  const cwd = options.cwd ?? process.cwd();
+  const absoluteConfigPath = resolveConfigPath(configPath, cwd);
 
   // Verify config file exists
   if (!existsSync(absoluteConfigPath)) {

@@ -1,12 +1,18 @@
 import type { DatabaseAdapter } from "../../database/adapter";
 import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
 import type { SchemaSettings } from "../database/fence";
+import { SETTINGS_TABLE } from "../database/fence";
 import type { ResolvedSchema } from "../database/resolveSchema";
 import { getEmptyMigrationResult } from "./fixedMigratorShared";
-import { migrateSchema } from "./schemaSettings";
+import {
+  addLateColumns,
+  fillLateIndexes,
+  migrateSchema,
+} from "./schemaSettings";
 import {
   refuseNewerSchema,
   refuseV0Database,
+  settingsOperation,
   storedSchemaVersion,
 } from "./settingsMigrator";
 import type { MigrateOptions, MigrationResult, Migrator } from "./types";
@@ -46,35 +52,82 @@ export const createEngineMigrator = (
       options.settings,
       options.ordered,
     );
-    if (
-      Object.entries(options.settings).every(
-        ([key, value]) => stored.get(key) === value,
-      )
-    ) {
-      return getEmptyMigrationResult();
+    const changed = Object.entries(options.settings).filter(
+      ([key, value]) => stored.get(key) !== value,
+    );
+    if (changed.length === 0) {
+      // Up to date, but for late columns a prerelease of this version's
+      // schema lacked, which bring their tables and indexes, and for late
+      // index items an earlier release's server wrote rows without.
+      const columns = await addLateColumns(
+        options.adapter,
+        options.schema.tables,
+        { dryRun: true },
+      );
+      const lacking = await fillLateIndexes(
+        options.adapter,
+        options.schema.tables,
+        { dryRun: true },
+      );
+      if (columns.length === 0 && lacking.length === 0) {
+        return getEmptyMigrationResult();
+      }
+      return {
+        operations: [
+          ...columns.map((column) => ({
+            type: "custom" as const,
+            description: `Add column: ${column}`,
+          })),
+          ...(columns.length === 0
+            ? []
+            : [
+                {
+                  type: "custom" as const,
+                  description:
+                    "Create the tables and indexes the database lacks",
+                },
+              ]),
+          ...(lacking.length === 0
+            ? []
+            : [
+                {
+                  type: "custom" as const,
+                  description: `Write the index items rows lack: ${lacking.join(", ")}`,
+                },
+              ]),
+        ],
+        execute: async () => {
+          if (columns.length > 0) {
+            await addLateColumns(options.adapter, options.schema.tables);
+            await options.adapter.migrations!.apply([
+              ...options.schema.tables,
+              SETTINGS_TABLE,
+            ]);
+          }
+          await fillLateIndexes(options.adapter, options.schema.tables);
+        },
+      };
     }
+    // The store creates what is missing and leaves what exists; it cannot
+    // tell which, so the plan names the step once, after the columns it adds.
+    const columns = await addLateColumns(
+      options.adapter,
+      options.schema.tables,
+      { dryRun: true },
+    ).catch(() => []);
     return {
       operations: [
-        ...options.schema.tables.map((table) => ({
-          type: "create-table" as const,
-          value: {
-            ormName: table.name,
-            columns: Object.fromEntries(
-              table.columns.map((column) => [
-                column.name,
-                { ormName: column.name, type: column.type },
-              ]),
-            ),
-          },
+        ...columns.map((column) => ({
+          type: "custom" as const,
+          description: `Add column: ${column}`,
         })),
+        {
+          type: "custom",
+          description: "Create the tables and indexes the database lacks",
+        },
         ...(migrate.updateSettings === false
           ? []
-          : [
-              {
-                type: "custom" as const,
-                description: `Write the schema settings: ${Object.keys(options.settings).join(", ")}`,
-              },
-            ]),
+          : [settingsOperation(stored, changed)]),
       ],
       execute: () =>
         migrateSchema(

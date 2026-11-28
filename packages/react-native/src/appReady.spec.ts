@@ -351,3 +351,32 @@ describe("app-ready reporting to plugins", () => {
     expect(mocks.getBundleId).not.toHaveBeenCalled();
   });
 });
+
+describe("the running Release", () => {
+  it("is a sandbox stored session's, on the session's own channel", async () => {
+    // What a sandbox build's native side reports while it runs a stored bundle.
+    const channel = "hot-updater-sandbox-stored-bundle";
+    mocks.getChannel.mockReturnValue(channel);
+    mocks.getActiveUpdateState.mockReturnValue({
+      activeSelection: {
+        kind: "BUNDLE",
+        releaseId: "release-1",
+        bundleId: "stored-file",
+        catalogId: null,
+        scopeKey: null,
+        generation: null,
+        catalogHash: null,
+        channel,
+        selectionContextHash: null,
+      },
+      stableSelection: null,
+      verificationPending: false,
+      highestSeenCatalogs: {},
+    } as unknown as ActiveUpdateState);
+    const { getRunningReleaseId } = await import("./appReady");
+
+    expect(getRunningReleaseId("stored-file", channel)).toBe("release-1");
+    expect(getRunningReleaseId("another-file", channel)).toBeNull();
+    mocks.getChannel.mockReturnValue("production");
+  });
+});

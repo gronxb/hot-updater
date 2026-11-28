@@ -4,10 +4,9 @@ import path from "path";
 
 import type {
   AnyHotUpdaterPlugin,
-  BundleSigningAdapter,
   ConfigInput,
   ConfiguredDatabase,
-  LocalSigningConfig,
+  SigningConfig,
   StorageAdapter,
 } from "@hot-updater/plugin-core";
 import {
@@ -36,9 +35,7 @@ describe("ConfigResponse", () => {
     }>();
     expectTypeOf<ConfigResponse["console"]["port"]>().toEqualTypeOf<number>();
     expectTypeOf<ConfigResponse["signing"]>().toEqualTypeOf<
-      | BundleSigningAdapter
-      | Extract<LocalSigningConfig, { enabled: true }>
-      | undefined
+      SigningConfig | undefined
     >();
 
     expectTypeOf<ConfigResponse["database"]>().toEqualTypeOf<
@@ -135,6 +132,316 @@ describe("loadConfig", () => {
       Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SETTINGS__");
     }
   });
+
+  it("defaults secrets to the environment and `localSecrets()`'s store, and registers it for secret() references", async () => {
+    const { loadConfig } = await import("./loadConfig");
+    const { getConfiguredAdapter, getConfiguredSecrets } =
+      await import("./secrets");
+
+    const config = await loadConfig(null);
+
+    expect(config.secrets.name).toBe("localSecrets");
+    expect(config.secrets.set).toBeTypeOf("function");
+    expect(getConfiguredAdapter(config.secrets)).toBeUndefined();
+    expect(getConfiguredSecrets()).toBe(config.secrets);
+  });
+
+  it("takes the secrets adapter whole, and the config's own copy of secret() reads through it without touching process.env", async () => {
+    // Given: a config that imports secret as its own module copy, as a
+    // project's config imports hot-updater
+    vi.stubEnv("HU_SPEC_DEPLOY_TOKEN", undefined);
+    const get = vi.fn(async (names: readonly string[]) =>
+      Object.fromEntries(names.map((name) => [name, `store:${name}`])),
+    );
+    const secrets = Object.freeze({ name: "spec-store", get });
+    Reflect.set(globalThis, "__HOT_UPDATER_TEST_SECRETS__", secrets);
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        `import { secret } from ${JSON.stringify(path.join(import.meta.dirname, "secrets.ts"))};`,
+        "export default {",
+        "  secrets: globalThis.__HOT_UPDATER_TEST_SECRETS__,",
+        '  storage: { name: "s3Storage", protocol: "s3", token: secret("HU_SPEC_DEPLOY_TOKEN") },',
+        "};",
+        "",
+      ].join("\n"),
+    );
+    const before = { ...process.env };
+
+    try {
+      const { loadConfig } = await import("./loadConfig");
+      const config = await loadConfig(null);
+      // Loading reads no secret.
+      expect(get).not.toHaveBeenCalled();
+
+      // When: the storage adapter asks for its token
+      const { token } = config.storage as unknown as {
+        token: () => Promise<string>;
+      };
+      const value = await token();
+
+      // Then: the config's adapter, with `localSecrets()`'s store after it
+      const { getConfiguredAdapter } = await import("./secrets");
+      expect(getConfiguredAdapter(config.secrets)).toBe(secrets);
+      expect(config.secrets.name).toBe("spec-store");
+      expect(value).toBe("store:HU_SPEC_DEPLOY_TOKEN");
+      expect(get).toHaveBeenCalledWith(["HU_SPEC_DEPLOY_TOKEN"], {
+        cwd: expect.any(String),
+      });
+      expect(process.env).toEqual(before);
+      // The CLI's own masker hides what the config's copy resolved.
+      const { maskSecretValues } = await import("./secretMasking");
+      expect(maskSecretValues("token store:HU_SPEC_DEPLOY_TOKEN")).toBe(
+        "token ********",
+      );
+    } finally {
+      Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SECRETS__");
+      const { setConfiguredSecrets, resolveSecretsAdapter } =
+        await import("./secrets");
+      setConfiguredSecrets(resolveSecretsAdapter());
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("records the names the adapters' secret()s read, once each, without the build credentials', for doctor and secrets import", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        `import { secret } from ${JSON.stringify(path.join(import.meta.dirname, "secrets.ts"))};`,
+        "export default {",
+        '  storage: { name: "s3Storage", protocol: "s3", credentials: { accessKeyId: secret("HU_SPEC_KEY_ID"), secretAccessKey: secret("HU_SPEC_SECRET") } },',
+        '  database: { name: "d1Database", secret: secret("HU_SPEC_SECRET"), token: secret("HU_SPEC_TOKEN") },',
+        '  signing: secret("bundle-signing-key"),',
+        '  nativeBuild: { android: { release: { packageName: "com.example", signing: { keystore: secret("release-keystore") } } } },',
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    const { getDeploySecretNames, loadConfig } = await import("./loadConfig");
+    const config = await loadConfig(null);
+
+    expect(getDeploySecretNames(config)).toEqual([
+      "HU_SPEC_KEY_ID",
+      "HU_SPEC_SECRET",
+      "HU_SPEC_TOKEN",
+    ]);
+    // The deep merge keeps a build credential's reference.
+    const { isSecretRef } = await import("./secrets");
+    expect(
+      isSecretRef(config.nativeBuild.android.release?.signing?.keystore),
+    ).toBe(true);
+  });
+
+  it("finds the team store for init, and leaves process.env as the config found it", async () => {
+    const secrets = Object.freeze({
+      name: "spec-team",
+      get: vi.fn(),
+      set: vi.fn(),
+    });
+    Reflect.set(globalThis, "__HOT_UPDATER_TEST_SECRETS__", secrets);
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        // As process.loadEnvFile(".env.hotupdater") would.
+        'process.env.HU_SPEC_LOADED = "from-env-file";',
+        "export default { secrets: globalThis.__HOT_UPDATER_TEST_SECRETS__ };",
+        "",
+      ].join("\n"),
+    );
+
+    try {
+      const { loadTeamSecrets } = await import("./teamSecrets");
+
+      await expect(loadTeamSecrets()).resolves.toBe(secrets);
+      expect(process.env.HU_SPEC_LOADED).toBeUndefined();
+    } finally {
+      Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SECRETS__");
+      const { setConfiguredSecrets, resolveSecretsAdapter } =
+        await import("./secrets");
+      setConfiguredSecrets(resolveSecretsAdapter());
+    }
+  });
+
+  it("finds no team store with localSecrets()", async () => {
+    const { loadTeamSecrets } = await import("./teamSecrets");
+
+    await expect(loadTeamSecrets()).resolves.toBeUndefined();
+  });
+
+  it("loads a config of 1.1 that reads its values from process.env as it did, with no secret() names", async () => {
+    vi.stubEnv("HU_SPEC_BUCKET", "bundles");
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "export default {",
+        '  storage: { name: "s3Storage", protocol: "s3", bucketName: process.env.HU_SPEC_BUCKET! },',
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    try {
+      const { getDeploySecretNames, loadConfig } = await import("./loadConfig");
+      const config = await loadConfig(null);
+
+      expect(config.storage).toMatchObject({ bucketName: "bundles" });
+      expect(getDeploySecretNames(config)).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("binds each secret() to the secrets of the config that created it, whatever config loads after", async () => {
+    // Given: a config function whose secrets adapter depends on the platform
+    const storeOf = (name: string) => ({
+      name,
+      get: vi.fn(async (names: readonly string[]) =>
+        Object.fromEntries(names.map((key) => [key, `${name}:${key}`])),
+      ),
+    });
+    const stores = {
+      ios: storeOf("ios-store"),
+      android: storeOf("android-store"),
+      none: storeOf("none-store"),
+    };
+    vi.stubEnv("HU_SPEC_SCOPED_TOKEN", undefined);
+    Reflect.set(globalThis, "__HOT_UPDATER_TEST_SECRETS__", stores);
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        `import { secret } from ${JSON.stringify(path.join(import.meta.dirname, "secrets.ts"))};`,
+        "export default (options) => ({",
+        "  secrets: globalThis.__HOT_UPDATER_TEST_SECRETS__[options?.platform ?? 'none'],",
+        '  storage: { name: "s3Storage", protocol: "s3", token: secret("HU_SPEC_SCOPED_TOKEN") },',
+        "});",
+        "",
+      ].join("\n"),
+    );
+    type Token = { token: () => Promise<string> };
+
+    try {
+      const { loadConfig, loadPlatformConfigs } = await import("./loadConfig");
+      const [ios, android] = await loadPlatformConfigs(["ios", "android"], {
+        channel: "production",
+      });
+      // As the fingerprint loads it, after the platform configs.
+      await loadConfig(null);
+
+      // Then
+      await expect(
+        (ios!.config.storage as unknown as Token).token(),
+      ).resolves.toBe("ios-store:HU_SPEC_SCOPED_TOKEN");
+      await expect(
+        (android!.config.storage as unknown as Token).token(),
+      ).resolves.toBe("android-store:HU_SPEC_SCOPED_TOKEN");
+      expect(stores.none.get).not.toHaveBeenCalled();
+    } finally {
+      Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SECRETS__");
+      const { setConfiguredSecrets, resolveSecretsAdapter } =
+        await import("./secrets");
+      setConfiguredSecrets(resolveSecretsAdapter());
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("resolves each scheme's sandbox to a boolean and the URL scheme it registers", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "export default {",
+        "  nativeBuild: {",
+        "    ios: {",
+        '      release: { bundleIdentifier: "com.Example.app", scheme: "App" },',
+        '      preview: { bundleIdentifier: "com.Example.app", scheme: "App", sandbox: true },',
+        '      qa: { bundleIdentifier: "com.example.app", scheme: "App", sandbox: { urlScheme: "acme-preview" } },',
+        '      empty: { bundleIdentifier: "com.example.app", scheme: "App", sandbox: {} },',
+        '      off: { bundleIdentifier: "com.example.app", scheme: "App", sandbox: false },',
+        "    },",
+        "    android: {",
+        '      preview: { packageName: "com.example.app", sandbox: true },',
+        '      qa: { packageName: "com.example.app", sandbox: { urlScheme: "acme.preview+qa" } },',
+        "    },",
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    const { nativeBuild } = await loadConfig(null);
+
+    expect(nativeBuild.ios.release).toMatchObject({
+      sandbox: false,
+      sandboxUrlScheme: null,
+    });
+    expect(nativeBuild.ios.preview).toMatchObject({
+      sandbox: true,
+      sandboxUrlScheme: "hu-sandbox-com-example-app",
+    });
+    expect(nativeBuild.ios.qa).toMatchObject({
+      sandbox: true,
+      sandboxUrlScheme: "acme-preview",
+    });
+    expect(nativeBuild.ios.empty).toMatchObject({
+      sandbox: true,
+      sandboxUrlScheme: "hu-sandbox-com-example-app",
+    });
+    expect(nativeBuild.ios.off).toMatchObject({
+      sandbox: false,
+      sandboxUrlScheme: null,
+    });
+    expect(nativeBuild.android.preview).toMatchObject({
+      sandbox: true,
+      sandboxUrlScheme: "hu-sandbox-com-example-app",
+    });
+    expect(nativeBuild.android.qa).toMatchObject({
+      sandbox: true,
+      sandboxUrlScheme: "acme.preview+qa",
+    });
+  });
+
+  it.each([
+    '"Acme"',
+    '"1app"',
+    '"acme_preview"',
+    '"acme://"',
+    '"https"',
+    '"javascript"',
+    '"true"',
+    '"false"',
+    '""',
+    `"a${"b".repeat(64)}"`,
+    "42",
+  ])(
+    "refuses a sandbox urlScheme of %s when the config loads",
+    async (urlScheme) => {
+      await writeProjectFile(
+        projectRoot,
+        "hot-updater.config.ts",
+        [
+          "export default {",
+          "  nativeBuild: {",
+          `    android: { qa: { packageName: "com.example.app", sandbox: { urlScheme: ${urlScheme} } } },`,
+          "  },",
+          "};",
+          "",
+        ].join("\n"),
+      );
+
+      const { loadConfig } = await import("./loadConfig");
+
+      await expect(loadConfig(null)).rejects.toThrow(
+        `nativeBuild.android.qa: sandbox.urlScheme ${urlScheme} isn't a URL scheme a sandbox build can register.\nUse lower case: a letter, then up to 63 letters, digits, +, . or -, and not http, https, file, data, javascript, true or false.`,
+      );
+    },
+  );
 
   it("allows disabling the local CLI cache", async () => {
     await writeProjectFile(
@@ -285,42 +592,16 @@ describe("loadConfig", () => {
     expect(config.cacheDir).toBe("from-null-context");
   });
 
-  it("preserves the configured signing provider identity", async () => {
-    await writeProjectFile(
-      projectRoot,
-      "hot-updater.config.ts",
-      [
-        "const provider = {",
-        "  name: 'test-signer',",
-        "  getPublicKey: async () => ({ publicKey: 'public-key' }),",
-        "  sign: async ({ message }) => ({ signature: message }),",
-        "};",
-        "globalThis.__HOT_UPDATER_TEST_SIGNING_PROVIDER__ = provider;",
-        "export default {",
-        "  signing: provider,",
-        "};",
-        "",
-      ].join("\n"),
-    );
-
-    const { loadConfig } = await import("./loadConfig");
-    const config = await loadConfig(null);
-    const signing = config.signing;
-
-    expect(signing).toBe(
-      Reflect.get(globalThis, "__HOT_UPDATER_TEST_SIGNING_PROVIDER__"),
-    );
-  });
-
-  it("normalizes explicit local signing config without reading the private key", async () => {
+  it("loads a signing adapter, which deploy refuses, so the commands that fix it still run", async () => {
     await writeProjectFile(
       projectRoot,
       "hot-updater.config.ts",
       [
         "export default {",
         "  signing: {",
-        "    enabled: true,",
-        "    privateKeyPath: './private-key-canary.pem',",
+        "    name: 'awsKmsSigning',",
+        "    getPublicKey: async () => ({ publicKey: 'public-key' }),",
+        "    sign: async ({ message }) => ({ signature: message }),",
         "  },",
         "};",
         "",
@@ -328,54 +609,75 @@ describe("loadConfig", () => {
     );
 
     const { loadConfig } = await import("./loadConfig");
+    const { readBundleSigningState } = await import("./bundleSigning");
     const config = await loadConfig(null);
 
-    expect(config.signing).toEqual({
-      enabled: true,
-      privateKeyPath: "./private-key-canary.pem",
+    expect(readBundleSigningState(config.signing)).toEqual({
+      status: "invalid",
+      message: 'signing takes secret("bundle-signing-key").',
+    });
+  });
+
+  it("keeps the shorthand as the secret() it is", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        `import { secret } from ${JSON.stringify(path.join(import.meta.dirname, "secrets.ts"))};`,
+        'export default { signing: secret("bundle-signing-key") };',
+        "",
+      ].join("\n"),
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    const { readBundleSigningState } = await import("./bundleSigning");
+    const config = await loadConfig(null);
+
+    expect(readBundleSigningState(config.signing)).toEqual({
+      status: "on",
+      key: { secret: "bundle-signing-key" },
     });
   });
 
   it.each([
-    "{ enabled: false }",
-    "{ enabled: false, privateKeyPath: '/missing/key.pem' }",
+    [
+      "{ enabled: true, privateKeyPath: './private-key-canary.pem' }",
+      { enabled: true, privateKeyPath: "./private-key-canary.pem" },
+    ],
+    ["{ enabled: false }", { enabled: false }],
+    [
+      "{ enabled: false, privateKeyPath: '/missing/key.pem' }",
+      { enabled: false, privateKeyPath: "/missing/key.pem" },
+    ],
+    [
+      "{ privateKeyPath: '/missing/key.pem' }",
+      { privateKeyPath: "/missing/key.pem" },
+    ],
   ])(
-    "removes inactive local signing from the merged config: %s",
-    async (signing) => {
+    "keeps the object form as written, reading no key: %s",
+    async (source, expected) => {
       await writeProjectFile(
         projectRoot,
         "hot-updater.config.ts",
-        `export default { signing: ${signing} };`,
+        `export default { signing: ${source} };`,
       );
       const { loadConfig } = await import("./loadConfig");
-      expect((await loadConfig(null)).signing).toBeUndefined();
+      expect((await loadConfig(null)).signing).toEqual(expected);
     },
   );
 
-  it("rejects a local signing config without an explicit enabled state", async () => {
+  it("keeps appVersion for a config that sets no updateStrategy, though init writes fingerprint", async () => {
     await writeProjectFile(
       projectRoot,
       "hot-updater.config.ts",
-      "export default { signing: { privateKeyPath: '/missing/key.pem' } };",
+      ["export default {", "  cacheDir: 'cache',", "};", ""].join("\n"),
     );
-    const { loadConfig } = await import("./loadConfig");
 
-    await expect(loadConfig(null)).rejects.toThrow(
-      "Bundle signing must be a local key config or signing adapter",
-    );
-  });
-
-  it("loads local signing config", async () => {
-    await writeProjectFile(
-      projectRoot,
-      "hot-updater.config.ts",
-      "export default { signing: { enabled: true, privateKeyPath: './private.pem' } };",
-    );
     const { loadConfig } = await import("./loadConfig");
-    expect((await loadConfig(null)).signing).toEqual({
-      enabled: true,
-      privateKeyPath: "./private.pem",
-    });
+    const config = await loadConfig(null);
+
+    expect(config.cacheDir).toBe("cache");
+    expect(config.updateStrategy).toBe("appVersion");
   });
 
   it("preserves legacy merge semantics for arrays in user config", async () => {

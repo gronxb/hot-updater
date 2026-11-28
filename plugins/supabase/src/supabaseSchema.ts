@@ -4,6 +4,7 @@ import {
   isMultiIndex,
   WRITE_GUARD_TABLE,
   generateEngineSql,
+  lateColumnStatements,
   type ToolingTarget,
   SETTINGS_TABLE,
   type ResolvedSchema,
@@ -162,7 +163,68 @@ export const supabaseSchemaStatements = ({
   ];
 };
 
+const HEADER = "-- HotUpdater.schema\n\n";
+
+const toSql = (statements: readonly string[]) =>
+  `${HEADER}${statements.map((statement) => `${statement};`).join("\n\n")}\n`;
+
 export const supabaseSchemaSql = (target?: ToolingTarget): string =>
-  `-- HotUpdater.schema\n\n${supabaseSchemaStatements(target)
-    .map((statement) => `${statement};`)
-    .join("\n\n")}\n`;
+  toSql(supabaseSchemaStatements(target));
+
+/** The statements of a migration `supabaseSchemaSql` or `supabaseMigrationSql` wrote. */
+export const supabaseMigrationStatements = (sql: string): string[] =>
+  sql
+    .replace(HEADER, "")
+    .split(";\n\n")
+    .map((statement) => statement.replace(/;\n$/u, "").trim())
+    .filter((statement) => statement !== "");
+
+/** Whether `sql` creates a table an earlier migration created, which it never does again. */
+const createdBefore = (sql: string, earlier: readonly string[]) => {
+  const table = /^CREATE TABLE IF NOT EXISTS ("[^"]+") \(/u.exec(sql)?.[1];
+  return (
+    table !== undefined &&
+    earlier.some((ran) =>
+      ran.startsWith(`CREATE TABLE IF NOT EXISTS ${table} (`),
+    )
+  );
+};
+
+/**
+ * A managed Supabase migration after the first: the columns added to tables
+ * an earlier migration created, then each statement of the target's schema
+ * that no earlier migration ran, then every settings row, so
+ * the migration is never empty and the fence passes once it ran. A new table
+ * brings its row-level security and a new apply RPC naming it, which brings
+ * the RPC's grants again. Shipped migrations are frozen; a schema change
+ * goes into the next one.
+ */
+export const supabaseMigrationSql = (
+  target: ToolingTarget,
+  earlier: readonly string[],
+): string => {
+  const statements = supabaseSchemaStatements(target);
+  const settings = Object.keys(target.settings).length;
+  const ranStatements = earlier.flatMap(supabaseMigrationStatements);
+  const ran = new Set(ranStatements);
+  const apply = statements.findIndex((sql) =>
+    sql.startsWith(
+      `CREATE OR REPLACE FUNCTION public.${SUPABASE_APPLY_FUNCTION}(`,
+    ),
+  );
+  // The apply RPC's REVOKE and GRANT follow it.
+  const grants = ran.has(statements[apply]!) ? [] : [apply + 1, apply + 2];
+  return toSql([
+    ...lateColumnStatements("postgresql", target.schema, ranStatements, {
+      tablePrefix: SUPABASE_TABLE_PREFIX,
+    }),
+    ...statements
+      .slice(0, -settings)
+      .filter(
+        (sql, index) =>
+          (!ran.has(sql) && !createdBefore(sql, ranStatements)) ||
+          grants.includes(index),
+      ),
+    ...statements.slice(-settings),
+  ]);
+};

@@ -18,18 +18,16 @@ import {
   resolveHotUpdaterServerVersion,
   resolvePackageVersion,
   type RunInitOptions,
+  type RunInitResult,
   transformEnv,
+  backfillInsightsReleaseRefs,
+  fillReleaseLabels,
 } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { isEqual, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
-import {
-  applicationDefault,
-  cert,
-  deleteApp,
-  getApps,
-} from "firebase-admin/app";
+import { deleteApp, getApps } from "firebase-admin/app";
 
 import {
   firebaseDatabase,
@@ -40,6 +38,7 @@ import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCreden
 import {
   assertFirebaseFunctionCanInitialize,
   assertFirebaseInfrastructureCanInitialize,
+  loadGoogleCredential,
 } from "./firebaseInfrastructureState";
 import {
   assertFirebaseNonInteractiveInputs,
@@ -453,9 +452,17 @@ const checkIfGcloudCliInstalled = async () => {
   }
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  envFile,
+  secretsEnv,
+}: RunInitOptions): Promise<RunInitResult> => {
   const nonInteractive = envFile !== undefined;
-  const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
+  const initEnvSources = await readHotUpdaterInitEnv(
+    process.cwd(),
+    envFile,
+    secretsEnv,
+  );
   const { managedEnv } = initEnvSources;
   const initInputEnv = getHotUpdaterInitInputEnv(
     initEnvSources,
@@ -553,7 +560,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     });
     await makeEnv(persistedInputs);
     await removeTmpDir();
-    return;
+    return null;
   }
   const functionsCode = transformEnv(functionsIndexPath, {
     REGION: currentRegion,
@@ -608,12 +615,15 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     nonInteractive,
     cliEnv,
   );
-  const credential = applicationCredentials
-    ? cert(
-        JSON.parse(await fs.promises.readFile(applicationCredentials, "utf-8")),
-      )
-    : applicationDefault();
-  const existingApps = new Set(getApps());
+  const credential = await loadGoogleCredential(
+    applicationCredentials,
+    initializeVariable.projectId,
+  );
+  // Loading hot-updater.config.ts for its secrets adapter ran the config's
+  // adapters, which bound the default app to the config's project and
+  // credential, in an environment init has restored since. The database
+  // takes the default app when one exists, so init's runs on its own.
+  await Promise.all(getApps().map((app) => deleteApp(app)));
   const databaseConfig = {
     credential,
     databaseId: initializeVariable.databaseId,
@@ -631,6 +641,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     // The database reads nothing until the schema settings exist.
     await migrateFirebaseDatabase(databaseConfig, server.plugins);
     // The app's credential, through the managed server's plugins, on the tables they read.
+    // Labels the releases written before labels, and rebuilds their catalogs.
+    await fillReleaseLabels(server);
     clientCredential = await provisionClientCredential(server, {
       env: initInputEnv,
       name: "Firebase init",
@@ -640,11 +652,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     }
   } finally {
     await database.dispose?.();
-    await Promise.all(
-      getApps()
-        .filter((app) => !existingApps.has(app))
-        .map((app) => deleteApp(app)),
-    );
+    await Promise.all(getApps().map((app) => deleteApp(app)));
   }
   await deployFunctions(tmpDir, nonInteractive, cliEnv);
 
@@ -732,6 +740,18 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     await removeTmpDir();
     process.exit(1);
   }
+  // Moves the Insights events a 1.1 server keyed by artifact to their
+  // releases, once the new functions answer: a run that stops leaves a
+  // working deployment, and init's rerun resumes it.
+  const backfillDatabase = firebaseDatabase(databaseConfig);
+  try {
+    await backfillInsightsReleaseRefs(
+      assembleServer({ database: backfillDatabase, plugins: server.plugins }),
+    );
+  } finally {
+    await backfillDatabase.dispose?.();
+    await Promise.all(getApps().map((app) => deleteApp(app)));
+  }
   await printTemplate(
     clientCredential,
     initializeVariable.projectId,
@@ -741,17 +761,18 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   );
   await removeTmpDir();
 
-  p.log.message(
-    `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/firebase#step-3-add-hotupdater-to-your-project",
-    )}`,
-  );
-  if (!applicationCredentials) {
-    p.log.message(
-      "Next step: Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env.hotupdater",
-    );
-  }
-  p.log.success("Done! 🎉");
+  return {
+    nextSteps: [
+      link(
+        "https://hot-updater.dev/docs/managed/firebase#step-3-add-hotupdater-to-your-project",
+      ),
+      ...(applicationCredentials
+        ? []
+        : [
+            "Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env.hotupdater",
+          ]),
+    ],
+  };
 };
 
 // What init asks for and checks before `runInit`.

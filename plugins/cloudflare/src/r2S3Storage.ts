@@ -2,13 +2,15 @@ import type { StorageAdapterWith } from "@hot-updater/plugin-core";
 import {
   createS3Storage,
   type S3ClientConfig,
+  type S3CredentialsOption,
   type S3StorageOperations,
 } from "@hot-updater/storage-s3";
 
-export interface R2S3StorageConfig extends S3ClientConfig {
+export interface R2S3StorageConfig extends Omit<S3ClientConfig, "credentials"> {
   accountId: string;
   bucketName: string;
-  credentials: NonNullable<S3ClientConfig["credentials"]>;
+  /** The SDK's credentials, or an R2 access key whose fields are lazy. */
+  credentials: NonNullable<S3CredentialsOption>;
   /** Base path where bundles will be stored in the bucket. */
   basePath?: string;
 }

@@ -1,0 +1,339 @@
+---
+title: "Fingerprint Update Strategy"
+description: "Match OTA updates to native builds by hashing the native interface JavaScript calls."
+icon: Fingerprint
+---
+
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+
+## Why Choose Fingerprint?
+
+Fingerprint matches OTA updates to native builds automatically. Hot Updater
+hashes the native interface your JavaScript calls, embeds the hash in each
+build, and delivers an update only to builds with the same hash. Deploy stops
+when the hash differs from the saved `fingerprint.json`. App Version instead
+lets you specify compatible version targets manually.
+
+## What the Fingerprint Covers
+
+An OTA update replaces only JavaScript, so it stays compatible as long as the
+native interface it calls stays the same. Hot Updater computes the fingerprint
+itself, the same way for the bare, Rock, and Expo build adapters, from what
+your project declares. It covers:
+
+- the React Native version;
+- the JavaScript engine and the architecture: `hermesEnabled`,
+  `hermesV1Enabled`, and `newArchEnabled` in `android/gradle.properties`, or,
+  with Expo, `jsEngine` and `newArchEnabled` in the app config;
+- each native package autolinking links, Expo modules included, by name and
+  version, so installing, removing, or upgrading one changes the fingerprint;
+- the codegen specs of your app and of local native packages, with their
+  `codegenConfig`, or the native files of a local package without specs;
+- patches to those packages, in `patches/` or wherever pnpm, Bun, or Yarn
+  record them;
+- `fingerprint.nativeVersion` and `fingerprint.extraSources`.
+
+Version and build numbers, native implementation edits, build settings, Expo
+config plugins, JavaScript-only dependencies, and files an install or `expo prebuild`
+generates, such as `Podfile.lock`, leave it unchanged, so every store build
+with the same native interface receives the same updates, and every machine
+computes the same fingerprint.
+
+### How the Fingerprint Stays Stable
+
+- The engine is part of Hot Updater, not a dependency of your app, so you
+  install nothing for it.
+  `fingerprint.json` records it, such as `hot-updater/interface@1`, and a change
+  to what is hashed ships as a new engine. `doctor` and `deploy` report a hash
+  that changed with its engine as such, not as a native change.
+- The fingerprint hashes versions and interface files, never build outputs,
+  timestamps, or absolute paths, so every machine, package manager, and CI job
+  computes the same one.
+- Each native build computes the fingerprint it embeds, so a binary always
+  carries the fingerprint of what it was built from.
+- `deploy` lists the fingerprints the channel's recent releases target that an
+  update won't reach.
+
+## Setup
+
+### Enable the Fingerprint Strategy
+
+App Version is the default strategy. If you explicitly configured it, replace
+that setting with `fingerprint`:
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  updateStrategy: "appVersion", // [!code --]
+  updateStrategy: "fingerprint", // [!code ++]
+});
+```
+
+<a id="include-additional-files-optional" />
+<a id="include-app-owned-native-inputs" />
+
+### Bump `nativeVersion` for Changes the Fingerprint Can't See
+
+When JavaScript starts to depend on a native change the list above doesn't
+cover, change `nativeVersion`. Examples: a native module without a codegen
+spec, a changed return value, a new permission or `Info.plist` key, a manually
+linked library, moving a native package installed from Git to another commit
+while its version stays the same, or an iOS engine or architecture choice
+made by an environment variable at `pod install`, such as Hermes V1, JSC on
+React Native versions that ship it in core, or the New Architecture before
+React Native made it the only architecture.
+
+```typescript title="hot-updater.config.ts (partial)"
+export default defineConfig({
+  updateStrategy: "fingerprint",
+  fingerprint: {
+    nativeVersion: 2, // [!code ++]
+  },
+});
+```
+
+To track files instead, list them in `fingerprint.extraSources`. An array
+applies to both platforms; use `{ ios: [...], android: [...] }` for one.
+Don't list files whose text changes with every release, such as
+`project.pbxproj` or `build.gradle`, or files an install generates, such as
+`Podfile.lock`.
+
+To check the fingerprint, add a method to a spec or change `nativeVersion`, and
+run `npx hot-updater doctor`. It reports that the fingerprint changed and lists
+the source. Then restore the edit.
+
+### Expo Projects
+
+The Expo build adapter uses the same engine as the bare and Rock adapters and
+differs only in where it reads two inputs, so `fingerprint create` before
+`expo prebuild` and the native build after it compute the same fingerprint:
+
+- **Native packages** come from Expo's autolinking, as the native build links
+  them: Expo modules from `expo-modules-autolinking resolve`, and React Native
+  packages from its `react-native-config` (from SDK 52), or from React Native
+  CLI on earlier SDKs or with
+  `EXPO_USE_COMMUNITY_AUTOLINKING=1`. In a monorepo, a module is linked when it
+  is listed in the app's `dependencies`. Set `EXPO_USE_COMMUNITY_AUTOLINKING`
+  the same way where you run `fingerprint create` and where you build.
+- **The JavaScript engine and architecture** come from `jsEngine` (Hermes when
+  left out) and `newArchEnabled` in the app config, with per-platform
+  overrides. A bare app records the same choice in
+  `android/gradle.properties`.
+
+Nothing else in the app config counts, including config plugins and their
+options, such as extra pods or Maven repositories `expo-build-properties`
+adds: like edits to a bare app's `ios/` and `android/`, they mostly write
+permissions, `Info.plist` keys, and Gradle settings, which don't change what
+JavaScript can call. When a config plugin change does change that interface,
+bump `nativeVersion`. For custom native code, prefer a local Expo module in
+`modules/`: autolinking links it, so the fingerprint follows it like any
+native package.
+
+## Workflow
+
+### Before App Store Submission
+
+**Step 1: Generate Fingerprint**
+
+Before building for App Store, generate the fingerprint:
+
+```package-install
+npx hot-updater fingerprint create
+```
+
+This creates `fingerprint.json`: each platform's fingerprint, its sources,
+and the inputs it was computed from. Commit it. Every native build embeds the
+fingerprint itself: a Release build computes it from those inputs with
+`npx hot-updater fingerprint hash`, without loading `hot-updater.config.ts`,
+and a Debug build uses the hash `fingerprint.json` holds. Swift Package
+Manager builds always compute it, since a package build plugin can't tell
+Debug from Release. When the project
+changed after `fingerprint create`, the build embeds the fingerprint of what
+it was built from and warns that `fingerprint.json` is stale. The build embeds
+no fingerprint when the app root has no `fingerprint.json`, so delete it when
+you switch a project to App Version: an app with a fingerprint reports the
+fingerprint strategy. Under App Version, `doctor` reports a leftover
+`fingerprint.json` as `FINGERPRINT_JSON_UNUSED` and `doctor --fix` deletes it,
+`deploy` warns about it, the native build commands refuse to build, and the
+Expo config plugin removes it at prebuild.
+Keep `hot-updater` and `@hot-updater/react-native` on the same version: the
+build step comes with the React Native package, so `fingerprint create` and
+`deploy` stop when it is from before build-time fingerprints.
+
+Example `fingerprint.json` (sources shortened):
+
+```json title="fingerprint.json"
+{
+  "ios": {
+    "engine": "hot-updater/interface@1",
+    "hash": "af69cc634ddceb474dfd73469f46361be584787cd8046a186c24f9b393ba170b",
+    "sources": [
+      { "type": "contents", "id": "runtime", "contents": "react-native@0.85.2" },
+      { "type": "contents", "id": "dependency:react-native-screens", "contents": "react-native-screens@4.25.2" },
+      { "type": "file", "filePath": "src/specs/NativeDevice.ts" }
+    ]
+  },
+  "android": {
+    "engine": "hot-updater/interface@1",
+    "hash": "fc624f1d33295f5024cb88e6ca9f2689c24e4eaa6e64b2f533098441b387f51e",
+    "sources": []
+  },
+  "inputs": { "adapter": "bare", "nativeVersion": 2 }
+}
+```
+
+**Step 2: Build and Submit**
+
+Build your app and submit it to the App Store. The build embeds its
+fingerprint.
+
+**Step 3: Deploy OTA Updates**
+
+After your app is live, deploy JavaScript-only updates:
+
+```package-install
+npx hot-updater deploy -p ios
+npx hot-updater deploy -p android
+```
+
+Hot Updater limits delivery to native builds with the same embedded fingerprint.
+When the channel's recent releases target other fingerprints, deploy lists
+them: builds on those fingerprints won't receive this update until users
+install a build with the new one.
+Use the [deployment sequence](/docs/v1.0/guides/deploy#deploy-both-platforms) to stop
+the second platform when the first deployment fails.
+
+### When Native Code Changes
+
+After changing a tracked native input, check whether the fingerprint changed:
+
+```package-install
+npx hot-updater doctor
+```
+
+Doctor compares `fingerprint.json` with the project's fingerprint now. When
+they differ, it reports `FINGERPRINT_JSON_STALE` and lists the sources that
+changed. Create a new fingerprint then, or run `doctor --fix`, which does the
+same:
+
+```package-install
+npx hot-updater fingerprint create
+```
+
+After creating a new fingerprint, ship a new build before deploying OTA
+updates for it.
+
+## Client Setup
+
+Change the app's existing `checkForUpdate` strategy to `fingerprint` too. The
+module below keeps initialization at module scope and shows the matching check:
+
+Keep the `baseURL` and client key from [App setup](/docs/v1.0/get-started/app-setup).
+Managed providers require this client key; provider and admin credentials stay
+out of the app.
+
+```tsx title="updates.ts"
+import { HotUpdater } from "@hot-updater/react-native";
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: "https://your-update-server.com",
+  requestHeaders: {
+    "x-api-key": "<your-client-api-key>",
+  },
+  onError: (error) => console.error("Hot Updater failed:", error),
+});
+
+export async function checkForAppUpdate() {
+  try {
+    const updateInfo = await hotUpdater.checkForUpdate({
+      updateStrategy: "appVersion", // [!code --]
+      updateStrategy: "fingerprint", // [!code ++]
+    });
+
+    if (!updateInfo) return;
+
+    const didUpdate = await updateInfo.updateBundle();
+    if (didUpdate && updateInfo.shouldForceUpdate) {
+      await hotUpdater.reload();
+    }
+  } catch (error) {
+    console.error("Failed to prepare update:", error);
+  }
+}
+```
+
+Call `checkForAppUpdate()` from your app's startup, resume, or user action.
+`init` configures the client; it does not check for updates. The helper stages
+the selected update, and standard updates take effect on the next runtime
+start. Follow [custom update flows](/docs/v1.0/guides/custom-update) to add progress
+and choose when to reload.
+
+The client fetches the fingerprint Release Catalog:
+
+```
+GET {baseUrl}/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash
+```
+
+It evaluates the catalog locally, then resolves the selected artifact through
+`/artifacts/v2/:targetBundleId/from/:currentBundleId`.
+
+## How It Works
+
+<a id="javascriptui-changes--ota-update-safe" />
+
+### JavaScript and UI Changes
+
+Component logic, styles, screens, and API calls can be delivered over the air
+when they remain compatible with the installed native code. If the tracked
+inputs are unchanged, the fingerprint check permits deployment.
+
+<a id="native-code-changes-️-rebuild-required" />
+
+### Native Changes Require a Rebuild
+
+Installing, removing, or upgrading a native package, upgrading React Native,
+changing the JavaScript engine, a spec, or a patch, and a new `nativeVersion`
+change the fingerprint and require a new binary. A native change the
+fingerprint doesn't see, such as an Expo config plugin change that alters what
+JavaScript can call, needs a `nativeVersion` bump. Deploy detects
+the hash mismatch and exits:
+
+```text
+Fingerprint mismatch. 'hot-updater fingerprint create' to update fingerprint.json
+```
+
+Generate the new fingerprint, rebuild and release the native app with that hash,
+then deploy updates for it. Generating a fingerprint alone does not rebuild
+installed apps. A native change the fingerprint doesn't cover leaves the hash
+unchanged and is not blocked; bump `nativeVersion` when JavaScript depends on
+it.
+
+## Advanced
+
+### Non-standard Project Layout
+
+The native build finds `fingerprint.json` in the app root: two levels above
+the `Pods` folder on iOS (`<app>/ios/Pods`) or the Swift Package Manager
+autolinking folder, and above the `android` folder on Android. If your native
+projects live elsewhere, as in a brownfield app, set the app root explicitly:
+`HOT_UPDATER_APP_ROOT` as an Xcode build setting or environment variable, and
+`HOT_UPDATER_APP_ROOT` as a Gradle property (for example in
+`android/gradle.properties`), where a relative path is relative to the Android
+project.
+
+The build runs `npx hot-updater fingerprint hash` with Node. iOS finds it the
+way React Native's own script phases do, through `NODE_BINARY` in
+`ios/.xcode.env` or `ios/.xcode.env.local`. Android uses the
+`HOT_UPDATER_NODE_BINARY` Gradle property, then the `NODE_BINARY` environment
+variable, then `node` on `PATH`; set the property when Android Studio can't
+find Node.
+
+### Test a fingerprint update
+
+Follow [Test an OTA update](/docs/v1.0/get-started/test-ota) with a Release build.
+Keep the native inputs and fingerprint unchanged while editing JavaScript or
+assets. Deploy without `-t`; the SDK and CLI use the matching fingerprint to
+select the update.
+
+If the check fails, use [client-access diagnostics](/docs/v1.0/guides/doctor#check-client-access).

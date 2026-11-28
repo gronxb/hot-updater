@@ -243,6 +243,21 @@ interface BundleStorageService {
      * @return true if the reset was successful
      */
     suspend fun resetChannel(): Boolean
+
+    /**
+     * Resets the channel only while the named Release selection is current,
+     * checked and reset in one critical section with the catalog checks, so
+     * a newer catalog accepted meanwhile keeps the channel.
+     * @return false for a stale selection
+     */
+    suspend fun resetChannelIfSelectionCurrent(
+        catalogId: String,
+        scopeKey: String,
+        generation: Long,
+        catalogHash: String,
+        channel: String,
+        selectionContextHash: String,
+    ): Boolean = false
 }
 
 /**
@@ -256,7 +271,7 @@ class BundleFileStorageService(
     private val isolationKey: String,
     private val defaultChannelProvider: () -> String = { HotUpdaterImpl.getChannel(context) },
     private val fingerprintHashProvider: () -> String? = { HotUpdaterImpl.getFingerprintHash(context) },
-    // The built-in bundle's ID (MIN_BUNDLE_ID), which identifies this native build.
+    // The built-in bundle's ID: the nil UUID in a Debug build, which has none.
     private val minBundleIdProvider: () -> String = { HotUpdaterImpl.getMinBundleId() },
     // The key bundles must be signed with, or null when signing is off.
     private val publicKeyProvider: () -> String? = { SignatureVerifier.getPublicKeyFromConfig(context) },
@@ -274,7 +289,11 @@ class BundleFileStorageService(
     companion object {
         private const val TAG = "BundleStorage"
         private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
+        private const val NIL_UUID = "00000000-0000-0000-0000-000000000000"
         private val SHA256_PATTERN = Regex("^[0-9a-f]{64}$")
+
+        /** Names the bundle a channel reset or built-in commit kept for its running JavaScript, for the next launch to remove. */
+        private const val RETAINED_BUNDLE_FILENAME = "retained-bundle"
 
         /** Files downloaded at once when the archive is not used. */
         private const val PARALLEL_FILE_DOWNLOADS = 16
@@ -429,6 +448,42 @@ class BundleFileStorageService(
         return File(patchDir, "$safeName.bsdiff")
     }
 
+    /**
+     * Copies, with no OTA bundle installed, the packaged file each built-in
+     * patch was made from, when its bytes are the patch's base: store
+     * processing may have changed them. Only these patches are priced and
+     * applied; the others fall back to their files.
+     */
+    private fun prepareBuiltInPatchBases(
+        downloads: Map<String, ChangedAssetDescriptor>,
+        currentBundleId: String?,
+        tempDir: File,
+    ): Map<String, File> {
+        if (currentBundleId != null) return emptyMap()
+        return buildMap {
+            for ((assetPath, descriptor) in downloads) {
+                val patch = descriptor.patch?.takeIf { isPatchForRunningBundle(it, null) } ?: continue
+                val baseFile = patchBaseTempFile(tempDir, assetPath)
+                if (builtInAssetResolver.copyIfMatches(assetPath, patch.baseFileHash, baseFile)) {
+                    put(assetPath, baseFile)
+                } else {
+                    baseFile.delete()
+                }
+            }
+        }
+    }
+
+    /** Where the built-in bundle's file is copied to serve as a patch's base. */
+    private fun patchBaseTempFile(
+        tempDir: File,
+        assetPath: String,
+    ): File {
+        val safeName = assetPath.replace("/", "__").replace("\\", "__")
+        val patchDir = File(tempDir, "patches")
+        patchDir.mkdirs()
+        return File(patchDir, "$safeName.base")
+    }
+
     private fun patchDownloadPath(assetPath: String): String = "$assetPath.bsdiff"
 
     private fun downloadPathForChangedAsset(
@@ -510,6 +565,21 @@ class BundleFileStorageService(
     }
 
     /**
+     * Whether [patch] was made against the running bundle: the OTA bundle
+     * [currentBundleId], or with none, the built-in bundle, whose ID is
+     * MIN_BUNDLE_ID once its native build is registered.
+     */
+    private fun isPatchForRunningBundle(
+        patch: BsdiffPatchDescriptor,
+        currentBundleId: String?,
+    ): Boolean {
+        if (patch.algorithm != "bsdiff") return false
+        if (currentBundleId != null) return currentBundleId == patch.baseBundleId
+        val builtInBundleId = minBundleIdProvider()
+        return builtInBundleId != NIL_UUID && builtInBundleId == patch.baseBundleId
+    }
+
+    /**
      * Tries to produce [targetFile] from a bsdiff patch against the running
      * bundle. A patch for another base bundle or algorithm is not attempted.
      * Once attempted, a failure leaves the file to be downloaded instead.
@@ -519,6 +589,7 @@ class BundleFileStorageService(
         changedAsset: ChangedAssetDescriptor,
         currentBundleId: String?,
         activeBundleDir: File?,
+        builtInBaseFile: File?,
         targetFile: File,
         expectedHash: String,
         tempDir: File,
@@ -526,15 +597,21 @@ class BundleFileStorageService(
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): PatchOutcome {
         val patch = changedAsset.patch ?: return PatchOutcome.NOT_ATTEMPTED
-        if (patch.algorithm != "bsdiff" || currentBundleId != patch.baseBundleId) {
+        if (!isPatchForRunningBundle(patch, currentBundleId)) {
             return PatchOutcome.NOT_ATTEMPTED
         }
 
         // The patch targets the running bundle, so from here a miss is a fallback.
-        val sourceDir = activeBundleDir ?: return PatchOutcome.FAILED
-        val sourceFile = RelativePathResolver.resolveInside(sourceDir, assetPath) ?: return PatchOutcome.FAILED
-        if (!sourceFile.exists() || !HashUtils.verifyHash(sourceFile, patch.baseFileHash)) {
-            return PatchOutcome.FAILED
+        val sourceFile: File
+        if (currentBundleId == null) {
+            // Copied and checked before the plan priced the patch.
+            sourceFile = builtInBaseFile ?: return PatchOutcome.FAILED
+        } else {
+            val sourceDir = activeBundleDir ?: return PatchOutcome.FAILED
+            sourceFile = RelativePathResolver.resolveInside(sourceDir, assetPath) ?: return PatchOutcome.FAILED
+            if (!sourceFile.exists() || !HashUtils.verifyHash(sourceFile, patch.baseFileHash)) {
+                return PatchOutcome.FAILED
+            }
         }
 
         val patchFile = patchTempFile(tempDir, assetPath)
@@ -589,6 +666,7 @@ class BundleFileStorageService(
                 false
             } finally {
                 patchFile.delete()
+                builtInBaseFile?.delete()
                 if (!targetFile.exists() || !HashUtils.verifyHash(targetFile, expectedHash)) {
                     targetFile.delete()
                 }
@@ -666,6 +744,19 @@ class BundleFileStorageService(
 
     // A bundle waiting for its retry that this process keeps refusing, see InterruptedLaunch.
     private var retryHeldBundleId: String? = null
+
+    // The bundle this process's last launch runs, under releaseStateLock. A
+    // channel reset or built-in commit keeps its files, which its JavaScript still loads, and
+    // names them in RETAINED_BUNDLE_FILENAME for the next launch to remove: a
+    // reload restarts the process, so the next one does.
+    private var runningBundleId: String? = null
+
+    // The receipt of the bundle this process's last launch runs, under
+    // releaseStateLock: a commit of the next launch's selection, such as a
+    // built-in rollback that waits for a restart, leaves it, so the running
+    // release keeps its label until it stops running.
+    private var runningSelection: PersistedSelection? = null
+    private var hasRunningSelection = false
 
     @Volatile
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot? = null
@@ -1383,7 +1474,8 @@ class BundleFileStorageService(
         selectionContextHash: String,
     ): Boolean =
         synchronized(releaseStateLock) {
-            val metadata = loadMetadataOrNull() ?: createInitialMetadata()
+            val stored = loadMetadataOrNull()
+            val metadata = stored ?: createInitialMetadata()
             val stateKey = releaseScopeStateKey(catalogId, scopeKey)
             val highestSeen = metadata.highestSeenCatalogs[stateKey]
             if (highestSeen != null && generation < highestSeen.generation) {
@@ -1397,10 +1489,20 @@ class BundleFileStorageService(
                 return@synchronized false
             }
 
+            val highWater = CatalogHighWater(generation, catalogHash)
+            val context = selectionContextValue(channel, selectionContextHash)
+            // The same catalog in the same context, as every launch's check
+            // sees until a deploy: the stored metadata already says so.
+            if (stored != null &&
+                highestSeen == highWater &&
+                metadata.currentSelectionContexts[stateKey] == context
+            ) {
+                return@synchronized true
+            }
             val highWaters = metadata.highestSeenCatalogs.toMutableMap()
-            highWaters[stateKey] = CatalogHighWater(generation, catalogHash)
+            highWaters[stateKey] = highWater
             val contexts = metadata.currentSelectionContexts.toMutableMap()
-            contexts[stateKey] = selectionContextValue(channel, selectionContextHash)
+            contexts[stateKey] = context
             saveMetadata(
                 metadata.copy(
                     highestSeenCatalogs = highWaters,
@@ -1430,7 +1532,10 @@ class BundleFileStorageService(
                             "catalogHash" to value.catalogHash,
                         )
                     },
-            )
+            ) +
+                // The running bundle's receipt once a launch is prepared; before
+                // it, the reader looks among the next launch's.
+                if (hasRunningSelection) mapOf("runningSelection" to runningSelection?.toMap()) else emptyMap()
         }
 
     override fun isReleaseSelectionCurrent(
@@ -1523,17 +1628,18 @@ class BundleFileStorageService(
                         currentSelectionContexts = contextsAfterCommitting(nextMetadata.currentSelectionContexts, selection),
                     )
                 if (!saveMetadata(committedMetadata)) return@synchronized false
+                // A metadata-only commit for the running bundle, such as its
+                // label once its catalog has one, is the running receipt too.
+                if (selection.kind == "BUNDLE" && selection.bundleId == runningBundleId) {
+                    runningSelection = selection
+                }
 
                 if (selection.channel == defaultChannelProvider()) {
                     preferences.setItem("HotUpdaterChannel", null)
                 } else {
                     preferences.setItem("HotUpdaterChannel", selection.channel)
                 }
-                if (selection.kind != "BUNDLE") {
-                    getBundleStoreDir().listFiles()?.forEach { file ->
-                        if (file.isDirectory) file.deleteRecursively()
-                    }
-                }
+                if (selection.kind != "BUNDLE") removeDownloadedBundles()
                 true
             }
         }
@@ -1866,11 +1972,55 @@ class BundleFileStorageService(
         // A launch is recorded only once it can show UI (markLaunchStarted).
         val selection = selectLaunch()
         pendingLaunchBundleId = selection.launchedBundleId.takeIf { selection.shouldRollbackOnCrash }
+        synchronized(releaseStateLock) {
+            removeRetainedBundle(launching = selection.launchedBundleId)
+            runningBundleId = selection.launchedBundleId
+            hasRunningSelection = true
+            runningSelection =
+                loadMetadataOrNull()?.let { metadata ->
+                    listOfNotNull(metadata.stagingSelection, metadata.stableSelection).firstOrNull {
+                        it.kind == "BUNDLE" && it.bundleId == selection.launchedBundleId
+                    }
+                }
+        }
         Log.d(
             TAG,
             "prepareLaunch: bundleId=${selection.launchedBundleId} shouldRollback=${selection.shouldRollbackOnCrash} url=${selection.bundleUrl}",
         )
         return selection
+    }
+
+    /**
+     * The bundles an install's cleanup keeps for the JavaScript this process
+     * runs: its launch's bundle, and the one a channel reset or built-in commit
+     * named in [RETAINED_BUNDLE_FILENAME]. The next launch removes the retained one.
+     */
+    private fun bundlesInUseUntilNextLaunch(): Set<String> {
+        val running = synchronized(releaseStateLock) { runningBundleId }
+        val retained = readRetainedBundleId()
+        return setOfNotNull(running, retained)
+    }
+
+    /** The bundle directory [RETAINED_BUNDLE_FILENAME] names, null without a valid one. */
+    private fun readRetainedBundleId(): String? {
+        val marker = File(getBundleStoreDir(), RETAINED_BUNDLE_FILENAME)
+        if (!marker.exists()) return null
+        val retained = runCatching { marker.readText().trim() }.getOrDefault("")
+        // Only a bundle directory's name: never the store itself or a path out of it.
+        if (retained.isEmpty() || retained.contains('/') || retained == "." || retained == "..") return null
+        return retained
+    }
+
+    /** Removes the files a channel reset or built-in commit kept for the launch it replaced, unless this launch or the metadata uses them again. */
+    private fun removeRetainedBundle(launching: String?) {
+        val marker = File(getBundleStoreDir(), RETAINED_BUNDLE_FILENAME)
+        if (!marker.exists()) return
+        val retained = readRetainedBundleId()
+        marker.delete()
+        if (retained == null) return
+        val metadata = loadMetadataOrNull()
+        if (retained == launching || retained == metadata?.stableBundleId || retained == metadata?.stagingBundleId) return
+        File(getBundleStoreDir(), retained).takeIf { it.isDirectory }?.deleteRecursively()
     }
 
     override fun peekLaunchBundleId(): String? {
@@ -2059,6 +2209,7 @@ class BundleFileStorageService(
         changedAsset: ChangedAssetDescriptor,
         currentBundleId: String?,
         activeBundleDir: File?,
+        builtInBaseFile: File?,
         targetFile: File,
         tempDir: File,
         progressFile: DiffProgressFileSnapshot,
@@ -2072,6 +2223,7 @@ class BundleFileStorageService(
                 changedAsset = changedAsset,
                 currentBundleId = currentBundleId,
                 activeBundleDir = activeBundleDir,
+                builtInBaseFile = builtInBaseFile,
                 targetFile = targetFile,
                 expectedHash = expectedHash,
                 tempDir = tempDir,
@@ -2261,19 +2413,34 @@ class BundleFileStorageService(
         manifest: ParsedBundleManifest,
         downloads: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String?,
+        currentBundleId: String?,
+        builtInPatchBases: Map<String, File>,
     ): ParsedArchive? {
         if (archiveUrl.isNullOrBlank() || downloads.size < 2) return null
         val archive = manifest.archive ?: return null
         if (manifest.assets.values.any { it.byteSize == null }) return null
 
+        // Only a patch this device applies saves bytes.
+        val applicablePatches =
+            downloads.mapValues { (assetPath, descriptor) ->
+                descriptor.patch?.takeIf {
+                    if (currentBundleId == null) {
+                        assetPath in builtInPatchBases
+                    } else {
+                        isPatchForRunningBundle(it, currentBundleId)
+                    }
+                }
+            }
         var individualBytes = 0L
-        for ((assetPath, descriptor) in downloads) {
+        for ((assetPath, patch) in applicablePatches) {
             val originalBytes = manifest.assets.getValue(assetPath).downloadByteSize ?: return null
             val expectedBytes =
-                descriptor.patch?.let { patch ->
+                if (patch == null) {
+                    originalBytes
+                } else {
                     val patchBytes = patch.byteSize?.takeIf { it in 0..MAX_SAFE_INTEGER } ?: return null
                     minOf(originalBytes, patchBytes)
-                } ?: originalBytes
+                }
             if (individualBytes > MAX_SAFE_INTEGER - expectedBytes) return null
             individualBytes += expectedBytes
         }
@@ -2294,7 +2461,7 @@ class BundleFileStorageService(
         val framedByteLimit = individualCost + tarFramingBytes
 
         if (archive.downloadByteSize <= individualCost) return archive
-        if (downloads.size != manifest.assets.size || downloads.values.any { it.patch != null }) return null
+        if (downloads.size != manifest.assets.size || applicablePatches.values.any { it != null }) return null
         return archive.takeIf { it.downloadByteSize <= framedByteLimit }
     }
 
@@ -2590,7 +2757,11 @@ class BundleFileStorageService(
                     }
                     downloads
                 }
-            val selectedArchive = selectArchive(targetManifest, downloads, archiveUrl)
+            val builtInPatchBases =
+                updateStep(UpdateFailureStage.INSTALL, UpdateFailureResource.FILE) {
+                    prepareBuiltInPatchBases(downloads, currentBundleId, tempDir)
+                }
+            val selectedArchive = selectArchive(targetManifest, downloads, archiveUrl, currentBundleId, builtInPatchBases)
             val archiveProgress =
                 if (selectedArchive != null) {
                     updateStep(UpdateFailureStage.DOWNLOAD, UpdateFailureResource.ARCHIVE) {
@@ -2640,6 +2811,7 @@ class BundleFileStorageService(
                                                     changedAsset = downloads.getValue(path),
                                                     currentBundleId = currentBundleId,
                                                     activeBundleDir = activeBundleDir,
+                                                    builtInBaseFile = builtInPatchBases[path],
                                                     targetFile =
                                                         RelativePathResolver.resolveInside(tmpDir, path)
                                                             ?: throw HotUpdaterException.invalidBundle(),
@@ -2692,6 +2864,13 @@ class BundleFileStorageService(
                     synchronized(releaseStateLock) {
                         if (backupDir.exists()) {
                             throw HotUpdaterException.moveOperationFailed()
+                        }
+                        // A newer check replaced this selection while it
+                        // downloaded. Refused before the move, the verified
+                        // files stay staged, so the next staging of the same
+                        // bundle reuses them instead of downloading again.
+                        if (selection != null && !isSelectionCurrent(selection)) {
+                            throw StaleReleaseSelectionException()
                         }
 
                         val hadExistingFinal = finalBundleDir.exists()
@@ -2801,8 +2980,11 @@ class BundleFileStorageService(
                             !file.name.endsWith(".install-backup")
                     }?.toList() ?: return
 
-            // Keep only the specified bundle IDs (filter out null values)
-            val bundleIdsToKeep = setOfNotNull(currentBundleId, bundleId).filter { it.isNotBlank() }
+            // Keep only the specified bundle IDs (filter out null values), and
+            // the bundle this process runs, whose JavaScript still loads its
+            // files after a channel reset or built-in commit until the next launch.
+            val bundleIdsToKeep =
+                (setOfNotNull(currentBundleId, bundleId) + bundlesInUseUntilNextLaunch()).filter { it.isNotBlank() }
 
             bundles.forEach { bundle ->
                 try {
@@ -2910,6 +3092,30 @@ class BundleFileStorageService(
             synchronized(releaseStateLock) { resetChannelLocked() }
         }
 
+    override suspend fun resetChannelIfSelectionCurrent(
+        catalogId: String,
+        scopeKey: String,
+        generation: Long,
+        catalogHash: String,
+        channel: String,
+        selectionContextHash: String,
+    ): Boolean =
+        withContext(Dispatchers.IO) {
+            // The catalog checks take the same reentrant monitor, so none
+            // accepts a newer catalog between this check and the reset.
+            synchronized(releaseStateLock) {
+                isReleaseSelectionCurrent(
+                    catalogId = catalogId,
+                    scopeKey = scopeKey,
+                    generation = generation,
+                    catalogHash = catalogHash,
+                    channel = channel,
+                    selectionContextHash = selectionContextHash,
+                ) &&
+                    resetChannelLocked()
+            }
+        }
+
     private fun resetChannelLocked(): Boolean {
         if (!setBundleURL(null)) {
             return false
@@ -2937,22 +3143,28 @@ class BundleFileStorageService(
         }
 
         saveLaunchReport(null)
+        removeDownloadedBundles()
+        return true
+    }
 
+    /**
+     * Removes every downloaded bundle once the selection no longer names any,
+     * after a channel reset or a built-in commit. The running JavaScript still
+     * loads its own bundle's files, such as images, until React Native
+     * reloads, so that one stays, named in [RETAINED_BUNDLE_FILENAME] for the
+     * next launch to remove. Called under releaseStateLock.
+     */
+    private fun removeDownloadedBundles() {
         getBundleStoreDir().listFiles()?.forEach { file ->
-            if (
-                file.name == BundleMetadata.METADATA_FILENAME ||
-                file.name == CrashedHistory.CRASHED_HISTORY_FILENAME ||
-                file.name == LaunchReport.LAUNCH_REPORT_FILENAME
-            ) {
+            if (!file.isDirectory) return@forEach
+            if (file.name == runningBundleId) {
+                // Best effort: an install's cleanup keeps the running bundle without it.
+                runCatching { File(getBundleStoreDir(), RETAINED_BUNDLE_FILENAME).writeText(file.name) }
+                    .onFailure { Log.w(TAG, "Failed to name the retained bundle ${file.name}: ${it.message}") }
                 return@forEach
             }
-
-            if (file.isDirectory) {
-                file.deleteRecursively()
-            }
+            if (!file.deleteRecursively()) Log.w(TAG, "Failed to remove bundle: ${file.name}")
         }
-
-        return true
     }
 }
 

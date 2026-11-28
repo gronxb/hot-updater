@@ -1,0 +1,102 @@
+import fs from "fs";
+
+import { p } from "@hot-updater/cli-tools";
+import {
+  blobSource,
+  normalizeIosUdid,
+  readIpaInstallInfo,
+} from "@hot-updater/protocol/native-artifact";
+
+/**
+ * Says which devices a built `.ipa` installs on, from the `.ipa` itself: only
+ * its bytes decide, whatever the Apple account lists. With `udids` it says
+ * whether each is in, and a missing one fails the run, since the person passed
+ * it to get a build that has it. An App Store export lists no devices, which is
+ * news only to someone who passed a UDID. An ad hoc build includes the
+ * device registry's approved devices itself; `--udid` checks the result.
+ */
+export const reportIpaDevices = async ({
+  artifactPath,
+  scheme,
+  udids,
+}: {
+  artifactPath: string;
+  scheme: string;
+  udids: readonly string[];
+}): Promise<void> => {
+  const isIpa = artifactPath.endsWith(".ipa");
+  if (!isIpa && udids.length === 0) return;
+  const info = isIpa
+    ? await (async () =>
+        readIpaInstallInfo(
+          blobSource(await fs.openAsBlob(artifactPath)),
+        ))().catch(() => null)
+    : null;
+  if (info === null) {
+    if (isIpa || udids.length > 0) {
+      p.log.warn(
+        isIpa
+          ? "Couldn't read this .ipa's provisioning profile, so its devices are unknown.\nCheck it with: unzip -p <file> 'Payload/*.app/embedded.mobileprovision' | security cms -D"
+          : `This build isn't an .ipa, so ${udids.join(", ")} can't install it.\nBuild a device scheme.`,
+      );
+    }
+    if (udids.length > 0) process.exitCode = 1;
+    return;
+  }
+  if (info.distribution !== "ad-hoc" && info.distribution !== "development") {
+    if (udids.length > 0 && info.distribution !== "enterprise") {
+      p.log.warn(
+        `This build lists no devices, so ${udids.join(", ")} can't install it.\nExport with method release-testing in the scheme's exportOptionsPlist.`,
+      );
+      process.exitCode = 1;
+    }
+    return;
+  }
+  p.log.info(`Devices in this .ipa: ${info.devices.length}`);
+  for (const udid of udids) {
+    if (info.devices.includes(normalizeIosUdid(udid) ?? udid)) {
+      p.log.success(`${udid} included`);
+    } else {
+      p.log.warn(
+        [
+          `${udid} isn't in this .ipa.`,
+          `Register it, then build again: npx hot-updater native-build devices add --scheme ${scheme} --udid ${udid} --name "<device name>"`,
+        ].join("\n"),
+      );
+      process.exitCode = 1;
+    }
+  }
+};
+
+/** The devices an `.ipa` lists, normalized, or null for one it can't read. */
+export const readIpaDevices = async (
+  artifactPath: string,
+): Promise<readonly string[] | null> => {
+  if (!artifactPath.endsWith(".ipa")) return null;
+  try {
+    return (
+      await readIpaInstallInfo(blobSource(await fs.openAsBlob(artifactPath)))
+    ).devices;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * When an ad hoc, development, or enterprise `.ipa`'s first profile
+ * expires, in epoch milliseconds: what `native-build ios --json` prints, so
+ * a later job can refuse the build once it has passed. Null for a store's
+ * `.ipa`, which installs from the store, and for one it can't read.
+ */
+export const readIpaExpiry = async (
+  artifactPath: string,
+): Promise<number | null> => {
+  try {
+    const info = await readIpaInstallInfo(
+      blobSource(await fs.openAsBlob(artifactPath)),
+    );
+    return info.distribution === "store" ? null : info.expiresAtMs;
+  } catch {
+    return null;
+  }
+};

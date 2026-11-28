@@ -49,6 +49,25 @@ describe("makeEnv", () => {
     expect(result).toBe("EXISTING_KEY=existing_value\nNEW_KEY=new_value");
   });
 
+  it("rewrites only a file that still holds the expected content", async () => {
+    vi.mocked(fs.readFile).mockResolvedValue("KEY=rotated");
+
+    await expect(
+      makeEnv({}, ".env.hotupdater", {
+        removeKeys: ["KEY"],
+        expectedContent: "KEY=old",
+      }),
+    ).rejects.toThrow("changed since it was read, so it was not rewritten.");
+    expect(fs.rename).not.toHaveBeenCalled();
+
+    await expect(
+      makeEnv({}, ".env.hotupdater", {
+        removeKeys: ["KEY"],
+        expectedContent: "KEY=rotated",
+      }),
+    ).resolves.toBe("");
+  });
+
   it("overwrites environment variables with the same key (string value)", async () => {
     vi.mocked(fs.readFile).mockResolvedValueOnce("TEST_KEY=old_value");
     const newEnvVars = {

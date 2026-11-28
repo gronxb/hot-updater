@@ -1,0 +1,24 @@
+---
+"@hot-updater/plugin-core": patch
+"@hot-updater/protocol": patch
+"@hot-updater/cli-tools": patch
+"@hot-updater/apple-helper": patch
+"@hot-updater/android-helper": patch
+"@hot-updater/server": patch
+"@hot-updater/react-native": patch
+"hot-updater": patch
+---
+
+Set a sandbox build's URL scheme on its scheme: `sandbox: { urlScheme: "acme-preview" }` in `hot-updater.config.ts` turns the sandbox on with that scheme, and `sandbox: true` keeps `hu-sandbox-<app ID>`. The config refuses a scheme that isn't lower case URI syntax of up to 64 characters, or is `http`, `https`, `file`, `data`, `javascript`, `true` or `false` (which Android's manifest compiles as booleans), and the build refuses one the app registers itself.
+
+The build registers the scheme in its sandbox URL type on iOS, which also records it in the Info.plist key `HOT_UPDATER_SANDBOX_URL_SCHEME`, and on the sandbox activity on Android, which also names it in `com.hotupdater.sandbox.URL_SCHEME`, and the scheme is part of the native build key. Import and registration read it from the artifact (on Android, the sandbox activity's link scheme that its meta-data names; on iOS, the one scheme of the sandbox URL type) into the registry's new `native_builds.sandbox_url_scheme`, `native-build find --json` returns it as `sandbox.urlScheme`, and the preview action's link and QR code use it, so a reused build keeps the scheme it was built with. A sandbox build accepts only its own scheme's links: another scheme's link "isn't a link for this app". A preview link's scheme is ASCII alone. The iOS build refuses an app whose own URL type is named `hot-updater-sandbox`, and, when it patches an app it patched before, anything but exactly one `hot-updater-sandbox` URL type holding the one recorded scheme. The patch, the artifact reader and the build itself read the recorded scheme by one rule: absent, it's a prerelease's build, read as before; present, it must be a lower-case ASCII scheme that the one `hot-updater-sandbox` URL type holds alone, or the build has no scheme of its own and refuses every link. Builds registered before the column read as the derived scheme.
+
+The column is part of the 1.2.0 migration. A SQL database a 1.2 prerelease already migrated needs it added by hand, before this version is deployed over it: until then, reads still work, but registering any native build, a normal one too, fails. Upgrade in this order: add the column, deploy the server, then upgrade the CLI. A new CLI that registers through `standaloneRepository` with an older server loses the scheme, since that server's admin route drops `sandboxUrlScheme`: the row stores null, and its links fall back to the derived scheme.
+
+- D1 or SQLite: `ALTER TABLE native_builds ADD COLUMN sandbox_url_scheme TEXT;`
+- Supabase: `ALTER TABLE hot_updater_v1_native_builds ADD COLUMN sandbox_url_scheme varchar(255) COLLATE "C";`
+- PostgreSQL (Vercel, Neon, or your own): `ALTER TABLE native_builds ADD COLUMN sandbox_url_scheme varchar(255) COLLATE "C";`
+- MySQL: ``ALTER TABLE native_builds ADD COLUMN `sandbox_url_scheme` varchar(255) CHARACTER SET ascii COLLATE ascii_bin;``
+- Prisma or Drizzle: run `npx hot-updater db generate <server file>`, then the migration the ORM writes from it.
+
+Key-value and document stores (DynamoDB, Firestore, Cosmos DB, MongoDB) need nothing: a row stored before the column has no such field, which reads as null. Nor does `standaloneRepository`, which stores nothing itself: its server's database takes the ALTER.

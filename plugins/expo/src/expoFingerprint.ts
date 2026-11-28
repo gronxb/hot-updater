@@ -1,10 +1,7 @@
-import { createRequire } from "node:module";
-import path from "node:path";
-
 import {
   createInterfaceFingerprint,
+  reactNativeConfigCommand,
   readReactNativeInterface,
-  resolveExpoAutolinking,
 } from "@hot-updater/cli-tools";
 import type {
   NativeFingerprintOptions,
@@ -12,8 +9,6 @@ import type {
 } from "@hot-updater/plugin-core";
 
 import { getConfig } from "./expoConfig";
-
-const require = createRequire(import.meta.url);
 
 /** The app config fields that choose the JavaScript engine and architecture. */
 type EngineConfig = {
@@ -43,42 +38,6 @@ export const readExpoSettings = (
     settings["expo.newArchEnabled"] = String(newArchEnabled);
   }
   return settings;
-};
-
-/**
- * The command that lists the React Native packages a build links, chosen as
- * Expo and @expo/fingerprint choose it: Expo's autolinking from
- * expo-modules-autolinking 1.12 (SDK 52), else React Native CLI. The native
- * templates also fall back to React Native CLI when
- * `EXPO_USE_COMMUNITY_AUTOLINKING=1`, as Expo documents.
- */
-export const reactNativeConfigCommand = (
-  cwd: string,
-  platform: Platform,
-  env: NodeJS.ProcessEnv = process.env,
-): string[] => {
-  const autolinking = resolveExpoAutolinking(cwd);
-  if (
-    autolinking.linksReactNative &&
-    env["EXPO_USE_COMMUNITY_AUTOLINKING"] !== "1"
-  ) {
-    return [
-      autolinking.bin,
-      "react-native-config",
-      "--platform",
-      platform,
-      "--json",
-    ];
-  }
-  return [
-    path.join(
-      path.dirname(
-        require.resolve("react-native/package.json", { paths: [cwd] }),
-      ),
-      "cli.js",
-    ),
-    "config",
-  ];
 };
 
 /**

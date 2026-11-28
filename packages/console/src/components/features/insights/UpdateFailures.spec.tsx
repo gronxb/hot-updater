@@ -119,6 +119,82 @@ describe("UpdateFailures", () => {
     expect(row.closest("details")?.open).toBe(false);
   });
 
+  it("marks failure counts as at least what they say when an hour was read only in part", () => {
+    render(
+      <UpdateFailures
+        query={query({
+          ...report,
+          coverage: { kind: "partial", sinceMs: 0 },
+          cappedHours: [0],
+          checks: {
+            failures: 21,
+            failedInstallations: 2,
+            activeInstallations: 10,
+          },
+        })}
+        onRefresh={() => {}}
+      />,
+    );
+    const card = screen.getByRole("region", { name: "Update failures" });
+    const updates = within(card).getByRole("region", {
+      name: "Downloads & installs",
+    });
+    expect(updates.textContent).toContain("≥30.77%");
+    expect(updates.textContent).toContain("≥4 failures");
+    const checks = within(card).getByRole("region", { name: "Update checks" });
+    // The check rate counts installations, which count in full.
+    expect(checks.textContent).toContain("20.00%");
+    expect(checks.textContent).not.toContain("≥20.00%");
+    expect(checks.textContent).toContain("≥21 failures");
+    // The footer says why the counts are lower bounds.
+    expect(
+      within(card).getByText(
+        "Partial: some hours held more failure kinds than are read, so failures are at least the counts shown.",
+      ),
+    ).toBeDefined();
+    // The breakdown holds only the rows read: no shares of a whole it lacks.
+    const table = within(card).getByRole("table", {
+      name: "Failures by stage and reason",
+    });
+    expect(
+      within(table).queryByRole("columnheader", { name: "Share" }),
+    ).toBeNull();
+    expect(within(table).queryByText("75.0%")).toBeNull();
+    const row = within(table).getByLabelText("Download · HTTP error", {
+      selector: "summary",
+    });
+    expect(row.closest("tr")?.textContent).toContain("≥3");
+    fireEvent.click(row);
+    expect(
+      within(table).getByRole("list", { name: "Download · HTTP error details" })
+        .textContent,
+    ).toContain("≥2");
+  });
+
+  it("doesn't call a capped period's empty breakdown free of failures", () => {
+    render(
+      <UpdateFailures
+        query={query({
+          ...report,
+          coverage: { kind: "partial", sinceMs: 0 },
+          cappedHours: [0],
+          failedUpdates: 0,
+          breakdown: [],
+        })}
+        onRefresh={() => {}}
+      />,
+    );
+    const card = screen.getByRole("region", { name: "Update failures" });
+    expect(
+      within(card).queryByText("No update failures in this period."),
+    ).toBeNull();
+    expect(
+      within(card).getByText(
+        "None among the failures read: some hours held more failure kinds than are read.",
+      ),
+    ).toBeDefined();
+  });
+
   it("shows a rising failure rate in percentage points and keeps investigation immediately below it", () => {
     render(
       <UpdateFailures

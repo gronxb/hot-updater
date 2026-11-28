@@ -23,21 +23,21 @@ export type DeploymentSeed = BundleDeployment;
  * A database on the storage engine over a memory adapter, as a provider
  * gives the CLI, with core on it for seeding. `testServer` hands commands
  * `database.core` as the server's core, so a test can spy on its calls.
- * Every read passes `read` first.
+ * Every read passes `read` first, with the table it reads.
  */
 export const createDatabaseHarness = () => {
-  const read = vi.fn(async (): Promise<void> => {});
+  const read = vi.fn(async (_table: string): Promise<void> => {});
   const dispose = vi.fn(async (): Promise<void> => {});
   let memory = createMemoryAdapter();
   const adapter: DatabaseAdapter = {
     id: "memory",
     fits: (ops) => memory.fits(ops),
     get: async (table, keys) => {
-      await read();
+      await read(table.name);
       return memory.get(table, keys);
     },
     query: async (table, request) => {
-      await read();
+      await read(table.name);
       return memory.query(table, request);
     },
     write: (ops) => memory.write(ops),

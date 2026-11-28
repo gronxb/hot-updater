@@ -1,4 +1,7 @@
-import { ReleaseManagementError } from "@hot-updater/plugin-core";
+import {
+  ReleaseCatalogCompilationError,
+  ReleaseManagementError,
+} from "@hot-updater/plugin-core";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -105,6 +108,150 @@ describe("createStandaloneCoreApi", () => {
     });
   });
 
+  describe("channels on a server that answers every channel to GET /channels, as 1.1.x does", () => {
+    const channels = [
+      { id: "c1", name: "alpha" },
+      { id: "c2", name: "beta" },
+      { id: "c3", name: "gamma" },
+    ];
+    const queries: URLSearchParams[] = [];
+    const everyChannel = () =>
+      http.get(`${BASE_URL}/channels`, ({ request }) => {
+        const query = new URL(request.url).searchParams;
+        queries.push(query);
+        const name = query.get("name");
+        return name === null
+          ? HttpResponse.json({ data: channels })
+          : HttpResponse.json({
+              data: channels.find((channel) => channel.name === name),
+            });
+      });
+
+    afterEach(() => {
+      queries.length = 0;
+    });
+
+    it("keeps only the channels of the IDs asked, in their order", async () => {
+      server.use(version(2), everyChannel());
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      await expect(core.getChannels(["c3", "c1", "c3", "c9"])).resolves.toEqual(
+        [channels[2], channels[0]],
+      );
+      expect(queries.map((query) => query.get("ids"))).toEqual(["c3,c1,c9"]);
+
+      const many = Array.from({ length: 150 }, (_, n) => `x${n}`);
+      await expect(core.getChannels([...many, "c2"])).resolves.toEqual([
+        channels[1],
+      ]);
+      expect(
+        queries.slice(1).map((query) => query.get("ids")!.split(",").length),
+      ).toEqual([100, 51]);
+    });
+
+    it("pages the whole list it answers, and the last page ends the walk", async () => {
+      server.use(version(2), everyChannel());
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      const names: string[] = [];
+      for (let after: string | undefined, pages = 0; pages < 10; pages += 1) {
+        const page = await core.listChannels({
+          limit: 2,
+          order: "asc",
+          ...(after === undefined ? {} : { after }),
+        });
+        names.push(...page.map(({ name }) => name));
+        if (page.length < 2) break;
+        after = page.at(-1)!.name;
+      }
+
+      expect(names).toEqual(["alpha", "beta", "gamma"]);
+      expect(Object.fromEntries(queries[0]!)).toEqual({
+        limit: "2",
+        order: "asc",
+      });
+    });
+
+    it("orders a whole list that fits the page as asked", async () => {
+      server.use(version(2), everyChannel());
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      const page = await core.listChannels({ limit: 10, order: "desc" });
+
+      expect(page.map(({ name }) => name)).toEqual(["gamma", "beta", "alpha"]);
+    });
+
+    it("starts past a cursor that names no channel", async () => {
+      server.use(version(2), everyChannel());
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      // "alpha2" sorts between alpha and beta, and no channel has it, as
+      // when the cursor's channel was deleted between pages.
+      const asc = await core.listChannels({
+        limit: 1,
+        order: "asc",
+        after: "alpha2",
+      });
+      const desc = await core.listChannels({
+        limit: 10,
+        order: "desc",
+        after: "beta2",
+      });
+
+      expect(asc.map(({ name }) => name)).toEqual(["beta"]);
+      expect(desc.map(({ name }) => name)).toEqual(["beta", "alpha"]);
+    });
+
+    it("ends with the channel `through` names, in either order", async () => {
+      server.use(version(2), everyChannel());
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      const asc = await core.listChannels({ limit: 10, through: "beta" });
+      const desc = await core.listChannels({
+        limit: 10,
+        order: "desc",
+        through: "beta",
+      });
+      const between = await core.listChannels({
+        limit: 10,
+        after: "alpha",
+        through: "beta2",
+      });
+      const descBetween = await core.listChannels({
+        limit: 10,
+        order: "desc",
+        after: "gamma",
+        through: "alpha2",
+      });
+
+      expect(asc.map(({ name }) => name)).toEqual(["alpha", "beta"]);
+      expect(desc.map(({ name }) => name)).toEqual(["gamma", "beta"]);
+      expect(between.map(({ name }) => name)).toEqual(["beta"]);
+      expect(descBetween.map(({ name }) => name)).toEqual(["beta"]);
+    });
+  });
+
+  it("marks iOS devices in a build in requests of 100 IDs", async () => {
+    const sent: number[] = [];
+    server.use(
+      version(2),
+      http.post(`${BASE_URL}/ios-devices/in-build`, async ({ request }) => {
+        const body = (await request.json()) as { ids: string[] };
+        sent.push(body.ids.length);
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await core.markIosDevicesInBuild({
+      buildId: "build",
+      ids: Array.from({ length: 250 }, (_, n) => `d${n}`),
+    });
+    await core.markIosDevicesInBuild({ buildId: "build", ids: ["d1"] });
+
+    expect(sent).toEqual([100, 100, 50, 1]);
+  });
+
   it("names migrations when the server's schema fence answers 503", async () => {
     server.use(
       version(2),
@@ -139,5 +286,514 @@ describe("createStandaloneCoreApi", () => {
     });
     await expect(refusal).rejects.toBeInstanceOf(ReleaseManagementError);
     await expect(refusal).rejects.toMatchObject({ code: "VERSION_CONFLICT" });
+  });
+
+  it("throws a catalog over the size limit as core does in process, with its message", async () => {
+    const message =
+      'The ios release catalog of channel "production" would be over its 256 KiB limit.\nDisable or delete old bundles on that channel, then try again.';
+    server.use(
+      version(2),
+      http.post(`${BASE_URL}/releases`, () =>
+        HttpResponse.json(
+          { code: "CATALOG_OVERSIZE", error: message },
+          { status: 400 },
+        ),
+      ),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    const refusal = core.deploy([
+      {
+        bundle: {
+          id: "01900000-0000-7000-8000-000000000001",
+          platform: "ios",
+          gitCommitHash: null,
+          manifestStorageUri: "s3://bucket/manifest.json",
+          manifestFileHash: "hash",
+          assetBaseStorageUri: "s3://bucket/assets",
+        },
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: "1.0.x",
+        },
+      },
+    ]);
+    await expect(refusal).rejects.toBeInstanceOf(
+      ReleaseCatalogCompilationError,
+    );
+    await expect(refusal).rejects.toMatchObject({
+      code: "CATALOG_OVERSIZE",
+      message,
+    });
+  });
+
+  it("lists release scopes by limit and cursor, and asks for an upgrade where the route is missing", async () => {
+    const queries: Record<string, string>[] = [];
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/release-scopes`, ({ request }) => {
+        queries.push(Object.fromEntries(new URL(request.url).searchParams));
+        return HttpResponse.json({ data: ["scope-b"] });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+    await expect(
+      core.listReleaseScopeKeys({ after: "scope-a", limit: 100 }),
+    ).resolves.toEqual(["scope-b"]);
+    await core.listReleaseScopeKeys({ limit: 2 });
+    expect(queries).toEqual([
+      { limit: "100", cursor: "scope-a" },
+      { limit: "2" },
+    ]);
+
+    // A server before the route answers 404, which is no empty list.
+    server.use(
+      http.get(
+        `${BASE_URL}/release-scopes`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    await expect(core.listReleaseScopeKeys({ limit: 100 })).rejects.toThrow(
+      `The server at ${BASE_URL} has no release scope route`,
+    );
+  });
+
+  it("finds a release by its label and fills labels, and asks for an upgrade where the routes are missing", async () => {
+    const queries: Record<string, string>[] = [];
+    const fills: unknown[] = [];
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/release-labels`, ({ request }) => {
+        queries.push(Object.fromEntries(new URL(request.url).searchParams));
+        return HttpResponse.json({ data: null });
+      }),
+      http.post(`${BASE_URL}/release-labels/fill`, async ({ request }) => {
+        fills.push(await request.json());
+        return HttpResponse.json({ data: { releases: 2, catalogs: 1 } });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await expect(
+      core.getReleaseByLabel({
+        channel: "production",
+        platform: "ios",
+        label: 12,
+      }),
+    ).resolves.toBeNull();
+    await expect(core.fillReleaseLabels({ dryRun: true })).resolves.toEqual({
+      releases: 2,
+      catalogs: 1,
+    });
+    expect(queries).toEqual([
+      { channel: "production", platform: "ios", label: "12" },
+    ]);
+    expect(fills).toEqual([{ dryRun: true }]);
+
+    // A server before labels answers 404, which is no missing release.
+    server.use(
+      http.all(
+        `${BASE_URL}/release-labels*`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    const upgrade = {
+      message: expect.stringContaining(
+        `The server at ${BASE_URL} has no release label route`,
+      ),
+      status: 404,
+    };
+    await expect(
+      core.getReleaseByLabel({
+        channel: "production",
+        platform: "ios",
+        label: 12,
+      }),
+    ).rejects.toMatchObject(upgrade);
+    await expect(core.fillReleaseLabels()).rejects.toMatchObject(upgrade);
+  });
+
+  it("asks for a server upgrade when the server has no native build routes", async () => {
+    server.use(
+      version(2),
+      http.all(
+        `${BASE_URL}/native-builds*`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+    const upgrade = `The server at ${BASE_URL} has no native build route`;
+
+    await expect(
+      core.findNativeBuild({
+        platform: "ios",
+        channel: "production",
+        fingerprintHash: "fingerprint",
+        appVersion: null,
+      }),
+    ).rejects.toThrow(upgrade);
+    await expect(
+      core.registerNativeBuild(
+        {} as Parameters<typeof core.registerNativeBuild>[0],
+      ),
+    ).rejects.toThrow(upgrade);
+    await expect(core.getNativeBuild("build-1")).rejects.toThrow(upgrade);
+    await expect(
+      core.findNativeBuildByBuiltInBundle("bundle-1"),
+    ).rejects.toThrow(upgrade);
+    await expect(core.deleteNativeBuild("build-1")).rejects.toThrow(
+      `The server at ${BASE_URL} has no native build deletion route`,
+    );
+    // Such a server holds no native builds, so doctor's scan finds none.
+    await expect(core.listNativeBuilds({ limit: 10 })).resolves.toEqual([]);
+  });
+
+  describe("the store build mark", () => {
+    const scope = {
+      platform: "ios",
+      channel: "production",
+      fingerprintHash: "fingerprint",
+      appVersion: null,
+    } as const;
+
+    it("reads the mark and writes it through the admin routes", async () => {
+      const queries: string[] = [];
+      const marks: unknown[] = [];
+      server.use(
+        version(2),
+        http.get(`${BASE_URL}/native-builds/latest`, ({ request }) => {
+          queries.push(new URL(request.url).search);
+          return HttpResponse.json({
+            data: { id: "build-1", is_store_build: true },
+          });
+        }),
+        http.post(
+          `${BASE_URL}/native-builds/:id/store-build`,
+          async ({ params, request }) => {
+            marks.push([params.id, await request.json()]);
+            return HttpResponse.json({
+              data: { nativeBuild: { id: params.id }, previous: null },
+            });
+          },
+        ),
+      );
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      await expect(
+        core.findNativeBuild(scope, { storeBuild: true }),
+      ).resolves.toMatchObject({ id: "build-1" });
+      await core.findNativeBuild(scope, { builtInOlderThan: "bundle-1" });
+      await expect(
+        core.markNativeBuild("build/1", { storeBuild: true }),
+      ).resolves.toEqual({
+        nativeBuild: { id: "build/1" },
+        previous: null,
+      });
+
+      expect(queries[0]).toContain("storeBuild=true");
+      expect(queries[1]).toContain("builtInOlderThan=bundle-1");
+      expect(marks).toEqual([["build/1", { storeBuild: true }]]);
+    });
+
+    it("names a sandbox scope in four query parameters, and finds no build of another on a server without them", async () => {
+      const queries: URLSearchParams[] = [];
+      let answer: Record<string, unknown> = {
+        id: "build-1",
+        is_sandbox: true,
+        artifact_kind: "ipa",
+        sandbox_url_scheme: "acme-preview",
+      };
+      server.use(
+        version(2),
+        http.get(`${BASE_URL}/native-builds/latest`, ({ request }) => {
+          queries.push(new URL(request.url).searchParams);
+          return HttpResponse.json({ data: answer });
+        }),
+      );
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+      const sandboxScope = {
+        ...scope,
+        sandbox: {
+          appId: "com.example.app",
+          urlScheme: "acme-preview",
+          artifactKind: "ipa",
+          distribution: "direct",
+        },
+      } as const;
+
+      await expect(core.findNativeBuild(sandboxScope)).resolves.toMatchObject({
+        id: "build-1",
+      });
+      expect(Object.fromEntries(queries[0]!)).toMatchObject({
+        sandboxAppId: "com.example.app",
+        sandboxUrlScheme: "acme-preview",
+        artifactKind: "ipa",
+        distribution: "direct",
+      });
+      // An older server ignores them and answers the channel's newest build.
+      answer = { id: "build-2", is_sandbox: false, artifact_kind: "ipa" };
+      await expect(core.findNativeBuild(sandboxScope)).resolves.toBeNull();
+      // A normal lookup names none of them.
+      await core.findNativeBuild(scope);
+      expect(queries[2]!.has("sandboxAppId")).toBe(false);
+    });
+
+    it("finds no mark on a server that answers its newest build instead", async () => {
+      server.use(
+        version(2),
+        http.get(`${BASE_URL}/native-builds/latest`, () =>
+          HttpResponse.json({ data: { id: "build-1" } }),
+        ),
+      );
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      await expect(
+        core.findNativeBuild(scope, { storeBuild: true }),
+      ).resolves.toBeNull();
+    });
+
+    it("asks to upgrade a server without the mark's route", async () => {
+      server.use(
+        version(2),
+        http.post(
+          `${BASE_URL}/native-builds/:id/store-build`,
+          () => new HttpResponse(null, { status: 404 }),
+        ),
+      );
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      await expect(
+        core.markNativeBuild("build-1", { storeBuild: true }),
+      ).rejects.toThrow(
+        `The server at ${BASE_URL} has no native build store mark route`,
+      );
+    });
+  });
+
+  it("deletes a native build by ID, and answers an unknown ID as not_found", async () => {
+    const deleted: string[] = [];
+    server.use(
+      version(2),
+      http.delete(`${BASE_URL}/native-builds/:id`, ({ params }) => {
+        deleted.push(String(params.id));
+        return HttpResponse.json({
+          data:
+            params.id === "build-1"
+              ? { deleted: true, nativeBuild: { id: "build-1" } }
+              : { deleted: false, reason: "not_found" },
+        });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await expect(core.deleteNativeBuild("build-1")).resolves.toEqual({
+      deleted: true,
+      nativeBuild: { id: "build-1" },
+    });
+    await expect(core.deleteNativeBuild("build/2")).resolves.toEqual({
+      deleted: false,
+      reason: "not_found",
+    });
+    expect(deleted).toEqual(["build-1", "build/2"]);
+  });
+
+  it("reads a native build by ID, and an unknown ID as null", async () => {
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/native-builds/:id`, ({ params }) =>
+        HttpResponse.json({
+          data: params.id === "build-1" ? { id: "build-1" } : null,
+        }),
+      ),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await expect(core.getNativeBuild("build-1")).resolves.toEqual({
+      id: "build-1",
+    });
+    await expect(core.getNativeBuild("build-2")).resolves.toBeNull();
+  });
+
+  it("reads the native build that compiled in a bundle, and none as null", async () => {
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/native-builds/built-in/:bundleId`, ({ params }) =>
+        HttpResponse.json({
+          data:
+            params.bundleId === "bundle-1"
+              ? { id: "build-1", min_bundle_id: "bundle-1" }
+              : null,
+        }),
+      ),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await expect(
+      core.findNativeBuildByBuiltInBundle("bundle-1"),
+    ).resolves.toEqual({ id: "build-1", min_bundle_id: "bundle-1" });
+    await expect(
+      core.findNativeBuildByBuiltInBundle("bundle-2"),
+    ).resolves.toBeNull();
+  });
+
+  it("records a native build's store submission, and asks for an upgrade on a server without the route", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      version(2),
+      http.post(
+        `${BASE_URL}/native-builds/:id/submission`,
+        async ({ params, request }) => {
+          bodies.push(await request.json());
+          return params.id === "build-1"
+            ? HttpResponse.json({
+                data: { id: "build-1", submitted_to: "testflight" },
+              })
+            : HttpResponse.json({ data: null });
+        },
+      ),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+    const submission = {
+      destination: "testflight",
+      version: "1.7.0 (66)",
+    } as const;
+
+    await expect(
+      core.recordNativeBuildSubmission("build-1", submission),
+    ).resolves.toEqual({ id: "build-1", submitted_to: "testflight" });
+    await expect(
+      core.recordNativeBuildSubmission("build-2", submission),
+    ).resolves.toBeNull();
+    expect(bodies).toEqual([submission, submission]);
+
+    server.use(
+      http.post(
+        `${BASE_URL}/native-builds/:id/submission`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    await expect(
+      core.recordNativeBuildSubmission("build-1", submission),
+    ).rejects.toThrow(
+      `The server at ${BASE_URL} has no native build submission route`,
+    );
+  });
+
+  it("lists a channel's native builds with the channel in the query", async () => {
+    const queries: Record<string, string>[] = [];
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/native-builds`, ({ request }) => {
+        queries.push(
+          Object.fromEntries(new URL(request.url).searchParams.entries()),
+        );
+        return HttpResponse.json({ data: [{ id: "build-1" }] });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await expect(
+      core.listNativeBuilds({
+        channelId: "channel:pr-130",
+        order: "desc",
+        after: "build-2",
+        limit: 20,
+      }),
+    ).resolves.toEqual([{ id: "build-1" }]);
+    await core.listNativeBuilds({ limit: 5 });
+    expect(queries).toEqual([
+      {
+        channelId: "channel:pr-130",
+        order: "desc",
+        cursor: "build-2",
+        limit: "20",
+      },
+      { limit: "5" },
+    ]);
+  });
+
+  it("finds a native build by scope, and reads a scope without one as null", async () => {
+    const queries: Record<string, string>[] = [];
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/native-builds/latest`, ({ request }) => {
+        const query = Object.fromEntries(new URL(request.url).searchParams);
+        queries.push(query);
+        return HttpResponse.json({
+          data: query.appVersion === undefined ? { id: "build-1" } : null,
+        });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await expect(
+      core.findNativeBuild({
+        platform: "ios",
+        channel: "production",
+        fingerprintHash: "fingerprint",
+        appVersion: null,
+      }),
+    ).resolves.toEqual({ id: "build-1" });
+    await expect(
+      core.findNativeBuild({
+        platform: "android",
+        channel: "beta",
+        fingerprintHash: null,
+        appVersion: "1.0.0",
+      }),
+    ).resolves.toBeNull();
+    expect(queries).toEqual([
+      {
+        platform: "ios",
+        channel: "production",
+        fingerprintHash: "fingerprint",
+      },
+      { platform: "android", channel: "beta", appVersion: "1.0.0" },
+    ]);
+  });
+
+  it("finds a native build by key, and reads an answer with another key as none", async () => {
+    const key = `nbk1:${"a".repeat(64)}`;
+    const queries: Record<string, string>[] = [];
+    let answer: unknown;
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/native-builds/latest`, ({ request }) => {
+        queries.push(Object.fromEntries(new URL(request.url).searchParams));
+        return HttpResponse.json({ data: answer });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+    const scope = {
+      platform: "ios",
+      channel: "production",
+      fingerprintHash: "fingerprint",
+      appVersion: null,
+    } as const;
+
+    answer = { id: "build-1", build_key: key };
+    await expect(
+      core.findNativeBuild(scope, { buildKey: key }),
+    ).resolves.toEqual(answer);
+    // A server that predates build keys ignores the parameter and answers
+    // the scope's newest build: a row without the key is no match.
+    answer = { id: "build-2" };
+    await expect(
+      core.findNativeBuild(scope, { buildKey: key }),
+    ).resolves.toBeNull();
+    answer = { id: "build-3", build_key: null };
+    await expect(
+      core.findNativeBuild(scope, { buildKey: key }),
+    ).resolves.toBeNull();
+    expect(queries[0]).toEqual({
+      platform: "ios",
+      channel: "production",
+      fingerprintHash: "fingerprint",
+      buildKey: key,
+    });
   });
 });

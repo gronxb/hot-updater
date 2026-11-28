@@ -1,3 +1,9 @@
+import fs from "node:fs";
+import path from "node:path";
+
+import type { UpdateStrategy } from "./ConfigBuilder";
+import { getCwd } from "./cwd";
+import { readConfigUpdateStrategy } from "./hotUpdaterConfig";
 import { p } from "./prompts";
 
 /** The credential init gives an app, through the server's clientAuth plugin. */
@@ -53,13 +59,18 @@ export const renderAppImports = (
  * `HotUpdater.init` returns with the server's URL, the header that carries
  * the client credential when the server takes one, and the client plugins
  * the server's plugins ask for; and `App.tsx`, which wraps the app's root
- * with the instance's `wrap`.
+ * with the instance's `wrap`, checking with `updateStrategy`: the one
+ * hot-updater.config.ts sets, or null when that can't be read from it.
  */
 export const renderAppSetup = ({
   baseURL,
   credential,
   clientPlugins = [],
-}: AppSetup & { readonly baseURL: string }): string =>
+  updateStrategy,
+}: AppSetup & {
+  readonly baseURL: string;
+  readonly updateStrategy: UpdateStrategy | null;
+}): string =>
   [
     "// src/hotUpdater.ts",
     ...renderAppImports(clientPlugins),
@@ -89,19 +100,48 @@ export const renderAppSetup = ({
     "",
     "// Checks for an update when App mounts. For your own flow, call",
     "// hotUpdater.checkForUpdate() instead.",
-    'export default hotUpdater.wrap({ updateStrategy: "appVersion" })(App);',
+    ...(updateStrategy === null
+      ? ["// Use the updateStrategy hot-updater.config.ts sets."]
+      : []),
+    `export default hotUpdater.wrap({ updateStrategy: "${updateStrategy ?? "fingerprint"}" })(App);`,
   ].join("\n");
 
-/** Prints the app code, when the URL is known, and the app's credential. */
+/** The `updateStrategy` hot-updater.config.ts in `cwd` sets, if it says. */
+const readProjectUpdateStrategy = (cwd: string): UpdateStrategy | null => {
+  try {
+    return readConfigUpdateStrategy(
+      fs.readFileSync(path.join(cwd, "hot-updater.config.ts"), "utf-8"),
+    );
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Prints the app code, when the URL is known, and the app's credential. The
+ * code checks with the strategy of the hot-updater.config.ts init wrote in
+ * `cwd`, so the app and the config agree.
+ */
 export const printAppSetup = ({
   baseURL,
+  cwd = getCwd(),
   ...setup
 }: AppSetup & {
   readonly baseURL?: string;
   /** Required, so each init passes its server plugins' client plugins. */
   readonly clientPlugins: readonly AppClientPlugin[];
+  /** The project root, which holds hot-updater.config.ts. */
+  readonly cwd?: string;
 }): void => {
-  if (baseURL !== undefined) p.note(renderAppSetup({ baseURL, ...setup }));
+  if (baseURL !== undefined) {
+    p.note(
+      renderAppSetup({
+        baseURL,
+        ...setup,
+        updateStrategy: readProjectUpdateStrategy(cwd),
+      }),
+    );
+  }
   const { credential } = setup;
   if (credential !== undefined) {
     p.note(credential.value, credential.label);

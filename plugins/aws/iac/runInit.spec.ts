@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  backfillInsightsReleaseRefs: vi.fn(),
   createBucket: vi.fn(),
   createOrSelectRole: vi.fn(),
   createOrUpdateDistribution: vi.fn(),
@@ -111,6 +112,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     ...actual,
     // The managed server's plugins, over the mocked database.
     provisionClientCredential: mocks.provisionClientCredential,
+    backfillInsightsReleaseRefs: mocks.backfillInsightsReleaseRefs,
     confirmInitInputPersistence: vi.fn(async () => false),
     ensureInstallPackages: vi.fn(),
     makeEnv: mocks.makeEnv,
@@ -168,11 +170,22 @@ beforeEach(() => {
     distributionId: "dist-id",
   });
   mocks.provisionClientCredential.mockResolvedValue(undefined);
+  mocks.backfillInsightsReleaseRefs.mockResolvedValue(0);
 });
 
 describe("AWS init", () => {
   it("deploys the prebuilt function, with its plugins' tables, the app's credential, and CloudFront's client headers", async () => {
-    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+    const result = await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    // Init's closing prints the next steps and Done, after every step.
+    expect(result).toEqual({
+      nextSteps: [
+        expect.stringContaining(
+          "hot-updater.dev/docs/managed/aws#step-3-add-hotupdater-to-your-project",
+        ),
+      ],
+    });
+    expect(mocks.log.success).not.toHaveBeenCalledWith("Done! 🎉");
 
     const ssmParameterName = getAwsV1SsmParameterName("hot-updater-edge");
     expect(mocks.migrateDynamoDB).toHaveBeenCalledWith(
@@ -228,7 +241,16 @@ describe("AWS init", () => {
       functionArn: FUNCTION_ARN,
     });
     expect(mocks.writeHotUpdaterFiles).toHaveBeenCalledWith(
-      getConfigScaffold("bare", { mode: "account" }),
+      getConfigScaffold(
+        "bare",
+        { mode: "account" },
+        {
+          region: "ap-northeast-2",
+          bucketName: "bundles",
+          tableName: "hot-updater-metadata",
+          cloudfrontDistributionId: "dist-id",
+        },
+      ),
       { cwd: process.cwd(), settings: "AWS" },
     );
     expect(mocks.printAppSetup).toHaveBeenCalledWith({
@@ -253,12 +275,55 @@ describe("AWS init", () => {
     expect(mocks.makeEnv).toHaveBeenCalledWith({
       HOT_UPDATER_API_KEY: "app-api-key",
     });
-    expect(mocks.dispose).toHaveBeenCalledTimes(1);
     expect(mocks.dispose.mock.invocationCallOrder[0]).toBeGreaterThan(
       mocks.provisionClientCredential.mock.invocationCallOrder[0]!,
     );
     expect(mocks.printAppSetup).toHaveBeenCalledWith(
       expect.objectContaining({ credential }),
     );
+  });
+
+  it("moves the Insights events once the new server answers, on the managed server's plugins, then closes that client", async () => {
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    expect(mocks.backfillInsightsReleaseRefs).toHaveBeenCalledOnce();
+    const [server] = mocks.backfillInsightsReleaseRefs.mock.calls[0] as [
+      { readonly plugins: readonly { readonly id: string }[] },
+    ];
+    expect(server.plugins.map(({ id }) => id)).toEqual([
+      "insights",
+      "apiKeys",
+      "remoteConfig",
+    ]);
+    const [backfill] =
+      mocks.backfillInsightsReleaseRefs.mock.invocationCallOrder;
+    expect(backfill).toBeGreaterThan(mocks.deploy.mock.invocationCallOrder[0]!);
+    expect(backfill).toBeGreaterThan(
+      mocks.createOrUpdateDistribution.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.dispose).toHaveBeenCalledTimes(2);
+    expect(mocks.dispose.mock.invocationCallOrder[1]).toBeGreaterThan(
+      backfill!,
+    );
+  });
+
+  it("keeps the deployed server when the Insights backfill stops", async () => {
+    mocks.backfillInsightsReleaseRefs.mockRejectedValue(new Error("busy"));
+
+    await expect(
+      runInit({ build: "bare", envFile: ".env.hotupdater" }),
+    ).rejects.toThrow("busy");
+
+    expect(mocks.deploy).toHaveBeenCalledOnce();
+    expect(mocks.createOrUpdateDistribution).toHaveBeenCalledOnce();
+    // What a rerun replays is saved.
+    expect(mocks.makeEnv).toHaveBeenCalledWith(
+      expect.objectContaining({
+        HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: "dist-id",
+      }),
+    );
+    expect(mocks.writeHotUpdaterFiles).toHaveBeenCalledOnce();
+    expect(mocks.printAppSetup).not.toHaveBeenCalled();
+    expect(mocks.dispose).toHaveBeenCalledTimes(2);
   });
 });

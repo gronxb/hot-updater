@@ -64,6 +64,7 @@ model releases {
   source_release_id String? @db.VarChar(36)
   created_at_ms BigInt
   updated_at_ms BigInt
+  label BigInt?
   hu_v BigInt @default(0) @map("_v")
   @@id([id])
   @@index([scope_key, id], map: "releases_byScope")
@@ -71,6 +72,7 @@ model releases {
   @@index([channel_id, platform, id], map: "releases_byChannelPlatform")
   @@index([channel_id, platform, enabled, id], map: "releases_byChannelPlatformEnabled")
   @@index([bundle_id, id], map: "releases_byBundle")
+  @@unique([channel_id, platform, label], map: "releases_byLabel")
 }
 model release_catalogs {
   scope_key String @db.VarChar(2048)
@@ -105,6 +107,72 @@ model bundle_totals {
   hu_v BigInt @default(0) @map("_v")
   @@id([platform_key, hu_shard])
 }
+model native_builds {
+  id String @db.VarChar(36)
+  scope_key String @db.VarChar(2048)
+  platform String @db.VarChar(16)
+  channel_id String @db.VarChar(1408)
+  fingerprint_hash String? @db.VarChar(255)
+  app_version String?
+  min_bundle_id String @db.VarChar(36)
+  artifact_kind String @db.VarChar(16)
+  artifact_storage_uri String
+  byte_size BigInt
+  git_commit_hash String? @db.VarChar(255)
+  created_at_ms BigInt
+  build_key String? @db.VarChar(69)
+  build_number String? @db.VarChar(64)
+  submitted_to String? @db.VarChar(16)
+  submitted_at_ms BigInt?
+  submitted_version String? @db.VarChar(255)
+  is_store_build Boolean
+  is_sandbox Boolean
+  sandbox_url_scheme String? @db.VarChar(255)
+  export_method String? @db.VarChar(16)
+  native_app_version String?
+  store_build_scope_key String? @db.VarChar(2048)
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+  @@index([scope_key, id], map: "native_builds_byScope")
+  @@index([scope_key, build_key, id], map: "native_builds_byBuildKey")
+  @@index([scope_key, artifact_kind, id], map: "native_builds_byScopeKind")
+  @@unique([store_build_scope_key], map: "native_builds_byStoreBuild")
+  @@index([channel_id, id], map: "native_builds_byChannel")
+  @@unique([min_bundle_id], map: "native_builds_min_bundle_id")
+}
+model ios_devices {
+  id String @db.VarChar(36)
+  udid String @db.VarChar(40)
+  name String @db.VarChar(100)
+  status String @db.VarChar(16)
+  requested_by String? @db.VarChar(320)
+  created_at_ms BigInt
+  approved_by String? @db.VarChar(320)
+  approved_at_ms BigInt?
+  registered_at_ms BigInt?
+  apple_issuer_id String? @db.VarChar(64)
+  apple_error String? @db.VarChar(512)
+  build_id String? @db.VarChar(36)
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+  @@index([status, id], map: "ios_devices_byStatus")
+  @@index([registered_at_ms, id], map: "ios_devices_byRegistration")
+  @@unique([udid], map: "ios_devices_udid")
+}
+model ios_device_account {
+  id String @db.VarChar(16)
+  apple_issuer_id String @db.VarChar(64)
+  claimed_at_ms BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+}
+model label_sequences {
+  id String @db.VarChar(1440)
+  last_label BigInt
+  is_filled Boolean
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+}
 model bundle_events {
   id String @db.VarChar(36)
   type String @db.VarChar(32)
@@ -136,6 +204,7 @@ model bundle_events__byBundle {
   received_at_ms BigInt
   id String @db.VarChar(36)
   @@id([platform, channel, type, bundle_ref, day, received_at_ms, id])
+  @@index([id], map: "bundle_events__byBundle__key")
 }
 model bundle_event_heads {
   install_id String @db.VarChar(255)

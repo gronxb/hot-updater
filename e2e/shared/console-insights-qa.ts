@@ -1,8 +1,14 @@
 import type {
   InsightsBundleSelection,
   InsightsScope,
-  ReportingOverview,
+  WireReportingOverview,
 } from "@hot-updater/plugin-insights/server";
+
+// The HTTP API calls a release ID bundleId, the word users have for it.
+type ReportingOverview = WireReportingOverview;
+type BundleSelection = Omit<InsightsBundleSelection, "releaseId"> & {
+  readonly bundleId: string;
+};
 
 type InsightsEvent = {
   readonly channel: string;
@@ -25,6 +31,8 @@ type Installation = {
   readonly channel: string;
   readonly installId: string;
   readonly lastKnownBundleId: string;
+  /** The release it runs; null on the built-in bundle, which is none. */
+  readonly lastKnownReleaseId?: string | null;
   readonly platform: "ios" | "android";
   readonly userId: string | null;
 };
@@ -41,6 +49,9 @@ type EventCursorPage = CursorPage<InsightsEvent> & {
 export type ObservedInsightsEvent = {
   readonly channel: string;
   readonly fromBundleId: string | null;
+  /** The releases the report names, which Insights counts by. */
+  readonly fromReleaseId?: string;
+  readonly toReleaseId?: string;
   readonly installId: string;
   readonly observedAtMs: number;
   readonly platform: "ios" | "android";
@@ -79,6 +90,12 @@ export const readObservedInsightsEvent = (
     observedAtMs,
     platform: event.platform,
     toBundleId: event.toBundleId,
+    ...(typeof event.fromReleaseId === "string"
+      ? { fromReleaseId: event.fromReleaseId }
+      : {}),
+    ...(typeof event.toReleaseId === "string"
+      ? { toReleaseId: event.toReleaseId }
+      : {}),
     type: event.type,
     userId: event.userId,
   };
@@ -102,7 +119,7 @@ export type ConsoleInsightsQaClient = {
     readonly installId: string;
   }) => Promise<Installation | null>;
   readonly listEvents: (
-    input?: PageInput & { readonly bundle?: InsightsBundleSelection },
+    input?: PageInput & { readonly bundle?: BundleSelection },
   ) => Promise<EventCursorPage>;
   readonly listInstallationEvents: (
     input: PageInput & { readonly installId: string },
@@ -256,15 +273,19 @@ export const verifyConsoleInsights = async (
     );
   }
 
+  // The bundle ID users see: the release it runs, or the built-in bundle's
+  // ID, which names no release.
+  const running =
+    installation.lastKnownReleaseId ?? installation.lastKnownBundleId;
   const overview = await client.getReportingOverview({
-    bundleId: installation.lastKnownBundleId,
+    bundleId: running,
     channel: installation.channel,
     platform: installation.platform,
     window: "24h",
   });
   if (
     !(overview.reportingInstallations.count >= 1) ||
-    overview.bundle?.bundleId !== installation.lastKnownBundleId ||
+    overview.bundle?.bundleId !== running ||
     !(overview.bundle.reportingInstallations.count >= 1)
   ) {
     throw new ConsoleInsightsQaError(
@@ -275,11 +296,7 @@ export const verifyConsoleInsights = async (
 
   const overviews = new Map([
     [
-      JSON.stringify([
-        installation.platform,
-        installation.channel,
-        installation.lastKnownBundleId,
-      ]),
+      JSON.stringify([installation.platform, installation.channel, running]),
       overview,
     ],
   ]);
@@ -301,17 +318,19 @@ export const verifyConsoleInsights = async (
       )
     )?.late === true;
   for (const observedOutcome of storedEvents) {
+    // The bundle ID users see: the release the report names, or for a side
+    // with none the bundle ID it reports, which Insights counts it by.
     const bundleId =
       observedOutcome.type === "RECOVERED"
-        ? observedOutcome.fromBundleId!
-        : observedOutcome.toBundleId;
+        ? (observedOutcome.fromReleaseId ?? observedOutcome.fromBundleId!)
+        : (observedOutcome.toReleaseId ?? observedOutcome.toBundleId);
     const outcome =
       observedOutcome.type === "RECOVERED"
         ? "recovered"
         : observedOutcome.type === "UPDATE_DOWNLOADED"
           ? "downloaded"
           : "applied";
-    const bundle: InsightsBundleSelection = {
+    const bundle: BundleSelection = {
       bundleId,
       channel: observedOutcome.channel,
       outcome,

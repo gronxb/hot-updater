@@ -47,6 +47,12 @@ describe("hosted console Vite modules", () => {
     expect(readFileSync(shimFile, "utf8")).toContain(
       '"virtual:hot-updater-console/package-router"',
     );
+    // TanStack Start reads the request middleware from the same directory.
+    expect(
+      readFileSync(path.join(root, ".hot-updater/console/start.ts"), "utf8"),
+    ).toBe(
+      'export { startInstance } from "virtual:hot-updater-console/package-start";\n',
+    );
 
     const resolveId = plugin.resolveId as (id: string) => string | undefined;
     expect(resolveId("virtual:hot-updater-console/route-tree")).toBe(
@@ -81,6 +87,79 @@ describe("hosted console Vite modules", () => {
     expect(load.call(context, authId as string)).toContain(
       JSON.stringify(path.join(root, "src/auth.ts")),
     );
+  });
+});
+
+describe("the console's config module", () => {
+  const configModule = (plugin: Plugin) => {
+    const resolveId = plugin.resolveId as (id: string) => string | undefined;
+    const load = plugin.load as (id: string) => string | undefined;
+    return load.call(
+      { addWatchFile() {} },
+      resolveId("virtual:hot-updater-console/config")!,
+    );
+  };
+
+  it("gives a hosted console the host's config, never cli-tools", () => {
+    const root = createTemporaryDirectory();
+    const plugin = createHostedConsolePlugins({})[0] as Plugin;
+    const config = plugin.config as (
+      config: UserConfig,
+      environment: ConfigEnv,
+    ) => UserConfig | undefined;
+    config({ root }, { command: "build", mode: "production" });
+
+    // cli-tools' native bindings and unconfig never reach a hosted build.
+    expect(configModule(plugin)).toBe(
+      `export { default } from ${JSON.stringify(path.join(root, "console.config.ts"))};`,
+    );
+  });
+
+  it("gives the local console hot-updater.config.ts, as the CLI that runs it loads it", () => {
+    expect(configModule(createLocalConsoleModulesPlugin())).toContain(
+      'import { loadConfig } from "@hot-updater/cli-tools";',
+    );
+  });
+});
+
+describe("the console's request middleware modules", () => {
+  it("gives a hosted console the package's start and no local guard", () => {
+    const root = createTemporaryDirectory();
+    const plugin = createHostedConsolePlugins({})[0] as Plugin;
+    const config = plugin.config as (
+      config: UserConfig,
+      environment: ConfigEnv,
+    ) => UserConfig | undefined;
+    config({ root }, { command: "build", mode: "production" });
+    const resolveId = plugin.resolveId as (id: string) => string | undefined;
+    const load = plugin.load as (id: string) => string | undefined;
+
+    expect(load(resolveId("virtual:hot-updater-console/package-start")!)).toBe(
+      `export { startInstance } from ${JSON.stringify(path.resolve(import.meta.dirname, "start.ts"))};`,
+    );
+    expect(load(resolveId("virtual:hot-updater-console/request-guard")!)).toBe(
+      "export default undefined;",
+    );
+  });
+
+  it("gives the local console the guard over the session hot-updater console passes", () => {
+    const plugin = createLocalConsoleModulesPlugin();
+    const resolveId = plugin.resolveId as (id: string) => string | undefined;
+    const load = plugin.load as (id: string) => string | undefined;
+
+    const source = load(
+      resolveId("virtual:hot-updater-console/request-guard")!,
+    );
+
+    expect(source).toContain(
+      JSON.stringify(
+        path.resolve(import.meta.dirname, "lib/server/local-console.ts"),
+      ),
+    );
+    expect(source).toContain(
+      "let session = process.env[LOCAL_CONSOLE_SESSION_ENV] || undefined;",
+    );
+    expect(source).toContain("checkHost: !import.meta.env.DEV,");
   });
 });
 
@@ -119,7 +198,8 @@ describe("local console Vite modules", () => {
     expect(source).toContain("database: config.database,");
     expect(source).toContain("storage: config.storage,");
     expect(source).toContain("plugins: config.plugins,");
-    expect(source).toContain("console: { gitUrl: config.console.gitUrl },");
+    expect(source).toContain("gitUrl: config.console.gitUrl,");
+    expect(source).not.toContain("channelLinkPrefix");
     expect(source).toContain(
       "Set database in hot-updater.config.ts: the database your server runs on",
     );

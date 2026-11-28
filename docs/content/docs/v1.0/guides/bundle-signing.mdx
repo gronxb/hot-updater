@@ -1,0 +1,300 @@
+---
+title: "Bundle Signing"
+description: "Sign OTA bundles to verify integrity and prevent tampering"
+icon: Shield
+---
+
+## Why Bundle Signing?
+
+Bundle signing lets the native app reject an OTA artifact whose signed bytes
+were changed or were not authorized by the configured signing key. Hot Updater
+uses RSA-SHA256 signatures and embeds only the public key in the app.
+
+Signing authenticates artifact content. It does not authorize release
+targeting, prevent rollback to an older correctly signed artifact, or replace
+review and access controls around publishing.
+
+The private key is the deployment authority. Local PEM signing is the standard
+baseline when the deploy environment protects that key. When your threat model
+requires stronger custody, prefer a remote signing service where the private
+key is non-exportable and the deploy process submits only a message to sign.
+
+| Signer                                                    | Use case            | Custody                                           |
+| --------------------------------------------------------- | ------------------- | ------------------------------------------------- |
+| [Local PEM](/docs/v1.0/guides/signing/local)                   | Standard baseline   | Exportable key managed by your deploy environment |
+| [AWS KMS](/docs/v1.0/guides/signing/aws-kms)                   | Hardened production | Non-exportable AWS KMS key                        |
+| [Google Cloud KMS](/docs/v1.0/guides/signing/google-cloud-kms) | Hardened production | Non-exportable Google Cloud KMS key               |
+| [Remote endpoint](/docs/v1.0/guides/signing/remote)            | Service-dependent   | Defined by the compatible signing service         |
+
+Local PEM signing is the normal industry baseline used by systems such as Expo
+and CodePush when the deploy environment protects the private key. KMS signing
+is a hardened option when non-exportable custody and workload identity justify
+the additional provider setup. GitHub Actions is an identity source rather
+than a signing service; use its OIDC token with a compatible KMS signer.
+
+> **Important**: Release a native app containing the public key before you
+> deploy signed bundles. An app without the matching public key rejects them.
+
+## Choose and Roll Out a Signer
+
+Signing is independent of storage and database selection. Start with the
+[built-in local config](/docs/v1.0/guides/signing/local) when exportable-key custody fits
+your threat model. Cloudflare and Supabase users can also call AWS KMS or
+Google Cloud KMS directly from the protected deploy job; no Worker or Edge
+Function proxy is required. Use `remoteSigning` when you intentionally operate
+a compatible signing service with its own access controls.
+
+`hot-updater init` does not create or enable a signing key. Signing remains an
+explicit opt-in:
+
+1. Provision a dedicated RSA signing key for each app and environment, and pin
+   its exact identifier or immutable version when the provider supports one.
+2. Export its SPKI public key to `keys/public-key.pem` and commit that file as
+   the native app's trust anchor.
+3. Enable the built-in local config or add the matching signing adapter to
+   `hot-updater.config.ts`.
+4. Run `npx hot-updater keys export-public` for bare projects. For Expo, set
+   `publicKeyPath` in the `@hot-updater/expo` app plugin and run prebuild.
+5. Release the native app, then begin signed OTA deployments.
+
+Local signing derives its public identity from the private key. Signing
+adapters resolve it with `getPublicKey()` and produce signatures with `sign()`.
+Local, AWS KMS, Google Cloud KMS, and remote signing configs do not accept
+`publicKeyPath`; that option belongs to the Expo app config plugin.
+
+All signers require RSA keys of at least 2048 bits and SPKI PEM public keys
+(`BEGIN PUBLIC KEY`). Prefer 3072 or 4096 bits for newly provisioned keys.
+Deploy verifies every returned signature before upload and rejects a missing,
+invalid, or mismatched native trust anchor.
+
+This validation checks the current project's native files or evaluated Expo
+configuration. It cannot inspect already installed binaries. A successful
+deploy check does not replace releasing the native app with the matching public
+key before targeting it with signed updates.
+
+## Local Private Key
+
+Use [Local PEM Signing](/docs/v1.0/guides/signing/local) to generate a key pair,
+configure local signing, and deploy from a protected CI job.
+
+## Hardened: AWS KMS
+
+<a id="1-create-the-signing-key" />
+<a id="2-keep-the-public-key-with-the-project" />
+<a id="3-configure-the-provider" />
+<a id="4-embed-the-public-key-and-release-the-app" />
+<a id="5-deploy-with-github-actions-oidc" />
+
+Use [AWS KMS Signing](/docs/v1.0/guides/signing/aws-kms) to create a signing key,
+configure its IAM permissions, and deploy with GitHub Actions OIDC.
+
+## Hardened: Google Cloud KMS
+
+Use [Google Cloud KMS Signing](/docs/v1.0/guides/signing/google-cloud-kms) to create
+and pin a key version, configure credentials, and export its public key.
+
+## Signing Protocol and Remote Calls
+
+Use [Remote Signing](/docs/v1.0/guides/signing/remote) for the RSA-SHA256 message
+contract, a compatible service implementation, and signing request behavior.
+
+## Expo and EAS Build
+
+Expo owns the native trust anchor through its app config plugin. If the public
+key file is not already present, export it from the signer configured in
+`hot-updater.config.ts`:
+
+```bash
+npx hot-updater keys export-public --output ./keys/public-key.pem
+```
+
+This works with local PEM, KMS, and remote signers. It writes a new SPKI PEM
+file without changing native files. The output path must not exist; `--yes`
+does not overwrite an existing file. For a key rotation, export to a new path
+and follow [Key Rotation](#key-rotation) before switching the app's trust anchor.
+
+Reference the public file in the Expo app config:
+
+```jsonc title="app.json"
+{
+  "expo": {
+    "plugins": [
+      [
+        "@hot-updater/expo",
+        {
+          "channel": "production",
+          "publicKeyPath": "./keys/public-key.pem" // [!code ++]
+        }
+      ]
+    ]
+  }
+}
+```
+
+Run prebuild after configuring the public key:
+
+```bash
+npx expo prebuild
+```
+
+`publicKeyPath` is relative to the Expo project root. During prebuild, the
+plugin validates the RSA SPKI key and embeds it in the iOS and Android native
+configuration. The file is also included automatically in both native
+fingerprints, so changing the trust anchor requires a new native target. The
+plugin evaluates `hot-updater.config.ts` for the update strategy, but reads the
+trust anchor only from `publicKeyPath`. It does not call the configured signer
+or load its private key. Keep config evaluation independent of signing
+credentials so native builds can run without them.
+
+The deploy and doctor commands resolve the evaluated Expo config and compare
+this trust anchor with the signing provider's `getPublicKey()` result. Missing,
+invalid, or mismatched keys fail closed, including in CNG projects without
+checked-in `ios` or `android` directories.
+
+Do not upload a private key with EAS Secrets, add it to `eas.json`, or use
+`.easignore` to send `keys/private-key.pem` to the build worker. Ensure the
+public key file is included in the build input.
+
+Build and release the native app before deploying its first signed OTA bundle.
+
+## Manual Public Key Configuration
+
+For React Native CLI projects, export the configured signer's public key into
+the native projects:
+
+```bash
+npx hot-updater keys export-public
+```
+
+The command writes the public key to:
+
+- iOS: `Info.plist` → `HOT_UPDATER_PUBLIC_KEY`
+- Android: application metadata in `AndroidManifest.xml` →
+  `com.hotupdater.PUBLIC_KEY`
+
+If either native project already contains a different or invalid public key,
+the command prints the old and new fingerprints and defaults to cancelling the
+replacement. Review the native-first rotation sequence below before accepting
+the prompt. `--yes` explicitly accepts that trust-anchor replacement; it is not
+required when the same key is already embedded.
+
+For custom native paths, configure `platform`:
+
+```ts title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  // [!code ++:11]
+  platform: {
+    android: {
+      androidManifestPaths: [
+        "android/app/src/main/AndroidManifest.xml",
+        "android/app/src/prod/AndroidManifest.xml",
+      ],
+    },
+    ios: {
+      infoPlistPaths: ["ios/MyApp/Info.plist", "ios/MyAppPro/Info.plist"],
+    },
+  },
+});
+```
+
+Or add the public key manually.
+
+**iOS** (`Info.plist`):
+
+```xml title="ios/<your-app>/Info.plist"
+<!-- [!code ++:2] -->
+<key>HOT_UPDATER_PUBLIC_KEY</key>
+<string>-----BEGIN PUBLIC KEY-----\nMIIB...your-key...\n-----END PUBLIC KEY-----</string>
+```
+
+**Android** (`AndroidManifest.xml`, inside `<application>`):
+
+```xml title="android/app/src/main/AndroidManifest.xml"
+<!-- [!code ++:3] -->
+<meta-data
+    android:name="com.hotupdater.PUBLIC_KEY"
+    android:value="-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkq...your-key...\n-----END PUBLIC KEY-----" />
+```
+
+Build and release the native app before deploying its first signed OTA bundle.
+
+For React Native CLI projects, remove embedded public keys with:
+
+```bash
+npx hot-updater keys remove [--yes]
+```
+
+For Expo, remove `publicKeyPath` from the `@hot-updater/expo` app plugin and
+run `npx expo prebuild`. The plugin removes the embedded keys; `keys remove`
+alone does not change the Expo configuration and prebuild would restore them.
+
+Removing the key from local native files does not change already installed
+apps; they still require signed bundles. To disable verification for a future
+native release, remove the key, rebuild, and release that app before targeting
+it with unsigned bundles.
+
+## Console
+
+Configure signing and manage keys through the Hot Updater CLI or your signing
+provider. Local and hosted Consoles do not inspect signing configuration or
+manage signing keys. A hosted Console does not need signing credentials or
+permission to sign. The deploy command verifies provider and signature health
+inside the trusted signing environment.
+
+## Configuration States
+
+| `signing` config                        | Native public key     | Result                        |
+| -------------------------------------- | --------------------- | ----------------------------- |
+| Omitted or local `enabled: false`       | Not present           | Normal unsigned updates       |
+| Omitted or local `enabled: false`       | Present               | Updates rejected              |
+| Local `enabled: true` or signing adapter | Present and matching  | Signed updates verified       |
+| Local `enabled: true` or signing adapter | Missing or mismatched | Deployment or update rejected |
+
+Config and native files must match. Hot Updater fails closed rather than
+installing an unsigned or unverifiable update.
+
+## Key Rotation
+
+Hot Updater currently embeds one public key in each native app and the `sig:`
+format does not include a key ID. Moving a KMS alias or replacing a PEM in place
+is therefore not a safe transparent rotation: installed apps with the old
+public key reject bundles signed by the new key.
+
+For a planned migration:
+
+1. Create a new signing key without changing the active key
+2. Export and record its public-key fingerprint
+3. Release a new native app containing the new public key
+4. Keep the old signer available for updates targeting old app versions, using
+   matching signing keys and non-overlapping app-version or fingerprint targets
+5. Switch each supported app cohort only after it trusts the new public key
+6. Retire the old signer after those cohorts no longer receive updates
+
+Seamless rotation requires a future multi-key or key-ID protocol.
+
+If the active private key is compromised, an OTA update cannot teach existing
+apps to trust a new key safely. Disable the compromised signer, stop OTA
+publishing, and release a new native app through the app store.
+
+## Troubleshooting
+
+### PublicKeyNotConfigured
+
+The native app was released without a public key. Export or embed the public
+key, rebuild the native app, and release it before deploying signed bundles.
+
+### Signature Verification Failed
+
+The signer's public key and the embedded native public key must match. If
+using Expo, verify `publicKeyPath` in the `@hot-updater/expo` app plugin.
+Compare its SPKI SHA-256 fingerprint with the signer identity. With AWS KMS,
+check the exact key ARN and RSA `SIGN_VERIFY` usage. With Google Cloud KMS,
+check the pinned key version and RSA PKCS#1 SHA-256 algorithm.
+
+### AWS KMS AccessDenied
+
+Confirm that the deploy job received an OIDC role restricted to the expected
+repository and environment, and that the role has `kms:GetPublicKey` and
+`kms:Sign` on the exact key ARN.

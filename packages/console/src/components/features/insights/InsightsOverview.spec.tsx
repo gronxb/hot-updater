@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AdoptionRelease } from "@/lib/release-adoption";
 import type {
-  ComparedBundle,
+  ComparedRelease,
   ReleaseHealthState,
 } from "@/lib/release-adoption-api";
 
@@ -44,7 +44,7 @@ const release = (
   overrides: Partial<AdoptionRelease> = {},
 ): AdoptionRelease => ({
   releaseId,
-  bundleId: `bundle-${releaseId}`,
+  label: null,
   platform: "ios",
   deployedAtMs,
   targetAppVersion: "1.2.0",
@@ -60,7 +60,7 @@ const oldest = release("release-old", HOUR, { live: false });
 
 /** Counts of one type per hour of the period [6h, 30h). */
 const seriesOf = (
-  bundleId: string,
+  releaseId: string,
   type: "DOWNLOADED" | "LAUNCHED" | "RECOVERED",
   perHour: (hour: number) => number,
 ) => {
@@ -69,7 +69,7 @@ const seriesOf = (
     events: perHour(6 + index),
   }));
   return {
-    bundleId,
+    releaseId,
     type,
     measuredAtMs: 30 * HOUR - 30 * 60_000,
     points,
@@ -79,25 +79,25 @@ const seriesOf = (
 // The new bundle takes over: its downloads and launches start, the
 // previous one's launches stop. Each hour, one installation that downloaded
 // the new bundle has yet to restart into it.
-const bundles: readonly ComparedBundle[] = [
+const bundles: readonly ComparedRelease[] = [
   {
     release: newest,
-    downloaded: seriesOf(newest.bundleId, "DOWNLOADED", (hour) =>
+    downloaded: seriesOf(newest.releaseId, "DOWNLOADED", (hour) =>
       hour >= 20 ? 4 : 0,
     ),
-    launched: seriesOf(newest.bundleId, "LAUNCHED", (hour) =>
+    launched: seriesOf(newest.releaseId, "LAUNCHED", (hour) =>
       hour >= 20 ? 3 : 0,
     ),
-    recovered: seriesOf(newest.bundleId, "RECOVERED", () => 0),
+    recovered: seriesOf(newest.releaseId, "RECOVERED", () => 0),
     error: null,
   },
   {
     release: previous,
-    downloaded: seriesOf(previous.bundleId, "DOWNLOADED", () => 0),
-    launched: seriesOf(previous.bundleId, "LAUNCHED", (hour) =>
+    downloaded: seriesOf(previous.releaseId, "DOWNLOADED", () => 0),
+    launched: seriesOf(previous.releaseId, "LAUNCHED", (hour) =>
       hour < 20 ? 1 : 0,
     ),
-    recovered: seriesOf(previous.bundleId, "RECOVERED", () => 0),
+    recovered: seriesOf(previous.releaseId, "RECOVERED", () => 0),
     error: null,
   },
 ];
@@ -190,8 +190,8 @@ describe("Release health", () => {
         .map((header) => header.textContent),
     ).toEqual(["Bundle", "Downloaded", "Launched", "Remove"]);
     expect(rows()).toEqual([
-      "release-biOS Deployed Jan 1, 20:15 UTC · 1.2.04030",
-      "release-aiOS Deployed Jan 1, 02:00 UTC · 1.2.0014",
+      "release-bDeployed Jan 1, 20:15 UTC · 1.2.04030",
+      "release-aDeployed Jan 1, 02:00 UTC · 1.2.0014",
     ]);
     // The card names what it reads.
     expect(screen.getByText("production")).toBeDefined();
@@ -200,11 +200,124 @@ describe("Release health", () => {
     ).toBeNull();
   });
 
+  it("moves Disabled under a labeled bundle's name when the row has no room beside it", () => {
+    const disabled = { ...previous, label: 6, enabled: false, live: false };
+    renderCard({
+      health: {
+        releases: [bundles[0]!, { ...bundles[1]!, release: disabled }],
+      },
+    });
+    const table = screen.getByRole("table", { name: "Compared bundles" });
+    const badge = within(table).getByText("Disabled");
+    const name = within(table).getByRole("button", {
+      name: `Copy ID ${disabled.releaseId}`,
+    }).parentElement!;
+    // The label and its ID tail don't shrink: in a phone's narrow column the
+    // badge has to wrap under them, or it is drawn over the tail.
+    expect(badge.parentElement).toBe(name.parentElement);
+    expect(badge.parentElement!.className).toContain("flex-wrap");
+  });
+
+  it("puts each label's platform beside it when the report mixes platforms, and nothing on one platform", () => {
+    const ios = { ...previous, label: 14 };
+    const android = {
+      ...newest,
+      label: 14,
+      platform: "android" as const,
+    };
+    const both = [
+      { ...bundles[0]!, release: android },
+      { ...bundles[1]!, release: ios },
+    ];
+    renderCard({
+      input: { ...input, platform: "all" },
+      health: { releases: both },
+    });
+    const table = screen.getByRole("table", { name: "Compared bundles" });
+    const name = (id: string) =>
+      within(table).getByRole("button", { name: `Copy ID ${id}` })
+        .parentElement!;
+    // Two v14s, told apart by their platforms.
+    expect(name(android.releaseId).textContent).toBe(
+      `Android v14 ${android.releaseId}`,
+    );
+    expect(name(ios.releaseId).textContent).toBe(`iOS v14 ${ios.releaseId}`);
+    expect(name(ios.releaseId).querySelector("svg")).not.toBeNull();
+
+    cleanup();
+    renderCard({ health: { releases: [{ ...bundles[1]!, release: ios }] } });
+    // The filters fix iOS: v14 names one release, and no platform shows.
+    const single = within(
+      screen.getByRole("table", { name: "Compared bundles" }),
+    ).getByRole("button", { name: `Copy ID ${ios.releaseId}` }).parentElement!;
+    expect(single.textContent).toBe(`v14 ${ios.releaseId}`);
+    expect(single.querySelector("svg")).toBeNull();
+  });
+
+  it.each(["adoption", "crashes"] as const)(
+    "lists each bundle with its %s counts under its name when the card is too narrow for the table",
+    (chart) => {
+      const disabled = { ...previous, label: 6, enabled: false, live: false };
+      const onReleasesChange = vi.fn();
+      renderCard({
+        chart,
+        onReleasesChange,
+        health: {
+          releases: [bundles[0]!, { ...bundles[1]!, release: disabled }],
+        },
+      });
+      const table = screen.getByRole("table", { name: "Compared bundles" });
+      const list = screen.getByRole("list", { name: "Compared bundles" });
+      // jsdom applies no CSS: the card's width shows one of the two, switching
+      // both at the same width. Below it, the table's Bundle column is too
+      // narrow for a label and its ID tail.
+      expect(list.parentElement!.className).toContain("@container/compared");
+      expect(list.parentElement!.contains(table)).toBe(true);
+      expect(list.className).toContain("@[32rem]/compared:hidden");
+      const wide = table.closest("div.hidden")!;
+      expect(wide.className).toContain("@[32rem]/compared:block");
+      expect(wide.contains(list)).toBe(false);
+
+      // Each bundle reads as its table row does: name, badges and deployment,
+      // then each count under the column header it has in the table.
+      const headers = within(table)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent)
+        .slice(1, -1);
+      const tableRows = within(table).getAllByRole("row").slice(1);
+      const items = within(list).getAllByRole("listitem");
+      expect(items).toHaveLength(tableRows.length);
+      items.forEach((item, index) => {
+        const cells = within(tableRows[index]!).getAllByRole("cell");
+        const terms = item.querySelectorAll("dt");
+        const values = item.querySelectorAll("dd");
+        expect([...terms].map((term) => term.textContent)).toEqual(headers);
+        expect([...values].map((value) => value.textContent)).toEqual(
+          cells.slice(1, -1).map((cell) => cell.textContent),
+        );
+        expect(item.textContent).toContain(cells[0]!.textContent);
+      });
+      // The badge wraps under the label and its tail, as in the table.
+      const badge = within(items[1]!).getByText("Disabled");
+      expect(badge.parentElement).toBe(
+        within(items[1]!).getByRole("button", {
+          name: `Copy ID ${disabled.releaseId}`,
+        }).parentElement!.parentElement,
+      );
+      expect(badge.parentElement!.className).toContain("flex-wrap");
+      // Removing from the list removes the bundle, as from the table.
+      fireEvent.click(
+        within(items[0]!).getByRole("button", { name: "Remove release-b" }),
+      );
+      expect(onReleasesChange).toHaveBeenLastCalledWith([disabled.releaseId]);
+    },
+  );
+
   it("charts a bundle downloaded but not launched yet, and waits for both counts", () => {
     const waiting = [
       {
         ...bundles[0]!,
-        launched: seriesOf(newest.bundleId, "LAUNCHED", () => 0),
+        launched: seriesOf(newest.releaseId, "LAUNCHED", () => 0),
       },
     ];
     const view = renderCard({ health: { releases: waiting } });
@@ -213,9 +326,7 @@ describe("Release health", () => {
         "Installations downloading (dashed) and launching (solid) each bundle per interval",
       ),
     ).toBeDefined();
-    expect(rows()).toEqual([
-      "release-biOS Deployed Jan 1, 20:15 UTC · 1.2.0400",
-    ]);
+    expect(rows()).toEqual(["release-bDeployed Jan 1, 20:15 UTC · 1.2.0400"]);
 
     view.rerender(
       <QueryClientProvider client={new QueryClient()}>
@@ -230,7 +341,12 @@ describe("Release health", () => {
   it("adds, removes, and resets the compared bundles", async () => {
     const onReleasesChange = vi.fn();
     const { rerender } = renderCard({ onReleasesChange });
-    fireEvent.click(screen.getByRole("button", { name: "Remove release-b" }));
+    fireEvent.click(
+      within(screen.getByRole("table", { name: "Compared bundles" })).getByRole(
+        "button",
+        { name: "Remove release-b" },
+      ),
+    );
     expect(onReleasesChange).toHaveBeenLastCalledWith(["release-a"]);
 
     const add = screen.getByRole("combobox", { name: "Add a bundle" });
@@ -238,7 +354,7 @@ describe("Release health", () => {
     fireEvent.input(add, { inputType: "insertText", target: { value: "old" } });
     // Searched by ID, and named with its platform, target, and state.
     const option = await screen.findByRole("option", {
-      name: /^iOS ?release-old ?Deployed Jan 1, 01:00 UTC · 1\.2\.0 · Unreachable$/,
+      name: /^release-old ?Deployed Jan 1, 01:00 UTC · 1\.2\.0 · Unreachable$/,
     });
     expect(screen.getByText("Not live")).toBeDefined();
     await act(async () => {
@@ -286,10 +402,10 @@ describe("Release health", () => {
           {
             ...bundles[0]!,
             // 1 crash of 9 attempts: 11.1%, too few to act on.
-            launched: seriesOf(newest.bundleId, "LAUNCHED", (hour) =>
+            launched: seriesOf(newest.releaseId, "LAUNCHED", (hour) =>
               hour === 21 ? 8 : 0,
             ),
-            recovered: seriesOf(newest.bundleId, "RECOVERED", (hour) =>
+            recovered: seriesOf(newest.releaseId, "RECOVERED", (hour) =>
               hour === 22 ? 1 : 0,
             ),
           },
@@ -307,8 +423,8 @@ describe("Release health", () => {
         .map((header) => header.textContent),
     ).toEqual(["Bundle", "Crashed", "Crash rate", "Remove"]);
     expect(rows()).toEqual([
-      "release-biOS Deployed Jan 1, 20:15 UTC · 1.2.0111.1%",
-      "release-aiOS Deployed Jan 1, 02:00 UTC · 1.2.000.0%",
+      "release-bDeployed Jan 1, 20:15 UTC · 1.2.0111.1%",
+      "release-aDeployed Jan 1, 02:00 UTC · 1.2.000.0%",
     ]);
     expect(screen.queryByRole("button", { name: "Roll back" })).toBeNull();
     // A crash count is a number, with no details to open.
@@ -325,10 +441,10 @@ describe("Release health", () => {
           {
             ...bundles[0]!,
             // 2 crashes of 20 attempts: 10%.
-            launched: seriesOf(newest.bundleId, "LAUNCHED", (hour) =>
+            launched: seriesOf(newest.releaseId, "LAUNCHED", (hour) =>
               hour === 21 ? 18 : 0,
             ),
-            recovered: seriesOf(newest.bundleId, "RECOVERED", (hour) =>
+            recovered: seriesOf(newest.releaseId, "RECOVERED", (hour) =>
               hour === 22 ? 2 : 0,
             ),
           },
@@ -349,6 +465,13 @@ describe("Release health", () => {
     fireEvent.click(within(alert).getByRole("button", { name: "Roll back" }));
     const dialog = await screen.findByRole("alertdialog");
     expect(within(dialog).getByText("Roll back this bundle?")).toBeDefined();
+    // First focus is Cancel, not the release's copy button: no tooltip pops
+    // open over the dialog, and Enter rolls nothing back.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(dialog).getByRole("button", { name: "Cancel" }),
+      ),
+    );
     expect(within(dialog).getByText("release-b")).toBeDefined();
     await act(async () => {
       fireEvent.click(
@@ -370,8 +493,8 @@ describe("Release health", () => {
     const onWindowChange = vi.fn();
     const quiet = bundles.map((bundle) => ({
       ...bundle,
-      downloaded: seriesOf(bundle.release.bundleId, "DOWNLOADED", () => 0),
-      launched: seriesOf(bundle.release.bundleId, "LAUNCHED", () => 0),
+      downloaded: seriesOf(bundle.release.releaseId, "DOWNLOADED", () => 0),
+      launched: seriesOf(bundle.release.releaseId, "LAUNCHED", () => 0),
     }));
     renderCard({ onWindowChange, health: { releases: quiet } });
     expect(

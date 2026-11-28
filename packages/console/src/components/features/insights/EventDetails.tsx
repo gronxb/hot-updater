@@ -10,10 +10,10 @@ import {
   Smartphone,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
-import { HashValueDisplay } from "@/components/HashValueDisplay";
+import { InstallIdDisplay } from "@/components/InstallIdDisplay";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,7 +33,7 @@ import {
 import { describeFailure } from "@/lib/insights-failures";
 import type { InsightsEventRow } from "@/lib/insights-view";
 
-import { BuiltinBundleBadge, isBuiltinBundle } from "./BuiltinBundle";
+import { ReportedBundleId } from "./ReportedBundleId";
 
 type EventHistoryRow = InsightsEventRow;
 
@@ -326,16 +326,23 @@ export function HttpResponseDetails({
             ? "Redirect"
             : "Success";
   const resource = response.resource === "catalog" ? "Catalog" : "Artifact";
-  const context = [
+  const context = (
     [
-      "App",
-      event.platform &&
-        `${event.platform === "ios" ? "iOS" : "Android"} ${event.appVersion}`,
-    ],
-    ["Channel", event.channel],
-    ["SDK", event.sdkVersion],
-    ["Installation", event.installId],
-  ].filter(([, value]) => value != null);
+      [
+        "App",
+        event.platform &&
+          `${event.platform === "ios" ? "iOS" : "Android"} ${event.appVersion}`,
+      ],
+      ["Channel", event.channel],
+      ["SDK", event.sdkVersion],
+      [
+        "Installation",
+        event.installId ? (
+          <InstallIdDisplay key="install" installId={event.installId} />
+        ) : null,
+      ],
+    ] satisfies [string, ReactNode][]
+  ).filter(([, value]) => value != null);
   return (
     <Sheet>
       <SheetTrigger
@@ -437,14 +444,17 @@ export function EventTypeDetails({ event }: { readonly event: EventDetail }) {
 
 export function EventBundleTransition({
   event,
-  touch = false,
 }: {
   readonly event: Pick<
     EventHistoryRow,
-    "type" | "fromBundleId" | "toBundleId" | "failure" | "minBundleId"
+    | "type"
+    | "fromBundleId"
+    | "toBundleId"
+    | "failure"
+    | "minBundleId"
+    | "appVersion"
   > &
-    Partial<Pick<EventHistoryRow, "change">>;
-  readonly touch?: boolean;
+    Partial<Pick<EventHistoryRow, "change" | "fromReleaseId" | "toReleaseId">>;
 }) {
   const downloaded = event.type === "UPDATE_DOWNLOADED";
   const failed = event.type === "UPDATE_FAILED";
@@ -458,30 +468,40 @@ export function EventBundleTransition({
   const fromBundleId = moved
     ? event.change!.previous!.bundleId
     : event.fromBundleId;
+  // Each side shows its release ID, the ID the app reports; a side with no
+  // release, its bundle ID, or for the built-in bundle its name and the app
+  // version of the report that names it.
+  const fromReleaseId = moved
+    ? event.change!.previous!.releaseId
+    : event.fromReleaseId;
+  const fromMinBundleId = moved
+    ? event.change!.previous!.minBundleId
+    : event.minBundleId;
+  const fromAppVersion = moved
+    ? event.change!.previous!.appVersion
+    : event.appVersion;
   const changed =
     downloaded ||
     failed ||
     moved ||
     event.type === "UPDATE_APPLIED" ||
     event.type === "RECOVERED";
+  // On a phone each side is 44 px tall, as its copy button's touch area is,
+  // so From's and To's touch areas meet rather than overlap.
   return (
-    <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2">
-      {fromBundleId && changed ? (
+    <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2 max-sm:gap-y-0">
+      {(fromReleaseId ?? fromBundleId) && changed ? (
         <>
           <dt className="text-muted-foreground">
             {downloaded || failed ? "Running" : "From"}
           </dt>
-          <dd className="flex min-w-0 flex-wrap items-center gap-2">
-            <HashValueDisplay
-              value={fromBundleId}
-              buttonClassName={touch ? "min-h-11 px-3" : undefined}
+          <dd className="flex min-w-0 flex-wrap items-center gap-2 max-sm:min-h-11">
+            <ReportedBundleId
+              appVersion={fromAppVersion}
+              bundleId={fromBundleId!}
+              minBundleId={fromMinBundleId}
+              releaseId={fromReleaseId}
             />
-            {isBuiltinBundle(
-              fromBundleId,
-              moved ? event.change!.previous!.minBundleId : event.minBundleId,
-            ) ? (
-              <BuiltinBundleBadge />
-            ) : null}
           </dd>
         </>
       ) : null}
@@ -496,14 +516,13 @@ export function EventBundleTransition({
                   ? "To"
                   : "Current"}
           </dt>
-          <dd className="flex min-w-0 flex-wrap items-center gap-2">
-            <HashValueDisplay
-              value={event.toBundleId}
-              buttonClassName={touch ? "min-h-11 px-3" : undefined}
+          <dd className="flex min-w-0 flex-wrap items-center gap-2 max-sm:min-h-11">
+            <ReportedBundleId
+              appVersion={event.appVersion}
+              bundleId={event.toBundleId}
+              minBundleId={event.minBundleId}
+              releaseId={event.toReleaseId}
             />
-            {isBuiltinBundle(event.toBundleId, event.minBundleId) ? (
-              <BuiltinBundleBadge />
-            ) : null}
           </dd>
         </>
       ) : null}

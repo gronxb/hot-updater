@@ -17,6 +17,8 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import type { PhysicalTable, WriteOp } from "../../../database/adapter";
 import { coreSchema } from "../../db/coreDatabase";
+import { resolveSchema } from "../resolveSchema";
+import { defineTable } from "../schema";
 import {
   createSqlAdapter,
   type SqlConnection,
@@ -146,6 +148,41 @@ describe("sql core", () => {
     );
     expect(() => createTableStatements("mysql", [catalogs(false)])).toThrow(
       "catalogs key needs 8192 bytes on MySQL, over its 3072",
+    );
+    // A derived column keeps its bound: a slot holding a scope key fits.
+    const slots = resolveSchema([
+      {
+        id: "core",
+        schema: {
+          slots: defineTable(
+            {
+              id: { type: "string", maxLength: 36 },
+              scope_key: { type: "string", maxLength: 2048, ascii: true },
+              held: { type: "boolean" },
+            },
+            {
+              key: ["id"],
+              derived: {
+                held_scope_key: {
+                  type: "string",
+                  maxLength: 2048,
+                  ascii: true,
+                  compute: (row) => (row.held ? row.scope_key : null),
+                },
+              },
+              indexes: {
+                byHeldScope: { eq: ["held_scope_key"], sort: [], unique: true },
+              },
+            },
+          ),
+        },
+      },
+    ]).tables;
+    expect(createTableStatements("mysql", slots)[0]).toContain(
+      "`held_scope_key` varchar(2048) CHARACTER SET ascii COLLATE ascii_bin,",
+    );
+    expect(createTableStatements("postgresql", slots)[0]).toContain(
+      '"held_scope_key" varchar(2048) COLLATE "C",',
     );
     // every core table fits; the plugins' tables are checked beside them
     expect(() =>
@@ -425,7 +462,7 @@ describe("sql core", () => {
     ["PGlite", "transaction"],
     ["PGlite", "batch"],
   ] as const)(
-    "reads no table whole to insert, update, or read rows, or to prune them on SQLite, on %s (%s)",
+    "reads no table whole to insert, update, delete, read, or prune rows on %s (%s)",
     async (engine, mode) => {
       const sqlite = engine === "SQLite" ? new DatabaseSync(":memory:") : null;
       const pg = sqlite ? null : new PGlite();
@@ -606,15 +643,15 @@ describe("sql core", () => {
           },
         ]),
       ).toEqual({ ok: true });
-      const [a] = await adapter.get(conformanceItems, [["a"]]);
-      // A patch of a column outside every index keeps the row's entries.
+      const [a, b] = await adapter.get(conformanceItems, [["a"], ["b"]]);
+      // A patch of a multi-valued index's columns replaces the row's entries.
       expect(
         await adapter.write([
           {
             type: "patch",
             table: conformanceItems,
             key: ["a"],
-            set: { note: "patched" },
+            set: { tags: ["y"], score: 2 },
             guard: { v: 0 },
             previous: a!,
           },
@@ -626,19 +663,55 @@ describe("sql core", () => {
           },
         ]),
       ).toEqual({ ok: true });
+      expect(
+        await adapter.write([
+          {
+            type: "delete",
+            table: conformanceItems,
+            key: ["b"],
+            guard: { v: 0 },
+            previous: b!,
+          },
+        ]),
+      ).toEqual({ ok: true });
       for (const index of conformanceItems.indexes) {
         await adapter.query(conformanceItems, {
           index: index.name,
           eq: index.eq.map((column) =>
-            column === "tags" ? "x" : column === "flag" ? false : "g",
+            column === "tags" ? "y" : column === "flag" ? false : "g",
           ),
           order: "asc",
           limit: 10,
         });
       }
-      if (sqlite) {
-        expect(await adapter.prune!(conformanceExpiring, 10, 500)).toBe(1);
-      }
+      // A keyset page of an index without eq columns, as channels page by
+      // name: its LIMIT and lower bound bound the walk.
+      await adapter.query(conformanceItems, {
+        index: "all",
+        eq: [],
+        lower: { values: ["f1"], inclusive: false },
+        order: "asc",
+        limit: 10,
+      });
+      // The next group past one, as doctor walks release scopes: an index
+      // over byGroup's columns, which reads through byGroup's index.
+      await adapter.query(
+        {
+          ...conformanceItems,
+          indexes: [
+            ...conformanceItems.indexes,
+            { name: "groups", eq: [], sort: ["grp", "score"] },
+          ],
+        },
+        {
+          index: "groups",
+          eq: [],
+          lower: { values: ["g"], inclusive: false },
+          order: "asc",
+          limit: 1,
+        },
+      );
+      expect(await adapter.prune!(conformanceExpiring, 10, 500)).toBe(1);
 
       expect(scans).toEqual([]);
       sqlite?.close();

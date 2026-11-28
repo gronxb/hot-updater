@@ -1,3 +1,4 @@
+import type { ReleaseCatalogRow } from "@hot-updater/plugin-core";
 import {
   ARTIFACT_FILES_REQUEST_LIMIT,
   type ReleaseCatalog,
@@ -71,20 +72,33 @@ describe("createHandlers client routes", () => {
   });
 
   it("returns the stored Catalog identity without accepting identity parameters", async () => {
-    const catalog = {
-      catalogId: "project-a",
-      catalogHash: "sha256:catalog",
-      fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
+    const scopeKey = "v1:fingerprint:android:cHJvZHVjdGlvbg:fingerprint-123";
+    const row = {
+      scope_key: scopeKey,
+      catalog_id: "project-a",
+      strategy: "FINGERPRINT",
+      channel_id: "channel-production",
+      channel_key: "cHJvZHVjdGlvbg",
+      platform: "android",
+      fingerprint_hash: "fingerprint-123",
       generation: 1,
-      releases: [],
-      rollbackReleases: [],
-      schemaVersion: 1,
-      scopeKey: "v1:fingerprint:android:cHJvZHVjdGlvbg:fingerprint-123",
-    } satisfies ReleaseCatalog;
+      payload: JSON.stringify({
+        schemaVersion: 1,
+        strategy: "FINGERPRINT",
+        fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
+        releaseDescriptors: [],
+        releaseIndexes: [],
+        rollbackReleaseIndexes: [],
+      }),
+      catalog_hash: "sha256:catalog",
+      byte_size: 0,
+      is_tombstone: false,
+      updated_at_ms: 0,
+    } satisfies ReleaseCatalogRow;
     const api = createApi();
-    const getReleaseCatalog = vi
-      .spyOn(api.core, "getReleaseCatalog")
-      .mockResolvedValue(catalog);
+    const getReleaseCatalogRow = vi
+      .spyOn(api.core, "getReleaseCatalogRow")
+      .mockResolvedValue(row);
     const handler = createHandlers(api).client;
     const url =
       "http://localhost/release-catalogs/fingerprint/android/" +
@@ -93,21 +107,113 @@ describe("createHandlers client routes", () => {
     const response = await handler(new Request(url));
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(response.json()).resolves.toEqual({
       catalogId: "project-a",
-    });
-    expect(getReleaseCatalog).toHaveBeenCalledWith({
-      channelKey: "cHJvZHVjdGlvbg",
-      fingerprintHash: "fingerprint-123",
-      platform: "android",
-      strategy: "FINGERPRINT",
-    });
+      catalogHash: "sha256:catalog",
+      fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      generation: 1,
+      releases: [],
+      rollbackReleases: [],
+      schemaVersion: 1,
+      scopeKey,
+    } satisfies ReleaseCatalog);
+    expect(getReleaseCatalogRow).toHaveBeenCalledWith(scopeKey);
 
     const legacyAuthorityPath = await handler(
       new Request(url.replace("/android/", "/project-a/android/")),
     );
     expect(legacyAuthorityPath.status).toBe(404);
-    expect(getReleaseCatalog).toHaveBeenCalledOnce();
+    expect(getReleaseCatalogRow).toHaveBeenCalledOnce();
+  });
+
+  it("remembers a scope without a catalog for five seconds, then reads it again", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.UTC(2026, 0, 1) });
+    try {
+      const api = createApi();
+      const getReleaseCatalogRow = vi
+        .spyOn(api.core, "getReleaseCatalogRow")
+        .mockResolvedValue(null);
+      const handler = createHandlers(api).client;
+      const check = () =>
+        handler(
+          new Request(
+            "http://localhost/release-catalogs/app-version/ios/" +
+              "cHJvZHVjdGlvbg/1.0.0",
+          ),
+        );
+
+      expect((await check()).status).toBe(404);
+      vi.advanceTimersByTime(4_999);
+      expect((await check()).status).toBe(404);
+      expect(getReleaseCatalogRow).toHaveBeenCalledOnce();
+      vi.advanceTimersByTime(1);
+      expect((await check()).status).toBe(404);
+      expect(getReleaseCatalogRow).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("remembers a scope without a catalog once the catalogs that filled the memo expire", async () => {
+    const channelKey = "cHJvZHVjdGlvbg";
+    const rowOf = (scopeKey: string, fingerprint: string) =>
+      ({
+        scope_key: scopeKey,
+        catalog_id: "project-a",
+        strategy: "FINGERPRINT",
+        channel_id: "channel-production",
+        channel_key: channelKey,
+        platform: "android",
+        fingerprint_hash: fingerprint,
+        generation: 1,
+        payload: JSON.stringify({
+          schemaVersion: 1,
+          strategy: "FINGERPRINT",
+          fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
+          releaseDescriptors: [],
+          releaseIndexes: [],
+          rollbackReleaseIndexes: [],
+        }),
+        catalog_hash: "sha256:catalog",
+        byte_size: 0,
+        is_tombstone: false,
+        updated_at_ms: 0,
+      }) satisfies ReleaseCatalogRow;
+    const api = createApi();
+    const getReleaseCatalogRow = vi
+      .spyOn(api.core, "getReleaseCatalogRow")
+      .mockImplementation(async (scopeKey) => {
+        const fingerprint = scopeKey.split(":").at(-1)!;
+        return fingerprint.startsWith("catalog-")
+          ? rowOf(scopeKey, fingerprint)
+          : null;
+      });
+    let now = Date.UTC(2026, 0, 1);
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const handler = createHandlers(api).client;
+    const check = (fingerprint: string) =>
+      handler(
+        new Request(
+          `http://localhost/release-catalogs/fingerprint/android/` +
+            `${channelKey}/${fingerprint}`,
+        ),
+      );
+
+    // The memo fills with catalogs, which then expire.
+    for (let n = 0; n < 128; n += 1) {
+      expect((await check(`catalog-${n}`)).status).toBe(200);
+    }
+    now += 5_000;
+    for (let n = 0; n < 10; n += 1) {
+      expect((await check("missing")).status).toBe(404);
+    }
+    expect(
+      getReleaseCatalogRow.mock.calls.filter(([scopeKey]) =>
+        scopeKey.endsWith(":missing"),
+      ),
+    ).toHaveLength(1);
+    vi.restoreAllMocks();
   });
 
   it("serves artifact protocol v1 on an explicit route", async () => {
@@ -281,36 +387,40 @@ describe("createHandlers client routes", () => {
     expect(getArtifactInfo).toHaveBeenCalledWith("target", "current", 1);
   });
 
-  it("logs why authentication failed before answering 503", async () => {
-    const failure = new Error("D1_ERROR: storage operation exceeded timeout");
+  it("logs why authentication failed when it answers 503", async () => {
+    const failure = new Error("credential storage unavailable");
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
-    const handler = createHotUpdaterHandlers({
-      api: createApi(),
-      clientPolicy: {
-        authenticate: () => Promise.reject(failure),
-        varyHeaders: ["x-api-key"],
-      },
-    }).client;
+    try {
+      const handler = createHotUpdaterHandlers({
+        api: createApi(),
+        clientPolicy: {
+          authenticate: async () => {
+            throw failure;
+          },
+          varyHeaders: ["x-api-key"],
+        },
+      }).client;
 
-    const response = await handler(
-      new Request(
-        "http://localhost/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
-        { headers: { "x-api-key": "valid" } },
-      ),
-    );
+      const response = await handler(
+        new Request("http://localhost/artifacts/v1/target/from/current", {
+          headers: { "x-api-key": "any" },
+        }),
+      );
 
-    expect(response.status).toBe(503);
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
-    await expect(response.json()).resolves.toEqual({
-      error: "Service unavailable",
-    });
-    expect(consoleError).toHaveBeenCalledWith(
-      "Hot Updater client authentication error:",
-      failure,
-    );
-    consoleError.mockRestore();
+      expect(response.status).toBe(503);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      await expect(response.json()).resolves.toEqual({
+        error: "Service unavailable",
+      });
+      expect(consoleError).toHaveBeenCalledWith(
+        "Hot Updater client authentication error:",
+        failure,
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it.each([
@@ -328,7 +438,7 @@ describe("createHandlers client routes", () => {
     ],
   ])("answers 400 to %s without reading a catalog", async (_, path) => {
     const api = createApi();
-    const getReleaseCatalog = vi.spyOn(api.core, "getReleaseCatalog");
+    const getReleaseCatalogRow = vi.spyOn(api.core, "getReleaseCatalogRow");
     const handler = createHandlers(api).client;
 
     const response = await handler(new Request(`http://localhost${path}`));
@@ -338,12 +448,12 @@ describe("createHandlers client routes", () => {
     await expect(response.json()).resolves.toEqual({
       error: expect.any(String),
     });
-    expect(getReleaseCatalog).not.toHaveBeenCalled();
+    expect(getReleaseCatalogRow).not.toHaveBeenCalled();
   });
 
   it("does not expose provider errors from the public client handler", async () => {
     const api = createApi();
-    vi.spyOn(api.core, "getReleaseCatalog").mockRejectedValue(
+    vi.spyOn(api.core, "getReleaseCatalogRow").mockRejectedValue(
       new Error("private database connection details"),
     );
     const consoleError = vi

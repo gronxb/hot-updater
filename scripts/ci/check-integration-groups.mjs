@@ -2,14 +2,15 @@
 /**
  * Checks that the integration groups (integration-groups.mjs) split the
  * integration files exactly: every file the integration projects select runs
- * in exactly one group, every group but `rest` runs a file, and every glob of
- * a group matches one. It asks Vitest for each selection with
- * `vitest list --filesOnly`, which resolves the globs a run would, but runs
- * no test and starts no service.
+ * in exactly one group, every group but `rest` runs a file, every glob of a
+ * group matches one, and every compose file a group pulls exists. It asks
+ * Vitest for each selection with `vitest list --filesOnly`, which resolves
+ * the globs a run would, but runs no test and starts no service.
  *
  *   node scripts/ci/check-integration-groups.mjs
  */
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -93,6 +94,13 @@ try {
     const files = selections[index] ?? [];
     if (files.length === 0 && group.name !== REST_GROUP) {
       problems.push(`Group "${group.name}" runs no files.`);
+    }
+    for (const file of group.docker?.compose ?? []) {
+      if (!existsSync(path.join(root, file))) {
+        problems.push(
+          `Group "${group.name}" pulls a compose file that doesn't exist: ${file}`,
+        );
+      }
     }
     for (const glob of group.include ?? []) {
       if (!files.some(({ file }) => path.matchesGlob(file, glob))) {

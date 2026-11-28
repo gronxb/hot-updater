@@ -37,3 +37,13 @@ export function PlatformIcon({ platform, className }: PlatformIconProps) {
   }
   return <AndroidIcon className={className} />;
 }
+
+/** A platform's icon and name, as a table's Platform column shows it. */
+export function PlatformLabel({ platform }: { platform: "ios" | "android" }) {
+  return (
+    <span className="flex items-center gap-2">
+      <PlatformIcon className="size-4" platform={platform} />
+      {platform === "ios" ? "iOS" : "Android"}
+    </span>
+  );
+}

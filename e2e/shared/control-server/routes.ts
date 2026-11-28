@@ -1,3 +1,5 @@
+import type { IncomingMessage } from "node:http";
+
 import { Hono } from "hono";
 
 import {
@@ -17,6 +19,9 @@ import {
   handleAssertMultipleAssetsReplaced,
   handleAssertProxy,
   handleCaptureBuiltInBundleId,
+  recordUnreachableUpdateRequest,
+  startInstallNativeBuildJob,
+  startReadNativeBuildsJob,
   handleCaptureState,
   handleCleanup,
   handleComputeRemoteConfigRolloutSample,
@@ -25,6 +30,7 @@ import {
   handleLaunchHeadlessTask,
   handleLaunchStartupHang,
   handleLaunchUninstrumentedApp,
+  handleMismatchPatchBaseFileHash,
   handlePrepareAppLaunch,
   handleProxyRemoteAssetRequest,
   handleProxyState,
@@ -50,6 +56,10 @@ import {
   startWaitForAppExitJob,
   startWaitForCrashMarkerJob,
   startPatchReleaseJob,
+  startPrefetchUpdateArtifactJob,
+  startMarkNativeBuildJob,
+  startRegisterNativeBuildJob,
+  startResetNativeBuildChannelJob,
   startResetRemoteBundlesJob,
   startSeedCrashedBundleFrontierJob,
   startWaitForAndroidRestartJob,
@@ -97,6 +107,78 @@ app.post("/e2e/jobs/bootstrap", async (c) => {
 
 app.post("/e2e/jobs/reset-remote-bundles", async (c) => {
   return c.json({ jobId: startResetRemoteBundlesJob() });
+});
+
+app.post("/e2e/jobs/read-native-builds", (c) =>
+  c.json({ jobId: startReadNativeBuildsJob() }),
+);
+
+app.post("/e2e/jobs/install-native-build", async (c) => {
+  const payload = (await c.req.json()) as { build?: unknown };
+  if (payload.build !== "run" && payload.build !== "other") {
+    return c.json({ error: "build must be run or other" }, 400);
+  }
+  return c.json({ jobId: startInstallNativeBuildJob(payload.build) });
+});
+
+app.post("/e2e/jobs/register-native-build", async (c) => {
+  const payload = (await c.req.json()) as {
+    appVersion?: unknown;
+    build?: unknown;
+    channel?: unknown;
+  };
+  if (typeof payload.appVersion !== "string" || !payload.appVersion) {
+    return c.json({ error: "appVersion is required" }, 400);
+  }
+  if (payload.build === "other" && typeof payload.channel !== "string") {
+    return c.json({ error: "the other build needs a channel" }, 400);
+  }
+  return c.json({
+    jobId: startRegisterNativeBuildJob({
+      appVersion: payload.appVersion,
+      ...(payload.build === "other" ? { build: "other" as const } : {}),
+      ...(typeof payload.channel === "string"
+        ? { channel: payload.channel }
+        : {}),
+    }),
+  });
+});
+
+app.post("/e2e/jobs/mark-native-build", async (c) => {
+  const payload = (await c.req.json()) as { id?: unknown };
+  if (typeof payload.id !== "string" || !payload.id) {
+    return c.json({ error: "id is required" }, 400);
+  }
+  return c.json({ jobId: startMarkNativeBuildJob({ id: payload.id }) });
+});
+
+app.post("/e2e/jobs/reset-native-build-channel", async (c) => {
+  const payload = (await c.req.json()) as { channel?: unknown };
+  if (typeof payload.channel !== "string" || !payload.channel) {
+    return c.json({ error: "channel is required" }, 400);
+  }
+  return c.json({
+    jobId: startResetNativeBuildChannelJob({ channel: payload.channel }),
+  });
+});
+
+app.post("/e2e/mismatch-patch-base-file-hash", async (c) => {
+  const payload = (await c.req.json()) as {
+    baseBundleId?: unknown;
+    bundleId?: unknown;
+  };
+  if (
+    typeof payload.baseBundleId !== "string" ||
+    typeof payload.bundleId !== "string"
+  ) {
+    return c.json({ error: "baseBundleId and bundleId are required" }, 400);
+  }
+  return c.json(
+    await handleMismatchPatchBaseFileHash({
+      baseBundleId: payload.baseBundleId,
+      bundleId: payload.bundleId,
+    }),
+  );
 });
 
 app.get("/e2e/runtime-config", (c) => {
@@ -159,6 +241,13 @@ app.post("/e2e/rollback-remote-config", async (c) => {
 });
 
 app.all("/hot-updater/*", async (c) => {
+  if (recordUnreachableUpdateRequest(c.req.raw)) {
+    // A dropped connection, as a device sees a server that is down.
+    (
+      c.env as { incoming?: IncomingMessage } | undefined
+    )?.incoming?.socket.destroy();
+    return c.body(null, 503);
+  }
   return handleProxyUpdateRequest(c.req.raw);
 });
 
@@ -168,6 +257,7 @@ app.all("/e2e/proxy-url/:targetId", async (c) => {
 
 app.post("/e2e/proxy-control", async (c) => {
   const payload = (await c.req.json()) as {
+    updateServerUnreachable?: boolean;
     archiveAvailable?: boolean;
     archiveFailureMode?: "corrupt" | "interrupt" | "not-found" | null;
     archiveFailures?: number;
@@ -267,7 +357,9 @@ app.post("/e2e/assert-proxy", async (c) => {
     catalogRequests?: number;
     platformBundleRequests?: number;
     maxPathCardinality?: number;
+    minArtifactRequests?: number;
     minCatalogRequests?: number;
+    minDownloadedBytes?: number;
   };
   return c.json(handleAssertProxy(payload));
 });
@@ -306,7 +398,7 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
     archiveRequests?: number;
     archiveResumes?: number;
     currentBundleId?: string;
-    fileRequests?: number | "changed-assets";
+    fileRequests?: number | "changed-assets" | string[];
     filesRequests?: number;
     maxRequestsPerAsset?: number;
     minNetworkAssets?: number;
@@ -314,13 +406,23 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
     targetBundleId?: string;
     verifyAllAssetHashes?: boolean;
   };
+  const filePaths = Array.isArray(payload.fileRequests)
+    ? payload.fileRequests
+    : null;
   const counts = [
     payload.archiveRequests,
-    payload.fileRequests === "changed-assets" ? 0 : payload.fileRequests,
+    payload.fileRequests === "changed-assets" || filePaths !== null
+      ? 0
+      : payload.fileRequests,
     payload.patchRequests,
   ];
   if (
     payload.currentBundleId === "" ||
+    (filePaths !== null &&
+      (!filePaths.every(
+        (filePath) => typeof filePath === "string" && filePath.length > 0,
+      ) ||
+        new Set(filePaths).size !== filePaths.length)) ||
     !payload.targetBundleId ||
     counts.some(
       (value) =>
@@ -344,7 +446,7 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
     return c.json(
       {
         error:
-          "a target bundle id and non-negative archive, file, and patch request counts are required",
+          "a target bundle id, non-negative archive, file, and patch request counts, and unique file paths are required",
       },
       400,
     );
@@ -374,6 +476,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
       | "multiAssetReplacement"
       | "sizeAwareLargeDiff";
     channel?: string;
+    signingKey?: unknown;
     disabled?: boolean;
     diffBaseBundleId?: string;
     forceUpdate?: boolean;
@@ -433,6 +536,16 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     return c.json({ error: "targetAppVersion is required" }, 400);
   }
   if (
+    payload.signingKey !== undefined &&
+    payload.signingKey !== "foreign" &&
+    payload.signingKey !== "secret"
+  ) {
+    return c.json(
+      { error: "signingKey must be foreign or secret when set" },
+      400,
+    );
+  }
+  if (
     payload.patchMaxBaseBundles !== undefined &&
     (!Number.isInteger(payload.patchMaxBaseBundles) ||
       payload.patchMaxBaseBundles < 1 ||
@@ -448,6 +561,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     jobId: startDeployBundleJob({
       bundleProfile: payload.bundleProfile,
       channel: payload.channel,
+      signingKey: payload.signingKey,
       disabled: payload.disabled,
       diffBaseBundleId: payload.diffBaseBundleId,
       forceUpdate: payload.forceUpdate,
@@ -661,6 +775,30 @@ app.post("/e2e/jobs/wait-for-app-exit", async (c) => {
   }
   return c.json({
     jobId: startWaitForAppExitJob({ bundleId: payload.bundleId }),
+  });
+});
+
+app.post("/e2e/jobs/prefetch-update-artifact", async (c) => {
+  const payload = (await c.req.json()) as {
+    currentBundleId?: unknown;
+    targetBundleId?: unknown;
+  };
+  if (
+    typeof payload.currentBundleId !== "string" ||
+    !payload.currentBundleId ||
+    typeof payload.targetBundleId !== "string" ||
+    !payload.targetBundleId
+  ) {
+    return c.json(
+      { error: "currentBundleId and targetBundleId are required" },
+      400,
+    );
+  }
+  return c.json({
+    jobId: startPrefetchUpdateArtifactJob({
+      currentBundleId: payload.currentBundleId,
+      targetBundleId: payload.targetBundleId,
+    }),
   });
 });
 

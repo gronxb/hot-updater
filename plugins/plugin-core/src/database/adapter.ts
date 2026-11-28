@@ -185,6 +185,34 @@ export interface DatabaseAdapter {
   /** Called only by migration tooling, such as `hot-updater db migrate`. */
   readonly migrations?: {
     apply(tables: readonly PhysicalTable[]): Promise<void>;
+    /**
+     * For a store that keeps index items of its own: writes the items of
+     * `index` that rows of `table` lack, or with `dryRun` only counts them,
+     * and returns how many rows lacked one. Migrations call it for an index
+     * declared on a table rows of a released schema were written to, such
+     * as core's `releases.scopes`, whose server may still write rows
+     * without the index's items. A store whose indexes cover every row
+     * itself, such as SQL or MongoDB, leaves it out.
+     */
+    fillIndex?(
+      table: PhysicalTable,
+      index: string,
+      options?: { readonly dryRun?: boolean },
+    ): Promise<number>;
+    /**
+     * For a store whose tables have columns: adds those of `columns` that
+     * `table` lacks, nullable, or with `dryRun` only finds them, and returns
+     * them; none for a table that doesn't exist yet. Migrations call it, before
+     * `apply` creates the indexes on them, for a column declared on a table a
+     * released schema created, such as core's `releases.label`. A store whose
+     * rows hold any field, such as a key-value store or MongoDB, leaves it
+     * out.
+     */
+    addColumns?(
+      table: PhysicalTable,
+      columns: readonly string[],
+      options?: { readonly dryRun?: boolean },
+    ): Promise<string[]>;
   };
   dispose?(): Promise<void>;
 }

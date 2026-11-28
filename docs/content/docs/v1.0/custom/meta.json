@@ -1,0 +1,12 @@
+{
+  "title": "Self Hosting (Custom)",
+  "description": "Build and host your own update server.",
+  "icon": "Server",
+  "pages": [
+    "overview",
+    "quick-start",
+    "frameworks",
+    "cli-configuration",
+    "hosting"
+  ]
+}

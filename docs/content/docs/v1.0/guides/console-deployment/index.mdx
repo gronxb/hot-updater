@@ -1,0 +1,230 @@
+---
+title: "Basics"
+description: "Connect your backend, set up sign-in, and choose a console host."
+icon: Settings
+---
+
+import { Step, Steps } from "fumadocs-ui/components/steps";
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
+
+## Prepare the console
+
+Host the console with [Nitro](https://nitro.build/deploy) and connect it to your existing Hot Updater backend.
+
+You need Node.js 22+ (npm 11+ if using npm), backend credentials, and a GitHub or Google OAuth application.
+
+<Steps>
+<Step>
+
+## Clone the console
+
+```bash
+git clone https://github.com/hot-updater/console.git my-app-console
+cd my-app-console
+```
+
+Install dependencies with the package manager used by your deployment repository.
+
+```package-install
+npm install
+```
+
+Keep your deployment configuration in a private repository and commit its lockfile.
+
+</Step>
+<Step>
+
+## Connect your backend
+
+Start with an
+[AWS, Firebase, Supabase, or Cloudflare example](https://github.com/hot-updater/console/tree/main/examples):
+copy `examples/<provider>/console.config.ts.example` to `console.config.ts` in
+the console's project root, next to `console.auth.ts`. Or configure your own
+database, storage, and server plugins:
+
+```ts title="console.config.ts"
+import { dynamoDB, s3Storage } from "@hot-updater/aws";
+import { defineConsoleConfig } from "@hot-updater/console";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+
+const region = process.env.HOT_UPDATER_S3_REGION!;
+
+export default defineConsoleConfig({
+  database: dynamoDB({
+    region,
+    tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
+    cloudfrontDistributionId:
+      process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+  }),
+  storage: s3Storage({
+    region,
+    bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  }),
+  plugins: [apiKeys(), insights(), remoteConfig()],
+  console: {
+    gitUrl: "https://github.com/acme/app",
+  },
+});
+```
+
+The configuration mirrors your server: the same database and bucket, reached
+with the console host's own credentials, and the
+[server plugins](/docs/v1.0/custom/server-plugins) your backend runs. The AWS,
+Azure, Cloudflare, Firebase, Supabase, and Vercel managed servers run
+`apiKeys()`, `insights()`, and `remoteConfig()`. Import those factories from
+`@hot-updater/server/plugins` in the Console configuration. Read credentials from the console
+host's runtime environment variables, and leave mobile build adapters and
+signing private keys in the app project.
+
+Install your chosen
+[database adapter](/docs/v1.0/concepts/plugin-system#database-adapter) and
+[storage adapter](/docs/v1.0/concepts/plugin-system#storage-adapter), such as
+`@hot-updater/aws` for the example above, in the console repository. Install
+`@hot-updater/server` for the official server plugins used by the deployed
+Console.
+
+```package-install
+npm install @hot-updater/aws @hot-updater/server
+```
+
+The console runs the plugins over `database` to read Insights and manage API
+keys, and shows only the features of the plugins listed: Insights with
+`insights()`, API keys with `apiKeys()`.
+
+To manage a self-hosted server through its admin handler, set `database` to
+`standaloneRepository`, with the server's storage adapter and plugins, and
+install `@hot-updater/standalone`:
+
+```ts title="console.config.ts"
+import { s3Storage } from "@hot-updater/aws";
+import { defineConsoleConfig } from "@hot-updater/console";
+import { apiKeys, insights } from "@hot-updater/server/plugins";
+import { standaloneRepository } from "@hot-updater/standalone";
+
+export default defineConsoleConfig({
+  database: standaloneRepository({
+    baseUrl: process.env.HOT_UPDATER_ADMIN_URL!,
+    commonHeaders: {
+      Authorization: `Bearer ${process.env.HOT_UPDATER_ADMIN_TOKEN}`,
+    },
+  }),
+  storage: s3Storage({
+    region: process.env.HOT_UPDATER_S3_REGION!,
+    bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  }),
+  plugins: [insights(), apiKeys()],
+});
+```
+
+With `insights()` in `plugins`, the console reads the server's Insights
+overview, events, installations, update failures, and retention periods from
+its admin handler. App usage, bundle activity, and API keys need the server's
+database adapter as `database`.
+`defineConsoleConfig` also takes a function of the request that returns the
+configuration, for hosts that pass their bindings with each request, as the
+Cloudflare Worker example does.
+
+</Step>
+<Step>
+
+## Set up sign-in
+
+GitHub and Google sign-in are included. Fill in the environment variables below to use either provider without changing the authentication code. For other authentication systems, [customize the cloned code](#custom-authentication).
+
+Choose your public HTTPS URL, then register its OAuth callback:
+
+| Provider | Callback |
+| --- | --- |
+| GitHub | `https://<console-host>/api/auth/callback/github` |
+| Google | `https://<console-host>/api/auth/callback/google` |
+
+Add these values to your host's **runtime** environment:
+
+| Variable | Value | Example |
+| --- | --- | --- |
+| `BETTER_AUTH_URL` | Your HTTPS origin, without a path | `https://console.example.com` |
+| `BETTER_AUTH_SECRET` | A random secret of at least 32 characters | Output of `openssl rand -base64 32` |
+| `HOT_UPDATER_CONSOLE_ALLOWED_EMAILS` | Full, verified email addresses, separated by commas | `alice@example.com,bob@example.com` |
+| `GITHUB_CLIENT_ID` | Client ID from your GitHub OAuth app | `Ov23liExample12345678` |
+| `GITHUB_CLIENT_SECRET` | Client secret from the same GitHub app | `<your-github-client-secret>` |
+| `GOOGLE_CLIENT_ID` | Client ID from your Google OAuth client | `123456789012-example.apps.googleusercontent.com` |
+| `GOOGLE_CLIENT_SECRET` | Client secret from the same Google client | `<your-google-client-secret>` |
+
+Configure at least one complete OAuth pair and your backend's environment variables. Generate the session secret with:
+
+```bash
+openssl rand -base64 32
+```
+
+Keep secrets server-side; never prefix them with `VITE_`. Google OAuth clients in testing must also allow your test users.
+
+</Step>
+<Step>
+
+## Choose a host
+
+Follow one deployment guide:
+
+| Host | Runtime |
+| --- | --- |
+| [Docker](/docs/v1.0/guides/console-deployment/docker) | Standalone Node container |
+| [Vercel](/docs/v1.0/guides/console-deployment/vercel) | Node server functions |
+| [Netlify](/docs/v1.0/guides/console-deployment/netlify) | Node server functions |
+| [Cloudflare](/docs/v1.0/guides/console-deployment/cloudflare) | Worker with native D1/R2 bindings |
+
+Your console can run on a different provider from your Hot Updater backend. For example, you can deploy the console to Vercel while keeping your database and bundles on Cloudflare.
+
+- Vercel, Netlify, or Docker support any managed backend: Cloudflare, AWS, Firebase, Supabase, Vercel, or Azure.
+- For Cloudflare Workers, follow the Cloudflare guide when your backend also uses Cloudflare. For the other backends, choose one of the hosts above.
+
+For another host, select its preset from [Nitro's deployment catalog](https://nitro.build/deploy). The console needs a server runtime.
+
+</Step>
+<Step>
+
+## Verify the deployment
+
+1. Open the HTTPS URL: sign-in should appear before any management data.
+2. Sign in with an allowlisted account: check Bundles and Insights. If Insights is missing from the navigation, add `insights()` to `plugins` in `console.config.ts`, as your server runs it.
+3. Open a Bundle's details and use **Download manifest** to verify access to its `manifest.json`. Then sign out: management data should no longer be accessible.
+
+The manifest download checks console access to metadata. Verify OTA delivery
+separately with [Test an OTA update](/docs/v1.0/get-started/test-ota).
+
+</Step>
+</Steps>
+
+## Custom authentication
+
+You can edit or replace `console.auth.ts` in your clone to use your own authentication and access rules. It implements `ConsoleAuthAdapter`:
+
+| Method | Responsibility |
+| --- | --- |
+| `handle(request)` | Handle sign-in, callbacks, and sign-out |
+| `getAccess(request)` | Validate the session and decide who can access the console |
+| `getProviders(request)` | Select the built-in sign-in buttons |
+
+The packaged sign-in screen supports GitHub and Google. A new provider button or login form also needs changes to the UI and provider types in `@hot-updater/console`; adding environment variables alone does not add a new login method.
+
+<Accordions>
+<Accordion title="Local preview">
+
+Copy `.env.example` to `.env`, fill in OAuth and backend values, and use `BETTER_AUTH_URL=http://localhost:3000` with a matching callback.
+
+```package-install
+npm run dev
+```
+
+Use adapters that run in Node. For native bindings, use the [Worker preview](/docs/v1.0/guides/console-deployment/cloudflare#local-preview).
+
+</Accordion>
+<Accordion title="Sign-in troubleshooting">
+
+| Symptom | Check |
+| --- | --- |
+| Sign-in fails | Both OAuth values, session secret, and email allowlist are set at runtime |
+| Callback rejected | Browser origin, `BETTER_AUTH_URL`, and OAuth callback match |
+| Forbidden after sign-in | The provider returns a verified email in the allowlist |
+
+</Accordion>
+</Accordions>

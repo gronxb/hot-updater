@@ -96,9 +96,7 @@ describe("setEnv", () => {
     expect(scaffold?.text).toContain(
       "  plugins: [apiKeys(), insights(), remoteConfig()],\n",
     );
-    expect(scaffold?.text).toContain(
-      "databaseId: process.env.HOT_UPDATER_FIREBASE_DATABASE_ID,",
-    );
+    expect(scaffold?.text).toContain('databaseId: "hot-updater",');
     expect(scaffold?.text).not.toContain("createHotUpdater");
     expect(scaffold?.text).not.toContain("server:");
     expect(options).toMatchObject({ settings: "Firebase" });

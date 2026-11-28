@@ -71,6 +71,7 @@ model releases {
   source_release_id String?
   created_at_ms BigInt
   updated_at_ms BigInt
+  label BigInt?
   hu_v BigInt @default(0) @map("_v")
   @@id([id])
   @@index([scope_key, id], map: "releases_byScope")
@@ -78,6 +79,7 @@ model releases {
   @@index([channel_id, platform, id], map: "releases_byChannelPlatform")
   @@index([channel_id, platform, enabled, id], map: "releases_byChannelPlatformEnabled")
   @@index([bundle_id, id], map: "releases_byBundle")
+  @@unique([channel_id, platform, label], map: "releases_byLabel")
 }
 model release_catalogs {
   scope_key String
@@ -112,6 +114,72 @@ model bundle_totals {
   hu_v BigInt @default(0) @map("_v")
   @@id([platform_key, hu_shard])
 }
+model native_builds {
+  id String
+  scope_key String
+  platform String
+  channel_id String
+  fingerprint_hash String?
+  app_version String?
+  min_bundle_id String
+  artifact_kind String
+  artifact_storage_uri String
+  byte_size BigInt
+  git_commit_hash String?
+  created_at_ms BigInt
+  build_key String?
+  build_number String?
+  submitted_to String?
+  submitted_at_ms BigInt?
+  submitted_version String?
+  is_store_build BigInt
+  is_sandbox BigInt
+  sandbox_url_scheme String?
+  export_method String?
+  native_app_version String?
+  store_build_scope_key String?
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+  @@index([scope_key, id], map: "native_builds_byScope")
+  @@index([scope_key, build_key, id], map: "native_builds_byBuildKey")
+  @@index([scope_key, artifact_kind, id], map: "native_builds_byScopeKind")
+  @@unique([store_build_scope_key], map: "native_builds_byStoreBuild")
+  @@index([channel_id, id], map: "native_builds_byChannel")
+  @@unique([min_bundle_id], map: "native_builds_min_bundle_id")
+}
+model ios_devices {
+  id String
+  udid String
+  name String
+  status String
+  requested_by String?
+  created_at_ms BigInt
+  approved_by String?
+  approved_at_ms BigInt?
+  registered_at_ms BigInt?
+  apple_issuer_id String?
+  apple_error String?
+  build_id String?
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+  @@index([status, id], map: "ios_devices_byStatus")
+  @@index([registered_at_ms, id], map: "ios_devices_byRegistration")
+  @@unique([udid], map: "ios_devices_udid")
+}
+model ios_device_account {
+  id String
+  apple_issuer_id String
+  claimed_at_ms BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+}
+model label_sequences {
+  id String
+  last_label BigInt
+  is_filled BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+}
 model bundle_events {
   id String
   type String
@@ -143,6 +211,7 @@ model bundle_events__byBundle {
   received_at_ms BigInt
   id String
   @@id([platform, channel, type, bundle_ref, day, received_at_ms, id])
+  @@index([id], map: "bundle_events__byBundle__key")
 }
 model bundle_event_heads {
   install_id String

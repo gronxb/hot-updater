@@ -1,15 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, ArrowUpRight, RotateCw } from "lucide-react";
+import { ArrowLeft, RotateCw } from "lucide-react";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { BuiltinBundleDisplay } from "@/components/BuiltinBundleDisplay";
 import { ConsoleFeatureUnavailable } from "@/components/ConsoleFeatureUnavailable";
-import { BuiltinBundleBadge } from "@/components/features/insights/BuiltinBundle";
 import { InsightsErrorAlert } from "@/components/features/insights/InsightsErrorAlert";
 import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
 import { UsagePeriodSelector } from "@/components/features/insights/InsightsPeriodSelector";
 import { InfoTooltip } from "@/components/InfoTooltip";
 import { PlatformIcon } from "@/components/PlatformIcon";
+import { ReleaseIdDisplay } from "@/components/ReleaseIdDisplay";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -37,15 +37,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useReleaseLabelQuery } from "@/lib/api";
 import { requireConsoleFeature } from "@/lib/console-features-api";
+import { DEFAULT_CHANNEL } from "@/lib/constants";
 import { useInsightsRetention } from "@/lib/insights-api";
 import { keepsTwelveMonths } from "@/lib/insights-retention";
 import {
-  DEFAULT_INSIGHTS_CHANNEL,
   validateDistributionSearch,
   validateInsightsSearch,
 } from "@/lib/insights-search";
-import type { BundleDistribution } from "@/lib/insights-usage";
+import type { ReleaseDistribution } from "@/lib/insights-usage";
 import { getAppUsageReportRpc } from "@/lib/insights-usage-rpc";
 
 const PAGE_SIZE = 20;
@@ -56,18 +57,68 @@ const dates = new Intl.DateTimeFormat("en", {
 });
 
 /** How a distribution row's bundle reads aloud. */
-const bundleName = (row: BundleDistribution): string =>
-  row.releaseId ??
-  (row.builtinBundleId
-    ? `Built-in bundle ${row.builtinBundleId}`
-    : "Unknown bundle");
+const bundleName = (row: ReleaseDistribution): string =>
+  row.releaseId ?? (row.builtinBundleId ? "Built-in bundle" : "Unknown bundle");
 
-/** The bundle an app version's native build shipped, by its ID. */
-function BuiltinBundle({ bundleId }: { readonly bundleId: string }) {
+/**
+ * A row's release by its label and ID, the label linking to the bundle. Only
+ * the rows on the page read their release, one point read each, once.
+ */
+function DistributionRelease({
+  releaseId,
+  appVersion,
+}: {
+  readonly releaseId: string;
+  readonly appVersion: string;
+}) {
+  const label = useReleaseLabelQuery(releaseId);
   return (
-    <div className="flex min-h-11 min-w-0 flex-wrap items-center gap-2 md:min-h-9">
-      <BuiltinBundleBadge />
-      <BundleIdDisplay bundleId={bundleId} className="text-muted-foreground" />
+    <div className="flex min-h-11 min-w-0 items-center md:min-h-9">
+      {/* Its label first: the ID alone would show, then shrink to its tail. */}
+      {label.isPending ? (
+        <Skeleton
+          aria-label={`Loading bundle ${releaseId}`}
+          className="h-4 w-24"
+        />
+      ) : (
+        <ReleaseIdDisplay
+          releaseId={releaseId}
+          className="min-w-0"
+          label={label.data ?? null}
+          labelAs={
+            <Link
+              to="/"
+              search={{ releaseId }}
+              aria-label={`Review bundle ${releaseId} for app version ${appVersion}`}
+              className="min-w-0 underline-offset-4 hover:underline"
+            />
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * The bundle an app version's native build shipped, named by that version:
+ * the full ID shows in its popover, and a click copies it.
+ */
+function BuiltinBundle({
+  bundleId,
+  appVersion,
+}: {
+  readonly bundleId: string;
+  readonly appVersion: string;
+}) {
+  return (
+    <div className="flex min-h-11 min-w-0 items-center md:min-h-9">
+      <BuiltinBundleDisplay
+        appVersion={appVersion}
+        bundleId={bundleId}
+        // Its 20 px line reaches 44 px tall on a phone, meeting the release
+        // line above it rather than overlapping it.
+        className="text-sm after:-inset-y-3"
+      />
     </div>
   );
 }
@@ -86,7 +137,7 @@ function DistributionPage() {
   const navigate = Route.useNavigate();
   const input = {
     platform: search.platform ?? "all",
-    channel: search.channel ?? DEFAULT_INSIGHTS_CHANNEL,
+    channel: search.channel ?? DEFAULT_CHANNEL,
     appVersion: search.appVersion,
     window: search.window ?? "24h",
   };
@@ -223,8 +274,9 @@ function DistributionPage() {
                 <InfoTooltip label="How bundle distribution is counted">
                   Each installation counts once, by its latest report{" "}
                   {distributionPeriod}. Shares are within each app version.
-                  Built-in bundle: the bundle the native build shipped, by its
-                  ID. Unknown bundle: no deployment and no built-in bundle ID.
+                  Built-in bundle: the bundle the app version's native build
+                  shipped. Unknown bundle: no deployment and no built-in bundle
+                  ID.
                 </InfoTooltip>
               </div>
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -339,27 +391,20 @@ function DistributionPage() {
                             </div>
                             <div className="col-span-2 row-start-2 min-w-0 md:col-span-1 md:row-auto">
                               {row.releaseId ? (
-                                <Link
-                                  to="/"
-                                  search={{ releaseId: row.releaseId }}
-                                  aria-label={`Review bundle ${row.releaseId} for app version ${row.appVersion}`}
-                                  className="flex min-h-11 min-w-0 items-center gap-2 text-xs underline-offset-4 hover:underline md:min-h-9"
-                                >
-                                  <span className="break-all font-mono">
-                                    {row.releaseId}
-                                  </span>
-                                  <ArrowUpRight
-                                    aria-hidden="true"
-                                    className="size-3.5 shrink-0"
-                                  />
-                                </Link>
+                                <DistributionRelease
+                                  releaseId={row.releaseId}
+                                  appVersion={row.appVersion}
+                                />
                               ) : row.builtinBundleId ? null : (
                                 <span className="text-sm text-muted-foreground">
                                   Unknown bundle
                                 </span>
                               )}
                               {row.builtinBundleId ? (
-                                <BuiltinBundle bundleId={row.builtinBundleId} />
+                                <BuiltinBundle
+                                  appVersion={row.appVersion}
+                                  bundleId={row.builtinBundleId}
+                                />
                               ) : null}
                             </div>
                             <div className="col-start-2 row-start-1 text-right md:col-auto md:row-auto">

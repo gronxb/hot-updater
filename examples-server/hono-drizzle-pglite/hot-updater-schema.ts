@@ -6,101 +6,99 @@ const column = (type: string) =>
   customType<{ data: unknown; driverData: unknown }>({ dataType: () => type });
 
 export const bundles = pgTable("bundles", {
-  "id": column("varchar(36) COLLATE \"C\"")("id").notNull(),
-  "platform": column("varchar(16) COLLATE \"C\"")("platform").notNull(),
-  "git_commit_hash": column("varchar(255) COLLATE \"C\"")("git_commit_hash"),
+  "id": column("varchar(36)")("id").notNull().primaryKey(),
+  "platform": column("varchar(16)")("platform").notNull(),
+  "git_commit_hash": column("varchar(255)")("git_commit_hash"),
   "metadata": column("jsonb")("metadata").notNull(),
-  "manifest_storage_uri": column("text COLLATE \"C\"")("manifest_storage_uri").notNull(),
-  "manifest_file_hash": column("text COLLATE \"C\"")("manifest_file_hash").notNull(),
-  "asset_base_storage_uri": column("text COLLATE \"C\"")("asset_base_storage_uri").notNull(),
+  "manifest_storage_uri": column("text")("manifest_storage_uri").notNull(),
+  "manifest_file_hash": column("text")("manifest_file_hash").notNull(),
+  "asset_base_storage_uri": column("text")("asset_base_storage_uri").notNull(),
   "_refs_bundle_patches_bundle_id": column("bigint")("_refs_bundle_patches_bundle_id").notNull().default(0),
   "_refs_bundle_patches_base_bundle_id": column("bigint")("_refs_bundle_patches_base_bundle_id").notNull().default(0),
   "_refs_releases_bundle_id": column("bigint")("_refs_releases_bundle_id").notNull().default(0),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
-  primaryKey({ columns: [table["id"]] }),
   index("bundles_byPlatform").on(table["platform"], table["id"]),
 ]);
 
 export const bundle_patches = pgTable("bundle_patches", {
-  "id": column("varchar(255) COLLATE \"C\"")("id").notNull(),
-  "bundle_id": column("varchar(36) COLLATE \"C\"")("bundle_id").notNull(),
-  "base_bundle_id": column("varchar(36) COLLATE \"C\"")("base_bundle_id").notNull(),
-  "base_file_hash": column("text COLLATE \"C\"")("base_file_hash").notNull(),
-  "patch_file_hash": column("text COLLATE \"C\"")("patch_file_hash").notNull(),
-  "patch_storage_uri": column("text COLLATE \"C\"")("patch_storage_uri").notNull(),
+  "id": column("varchar(255)")("id").notNull().primaryKey(),
+  "bundle_id": column("varchar(36)")("bundle_id").notNull(),
+  "base_bundle_id": column("varchar(36)")("base_bundle_id").notNull(),
+  "base_file_hash": column("text")("base_file_hash").notNull(),
+  "patch_file_hash": column("text")("patch_file_hash").notNull(),
+  "patch_storage_uri": column("text")("patch_storage_uri").notNull(),
   "byte_size": column("bigint")("byte_size").notNull(),
   "order_index": column("bigint")("order_index").notNull(),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
-  primaryKey({ columns: [table["id"]] }),
   uniqueIndex("bundle_patches_pair").on(table["bundle_id"], table["base_bundle_id"]),
   index("bundle_patches_byBundle").on(table["bundle_id"], table["order_index"], table["id"]),
   index("bundle_patches_byBase").on(table["base_bundle_id"], table["bundle_id"], table["id"]),
 ]);
 
 export const releases = pgTable("releases", {
-  "id": column("varchar(36) COLLATE \"C\"")("id").notNull(),
+  "id": column("varchar(36)")("id").notNull().primaryKey(),
   "revision": column("bigint")("revision").notNull(),
-  "scope_key": column("varchar(2048) COLLATE \"C\"")("scope_key").notNull(),
-  "channel_id": column("varchar(1408) COLLATE \"C\"")("channel_id").notNull(),
-  "platform": column("varchar(16) COLLATE \"C\"")("platform").notNull(),
-  "kind": column("varchar(16) COLLATE \"C\"")("kind").notNull(),
-  "bundle_id": column("varchar(36) COLLATE \"C\"")("bundle_id"),
-  "strategy": column("varchar(16) COLLATE \"C\"")("strategy").notNull(),
-  "target_app_version": column("text COLLATE \"C\"")("target_app_version"),
-  "fingerprint_hash": column("varchar(255) COLLATE \"C\"")("fingerprint_hash"),
+  "scope_key": column("varchar(2048)")("scope_key").notNull(),
+  "channel_id": column("varchar(1408)")("channel_id").notNull(),
+  "platform": column("varchar(16)")("platform").notNull(),
+  "kind": column("varchar(16)")("kind").notNull(),
+  "bundle_id": column("varchar(36)")("bundle_id"),
+  "strategy": column("varchar(16)")("strategy").notNull(),
+  "target_app_version": column("text")("target_app_version"),
+  "fingerprint_hash": column("varchar(255)")("fingerprint_hash"),
   "enabled": column("boolean")("enabled").notNull(),
   "should_force_update": column("boolean")("should_force_update").notNull(),
-  "message": column("text COLLATE \"C\"")("message"),
+  "message": column("text")("message"),
   "rollout_cohort_count": column("bigint")("rollout_cohort_count").notNull(),
   "target_cohorts": column("jsonb")("target_cohorts").notNull(),
-  "operation": column("varchar(16) COLLATE \"C\"")("operation").notNull(),
-  "source_release_id": column("varchar(36) COLLATE \"C\"")("source_release_id"),
+  "operation": column("varchar(16)")("operation").notNull(),
+  "source_release_id": column("varchar(36)")("source_release_id"),
   "created_at_ms": column("bigint")("created_at_ms").notNull(),
   "updated_at_ms": column("bigint")("updated_at_ms").notNull(),
+  "label": column("bigint")("label"),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
-  primaryKey({ columns: [table["id"]] }),
   index("releases_byScope").on(table["scope_key"], table["id"]),
   index("releases_byScopeEnabled").on(table["scope_key"], table["enabled"], table["id"]),
   index("releases_byChannelPlatform").on(table["channel_id"], table["platform"], table["id"]),
   index("releases_byChannelPlatformEnabled").on(table["channel_id"], table["platform"], table["enabled"], table["id"]),
   index("releases_byBundle").on(table["bundle_id"], table["id"]),
+  uniqueIndex("releases_byLabel").on(table["channel_id"], table["platform"], table["label"]),
 ]);
 
 export const release_catalogs = pgTable("release_catalogs", {
-  "scope_key": column("varchar(2048) COLLATE \"C\"")("scope_key").notNull(),
-  "catalog_id": column("varchar(255) COLLATE \"C\"")("catalog_id").notNull(),
-  "strategy": column("varchar(16) COLLATE \"C\"")("strategy").notNull(),
-  "channel_id": column("varchar(1408) COLLATE \"C\"")("channel_id").notNull(),
-  "channel_key": column("varchar(1400) COLLATE \"C\"")("channel_key").notNull(),
-  "platform": column("varchar(16) COLLATE \"C\"")("platform").notNull(),
-  "fingerprint_hash": column("varchar(255) COLLATE \"C\"")("fingerprint_hash"),
+  "scope_key": column("varchar(2048)")("scope_key").notNull().primaryKey(),
+  "catalog_id": column("varchar(255)")("catalog_id").notNull(),
+  "strategy": column("varchar(16)")("strategy").notNull(),
+  "channel_id": column("varchar(1408)")("channel_id").notNull(),
+  "channel_key": column("varchar(1400)")("channel_key").notNull(),
+  "platform": column("varchar(16)")("platform").notNull(),
+  "fingerprint_hash": column("varchar(255)")("fingerprint_hash"),
   "generation": column("bigint")("generation").notNull(),
-  "payload": column("text COLLATE \"C\"")("payload").notNull(),
-  "catalog_hash": column("varchar(71) COLLATE \"C\"")("catalog_hash").notNull(),
+  "payload": column("text")("payload").notNull(),
+  "catalog_hash": column("varchar(71)")("catalog_hash").notNull(),
   "byte_size": column("bigint")("byte_size").notNull(),
   "is_tombstone": column("boolean")("is_tombstone").notNull(),
   "updated_at_ms": column("bigint")("updated_at_ms").notNull(),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
-  primaryKey({ columns: [table["scope_key"]] }),
+
 ]);
 
 export const channels = pgTable("channels", {
-  "id": column("varchar(1408) COLLATE \"C\"")("id").notNull(),
-  "name": column("varchar(255) COLLATE \"C\"")("name").notNull(),
+  "id": column("varchar(1408)")("id").notNull().primaryKey(),
+  "name": column("varchar(255)")("name").notNull(),
   "_refs_releases_channel_id": column("bigint")("_refs_releases_channel_id").notNull().default(0),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
-  primaryKey({ columns: [table["id"]] }),
   index("channels_all").on(table["name"], table["id"]),
   uniqueIndex("channels_name").on(table["name"]),
 ]);
 
 export const bundle_totals = pgTable("bundle_totals", {
-  "platform_key": column("varchar(16) COLLATE \"C\"")("platform_key").notNull(),
+  "platform_key": column("varchar(16)")("platform_key").notNull(),
   "_shard": column("bigint")("_shard").notNull(),
   "bundles": column("bigint")("bundles").notNull(),
   "_v": column("bigint")("_v").notNull().default(0),
@@ -108,65 +106,136 @@ export const bundle_totals = pgTable("bundle_totals", {
   primaryKey({ columns: [table["platform_key"], table["_shard"]] }),
 ]);
 
+export const native_builds = pgTable("native_builds", {
+  "id": column("varchar(36)")("id").notNull().primaryKey(),
+  "scope_key": column("varchar(2048)")("scope_key").notNull(),
+  "platform": column("varchar(16)")("platform").notNull(),
+  "channel_id": column("varchar(1408)")("channel_id").notNull(),
+  "fingerprint_hash": column("varchar(255)")("fingerprint_hash"),
+  "app_version": column("text")("app_version"),
+  "min_bundle_id": column("varchar(36)")("min_bundle_id").notNull(),
+  "artifact_kind": column("varchar(16)")("artifact_kind").notNull(),
+  "artifact_storage_uri": column("text")("artifact_storage_uri").notNull(),
+  "byte_size": column("bigint")("byte_size").notNull(),
+  "git_commit_hash": column("varchar(255)")("git_commit_hash"),
+  "created_at_ms": column("bigint")("created_at_ms").notNull(),
+  "build_key": column("varchar(69)")("build_key"),
+  "build_number": column("varchar(64)")("build_number"),
+  "submitted_to": column("varchar(16)")("submitted_to"),
+  "submitted_at_ms": column("bigint")("submitted_at_ms"),
+  "submitted_version": column("varchar(255)")("submitted_version"),
+  "is_store_build": column("boolean")("is_store_build").notNull(),
+  "is_sandbox": column("boolean")("is_sandbox").notNull(),
+  "sandbox_url_scheme": column("varchar(255)")("sandbox_url_scheme"),
+  "export_method": column("varchar(16)")("export_method"),
+  "native_app_version": column("text")("native_app_version"),
+  "store_build_scope_key": column("varchar(2048)")("store_build_scope_key"),
+  "_v": column("bigint")("_v").notNull().default(0),
+}, (table) => [
+  index("native_builds_byScope").on(table["scope_key"], table["id"]),
+  index("native_builds_byBuildKey").on(table["scope_key"], table["build_key"], table["id"]),
+  index("native_builds_byScopeKind").on(table["scope_key"], table["artifact_kind"], table["id"]),
+  uniqueIndex("native_builds_byStoreBuild").on(table["store_build_scope_key"]),
+  index("native_builds_byChannel").on(table["channel_id"], table["id"]),
+  uniqueIndex("native_builds_min_bundle_id").on(table["min_bundle_id"]),
+]);
+
+export const ios_devices = pgTable("ios_devices", {
+  "id": column("varchar(36)")("id").notNull().primaryKey(),
+  "udid": column("varchar(40)")("udid").notNull(),
+  "name": column("varchar(100)")("name").notNull(),
+  "status": column("varchar(16)")("status").notNull(),
+  "requested_by": column("varchar(320)")("requested_by"),
+  "created_at_ms": column("bigint")("created_at_ms").notNull(),
+  "approved_by": column("varchar(320)")("approved_by"),
+  "approved_at_ms": column("bigint")("approved_at_ms"),
+  "registered_at_ms": column("bigint")("registered_at_ms"),
+  "apple_issuer_id": column("varchar(64)")("apple_issuer_id"),
+  "apple_error": column("varchar(512)")("apple_error"),
+  "build_id": column("varchar(36)")("build_id"),
+  "_v": column("bigint")("_v").notNull().default(0),
+}, (table) => [
+  index("ios_devices_byStatus").on(table["status"], table["id"]),
+  index("ios_devices_byRegistration").on(table["registered_at_ms"], table["id"]),
+  uniqueIndex("ios_devices_udid").on(table["udid"]),
+]);
+
+export const ios_device_account = pgTable("ios_device_account", {
+  "id": column("varchar(16)")("id").notNull().primaryKey(),
+  "apple_issuer_id": column("varchar(64)")("apple_issuer_id").notNull(),
+  "claimed_at_ms": column("bigint")("claimed_at_ms").notNull(),
+  "_v": column("bigint")("_v").notNull().default(0),
+}, (table) => [
+
+]);
+
+export const label_sequences = pgTable("label_sequences", {
+  "id": column("varchar(1440)")("id").notNull().primaryKey(),
+  "last_label": column("bigint")("last_label").notNull(),
+  "is_filled": column("boolean")("is_filled").notNull(),
+  "_v": column("bigint")("_v").notNull().default(0),
+}, (table) => [
+
+]);
+
 export const bundle_events = pgTable("bundle_events", {
-  "id": column("varchar(36) COLLATE \"C\"")("id").notNull(),
-  "type": column("varchar(32) COLLATE \"C\"")("type").notNull(),
-  "install_id": column("varchar(255) COLLATE \"C\"")("install_id").notNull(),
-  "user_id": column("varchar(255) COLLATE \"C\"")("user_id"),
-  "from_release_id": column("varchar(36) COLLATE \"C\"")("from_release_id"),
-  "from_bundle_id": column("varchar(36) COLLATE \"C\"")("from_bundle_id"),
-  "to_release_id": column("varchar(36) COLLATE \"C\"")("to_release_id"),
-  "to_bundle_id": column("varchar(36) COLLATE \"C\"")("to_bundle_id").notNull(),
-  "platform": column("varchar(16) COLLATE \"C\"")("platform").notNull(),
-  "app_version": column("text COLLATE \"C\"")("app_version").notNull(),
-  "channel": column("text COLLATE \"C\"")("channel").notNull(),
+  "id": column("varchar(36)")("id").notNull().primaryKey(),
+  "type": column("varchar(32)")("type").notNull(),
+  "install_id": column("varchar(255)")("install_id").notNull(),
+  "user_id": column("varchar(255)")("user_id"),
+  "from_release_id": column("varchar(36)")("from_release_id"),
+  "from_bundle_id": column("varchar(36)")("from_bundle_id"),
+  "to_release_id": column("varchar(36)")("to_release_id"),
+  "to_bundle_id": column("varchar(36)")("to_bundle_id").notNull(),
+  "platform": column("varchar(16)")("platform").notNull(),
+  "app_version": column("text")("app_version").notNull(),
+  "channel": column("text")("channel").notNull(),
   "metadata": column("jsonb")("metadata").notNull(),
   "received_at_ms": column("bigint")("received_at_ms").notNull(),
   "day": column("bigint")("day"),
-  "movement_install_id": column("text COLLATE \"C\"")("movement_install_id"),
+  "movement_install_id": column("text")("movement_install_id"),
   "bundle_ref": column("jsonb")("bundle_ref"),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
-  primaryKey({ columns: [table["id"]] }),
   index("bundle_events_movementsByInstall").on(table["movement_install_id"], table["received_at_ms"], table["id"]),
   index("bundle_events_byDay").on(table["day"], table["received_at_ms"], table["id"]),
 ]);
 
 export const bundle_events__byBundle = pgTable("bundle_events__byBundle", {
-  "platform": column("varchar(16) COLLATE \"C\"")("platform").notNull(),
-  "channel": column("text COLLATE \"C\"")("channel").notNull(),
-  "type": column("varchar(32) COLLATE \"C\"")("type").notNull(),
-  "bundle_ref": column("text COLLATE \"C\"")("bundle_ref").notNull(),
+  "platform": column("varchar(16)")("platform").notNull(),
+  "channel": column("text")("channel").notNull(),
+  "type": column("varchar(32)")("type").notNull(),
+  "bundle_ref": column("text")("bundle_ref").notNull(),
   "day": column("bigint")("day").notNull(),
   "received_at_ms": column("bigint")("received_at_ms").notNull(),
-  "id": column("varchar(36) COLLATE \"C\"")("id").notNull(),
+  "id": column("varchar(36)")("id").notNull(),
 }, (table) => [
-  primaryKey({ columns: [table["platform"], table["channel"], table["type"], table["bundle_ref"], table["day"], table["received_at_ms"], table["id"]] }),
+  primaryKey({ name: "bundle_events__byBundle_platform_channel_type_bundle_ref_day_re", columns: [table["platform"], table["channel"], table["type"], table["bundle_ref"], table["day"], table["received_at_ms"], table["id"]] }),
+  index("bundle_events__byBundle__key").on(table["id"]),
 ]);
 
 export const bundle_event_heads = pgTable("bundle_event_heads", {
-  "install_id": column("varchar(255) COLLATE \"C\"")("install_id").notNull(),
-  "id": column("varchar(36) COLLATE \"C\"")("id").notNull(),
-  "type": column("varchar(32) COLLATE \"C\"")("type").notNull(),
-  "user_id": column("varchar(255) COLLATE \"C\"")("user_id"),
-  "from_release_id": column("varchar(36) COLLATE \"C\"")("from_release_id"),
-  "from_bundle_id": column("varchar(36) COLLATE \"C\"")("from_bundle_id"),
-  "to_release_id": column("varchar(36) COLLATE \"C\"")("to_release_id"),
-  "to_bundle_id": column("varchar(36) COLLATE \"C\"")("to_bundle_id").notNull(),
-  "platform": column("varchar(16) COLLATE \"C\"")("platform").notNull(),
-  "app_version": column("text COLLATE \"C\"")("app_version").notNull(),
-  "channel": column("text COLLATE \"C\"")("channel").notNull(),
+  "install_id": column("varchar(255)")("install_id").notNull().primaryKey(),
+  "id": column("varchar(36)")("id").notNull(),
+  "type": column("varchar(32)")("type").notNull(),
+  "user_id": column("varchar(255)")("user_id"),
+  "from_release_id": column("varchar(36)")("from_release_id"),
+  "from_bundle_id": column("varchar(36)")("from_bundle_id"),
+  "to_release_id": column("varchar(36)")("to_release_id"),
+  "to_bundle_id": column("varchar(36)")("to_bundle_id").notNull(),
+  "platform": column("varchar(16)")("platform").notNull(),
+  "app_version": column("text")("app_version").notNull(),
+  "channel": column("text")("channel").notNull(),
   "metadata": column("jsonb")("metadata").notNull(),
   "received_at_ms": column("bigint")("received_at_ms").notNull(),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
-  primaryKey({ columns: [table["install_id"]] }),
   index("bundle_event_heads_byUser").on(table["user_id"], table["install_id"]),
   index("bundle_event_heads__retention").on(table["received_at_ms"], table["install_id"]),
 ]);
 
 export const insights_overview = pgTable("insights_overview", {
-  "identity": column("varchar(32) COLLATE \"C\"")("identity").notNull(),
+  "identity": column("varchar(32)")("identity").notNull(),
   "bucket_start_ms": column("bigint")("bucket_start_ms").notNull(),
   "_shard": column("bigint")("_shard").notNull(),
   "downloads": column("bigint")("downloads").notNull(),
@@ -180,11 +249,11 @@ export const insights_overview = pgTable("insights_overview", {
 ]);
 
 export const insights_sketches = pgTable("insights_sketches", {
-  "identity": column("varchar(32) COLLATE \"C\"")("identity").notNull(),
+  "identity": column("varchar(32)")("identity").notNull(),
   "bucket_start_ms": column("bigint")("bucket_start_ms").notNull(),
   "_shard": column("bigint")("_shard").notNull(),
-  "activity_users": column("text COLLATE \"C\"")("activity_users"),
-  "failed_users": column("text COLLATE \"C\"")("failed_users"),
+  "activity_users": column("text")("activity_users"),
+  "failed_users": column("text")("failed_users"),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["identity"], table["bucket_start_ms"], table["_shard"]] }),
@@ -192,7 +261,7 @@ export const insights_sketches = pgTable("insights_sketches", {
 ]);
 
 export const insights_overview_daily = pgTable("insights_overview_daily", {
-  "identity": column("varchar(32) COLLATE \"C\"")("identity").notNull(),
+  "identity": column("varchar(32)")("identity").notNull(),
   "bucket_start_ms": column("bigint")("bucket_start_ms").notNull(),
   "_shard": column("bigint")("_shard").notNull(),
   "downloads": column("bigint")("downloads").notNull(),
@@ -206,11 +275,11 @@ export const insights_overview_daily = pgTable("insights_overview_daily", {
 ]);
 
 export const insights_sketches_daily = pgTable("insights_sketches_daily", {
-  "identity": column("varchar(32) COLLATE \"C\"")("identity").notNull(),
+  "identity": column("varchar(32)")("identity").notNull(),
   "bucket_start_ms": column("bigint")("bucket_start_ms").notNull(),
   "_shard": column("bigint")("_shard").notNull(),
-  "activity_users": column("text COLLATE \"C\"")("activity_users"),
-  "failed_users": column("text COLLATE \"C\"")("failed_users"),
+  "activity_users": column("text")("activity_users"),
+  "failed_users": column("text")("failed_users"),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["identity"], table["bucket_start_ms"], table["_shard"]] }),
@@ -218,7 +287,7 @@ export const insights_sketches_daily = pgTable("insights_sketches_daily", {
 ]);
 
 export const insights_overview_lifetime = pgTable("insights_overview_lifetime", {
-  "identity": column("varchar(32) COLLATE \"C\"")("identity").notNull(),
+  "identity": column("varchar(32)")("identity").notNull(),
   "bucket_start_ms": column("bigint")("bucket_start_ms").notNull(),
   "_shard": column("bigint")("_shard").notNull(),
   "downloads": column("bigint")("downloads").notNull(),
@@ -233,97 +302,97 @@ export const insights_overview_lifetime = pgTable("insights_overview_lifetime", 
 ]);
 
 export const insights_sketches_lifetime = pgTable("insights_sketches_lifetime", {
-  "identity": column("varchar(32) COLLATE \"C\"")("identity").notNull(),
+  "identity": column("varchar(32)")("identity").notNull(),
   "bucket_start_ms": column("bigint")("bucket_start_ms").notNull(),
   "_shard": column("bigint")("_shard").notNull(),
-  "failed_users": column("text COLLATE \"C\"")("failed_users"),
+  "failed_users": column("text")("failed_users"),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["identity"], table["bucket_start_ms"], table["_shard"]] }),
 ]);
 
 export const insights_distribution = pgTable("insights_distribution", {
-  "channel": column("text COLLATE \"C\"")("channel").notNull(),
-  "platform": column("varchar(16) COLLATE \"C\"")("platform").notNull(),
-  "app_version": column("text COLLATE \"C\"")("app_version").notNull(),
-  "release_id": column("varchar(36) COLLATE \"C\"")("release_id").notNull(),
+  "channel": column("text")("channel").notNull(),
+  "platform": column("varchar(16)")("platform").notNull(),
+  "app_version": column("text")("app_version").notNull(),
+  "release_id": column("varchar(36)")("release_id").notNull(),
   "bucket_start_ms": column("bigint")("bucket_start_ms").notNull(),
   "_shard": column("bigint")("_shard").notNull(),
   "latest_installations": column("bigint")("latest_installations").notNull(),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
-  primaryKey({ columns: [table["channel"], table["platform"], table["app_version"], table["release_id"], table["bucket_start_ms"], table["_shard"]] }),
+  primaryKey({ name: "insights_distribution_channel_platform_app_version_release_id_b", columns: [table["channel"], table["platform"], table["app_version"], table["release_id"], table["bucket_start_ms"], table["_shard"]] }),
   index("insights_distribution_byScope").on(table["channel"], table["platform"], table["bucket_start_ms"], table["app_version"], table["release_id"], table["_shard"]),
   index("insights_distribution_byVersion").on(table["channel"], table["platform"], table["app_version"], table["bucket_start_ms"], table["release_id"], table["_shard"]),
   index("insights_distribution__retention").on(table["bucket_start_ms"], table["channel"], table["platform"], table["app_version"], table["release_id"], table["_shard"]),
 ]);
 
 export const insights_builtin_distribution = pgTable("insights_builtin_distribution", {
-  "channel": column("text COLLATE \"C\"")("channel").notNull(),
-  "platform": column("varchar(16) COLLATE \"C\"")("platform").notNull(),
-  "app_version": column("text COLLATE \"C\"")("app_version").notNull(),
-  "release_id": column("varchar(36) COLLATE \"C\"")("release_id").notNull(),
-  "builtin_bundle_id": column("varchar(36) COLLATE \"C\"")("builtin_bundle_id").notNull(),
+  "channel": column("text")("channel").notNull(),
+  "platform": column("varchar(16)")("platform").notNull(),
+  "app_version": column("text")("app_version").notNull(),
+  "release_id": column("varchar(36)")("release_id").notNull(),
+  "builtin_bundle_id": column("varchar(36)")("builtin_bundle_id").notNull(),
   "bucket_start_ms": column("bigint")("bucket_start_ms").notNull(),
   "_shard": column("bigint")("_shard").notNull(),
   "latest_installations": column("bigint")("latest_installations").notNull(),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
-  primaryKey({ columns: [table["channel"], table["platform"], table["app_version"], table["release_id"], table["builtin_bundle_id"], table["bucket_start_ms"], table["_shard"]] }),
+  primaryKey({ name: "insights_builtin_distribution_channel_platform_app_version_rele", columns: [table["channel"], table["platform"], table["app_version"], table["release_id"], table["builtin_bundle_id"], table["bucket_start_ms"], table["_shard"]] }),
   index("insights_builtin_distribution_byScope").on(table["channel"], table["platform"], table["bucket_start_ms"], table["app_version"], table["release_id"], table["builtin_bundle_id"], table["_shard"]),
   index("insights_builtin_distribution_byVersion").on(table["channel"], table["platform"], table["app_version"], table["bucket_start_ms"], table["release_id"], table["builtin_bundle_id"], table["_shard"]),
   index("insights_builtin_distribution__retention").on(table["bucket_start_ms"], table["channel"], table["platform"], table["app_version"], table["release_id"], table["builtin_bundle_id"], table["_shard"]),
 ]);
 
 export const insights_latest_by_bundle = pgTable("insights_latest_by_bundle", {
-  "platform": column("varchar(16) COLLATE \"C\"")("platform").notNull(),
-  "channel": column("text COLLATE \"C\"")("channel").notNull(),
-  "bundle_field": column("varchar(16) COLLATE \"C\"")("bundle_field").notNull(),
-  "bundle_id": column("varchar(36) COLLATE \"C\"")("bundle_id").notNull(),
-  "type": column("varchar(32) COLLATE \"C\"")("type").notNull(),
+  "platform": column("varchar(16)")("platform").notNull(),
+  "channel": column("text")("channel").notNull(),
+  "bundle_field": column("varchar(16)")("bundle_field").notNull(),
+  "bundle_id": column("varchar(36)")("bundle_id").notNull(),
+  "type": column("varchar(32)")("type").notNull(),
   "bucket_start_ms": column("bigint")("bucket_start_ms").notNull(),
   "_shard": column("bigint")("_shard").notNull(),
   "installations": column("bigint")("installations").notNull(),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
-  primaryKey({ columns: [table["platform"], table["channel"], table["bundle_field"], table["bundle_id"], table["type"], table["bucket_start_ms"], table["_shard"]] }),
+  primaryKey({ name: "insights_latest_by_bundle_platform_channel_bundle_field_bundle_", columns: [table["platform"], table["channel"], table["bundle_field"], table["bundle_id"], table["type"], table["bucket_start_ms"], table["_shard"]] }),
   index("insights_latest_by_bundle__retention").on(table["bucket_start_ms"], table["platform"], table["channel"], table["bundle_field"], table["bundle_id"], table["type"], table["_shard"]),
 ]);
 
 export const insights_outcomes = pgTable("insights_outcomes", {
-  "platform": column("varchar(16) COLLATE \"C\"")("platform").notNull(),
-  "channel": column("text COLLATE \"C\"")("channel").notNull(),
-  "type": column("varchar(32) COLLATE \"C\"")("type").notNull(),
-  "bundle_ref": column("varchar(41) COLLATE \"C\"")("bundle_ref").notNull(),
+  "platform": column("varchar(16)")("platform").notNull(),
+  "channel": column("text")("channel").notNull(),
+  "type": column("varchar(32)")("type").notNull(),
+  "bundle_ref": column("varchar(41)")("bundle_ref").notNull(),
   "bucket_start_ms": column("bigint")("bucket_start_ms").notNull(),
   "_shard": column("bigint")("_shard").notNull(),
   "events": column("bigint")("events").notNull(),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
-  primaryKey({ columns: [table["platform"], table["channel"], table["type"], table["bundle_ref"], table["bucket_start_ms"], table["_shard"]] }),
+  primaryKey({ name: "insights_outcomes_platform_channel_type_bundle_ref_bucket_start", columns: [table["platform"], table["channel"], table["type"], table["bundle_ref"], table["bucket_start_ms"], table["_shard"]] }),
   index("insights_outcomes__retention").on(table["bucket_start_ms"], table["platform"], table["channel"], table["type"], table["bundle_ref"], table["_shard"]),
 ]);
 
 export const insights_failures = pgTable("insights_failures", {
-  "platform": column("varchar(16) COLLATE \"C\"")("platform").notNull(),
-  "channel": column("text COLLATE \"C\"")("channel").notNull(),
+  "platform": column("varchar(16)")("platform").notNull(),
+  "channel": column("text")("channel").notNull(),
   "bucket_start_ms": column("bigint")("bucket_start_ms").notNull(),
-  "release_id": column("varchar(36) COLLATE \"C\"")("release_id").notNull(),
-  "stage": column("varchar(16) COLLATE \"C\"")("stage").notNull(),
-  "reason": column("varchar(64) COLLATE \"C\"")("reason").notNull(),
-  "detail": column("varchar(160) COLLATE \"C\"")("detail").notNull(),
+  "release_id": column("varchar(36)")("release_id").notNull(),
+  "stage": column("varchar(16)")("stage").notNull(),
+  "reason": column("varchar(64)")("reason").notNull(),
+  "detail": column("varchar(160)")("detail").notNull(),
   "_shard": column("bigint")("_shard").notNull(),
   "events": column("bigint")("events").notNull(),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
-  primaryKey({ columns: [table["platform"], table["channel"], table["bucket_start_ms"], table["release_id"], table["stage"], table["reason"], table["detail"], table["_shard"]] }),
+  primaryKey({ name: "insights_failures_platform_channel_bucket_start_ms_release_id_s", columns: [table["platform"], table["channel"], table["bucket_start_ms"], table["release_id"], table["stage"], table["reason"], table["detail"], table["_shard"]] }),
   index("insights_failures__retention").on(table["bucket_start_ms"], table["platform"], table["channel"], table["release_id"], table["stage"], table["reason"], table["detail"], table["_shard"]),
 ]);
 
 export const private_hot_updater_settings = pgTable("private_hot_updater_settings", {
-  "key": column("varchar(255) COLLATE \"C\"")("key").notNull(),
-  "value": column("varchar(255) COLLATE \"C\"")("value").notNull(),
+  "key": column("varchar(255)")("key").notNull().primaryKey(),
+  "value": column("varchar(255)")("value").notNull(),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
-  primaryKey({ columns: [table["key"]] }),
+
 ]);

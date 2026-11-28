@@ -13,6 +13,8 @@ import type {
   InsightsCountEventsInput,
   InsightsCountEventSeriesInput,
   InsightsCountLatestEventsInput,
+  InsightsCountReleaseInstallationsInput,
+  InsightsReleaseInstallations,
   InsightsEventSeriesPoint,
   InsightsFindLatestEventsInput,
   InsightsGetAppUsageInput,
@@ -26,12 +28,7 @@ import type {
   ReleaseReference,
 } from "./modelTypes";
 import { EVENT_LIST_RANGE_MS } from "./provider";
-import {
-  bundlePairKey,
-  insightsIdentity,
-  PAIR_FIELD,
-  type InsightsIdentityParts,
-} from "./recordEvent";
+import { insightsIdentity, type InsightsIdentityParts } from "./recordEvent";
 import {
   bundleRefOfFilter,
   DAILY_EVENTS,
@@ -315,28 +312,28 @@ export const countEventSeries = async (
   }));
 };
 
-type Predicate = {
-  readonly field: "from_bundle_id" | "to_bundle_id";
-  readonly value: string;
-  readonly type: string;
+/** The distribution rows at or after `start`, a UTC day's start. */
+const distributionRows = (
+  db: Db,
+  { platform, channel, sinceMs: start }: InsightsCountLatestEventsInput,
+) => {
+  if (start % DAY_MS !== 0) {
+    throw new DatabaseAdapterInputError("invalid-query");
+  }
+  return drain((page) =>
+    db.findAggregates("insights_distribution", {
+      index: "byScope",
+      where: { channel, platform },
+      range: { gte: start },
+      limit: PAGE,
+      ...page,
+    }),
+  );
 };
 
-/** A bundle filter's distinct (field, value, type) predicates. */
-const latestPredicates = (
-  bundle: InsightsCountLatestEventsInput["bundle"],
-): readonly Predicate[] | undefined => {
-  if (bundle === undefined) return undefined;
-  return [
-    ...new Map(
-      bundle.flatMap(({ field, value, types }) =>
-        types.map((type) => [
-          JSON.stringify([field, value, type]),
-          { field, value, type },
-        ]),
-      ),
-    ).values(),
-  ];
-};
+// Batched gauges sum signed shard rows, which a lost change can leave below
+// zero: an installation count never is.
+const installations = (count: number) => Math.max(0, count);
 
 /**
  * Latest events at or after `sinceMs`, a UTC day's start: the gauges count
@@ -346,16 +343,39 @@ const latestPredicates = (
 export const countLatestEvents = async (
   db: Db,
   input: InsightsCountLatestEventsInput,
-): Promise<number> => {
-  const { platform, channel, sinceMs: start } = input;
-  if (start % DAY_MS !== 0) {
-    throw new DatabaseAdapterInputError("invalid-query");
-  }
-  const predicates = latestPredicates(input.bundle);
+): Promise<number> =>
+  installations(
+    (await distributionRows(db, input)).reduce(
+      (sum, row) => sum + row.latest_installations,
+      0,
+    ),
+  );
+
+/**
+ * `countLatestEvents`, and of those the installations it leaves running
+ * `releaseId`, from the same distribution rows in one read: each names the
+ * release its installations run. An ID no row names as a release may be a
+ * built-in bundle's, which a report without a release names, as event
+ * counts match it: its installations outside any release are in the
+ * built-in rows, read only then. Release and bundle IDs never coincide.
+ */
+export const countReleaseInstallations = async (
+  db: Db,
+  input: InsightsCountReleaseInstallationsInput,
+): Promise<InsightsReleaseInstallations> => {
+  const { platform, channel, sinceMs: start, releaseId } = input;
   let total = 0;
-  if (predicates === undefined) {
-    const rows = await drain((page) =>
-      db.findAggregates("insights_distribution", {
+  let release = 0;
+  let named = false;
+  for (const row of await distributionRows(db, input)) {
+    total += row.latest_installations;
+    if (row.release_id !== releaseId) continue;
+    named = true;
+    release += row.latest_installations;
+  }
+  if (!named) {
+    const builtin = await drain((page) =>
+      db.findAggregates("insights_builtin_distribution", {
         index: "byScope",
         where: { channel, platform },
         range: { gte: start },
@@ -363,51 +383,16 @@ export const countLatestEvents = async (
         ...page,
       }),
     );
-    total += rows.reduce((sum, row) => sum + row.latest_installations, 0);
-  } else {
-    const gauge = async (
-      bundleField: string,
-      bundleId: string,
-      type: string,
-    ) => {
-      const rows = await drain((page) =>
-        db.findAggregates("insights_latest_by_bundle", {
-          index: "byBundle",
-          where: {
-            platform,
-            channel,
-            bundle_field: bundleField,
-            bundle_id: bundleId,
-            type,
-          },
-          range: { gte: start },
-          limit: PAGE,
-          ...page,
-        }),
-      );
-      return rows.reduce((sum, row) => sum + row.installations, 0);
-    };
-    for (const { field, value, type } of predicates) {
-      total += await gauge(field, value, type);
-    }
-    // A head has one (from, to) pair, so it matches a `from` and a `to`
-    // predicate of one type only through that pair: subtract the pair's gauge
-    // to count it once.
-    for (const from of predicates) {
-      if (from.field !== "from_bundle_id") continue;
-      for (const to of predicates) {
-        if (to.field !== "to_bundle_id" || to.type !== from.type) continue;
-        total -= await gauge(
-          PAIR_FIELD,
-          bundlePairKey(from.value, to.value),
-          from.type,
-        );
+    for (const row of builtin) {
+      if (row.release_id === "" && row.builtin_bundle_id === releaseId) {
+        release += row.latest_installations;
       }
     }
   }
-  // Batched gauges sum signed shard rows, which a lost change can leave
-  // below zero: an installation count never is.
-  return Math.max(0, total);
+  return {
+    installations: installations(total),
+    release: installations(release),
+  };
 };
 
 /** The oldest whole hour and UTC day that hourly and daily rows still hold. */
@@ -796,6 +781,13 @@ export interface InsightsUpdateFailures {
   };
   /** Over a time range: failures by stage and reason, most first. */
   readonly breakdown?: readonly InsightsFailureBreakdown[];
+  /**
+   * Over a time range: the hours, oldest first, that held more breakdown rows
+   * than a read takes from an hour. Their failures count only in part, so the
+   * failure counts and the breakdown are at least what they say, and the
+   * coverage is partial. Downloads and installations count in full.
+   */
+  readonly cappedHours?: readonly number[];
 }
 
 /** The longest period the failures read covers: the console's longest, 30 days. */
@@ -876,13 +868,88 @@ const breakdownOf = (
 };
 
 /**
+ * The breakdown rows a failures read takes from one hour. An hour holds a
+ * row per release, stage, reason, and detail that failed in it, a handful in
+ * practice, and an incident across several releases and error codes still
+ * fits; but a client with the app's API key can report any number of
+ * details.
+ */
+const FAILURE_ROWS_PER_HOUR = 20;
+/** The stored rows of one aggregate row: one per counter shard. */
+const FAILURE_SHARDS = 8;
+/**
+ * One query's stored rows: an hour's bound and one more row, on every shard,
+ * so an hour past its bound costs at most one query's worth of rows more.
+ */
+const FAILURE_QUERY_LIMIT = Math.min(
+  PAGE,
+  (FAILURE_ROWS_PER_HOUR + 1) * FAILURE_SHARDS,
+);
+
+/**
+ * A channel's breakdown rows over a range, newest first, up to
+ * {@link FAILURE_ROWS_PER_HOUR} an hour: 480 rows for a day, 14,400 for 30
+ * days, however many details clients report. An hour that holds more is read
+ * no further, and the read goes on from the hour before it with a new query;
+ * the hour is listed in `cappedHours`, since its failures count only in part.
+ * Every other hour counts every failure it holds.
+ */
+const failureRowsByHour = async (
+  db: Db,
+  platform: "ios" | "android",
+  channel: string,
+  timeRange: { readonly start: number; readonly end: number },
+) => {
+  const read = (end: number, cursor: string | undefined) =>
+    db.findAggregates("insights_failures", {
+      index: "byScope",
+      where: { platform, channel },
+      range: { gte: timeRange.start, lt: end },
+      order: "desc",
+      limit: FAILURE_QUERY_LIMIT,
+      ...(cursor === undefined ? {} : { cursor }),
+    });
+  const rows: Awaited<ReturnType<typeof read>>["rows"][number][] = [];
+  const cappedHours: number[] = [];
+  const perHour = new Map<number, number>();
+  let end = timeRange.end;
+  let cursor: string | undefined;
+  while (end > timeRange.start) {
+    const page = await read(end, cursor);
+    // Every row is kept until one passes its hour's bound.
+    let capped: number | undefined;
+    for (const row of page.rows) {
+      const hour = row.bucket_start_ms;
+      const count = (perHour.get(hour) ?? 0) + 1;
+      if (count > FAILURE_ROWS_PER_HOUR) {
+        capped = hour;
+        break;
+      }
+      perHour.set(hour, count);
+      rows.push(row);
+    }
+    if (capped !== undefined) {
+      cappedHours.unshift(capped);
+      end = capped;
+      cursor = undefined;
+    } else if (page.next === undefined) {
+      break;
+    } else {
+      cursor = page.next;
+    }
+  }
+  return { rows, cappedHours };
+};
+
+/**
  * A release's or a channel's update failures. Since a release's first
  * report: its lifetime counters and failed installations. Over a time range
  * of at most 30 days: failures, failed checks, and the breakdown by stage,
  * reason, and detail, all summed from the breakdown's hourly rows; downloads
  * from the counters; failed installations from their sketches. A release reads hourly rows, a
  * channel daily rows past 48 hours like its activity; the breakdown's rows
- * are hourly, so its coverage is the raw period's.
+ * are hourly, so its coverage is the raw period's, and partial when an hour
+ * held more breakdown rows than a read takes from it.
  */
 export const getUpdateFailures = async (
   db: Db,
@@ -944,23 +1011,16 @@ export const getUpdateFailures = async (
   }
   const days = releaseId === undefined;
   const window = [timeRange, days, kept.hour] as const;
-  const [counters, failures, checks, active, rows] = await Promise.all([
-    counterRows(db, parts, ...window),
-    sketchRows(db, failure, ...window),
-    days
-      ? sketchRows(db, { ...channelParts, scopeKind: "check" }, ...window)
-      : [],
-    days ? sketchRows(db, usageParts(channel, platform), ...window) : [],
-    drain((page) =>
-      db.findAggregates("insights_failures", {
-        index: "byScope",
-        where: { platform, channel },
-        range: { gte: timeRange.start, lt: timeRange.end },
-        limit: PAGE,
-        ...page,
-      }),
-    ),
-  ]);
+  const [counters, failures, checks, active, { rows, cappedHours }] =
+    await Promise.all([
+      counterRows(db, parts, ...window),
+      sketchRows(db, failure, ...window),
+      days
+        ? sketchRows(db, { ...channelParts, scopeKind: "check" }, ...window)
+        : [],
+      days ? sketchRows(db, usageParts(channel, platform), ...window) : [],
+      failureRowsByHour(db, platform, channel, timeRange),
+    ]);
   const total = (field: Exclude<keyof CounterRow, "bucket_start_ms">) =>
     counters.reduce((sum, row) => sum + row[field], 0);
   // Only the stages a failure records count: other rows are no failure.
@@ -976,8 +1036,12 @@ export const getUpdateFailures = async (
       (sum, row) => sum + (counted(row.stage) ? Math.max(0, row.events) : 0),
       0,
     );
+  const coverage = coverageOf(timeRange.start, kept.hour);
   return {
-    coverage: coverageOf(timeRange.start, kept.hour),
+    coverage:
+      cappedHours.length === 0
+        ? coverage
+        : { kind: "partial", sinceMs: coverage.sinceMs },
     measuredAtMs: at,
     failedUpdates: failuresAt((stage) => stage !== "check"),
     failedInstallations: failed(failures),
@@ -996,5 +1060,6 @@ export const getUpdateFailures = async (
         }
       : {}),
     breakdown: breakdownOf(scoped),
+    ...(cappedHours.length === 0 ? {} : { cappedHours }),
   };
 };

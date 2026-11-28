@@ -1,8 +1,11 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync, type SqliteValue } from "node:sqlite";
 
 import {
+  definePlugin,
+  defineTable,
   toolingTargetOf,
   HotUpdaterSchemaMigrationRequiredError,
 } from "@hot-updater/plugin-core";
@@ -15,16 +18,72 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { createD1Database } from "./d1Executor";
-import { d1SchemaSql, d1SchemaStatements } from "./d1Schema";
+import {
+  d1MigrationSql,
+  d1MigrationStatements,
+  d1SchemaSql,
+  d1SchemaStatements,
+} from "./d1Schema";
 
-/** The managed Worker's migration: core's tables and its plugins'. */
-const managedSql = () =>
-  d1SchemaSql(toolingTargetOf([insights(), apiKeys(), remoteConfig()]));
+/**
+ * The managed database's schema: core's tables, and those of the plugins the
+ * managed Worker runs. An official plugin that only the CLI and console run
+ * joins this list, not the Worker's.
+ */
+const managed = toolingTargetOf([insights(), apiKeys(), remoteConfig()]);
 
-const FILES = [
-  "plugins/cloudflare/sql/bundles.sql",
-  "plugins/cloudflare/worker/migrations/0001_hot-updater_1.0.0.sql",
-].map((file) => path.resolve(file));
+const SCHEMA_FILE = path.resolve("plugins/cloudflare/sql/bundles.sql");
+const MIGRATIONS = path.resolve("plugins/cloudflare/worker/migrations");
+
+/**
+ * The migrations a release shipped, by their SHA-256: installed databases ran
+ * them, so they never change. When `LATEST` ships, move it here and name the
+ * next release's migration `LATEST`.
+ */
+const SHIPPED: Readonly<Record<string, string>> = {
+  "0001_hot-updater_1.0.0.sql":
+    "ed96ee68fe1511d77fcec2cdd704389a68f13976814467b45a07fbfae4b3612f",
+};
+
+/**
+ * The migration the next release ships, regenerated with
+ * HOT_UPDATER_UPDATE_SQL=1 after the managed schema changes: what the
+ * shipped migrations do not create yet, then every settings row. `hot-updater
+ * init` applies it to a database an earlier release initialized.
+ */
+const LATEST = "0002_hot-updater_1.2.0.sql";
+
+/**
+ * What the 1.2.0 release notes tell a database a 1.2 prerelease migrated to
+ * run by hand for the iOS device registry: D1's statements of `LATEST`.
+ */
+const RC_IOS_DEVICES_STATEMENTS = [
+  'CREATE TABLE IF NOT EXISTS "ios_devices" ("id" TEXT NOT NULL, "udid" TEXT NOT NULL, "name" TEXT NOT NULL, "status" TEXT NOT NULL, "requested_by" TEXT, "created_at_ms" INTEGER NOT NULL, "approved_by" TEXT, "approved_at_ms" INTEGER, "registered_at_ms" INTEGER, "apple_issuer_id" TEXT, "apple_error" TEXT, "build_id" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"))',
+  'CREATE INDEX IF NOT EXISTS "ios_devices_byStatus" ON "ios_devices" ("status", "id")',
+  'CREATE UNIQUE INDEX IF NOT EXISTS "ios_devices_udid" ON "ios_devices" ("udid")',
+  'CREATE TABLE IF NOT EXISTS "ios_device_account" ("id" TEXT NOT NULL, "apple_issuer_id" TEXT NOT NULL, "claimed_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"))',
+];
+
+/**
+ * What the release notes of the registry's account read tell a database a
+ * 1.2 prerelease migrated to run by hand, after the registry's statements.
+ */
+const RC_IOS_DEVICES_BY_REGISTRATION_STATEMENTS = [
+  'CREATE INDEX IF NOT EXISTS "ios_devices_byRegistration" ON "ios_devices" ("registered_at_ms", "id")',
+];
+
+/**
+ * What the packaged 1.2.0 upgrade guide tells a database a 1.2 prerelease
+ * migrated to run by hand for release labels: D1's statements of `LATEST`.
+ */
+const RC_RELEASE_LABELS_STATEMENTS = [
+  'ALTER TABLE "releases" ADD COLUMN "label" INTEGER',
+  'CREATE UNIQUE INDEX IF NOT EXISTS "releases_byLabel" ON "releases" ("channel_id", "platform", "label")',
+  'CREATE TABLE IF NOT EXISTS "label_sequences" ("id" TEXT NOT NULL, "last_label" INTEGER NOT NULL, "is_filled" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"))',
+];
+
+const readMigration = (name: string) =>
+  fs.readFile(path.join(MIGRATIONS, name), "utf8");
 
 /** D1's API over `node:sqlite`: statements one at a time, batches in one transaction. */
 const sqliteD1 = (db: DatabaseSync) => {
@@ -51,14 +110,289 @@ const sqliteD1 = (db: DatabaseSync) => {
   });
 };
 
+/**
+ * Every table with its columns, every index, and every settings row of a
+ * database. A table compares by its columns, in name order: `ALTER TABLE …
+ * ADD COLUMN` appends one where a new table declares it in place.
+ */
+const describeSchema = (db: DatabaseSync) => ({
+  objects: db
+    .prepare(
+      "SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name",
+    )
+    .all()
+    .map((object) =>
+      object.type === "table"
+        ? {
+            type: object.type,
+            name: object.name,
+            columns: db
+              .prepare(
+                'SELECT name, type, "notnull", dflt_value, pk FROM pragma_table_info(?) ORDER BY name',
+              )
+              .all(String(object.name)),
+          }
+        : object,
+    ),
+  settings: db
+    .prepare("SELECT key, value FROM private_hot_updater_settings ORDER BY key")
+    .all(),
+});
+
 describe("d1 schema", () => {
-  it("checks in exactly the generated schema as the SQL file and the first migration", async () => {
+  it("checks in the generated schema, the shipped migrations unchanged, and the next one generated", async () => {
+    const shipped = await Promise.all(
+      Object.keys(SHIPPED).map((name) => readMigration(name)),
+    );
     if (process.env.HOT_UPDATER_UPDATE_SQL === "1") {
-      for (const file of FILES) await fs.writeFile(file, managedSql());
+      await fs.writeFile(SCHEMA_FILE, d1SchemaSql(managed));
+      await fs.writeFile(
+        path.join(MIGRATIONS, LATEST),
+        d1MigrationSql(managed, shipped),
+      );
     }
+    expect((await fs.readdir(MIGRATIONS)).sort()).toEqual([
+      ...Object.keys(SHIPPED),
+      LATEST,
+    ]);
+    expect(
+      shipped.map((sql) => createHash("sha256").update(sql).digest("hex")),
+    ).toEqual(Object.values(SHIPPED));
     // Regenerate with HOT_UPDATER_UPDATE_SQL=1 after the schema changes.
-    for (const file of FILES) {
-      expect(await fs.readFile(file, "utf8")).toBe(managedSql());
+    expect(await fs.readFile(SCHEMA_FILE, "utf8")).toBe(d1SchemaSql(managed));
+    expect(await readMigration(LATEST)).toBe(d1MigrationSql(managed, shipped));
+  });
+
+  it("creates the managed schema from the migrations in order, as from the schema file", async () => {
+    const migrated = new DatabaseSync(":memory:");
+    for (const name of [...Object.keys(SHIPPED), LATEST]) {
+      for (const statement of d1MigrationStatements(
+        await readMigration(name),
+      )) {
+        migrated.exec(statement);
+      }
+    }
+    const created = new DatabaseSync(":memory:");
+    created.exec(d1SchemaSql(managed));
+    expect(describeSchema(migrated)).toEqual(describeSchema(created));
+    migrated.close();
+    created.close();
+  });
+
+  it("writes into a later migration only what the earlier ones did not create, and every settings row", () => {
+    const later = toolingTargetOf([
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+      definePlugin({
+        id: "audit",
+        schemaVersion: "1",
+        schema: {
+          entries: defineTable({ id: { type: "string" } }, { key: ["id"] }),
+        },
+        init: () => ({ api: {} }),
+      }),
+    ]);
+    const statements = d1MigrationStatements(
+      d1MigrationSql(later, [d1SchemaSql(managed)]),
+    );
+    expect(statements.filter((sql) => sql.startsWith("CREATE"))).toEqual([
+      'CREATE TABLE IF NOT EXISTS "audit_entries" ("id" TEXT NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"))',
+    ]);
+    expect(
+      statements
+        .filter((sql) => sql.startsWith("INSERT"))
+        .map((sql) => sql.match(/VALUES \('([^']+)'/u)?.[1]),
+    ).toEqual(Object.keys(later.settings));
+  });
+
+  it("adds no column twice in the migration after the checked-in ones, which applies over them", async () => {
+    const later = toolingTargetOf([
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+      definePlugin({
+        id: "audit",
+        schemaVersion: "1",
+        schema: {
+          entries: defineTable({ id: { type: "string" } }, { key: ["id"] }),
+        },
+        init: () => ({ api: {} }),
+      }),
+    ]);
+    const chain = [...Object.keys(SHIPPED), LATEST];
+    const next = d1MigrationSql(
+      later,
+      await Promise.all(chain.map((name) => readMigration(name))),
+    );
+
+    expect(
+      d1MigrationStatements(next).filter((sql) => sql.startsWith("ALTER")),
+    ).toEqual([]);
+    const migrated = new DatabaseSync(":memory:");
+    for (const name of chain) {
+      for (const statement of d1MigrationStatements(
+        await readMigration(name),
+      )) {
+        migrated.exec(statement);
+      }
+    }
+    for (const statement of d1MigrationStatements(next)) {
+      migrated.exec(statement);
+    }
+    expect(
+      migrated
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'audit_entries'",
+        )
+        .all(),
+    ).toHaveLength(1);
+    migrated.close();
+  });
+
+  it("brings a database a 1.2 prerelease migrated up to the iOS device registry with the statements the release notes print", async () => {
+    // A prerelease's 0002: this one without the iOS device registry.
+    const prerelease = new DatabaseSync(":memory:");
+    for (const name of [...Object.keys(SHIPPED), LATEST]) {
+      for (const statement of d1MigrationStatements(
+        await readMigration(name),
+      )) {
+        if (!/"ios_device(?:s|_account)"/u.test(statement)) {
+          prerelease.exec(statement);
+        }
+      }
+    }
+    const core = createHotUpdater({
+      database: sqliteD1(prerelease),
+      storage: createReleaseCatalogTestStorage(),
+      clientAccess: "public",
+    }).core;
+    // The fence compares schema.core, so only the read says the table is missing.
+    await expect(core.listIosDevices({ limit: 1 })).rejects.toThrow();
+    for (const statement of [
+      ...RC_IOS_DEVICES_STATEMENTS,
+      ...RC_IOS_DEVICES_BY_REGISTRATION_STATEMENTS,
+    ]) {
+      prerelease.exec(statement);
+    }
+    await expect(core.listIosDevices({ limit: 1 })).resolves.toEqual([]);
+    const migrated = new DatabaseSync(":memory:");
+    for (const name of [...Object.keys(SHIPPED), LATEST]) {
+      for (const statement of d1MigrationStatements(
+        await readMigration(name),
+      )) {
+        migrated.exec(statement);
+      }
+    }
+    expect(describeSchema(prerelease)).toEqual(describeSchema(migrated));
+    prerelease.close();
+    migrated.close();
+  });
+
+  it("prints release labels' statements in the packaged 1.2.0 upgrade guide", async () => {
+    const guide = await fs.readFile(
+      path.resolve("packages/hot-updater/infrastructure-upgrades/1.2.0.md"),
+      "utf8",
+    );
+    for (const statement of RC_RELEASE_LABELS_STATEMENTS) {
+      expect(guide).toContain(
+        `npx wrangler d1 execute <database-name> --remote --command '${statement}'`,
+      );
+    }
+  });
+
+  it("brings a database a 1.2 prerelease migrated up to release labels with the statements the upgrade guide prints", async () => {
+    const policy = {
+      channel: "production",
+      enabled: true,
+      fingerprintHash: null,
+      message: null,
+      shouldForceUpdate: false,
+      targetAppVersion: "1.0.0",
+    };
+    // A prerelease's 0002: this one without release labels.
+    const prerelease = new DatabaseSync(":memory:");
+    for (const name of [...Object.keys(SHIPPED), LATEST]) {
+      for (const statement of d1MigrationStatements(
+        await readMigration(name),
+      )) {
+        if (!RC_RELEASE_LABELS_STATEMENTS.includes(statement)) {
+          prerelease.exec(statement);
+        }
+      }
+    }
+    const core = createHotUpdater({
+      database: sqliteD1(prerelease),
+      storage: createReleaseCatalogTestStorage(),
+      clientAccess: "public",
+    }).core;
+    // The fence compares schema.core, so only the write says the column is missing.
+    await expect(
+      core.deploy([{ bundle: createBundleFixture("1"), release: policy }]),
+    ).rejects.toThrow();
+    for (const statement of RC_RELEASE_LABELS_STATEMENTS) {
+      prerelease.exec(statement);
+    }
+    const [deployed] = await core.deploy([
+      { bundle: createBundleFixture("2"), release: policy },
+    ]);
+    expect(deployed!.release!.label).toBe(1);
+    const migrated = new DatabaseSync(":memory:");
+    for (const name of [...Object.keys(SHIPPED), LATEST]) {
+      for (const statement of d1MigrationStatements(
+        await readMigration(name),
+      )) {
+        migrated.exec(statement);
+      }
+    }
+    expect(describeSchema(prerelease)).toEqual(describeSchema(migrated));
+    prerelease.close();
+    migrated.close();
+  });
+
+  it("fails a dry run of the label fill on a database without the label column or the counters, instead of counting its releases as unlabeled", async () => {
+    const policy = {
+      channel: "production",
+      enabled: true,
+      fingerprintHash: null,
+      message: null,
+      shouldForceUpdate: false,
+      targetAppVersion: "1.0.0",
+    };
+    // The two halves of release labels' schema a 1.2 prerelease lacked.
+    const gaps = [
+      {
+        statements: [
+          'DROP INDEX "releases_byLabel"',
+          'ALTER TABLE "releases" DROP COLUMN "label"',
+        ],
+        error: "no such column: i.label",
+      },
+      {
+        statements: [
+          'UPDATE "releases" SET "label" = NULL',
+          'DROP TABLE "label_sequences"',
+        ],
+        error: "no such table: label_sequences",
+      },
+    ];
+    for (const { statements, error } of gaps) {
+      const db = new DatabaseSync(":memory:");
+      for (const statement of d1SchemaStatements()) db.exec(statement);
+      const core = createHotUpdater({
+        database: sqliteD1(db),
+        storage: createReleaseCatalogTestStorage(),
+        clientAccess: "public",
+      }).core;
+      await core.deploy([
+        { bundle: createBundleFixture("1"), release: policy },
+      ]);
+      for (const statement of statements) db.exec(statement);
+
+      await expect(
+        core.fillReleaseLabels({ dryRun: true, catalogs: false }),
+      ).rejects.toThrow(error);
+      db.close();
     }
   });
 

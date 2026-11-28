@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   hasReleaseFilters,
   releaseFilterOf,
+  resolveReleaseSearch,
+  showsDefaultReleases,
   updateReleaseFilters,
   validateReleaseSearch,
 } from "./-releases-search";
@@ -20,7 +22,7 @@ describe("Release search state", () => {
     ).toEqual({
       afterReleaseId: undefined,
       beforeReleaseId: undefined,
-      bundleId: undefined,
+      artifactId: undefined,
       channelId: undefined,
       enabled: undefined,
       platform: undefined,
@@ -39,7 +41,10 @@ describe("Release search state", () => {
     });
     expect(
       releaseFilterOf(
-        validateReleaseSearch({ bundleId: "bundle-1", channelId: "channel-1" }),
+        validateReleaseSearch({
+          artifactId: "bundle-1",
+          channelId: "channel-1",
+        }),
       ),
     ).toEqual({ kind: "bundle", bundleId: "bundle-1" });
     expect(
@@ -48,6 +53,17 @@ describe("Release search state", () => {
       ),
     ).toEqual({ kind: "scope", scopeKey: "scope-1", enabled: false });
     expect(hasReleaseFilters(validateReleaseSearch({}))).toBe(false);
+  });
+
+  it("filters by an artifact under its own name, and reads no ?bundleId=", () => {
+    // A bundle ID is a release ID to users, so the artifact filter isn't
+    // named after it, and the old key opens the unfiltered list.
+    const old = validateReleaseSearch({ bundleId: "artifact-1" });
+    expect(Object.values(old).filter(Boolean)).toEqual([]);
+    expect(hasReleaseFilters(old)).toBe(false);
+    expect(
+      releaseFilterOf(validateReleaseSearch({ artifactId: " artifact-1 " })),
+    ).toEqual({ kind: "bundle", bundleId: "artifact-1" });
   });
 
   it("keeps only one cursor and starts over when a filter changes", () => {
@@ -64,7 +80,7 @@ describe("Release search state", () => {
     expect(updateReleaseFilters(parsed, { platform: "android" })).toEqual({
       afterReleaseId: undefined,
       beforeReleaseId: undefined,
-      bundleId: undefined,
+      artifactId: undefined,
       channelId: "channel-1",
       enabled: undefined,
       platform: "android",
@@ -79,7 +95,7 @@ describe("Release search state", () => {
       enabled: "true",
     });
 
-    const byBundle = updateReleaseFilters(channel, { bundleId: "bundle-1" });
+    const byBundle = updateReleaseFilters(channel, { artifactId: "bundle-1" });
     expect(releaseFilterOf(byBundle)).toEqual({
       kind: "bundle",
       bundleId: "bundle-1",
@@ -91,7 +107,129 @@ describe("Release search state", () => {
       releaseFilterOf(updateReleaseFilters(channel, { scopeKey: "scope-1" })),
     ).toEqual({ kind: "scope", scopeKey: "scope-1", enabled: true });
     expect(
-      releaseFilterOf(updateReleaseFilters(byBundle, { bundleId: undefined })),
+      releaseFilterOf(
+        updateReleaseFilters(byBundle, { artifactId: undefined }),
+      ),
     ).toEqual({ kind: "all" });
+  });
+
+  describe("the channel the list opens on", () => {
+    const production = { id: "channel-p", name: "production" };
+    const staging = { id: "channel-s", name: "staging" };
+    const channels = [staging, production];
+    const filterOf = (
+      url: Record<string, unknown>,
+      rows: typeof channels | undefined,
+    ) => {
+      const view = resolveReleaseSearch(validateReleaseSearch(url), rows);
+      return view && releaseFilterOf(view);
+    };
+
+    it("opens on production's iOS releases, keeping the page", () => {
+      expect(filterOf({}, channels)).toEqual({
+        kind: "channelPlatform",
+        channelId: "channel-p",
+        platform: "ios",
+      });
+      expect(
+        resolveReleaseSearch(
+          validateReleaseSearch({ beforeReleaseId: "r-9" }),
+          channels,
+        )?.beforeReleaseId,
+      ).toBe("r-9");
+    });
+
+    it("waits for the channel list, and opens on every channel without production", () => {
+      expect(filterOf({}, undefined)).toBeUndefined();
+      expect(filterOf({}, [staging])).toEqual({ kind: "all" });
+    });
+
+    it("keeps every channel when the URL says so, and drops that beside a filter", () => {
+      expect(validateReleaseSearch({ channels: "all" }).channels).toBe("all");
+      expect(filterOf({ channels: "all" }, undefined)).toEqual({
+        kind: "all",
+      });
+      expect(
+        validateReleaseSearch({ channels: "all", channelId: "c" }).channels,
+      ).toBeUndefined();
+      expect(validateReleaseSearch({ channels: "every" }).channels).toBe(
+        undefined,
+      );
+    });
+
+    it("lands a link where it points: a channel, bundle, scope, or one release in every channel", () => {
+      expect(filterOf({ channelId: "channel-s" }, undefined)).toEqual({
+        kind: "channelPlatform",
+        channelId: "channel-s",
+        platform: "ios",
+      });
+      expect(filterOf({ artifactId: "b" }, undefined)).toEqual({
+        kind: "bundle",
+        bundleId: "b",
+      });
+      expect(filterOf({ scopeKey: "s" }, undefined)).toEqual({
+        kind: "scope",
+        scopeKey: "s",
+      });
+      // The release's row shows wherever it is, and the list stays there.
+      expect(
+        resolveReleaseSearch(
+          validateReleaseSearch({ releaseId: "r-1" }),
+          undefined,
+        ),
+      ).toMatchObject({ channels: "all", releaseId: "r-1" });
+    });
+
+    it("chooses every channel, or one, from the filter", () => {
+      const opening = resolveReleaseSearch({}, channels)!;
+      expect(
+        updateReleaseFilters(opening, {
+          channelId: undefined,
+          channels: "all",
+        }).channels,
+      ).toBe("all");
+      const all = validateReleaseSearch({ channels: "all" });
+      expect(
+        updateReleaseFilters(all, { channelId: "channel-s" }),
+      ).toMatchObject({
+        channelId: "channel-s",
+        channels: undefined,
+        platform: "ios",
+      });
+      expect(
+        updateReleaseFilters(opening, { platform: "android" }),
+      ).toMatchObject({ channelId: "channel-p", platform: "android" });
+    });
+
+    it("has nothing to clear on the list it opens on", () => {
+      expect(showsDefaultReleases({}, channels)).toBe(true);
+      expect(showsDefaultReleases({}, undefined)).toBe(true);
+      expect(
+        showsDefaultReleases(
+          validateReleaseSearch({ channelId: "channel-p" }),
+          channels,
+        ),
+      ).toBe(true);
+      expect(
+        showsDefaultReleases(validateReleaseSearch({ channels: "all" }), [
+          staging,
+        ]),
+      ).toBe(true);
+      expect(
+        showsDefaultReleases(
+          validateReleaseSearch({ channels: "all" }),
+          channels,
+        ),
+      ).toBe(false);
+      expect(
+        showsDefaultReleases(
+          validateReleaseSearch({
+            channelId: "channel-p",
+            platform: "android",
+          }),
+          channels,
+        ),
+      ).toBe(false);
+    });
   });
 });

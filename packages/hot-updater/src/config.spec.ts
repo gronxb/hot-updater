@@ -1,0 +1,53 @@
+import { describe, expect, it, vi } from "vitest";
+
+import * as configApi from "./config";
+import { packageJsonData } from "./packageJson";
+
+// The modules the secrets adapters load on first use, each recorded when it
+// loads: every config load imports the root.
+const loaded = vi.hoisted(() => new Set<string>());
+vi.mock("execa", async (importOriginal) => {
+  loaded.add("execa");
+  return importOriginal();
+});
+vi.mock("tweetnacl", async (importOriginal) => {
+  loaded.add("tweetnacl");
+  return importOriginal();
+});
+vi.mock("@noble/hashes/blake2.js", async (importOriginal) => {
+  loaded.add("@noble/hashes/blake2.js");
+  return importOriginal();
+});
+
+describe("hot-updater exports", () => {
+  it("exposes defineConfig, the fingerprint helpers, secret, and the built-in secrets adapters, localSecrets() and infisical()", () => {
+    expect(Object.keys(configApi).sort()).toEqual([
+      "createAndInjectFingerprintFiles",
+      "createFingerprintJSON",
+      "defineConfig",
+      "generateFingerprint",
+      "generateFingerprints",
+      "infisical",
+      "localSecrets",
+      "readLocalFingerprint",
+      "secret",
+    ]);
+  });
+
+  it("loads none of the GitHub secret writer's dependencies with the config", () => {
+    configApi.localSecrets();
+
+    expect([...loaded]).toEqual([]);
+  });
+
+  it("has no hot-updater/secrets or hot-updater/signing entry: localSecrets() and infisical() are root exports", () => {
+    const { exports } = packageJsonData as {
+      exports: Record<string, unknown>;
+    };
+    expect(Object.keys(exports).sort()).toEqual([
+      ".",
+      "./package.json",
+      "./plugins",
+    ]);
+  });
+});

@@ -11,20 +11,22 @@ export interface InsightsScope {
 }
 
 /**
- * Raw event predicates; recovery is attributed to the source bundle. An
- * UNCHANGED filter matches the kept rows that moved an installation to the
- * bundle without an apply report.
+ * Raw event predicates, by release; recovery is attributed to the source
+ * release. An UNCHANGED filter matches the kept rows that moved an
+ * installation to the release without an apply report. An event that names
+ * no release on that side, such as one from the built-in bundle, matches by
+ * the bundle ID it reports instead.
  */
 export type InsightsBundleEventFilter = InsightsScope &
   (
-    | { readonly type: "RECOVERED"; readonly fromBundleId: string }
+    | { readonly type: "RECOVERED"; readonly fromReleaseId: string }
     | {
         readonly type:
           | "UPDATE_DOWNLOADED"
           | "UPDATE_APPLIED"
           | "UPDATE_FAILED"
           | "UNCHANGED";
-        readonly toBundleId: string;
+        readonly toReleaseId: string;
       }
   );
 
@@ -59,12 +61,26 @@ export type InsightsFindLatestEventsInput =
 export interface InsightsCountLatestEventsInput extends InsightsScope {
   /** A UTC day's start: latest events are counted by the day they fall in. */
   readonly sinceMs: number;
-  /** Optional OR of one or two fixed predicates; count a matching event once. */
-  readonly bundle?: readonly {
-    readonly field: "from_bundle_id" | "to_bundle_id";
-    readonly value: string;
-    readonly types: readonly BundleEventRow["type"][];
-  }[];
+}
+
+export interface InsightsCountReleaseInstallationsInput extends InsightsCountLatestEventsInput {
+  /**
+   * The release whose installations to count: those whose latest event
+   * leaves them running it, the source of a download, the target of
+   * anything else. An ID that names no release, as a report from the
+   * built-in bundle names it, counts the installations running that
+   * built-in bundle outside any release, as event filters match the bundle
+   * ID such a report names.
+   */
+  readonly releaseId: string;
+}
+
+/** `countReleaseInstallations`' counts, read together. */
+export interface InsightsReleaseInstallations {
+  /** Installations whose latest event falls in the window, as `countLatestEvents`. */
+  readonly installations: number;
+  /** Of those, the ones running the release. */
+  readonly release: number;
 }
 
 export interface InsightsCountEventsInput {
@@ -195,8 +211,15 @@ export interface InsightsModel {
   findLatestEvents(
     input: InsightsFindLatestEventsInput,
   ): Promise<readonly BundleEventRow[]>;
-  /** Count latest events once per installation, then apply the supplied predicates. */
+  /** Count latest events once per installation. */
   countLatestEvents(input: InsightsCountLatestEventsInput): Promise<number>;
+  /**
+   * `countLatestEvents`, and of those one release's installations, from
+   * one read of the same rows.
+   */
+  countReleaseInstallations(
+    input: InsightsCountReleaseInstallationsInput,
+  ): Promise<InsightsReleaseInstallations>;
   /** Count accepted reports in [sinceMs, beforeReceivedAtMs), across all pages. */
   countEvents(input: InsightsCountEventsInput): Promise<number>;
   /**

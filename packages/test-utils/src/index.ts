@@ -1,6 +1,9 @@
 export * from "./adminApiTestClient";
+export * from "./catalogFromLaterRelease";
 export * from "./setupBundleMethodsTestSuite";
 export * from "./setupCoreAdminTestSuite";
+export * from "./setupReleaseLabelEngineTestSuite";
+export * from "./setupReleaseLabelTestSuite";
 export * from "./setupSemverSatisfiesTestSuite";
 export * from "./setupDatabaseTestSuite";
 export * from "./setupDatabaseAdapterConformanceSuite";
@@ -19,3 +22,4 @@ export * from "./setupReleaseCatalogTestSuite";
 export * from "./httpTestClient";
 export * from "./httpTestServer";
 export * from "./releaseCatalogHttpFixtures";
+export * from "./capacityCappedStore";

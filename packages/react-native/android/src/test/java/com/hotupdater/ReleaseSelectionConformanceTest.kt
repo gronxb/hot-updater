@@ -99,7 +99,7 @@ class ReleaseSelectionConformanceTest {
                         activeBundleId = input.nullableString("activeBundleId"),
                         activeReleaseId = input.nullableString("activeReleaseId"),
                         cohort = input.nullableString("cohort"),
-                        minimumReleaseId = input.getString("minimumReleaseId"),
+                        minBundleId = input.getString("minBundleId"),
                         strategy = ReleaseStrategy.valueOf(input.getString("strategy")),
                         strategyValue = input.getString("strategyValue"),
                         crashedBundleIds = input.getJSONArray("crashedBundleIds").strings(),
@@ -151,7 +151,7 @@ class ReleaseSelectionConformanceTest {
                             } else {
                                 RunningReleaseId.SameAsActive
                             },
-                        minimumReleaseId = input.getString("minimumReleaseId"),
+                        minBundleId = input.getString("minBundleId"),
                         cohort = input.nullableString("cohort"),
                         crashedBundleIds = input.getJSONArray("crashedBundleIds").strings(),
                     ),
@@ -267,6 +267,8 @@ class ReleaseSelectionConformanceTest {
             targetCohorts = json.getJSONArray("targetCohorts").strings(),
             shouldForceUpdate = json.getBoolean("shouldForceUpdate"),
             message = json.nullableString("message"),
+            // The protocol leaves out a label it reads as none.
+            label = if (json.has("label")) json.getLong("label") else null,
         )
 
     /** The catalog's schema fields: the protocol also returns fields the schema leaves out. */

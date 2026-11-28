@@ -1,7 +1,10 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
+  cp,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
   symlink,
@@ -12,10 +15,42 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { scaffoldInfra } from "../infra/scaffold";
+import { type InfraTemplate, scaffoldInfra } from "../infra/scaffold";
+import { INFRASTRUCTURE_UPDATES } from "../infrastructureUpdates";
 import type { InitProvider } from "../initProviders";
 import { checkScaffold } from "./scaffold";
 import { verifyInfrastructure } from "./verification";
+
+/** The version this CLI's packaged templates claim, when a spec sets one. */
+const packaged = vi.hoisted(() => ({
+  version: undefined as string | undefined,
+}));
+
+vi.mock("../infra/scaffold", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../infra/scaffold")>();
+  return {
+    ...actual,
+    // Only doctor's read: scaffoldInfra reads the real templates.
+    readInfraTemplate: async (provider: InitProvider) => {
+      const real = await actual.readInfraTemplate(provider);
+      if (packaged.version === undefined) return real;
+      const source = path.join(cwd, `templates-${packaged.version}`);
+      await cp(real.source, source, { recursive: true });
+      await rewriteVersions(
+        source,
+        await listFiles(source),
+        versionsOf(real.template),
+        packaged.version,
+      );
+      return {
+        source,
+        template: (await readJson(
+          path.join(source, "template.json"),
+        )) as InfraTemplate,
+      };
+    },
+  };
+});
 
 let cwd: string;
 beforeEach(async () => {
@@ -24,6 +59,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   vi.unstubAllEnvs();
+  packaged.version = undefined;
   await rm(cwd, { recursive: true, force: true });
 });
 
@@ -31,16 +67,9 @@ const readJson = async (file: string) =>
   JSON.parse(await readFile(file, "utf8"));
 const saveJson = (file: string, value: unknown) =>
   writeFile(file, JSON.stringify(value));
-const prepare = async (
-  provider: InitProvider = "cloudflare",
-  operation: "setup" | "scaffold" = "setup",
-) => {
-  const scaffold = await scaffoldInfra(operation, {
-    provider,
-    ...(operation === "setup" ? { build: "bare" as const } : {}),
-    output: path.join(cwd, "infra"),
-  });
-  const manifest = await readJson(scaffold.manifest);
+/** Fills a scaffold's deployment placeholders, as an agent does. */
+const fill = async (output: string) => {
+  const manifest = await readJson(path.join(output, "manifest.json"));
   for (const file of Object.keys(manifest.files)) {
     if (
       !/^(worker|supabase|lambda|cloudfront|dynamodb|iam|firebase|vercel|azure)\//.test(
@@ -49,7 +78,7 @@ const prepare = async (
       /\.(md|map)$/.test(file)
     )
       continue;
-    const absolute = path.join(scaffold.output, file);
+    const absolute = path.join(output, file);
     const source = await readFile(absolute, "utf8");
     await writeFile(
       absolute,
@@ -59,8 +88,100 @@ const prepare = async (
       ),
     );
   }
+};
+const prepare = async (
+  provider: InitProvider = "cloudflare",
+  operation: "setup" | "scaffold" = "setup",
+) => {
+  const scaffold = await scaffoldInfra(operation, {
+    provider,
+    ...(operation === "setup" ? { build: "bare" as const } : {}),
+    output: path.join(cwd, "infra"),
+  });
+  await fill(scaffold.output);
   return scaffold;
 };
+
+const listFiles = async (root: string, dir = ""): Promise<string[]> =>
+  (
+    await Promise.all(
+      (
+        await readdir(path.join(root, dir), { withFileTypes: true })
+      ).map((entry) => {
+        const file = path.posix.join(dir, entry.name);
+        return entry.isDirectory() ? listFiles(root, file) : [file];
+      }),
+    )
+  ).flat();
+const versionsOf = (record: {
+  cliVersion: string;
+  providerVersion: string;
+  serverVersion: string;
+  packages?: Record<string, string>;
+}) => [
+  ...new Set([
+    record.cliVersion,
+    record.providerVersion,
+    record.serverVersion,
+    ...Object.values(record.packages ?? {}),
+  ]),
+];
+/** Each of `from` in `files` as `to`, where it is a whole version. */
+const rewriteVersions = async (
+  root: string,
+  files: readonly string[],
+  from: readonly string[],
+  to: string,
+) => {
+  for (const file of files) {
+    const absolute = path.join(root, file);
+    let text = await readFile(absolute, "latin1");
+    for (const version of from) {
+      text = text.replace(
+        new RegExp(
+          `(?<![0-9.])${version.replace(/[.+]/g, "\\$&")}(?![0-9]|[.+-][0-9A-Za-z])`,
+          "g",
+        ),
+        to,
+      );
+    }
+    await writeFile(absolute, text, "latin1");
+  }
+};
+/**
+ * A setup scaffold as the CLI of `version` would have generated it, were
+ * its templates this CLI's but for their versions, and `change` to them;
+ * then filled.
+ */
+const prepareFrom = async (
+  version: string,
+  change: (output: string) => Promise<void> = async () => {},
+) => {
+  const scaffold = await scaffoldInfra("setup", {
+    provider: "cloudflare",
+    build: "bare",
+    output: path.join(cwd, "infra"),
+  });
+  const manifest = await readJson(scaffold.manifest);
+  const files = Object.keys(manifest.files);
+  await rewriteVersions(scaffold.output, files, versionsOf(manifest), version);
+  await change(scaffold.output);
+  for (const file of files) {
+    manifest.files[file] = createHash("sha256")
+      .update(await readFile(path.join(scaffold.output, file)))
+      .digest("hex");
+  }
+  manifest.cliVersion = version;
+  manifest.providerVersion = version;
+  manifest.serverVersion = version;
+  for (const name of Object.keys(manifest.packages))
+    manifest.packages[name] = version;
+  await saveJson(scaffold.manifest, manifest);
+  await fill(scaffold.output);
+  return scaffold;
+};
+/** The release whose server this CLI's templates need. */
+const TARGET = INFRASTRUCTURE_UPDATES.at(-1)!;
 const successful = (
   checks: Awaited<ReturnType<typeof checkScaffold>>["checks"],
 ) => checks.length > 0 && checks.every((check) => check.status === "pass");
@@ -197,6 +318,84 @@ describe("doctor scaffold contract", () => {
         status: "blocked",
       }),
     ]);
+  });
+
+  it("passes a scaffold an earlier prerelease of the same release generated, when only its versions differ", async () => {
+    packaged.version = `${TARGET.version}-rc.2`;
+    // Built earlier, as wrangler's README in the Worker's output records.
+    const scaffold = await prepareFrom(
+      `${TARGET.version}-rc.1`,
+      async (output) => {
+        const file = path.join(output, "worker/dist/README.md");
+        await writeFile(
+          file,
+          (await readFile(file, "utf8")).replace(
+            /generated at \S+/u,
+            "generated at 2020-01-01T00:00:00.000Z.",
+          ),
+        );
+      },
+    );
+
+    const { checks } = await checkScaffold(scaffold.output);
+
+    expect(successful(checks), JSON.stringify(checks)).toBe(true);
+    expect(checks).toContainEqual(
+      expect.objectContaining({
+        code: "INFRA_MANIFEST",
+        status: "pass",
+        message: `Provider and build match the packaged scaffold, which differs from ${TARGET.version}-rc.1's only in its versions.`,
+      }),
+    );
+  });
+
+  it("blocks a scaffold whose templates differ beyond their versions, naming each file", async () => {
+    packaged.version = `${TARGET.version}-rc.2`;
+    const scaffold = await prepareFrom(
+      `${TARGET.version}-rc.1`,
+      async (output) => {
+        const file = path.join(output, "worker/dist/index.js");
+        await writeFile(file, `${await readFile(file, "utf8")}\n// changed\n`);
+      },
+    );
+
+    const { checks } = await checkScaffold(scaffold.output);
+
+    expect(checks).toEqual([
+      expect.objectContaining({
+        code: "INFRA_TEMPLATE_VERSION_MISMATCH",
+        status: "blocked",
+        paths: ["worker/dist/index.js"],
+      }),
+    ]);
+    expect(checks[0]!.message).toContain(`${TARGET.version}-rc.1`);
+    expect(checks[0]!.resolution).toContain(
+      "npx hot-updater agent infra upgrade --provider cloudflare --build bare",
+    );
+    expect(checks[0]!.resolution).toContain(
+      "Do not rewrite the manifest to bypass verification.",
+    );
+  });
+
+  it("blocks a scaffold of a release before the server this CLI needs, with the upgrade", async () => {
+    packaged.version = `${TARGET.version}-rc.2`;
+    const scaffold = await prepareFrom("1.1.3");
+
+    const { checks } = await checkScaffold(scaffold.output);
+
+    expect(checks).toEqual([
+      expect.objectContaining({
+        code: "INFRA_TEMPLATE_VERSION_MISMATCH",
+        status: "blocked",
+        paths: ["manifest.json"],
+      }),
+    ]);
+    expect(checks[0]!.message).toContain("1.1.3");
+    expect(checks[0]!.message).toContain(`${TARGET.version}+`);
+    expect(checks[0]!.message).toContain(TARGET.note);
+    expect(checks[0]!.resolution).toContain(
+      "npx hot-updater agent infra upgrade --provider cloudflare --build bare",
+    );
   });
 
   it("checks public server scaffolds without an app or deployment record", async () => {

@@ -29,6 +29,10 @@ export type RuntimeSnapshot = {
   readonly catalogId: string | null;
   readonly baseURL: string;
   readonly bundleId: string;
+  /** What the public `getBundleId()` reports, which an app shows its users. */
+  readonly reportedBundleId: string;
+  /** What the public `getReleaseLabel()` reports, as `v<label>`, or `none`. */
+  readonly reportedReleaseLabel: string;
   readonly channel: string;
   readonly cohort: string;
   readonly crashHistory: readonly string[];
@@ -99,12 +103,25 @@ hotUpdater.insights.setUser({ userId: "detox-e2e" });
 // The Remote Config scenario reads its values through this plugin.
 export const e2eRemoteConfig = hotUpdater.remoteConfig;
 
+/**
+ * The running release's label as an app shows it. An SDK before labels has no
+ * `getReleaseLabel()`, so it shows none.
+ */
+const readReleaseLabel = (): string => {
+  const read = (hotUpdater as { getReleaseLabel?: () => number | null })
+    .getReleaseLabel;
+  const label = typeof read === "function" ? read() : null;
+  return label === null ? "none" : `v${label}`;
+};
+
 export const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   activeReleaseId: null,
   appVersion: hotUpdater.getAppVersion(),
   catalogId: null,
   baseURL: fallbackHotUpdaterBaseURL,
   bundleId: hotUpdater.getManifest().bundleId,
+  reportedBundleId: hotUpdater.getBundleId(),
+  reportedReleaseLabel: readReleaseLabel(),
   channel: hotUpdater.getChannel(),
   cohort: hotUpdater.getCohort(),
   crashHistory: hotUpdater.getCrashHistory(),

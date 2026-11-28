@@ -7,12 +7,14 @@ import {
   type PluginEndpoint,
 } from "@hot-updater/plugin-core";
 
+import { backfillReleaseRefs } from "./backfill";
 import type { BundleEventRow } from "./eventRow";
 import { createInsightsModel } from "./model";
 import type {
   InsightsCountEventsInput,
   InsightsCountEventSeriesInput,
   InsightsCountLatestEventsInput,
+  InsightsCountReleaseInstallationsInput,
   InsightsFindLatestEventsInput,
   InsightsGetAppUsageInput,
   InsightsGetReleaseActivityInput,
@@ -24,6 +26,7 @@ import {
   countEvents,
   countEventSeries,
   countLatestEvents,
+  countReleaseInstallations,
   findLatestEvents,
   getAppUsage,
   getReleaseActivity,
@@ -41,6 +44,7 @@ import {
   RAW_RETENTION_DAYS,
 } from "./schema";
 
+export type { ReleaseRefBackfill } from "./backfill";
 export {
   createInsightsAdminReads,
   createInsightsReads,
@@ -74,6 +78,7 @@ export {
   type InsightsSchema,
 } from "./schema";
 export type * from "./types";
+export { toWireOverview, type WireReportingOverview } from "./wire";
 
 const createInsightsApi = (
   db: HotUpdaterDatabase<InsightsSchema>,
@@ -89,6 +94,8 @@ const createInsightsApi = (
     findLatestEvents(db, input),
   countLatestEvents: (input: InsightsCountLatestEventsInput) =>
     countLatestEvents(db, input),
+  countReleaseInstallations: (input: InsightsCountReleaseInstallationsInput) =>
+    countReleaseInstallations(db, input),
   countEvents: (input: InsightsCountEventsInput) => countEvents(db, input),
   countEventSeries: (input: InsightsCountEventSeriesInput) =>
     countEventSeries(db, input),
@@ -99,6 +106,14 @@ const createInsightsApi = (
   /** A release's or a channel's update failures, and their breakdown over a time range. */
   getUpdateFailures: (input: InsightsUpdateFailuresInput) =>
     getUpdateFailures(db, input, now, retention),
+  /**
+   * Moves the stored events a 1.1 server keyed by artifact, and their
+   * outcome counts, to their release, reading every stored event of the
+   * raw period: `hot-updater db migrate` and `hot-updater init` run it once
+   * a database, and an interrupted run can run again.
+   */
+  backfillReleaseRefs: (options?: { readonly dryRun?: boolean }) =>
+    backfillReleaseRefs(db, now, retention, options),
 });
 
 export type InsightsApi = ReturnType<typeof createInsightsApi>;

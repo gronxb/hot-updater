@@ -1,0 +1,121 @@
+---
+title: "MongoDB"
+description: Build a self-hosted Hot Updater server with MongoDB.
+icon: mongodb
+---
+
+## Before you start
+
+Use this recipe in the server project from the [custom-server quick start](/docs/v1.0/custom/quick-start)
+or your existing backend. Make the database and storage environment variables
+available to the server and schema commands. The React Native project's deploy
+configuration is a separate step.
+
+Run MongoDB as a replica set or sharded cluster. Hot Updater runs every write
+in a transaction so that each change commits atomically, and a standalone
+MongoDB server cannot run them: its first write fails with
+`MongoTransactionUnsupportedError`. There is no option to write without
+transactions. For local development, a single-node replica set is enough:
+start `mongod` with `--replSet rs0`, then run `rs.initiate()` once in
+`mongosh`.
+
+## Installation
+
+Install the MongoDB native driver.
+
+```package-install
+npm install @hot-updater/server @hot-updater/aws mongodb
+```
+
+```package-install
+npm install --save-dev hot-updater
+```
+
+## Setup
+
+Create a database connection file:
+
+```typescript title="src/mongodb.ts"
+import { MongoClient } from "mongodb";
+
+export const client = new MongoClient(process.env.MONGODB_URI!);
+
+// Connect to MongoDB
+await client.connect();
+```
+
+Hot Updater uses the client's default database: the one named in
+`MONGODB_URI`, or `test` when it names none.
+
+## Hot Updater configuration
+
+Create the Hot Updater instance:
+
+```typescript title="src/hotUpdater.ts"
+import { createHotUpdater } from "@hot-updater/server";
+import { mongoAdapter } from "@hot-updater/server/adapters/mongodb"; // [!code ++]
+import { apiKeys, insights } from "@hot-updater/server/plugins";
+import { s3Storage } from "@hot-updater/aws";
+import { client } from "./mongodb";
+
+export const hotUpdater = createHotUpdater({
+  database: mongoAdapter({ client }), // [!code ++]
+  plugins: [insights(), apiKeys()],
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.R2_BUCKET_NAME!,
+  }),
+});
+```
+
+`mongoAdapter({ client })` takes only the client. It returns an engine database
+with the migrator that `hot-updater db migrate` runs. Each Hot Updater table is
+a collection whose documents use the row's key as `_id`, and each index is
+created as declared. Guarded changes are conditional on a document's version,
+and write conflicts are retried. `insights()` records app events, and
+`apiKeys()` protects the client routes with the `x-api-key` header.
+
+## Schema generation
+
+Run the database migration to create the MongoDB collections and indexes.
+
+```bash
+npx hot-updater db migrate src/hotUpdater.ts
+```
+
+This command targets `src/hotUpdater.ts`, creates the collections and indexes
+of core and of the server's [plugins](/docs/v1.0/custom/server-plugins#create-the-plugins-tables), then writes the
+schema settings. It does nothing when
+the settings are current; run it again after upgrading Hot Updater. It
+refuses a database created by an older Hot Updater schema instead of
+converting it. `hot-updater db generate` does not apply to MongoDB.
+
+The server checks the settings before its first read or write. Until they
+exist, it throws `HotUpdaterSchemaMigrationRequiredError` and its handlers
+answer 503. A running server checks again on its next request, so it recovers
+once the migration has run.
+
+## CLI configuration
+
+After the schema is applied, [create the client API key](/docs/v1.0/custom/api-key-authentication#bootstrap-a-self-hosted-client)
+using this same direct server configuration. Then
+[connect the React Native project's CLI](/docs/v1.0/custom/cli-configuration) to the
+protected admin mount. Its storage configuration must match a server entry,
+and its `plugins` must list the server's plugins.
+
+## API endpoints
+
+The adapter persists data; your framework mounts the HTTP handlers. Continue
+with the [Hono](/docs/v1.0/custom/frameworks/hono), [Express](/docs/v1.0/custom/frameworks/express)
+or [Elysia](/docs/v1.0/custom/frameworks/elysia) recipe. See the
+[handler boundaries](/docs/v1.0/custom/overview#runtime-policy) and
+[repository contract](/docs/v1.0/database-adapters/standalone#server-contract) for
+client and admin access.
+
+Finish with [Set up your app](/docs/v1.0/get-started/app-setup) and
+[Test an OTA update](/docs/v1.0/get-started/test-ota).

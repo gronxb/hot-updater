@@ -36,6 +36,7 @@ const emptyModel: InsightsModel = {
   listEvents: async () => [],
   findLatestEvents: async () => [],
   countLatestEvents: async () => 0,
+  countReleaseInstallations: async () => ({ installations: 0, release: 0 }),
   countEvents: async () => 0,
   countEventSeries: async ({ timeRange: { start, end }, intervalMs }) =>
     Array.from({ length: (end - start) / intervalMs }, (_, index) => ({
@@ -86,7 +87,7 @@ describe("public Insights validation", () => {
       platform: "ios" as const,
       channel: "production",
       type: "UPDATE_APPLIED" as const,
-      toBundleId: "bundle-1",
+      toReleaseId: "bundle-1",
     };
     const timeRange = { start: 0, end: day };
     for (const input of [
@@ -130,7 +131,7 @@ describe("public Insights validation", () => {
         platform: "ios" as const,
         channel: "production",
         type: "UPDATE_APPLIED" as const,
-        toBundleId: "bundle-1",
+        toReleaseId: "bundle-1",
       },
       timeRange: { start: 0, end: 3 * hour },
       intervalMs: hour,
@@ -279,8 +280,8 @@ describe("public Insights validation", () => {
           type: "RECOVERED",
           platform: "ios",
           channel: "production",
-          fromBundleId: "bundle-b",
-          toBundleId: "bundle-a",
+          fromReleaseId: "bundle-b",
+          toReleaseId: "bundle-a",
         },
       } as InsightsListEventsInput),
     ).rejects.toMatchObject({ code: "invalid-query" });
@@ -311,7 +312,7 @@ describe("public Insights validation", () => {
           platform: "ios",
           channel: "production",
           type: "RECOVERED",
-          fromBundleId: "bundle-b",
+          fromReleaseId: "bundle-b",
         },
       }),
     ).rejects.toMatchObject({ code: "invalid-result" });
@@ -346,24 +347,58 @@ describe("public Insights validation", () => {
     ).rejects.toMatchObject({ code: "invalid-result" });
   });
 
-  it("passes bundle predicates on both fields that share a type to the model", async () => {
+  it("passes a release to the installation counts, and rejects any other bundle predicate", async () => {
     const countLatestEvents = vi.fn(async () => 1);
-    const model = createModel({ countLatestEvents });
-    const input = {
+    const countReleaseInstallations = vi.fn(async () => ({
+      installations: 3,
+      release: 1,
+    }));
+    const model = createModel({ countLatestEvents, countReleaseInstallations });
+    const scope = {
       platform: "ios",
       channel: "production",
       sinceMs: 0,
-      bundle: [
-        { field: "from_bundle_id", value: "A", types: ["UPDATE_DOWNLOADED"] },
-        {
-          field: "to_bundle_id",
-          value: "B",
-          types: ["UPDATE_APPLIED", "UPDATE_DOWNLOADED"],
-        },
-      ],
     } as const;
-    await expect(model.countLatestEvents(input)).resolves.toBe(1);
-    expect(countLatestEvents).toHaveBeenCalledWith(input);
+    const input = { ...scope, releaseId: "R" } as const;
+    await expect(model.countReleaseInstallations(input)).resolves.toEqual({
+      installations: 3,
+      release: 1,
+    });
+    expect(countReleaseInstallations).toHaveBeenCalledWith(input);
+    for (const invalid of [
+      { ...input, releaseId: "" },
+      { ...input, releaseId: 1 },
+      scope,
+    ]) {
+      await expect(
+        model.countReleaseInstallations(invalid as never),
+      ).rejects.toMatchObject({ code: "invalid-query" });
+    }
+    expect(countReleaseInstallations).toHaveBeenCalledTimes(1);
+    for (const invalid of [
+      input,
+      {
+        ...scope,
+        bundle: [{ field: "to_bundle_id", value: "B", types: ["UNCHANGED"] }],
+      },
+    ]) {
+      await expect(
+        model.countLatestEvents(invalid as never),
+      ).rejects.toMatchObject({ code: "invalid-query" });
+    }
+    expect(countLatestEvents).not.toHaveBeenCalled();
+    for (const counts of [
+      { installations: -1, release: 0 },
+      { installations: 1, release: 1.5 },
+      { installations: 1 },
+      { installations: 1, release: 1, extra: 1 },
+    ]) {
+      await expect(
+        createModel({
+          countReleaseInstallations: async () => counts as never,
+        }).countReleaseInstallations(input),
+      ).rejects.toMatchObject({ code: "invalid-result" });
+    }
   });
 
   it("propagates native failures and rejects invalid scalar counts", async () => {

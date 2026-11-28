@@ -1,5 +1,492 @@
 # @hot-updater/neon
 
+## 1.2.0-rc.63
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.63
+  - @hot-updater/postgres@1.2.0-rc.63
+  - @hot-updater/storage-s3@1.2.0-rc.63
+
+## 1.2.0-rc.62
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.62
+  - @hot-updater/postgres@1.2.0-rc.62
+  - @hot-updater/storage-s3@1.2.0-rc.62
+
+## 1.2.0-rc.61
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.61
+  - @hot-updater/postgres@1.2.0-rc.61
+  - @hot-updater/storage-s3@1.2.0-rc.61
+
+## 1.2.0-rc.60
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.60
+  - @hot-updater/postgres@1.2.0-rc.60
+  - @hot-updater/storage-s3@1.2.0-rc.60
+
+## 1.2.0-rc.59
+
+### Patch Changes
+
+- Updated dependencies [ef2db86]
+  - @hot-updater/plugin-core@1.2.0-rc.59
+  - @hot-updater/postgres@1.2.0-rc.59
+  - @hot-updater/storage-s3@1.2.0-rc.59
+
+## 1.2.0-rc.58
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.58
+  - @hot-updater/postgres@1.2.0-rc.58
+  - @hot-updater/storage-s3@1.2.0-rc.58
+
+## 1.2.0-rc.57
+
+### Patch Changes
+
+- @hot-updater/postgres@1.2.0-rc.57
+  - @hot-updater/plugin-core@1.2.0-rc.57
+  - @hot-updater/storage-s3@1.2.0-rc.57
+
+## 1.2.0-rc.56
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.56
+  - @hot-updater/postgres@1.2.0-rc.56
+  - @hot-updater/storage-s3@1.2.0-rc.56
+
+## 1.2.0-rc.55
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.55
+  - @hot-updater/postgres@1.2.0-rc.55
+  - @hot-updater/storage-s3@1.2.0-rc.55
+
+## 1.2.0-rc.54
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.54
+  - @hot-updater/postgres@1.2.0-rc.54
+  - @hot-updater/storage-s3@1.2.0-rc.54
+
+## 1.2.0-rc.53
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.53
+  - @hot-updater/postgres@1.2.0-rc.53
+  - @hot-updater/storage-s3@1.2.0-rc.53
+
+## 1.2.0-rc.52
+
+### Patch Changes
+
+- Updated dependencies [610f038]
+- Updated dependencies [f35618e]
+  - @hot-updater/plugin-core@1.2.0-rc.52
+  - @hot-updater/postgres@1.2.0-rc.52
+  - @hot-updater/storage-s3@1.2.0-rc.52
+
+## 1.2.0-rc.51
+
+### Patch Changes
+
+- Updated dependencies [e833260]
+  - @hot-updater/plugin-core@1.2.0-rc.51
+  - @hot-updater/postgres@1.2.0-rc.51
+  - @hot-updater/storage-s3@1.2.0-rc.51
+
+## 1.2.0-rc.50
+
+### Patch Changes
+
+- Updated dependencies [24fc70c]
+- Updated dependencies [21cf534]
+- Updated dependencies [36e1f23]
+  - @hot-updater/plugin-core@1.2.0-rc.50
+  - @hot-updater/postgres@1.2.0-rc.50
+  - @hot-updater/storage-s3@1.2.0-rc.50
+
+## 1.2.0-rc.49
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.49
+  - @hot-updater/postgres@1.2.0-rc.49
+  - @hot-updater/storage-s3@1.2.0-rc.49
+
+## 1.2.0-rc.48
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.48
+  - @hot-updater/postgres@1.2.0-rc.48
+  - @hot-updater/storage-s3@1.2.0-rc.48
+
+## 1.2.0-rc.47
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.47
+  - @hot-updater/postgres@1.2.0-rc.47
+  - @hot-updater/storage-s3@1.2.0-rc.47
+
+## 1.2.0-rc.46
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.46
+  - @hot-updater/postgres@1.2.0-rc.46
+  - @hot-updater/storage-s3@1.2.0-rc.46
+
+## 1.2.0-rc.45
+
+### Patch Changes
+
+- Updated dependencies [39021d1]
+- Updated dependencies [51c4afb]
+- Updated dependencies [08aee10]
+  - @hot-updater/plugin-core@1.2.0-rc.45
+  - @hot-updater/postgres@1.2.0-rc.45
+  - @hot-updater/storage-s3@1.2.0-rc.45
+
+## 1.2.0-rc.44
+
+### Patch Changes
+
+- Updated dependencies [6b45f64]
+- Updated dependencies [6b45f64]
+- Updated dependencies [6b45f64]
+  - @hot-updater/plugin-core@1.2.0-rc.44
+  - @hot-updater/postgres@1.2.0-rc.44
+  - @hot-updater/storage-s3@1.2.0-rc.44
+
+## 1.2.0-rc.43
+
+### Patch Changes
+
+- Updated dependencies [6d1b8f8]
+  - @hot-updater/plugin-core@1.2.0-rc.43
+  - @hot-updater/postgres@1.2.0-rc.43
+  - @hot-updater/storage-s3@1.2.0-rc.43
+
+## 1.2.0-rc.42
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.42
+  - @hot-updater/postgres@1.2.0-rc.42
+  - @hot-updater/storage-s3@1.2.0-rc.42
+
+## 1.2.0-rc.41
+
+### Patch Changes
+
+- Updated dependencies [97f063d]
+  - @hot-updater/plugin-core@1.2.0-rc.41
+  - @hot-updater/postgres@1.2.0-rc.41
+  - @hot-updater/storage-s3@1.2.0-rc.41
+
+## 1.2.0-rc.40
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.40
+  - @hot-updater/postgres@1.2.0-rc.40
+  - @hot-updater/storage-s3@1.2.0-rc.40
+
+## 1.2.0-rc.39
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.39
+  - @hot-updater/postgres@1.2.0-rc.39
+  - @hot-updater/storage-s3@1.2.0-rc.39
+
+## 1.2.0-rc.38
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.38
+  - @hot-updater/postgres@1.2.0-rc.38
+  - @hot-updater/storage-s3@1.2.0-rc.38
+
+## 1.2.0-rc.37
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.37
+  - @hot-updater/postgres@1.2.0-rc.37
+  - @hot-updater/storage-s3@1.2.0-rc.37
+
+## 1.2.0-rc.36
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.36
+  - @hot-updater/postgres@1.2.0-rc.36
+  - @hot-updater/storage-s3@1.2.0-rc.36
+
+## 1.2.0-rc.35
+
+### Patch Changes
+
+- Updated dependencies [f1f0d01]
+  - @hot-updater/plugin-core@1.2.0-rc.35
+  - @hot-updater/postgres@1.2.0-rc.35
+  - @hot-updater/storage-s3@1.2.0-rc.35
+
+## 1.2.0-rc.34
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.34
+  - @hot-updater/postgres@1.2.0-rc.34
+  - @hot-updater/storage-s3@1.2.0-rc.34
+
+## 1.2.0-rc.33
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.33
+  - @hot-updater/postgres@1.2.0-rc.33
+  - @hot-updater/storage-s3@1.2.0-rc.33
+
+## 1.2.0-rc.32
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.32
+  - @hot-updater/postgres@1.2.0-rc.32
+  - @hot-updater/storage-s3@1.2.0-rc.32
+
+## 1.2.0-rc.31
+
+### Patch Changes
+
+- Updated dependencies [d4341b4]
+  - @hot-updater/plugin-core@1.2.0-rc.31
+  - @hot-updater/postgres@1.2.0-rc.31
+  - @hot-updater/storage-s3@1.2.0-rc.31
+
+## 1.2.0-rc.30
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.30
+  - @hot-updater/postgres@1.2.0-rc.30
+  - @hot-updater/storage-s3@1.2.0-rc.30
+
+## 1.2.0-rc.29
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.29
+  - @hot-updater/postgres@1.2.0-rc.29
+  - @hot-updater/storage-s3@1.2.0-rc.29
+
+## 1.2.0-rc.28
+
+### Patch Changes
+
+- Updated dependencies [43605fd]
+- Updated dependencies [b03f1be]
+  - @hot-updater/plugin-core@1.2.0-rc.28
+  - @hot-updater/postgres@1.2.0-rc.28
+  - @hot-updater/storage-s3@1.2.0-rc.28
+
+## 1.2.0-rc.27
+
+### Patch Changes
+
+- @hot-updater/postgres@1.2.0-rc.27
+  - @hot-updater/storage-s3@1.2.0-rc.27
+  - @hot-updater/plugin-core@1.2.0-rc.27
+
+## 1.2.0-rc.26
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.26
+  - @hot-updater/postgres@1.2.0-rc.26
+  - @hot-updater/storage-s3@1.2.0-rc.26
+
+## 1.2.0-rc.25
+
+### Patch Changes
+
+- Updated dependencies [0d8a448]
+- Updated dependencies [211e584]
+  - @hot-updater/plugin-core@1.2.0-rc.25
+  - @hot-updater/postgres@1.2.0-rc.25
+  - @hot-updater/storage-s3@1.2.0-rc.25
+
+## 1.2.0-rc.24
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.24
+  - @hot-updater/postgres@1.2.0-rc.24
+  - @hot-updater/storage-s3@1.2.0-rc.24
+
+## 1.2.0-rc.23
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.23
+  - @hot-updater/postgres@1.2.0-rc.23
+  - @hot-updater/storage-s3@1.2.0-rc.23
+
+## 1.2.0-rc.22
+
+### Patch Changes
+
+- Updated dependencies [a823198]
+  - @hot-updater/plugin-core@1.2.0-rc.22
+  - @hot-updater/postgres@1.2.0-rc.22
+  - @hot-updater/storage-s3@1.2.0-rc.22
+
+## 1.2.0-rc.21
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.21
+  - @hot-updater/postgres@1.2.0-rc.21
+  - @hot-updater/storage-s3@1.2.0-rc.21
+
+## 1.2.0-rc.20
+
+### Patch Changes
+
+- Updated dependencies [1e72e05]
+  - @hot-updater/plugin-core@1.2.0-rc.20
+  - @hot-updater/postgres@1.2.0-rc.20
+  - @hot-updater/storage-s3@1.2.0-rc.20
+
+## 1.2.0-rc.19
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.19
+  - @hot-updater/postgres@1.2.0-rc.19
+  - @hot-updater/storage-s3@1.2.0-rc.19
+
+## 1.2.0-rc.18
+
+### Patch Changes
+
+- Updated dependencies [42f5b23]
+  - @hot-updater/plugin-core@1.2.0-rc.18
+  - @hot-updater/postgres@1.2.0-rc.18
+  - @hot-updater/storage-s3@1.2.0-rc.18
+
+## 1.2.0-rc.17
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.17
+  - @hot-updater/postgres@1.2.0-rc.17
+  - @hot-updater/storage-s3@1.2.0-rc.17
+
+## 1.2.0-rc.16
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.16
+  - @hot-updater/postgres@1.2.0-rc.16
+  - @hot-updater/storage-s3@1.2.0-rc.16
+
+## 1.2.0-rc.15
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.15
+  - @hot-updater/postgres@1.2.0-rc.15
+  - @hot-updater/storage-s3@1.2.0-rc.15
+
+## 1.2.0-rc.14
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.14
+  - @hot-updater/postgres@1.2.0-rc.14
+  - @hot-updater/storage-s3@1.2.0-rc.14
+
+## 1.2.0-rc.13
+
+### Patch Changes
+
+- Updated dependencies [b54eddc]
+- Updated dependencies [1e85609]
+- Updated dependencies [20006f2]
+  - @hot-updater/plugin-core@1.2.0-rc.13
+  - @hot-updater/postgres@1.2.0-rc.13
+  - @hot-updater/storage-s3@1.2.0-rc.13
+
+## 1.2.0-rc.12
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.12
+  - @hot-updater/postgres@1.2.0-rc.12
+  - @hot-updater/storage-s3@1.2.0-rc.12
+
+## 1.2.0-rc.11
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.11
+  - @hot-updater/postgres@1.2.0-rc.11
+  - @hot-updater/storage-s3@1.2.0-rc.11
+
+## 1.2.0-rc.10
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.10
+  - @hot-updater/postgres@1.2.0-rc.10
+  - @hot-updater/storage-s3@1.2.0-rc.10
+
+## 1.2.0-rc.9
+
+### Patch Changes
+
+- 1.2.0-rc.9 includes 1.1.4 and 1.1.5: `neonStorage` from `@hot-updater/neon` stores bundles in Neon Object Storage, and the package re-exports `postgres`; `s3Storage`, `r2Storage`, and `neonStorage` share `@hot-updater/storage-s3`, and `hot-updater storage prune` works on every official storage adapter; `azureBlobStorage` imports `node:stream` statically. Their credentials accept `secret("<name>")` like the other adapters: the access keys of `neonStorage`, `s3Storage`, and `r2Storage` may be lazy, read once on the first request, and `postgres` takes a lazy `connectionString`.
+
+  ```ts
+  import { neonStorage, postgres } from "@hot-updater/neon";
+  import { defineConfig, secret } from "hot-updater";
+
+  export default defineConfig({
+    storage: neonStorage({
+      endpoint: "https://br-xxx.storage.c-5.us-east-2.aws.neon.tech",
+      bucketName: "hot-updater-bundles",
+      credentials: {
+        accessKeyId: secret("AWS_ACCESS_KEY_ID"),
+        secretAccessKey: secret("AWS_SECRET_ACCESS_KEY"),
+      },
+    }),
+    database: postgres({ connectionString: secret("DATABASE_URL") }),
+  });
+  ```
+
+- Updated dependencies
+  - @hot-updater/storage-s3@1.2.0-rc.9
+  - @hot-updater/plugin-core@1.2.0-rc.9
+  - @hot-updater/postgres@1.2.0-rc.9
+
 ## 1.1.22
 
 ### Patch Changes

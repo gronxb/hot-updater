@@ -5,7 +5,6 @@ import { buttonVariants } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useConsoleFeature } from "@/lib/console-features-api";
 import type { InsightsSearch } from "@/lib/insights-search";
-import { cn } from "@/lib/utils";
 
 export function InsightsPageHeader({
   view,
@@ -30,13 +29,11 @@ export function InsightsPageHeader({
         {overview ? (
           <Link
             aria-current={view === "overview" ? "page" : undefined}
-            className={cn(
-              buttonVariants({
-                className: "h-11 px-3 lg:h-8 lg:px-2.5",
-                size: "lg",
-                variant: view === "overview" ? "secondary" : "ghost",
-              }),
-            )}
+            className={buttonVariants({
+              className: "h-11 px-3 lg:h-8 lg:px-2.5",
+              size: "lg",
+              variant: view === "overview" ? "secondary" : "ghost",
+            })}
             search={overviewSearch}
             to="/insights"
           >
@@ -45,13 +42,11 @@ export function InsightsPageHeader({
         ) : null}
         <Link
           aria-current={view === "events" ? "page" : undefined}
-          className={cn(
-            buttonVariants({
-              className: "h-11 px-3 lg:h-8 lg:px-2.5",
-              size: "lg",
-              variant: view === "events" ? "secondary" : "ghost",
-            }),
-          )}
+          className={buttonVariants({
+            className: "h-11 px-3 lg:h-8 lg:px-2.5",
+            size: "lg",
+            variant: view === "events" ? "secondary" : "ghost",
+          })}
           to="/installations"
         >
           <ListIcon aria-hidden="true" data-icon="inline-start" />

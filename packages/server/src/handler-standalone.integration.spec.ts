@@ -275,6 +275,96 @@ describe("Standalone core API over admin API protocol 2", () => {
     );
     expect(response.status).toBe(400);
   });
+
+  it("registers native builds, finds the newest of a scope, and keeps their built-in bundles", async () => {
+    const remote = core();
+    const register = (minBundleId: string, buildKey: string | null = null) =>
+      remote.registerNativeBuild({
+        id: uuidv7(),
+        platform: "android",
+        channel: "production",
+        fingerprintHash: "fingerprint-a",
+        appVersion: null,
+        minBundleId,
+        gitCommitHash: null,
+        buildKey,
+        // A fingerprint build's own version, which the admin API carries.
+        nativeAppVersion: buildKey === null ? "1.6.0" : null,
+        artifact: {
+          kind: "apk",
+          storageUri: "test://storage/native-builds/android/app.apk",
+          byteSize: 42,
+        },
+        embeddedBundle: {
+          manifestStorageUri: `test://storage/bundles/${minBundleId}/manifest.json`,
+          manifestFileHash: "built-in-manifest-hash",
+          assetBaseStorageUri: "test://assets",
+        },
+      });
+    const [olderId, newerId] = [uuidv7(), uuidv7()];
+    const key = `nbk1:${"c".repeat(64)}`;
+    const older = await register(olderId, key);
+    const newer = await register(newerId);
+    expect(older.native_app_version).toBeNull();
+    expect(newer).toMatchObject({
+      app_version: null,
+      native_app_version: "1.6.0",
+    });
+
+    await expect(
+      remote.findNativeBuild({
+        platform: "android",
+        channel: "production",
+        fingerprintHash: "fingerprint-a",
+        appVersion: null,
+      }),
+    ).resolves.toEqual(newer);
+    await expect(
+      remote.findNativeBuild({
+        platform: "android",
+        channel: "production",
+        fingerprintHash: null,
+        appVersion: "1.0.0",
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      remote.findNativeBuild(
+        {
+          platform: "android",
+          channel: "production",
+          fingerprintHash: "fingerprint-a",
+          appVersion: null,
+        },
+        { buildKey: key },
+      ),
+    ).resolves.toEqual(older);
+    await expect(
+      remote.listNativeBuilds({ limit: 1, order: "desc" }),
+    ).resolves.toEqual([newer]);
+    // A read through a key ends with it, over the admin API too.
+    await expect(
+      remote.listNativeBuilds({ limit: 10, order: "desc", through: newer.id }),
+    ).resolves.toEqual([newer]);
+    await expect(register(newerId)).rejects.toThrow("already registered");
+    await expect(remote.countBundles()).resolves.toBe(0);
+    await expect(remote.deleteBundles([newerId])).rejects.toThrow(
+      "still referenced",
+    );
+    await expect(remote.getBundle(newerId)).resolves.toMatchObject({
+      bundle: { id: newerId, platform: "android" },
+    });
+
+    await expect(remote.deleteNativeBuild(newer.id)).resolves.toEqual({
+      deleted: true,
+      nativeBuild: newer,
+    });
+    await expect(remote.getNativeBuild(newer.id)).resolves.toBeNull();
+    await expect(remote.getBundle(newerId)).resolves.toBeNull();
+    await expect(remote.deleteNativeBuild(newer.id)).resolves.toEqual({
+      deleted: false,
+      reason: "not_found",
+    });
+  });
 });
 
 describe("Insights through a self-hosted server's admin API", () => {
@@ -292,6 +382,91 @@ describe("Insights through a self-hosted server's admin API", () => {
         invokeHandler(withoutInsights, request, offPath),
       ),
     );
+  });
+
+  it("runs the iOS device registry through the admin API, method for method", async () => {
+    const remote = standaloneRepository({
+      baseUrl: `${baseUrl}/hot-updater/admin`,
+    }).core;
+    const udid = "00008030-001C2D3E4F5A6B7C";
+    const { device, created } = await remote.requestIosDevice({
+      udid,
+      name: "Kim's iPhone",
+      requestedBy: "kim@team.dev",
+    });
+    expect(created).toBe(true);
+    expect(device).toMatchObject({
+      udid: udid.toLowerCase(),
+      status: "pending",
+    });
+    await expect(
+      remote.requestIosDevice({ udid, name: "Other", requestedBy: null }),
+    ).resolves.toEqual({ device, created: false });
+    await expect(remote.findIosDevice(udid)).resolves.toEqual(device);
+    await expect(remote.findIosDevice("a".repeat(40))).resolves.toBeNull();
+    await expect(
+      remote.listIosDevices({ status: "pending", limit: 10 }),
+    ).resolves.toEqual([device]);
+
+    const approved = await remote.approveIosDevice(device.id, {
+      approvedBy: "lead@team.dev",
+      name: "Kim's work iPhone",
+    });
+    expect(approved).toMatchObject({
+      status: "approved",
+      name: "Kim's work iPhone",
+      approved_by: "lead@team.dev",
+    });
+    await expect(
+      remote.renameIosDevice(device.id, "Kim's iPhone"),
+    ).resolves.toMatchObject({ name: "Kim's iPhone" });
+    const registered = await remote.recordIosDeviceOutcome({
+      id: device.id,
+      seen: { status: "approved", approvedAtMs: approved!.approved_at_ms },
+      issuerId: "issuer-a",
+      outcome: "registered",
+    });
+    expect(registered).toMatchObject({
+      status: "registered",
+      apple_issuer_id: "issuer-a",
+    });
+    // A stale snapshot answers null and writes nothing.
+    await expect(
+      remote.recordIosDeviceOutcome({
+        id: device.id,
+        seen: { status: "approved", approvedAtMs: 1 },
+        issuerId: "issuer-a",
+        outcome: "missing",
+      }),
+    ).resolves.toBeNull();
+    await expect(remote.claimIosDeviceAccount("issuer-a")).resolves.toEqual({
+      issuerId: "issuer-a",
+      claimed: true,
+    });
+    await expect(remote.claimIosDeviceAccount("issuer-b")).resolves.toEqual({
+      issuerId: "issuer-a",
+      claimed: false,
+    });
+    const buildId = uuidv7();
+    await remote.markIosDevicesInBuild({ buildId, ids: [device.id] });
+    await expect(remote.findIosDevice(udid)).resolves.toMatchObject({
+      build_id: buildId,
+    });
+    await expect(
+      remote.requestIosDevice({ udid: "1234", name: "x", requestedBy: null }),
+    ).rejects.toThrow();
+    // A conditional delete of a row that no longer matches deletes nothing.
+    await expect(
+      remote.deleteIosDevice(device.id, {
+        status: "pending",
+        requestedBy: "kim@team.dev",
+      }),
+    ).resolves.toBeNull();
+    await expect(remote.deleteIosDevice(device.id)).resolves.toMatchObject({
+      id: device.id,
+    });
+    await expect(remote.deleteIosDevice(device.id)).resolves.toBeNull();
+    await expect(remote.listIosDevices({ limit: 10 })).resolves.toEqual([]);
   });
 
   it("reads events with the repository's headers, and a server without insights() serves no Insights route", async () => {

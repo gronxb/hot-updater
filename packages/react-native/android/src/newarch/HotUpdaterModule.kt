@@ -6,6 +6,7 @@ import android.util.Log
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.ReadableType
 import com.facebook.react.bridge.WritableNativeArray
 import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
@@ -230,6 +231,12 @@ class HotUpdaterModule internal constructor(
             catalogHash = selection.getString("catalogHash"),
             channel = selection.getString("channel") ?: "",
             selectionContextHash = selection.getString("selectionContextHash"),
+            label =
+                if (selection.hasKey("label") && selection.getType("label") == ReadableType.Number) {
+                    releaseLabel(selection.getDouble("label"))
+                } else {
+                    null
+                },
         )
     }
 
@@ -542,6 +549,51 @@ class HotUpdaterModule internal constructor(
     }
 
     override fun takeNativeUpdateEvents(): String? = getInstance().takeNativeUpdateEvents()
+
+    // Android doesn't suspend an app the moment it leaves the foreground, and
+    // JavaScript's update requests get their responses there without timers.
+    override fun beginBackgroundTask(): Double = 0.0
+
+    override fun endBackgroundTask(taskId: Double) = Unit
+
+    override fun resetChannelIfSelectionCurrent(
+        params: ReadableMap,
+        promise: Promise,
+    ) {
+        val catalogId = params.getString("catalogId")
+        val scopeKey = params.getString("scopeKey")
+        val catalogHash = params.getString("catalogHash")
+        val channel = params.getString("channel")
+        val selectionContextHash = params.getString("selectionContextHash")
+        if (catalogId == null || scopeKey == null || catalogHash == null || channel == null || selectionContextHash == null) {
+            promise.resolve(false)
+            return
+        }
+        val guard =
+            ReleaseSelectionGuard(
+                catalogId = catalogId,
+                scopeKey = scopeKey,
+                generation = params.getDouble("generation").toLong(),
+                catalogHash = catalogHash,
+                channel = channel,
+                selectionContextHash = selectionContextHash,
+            )
+        moduleScope.launch {
+            try {
+                // Waits for a native check or download, as resetChannel does.
+                val name = runtimeInstance.name
+                promise.resolve(
+                    NativeUpdateCheck.resetChannelIfSelectionCurrent(mReactApplicationContext, name, guard) {
+                        runtimeInstance.impl(name)
+                    },
+                )
+            } catch (e: HotUpdaterException) {
+                promise.reject(e.code, e.message)
+            } catch (e: Exception) {
+                promise.reject("UNKNOWN_ERROR", e.message ?: "Failed to reset channel")
+            }
+        }
+    }
 
     override fun resetChannel(promise: Promise) {
         moduleScope.launch {

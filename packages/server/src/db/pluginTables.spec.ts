@@ -7,6 +7,7 @@ import {
   createEngineDatabase,
   toolingTargetOf,
   createMemoryAdapter,
+  writeSchemaSettings,
 } from "@hot-updater/plugin-core";
 import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { Kysely } from "kysely";
@@ -99,12 +100,16 @@ describe("plugin tables in db tooling", () => {
     );
 
     const result = await migrate(hotUpdater);
-    expect(result.operations).toContainEqual(
-      expect.objectContaining({
-        type: "create-table",
-        value: expect.objectContaining({ ormName: "notes_notes" }),
-      }),
-    );
+    expect(result.operations).toEqual([
+      {
+        type: "custom",
+        description: "Create the tables and indexes the database lacks",
+      },
+      {
+        type: "custom",
+        description: `Record schema.engine 1, schema.core ${coreTarget.settings["schema.core"]}, schema.notes 2`,
+      },
+    ]);
     await hotUpdater.api.notes.add("n1", "ada", "hello");
     await expect(hotUpdater.api.notes.read("n1")).resolves.toEqual({
       id: "n1",
@@ -131,7 +136,7 @@ describe("plugin tables in db tooling", () => {
     });
     // It names the plugin and how to create its tables on this database.
     await expect(hotUpdater.api.notes.read("n1")).rejects.toThrow(
-      `The tables of plugin "notes" are not migrated on memory: schema setting "schema.notes" is missing; expected "2". Run \`hot-updater db migrate\`. A managed server runs only its provider's plugins, and rerunning \`hot-updater init --provider <provider>\` applies the provider's migrations.`,
+      `The tables of plugin "notes" are not migrated on memory: schema setting "schema.notes" is missing; expected "2". Run \`npx hot-updater doctor\` in the project whose hot-updater.config.ts names this database: it names the command that migrates it. In a server project, run \`hot-updater db migrate\`. Run \`hot-updater db\` commands in the server's project: they load the server file named on the command line, or src/hotUpdater.* or src/db.*, and don't read hot-updater.config.ts.`,
     );
     await expect(hotUpdater.core.listChannels()).rejects.toBeInstanceOf(
       HotUpdaterSchemaMigrationRequiredError,
@@ -153,6 +158,59 @@ describe("plugin tables in db tooling", () => {
         clientAccess: "public",
       }).core.listChannels(),
     ).resolves.toEqual([]);
+  });
+
+  it("names core's stale setting and the plugins' missing ones in one refusal", async () => {
+    const adapter = createMemoryAdapter();
+    const database = createEngineDatabase({ name: "memory", adapter });
+    await migrate(
+      createHotUpdater({
+        database,
+        storage: createReleaseCatalogTestStorage(),
+        clientAccess: "public",
+      }),
+    );
+    // An earlier release's core, before the server added two plugins,
+    // written as that release wrote it.
+    await writeSchemaSettings(
+      adapter,
+      "memory",
+      { "schema.core": "0.9.0" },
+      [],
+    );
+    const hotUpdater = createHotUpdater({
+      database,
+      storage: createReleaseCatalogTestStorage(),
+      plugins: [notes, insights()],
+      clientAccess: "public",
+    });
+
+    const refusal = await hotUpdater.core
+      .listChannels()
+      .catch((error: unknown) => error);
+    expect(refusal).toBeInstanceOf(HotUpdaterSchemaMigrationRequiredError);
+    expect(refusal).toMatchObject({
+      settings: [
+        {
+          key: "schema.core",
+          expected: coreTarget.settings["schema.core"],
+          found: "0.9.0",
+        },
+        { key: "schema.notes", expected: "2", found: null },
+        {
+          key: "schema.insights",
+          expected: insights().schemaVersion,
+          found: null,
+        },
+      ],
+      plugins: ["notes", "insights"],
+    });
+    expect((refusal as Error).message).toMatch(
+      /^Hot Updater schema settings for memory are not migrated: "schema\.core" is "0\.9\.0"; .*, and "schema\.notes" is missing; expected "2", and "schema\.insights" is missing; /u,
+    );
+
+    await migrate(hotUpdater);
+    await expect(hotUpdater.core.listChannels()).resolves.toEqual([]);
   });
 
   it("writes a Kysely migration of the plugin's tables and settings row", async () => {

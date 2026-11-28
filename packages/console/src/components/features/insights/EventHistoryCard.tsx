@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { HashValueDisplay } from "@/components/HashValueDisplay";
+import { InstallIdDisplay } from "@/components/InstallIdDisplay";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -98,11 +98,11 @@ function EventIdentity({
         </span>
         <ArrowUpRight aria-hidden="true" data-icon="inline-end" />
       </Link>
-      <HashValueDisplay
-        value={event.installId}
-        maxLength={13}
-        buttonClassName={touch ? "min-h-11 px-3" : undefined}
-      />
+      {/* On a phone its line is as tall as the link's, so its copy touch
+          area stays off the link when it wraps under it. */}
+      <span className={touch ? "flex min-h-11 items-center" : "flex"}>
+        <InstallIdDisplay installId={event.installId} />
+      </span>
     </div>
   );
 }

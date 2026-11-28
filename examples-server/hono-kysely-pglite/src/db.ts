@@ -82,7 +82,10 @@ export async function resetDecisionFixtures() {
       releases,
       bundles,
       channels,
-      bundle_totals
+      bundle_totals,
+      native_builds,
+      ios_devices,
+      ios_device_account
     CASCADE
   `.execute(kysely);
 }

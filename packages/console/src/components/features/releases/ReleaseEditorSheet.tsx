@@ -14,12 +14,18 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { normalizeRange } from "verkit";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { ArtifactIdDisplay } from "@/components/ArtifactIdDisplay";
+import { BuiltinBundleDisplay } from "@/components/BuiltinBundleDisplay";
 import { BundleMetadata } from "@/components/features/bundles/BundleMetadata";
 import { RolloutCohortsDialog } from "@/components/features/bundles/RolloutCohortsDialog";
 import { ReleaseSections } from "@/components/features/FeatureSlots";
+import {
+  ReleaseNativeBuildLink,
+  releaseNativeBuildInput,
+} from "@/components/features/native-builds/ReleaseNativeBuildLink";
 import { InfoTooltip } from "@/components/InfoTooltip";
 import { PlatformIcon } from "@/components/PlatformIcon";
+import { ReleaseIdDisplay } from "@/components/ReleaseIdDisplay";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -82,9 +88,11 @@ import {
   usePreflightReleaseMutation,
   usePromoteReleaseMutation,
   useReleaseCatalogDiagnosticsQuery,
+  useReleaseNativeBuildQuery,
   useReleaseQuery,
   useUpdateReleaseMutation,
 } from "@/lib/api";
+import { builtinBundleVersion } from "@/lib/native-builds";
 
 interface Draft {
   enabled: boolean;
@@ -314,6 +322,16 @@ export function ReleaseEditorSheet({
   const channelName =
     channels.find((channel) => channel.id === release?.channel_id)?.name ??
     release?.channel_id;
+  // The Native build row's read of the scope's build, which react-query
+  // shares: a patch base that is that build's built-in bundle is named by
+  // its version, and any other patch base costs no read of its own.
+  const scopeBuild = useReleaseNativeBuildQuery(
+    release && channelName
+      ? releaseNativeBuildInput(release, channelName)
+      : null,
+  ).data;
+  const patchBaseBuild =
+    scopeBuild?.min_bundle_id === patchBaseBundleId ? scopeBuild : null;
   const availableChannels = channels.filter(
     (channel) => channel.id !== release?.channel_id,
   );
@@ -363,20 +381,29 @@ export function ReleaseEditorSheet({
                     </span>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-start gap-2">
-                  <span className="font-medium text-muted-foreground">ID</span>
-                  <span className="min-w-0 basis-full sm:basis-auto">
-                    <BundleIdDisplay
-                      bundleId={release.id}
-                      fullOnMobile
-                      maxLength={18}
+                {/* The label and the ID each head their own row, so `v12`
+                    never reads as part of the ID. A release without a label
+                    yet has no Label row. */}
+                {typeof release.label === "number" ? (
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="font-medium text-muted-foreground">
+                      Label
+                    </span>
+                    <ReleaseIdDisplay
+                      releaseId={release.id}
+                      label={release.label}
+                      part="label"
                     />
-                    {!release.bundle_id ? (
-                      <span className="text-xs text-foreground">
-                        Built-in bundle
-                      </span>
-                    ) : null}
-                  </span>
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span className="font-medium text-muted-foreground">ID</span>
+                  <ReleaseIdDisplay releaseId={release.id} part="id" />
+                  {!release.bundle_id ? (
+                    <span className="text-xs text-foreground">
+                      Built-in bundle
+                    </span>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium text-muted-foreground">
@@ -386,6 +413,13 @@ export function ReleaseEditorSheet({
                     {channelName}
                   </span>
                 </div>
+                {channelName ? (
+                  <ReleaseNativeBuildLink
+                    bundle={bundle}
+                    channel={channelName}
+                    release={release}
+                  />
+                ) : null}
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium text-muted-foreground">
                     Platform
@@ -556,6 +590,7 @@ export function ReleaseEditorSheet({
                         />
                         <Button
                           aria-label="Add cohort"
+                          className="max-md:size-11"
                           disabled={!newCohort.trim()}
                           onClick={addCohort}
                           size="icon"
@@ -600,7 +635,7 @@ export function ReleaseEditorSheet({
                   </FieldGroup>
                   {error ? <FieldError>{error}</FieldError> : null}
                   <Button
-                    className="w-full"
+                    className="w-full max-md:h-11"
                     disabled={!dirty || busy}
                     onClick={save}
                     size="lg"
@@ -616,7 +651,7 @@ export function ReleaseEditorSheet({
                 <section className="flex flex-col gap-4">
                   <h3 className="text-sm font-medium">Actions</h3>
                   <Button
-                    className="w-full"
+                    className="w-full max-md:h-11"
                     disabled={!release.bundle_id || busy}
                     onClick={() => setShowPromote(true)}
                     size="sm"
@@ -626,15 +661,15 @@ export function ReleaseEditorSheet({
                   </Button>
                   {release.bundle_id ? (
                     <Button
-                      className="w-full"
+                      className="w-full max-md:h-11"
                       disabled={busy}
                       onClick={() => {
                         window.open(
-                          `/api/bundles/${encodeURIComponent(release.bundle_id!)}/download`,
+                          `/api/artifacts/${encodeURIComponent(release.bundle_id!)}/download`,
                           "_blank",
                           "noopener,noreferrer",
                         );
-                        toast.success("Bundle download started");
+                        toast.success("Manifest download started");
                       }}
                       size="sm"
                       variant="outline"
@@ -644,7 +679,7 @@ export function ReleaseEditorSheet({
                     </Button>
                   ) : null}
                   <Button
-                    className="w-full"
+                    className="w-full max-md:h-11"
                     disabled={release.enabled || busy}
                     onClick={() => setConfirmDelete(true)}
                     size="sm"
@@ -677,8 +712,12 @@ export function ReleaseEditorSheet({
                   <dl className="mt-4 grid gap-3 text-muted-foreground sm:grid-cols-2">
                     <div className="sm:col-span-2">
                       <dt>Artifact ID</dt>
-                      <dd className="mt-1 break-all font-mono text-foreground">
-                        {release.bundle_id ?? "Built-in bundle"}
+                      <dd className="mt-1 text-foreground">
+                        {release.bundle_id ? (
+                          <ArtifactIdDisplay artifactId={release.bundle_id} />
+                        ) : (
+                          "Built-in bundle"
+                        )}
                       </dd>
                     </div>
                     <div>
@@ -690,8 +729,15 @@ export function ReleaseEditorSheet({
                     {patchBaseBundleId ? (
                       <div className="sm:col-span-2">
                         <dt>Patch base artifact ID</dt>
-                        <dd className="mt-1 break-all font-mono text-foreground">
-                          {patchBaseBundleId}
+                        <dd className="mt-1">
+                          {patchBaseBuild ? (
+                            <BuiltinBundleDisplay
+                              appVersion={builtinBundleVersion(patchBaseBuild)}
+                              bundleId={patchBaseBundleId}
+                            />
+                          ) : (
+                            <ArtifactIdDisplay artifactId={patchBaseBundleId} />
+                          )}
                         </dd>
                       </div>
                     ) : null}
@@ -716,7 +762,7 @@ export function ReleaseEditorSheet({
                       </dd>
                       {onShowScope ? (
                         <Button
-                          className="mt-1 h-auto px-0 text-xs"
+                          className="mt-1 h-auto px-0 text-xs max-md:min-h-11"
                           onClick={() => onShowScope(release.scope_key)}
                           size="sm"
                           variant="link"
@@ -852,7 +898,8 @@ export function ReleaseEditorSheet({
                 <SelectTrigger className="w-full" id="target-channel">
                   <SelectValue placeholder="Select a channel" />
                 </SelectTrigger>
-                <SelectContent className="max-h-64">
+                {/* A phone's list takes the height it has: 44 px rows. */}
+                <SelectContent className="md:max-h-64">
                   <SelectGroup>
                     {availableChannels.map((channel) => (
                       <SelectItem key={channel.id} value={channel.name}>
@@ -878,17 +925,19 @@ export function ReleaseEditorSheet({
               onClick={async () => {
                 if (!release) return;
                 try {
-                  await promote.mutateAsync({
+                  const promoted = await promote.mutateAsync({
                     action: promoteAction,
                     expectedRevision: release.revision,
                     releaseId: release.id,
                     targetChannel: normalizedTargetChannel,
                   });
                   handlePromoteOpenChange(false);
+                  const label = promoted.target.release?.label;
+                  const as = typeof label === "number" ? ` as v${label}` : "";
                   toast.success(
                     isCopyPromotion
-                      ? `Bundle copied to ${normalizedTargetChannel}`
-                      : `Bundle moved to ${normalizedTargetChannel}`,
+                      ? `Bundle copied to ${normalizedTargetChannel}${as}`
+                      : `Bundle moved to ${normalizedTargetChannel}${as}`,
                   );
                 } catch (caught) {
                   toast.error(

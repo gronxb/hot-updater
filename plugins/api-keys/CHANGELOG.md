@@ -1,5 +1,149 @@
 # @hot-updater/plugin-api-keys
 
+## 1.2.0-rc.63
+
+## 1.2.0-rc.62
+
+## 1.2.0-rc.61
+
+## 1.2.0-rc.60
+
+## 1.2.0-rc.59
+
+## 1.2.0-rc.58
+
+## 1.2.0-rc.57
+
+## 1.2.0-rc.56
+
+## 1.2.0-rc.55
+
+## 1.2.0-rc.54
+
+## 1.2.0-rc.53
+
+## 1.2.0-rc.52
+
+## 1.2.0-rc.51
+
+## 1.2.0-rc.50
+
+## 1.2.0-rc.49
+
+## 1.2.0-rc.48
+
+## 1.2.0-rc.47
+
+## 1.2.0-rc.46
+
+## 1.2.0-rc.45
+
+## 1.2.0-rc.44
+
+## 1.2.0-rc.43
+
+## 1.2.0-rc.42
+
+## 1.2.0-rc.41
+
+## 1.2.0-rc.40
+
+## 1.2.0-rc.39
+
+## 1.2.0-rc.38
+
+## 1.2.0-rc.37
+
+## 1.2.0-rc.36
+
+## 1.2.0-rc.35
+
+## 1.2.0-rc.34
+
+## 1.2.0-rc.33
+
+## 1.2.0-rc.32
+
+## 1.2.0-rc.31
+
+## 1.2.0-rc.30
+
+## 1.2.0-rc.29
+
+## 1.2.0-rc.28
+
+## 1.2.0-rc.27
+
+## 1.2.0-rc.26
+
+## 1.2.0-rc.25
+
+## 1.2.0-rc.24
+
+## 1.2.0-rc.23
+
+## 1.2.0-rc.22
+
+## 1.2.0-rc.21
+
+## 1.2.0-rc.20
+
+## 1.2.0-rc.19
+
+## 1.2.0-rc.18
+
+## 1.2.0-rc.17
+
+## 1.2.0-rc.16
+
+## 1.2.0-rc.15
+
+## 1.2.0-rc.14
+
+## 1.2.0-rc.13
+
+## 1.2.0-rc.12
+
+## 1.2.0-rc.11
+
+## 1.2.0-rc.10
+
+## 1.2.0-rc.9
+
+## 1.2.0-rc.8
+
+## 1.2.0-rc.7
+
+## 1.2.0-rc.6
+
+## 1.2.0-rc.5
+
+## 1.2.0-rc.4
+
+## 1.2.0-rc.3
+
+## 1.2.0-rc.2
+
+## 1.2.0-rc.1
+
+## 1.2.0-rc.0
+
+### Patch Changes
+
+- Updated dependencies [8c675a2]
+- Updated dependencies [28dfe97]
+- Updated dependencies [84b21f0]
+- Updated dependencies [0050ff3]
+- Updated dependencies [1ad0ebe]
+- Updated dependencies [89cd5ce]
+- Updated dependencies [79c81f6]
+- Updated dependencies [4d8e0d2]
+- Updated dependencies [ed37acf]
+- Updated dependencies [4e4ddfb]
+- Updated dependencies [f017e61]
+- Updated dependencies [5e7a045]
+  - @hot-updater/plugin-core@1.2.0-rc.0
+
 ## 1.1.22
 
 ## 1.1.21

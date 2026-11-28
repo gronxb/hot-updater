@@ -14,7 +14,10 @@ import {
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   type RunInitOptions,
+  type RunInitResult,
   writeHotUpdaterFiles,
+  backfillInsightsReleaseRefs,
+  fillReleaseLabels,
 } from "@hot-updater/cli-tools";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { execa } from "execa";
@@ -68,9 +71,17 @@ export const prepareDynamoDBDeployment = async (input: {
   await migrateDynamoDB(input, [insights(), apiKeys(), remoteConfig()]);
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  envFile,
+  secretsEnv,
+}: RunInitOptions): Promise<RunInitResult> => {
   const nonInteractive = envFile !== undefined;
-  const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
+  const initEnvSources = await readHotUpdaterInitEnv(
+    process.cwd(),
+    envFile,
+    secretsEnv,
+  );
   const { managedEnv } = initEnvSources;
   const providerEnv = getHotUpdaterInitInputEnv(initEnvSources, nonInteractive);
   const savedInputs = resolveAwsInitInputs(providerEnv);
@@ -342,6 +353,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   // The app's credential, through the managed server's plugins, on the table they read.
   let credential: ProvisionedClientCredential | undefined;
   try {
+    // Labels the releases written before labels, and rebuilds their catalogs.
+    await fillReleaseLabels(server);
     credential = await provisionClientCredential(server, {
       env: providerEnv,
       name: "AWS init",
@@ -424,10 +437,34 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   p.log.success("Generated '.env.hotupdater' file with AWS settings.");
-  await writeHotUpdaterFiles(getConfigScaffold(build, configAuthMode), {
-    cwd: process.cwd(),
-    settings: "AWS",
+  await writeHotUpdaterFiles(
+    getConfigScaffold(build, configAuthMode, {
+      region: bucketRegion,
+      bucketName,
+      tableName: resolvedDynamoDBTableName,
+      cloudfrontDistributionId: distributionId,
+    }),
+    {
+      cwd: process.cwd(),
+      settings: "AWS",
+    },
+  );
+
+  // Moves the Insights events a 1.1 server keyed by artifact to their
+  // releases, once the new server answers and init saved what it set up: a
+  // run that stops leaves a working deployment, and init's rerun resumes it.
+  const backfillDatabase = dynamoDB({
+    credentials,
+    region: bucketRegion,
+    tableName: resolvedDynamoDBTableName,
   });
+  try {
+    await backfillInsightsReleaseRefs(
+      assembleServer({ database: backfillDatabase, plugins: server.plugins }),
+    );
+  } finally {
+    await backfillDatabase.dispose?.();
+  }
 
   // The app's server URL is the CloudFront domain.
   printAppSetup({
@@ -435,12 +472,14 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     ...(credential === undefined ? {} : { credential }),
     clientPlugins: server.clientPlugins,
   });
-  p.log.message(
-    `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/aws#step-3-add-hotupdater-to-your-project",
-    )}`,
-  );
-  p.log.success("Done! 🎉");
+
+  return {
+    nextSteps: [
+      link(
+        "https://hot-updater.dev/docs/managed/aws#step-3-add-hotupdater-to-your-project",
+      ),
+    ],
+  };
 };
 
 // Shared request templates for the infrastructure scaffold.

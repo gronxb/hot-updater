@@ -51,6 +51,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSDictionary<NSString *, id> *)getManifest;
 - (void)resetLaunchPreparation;
 - (void)resetChannel:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject;
+- (void)resetChannelIfSelectionCurrent:(nullable NSDictionary *)params
+                              resolver:(RCTPromiseResolveBlock)resolve
+                              rejecter:(RCTPromiseRejectBlock)reject;
 @end
 
 @protocol HotUpdaterConfigInterface <NSObject>
@@ -68,7 +71,13 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)resetChannelWithImpl:(id<HotUpdaterImplInterface>)impl
                     resolver:(RCTPromiseResolveBlock)resolve
                     rejecter:(RCTPromiseRejectBlock)reject;
+- (void)resetChannelIfSelectionCurrentWithImpl:(id<HotUpdaterImplInterface>)impl
+                                        params:(nullable NSDictionary *)params
+                                      resolver:(RCTPromiseResolveBlock)resolve
+                                      rejecter:(RCTPromiseRejectBlock)reject;
 - (nullable NSString *)takeEventsWithImpl:(id<HotUpdaterImplInterface>)impl;
+- (NSNumber *)beginJavaScriptBackgroundTask;
+- (void)endJavaScriptBackgroundTask:(NSNumber *)identifier;
 - (id<HotUpdaterImplInterface>)implForBundleURL:(nullable NSURL *)bundleURL
     NS_SWIFT_NAME(impl(forBundleURL:));
 @end

@@ -30,7 +30,11 @@ export default {
     name: "mobile", version: "0.10.0", spiVersion: 1, platform: "ios",
     fixtures:{device:(context)=>context.fixture("device", {
       openApp:async()=>{throw new Error("expected process disconnect");},
-      openLink:async()=>{},
+      openLink:async()=>{
+        const error=process.env.E2E_FAKE_LINK_ERROR;
+        delete process.env.E2E_FAKE_LINK_ERROR;
+        if(error) throw new Error(error);
+      },
     }, {openApp:{kind:"resource",label:(app)=>app},openLink:{kind:"resource"}})},
     observe: async () => ({root:{ref:{id:"root",revision:""},children:[]},viewport:{width:100,height:100}}),
     locate: async () => [{ref:{id:"result",revision:""},role:"text",testId:"update-action-result",text:" current-channel ->  installed ID r1\\n"}],
@@ -50,7 +54,11 @@ const driver = (device, screen, overrides = {}) => new MobileAppDriver({
 `;
 
 // Runs one fixture file through the installed e2e CLI on the fake engine.
-async function runFixture(name: string, testSource: string) {
+async function runFixture(
+  name: string,
+  testSource: string,
+  env: NodeJS.ProcessEnv = {},
+) {
   const resultsRoot = path.join(root, "e2e/results");
   mkdirSync(resultsRoot, { recursive: true });
   const dir = mkdtempSync(path.join(resultsRoot, `mobile-sdk-${name}-`));
@@ -62,7 +70,7 @@ async function runFixture(name: string, testSource: string) {
     [resolveE2eCli(), "run", "--config", path.join(dir, "e2e.config.ts")],
     {
       cwd: root,
-      env: { ...process.env, E2E_TELEMETRY_DISABLED: "1" },
+      env: { ...process.env, ...env, E2E_TELEMETRY_DISABLED: "1" },
       timeout: 30_000,
     },
   ).then(
@@ -168,6 +176,89 @@ test("verified expected launch disconnect", async ({device, screen}) => {
     expect(result.errors).toEqual([]);
     expect(result.status).toBe("passed");
   });
+
+  it.each([
+    {
+      title: "a link that was never sent",
+      error: "xcrun timed out after 15000ms",
+      links: 2,
+    },
+    {
+      title: "a link that may have arrived",
+      error: "xcrun simctl openurl did not answer within 20000ms.",
+      links: 1,
+    },
+  ])(
+    "accepts $title in the run's result only with the driver's count",
+    async ({ error, links }) => {
+      const { dir, exitCode, report } = await runFixture(
+        "link-timeout",
+        `${driverPreamble}
+test("recovered link", async ({device, screen}) => {
+  const app = driver(device, screen);
+  await app.assertText("read", "update-action-result", "installed ID r1");
+  expect(app.expectedLinkTimeouts).toBe(1);
+});
+`,
+        { E2E_FAKE_LINK_ERROR: error },
+      );
+      expect(exitCode).toBe(0);
+      const attempt = report.run.results[0].attempts[0];
+      const linkSteps = attempt.steps.filter(
+        (step: { api: string }) => step.api === "device.openLink",
+      );
+      expect(linkSteps).toHaveLength(links);
+      expect(linkSteps[0].status).toBe("failed");
+      const context: MobileContext = {
+        runId: "fixture",
+        headSha: report.run.vcs.commit,
+        profile: "fixture",
+        platform: "ios",
+        target: "v0.85.0",
+        track: "greenfield",
+        deviceId: "fixture-device",
+        session: "fixture-session",
+        resultsDir: dir,
+        appPath: "fixture.app",
+        appId: "org.example",
+        scenarioNames: ["recovered link"],
+        controlBaseUrl: "http://127.0.0.1:1",
+        testTimeoutMs: 30_000,
+        cleanupTimeoutMs: 30_000,
+      };
+      const resultWith = (expectedLinkTimeouts: number) =>
+        normalizeMobileResult(context, {
+          report,
+          receipt: {
+            schemaVersion: 1,
+            identity: mobileResultIdentity(context),
+            report,
+          },
+          evidence: {
+            schemaVersion: 1,
+            scenarios: [
+              {
+                name: "recovered link",
+                consoleInsights: { verified: true },
+                bodyCompleted: true,
+                cleanupCompleted: true,
+                expectedLaunchFailures: 0,
+                expectedLinkTimeouts,
+              },
+            ],
+          },
+          cleanupEvidence: {
+            schemaVersion: 1,
+            attempts: [{ name: "recovered link", cleanupCompleted: true }],
+          },
+          cleanupStatus: "passed",
+          exitCode: 0,
+        });
+      expect(resultWith(1).errors).toEqual([]);
+      expect(resultWith(1).status).toBe("passed");
+      expect(resultWith(0).status).toBe("failed");
+    },
+  );
 
   it("fails a mismatched result as an SDK assertion", async () => {
     const { exitCode, report } = await runFixture(

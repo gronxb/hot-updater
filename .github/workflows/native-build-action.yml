@@ -1,0 +1,228 @@
+on:
+  pull_request:
+    paths:
+      - "actions/native-build/**"
+      - "actions/shared/**"
+      - "examples-server/preview-action/**"
+      - "packages/cli-tools/src/credentialResolver.ts"
+      - "packages/cli-tools/src/interactive.ts"
+      - "packages/cli-tools/src/secrets.ts"
+      - "packages/hot-updater/src/commands/buildNative.ts"
+      - "packages/hot-updater/src/utils/prompt.ts"
+      - "packages/hot-updater/src/utils/native/**"
+      - ".github/workflows/native-build-action.yml"
+
+name: Native Build Action
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-build-action-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# The native build action (actions/native-build) in CI, which never signs in
+# to an Apple or Google account, against Postgres and MinIO started in the
+# job. The config sets no secrets adapter: every credential is a job
+# variable, which the CLI reads first, or is in localSecrets()'s store under
+# HOT_UPDATER_HOME, minus the credentials each run expects to miss: every run but the last must fail before anything is built, naming
+# what is missing and how to provide it. A submit with the proof's made-up
+# service account, which `secrets put` stored in localSecrets()'s store,
+# fails at Google's Play check before the build. The last run builds and
+# tracks examples/v0.85.0's .aab. The proof reads the
+# CLI's output, which scripts/record-cli.mjs records as the action's `cli`,
+# and Postgres.
+jobs:
+  proof:
+    name: Native build action (CI credentials)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      PROOF_LOG: /tmp/native-build-proof.log
+      # localSecrets()'s store, which `secrets put` writes and builds read.
+      HOT_UPDATER_HOME: /tmp/hot-updater-home
+      # pnpm links the workspace CLI's bin only when its dist exists at
+      # install time, which is before this job builds it.
+      PROOF_CLI: node ../../examples-server/preview-action/scripts/record-cli.mjs node ../../packages/hot-updater/dist/index.mjs
+      # The example's release build is debuggable, which skips lintVitalRelease,
+      # and builds one ABI.
+      ORG_GRADLE_PROJECT_HOT_UPDATER_E2E_DEBUGGABLE: "true"
+      ORG_GRADLE_PROJECT_reactNativeArchitectures: x86_64
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
+      - name: Setup pnpm
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b
+      - name: Setup Node.js
+        uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+      # ubuntu-latest's default JDK is 25 on Ubuntu 26.04, whose restricted
+      # method warning fails AGP's CMake configure. React Native builds with
+      # JDK 17, which every Ubuntu image ships.
+      - name: Use JDK 17
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+      - run: pnpm install
+      - name: Build
+        run: pnpm build
+
+      - name: Start Postgres and MinIO
+        run: bash examples-server/preview-action/scripts/backend.sh native-build-action > "$RUNNER_TEMP/backend.env"
+      - name: Seed the backend and the release keystore
+        run: |
+          set -a; . "$RUNNER_TEMP/backend.env"; set +a
+          bash examples-server/preview-action/scripts/native-build-seed.sh "$RUNNER_TEMP/logs" > "$RUNNER_TEMP/seed.env"
+          keystore="$(grep '^HOT_UPDATER_RELEASE_KEYSTORE=' "$RUNNER_TEMP/seed.env" | cut -d= -f2-)"
+          echo "::add-mask::$keystore"
+          # The job's environment is where the CLI reads every credential first.
+          cat "$RUNNER_TEMP/backend.env" "$RUNNER_TEMP/seed.env" >> "$GITHUB_ENV"
+      - name: Check that the credentials come only from the job's environment
+        run: test ! -e examples/v0.85.0/.env.hotupdater
+
+      - name: Refuse an iOS build on a Linux runner
+        id: ios-on-linux
+        continue-on-error: true
+        uses: ./actions/native-build
+        with:
+          platform: ios
+          scheme: release
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+      - name: Check that the action refused it before running the CLI
+        run: |
+          test "${{ steps.ios-on-linux.outcome }}" = failure
+          test ! -e "$PROOF_LOG"
+
+      - name: Submit without the Play service account, never signing in to Google
+        id: upload-missing
+        continue-on-error: true
+        uses: ./actions/native-build
+        with:
+          platform: android
+          scheme: release
+          submit: play-internal
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+      - name: Check that it failed before the build, naming what to set
+        run: |
+          test "${{ steps.upload-missing.outcome }}" = failure
+          node examples-server/preview-action/native-build-proof.ts upload-missing
+          rm "$PROOF_LOG"
+
+      - name: Build without the scheme's keystore
+        id: keystore-missing
+        continue-on-error: true
+        uses: ./actions/native-build
+        with:
+          platform: android
+          scheme: widget
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+      - name: Check that the signing credential failed before the build
+        run: |
+          test "${{ steps.keystore-missing.outcome }}" = failure
+          node examples-server/preview-action/native-build-proof.ts keystore-missing
+          rm "$PROOF_LOG"
+
+      - name: Build with a keystore value that lacks a field
+        id: keystore-malformed
+        continue-on-error: true
+        uses: ./actions/native-build
+        env:
+          HOT_UPDATER_RELEASE_KEYSTORE: '{"keystore":"AAAA","storePassword":"malformed-proof-pass","keyAlias":"release"}'
+        with:
+          platform: android
+          scheme: release
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+      - name: Check that it named the missing field before the build
+        run: |
+          test "${{ steps.keystore-malformed.outcome }}" = failure
+          node examples-server/preview-action/native-build-proof.ts keystore-malformed
+          rm "$PROOF_LOG"
+
+      # native-build ios stops at the credential check before anything needs macOS,
+      # so the CLI runs here directly: once without a terminal, and once on
+      # the terminal `script` gives it, where only CI says nobody answers.
+      - name: Build for TestFlight without the App Store Connect API key
+        working-directory: examples/v0.85.0
+        env:
+          CI: "true"
+        run: |
+          set +e
+          $PROOF_CLI native-build ios --scheme release --submit testflight < /dev/null
+          code=$?
+          set -e
+          test "$code" -ne 0
+          node ../../examples-server/preview-action/native-build-proof.ts ios-missing
+          rm "$PROOF_LOG"
+
+          set +e
+          timeout 300 script -qec "$PROOF_CLI native-build ios --scheme release --submit testflight" /dev/null
+          code=$?
+          set -e
+          # 124 is timeout's: a prompt waited on the terminal.
+          test "$code" -ne 0 && test "$code" -ne 124
+          node ../../examples-server/preview-action/native-build-proof.ts ios-missing
+          rm "$PROOF_LOG"
+
+      - name: Store the Play service account in localSecrets()'s store
+        working-directory: examples/v0.85.0
+        run: |
+          work="$(mktemp -d)"
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$work/key.pem" 2>/dev/null
+          node -e '
+            const fs = require("node:fs");
+            fs.writeFileSync(process.argv[2], JSON.stringify({
+              type: "service_account",
+              project_id: "hot-updater-proof",
+              client_email: "uploader@hot-updater-proof.iam.gserviceaccount.com",
+              private_key: fs.readFileSync(process.argv[1], "utf8"),
+            }));
+          ' "$work/key.pem" "$work/service-account.json"
+          json="$(cat "$work/service-account.json")"
+          echo "::add-mask::$json"
+          # localSecrets() keeps it in localSecrets()'s store, where the
+          # build below reads it: the job's environment does not set it.
+          $PROOF_CLI secrets put play-service-account "$work/service-account.json"
+          node ../../examples-server/preview-action/native-build-proof.ts put-key-store "$work/service-account.json"
+          rm "$PROOF_LOG"
+          rm -rf "$work"
+
+      - name: Submit with a key Google refuses, before anything is built
+        id: play-refused
+        continue-on-error: true
+        uses: ./actions/native-build
+        with:
+          platform: android
+          scheme: release
+          submit: play-internal
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+      - name: Check that the Play check failed before the build
+        run: |
+          test "${{ steps.play-refused.outcome }}" = failure
+          node examples-server/preview-action/native-build-proof.ts play-refused
+          rm "$PROOF_LOG"
+
+      - name: Build and track with every credential set
+        id: built
+        uses: ./actions/native-build
+        with:
+          platform: android
+          scheme: release
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+      - name: Check the build and its registration
+        run: node examples-server/preview-action/native-build-proof.ts built
+
+      - name: Print the seed's logs
+        if: failure()
+        run: |
+          for log in "$RUNNER_TEMP"/logs/*.log; do
+            echo "::group::$log"
+            cat "$log"
+            echo "::endgroup::"
+          done

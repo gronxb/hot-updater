@@ -43,7 +43,11 @@ class StaleReadError extends Error {}
  * observe each rerun.
  */
 export interface RetryOptions {
-  /** How many times a transaction runs before it fails; 8 by default. */
+  /**
+   * How many failed rounds a transaction takes before it fails; 8 by default.
+   * A resend that lost its aggregate rows to another writer's commit does not
+   * count: it reads them again until it applies.
+   */
   readonly attempts?: number;
   /** The wait before the second attempt, doubling after each; 5 ms by default. */
   readonly baseDelayMs?: number;
@@ -82,6 +86,16 @@ interface Pending {
 }
 
 const idOf = (table: string, key: DatabaseKey) => JSON.stringify([table, key]);
+
+/** The aggregate rows a write changes, at the versions it read them. */
+const versionsOf = (ops: readonly WriteOp[]): string =>
+  JSON.stringify(
+    ops.map((op) =>
+      op.type === "insert"
+        ? [op.table.name, rowKey(op.table, op.row)]
+        : [op.table.name, op.key, "guard" in op ? op.guard?.v : undefined],
+    ),
+  );
 const versionOf = (row: StoredRow) => Number(row[DATABASE_VERSION_COLUMN]);
 const isKeyed = (value: unknown): value is DatabaseKeyValue =>
   value !== null && value !== undefined;
@@ -524,7 +538,14 @@ export const createTransactions = ({
       assertOutsideTransaction();
       let run: Awaited<ReturnType<typeof attempt<R>>> | undefined;
       let negative: NegativeGaugeError | undefined;
-      for (let round = 0; round < attempts; round += 1) {
+      // Failed rounds with no proof that another writer committed.
+      let failures = 0;
+      // The aggregate row versions a resent write lost on.
+      let lost: string | undefined;
+      // Whether the last failed round was the store's transient refusal,
+      // such as a throttle, rather than a conflict with another writer.
+      let busy = false;
+      for (let round = 0; ; round += 1) {
         const delay =
           round && Math.min(maxDelayMs, baseDelayMs * 2 ** (round - 1));
         if (delay > 0) {
@@ -538,6 +559,9 @@ export const createTransactions = ({
         });
         if (run === undefined) {
           onRetry?.("rerun", round + 1);
+          lost = undefined;
+          busy = false;
+          if ((failures += 1) >= attempts) break;
           continue;
         }
         let aggregates: WriteOp[];
@@ -548,9 +572,20 @@ export const createTransactions = ({
           if (!(error instanceof NegativeGaugeError)) throw error;
           negative = error;
           onRetry?.("rerun", round + 1);
+          busy = false;
           run = undefined;
+          lost = undefined;
+          if ((failures += 1) >= attempts) break;
           continue;
         }
+        // A resend that reads other versions of its aggregate rows lost to
+        // another writer's commit. Aggregate deltas commute, so that loss
+        // costs no attempt: each such round is another writer's progress, so
+        // a busy shard row alone never exhausts the attempts.
+        const versions = versionsOf(aggregates);
+        if (lost !== undefined && versions !== lost) failures -= 1;
+        lost = undefined;
+        if (failures >= attempts) break;
         const ops = [...run.ops, ...aggregates];
         if (ops.length <= 1 && ops.every(({ type }) => type === "check")) {
           return run.result;
@@ -569,8 +604,19 @@ export const createTransactions = ({
         }
         if (outcome.ok) return run.result;
         const failed = "failedOp" in outcome ? outcome.failedOp : undefined;
+        busy = failed === undefined;
         if (failed === undefined || failed >= run.ops.length) {
           onRetry?.("resend", round + 1);
+          // Only a write that failed on one of its aggregate rows can be
+          // refunded, when the next round reads that row again. A transient
+          // failure names no row and keeps its attempt.
+          failures += 1;
+          if (failed !== undefined) {
+            // Settled when the next round reads the aggregate rows again.
+            lost = versions;
+          } else if (failures >= attempts) {
+            break;
+          }
           continue;
         }
         const reason = await classify(ops[failed]!, run.read);
@@ -579,11 +625,14 @@ export const createTransactions = ({
         }
         onRetry?.("rerun", round + 1);
         run = undefined;
+        if ((failures += 1) >= attempts) break;
       }
       throw (
         negative ??
         new DatabaseConflictError(
-          `The transaction conflicted ${attempts} times.`,
+          busy
+            ? `The database stayed busy through ${attempts} attempts of the transaction, as a store does at its throughput limit.`
+            : `The transaction conflicted ${attempts} times.`,
         )
       );
     },

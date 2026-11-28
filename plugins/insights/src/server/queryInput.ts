@@ -8,6 +8,7 @@ import type {
   InsightsEventPageInput,
   InsightsUserInstallationPageInput,
 } from "./types";
+import { RELEASE_ID_PARAM } from "./wire";
 
 const MAX_PAGE_LIMIT = 100;
 const MAX_IDENTITY_LENGTH = 255;
@@ -80,7 +81,7 @@ export const parseEventPageInput = (
   request: Request,
 ): InsightsEventPageInput => {
   const url = new URL(request.url);
-  const bundleFields = ["bundleId", "outcome", "platform", "channel"];
+  const bundleFields = [RELEASE_ID_PARAM, "outcome", "platform", "channel"];
   let bundle: InsightsBundleSelection | undefined;
   if (bundleFields.some((key) => url.searchParams.has(key))) {
     const outcome = readSingle(url, "outcome");
@@ -94,7 +95,7 @@ export const parseEventPageInput = (
     }
     bundle = {
       ...readScope(url),
-      bundleId: readId(url, "bundleId", 1_024),
+      releaseId: readId(url, RELEASE_ID_PARAM, 1_024),
       outcome,
     };
   }
@@ -124,19 +125,18 @@ export const parseReportingOverviewInput = (
   request: Request,
 ): InsightsScope & {
   readonly window: ActiveInstallationWindow;
-  readonly bundleId?: string;
+  readonly releaseId?: string;
 } => {
   const url = new URL(request.url);
   const window = readSingle(url, "window") ?? "30d";
   if (window !== "24h" && window !== "7d" && window !== "30d") {
     throw new InsightsBadRequestError("Invalid 'window' query parameter.");
   }
-  const bundleId = readSingle(url, "bundleId");
   return {
     ...readScope(url),
     window,
-    ...(bundleId === undefined
+    ...(readSingle(url, RELEASE_ID_PARAM) === undefined
       ? {}
-      : { bundleId: readId(url, "bundleId", 1_024) }),
+      : { releaseId: readId(url, RELEASE_ID_PARAM, 1_024) }),
   };
 };

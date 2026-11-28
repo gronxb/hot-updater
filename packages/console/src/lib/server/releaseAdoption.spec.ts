@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   type AdoptionRelease,
+  bundleChip,
   crashRateOf,
   defaultAdoptionReleases,
   readBundleEventsInput,
@@ -62,7 +63,7 @@ const row = (
 
 // Newest first, as the release index lists them.
 const releases = [
-  row("release-4", 9 * DAY, { message: "Newest" }),
+  row("release-4", 9 * DAY, { message: "Newest", label: 4 }),
   row("release-no-bundle", 8 * DAY, { bundle_id: null }),
   row("release-3", 7 * DAY, { enabled: false }),
   row("release-2", 5 * DAY),
@@ -123,7 +124,7 @@ describe("Release health bundles", () => {
     expect(listed).toEqual([
       {
         releaseId: "release-4",
-        bundleId: "bundle-release-4",
+        label: 4,
         platform: "ios",
         deployedAtMs: 9 * DAY,
         targetAppVersion: "1.0.0",
@@ -133,6 +134,8 @@ describe("Release health bundles", () => {
       },
       expect.objectContaining({
         releaseId: "release-3",
+        // A release the label fill hasn't reached has none.
+        label: null,
         enabled: false,
         live: false,
       }),
@@ -239,7 +242,7 @@ describe("Release health's default bundles", () => {
     live: boolean,
   ): AdoptionRelease => ({
     releaseId,
-    bundleId: `bundle-${releaseId}`,
+    label: null,
     platform,
     deployedAtMs: 0,
     targetAppVersion: null,
@@ -310,7 +313,7 @@ describe("Release health counts", () => {
         channel: "production",
         window: "7d",
         endMs: 10 * DAY,
-        bundleId: "bundle-1",
+        releaseId: "release-1",
         type: "LAUNCHED",
       },
       10 * DAY - HOUR / 2,
@@ -324,14 +327,14 @@ describe("Release health counts", () => {
           platform: "ios",
           channel: "production",
           type,
-          toBundleId: "bundle-1",
+          toReleaseId: "release-1",
         },
         timeRange: { start: 3 * DAY, end: 10 * DAY },
         intervalMs: 6 * HOUR,
       });
     }
     expect(launched).toMatchObject({
-      bundleId: "bundle-1",
+      releaseId: "release-1",
       type: "LAUNCHED",
       total: 168,
     });
@@ -346,7 +349,7 @@ describe("Release health counts", () => {
       channel: "production",
       window: "7d",
       endMs: 10 * DAY,
-      bundleId: "bundle-1",
+      releaseId: "release-1",
       type: "DOWNLOADED",
     });
     expect(model.countEventSeries).toHaveBeenCalledExactlyOnceWith({
@@ -354,7 +357,7 @@ describe("Release health counts", () => {
         platform: "ios",
         channel: "production",
         type: "UPDATE_DOWNLOADED",
-        toBundleId: "bundle-1",
+        toReleaseId: "release-1",
       },
       timeRange: { start: 3 * DAY, end: 10 * DAY },
       intervalMs: 6 * HOUR,
@@ -367,7 +370,7 @@ describe("Release health counts", () => {
       channel: "production",
       window: "24h",
       endMs: 10 * DAY,
-      bundleId: "bundle-1",
+      releaseId: "release-1",
       type: "RECOVERED",
     });
     expect(model.countEventSeries).toHaveBeenLastCalledWith(
@@ -376,7 +379,7 @@ describe("Release health counts", () => {
           platform: "ios",
           channel: "production",
           type: "RECOVERED",
-          fromBundleId: "bundle-1",
+          fromReleaseId: "release-1",
         },
         intervalMs: HOUR,
       }),
@@ -392,7 +395,7 @@ describe("Release health counts", () => {
         channel: "production",
         window: "24h",
         endMs: 12 * DAY,
-        bundleId: "bundle-1",
+        releaseId: "release-1",
         type: "RECOVERED",
       },
       10 * DAY - HOUR / 2,
@@ -408,7 +411,7 @@ describe("Release health counts", () => {
         channel: "production",
         window: "24h",
         endMs: 10 * DAY + 1,
-        bundleId: "bundle-1",
+        releaseId: "release-1",
         type: "LAUNCHED",
       }),
     ).rejects.toThrow("Choose a platform, channel, period, and bundle.");
@@ -419,7 +422,7 @@ describe("Release health counts", () => {
         channel: "production",
         window: "24h",
         endMs: 10 * DAY,
-        bundleId: "bundle-1",
+        releaseId: "release-1",
         type: "LAUNCHED",
       }),
     ).toThrow("Choose a platform, channel, period, and bundle.");
@@ -430,10 +433,21 @@ describe("Release health counts", () => {
         channel: "production",
         window: "24h",
         endMs: 10 * DAY,
-        bundleId: "bundle-1",
+        releaseId: "release-1",
         type: "UPDATE_FAILED" as never,
       }),
     ).rejects.toThrow("Choose a platform, channel, period, and bundle.");
+  });
+
+  it("names a narrowed bundle by its label and ID tail, or its tail alone without one", () => {
+    const id = "019a0000-0000-7000-8000-00000000abcd";
+    expect(bundleChip(id, [{ releaseId: id, label: 7 }])).toBe(
+      "Bundle v7 00000000abcd",
+    );
+    expect(bundleChip(id, [{ releaseId: id, label: null }])).toBe(
+      "Bundle 00000000abcd",
+    );
+    expect(bundleChip(id, [])).toBe("Bundle 00000000abcd");
   });
 
   it("counts a crash rate over applies and crashes, and recommends a rollback from 5% of 20", () => {

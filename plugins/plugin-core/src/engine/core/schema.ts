@@ -3,8 +3,23 @@ import { defineAggregate, defineTable } from "../database/schema";
 /** A channel's id is `channel:` and its name's channel key, so ids share channel_key's bound. */
 const CHANNEL_ID = { type: "string", maxLength: 1408, ascii: true } as const;
 
-/** Core's schema version: the `schema.core` settings row. */
-export const HOT_UPDATER_SCHEMA_VERSION = "1.0.0";
+/**
+ * Core's schema version: the `schema.core` settings row. Bump it when core
+ * adds a table, then regenerate the managed migrations with
+ * HOT_UPDATER_UPDATE_SQL=1 (the D1 and Supabase schema specs), so the next
+ * release's numbered migration carries the change and `hot-updater init`
+ * applies it to managed databases an earlier release created. The official
+ * plugins' `schemaVersion`s follow the same rule. A bump only adds tables:
+ * every database's migrator creates missing tables and then records the
+ * version, and none of them changes an existing table's columns, so changing
+ * one needs a migration step of its own first. An index added to an existing
+ * table is listed in `LATE_INDEXES`, and a column in `LATE_COLUMNS`. The schema fence answers 503 on
+ * a database whose row differs, until it runs. Before a version is released,
+ * its tables change in place in its own migration, and a database one of its
+ * prereleases migrated takes the same change by hand: the fence compares this
+ * row, not columns, so nothing reports it.
+ */
+export const HOT_UPDATER_SCHEMA_VERSION = "1.2.0";
 
 const bundles = defineTable(
   {
@@ -92,6 +107,9 @@ const releases = defineTable(
     },
     created_at_ms: { type: "integer" },
     updated_at_ms: { type: "integer" },
+    // Last, so a table that gained it by `ALTER TABLE … ADD COLUMN` (see
+    // `LATE_COLUMNS`) has the columns of one created with it.
+    label: { type: "integer", required: false },
   },
   {
     key: ["id"],
@@ -113,8 +131,73 @@ const releases = defineTable(
       },
       byBundle: { eq: ["bundle_id"], sort: ["id"] },
       all: { eq: [], sort: ["id"] },
+      // Every release by scope, so the scopes that have releases are
+      // listed one limit-1 seek per scope, past the last one. SQL and
+      // MongoDB read it through `byScope`'s columns; a key-value store
+      // keeps items of its own (see `LATE_INDEXES`), whose sort key is the
+      // scope key and the ID, 38 bytes past the catalog row's. The scope's
+      // channel bounds it: `channels.all`'s sort key holds the name and the
+      // ID `channel:<base64url of the name>`, so the longest channel a store
+      // holds still leaves room for the longest fingerprint (DynamoDB: 896
+      // of 1,024 bytes; `scopesIndexKeys.spec.ts` in @hot-updater/server).
+      scopes: { eq: [], sort: ["scope_key"] },
+      // A label names one release of a channel and platform, on every
+      // store; a row without one yet holds no entry. The channel ID bounds
+      // its key as it bounds `byChannelPlatform`'s
+      // (`scopesIndexKeys.spec.ts` in @hot-updater/server).
+      byLabel: {
+        eq: ["channel_id", "platform", "label"],
+        sort: [],
+        unique: true,
+      },
     },
   },
+);
+
+/**
+ * Indexes declared on a table that a released schema's servers write: a
+ * store that keeps index items of its own (`migrations.fillIndex`) lacks
+ * them for rows written before, and for rows such a server still writes
+ * after the migration, since its schema fence keeps a check that passed.
+ * Each migration writes the missing items, and `db migrate` on a database
+ * whose settings match looks for them. `releases.scopes` arrived in 1.2.0;
+ * 1.1.x servers write releases without it.
+ */
+export const LATE_INDEXES: readonly {
+  readonly table: string;
+  readonly index: string;
+}[] = [{ table: "releases", index: "scopes" }];
+
+/**
+ * Columns added to a table that a released schema created: a migrator whose
+ * store has columns adds each one missing from an existing table, with
+ * `ALTER TABLE … ADD COLUMN`, before it creates the table's indexes, and
+ * `db migrate` on a database whose settings match still looks for them,
+ * since a database a prerelease migrated records the same settings. Each
+ * is optional, so rows written before it, and rows a server of the earlier
+ * release still writes, read as null. `releases.label` arrived in 1.2.0.
+ */
+export const LATE_COLUMNS: readonly {
+  readonly table: string;
+  readonly column: string;
+}[] = [{ table: "releases", column: "label" }];
+
+/**
+ * One counter per sequence: `releases/<platform>/<channel ID>` holds the
+ * last label that channel and platform's releases took. A deploy or a
+ * promote reads it and writes the next value in the transaction that writes
+ * the release, so two writers never take one label. `is_filled` is true once
+ * every release of the sequence written before labels has one, in ID order;
+ * until then a writer fills them first. Deleting a channel deletes its
+ * counters, so a channel created again with the name starts at 1.
+ */
+const labelSequences = defineTable(
+  {
+    id: { type: "string", maxLength: 1440, ascii: true },
+    last_label: { type: "integer" },
+    is_filled: { type: "boolean" },
+  },
+  { key: ["id"], indexes: { all: { eq: [], sort: ["id"] } } },
 );
 
 /** One compiled catalog per scope; the update check reads exactly this row. */
@@ -148,6 +231,176 @@ const channels = defineTable(
   { key: ["id"], indexes: { all: { eq: [], sort: ["name"] } } },
 );
 
+/**
+ * The native builds `native-build android` and `native-build ios` track, newest first
+ * in each scope: a platform, a channel, and the fingerprint or app version
+ * the build compiled in. A sandbox build's scope has no channel: its app ID,
+ * URL scheme, artifact kind and distribution in its place, so pull requests
+ * reuse it across channels, while `channel_id` still names the channel it
+ * embeds. `min_bundle_id` names the build's built-in bundle,
+ * a `bundles` row no release publishes. Its references keep no counters, so
+ * adding this table changes no existing one; a channel with builds is
+ * refused deletion through `byChannel`. `build_key` is the native build key
+ * of every input the artifact was built from (`nbk1:` and a SHA-256), which
+ * a build with the same inputs reuses it by; a build registered without
+ * one is never reused. `build_number` is the artifact's `CFBundleVersion`
+ * or `versionCode`. `submitted_to`, `submitted_at_ms` and
+ * `submitted_version` record the store track a build went to, when, and
+ * the store's label of the build; they stay null for a build no store took.
+ * `is_store_build` is true on the build a person or a job says the store
+ * sells, and false on every other: deploys patch from it over the scope's
+ * newest build. The engine copies the scope key into `store_build_scope_key`
+ * for that build alone, so `byStoreBuild` holds one entry per scope at most,
+ * on every store, while any number of a scope's builds hold none.
+ * `is_sandbox` is true on a sandbox build, set from its artifact when it
+ * registers and never changed, and `sandbox_url_scheme` is the URL scheme its artifact registers,
+ * which its preview links open; null on any other build, and on a sandbox
+ * build registered before the column, which registered the derived one.
+ * `export_method` is how an `.ipa` was exported, read from its profile when
+ * it registers and never changed; null on any other artifact, on an `.ipa`
+ * whose profile couldn't be read, and on one registered before the column.
+ * `native_app_version` is the app version the artifact itself reports, its
+ * `CFBundleShortVersionString` or `versionName`, read from the artifact when
+ * it registers and never changed, whatever the update strategy; `app_version`
+ * stays the version OTAs target, null on a fingerprint build. It is null
+ * when the artifact's can't be read, and on a build registered before the
+ * column.
+ * Boolean columns follow one rule: `is_*` for a fact about the row or
+ * `should_*` for an instruction to the client, never null; a unique index over
+ * the rows where one is true keys a derived slot, not the boolean.
+ */
+const nativeBuilds = defineTable(
+  {
+    id: { type: "string", maxLength: 36 },
+    scope_key: { type: "string", maxLength: 2048, ascii: true },
+    platform: { type: "string", maxLength: 16 },
+    channel_id: {
+      ...CHANNEL_ID,
+      references: { model: "channels", onDelete: "none" },
+    },
+    fingerprint_hash: { type: "string", maxLength: 255, required: false },
+    app_version: { type: "string", required: false },
+    min_bundle_id: {
+      type: "string",
+      maxLength: 36,
+      unique: true,
+      references: { model: "bundles", onDelete: "none" },
+    },
+    artifact_kind: { type: "string", maxLength: 16 },
+    artifact_storage_uri: { type: "string" },
+    byte_size: { type: "integer" },
+    git_commit_hash: { type: "string", maxLength: 255, required: false },
+    created_at_ms: { type: "integer" },
+    build_key: { type: "string", maxLength: 69, ascii: true, required: false },
+    build_number: { type: "string", maxLength: 64, required: false },
+    submitted_to: { type: "string", maxLength: 16, required: false },
+    submitted_at_ms: { type: "integer", required: false },
+    submitted_version: { type: "string", maxLength: 255, required: false },
+    is_store_build: { type: "boolean" },
+    is_sandbox: { type: "boolean" },
+    sandbox_url_scheme: {
+      type: "string",
+      maxLength: 255,
+      ascii: true,
+      required: false,
+    },
+    export_method: { type: "string", maxLength: 16, required: false },
+    native_app_version: { type: "string", required: false },
+  },
+  {
+    key: ["id"],
+    derived: {
+      /** The scope this build is the store build of; null on every other. */
+      store_build_scope_key: {
+        type: "string",
+        maxLength: 2048,
+        ascii: true,
+        compute: (row) => (row.is_store_build ? row.scope_key : null),
+      },
+    },
+    indexes: {
+      byScope: { eq: ["scope_key"], sort: ["id"] },
+      byBuildKey: { eq: ["scope_key", "build_key"], sort: ["id"] },
+      // A scope's builds of one kind, so its newer `.app` never hides its
+      // `.ipa`.
+      byScopeKind: { eq: ["scope_key", "artifact_kind"], sort: ["id"] },
+      byStoreBuild: { eq: ["store_build_scope_key"], sort: [], unique: true },
+      // Rooted at the channel, so deleting a channel reads its builds under
+      // the channel row a registration bumps.
+      byChannel: {
+        eq: ["channel_id"],
+        sort: ["id"],
+        root: { model: "channels" },
+      },
+      all: { eq: [], sort: ["id"] },
+    },
+  },
+);
+
+/**
+ * The iPhones a team asks to install ad hoc builds on. A row decides what the
+ * CLI registers with Apple, not what an export includes: Xcode's automatic ad
+ * hoc profile lists every device the Apple account has enabled. `status` is
+ * `pending` until someone approves it, `approved` until a build or
+ * `native-build devices add` registers it with Apple, then `registered`;
+ * declining or removing one deletes its row. `udid` is the UDID in lower case.
+ * `apple_issuer_id` is the App Store Connect issuer whose key registered it,
+ * set once: a build signed by another account never registers these rows.
+ * `apple_error` is Apple's refusal of the device, or why it stopped counting
+ * it, cleared by the next success. `build_id` is the newest native build whose
+ * .ipa the CLI checked lists it; deleting that build never touches the row.
+ * It holds personal data: a UDID, a name, and the emails of who asked and who
+ * approved, null for the CLI.
+ */
+const iosDevices = defineTable(
+  {
+    id: { type: "string", maxLength: 36 },
+    udid: { type: "string", maxLength: 40, ascii: true, unique: true },
+    name: { type: "string", maxLength: 100 },
+    status: { type: "string", maxLength: 16 },
+    requested_by: { type: "string", maxLength: 320, required: false },
+    created_at_ms: { type: "integer" },
+    approved_by: { type: "string", maxLength: 320, required: false },
+    approved_at_ms: { type: "integer", required: false },
+    registered_at_ms: { type: "integer", required: false },
+    apple_issuer_id: {
+      type: "string",
+      maxLength: 64,
+      ascii: true,
+      required: false,
+    },
+    apple_error: { type: "string", maxLength: 512, required: false },
+    build_id: { type: "string", maxLength: 36, required: false },
+  },
+  {
+    key: ["id"],
+    indexes: {
+      byStatus: { eq: ["status"], sort: ["id"] },
+      // The registrations in order, so the earliest is one read: the
+      // registry's account before any claim.
+      byRegistration: { eq: [], sort: ["registered_at_ms"] },
+      all: { eq: [], sort: ["id"] },
+    },
+  },
+);
+
+/**
+ * The Apple account the iOS device registry belongs to: one row, keyed
+ * `registry`, holding the App Store Connect issuer that first registered a
+ * device. A build claims it before it sends Apple anything, and its key makes
+ * the claim atomic on every store, so two builds of two accounts can't both
+ * spend a slot; another account's build then registers nothing. Removing
+ * devices never releases it.
+ */
+const iosDeviceAccount = defineTable(
+  {
+    id: { type: "string", maxLength: 16, ascii: true },
+    apple_issuer_id: { type: "string", maxLength: 64, ascii: true },
+    claimed_at_ms: { type: "integer" },
+  },
+  { key: ["id"], indexes: { all: { eq: [], sort: ["id"] } } },
+);
+
 /** Bundles per platform and in total (`platform_key` is a platform or `*`). */
 const bundleTotals = defineAggregate(
   { platform_key: { type: "string", maxLength: 16 } },
@@ -165,6 +418,10 @@ export const coreSchema = {
   release_catalogs: releaseCatalogs,
   channels,
   bundle_totals: bundleTotals,
+  native_builds: nativeBuilds,
+  ios_devices: iosDevices,
+  ios_device_account: iosDeviceAccount,
+  label_sequences: labelSequences,
 } as const;
 
 /**

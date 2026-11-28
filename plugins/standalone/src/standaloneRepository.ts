@@ -27,9 +27,9 @@ export const standaloneRepository = (
   return Object.freeze({
     name: "standalone-repository",
     core: createStandaloneCoreApi(config),
-    fetchAdmin: (path: string, init: RequestInit = {}) => {
+    fetchAdmin: async (path: string, init: RequestInit = {}) => {
       const headers = new Headers(
-        http.headers({ "Cache-Control": "no-cache" }),
+        await http.headers({ "Cache-Control": "no-cache" }),
       );
       new Headers(init.headers).forEach((value, name) => {
         headers.set(name, value);

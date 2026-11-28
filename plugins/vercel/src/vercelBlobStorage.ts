@@ -2,6 +2,7 @@ import {
   createStorageAdapter,
   createStorageKeyBuilder,
   createStorageUri,
+  type Lazy,
   parseStorageUri,
   type StorageAdapterWith,
   type StorageObject,
@@ -21,9 +22,12 @@ import {
 export interface VercelBlobStorageConfig {
   /**
    * The Blob store's read-write token, `vercel_blob_rw_<storeId>_<secret>`:
-   * the `BLOB_READ_WRITE_TOKEN` Vercel adds to a project the store connects to.
+   * the `BLOB_READ_WRITE_TOKEN` Vercel adds to a project the store connects
+   * to. Or a function that returns it, such as `secret("<name>")` in
+   * `hot-updater.config.ts`: called on first use, so a config loads without
+   * the token.
    */
-  token: string;
+  token: Lazy<string>;
   /** Base path where bundles will be stored in the store. */
   basePath?: string;
   /**
@@ -126,8 +130,21 @@ const access = "private";
 export const vercelBlobStorage = (
   config: VercelBlobStorageConfig,
 ): StorageAdapterWith<VercelBlobStorageOperations> => {
-  const { token } = config;
-  const storeId = storeIdOf(token);
+  // Read on first use, so a config loads without the token.
+  let resolved:
+    | Promise<{ readonly token: string; readonly storeId: string }>
+    | undefined;
+  const store = () =>
+    (resolved ??= (async () => {
+      const token =
+        typeof config.token === "function"
+          ? await config.token()
+          : config.token;
+      return { token, storeId: storeIdOf(token) };
+    })().catch((error: unknown) => {
+      resolved = undefined;
+      throw error;
+    }));
   const normalizedBasePath = config.basePath?.replace(/^\/+|\/+$/g, "") ?? "";
   const getStorageKey = createStorageKeyBuilder(normalizedBasePath);
   const expiresIn = config.signedUrlExpiresIn ?? 3600;
@@ -149,6 +166,7 @@ export const vercelBlobStorage = (
     if (current !== undefined && current.validUntil >= validUntil) {
       return current;
     }
+    const { token } = await store();
     const issued = issueSignedToken({
       token,
       operations: ["get"],
@@ -163,14 +181,15 @@ export const vercelBlobStorage = (
     return issued;
   };
 
-  const parseAndValidate = (storageUri: string) => {
+  const parseAndValidate = async (storageUri: string) => {
     const parsed = parseStorageUri(storageUri, PROTOCOL);
+    const { token, storeId } = await store();
     if (parsed.bucket !== storeId) {
       throw new Error(
         `Blob store mismatch: expected "${storeId}", but found "${parsed.bucket}".`,
       );
     }
-    return parsed;
+    return { ...parsed, token };
   };
 
   const getListPrefix = (prefix = "") => {
@@ -191,26 +210,41 @@ export const vercelBlobStorage = (
     protocol: PROTOCOL,
     async put({ key, body, contentLength, contentType }) {
       const storageKey = getStorageKey(key);
+      const { token, storeId } = await store();
       const storageUri = createStorageUri({
         protocol: PROTOCOL,
         bucket: storeId,
         key: storageKey,
       });
-      await put(toPathname(storageKey), body, {
-        access,
-        token,
-        addRandomSuffix: false,
-        allowOverwrite: true,
-        cacheControlMaxAge: ONE_YEAR_IN_SECONDS,
-        contentType,
-        multipart:
-          contentLength === undefined ||
-          contentLength > MULTIPART_THRESHOLD_BYTES,
-      });
+      const multipart =
+        contentLength === undefined ||
+        contentLength > MULTIPART_THRESHOLD_BYTES;
+      try {
+        await put(toPathname(storageKey), body, {
+          access,
+          token,
+          addRandomSuffix: false,
+          allowOverwrite: true,
+          cacheControlMaxAge: ONE_YEAR_IN_SECONDS,
+          contentType,
+          multipart,
+        });
+      } catch (error) {
+        // @vercel/blob retries a 5xx, an error body it can't read, or a
+        // dropped connection with the stream a single request has already
+        // read, which fails as a TypeError. It keeps the status to itself.
+        if (!multipart && error instanceof TypeError && body.locked) {
+          throw new Error(
+            `Vercel Blob failed while uploading ${storageKey}: it answered an error or the connection dropped`,
+            { cause: error },
+          );
+        }
+        throw error;
+      }
       return { storageUri };
     },
     async get({ storageUri }) {
-      const { key } = parseAndValidate(storageUri);
+      const { key, token } = await parseAndValidate(storageUri);
       const result = await get(toPathname(key), {
         access,
         token,
@@ -232,7 +266,7 @@ export const vercelBlobStorage = (
       };
     },
     async getDownloadUrl({ storageUri }) {
-      const { key } = parseAndValidate(storageUri);
+      const { key } = await parseAndValidate(storageUri);
       const pathname = toPathname(key);
       const validUntil = Date.now() + expiresInMs;
       const { presignedUrl } = await presignUrl(
@@ -242,7 +276,7 @@ export const vercelBlobStorage = (
       return { url: presignedUrl };
     },
     async exists({ storageUri }) {
-      const { key } = parseAndValidate(storageUri);
+      const { key, token } = await parseAndValidate(storageUri);
       try {
         await head(toPathname(key), { token });
         return { exists: true };
@@ -252,11 +286,12 @@ export const vercelBlobStorage = (
       }
     },
     async delete({ storageUri }) {
-      const { key } = parseAndValidate(storageUri);
+      const { key, token } = await parseAndValidate(storageUri);
       await del(toPathname(key), { token });
       return { deleted: true };
     },
     async listObjects(prefix) {
+      const { token, storeId } = await store();
       const objects: StorageObject[] = [];
       let cursor: string | undefined;
       do {
@@ -291,6 +326,7 @@ export const vercelBlobStorage = (
       return objects;
     },
     async deleteObjects(relativeKeys) {
+      const { token } = await store();
       const pathnames = relativeKeys.map((key) =>
         toPathname(getStorageKey(key)),
       );

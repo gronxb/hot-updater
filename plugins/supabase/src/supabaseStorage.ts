@@ -62,6 +62,35 @@ const isMissingObjectError = async (error: unknown) => {
   );
 };
 
+/** The one-line description of a request Storage failed with `status`. */
+const answeredHttp = (status: number) =>
+  `Supabase Storage answered HTTP ${status}`;
+
+/**
+ * fetch for supabase-js, which reads the body of a failed request as JSON. A
+ * gateway in front of Storage answers some failures, such as a 502, with an
+ * HTML page, which would fail as a JSON parse error without its status. Such
+ * a response becomes a JSON error that names the status. A HEAD response
+ * has no body, and supabase-js reads it unparsed.
+ */
+const storageFetch: typeof fetch = async (input, init) => {
+  const response = await fetch(input, init);
+  if (response.ok || init?.method === "HEAD") return response;
+  try {
+    JSON.parse(await response.clone().text());
+    return response;
+  } catch {
+    return Response.json(
+      {
+        statusCode: String(response.status),
+        error: response.statusText,
+        message: answeredHttp(response.status),
+      },
+      { status: response.status, statusText: response.statusText },
+    );
+  }
+};
+
 /** A character Storage rejects in an object name, `?`, or `!`. */
 const ESCAPED_CHARACTER = /[^A-Za-z0-9_/.*'() &$=@;:+,-]/gu;
 const ESCAPE_SEQUENCE = /!([0-9A-F]{2})/gu;
@@ -139,16 +168,26 @@ export const supabaseStorage = (
   | "listObjects"
   | "deleteObjects"
 > => {
-  const supabase = createClient(
-    config.supabaseUrl,
-    resolveSupabaseServiceRoleKey(config),
-  );
-  const bucket = supabase.storage.from(config.bucketName);
+  // Created on first use, so a config loads without the service role key.
+  let client: Promise<ReturnType<typeof createClient>> | undefined;
+  const bucket = async () =>
+    (
+      await (client ??= resolveSupabaseServiceRoleKey(config).then(
+        (key) =>
+          createClient(config.supabaseUrl, key, {
+            global: { fetch: storageFetch },
+          }),
+        (error: unknown) => {
+          client = undefined;
+          throw error;
+        },
+      ))
+    ).storage.from(config.bucketName);
   const getStorageKey = createStorageKeyBuilder(config.basePath);
   const basePrefix = getStorageKey() ? `${getStorageKey()}/` : "";
   const resolveSignedUrl = createSupabaseSignedUrlBatcher({
-    createSignedUrls: (_bucketName, keys, expiresIn) =>
-      bucket.createSignedUrls(keys, expiresIn),
+    createSignedUrls: async (_bucketName, keys, expiresIn) =>
+      (await bucket()).createSignedUrls(keys, expiresIn),
     expiresIn: config.signedUrlExpiresIn ?? 3600,
     formatObjectPath: (_bucketName, key) => key,
   });
@@ -168,7 +207,9 @@ export const supabaseStorage = (
     protocol: "supabase-storage",
     async put({ key, body, contentLength, contentType }) {
       const storageKey = getStorageKey(key);
-      const { error } = await bucket.upload(toObjectName(storageKey), body, {
+      const { error } = await (
+        await bucket()
+      ).upload(toObjectName(storageKey), body, {
         contentType,
         cacheControl: "max-age=31536000",
         upsert: true,
@@ -177,7 +218,16 @@ export const supabaseStorage = (
           ? {}
           : { headers: { "content-length": String(contentLength) } }),
       });
-      if (error) throw error;
+      if (error) {
+        const status: unknown = Reflect.get(error, "status");
+        if (typeof status !== "number") throw error;
+        const detail =
+          error.message === answeredHttp(status) ? "" : `: ${error.message}`;
+        throw new Error(
+          `${answeredHttp(status)} while uploading ${storageKey}${detail}`,
+          { cause: error },
+        );
+      }
       return {
         storageUri: createStorageUri({
           protocol: "supabase-storage",
@@ -188,7 +238,9 @@ export const supabaseStorage = (
     },
     async get({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
-      const { data, error } = await bucket.download(toObjectName(key));
+      const { data, error } = await (
+        await bucket()
+      ).download(toObjectName(key));
       if (error) {
         if (await isMissingObjectError(error)) return { response: null };
         throw new Error(`Failed to download storage object: ${error.message}`);
@@ -203,7 +255,7 @@ export const supabaseStorage = (
     },
     async exists({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
-      const { data, error } = await bucket.exists(toObjectName(key));
+      const { data, error } = await (await bucket()).exists(toObjectName(key));
       if (error) {
         if (isMissingExistsError(error)) return { exists: false };
         throw error;
@@ -212,7 +264,7 @@ export const supabaseStorage = (
     },
     async delete({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
-      const { error } = await bucket.remove([toObjectName(key)]);
+      const { error } = await (await bucket()).remove([toObjectName(key)]);
       if (error && !isNotFoundError(error)) {
         throw new Error(`Failed to delete storage object: ${error.message}`);
       }
@@ -223,7 +275,9 @@ export const supabaseStorage = (
       const folder = toObjectName(getStorageKey(prefix ?? ""));
       let cursor: string | undefined;
       do {
-        const { data, error } = await bucket.listV2({
+        const { data, error } = await (
+          await bucket()
+        ).listV2({
           prefix: folder ? `${folder}/` : "",
           limit: LIST_PAGE_SIZE,
           ...(cursor === undefined ? {} : { cursor }),
@@ -263,9 +317,9 @@ export const supabaseStorage = (
     async deleteObjects(relativeKeys) {
       const names = relativeKeys.map((key) => toObjectName(getStorageKey(key)));
       for (let offset = 0; offset < names.length; offset += DELETE_BATCH_SIZE) {
-        const { error } = await bucket.remove(
-          names.slice(offset, offset + DELETE_BATCH_SIZE),
-        );
+        const { error } = await (
+          await bucket()
+        ).remove(names.slice(offset, offset + DELETE_BATCH_SIZE));
         if (error && !isNotFoundError(error)) {
           throw new Error(`Failed to delete storage objects: ${error.message}`);
         }

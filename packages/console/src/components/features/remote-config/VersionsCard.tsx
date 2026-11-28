@@ -323,7 +323,7 @@ export function VersionsCard({
                 >
                   {versions.isFetchingNextPage ? (
                     <Loader2
-                      className="animate-spin"
+                      className="animate-spin motion-reduce:animate-none"
                       data-icon="inline-start"
                     />
                   ) : null}
@@ -370,7 +370,10 @@ export function VersionsCard({
               }
             >
               {rollback.isPending ? (
-                <Loader2 className="animate-spin" data-icon="inline-start" />
+                <Loader2
+                  className="animate-spin motion-reduce:animate-none"
+                  data-icon="inline-start"
+                />
               ) : (
                 <RotateCcw data-icon="inline-start" />
               )}

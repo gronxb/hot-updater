@@ -1,5 +1,431 @@
 # @hot-updater/plugin-insights
 
+## 1.2.0-rc.63
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.63
+
+## 1.2.0-rc.62
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.62
+
+## 1.2.0-rc.61
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.61
+
+## 1.2.0-rc.60
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.60
+
+## 1.2.0-rc.59
+
+### Patch Changes
+
+- ef2db86: The Insights release-ref backfill and the release-label fill now fit a store's write capacity.
+  - **Smaller transactions and a pause when the store is busy.** `hot-updater init` caps an AWS table at 100 write units a second, and one backfill transaction of 13 event rewrites costs about 260 of them. DynamoDB throttled the backfill until a transaction ran out of attempts, and init stopped before it deployed the server. Both bulk writers now halve their transactions whenever the store stays busy through a transaction's attempts, as they already did for a transaction too large to write. They also wait before writing again: 1 second, doubling after each further busy refusal and starting over after a commit. A refusal after the 32-second wait fails the run, and the next run resumes it.
+  - **One batch size per run.** The backfill keeps one batch size for the whole run, so it no longer reads a refused batch again at full size.
+  - **Backfill after deploy.** AWS, Supabase, and Firebase init now run the backfill after they deploy the new server, as Cloudflare, Vercel, and Azure init already did. A backfill that stops leaves a working deployment, and the next init resumes it.
+  - **Clearer error.** A transaction that runs out of attempts on a busy store now says so, instead of reporting a conflict.
+- @hot-updater/protocol@1.2.0-rc.59
+
+## 1.2.0-rc.58
+
+### Patch Changes
+
+- 7709b2b: Name artifact IDs `bundleId` and release IDs `releaseId` in code. `ReleaseSelectionInput` and `ReleaseSelectionContextInput` in `@hot-updater/protocol` take the built-in bundle's ID as `minBundleId` instead of `minimumReleaseId`, as the React Native SDK and its iOS and Android code now name it, and the rollout functions name their first parameter `releaseId`, the ID they hash. A selection context hash is unchanged: its canonical JSON keeps the key `minimumReleaseId`, so receipts written by any patch still match. In `@hot-updater/plugin-insights`, the reads take and return a bundle's release ID as `releaseId` (`InsightsBundleSelection`, `getReportingOverview`'s input, and `ReportingOverview`'s `bundle`), while the HTTP API and `hot-updater insights overview --json` still call it `bundleId`; `toWireOverview` maps an overview to that shape. The docs call the release ID the bundle ID everywhere, and an artifact's ID the artifact ID.
+- e7ae1dc: Insights keys Release health by release instead of by artifact, so two releases of one artifact in one channel and platform, as a promote back into the channel makes them, count their downloads, launches and crashes apart, and Roll back names the release that crashed. A release's installation count comes from the distribution rows, which already name the release, and `insights_latest_by_bundle` is no longer written. `hot-updater init` and `hot-updater db migrate` move the events a 1.1 server keyed by artifact in the raw period, with their hourly counts, to the release each names (`api.insights.backfillReleaseRefs()`), once a database: they then record the settings row `insights.releaseRefs`, so a later run reads no event. Events a 1.1 server still running records after that stay keyed by artifact until the raw period drops them. The overview of one bundle reads the distribution rows once for both its installation counts (`countReleaseInstallations`).
+
+  The Insights model's bundle filters take `toReleaseId` and `fromReleaseId`, and `countLatestEvents` drops its `bundle` predicates for `countReleaseInstallations`. Event rows add `fromReleaseId`, and installation rows `lastKnownReleaseId`. The Console's event and installation views, the CLI's `insights events`, `installations` and `overview` (and their `--json`), and the distribution show the release ID, the bundle ID apps report; the distribution and the filter chips show its label too. The Insights release picker no longer matches artifact IDs.
+
+- Updated dependencies [7709b2b]
+- Updated dependencies [8e77373]
+  - @hot-updater/protocol@1.2.0-rc.58
+
+## 1.2.0-rc.57
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.57
+
+## 1.2.0-rc.56
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.56
+
+## 1.2.0-rc.55
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.55
+
+## 1.2.0-rc.54
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.54
+
+## 1.2.0-rc.53
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.53
+
+## 1.2.0-rc.52
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.52
+
+## 1.2.0-rc.51
+
+### Patch Changes
+
+- Updated dependencies [c01ee70]
+- Updated dependencies [e833260]
+  - @hot-updater/protocol@1.2.0-rc.51
+
+## 1.2.0-rc.50
+
+### Patch Changes
+
+- f7884ec: fix(insights): the Console's update failures view reads at most 20 breakdown rows from each hour of its period, however many failures a client reports.
+  - The view read every breakdown row of its period. Each row is one release, stage, reason and detail of an hour, and a detail carries the storage error code a client reports. So anyone with the app's API key could add rows that every view of the channel then read.
+  - The view now reads newest first. An hour that holds more than 20 rows is read no further, and the read goes on from the hour before it. A real channel holds a handful of rows an hour, and an incident across several releases and error codes still fits. A day reads at most 480 rows, and 30 days 14,400.
+  - Such an hour is listed in the new `cappedHours`, and the view's coverage is partial. Its failures count only in part, so the Console marks the failure counts and the attempt failure rate "≥", and the card Partial. Every other hour counts every failure, and downloads and installations count in full. "All platforms" keeps either platform's capped hours.
+  - `setupReadBudgetTestSuite` pins the bound on every adapter with a flooded channel of its own, its rows on all 8 shards.
+
+- @hot-updater/protocol@1.2.0-rc.50
+
+## 1.2.0-rc.49
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.49
+
+## 1.2.0-rc.48
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.48
+
+## 1.2.0-rc.47
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.47
+
+## 1.2.0-rc.46
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.46
+
+## 1.2.0-rc.45
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.45
+
+## 1.2.0-rc.44
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.44
+
+## 1.2.0-rc.43
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.43
+
+## 1.2.0-rc.42
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.42
+
+## 1.2.0-rc.41
+
+### Patch Changes
+
+- Updated dependencies [97f063d]
+  - @hot-updater/protocol@1.2.0-rc.41
+
+## 1.2.0-rc.40
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.40
+
+## 1.2.0-rc.39
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.39
+
+## 1.2.0-rc.38
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.38
+
+## 1.2.0-rc.37
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.37
+
+## 1.2.0-rc.36
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.36
+
+## 1.2.0-rc.35
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.35
+
+## 1.2.0-rc.34
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.34
+
+## 1.2.0-rc.33
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.33
+
+## 1.2.0-rc.32
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.32
+
+## 1.2.0-rc.31
+
+### Patch Changes
+
+- Updated dependencies [d4341b4]
+  - @hot-updater/protocol@1.2.0-rc.31
+
+## 1.2.0-rc.30
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.30
+
+## 1.2.0-rc.29
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.29
+
+## 1.2.0-rc.28
+
+### Patch Changes
+
+- Updated dependencies [b03f1be]
+  - @hot-updater/protocol@1.2.0-rc.28
+
+## 1.2.0-rc.27
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.27
+
+## 1.2.0-rc.26
+
+### Patch Changes
+
+- Updated dependencies [f424a4e]
+  - @hot-updater/protocol@1.2.0-rc.26
+
+## 1.2.0-rc.25
+
+### Patch Changes
+
+- Updated dependencies [211e584]
+  - @hot-updater/protocol@1.2.0-rc.25
+
+## 1.2.0-rc.24
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.24
+
+## 1.2.0-rc.23
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.23
+
+## 1.2.0-rc.22
+
+### Patch Changes
+
+- Updated dependencies [a823198]
+  - @hot-updater/protocol@1.2.0-rc.22
+
+## 1.2.0-rc.21
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.21
+
+## 1.2.0-rc.20
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.20
+
+## 1.2.0-rc.19
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.19
+
+## 1.2.0-rc.18
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.18
+
+## 1.2.0-rc.17
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.17
+
+## 1.2.0-rc.16
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.16
+
+## 1.2.0-rc.15
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.15
+
+## 1.2.0-rc.14
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.14
+
+## 1.2.0-rc.13
+
+### Patch Changes
+
+- Updated dependencies [ad99046]
+- Updated dependencies [20006f2]
+- Updated dependencies [3d95e55]
+  - @hot-updater/protocol@1.2.0-rc.13
+
+## 1.2.0-rc.12
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.12
+
+## 1.2.0-rc.11
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.11
+
+## 1.2.0-rc.10
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.10
+
+## 1.2.0-rc.9
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.9
+
+## 1.2.0-rc.8
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.8
+
+## 1.2.0-rc.7
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.7
+
+## 1.2.0-rc.6
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.6
+
+## 1.2.0-rc.5
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.5
+
+## 1.2.0-rc.4
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.4
+
+## 1.2.0-rc.3
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.3
+
+## 1.2.0-rc.2
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.2
+
+## 1.2.0-rc.1
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.1
+
+## 1.2.0-rc.0
+
+### Patch Changes
+
+- Updated dependencies [8c675a2]
+- Updated dependencies [28dfe97]
+- Updated dependencies [84b21f0]
+- Updated dependencies [0050ff3]
+- Updated dependencies [1ad0ebe]
+- Updated dependencies [89cd5ce]
+- Updated dependencies [79c81f6]
+- Updated dependencies [4d8e0d2]
+- Updated dependencies [ed37acf]
+- Updated dependencies [4e4ddfb]
+- Updated dependencies [f017e61]
+- Updated dependencies [5e7a045]
+  - @hot-updater/plugin-core@1.2.0-rc.0
+  - @hot-updater/protocol@1.2.0-rc.0
+
 ## 1.1.22
 
 ### Patch Changes

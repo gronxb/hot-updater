@@ -224,7 +224,7 @@ const hashInputs = [
   {
     cohort: "42",
     crashedBundleIds: [],
-    minimumReleaseId: NIL,
+    minBundleId: NIL,
     strategy: "APP_VERSION",
     strategyValue: "1.4.0",
   },
@@ -233,7 +233,7 @@ const hashInputs = [
     activeReleaseId: uuid(4),
     cohort: " QA ",
     crashedBundleIds: [uuid(9), uuid(1), uuid(9), uuid(5)],
-    minimumReleaseId: uuid(0),
+    minBundleId: uuid(0),
     strategy: "FINGERPRINT",
     strategyValue: "bab42890eeae52e182f8eec84007bb3cbc94d227",
   },
@@ -244,14 +244,14 @@ const hashInputs = [
     crashedBundleIds: Array.from({ length: 14 }, (_, index) =>
       uuid(20 - index),
     ),
-    minimumReleaseId: uuid(0),
+    minBundleId: uuid(0),
     strategy: "APP_VERSION",
     strategyValue: "2.0.0",
   },
   {
     cohort: 'quote"back\\slash/solidus\u0001\n\t emoji🚀é',
     crashedBundleIds: ['id"with"quotes', "\u001f", "Ω"],
-    minimumReleaseId: "\u007f\u0080",
+    minBundleId: "\u007f\u0080",
     strategy: "FINGERPRINT",
     strategyValue: "\ud83d\ude80",
   },
@@ -259,7 +259,7 @@ const hashInputs = [
     activeBundleId: "é",
     cohort: " Beta ",
     crashedBundleIds: ["B", "a", "A", "b"],
-    minimumReleaseId: NIL,
+    minBundleId: NIL,
     strategy: "APP_VERSION",
     strategyValue: "0.0.1",
   },
@@ -361,6 +361,41 @@ const bodyCases: {
     ),
     scope: appVersionScope,
   },
+  {
+    name: "a release's label",
+    body: JSON.stringify(
+      validCatalog(appVersionScope, {
+        releases: [descriptor(3, { message: "Fix", label: 7 }), descriptor(2)],
+        rollbackReleases: [
+          descriptor(2),
+          descriptor(1, { shouldForceUpdate: true, label: 5 }),
+        ],
+      }),
+    ),
+    scope: appVersionScope,
+  },
+  // A label is for display: one that isn't a positive safe integer reads as
+  // none, and the catalog is still accepted.
+  ...(
+    [
+      ["a string", '"7"'],
+      ["zero", "0"],
+      ["negative", "-1"],
+      ["a fraction", "1.5"],
+      ["true", "true"],
+      ["null", "null"],
+      ["past the safe integers", "9007199254740992"],
+      ["written as 7.0", "7.0"],
+    ] as const
+  ).map(([name, label]) => ({
+    name: `a label that is ${name}`,
+    body: JSON.stringify(
+      validCatalog(appVersionScope, {
+        releases: [descriptor(3, { message: "Fix", label: 7 }), descriptor(2)],
+      }),
+    ).replace('"label":7', `"label":${label}`),
+    scope: appVersionScope,
+  })),
   ...[
     ["schemaVersion", 2],
     ["catalogId", ""],
@@ -535,17 +570,13 @@ const selectionCases = Array.from({ length: 400 }, (_, index) => {
     schemaVersion: 1,
     scopeKey: "v1:app-version:ios:cHJvZHVjdGlvbg",
   };
-  const minimumReleaseId = pick([
-    bundleIdOf(0),
-    bundleIdOf(1),
-    bundleIdOf(1015),
-  ]);
+  const minBundleId = pick([bundleIdOf(0), bundleIdOf(1), bundleIdOf(1015)]);
   const bundleIds = pool
     .map((release) => release.bundleId)
     .filter((bundleId): bundleId is string => bundleId !== null);
   const currentBundleId =
     selectionRandom() < 0.3
-      ? minimumReleaseId
+      ? minBundleId
       : pick([...bundleIds, ...bundleIds, bundleIdOf(5000)]);
   const releaseIds = pool.map((release) => release.releaseId);
   const activeReleaseId =
@@ -560,11 +591,11 @@ const selectionCases = Array.from({ length: 400 }, (_, index) => {
   ]);
   const input: ReleaseSelectionInput = {
     activeReleaseId,
-    builtInBundleId: minimumReleaseId,
+    builtInBundleId: minBundleId,
     cohort: pick([null, "1", "42", "500", "1000", "qa", "beta", " QA "]),
     crashedBundleIds: subset(bundleIds).slice(0, 2),
     currentBundleId,
-    minimumReleaseId,
+    minBundleId,
     ...(runningReleaseChoice === "absent"
       ? {}
       : {
@@ -688,5 +719,21 @@ describe("release selection conformance fixture", () => {
       authorizeReleaseTransition: authorizeCases,
     };
     await expect(serializeFixture(fixture)).toMatchFileSnapshot(FIXTURE_PATH);
+  });
+
+  it("reads a release's label and parses everything else as it did before labels", () => {
+    const { body, scope } = bodyCases.find(
+      ({ name }) => name === "a release's label",
+    )!;
+    const parsed = parseReleaseCatalog(body, scope);
+
+    expect(parsed!.releases.map(({ label }) => label)).toEqual([7, undefined]);
+    const withoutLabels = (releases: readonly object[]) =>
+      releases.map(({ label: _, ...release }: { label?: unknown }) => release);
+    expect({
+      ...parsed,
+      releases: withoutLabels(parsed!.releases),
+      rollbackReleases: withoutLabels(parsed!.rollbackReleases),
+    }).toEqual(parseReleaseCatalog(JSON.stringify(validCatalog(scope)), scope));
   });
 });

@@ -7,21 +7,21 @@ interface ChannelBadgeProps {
   className?: string;
 }
 
-const channelColors: Record<string, string> = {
-  production:
-    "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20",
-  dev: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20",
-  staging:
-    "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/20",
-};
+/** The channels with their own color; any other channel is neutral. */
+const COLORED_CHANNELS = new Set(["production", "staging", "dev"]);
 
 export function ChannelBadge({ channel, className }: ChannelBadgeProps) {
+  const name = channel.toLowerCase();
   return (
     <Badge
       variant="outline"
+      translate="no"
+      data-channel={COLORED_CHANNELS.has(name) ? name : undefined}
       className={cn(
-        channelColors[channel.toLowerCase()] ||
-          "bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500/20",
+        "border-channel-other/20 bg-channel-other/10 text-channel-other",
+        "data-[channel=production]:border-channel-production/20 data-[channel=production]:bg-channel-production/10 data-[channel=production]:text-channel-production",
+        "data-[channel=staging]:border-channel-staging/20 data-[channel=staging]:bg-channel-staging/10 data-[channel=staging]:text-channel-staging",
+        "data-[channel=dev]:border-channel-dev/20 data-[channel=dev]:bg-channel-dev/10 data-[channel=dev]:text-channel-dev",
         className,
       )}
     >

@@ -17,6 +17,7 @@ import { execa } from "execa";
 import mysql from "mysql2/promise";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { composeUp } from "../docker.testFixtures";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
 import { prismaAdapter } from "./prisma";
@@ -36,7 +37,7 @@ const compose = [
   "-p",
   "hot-updater-sql-core",
 ];
-const server = "mysql://root:hot_updater@127.0.0.1:53306";
+const server = "mysql://root:hot_updater@127.0.0.1:13306";
 const database = `prisma_${process.pid}`;
 
 /** What the suite runs: core and the Insights plugin. */
@@ -58,7 +59,7 @@ let pool: mysql.Pool;
  * runs over mysql2 through Prisma's raw query API.
  */
 beforeAll(async () => {
-  await execa("docker", [...compose, "up", "-d", "--wait", "mysql"]);
+  await composeUp({ compose, services: ["mysql"] });
   admin = mysql.createPool({ uri: server, multipleStatements: true });
   for (let attempt = 0; ; attempt += 1) {
     try {
@@ -102,6 +103,13 @@ setupDatabaseTestSuite({
     ),
   plugins: [
     insightsTestSuite({
+      createApi: (database, plugin = insights()) =>
+        createHotUpdater({
+          database,
+          storage: createReleaseCatalogTestStorage(),
+          plugins: [plugin],
+          clientAccess: "public",
+        }).api.insights,
       createModel: (database) =>
         createInsightsModel(
           createHotUpdater({

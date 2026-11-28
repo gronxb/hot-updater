@@ -7,6 +7,8 @@ import {
 } from "../../database/adapter";
 import type {
   AggregateShape,
+  DerivedShape,
+  FieldDefinition,
   ModelShape,
   ReferenceAction,
   SchemaShape,
@@ -113,9 +115,11 @@ const fieldProblems = (definition: ModelShape, add: Add) => {
     else if (field.required === false) add(`key field "${name}" is nullable`);
     else if (field.type === "json") add(`key field "${name}" is json`);
   }
-  for (const [name, { type, maxLength, ascii }] of Object.entries(
-    definition.fields,
-  )) {
+  const bounded: [string, FieldDefinition | DerivedShape][] = [
+    ...Object.entries(definition.fields),
+    ...(definition.kind === "table" ? Object.entries(definition.derived) : []),
+  ];
+  for (const [name, { type, maxLength, ascii }] of bounded) {
     if (
       maxLength !== undefined &&
       (type !== "string" || !Number.isSafeInteger(maxLength) || maxLength < 1)
@@ -322,7 +326,7 @@ export const resolveSchema = (
         }),
       );
       if (definition.kind === "table") {
-        for (const [field, { type, multi }] of Object.entries(
+        for (const [field, { type, multi, maxLength, ascii }] of Object.entries(
           definition.derived,
         )) {
           columns.push({
@@ -330,6 +334,8 @@ export const resolveSchema = (
             type,
             nullable: true,
             ...(multi ? { multi } : {}),
+            ...(maxLength === undefined ? {} : { maxLength }),
+            ...(ascii ? { ascii } : {}),
           });
         }
       } else {

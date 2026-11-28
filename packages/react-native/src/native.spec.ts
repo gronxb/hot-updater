@@ -16,16 +16,17 @@ const nativeModuleMock = vi.hoisted(() => {
     getManifest,
     getCrashHistory,
     getConstants: vi.fn(() => ({
-      APP_VERSION: null,
+      APP_VERSION: null as string | null,
       CHANNEL: "production",
       DEFAULT_CHANNEL: "production",
-      FINGERPRINT_HASH: null,
+      FINGERPRINT_HASH: null as string | null,
       MIN_BUNDLE_ID: "min-bundle-id",
     })),
     notifyAppReady: vi.fn(),
     reload: vi.fn(),
     reloadProcess: vi.fn(),
     resetChannel: vi.fn(),
+    isReleaseSelectionCurrent: vi.fn<(guard: unknown) => boolean>(() => true),
     setCohort: vi.fn(),
     setStorageItem: vi.fn<(key: string, value: string | null) => void>(),
     setBundleURL: vi.fn(),
@@ -948,6 +949,28 @@ describe("notifyAppReady", () => {
     expect(getInstallId()).toBe("install-123");
   });
 
+  it("reads the native constants once per runtime", async () => {
+    nativeModuleMock.getConstants.mockClear();
+    nativeModuleMock.getConstants.mockReturnValue({
+      APP_VERSION: "1.0.0",
+      CHANNEL: "production",
+      DEFAULT_CHANNEL: "production",
+      FINGERPRINT_HASH: "fingerprint",
+      MIN_BUNDLE_ID: "min-bundle-id",
+    });
+
+    const { getAppVersion, getFingerprintHash, getMinBundleId } =
+      await import("./native");
+
+    for (let index = 0; index < 3; index++) {
+      expect(getAppVersion()).toBe("1.0.0");
+      expect(getFingerprintHash()).toBe("fingerprint");
+      expect(getMinBundleId()).toBe("min-bundle-id");
+    }
+    // Android computes them again, metadata included, on every call.
+    expect(nativeModuleMock.getConstants).toHaveBeenCalledTimes(1);
+  });
+
   it("normalizes an omitted native fingerprint constant to null", async () => {
     nativeModuleMock.getConstants.mockReturnValue({
       APP_VERSION: null,
@@ -1063,5 +1086,218 @@ describe("takeNativeUpdateEvents", () => {
     const native = await import("./native");
 
     expect(native.takeNativeUpdateEvents()).toBeNull();
+  });
+});
+
+describe("withBackgroundTask", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(nativeModuleMock, "beginBackgroundTask");
+    Reflect.deleteProperty(nativeModuleMock, "endBackgroundTask");
+  });
+
+  const installTasks = () => {
+    const events: string[] = [];
+    const beginBackgroundTask = vi.fn(() => {
+      events.push("begin");
+      return 7;
+    });
+    const endBackgroundTask = vi.fn((taskId: number) => {
+      events.push(`end ${taskId}`);
+    });
+    Object.assign(nativeModuleMock, { beginBackgroundTask, endBackgroundTask });
+    return events;
+  };
+
+  it("holds native background time while the work runs", async () => {
+    const events = installTasks();
+    const native = await import("./native");
+
+    await expect(
+      native.withBackgroundTask(async () => {
+        events.push("work");
+        return "done";
+      }),
+    ).resolves.toBe("done");
+    expect(events).toEqual(["begin", "work", "end 7"]);
+  });
+
+  it("ends the background time when the work fails", async () => {
+    const events = installTasks();
+    const native = await import("./native");
+
+    await expect(
+      native.withBackgroundTask(async () => {
+        throw new Error("offline");
+      }),
+    ).rejects.toThrow("offline");
+    expect(events).toEqual(["begin", "end 7"]);
+  });
+
+  it("runs the work alone on native built from an earlier SDK", async () => {
+    const native = await import("./native");
+
+    await expect(native.withBackgroundTask(async () => "done")).resolves.toBe(
+      "done",
+    );
+  });
+});
+
+describe("resetChannelIfSelectionCurrent", () => {
+  const guard = {
+    catalogId: "catalog-1",
+    catalogHash: "sha256:a",
+    channel: "pr-2",
+    generation: 3,
+    scopeKey: "v1:app-version:ios:cHItMg",
+    selectionContextHash: "context",
+  };
+
+  beforeEach(() => {
+    vi.resetModules();
+    nativeModuleMock.resetChannel.mockReset();
+    nativeModuleMock.isReleaseSelectionCurrent.mockReset();
+    Reflect.deleteProperty(nativeModuleMock, "resetChannelIfSelectionCurrent");
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(nativeModuleMock, "resetChannelIfSelectionCurrent");
+  });
+
+  it("lets native check the selection and reset in one step", async () => {
+    const guarded = vi.fn(async () => false);
+    Reflect.set(nativeModuleMock, "resetChannelIfSelectionCurrent", guarded);
+    const native = await import("./native");
+
+    await expect(native.resetChannelIfSelectionCurrent(guard)).resolves.toBe(
+      false,
+    );
+    expect(guarded).toHaveBeenCalledWith(guard);
+    // The two-step path never runs next to the native one.
+    expect(nativeModuleMock.isReleaseSelectionCurrent).not.toHaveBeenCalled();
+    expect(nativeModuleMock.resetChannel).not.toHaveBeenCalled();
+  });
+
+  it("checks, then resets, on native from an earlier SDK", async () => {
+    nativeModuleMock.isReleaseSelectionCurrent.mockReturnValueOnce(false);
+    const native = await import("./native");
+
+    await expect(native.resetChannelIfSelectionCurrent(guard)).resolves.toBe(
+      false,
+    );
+    expect(nativeModuleMock.resetChannel).not.toHaveBeenCalled();
+
+    nativeModuleMock.isReleaseSelectionCurrent.mockReturnValueOnce(true);
+    nativeModuleMock.resetChannel.mockResolvedValueOnce(true as never);
+    await expect(native.resetChannelIfSelectionCurrent(guard)).resolves.toBe(
+      true,
+    );
+    expect(nativeModuleMock.isReleaseSelectionCurrent).toHaveBeenCalledWith(
+      guard,
+    );
+    expect(nativeModuleMock.resetChannel).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("getReleaseLabel", () => {
+  const receipt = (bundleId: string, label?: unknown) => ({
+    kind: "BUNDLE",
+    releaseId: `release-${bundleId}`,
+    bundleId,
+    catalogId: "project-a",
+    scopeKey: "scope",
+    generation: 1,
+    catalogHash: "hash",
+    channel: "production",
+    selectionContextHash: "context",
+    ...(label === undefined ? {} : { label }),
+  });
+
+  beforeEach(() => {
+    vi.resetModules();
+    nativeModuleMock.getActiveUpdateState.mockReset();
+    nativeModuleMock.getBundleId.mockReset();
+  });
+
+  it("reads the running release's label from the receipt native keeps", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue("running");
+    nativeModuleMock.getActiveUpdateState.mockReturnValue({
+      activeSelection: receipt("running", 12),
+      stableSelection: receipt("running", 12),
+      verificationPending: false,
+    });
+    const { getReleaseLabel } = await import("./native");
+
+    expect(getReleaseLabel()).toBe(12);
+  });
+
+  it("keeps the running release's label while a staged update waits for a restart", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue("running");
+    nativeModuleMock.getActiveUpdateState.mockReturnValue({
+      activeSelection: receipt("staged", 13),
+      stableSelection: receipt("running", 12),
+      verificationPending: true,
+    });
+    const { getReleaseLabel } = await import("./native");
+
+    expect(getReleaseLabel()).toBe(12);
+  });
+
+  it("keeps the running release's label while a built-in rollback waits for a restart", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue("running");
+    // The built-in commit replaced both receipts; native kept the launch's.
+    nativeModuleMock.getActiveUpdateState.mockReturnValue({
+      activeSelection: { ...receipt("builtin"), kind: "BUILTIN" },
+      stableSelection: null,
+      runningSelection: receipt("running", 12),
+      verificationPending: false,
+    });
+    const { getReleaseLabel } = await import("./native");
+
+    expect(getReleaseLabel()).toBe(12);
+  });
+
+  it("reads only the receipt the launch recorded, when native reports one", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue("built-in");
+    nativeModuleMock.getActiveUpdateState.mockReturnValue({
+      activeSelection: receipt("built-in", 12),
+      stableSelection: null,
+      runningSelection: null,
+      verificationPending: false,
+    });
+    const { getReleaseLabel } = await import("./native");
+
+    expect(getReleaseLabel()).toBeNull();
+  });
+
+  it.each([
+    ["native before labels, whose receipt has none", receipt("running")],
+    ["a release without one", receipt("running", null)],
+    ["a malformed one", receipt("running", "12")],
+  ])("answers null for %s", async (_, selection) => {
+    nativeModuleMock.getBundleId.mockReturnValue("running");
+    nativeModuleMock.getActiveUpdateState.mockReturnValue({
+      activeSelection: selection,
+      stableSelection: null,
+      verificationPending: false,
+    });
+    const { getReleaseLabel } = await import("./native");
+
+    expect(getReleaseLabel()).toBeNull();
+  });
+
+  it("answers null for the built-in bundle", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue(null);
+    nativeModuleMock.getActiveUpdateState.mockReturnValue({
+      activeSelection: null,
+      stableSelection: receipt("older", 3),
+      verificationPending: false,
+    });
+    const { getReleaseLabel } = await import("./native");
+
+    expect(getReleaseLabel()).toBeNull();
   });
 });

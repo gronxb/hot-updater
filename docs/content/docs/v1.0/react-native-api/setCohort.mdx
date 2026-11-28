@@ -1,0 +1,51 @@
+---
+title: "setCohort"
+description: "The `hotUpdater.setCohort()` function overrides the persisted cohort used for rollout decisions."
+icon: Pencil
+---
+
+## Usage
+
+Use `hotUpdater.setCohort()` to move a device into a specific numeric or custom
+cohort.
+
+```tsx
+import { hotUpdater } from "./hotUpdater";
+
+function assignQaCohort() {
+  hotUpdater.setCohort("qa");
+  console.log(hotUpdater.getCohort()); // "qa"
+}
+```
+
+## Signature
+
+```ts
+setCohort(cohort: string): void
+```
+
+Numeric cohorts are passed as strings, for example `hotUpdater.setCohort("500")`.
+
+## Behavior
+
+- Persists the cohort on the device for future update checks.
+- Accepts numeric cohorts in the range `1..1000`.
+- Accepts lowercase slug-style custom cohorts such as `qa` and `vip-testers`.
+- Normalizes the value before storing it.
+- Throws an error when the value is invalid.
+
+## Important notes
+
+- Call `hotUpdater.getCohort()` first if you need to restore the previous value
+  later.
+- Partial percentage rollout applies to numeric cohorts. At `100%`, a Bundle
+  is also eligible for custom cohorts, even when they are absent from
+  `Target Cohorts`.
+- To include a custom cohort such as `qa` at rollout values below `100%`, add
+  that value to `Target Cohorts` in the console. This keeps the same Bundle
+  available to `qa` when you raise its numeric rollout from `0%` to `50%`.
+
+## Related APIs
+
+- [`hotUpdater.getCohort()`](/docs/v1.0/react-native-api/getCohort)
+- [Rollout & Cohorts](/docs/v1.0/guides/rollout-cohorts)

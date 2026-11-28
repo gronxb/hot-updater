@@ -6,7 +6,8 @@
 # Redirect root docs to introduction
 /docs /docs/get-started/introduction 302
 
-# Open the v0 archive at its introduction
+# Open the archives at their introductions
+/docs/v1.0 /docs/v1.0/get-started/introduction 302
 /docs/v0 /docs/v0/get-started/introduction 302
 
 # Build, storage, and database plugins are now adapters
@@ -19,9 +20,6 @@
 /api/markdown/build-plugins/* /api/markdown/build-adapters/:splat 301
 /api/markdown/storage-plugins/* /api/markdown/storage-adapters/:splat 301
 /api/markdown/database-plugins/* /api/markdown/database-adapters/:splat 301
-
-# Native Build (alpha) is not ready, so its page is removed
-/docs/guides/native-build /docs 301
 
 # Artifact Compression merged into Bundle Diffing
 /docs/guides/compression /docs/guides/bundle-diffing 301

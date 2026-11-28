@@ -1,5 +1,5 @@
 import type { UpdateHttpResponse } from "@hot-updater/protocol";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 
 export interface UpdateRequest {
   readonly url: string;
@@ -25,6 +25,46 @@ const abortError = () => {
   const error = new Error("Aborted");
   error.name = "AbortError";
   return error;
+};
+
+/**
+ * Calls `onTimeout` once the app has run in the foreground for `ms`, and
+ * returns what cancels it. iOS suspends an app soon after it leaves the
+ * foreground, and Android runs no JavaScript timer in the background, so a
+ * plain timer that comes due while the app is away fires as soon as the app
+ * is back, before the response that reached the app meanwhile. Time in the
+ * background doesn't count: the timer stops when the app goes to the
+ * background and restarts with what was left when it comes back. A request
+ * sent from the background starts counting once the app is back.
+ */
+const startForegroundTimeout = (
+  ms: number,
+  onTimeout: () => void,
+): (() => void) => {
+  let remaining = ms;
+  let startedAt = 0;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const run = () => {
+    if (timeoutId !== undefined) return;
+    startedAt = Date.now();
+    timeoutId = setTimeout(onTimeout, remaining);
+  };
+  const pause = () => {
+    if (timeoutId === undefined) return;
+    clearTimeout(timeoutId);
+    timeoutId = undefined;
+    remaining = Math.max(0, remaining - (Date.now() - startedAt));
+  };
+  const subscription = AppState.addEventListener("change", (state) => {
+    if (state === "background") pause();
+    else run();
+  });
+  if (AppState.currentState !== "background") run();
+  return () => {
+    // React Native before 0.65 returns no subscription.
+    subscription?.remove?.();
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  };
 };
 
 const parseResponseHeaders = (raw: string): UpdateResponse["headers"] => {
@@ -87,7 +127,10 @@ const fetchWithFetch = async (
   return { response, read: () => response.text() };
 };
 
-/** Read once for parsing and diagnostics, under the same request timeout. */
+/**
+ * Read once for parsing and diagnostics, under the same request timeout,
+ * which counts only the time the app runs in the foreground.
+ */
 export const fetchUpdateResponse = async ({
   url,
   resource,
@@ -101,10 +144,10 @@ export const fetchUpdateResponse = async ({
 }> => {
   const controller = new AbortController();
   let timedOut = false;
-  const timeoutId = setTimeout(() => {
+  const cancelTimeout = startForegroundTimeout(requestTimeout, () => {
     timedOut = true;
     controller.abort();
-  }, requestTimeout);
+  });
   try {
     const headers = new Headers(requestHeaders);
     if (!headers.has("Accept")) headers.set("Accept", "application/json");
@@ -148,6 +191,6 @@ export const fetchUpdateResponse = async ({
     }
     throw error;
   } finally {
-    clearTimeout(timeoutId);
+    cancelTimeout();
   }
 };

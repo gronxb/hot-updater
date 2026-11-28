@@ -186,9 +186,7 @@ export class AndroidConfigParser implements ConfigParser {
     const existingPaths = this.getExistingManifestPaths();
 
     if (existingPaths.length === 0) {
-      console.warn(
-        "hot-updater: No AndroidManifest.xml files found. Skipping Android-specific config modifications.",
-      );
+      // The caller says that nothing was written.
       return { paths: [] };
     }
 

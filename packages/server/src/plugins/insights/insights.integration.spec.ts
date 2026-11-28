@@ -69,7 +69,7 @@ describe("createHotUpdater Insights", () => {
     ).toBe(204);
     const downloads = await hotUpdater.handlers.admin(
       new Request(
-        `https://example.com/events?platform=ios&channel=production&bundleId=bundle-2&outcome=downloaded&beforeReceivedAtMs=${Date.now() + 1}`,
+        `https://example.com/events?platform=ios&channel=production&bundleId=release-2&outcome=downloaded&beforeReceivedAtMs=${Date.now() + 1}`,
       ),
     );
     expect(downloads.status).toBe(200);
@@ -195,13 +195,17 @@ describe("createHotUpdater Insights", () => {
     await report(100, {
       type: "UPDATE_APPLIED",
       fromBundleId: "A",
+      fromReleaseId: "release-a",
       toBundleId: "B",
+      toReleaseId: "release-b",
       updateStrategy: "appVersion",
     });
     await report(200, {
       type: "RECOVERED",
       fromBundleId: "B",
+      fromReleaseId: "release-b",
       toBundleId: "A",
+      toReleaseId: "release-a",
       updateStrategy: "appVersion",
     });
     await report(300, {
@@ -209,17 +213,19 @@ describe("createHotUpdater Insights", () => {
       type: "UNCHANGED",
       fromBundleId: null,
       toBundleId: "B",
+      toReleaseId: "release-b",
       updateStrategy: null,
     });
     await report(400, {
       installId: "install-3",
       platform: "android",
       toBundleId: "B",
+      toReleaseId: "release-b",
     });
     vi.setSystemTime(500);
     const overview = await hotUpdater.handlers.admin(
       new Request(
-        "https://example.com/overview?platform=ios&channel=production&window=24h&bundleId=B",
+        "https://example.com/overview?platform=ios&channel=production&window=24h&bundleId=release-b",
       ),
     );
     expect(overview.status).toBe(200);
@@ -233,7 +239,7 @@ describe("createHotUpdater Insights", () => {
       beforeReceivedAtMs: 60 * 60 * 1_000,
       reportingInstallations: { count: 2, measuredAtMs: 500 },
       bundle: {
-        bundleId: "B",
+        bundleId: "release-b",
         reportingInstallations: { count: 1, measuredAtMs: 500 },
         downloadedReports: { count: 0, measuredAtMs: 500 },
         appliedReports: { count: 1, measuredAtMs: 500 },
@@ -243,7 +249,7 @@ describe("createHotUpdater Insights", () => {
     });
     const drilldown = await hotUpdater.handlers.admin(
       new Request(
-        "https://example.com/events?platform=ios&channel=production&bundleId=B&outcome=recovered&sinceMs=200&beforeReceivedAtMs=300",
+        "https://example.com/events?platform=ios&channel=production&bundleId=release-b&outcome=recovered&sinceMs=200&beforeReceivedAtMs=300",
       ),
     );
     await expect(drilldown.json()).resolves.toMatchObject({
@@ -259,7 +265,7 @@ describe("createHotUpdater Insights", () => {
     });
     const outside = await hotUpdater.handlers.admin(
       new Request(
-        "https://example.com/events?platform=ios&channel=production&bundleId=B&outcome=recovered&sinceMs=0&beforeReceivedAtMs=200",
+        "https://example.com/events?platform=ios&channel=production&bundleId=release-b&outcome=recovered&sinceMs=0&beforeReceivedAtMs=200",
       ),
     );
     await expect(outside.json()).resolves.toMatchObject({
@@ -580,7 +586,7 @@ describe("createHotUpdater Insights", () => {
 
     const events = await hotUpdater.handlers.admin(
       new Request(
-        `https://example.com/events?platform=ios&channel=production&bundleId=bundle-2&outcome=failed&beforeReceivedAtMs=${Date.now()}`,
+        `https://example.com/events?platform=ios&channel=production&bundleId=release-2&outcome=failed&beforeReceivedAtMs=${Date.now()}`,
       ),
     );
     expect(events.status).toBe(200);

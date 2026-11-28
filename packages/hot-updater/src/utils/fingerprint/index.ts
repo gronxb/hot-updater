@@ -10,8 +10,8 @@ import {
   type FingerprintInputs,
   type FingerprintResult,
   getFingerprintInputs,
-  isFingerprintEquals,
 } from "./common";
+import { writeFingerprintJsonIfChanged } from "./fingerprintJson";
 import { nativeFingerprint } from "./nativeFingerprint";
 import { assertNativeSdkEmbedsFingerprint } from "./nativeSdk";
 
@@ -54,7 +54,9 @@ export const generateFingerprint = async (platform: "ios" | "android") => {
 
 /**
  * Writes fingerprint.json, which native builds read to embed each platform's
- * hash. With `platform`, only that platform's fingerprint is replaced.
+ * hash, unless it already records the new fingerprint; `written` says
+ * whether it did. With `platform`, only that platform's fingerprint is
+ * replaced.
  */
 export const createAndInjectFingerprintFiles = async ({
   platform,
@@ -65,7 +67,8 @@ export const createAndInjectFingerprintFiles = async ({
   const newFingerprint = await generateFingerprints();
 
   // replace whole file if and only if platform argument is none or fingerprint file doesn't exist
-  await createFingerprintJSON(
+  const written = await writeFingerprintJsonIfChanged(
+    getCwd(),
     !localFingerprint || !platform
       ? newFingerprint
       : {
@@ -76,36 +79,26 @@ export const createAndInjectFingerprintFiles = async ({
         },
   );
 
-  return { fingerprint: newFingerprint };
+  return { fingerprint: newFingerprint, written };
 };
 
 /**
- * Brings fingerprint.json to `fingerprint`, writing it only when a hash or the
- * recorded inputs differ: what `fingerprint create` writes, without rewriting
- * a file that already matches. Returns whether it wrote.
+ * Brings fingerprint.json to `fingerprint`, writing it only when the data it
+ * records differs: what `fingerprint create` writes, without rewriting a
+ * file that already matches. Returns whether it wrote.
  */
 export const syncFingerprintFiles = async (
   fingerprint: FingerprintFile,
-): Promise<{ fingerprintJson: boolean }> => {
-  const local = await readLocalFingerprint();
-  // A file from before engines were recorded gets the engine that computes
-  // its unchanged hashes.
-  const fingerprintJson =
-    !isFingerprintEquals(local, fingerprint) ||
-    JSON.stringify(local?.inputs) !== JSON.stringify(fingerprint.inputs) ||
-    (["ios", "android"] as const).some(
-      (platform) => local?.[platform]?.engine !== fingerprint[platform].engine,
-    );
-  if (fingerprintJson) await createFingerprintJSON(fingerprint);
-  return { fingerprintJson };
-};
+): Promise<{ fingerprintJson: boolean }> => ({
+  fingerprintJson: await writeFingerprintJsonIfChanged(getCwd(), fingerprint),
+});
 
+/**
+ * Writes fingerprint.json unless it already records `fingerprint`, and
+ * returns `fingerprint`.
+ */
 export const createFingerprintJSON = async (fingerprint: FingerprintFile) => {
-  const FINGERPRINT_FILE_PATH = path.join(getCwd(), "fingerprint.json");
-  await fs.promises.writeFile(
-    FINGERPRINT_FILE_PATH,
-    JSON.stringify(fingerprint, null, 2),
-  );
+  await writeFingerprintJsonIfChanged(getCwd(), fingerprint);
   return fingerprint;
 };
 

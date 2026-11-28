@@ -197,7 +197,7 @@ async function fetchManifest(
 ): Promise<BundleManifest> {
   const manifestStorageUri = getManifestStorageUri(bundle);
   if (!manifestStorageUri) {
-    throw new Error(`Bundle ${bundle.id} does not have manifest metadata`);
+    throw new Error(`Artifact ${bundle.id} does not have manifest metadata`);
   }
 
   const manifestBytes = await downloadStorageBytes(
@@ -240,7 +240,9 @@ async function fetchAssetBytes(
 ) {
   const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
   if (!assetBaseStorageUri) {
-    throw new Error(`Bundle ${bundle.id} does not have asset storage metadata`);
+    throw new Error(
+      `Artifact ${bundle.id} does not have asset storage metadata`,
+    );
   }
   const asset = manifest.assets[assetPath];
   if (!asset) {
@@ -322,6 +324,31 @@ function buildNextPatchState({
   return orderedPatches;
 }
 
+/**
+ * The base's Hermes bundle is the target's: there is nothing to patch, and
+ * an install of the base downloads only the files that changed.
+ */
+export class UnchangedHermesBundleError extends Error {
+  override readonly name = "UnchangedHermesBundleError";
+
+  constructor() {
+    super("Hermes bundle is unchanged; no diff patch is required");
+  }
+}
+
+/**
+ * Whether core refused a write, so nothing of it was stored: core's input
+ * refusal in process, or a server's 400 answer. Server code has no public
+ * class for it, so its name tells it.
+ */
+const isRefusedWrite = (error: unknown): boolean => {
+  const { name, status } = (error ?? {}) as {
+    readonly name?: unknown;
+    readonly status?: unknown;
+  };
+  return name === "NativeBuildInputError" || status === 400;
+};
+
 export async function createBundleDiff(
   { baseBundleId, bundleId }: CreateBundleDiffInput,
   deps: CreateBundleDiffDependencies,
@@ -335,7 +362,9 @@ export async function createBundleDiff(
   }
 
   if (baseBundleId === bundleId) {
-    throw new Error("Base bundle must be different from the target bundle");
+    throw new Error(
+      "The base artifact must be different from the target artifact",
+    );
   }
 
   const [baseBundle, targetBundle] = (
@@ -345,15 +374,17 @@ export async function createBundleDiff(
   );
 
   if (!baseBundle || !targetBundle) {
-    throw new Error("Bundle not found");
+    throw new Error("Artifact not found");
   }
 
   if (baseBundle.platform !== targetBundle.platform) {
-    throw new Error("Base bundle platform must match the target bundle");
+    throw new Error(
+      "The base artifact's platform must match the target artifact's",
+    );
   }
 
   if (baseBundle.id.localeCompare(targetBundle.id) >= 0) {
-    throw new Error("Base bundle must be older than the target bundle");
+    throw new Error("The base artifact must be older than the target artifact");
   }
 
   const [baseManifest, targetManifest] = await Promise.all([
@@ -376,7 +407,7 @@ export async function createBundleDiff(
   }
 
   if (baseAssetHash === targetAssetHash) {
-    throw new Error("Hermes bundle is unchanged; no diff patch is required");
+    throw new UnchangedHermesBundleError();
   }
 
   const [baseBytes, targetBytes] = await Promise.all([
@@ -436,7 +467,23 @@ export async function createBundleDiff(
     ...targetBundle,
     patches,
   };
-  await core.updateBundle(targetBundle.id, { patches });
+  try {
+    await core.updateBundle(targetBundle.id, { patches });
+  } catch (error) {
+    // A refused patch, such as one from a sandbox build's built-in bundle,
+    // leaves no file behind. Any other failure may follow a committed write,
+    // as a lost answer does, so its file stays; so does a stored patch's file
+    // at the same key.
+    if (
+      isRefusedWrite(error) &&
+      previousPatch?.patchStorageUri !== patchUpload.storageUri
+    ) {
+      await deps.storageAdapter
+        .delete({ storageUri: patchUpload.storageUri })
+        .catch(() => undefined);
+    }
+    throw error;
+  }
 
   if (
     previousPatch?.patchStorageUri &&

@@ -41,7 +41,7 @@ export const hotUpdater = HotUpdater.init({
 export async function runUpdateFlow() {
   try {
     const update = await hotUpdater.checkForUpdate({
-      updateStrategy: "appVersion",
+      updateStrategy: "fingerprint",
     });
 
     if (!update) {

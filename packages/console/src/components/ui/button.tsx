@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
-const buttonVariants = cva(
+const buttonBase = cva(
   "focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:aria-invalid:border-destructive/50 rounded-md border border-transparent bg-clip-padding text-xs/relaxed font-medium focus-visible:ring-[2px] aria-invalid:ring-[2px] [&_svg:not([class*='size-'])]:size-4 inline-flex items-center justify-center whitespace-nowrap cursor-pointer transition-all disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed [&_svg]:pointer-events-none shrink-0 [&_svg]:shrink-0 outline-none group/button select-none",
   {
     variants: {
@@ -38,6 +38,15 @@ const buttonVariants = cva(
   },
 );
 
+/**
+ * A button's classes, merged so a variant or a className replaces what it
+ * overrides in the base. Links and other elements take these directly, so an
+ * outline link's border color must win over the base's transparent one here,
+ * not only through Button.
+ */
+const buttonVariants = (props?: Parameters<typeof buttonBase>[0]) =>
+  cn(buttonBase(props));
+
 function Button({
   className,
   variant = "default",
@@ -49,7 +58,7 @@ function Button({
       data-slot="button"
       data-size={size}
       data-variant={variant}
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={buttonVariants({ variant, size, className })}
       {...props}
     />
   );

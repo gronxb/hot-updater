@@ -1,5 +1,1122 @@
 # @hot-updater/server
 
+## 1.2.0-rc.63
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.63
+  - @hot-updater/plugin-api-keys@1.2.0-rc.63
+  - @hot-updater/plugin-insights@1.2.0-rc.63
+  - @hot-updater/plugin-core@1.2.0-rc.63
+  - @hot-updater/plugin-remote-config@1.2.0-rc.63
+
+## 1.2.0-rc.62
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.62
+  - @hot-updater/plugin-api-keys@1.2.0-rc.62
+  - @hot-updater/plugin-insights@1.2.0-rc.62
+  - @hot-updater/plugin-core@1.2.0-rc.62
+  - @hot-updater/plugin-remote-config@1.2.0-rc.62
+
+## 1.2.0-rc.61
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.61
+  - @hot-updater/plugin-api-keys@1.2.0-rc.61
+  - @hot-updater/plugin-insights@1.2.0-rc.61
+  - @hot-updater/plugin-core@1.2.0-rc.61
+  - @hot-updater/plugin-remote-config@1.2.0-rc.61
+
+## 1.2.0-rc.60
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.60
+  - @hot-updater/plugin-api-keys@1.2.0-rc.60
+  - @hot-updater/plugin-insights@1.2.0-rc.60
+  - @hot-updater/plugin-core@1.2.0-rc.60
+  - @hot-updater/plugin-remote-config@1.2.0-rc.60
+
+## 1.2.0-rc.59
+
+### Patch Changes
+
+- ef2db86: The Insights release-ref backfill and the release-label fill now fit a store's write capacity.
+  - **Smaller transactions and a pause when the store is busy.** `hot-updater init` caps an AWS table at 100 write units a second, and one backfill transaction of 13 event rewrites costs about 260 of them. DynamoDB throttled the backfill until a transaction ran out of attempts, and init stopped before it deployed the server. Both bulk writers now halve their transactions whenever the store stays busy through a transaction's attempts, as they already did for a transaction too large to write. They also wait before writing again: 1 second, doubling after each further busy refusal and starting over after a commit. A refusal after the 32-second wait fails the run, and the next run resumes it.
+  - **One batch size per run.** The backfill keeps one batch size for the whole run, so it no longer reads a refused batch again at full size.
+  - **Backfill after deploy.** AWS, Supabase, and Firebase init now run the backfill after they deploy the new server, as Cloudflare, Vercel, and Azure init already did. A backfill that stops leaves a working deployment, and the next init resumes it.
+  - **Clearer error.** A transaction that runs out of attempts on a busy store now says so, instead of reporting a conflict.
+- Updated dependencies [ef2db86]
+  - @hot-updater/plugin-insights@1.2.0-rc.59
+  - @hot-updater/plugin-core@1.2.0-rc.59
+  - @hot-updater/plugin-api-keys@1.2.0-rc.59
+  - @hot-updater/plugin-remote-config@1.2.0-rc.59
+  - @hot-updater/protocol@1.2.0-rc.59
+
+## 1.2.0-rc.58
+
+### Patch Changes
+
+- e7ae1dc: Insights keys Release health by release instead of by artifact, so two releases of one artifact in one channel and platform, as a promote back into the channel makes them, count their downloads, launches and crashes apart, and Roll back names the release that crashed. A release's installation count comes from the distribution rows, which already name the release, and `insights_latest_by_bundle` is no longer written. `hot-updater init` and `hot-updater db migrate` move the events a 1.1 server keyed by artifact in the raw period, with their hourly counts, to the release each names (`api.insights.backfillReleaseRefs()`), once a database: they then record the settings row `insights.releaseRefs`, so a later run reads no event. Events a 1.1 server still running records after that stay keyed by artifact until the raw period drops them. The overview of one bundle reads the distribution rows once for both its installation counts (`countReleaseInstallations`).
+
+  The Insights model's bundle filters take `toReleaseId` and `fromReleaseId`, and `countLatestEvents` drops its `bundle` predicates for `countReleaseInstallations`. Event rows add `fromReleaseId`, and installation rows `lastKnownReleaseId`. The Console's event and installation views, the CLI's `insights events`, `installations` and `overview` (and their `--json`), and the distribution show the release ID, the bundle ID apps report; the distribution and the filter chips show its label too. The Insights release picker no longer matches artifact IDs.
+
+- Updated dependencies [7709b2b]
+- Updated dependencies [e7ae1dc]
+- Updated dependencies [8e77373]
+  - @hot-updater/protocol@1.2.0-rc.58
+  - @hot-updater/plugin-insights@1.2.0-rc.58
+  - @hot-updater/plugin-core@1.2.0-rc.58
+  - @hot-updater/plugin-remote-config@1.2.0-rc.58
+  - @hot-updater/plugin-api-keys@1.2.0-rc.58
+
+## 1.2.0-rc.57
+
+### Patch Changes
+
+- 4f7650b: A client request that answers 503 because the API key check threw now logs the error, so a Worker or function log shows why.
+- @hot-updater/protocol@1.2.0-rc.57
+  - @hot-updater/plugin-api-keys@1.2.0-rc.57
+  - @hot-updater/plugin-insights@1.2.0-rc.57
+  - @hot-updater/plugin-core@1.2.0-rc.57
+  - @hot-updater/plugin-remote-config@1.2.0-rc.57
+
+## 1.2.0-rc.56
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.56
+  - @hot-updater/plugin-api-keys@1.2.0-rc.56
+  - @hot-updater/plugin-insights@1.2.0-rc.56
+  - @hot-updater/plugin-core@1.2.0-rc.56
+  - @hot-updater/plugin-remote-config@1.2.0-rc.56
+
+## 1.2.0-rc.55
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.55
+  - @hot-updater/plugin-api-keys@1.2.0-rc.55
+  - @hot-updater/plugin-insights@1.2.0-rc.55
+  - @hot-updater/plugin-core@1.2.0-rc.55
+  - @hot-updater/plugin-remote-config@1.2.0-rc.55
+
+## 1.2.0-rc.54
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.54
+  - @hot-updater/plugin-api-keys@1.2.0-rc.54
+  - @hot-updater/plugin-insights@1.2.0-rc.54
+  - @hot-updater/plugin-core@1.2.0-rc.54
+  - @hot-updater/plugin-remote-config@1.2.0-rc.54
+
+## 1.2.0-rc.53
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.53
+  - @hot-updater/plugin-api-keys@1.2.0-rc.53
+  - @hot-updater/plugin-insights@1.2.0-rc.53
+  - @hot-updater/plugin-core@1.2.0-rc.53
+  - @hot-updater/plugin-remote-config@1.2.0-rc.53
+
+## 1.2.0-rc.52
+
+### Patch Changes
+
+- 610f038: fix(server): never call a release catalog stale, or rewrite it without its fields, because a later Hot Updater compiled fields this one doesn't know
+  - An rc.50 CLI against catalogs rc.51 compiled with labels reported `RELEASE_CATALOG_STALE` on every labeled scope, and its deploy or `bundle update` rewrote the scope's catalog without labels, so apps read `getReleaseLabel()` as null until a newer CLI rebuilt it. From this release on, an older Hot Updater handles a later one's catalogs safely.
+  - Core compares a stored catalog by the fields its compiler writes. A catalog that matches in those, with keys only a later release writes, is verified: doctor reports no issue, and a rebuild or the label fill leaves it as it is.
+  - A release change in such a scope, such as a deploy, `bundle update`, or enabling or disabling a bundle, is refused with `CATALOG_FROM_LATER_RELEASE` before anything is written: "The ios release catalog of channel "production" was written by a later Hot Updater. Upgrade hot-updater, then try again." A standalone server's refusal reaches its CLI with the same code.
+  - `hot-updater deploy` to both platforms ends a refusal core words for the user, this one or a catalog over its size limit, with that message and exit code 1. Before, it printed a stack trace.
+
+- Updated dependencies [610f038]
+- Updated dependencies [f35618e]
+  - @hot-updater/plugin-core@1.2.0-rc.52
+  - @hot-updater/plugin-api-keys@1.2.0-rc.52
+  - @hot-updater/plugin-insights@1.2.0-rc.52
+  - @hot-updater/plugin-remote-config@1.2.0-rc.52
+  - @hot-updater/protocol@1.2.0-rc.52
+
+## 1.2.0-rc.51
+
+### Patch Changes
+
+- 4c7a992: fix(doctor): report a database without release labels' schema as unchecked and name its repair, print each issue's commands, and renew an expired Wrangler login in Cloudflare init
+  - A dry run of the release label fill now reads one pair's counter and label index first. A database a 1.2 prerelease migrated, which lacks the `label` column or the `label_sequences` table, fails it with the database's error, instead of counting its releases as unlabeled.
+  - Doctor reports that failure as `RELEASE_LABELS_UNCHECKED` and names the repair: the three `wrangler d1 execute` statements on Cloudflare, the release's migration run again with `supabase db query` on Supabase, and the migration elsewhere. `RELEASE_LABELS_MISSING` stays for a migrated database whose releases lack labels.
+  - Doctor's plain output prints the commands an issue names under its resolution, unless the resolution already spells them out. A resolution ending in ":" was printed without its command.
+  - Cloudflare init renews an expired Wrangler login with `wrangler whoami` before it asks for `wrangler login`, so `init --from-env-file` no longer stops at "Cloudflare Wrangler login is required." on a machine that logged in before.
+
+- e833260: feat(release): each bundle gets a label, `v1`, `v2`, …, numbered per channel and platform.
+  - A deploy prints the bundle's label beside its ID, and `bundle list` shows it first. `--json` rows gain `label`, a number, or `null` until the database labels the bundle.
+  - A label never changes, and no other bundle of that channel and platform takes it while the channel exists: deleting a bundle leaves a gap, disabling or enabling one keeps its label, and a rollback takes none. A promotion takes the target channel's next label, and prints `Label  production v5 (from staging v12)`.
+  - `bundle show`, `update`, `enable`, `disable`, `delete` and `promote` take a label in place of the ID, with its channel and platform: `bundle show v12 -c production -p ios`.
+  - Release catalogs carry each bundle's label, so apps can read it.
+  - `hot-updater init` and `db migrate` label the bundles a database already holds, in the order they were deployed, and rebuild the catalogs that lack their labels. The first deploy to a channel and platform does it too. `hot-updater doctor` reports bundles without a label as `RELEASE_LABELS_MISSING`, and catalogs without them as `RELEASE_CATALOGS_WITHOUT_LABELS`, naming the command that migrates the database.
+  - `db migrate` adds the `label` column to an existing `releases` table on PostgreSQL, MySQL and SQLite, including a database a 1.2 release candidate migrated. Drizzle and Prisma add it through their own tooling after `db generate`, and `db migrate` names it while it is missing.
+  - A self-hosted server serves `GET /release-labels` and `POST /release-labels/fill` on its admin API. Against a server older than this release, the CLI says it can't look up labels: pass the bundle's ID.
+  - Database adapters may implement the optional `migrations.addColumns`, which the SQL kit implements; `lateColumnStatements` gives migration-file generators the `ALTER TABLE` statements for columns added to existing tables.
+
+- Updated dependencies [c01ee70]
+- Updated dependencies [e833260]
+  - @hot-updater/protocol@1.2.0-rc.51
+  - @hot-updater/plugin-core@1.2.0-rc.51
+  - @hot-updater/plugin-insights@1.2.0-rc.51
+  - @hot-updater/plugin-remote-config@1.2.0-rc.51
+  - @hot-updater/plugin-api-keys@1.2.0-rc.51
+
+## 1.2.0-rc.50
+
+### Patch Changes
+
+- f7884ec: fix(server): an update check of a scope without a catalog reads the database once per 5 seconds, like a scope that has one.
+  - A store version before its first OTA release has no catalog, and the server read the database on every update check for it. Firebase, Azure and Supabase have no CDN in front, so every such check cost one database read. The server's 5-second per-scope memo now remembers the missing catalog too. Concurrent checks still share one read.
+  - A remembered miss never pushes a live catalog out of the memo. Past its 128 scopes, expired entries go first, then the oldest miss.
+  - A scope's first release shows within 5 seconds at the origin, and within 15 seconds behind a CDN, as a deploy to a scope that has a catalog already did.
+
+- 9851868: fix(server): an update check reads its scope's catalog once per 5 seconds, whatever app version asks, and the Console's iOS devices page reads one page of the registry.
+  - The server's 5-second catalog memo was keyed by scope and app version, but the catalog row is per scope. Twenty app versions of one channel and platform read the same row twenty times. They now share one read and one parse of the row, and each check is projected for its own app version.
+  - The Console's iOS devices page read the whole registry, pending requests included, on every view and refocus. It now lists 50 devices a page, newest first, with Previous, Next and Newest, as the native build list does. An iPhone that registers still sees its approval when Safari comes back to the page.
+  - The release list, its folds and a native build's patch pages stay fresh for a minute, so switching back to the tab no longer reads them again. Changes made in the Console still refresh them at once.
+
+- 21cf534: fix(cli): channel lookups, `bundle list`, and `doctor` no longer read whole tables.
+  - **Channels by ID.** `bundle list`, `bundle show`, `bundle promote`, `native-build delete`, and `insights --bundle` used to read every channel to name the ones they show. They now read only those channels, in one batch read. `bundle list --channel` finds the channel by its name. The preview and release actions run `bundle list -c <channel> -p <platform> --limit 1` after every deploy, and that now reads 2 rows, however many preview channels a project keeps. Core adds `getChannels(ids)`, and `listChannels` takes an optional page.
+  - **Admin `GET /channels`** also takes `ids=<channel id>,...` (1 to 100) and `limit`/`cursor` pages by name. Without them it answers every channel, as before. A CLI on this release still works with an older self-hosted server, which ignores the new parameters.
+  - **`bundle list --platform` without `--channel`, and `--target-app-version`,** read at most 5 pages of 100 bundles. When nothing matched by then, the list prints how many bundles it scanned and a `--cursor` to continue, or you can narrow it with `--channel`. With `--json`, that line goes to stderr.
+  - **`hot-updater doctor`** checks the scopes in the catalog index, and finds every scope with releases but no catalog row by seeking from one scope to the next: one limit-1 read per scope. It no longer reads every release, and its reads grow with scopes, not with releases or channels: 4 rows per scope with one enabled release, where it read the scope's releases plus 7. Core adds `listReleaseScopeKeys`, and the admin API `GET /release-scopes` (`limit` up to 100, `cursor`). Against a self-hosted server without that route, doctor checks the scopes with a catalog row and warns `RELEASE_SCOPES_UNCHECKED`, naming the server as older. When a scope with a catalog row and releases is missing from the walk, doctor warns `RELEASE_SCOPES_UNINDEXED` and names the migration that writes the missing index items.
+  - **Catalog preflight** (`preflightReleaseCatalogRebuild`, `POST /release-catalogs/:scopeKey/preflight`) reads the catalog row once and the scope's enabled releases, outside a transaction: 2 reads where it took 6.
+  - **Core schema:** `releases` declares a `scopes` index ordered by scope key. SQL and MongoDB read it through the existing `byScope` index, so their schemas don't change. DynamoDB, Firestore, and Cosmos DB keep one index item per release. Every migration (`hot-updater init` for a managed deployment, `db migrate` for your own server) writes the items that releases lack: those stored before 1.2.0, and those a 1.1.x server still running after the migration writes, since its schema fence keeps a check that passed. `db migrate` on a database whose schema settings match offers that write when it finds releases without their item. Each migration on those stores reads every release and its index item once. A database adapter's `migrations` may implement the optional `fillIndex(table, index, { dryRun })`; the key-value kit does.
+  - **Admin `POST /ios-devices/in-build`** takes at most 100 IDs a request, and answers 400 for more. The standalone client sends devices in requests of 100. `POST /bundles/delete` stays uncapped: a released `doctor --fix` sends every unreferenced artifact in one request.
+
+- 36e1f23: fix(db): the Drizzle schema converges under `drizzle-kit push`, and `db migrate` refuses a newer or incomplete schema.
+  - `hot-updater db generate` writes a Drizzle schema that matches what drizzle-kit reads back, so a second `drizzle-kit push` plans nothing. The push after upgrading adds only the new tables and indexes, with no data-loss prompt. On PostgreSQL its columns leave out `COLLATE "C"`, which `db migrate` sets where the database lacks it. On MySQL, apply it with `drizzle-kit generate` and `drizzle-kit migrate`. A project that applies it with `drizzle-kit generate` deletes the statements on Hot Updater's existing tables and indexes from the first migration after upgrading, as the 1.2.0 upgrade notes say.
+  - `db migrate` and a managed provider's init refuse a database whose `schema.core` is newer than this release's. They write nothing and name the version to upgrade to. Doctor reports it as `SCHEMA_NEWER_THAN_CLI` with the same step.
+  - On Drizzle and Prisma, `db migrate` checks that every table and index exists before it writes the settings rows, and names what is missing. Doctor reports it as `SCHEMA_TABLES_MISSING`.
+  - `hot-updater doctor` exits after a passing run on a MySQL or MongoDB config.
+  - `db migrate` lists only the tables and indexes it creates, and the settings it changes.
+
+- ee805d9: fix: 1.2.0 keeps one release catalog row per scope, with its 256 KiB limit, and drops the partitioned release catalogs that `next` carried after 1.2.0-rc.49. No published release had them. Gone: the `release_catalog_partitions` table in every migration, schema and scaffold; `db partition-catalogs`; `GET` and `POST /release-catalog-partitioning`; the app-version tiling kit and `DatabaseAdapter`'s `readSnapshot` and `maxQueriesPerRequest` in `@hot-updater/plugin-core`; and the partitioning parts of init, doctor and the docs.
+  - **The size limit.** A release change whose catalog would be over 256 KiB is still refused before anything is written. The refusal now names the channel and platform, and says to disable or delete old bundles on that channel. Over `standaloneRepository` the server answers it as 400 `CATALOG_OVERSIZE`, which the CLI throws as `ReleaseCatalogCompilationError`, as in process; before, it was a 500.
+  - **Doctor** warns `RELEASE_CATALOG_NEAR_LIMIT` when a scope's catalog reaches 80% of the limit, from the reads it already makes.
+  - **Strong reads.** The MongoDB adapter reads on the primary, whatever read preference its client has. The Prisma and Drizzle adapters run every statement on the primary under a read-replica extension (`$primary()`) or `withReplicas` (`$primary`). The adapter contract page lists how each built-in adapter reads strongly, and the conformance suite checks that a read sees the write committed just before it.
+  - **AWS.** The CloudFront distribution never caches a 500, 502, 503 or 504 (`ErrorCachingMinTTL: 0`, no replacement page), on a new distribution and on the existing one init updates.
+
+- Updated dependencies [24fc70c]
+- Updated dependencies [21cf534]
+- Updated dependencies [36e1f23]
+- Updated dependencies [f7884ec]
+  - @hot-updater/plugin-core@1.2.0-rc.50
+  - @hot-updater/plugin-insights@1.2.0-rc.50
+  - @hot-updater/plugin-api-keys@1.2.0-rc.50
+  - @hot-updater/plugin-remote-config@1.2.0-rc.50
+  - @hot-updater/protocol@1.2.0-rc.50
+
+## 1.2.0-rc.49
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.49
+  - @hot-updater/plugin-api-keys@1.2.0-rc.49
+  - @hot-updater/plugin-insights@1.2.0-rc.49
+  - @hot-updater/plugin-core@1.2.0-rc.49
+  - @hot-updater/plugin-remote-config@1.2.0-rc.49
+
+## 1.2.0-rc.48
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.48
+  - @hot-updater/plugin-api-keys@1.2.0-rc.48
+  - @hot-updater/plugin-insights@1.2.0-rc.48
+  - @hot-updater/plugin-core@1.2.0-rc.48
+  - @hot-updater/plugin-remote-config@1.2.0-rc.48
+
+## 1.2.0-rc.47
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.47
+  - @hot-updater/plugin-api-keys@1.2.0-rc.47
+  - @hot-updater/plugin-insights@1.2.0-rc.47
+  - @hot-updater/plugin-core@1.2.0-rc.47
+  - @hot-updater/plugin-remote-config@1.2.0-rc.47
+
+## 1.2.0-rc.46
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.46
+  - @hot-updater/plugin-api-keys@1.2.0-rc.46
+  - @hot-updater/plugin-insights@1.2.0-rc.46
+  - @hot-updater/plugin-core@1.2.0-rc.46
+  - @hot-updater/plugin-remote-config@1.2.0-rc.46
+
+## 1.2.0-rc.45
+
+### Patch Changes
+
+- 39021d1: perf(server): four admin reads no longer grow with the size of a table. None of them is on a device's update path.
+  - **`native-build import`** finds an artifact that is already registered with one read of the unique `min_bundle_id` index. It no longer pages through the whole native build registry. Core adds `findNativeBuildByBuiltInBundle(bundleId)`, and the admin API adds the route `GET /native-builds/built-in/:bundleId`. A self-hosted server without this route answers 404, and the CLI asks you to upgrade it.
+  - **`findNativeBuild(scope, { builtInOlderThan })`**, the lookup a deploy uses to pick its patch base, keeps its result: the newest build of the scope whose built-in bundle is older than the bundle. When newer builds are in the way, it now reads at most 5 pages of 20 builds before the newest. It answers null when none of those 100 builds qualifies, where it used to read the whole scope. A deploy then makes no automatic patch, as it does for a scope with no older build.
+  - **The iOS device registry's account**, read before any claim, comes from one read of a new `ios_devices_byRegistration (registered_at_ms, id)` index. The registry is no longer scanned 200 rows at a time.
+  - **The Console's device list for an `.ipa`** names its devices from the registry's registered and approved devices, read by status, which Apple's device cap bounds. It no longer reads the pending requests any signed-in user can add, and makes no request per device.
+
+  If a 1.2.0 prerelease migrated your database before this release:
+  - **SQL and MongoDB** answer correctly without the index, which only makes the read fast. Create it once with the statement below; it is safe to run again.
+  - **DynamoDB, Firestore, and Cosmos DB** keep no copy of the new index for a row written before it. Such a row is missed only by the account read of a registry with no account claimed yet. Builds always claim the account before they register a device, so that combination doesn't occur.
+
+  The statements:
+  - Cloudflare D1, SQLite, PostgreSQL, Neon: `CREATE INDEX IF NOT EXISTS "ios_devices_byRegistration" ON "ios_devices" ("registered_at_ms", "id");`
+  - Supabase: `CREATE INDEX IF NOT EXISTS "hot_updater_v1_ios_devices_byRegistration" ON "hot_updater_v1_ios_devices" ("registered_at_ms", "id");`
+  - MySQL: run `SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'ios_devices' AND index_name = 'ios_devices_byRegistration';`. Only when it returns 0, run ``CREATE INDEX `ios_devices_byRegistration` ON `ios_devices` (`registered_at_ms`, `id`);``.
+  - MongoDB: `db.ios_devices.createIndex({ registered_at_ms: 1, id: 1 }, { name: "byRegistration" })`, with your collection prefix.
+  - DynamoDB, Firestore, Cosmos DB: nothing to run.
+
+- Updated dependencies [39021d1]
+- Updated dependencies [51c4afb]
+- Updated dependencies [08aee10]
+  - @hot-updater/plugin-core@1.2.0-rc.45
+  - @hot-updater/plugin-api-keys@1.2.0-rc.45
+  - @hot-updater/plugin-insights@1.2.0-rc.45
+  - @hot-updater/plugin-remote-config@1.2.0-rc.45
+  - @hot-updater/protocol@1.2.0-rc.45
+
+## 1.2.0-rc.44
+
+### Patch Changes
+
+- Updated dependencies [6b45f64]
+- Updated dependencies [6b45f64]
+- Updated dependencies [6b45f64]
+  - @hot-updater/plugin-core@1.2.0-rc.44
+  - @hot-updater/plugin-api-keys@1.2.0-rc.44
+  - @hot-updater/plugin-insights@1.2.0-rc.44
+  - @hot-updater/plugin-remote-config@1.2.0-rc.44
+  - @hot-updater/protocol@1.2.0-rc.44
+
+## 1.2.0-rc.43
+
+### Minor Changes
+
+- 6d1b8f8: A pull request preview can offer an iPhone build and a Simulator build of the same native code, and the Console links them.
+
+  **Preview action.** `ios-scheme` takes several schemes, comma-separated, such as `sandbox, sandboxSimulator`.
+  - **One run, one bundle, one comment.**
+    - Each scheme's build is found, or built, before the platform's single bundle deploys.
+    - The schemes must build the same native code. Schemes with different fingerprints or app versions fail the platform before anything deploys.
+    - A scheme that fails doesn't stop the others. The comment names it, and `ios-build-log` lists every failed scheme's log.
+  - **Outputs.** With several schemes, each `previews` entry carries its `scheme`, and the platform's other outputs are its first successful scheme's. `ios-submit` takes one `ios-scheme`.
+  - **A single scheme** works exactly as before. The one change is a sandbox Simulator scheme: its comment and `ios-install-url` give `npx hot-updater native-build install <id> --open <channel>` instead of a QR code a Simulator can't scan.
+
+  **CLI.** `hot-updater native-build install <id> --open <channel>` installs a sandbox Simulator build on the selected Simulator and opens the channel's latest bundle through its preview link, as the QR code does on a phone. It refuses a normal build, which opens the channel it embeds. A sandbox build of an app version installs and launches as it is, since its link would need a fingerprint, and the command says so.
+
+  **`native-build find --scheme`** finds the newest build of the scheme's own artifact kind, so a newer Simulator `.app` of the same channel and fingerprint no longer hides the `.ipa`, or the reverse, and a preview reuses each one instead of building or downloading it again.
+
+  **Console.** The Install card of a sandbox build switches between **iPhone** and **Simulator**, a link to the newest build of the other target of the same native code, when there is one.
+  - An `.ipa` qualifies when it was exported for direct install, no store took it, and it isn't the store build. The same rule applies on both sides.
+  - The build page reads it with one more query. The Native builds list and its pages are unchanged.
+
+  **Core.**
+  - `findNativeBuild(scope, { artifactKind })` reads a new `native_builds_byScopeKind (scope_key, artifact_kind, id)` index, and keeps to the kind with `buildKey` or `storeBuild` too. When the index has no row, it falls back to the scope's newest row and keeps it only if its kind matches.
+  - `findNativeBuildSibling(build)` is new, with the admin route `GET /native-builds/:id/sibling`.
+
+  If a 1.2.0 prerelease migrated your database before this release:
+  - **SQL and MongoDB** find any matching row with or without the index, since they read rows by their fields. Create the index once for speed; this is safe to run again.
+  - **DynamoDB, Firestore, and Cosmos DB** keep no copy of the new index for a row written before it. Such a build is found only while it is its scope's newest. A cached build behind a newer build of the other kind, such as an `.app` behind a newer `.ipa`, isn't found until the native code changes. The cost is a download of the build again, never a build of the wrong kind.
+
+  The statements:
+  - Cloudflare D1, SQLite, PostgreSQL, Neon: `CREATE INDEX IF NOT EXISTS "native_builds_byScopeKind" ON "native_builds" ("scope_key", "artifact_kind", "id");`
+  - Supabase: `CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byScopeKind" ON "hot_updater_v1_native_builds" ("scope_key", "artifact_kind", "id");`
+  - MySQL: run `SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'native_builds' AND index_name = 'native_builds_byScopeKind';`. Only when it returns 0, run ``CREATE INDEX `native_builds_byScopeKind` ON `native_builds` (`scope_key`, `artifact_kind`, `id`);``.
+  - MongoDB, DynamoDB, Firestore, Cosmos DB: nothing to run.
+
+### Patch Changes
+
+- Updated dependencies [6d1b8f8]
+  - @hot-updater/plugin-core@1.2.0-rc.43
+  - @hot-updater/plugin-api-keys@1.2.0-rc.43
+  - @hot-updater/plugin-insights@1.2.0-rc.43
+  - @hot-updater/plugin-remote-config@1.2.0-rc.43
+  - @hot-updater/protocol@1.2.0-rc.43
+
+## 1.2.0-rc.42
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.42
+  - @hot-updater/plugin-api-keys@1.2.0-rc.42
+  - @hot-updater/plugin-insights@1.2.0-rc.42
+  - @hot-updater/plugin-core@1.2.0-rc.42
+  - @hot-updater/plugin-remote-config@1.2.0-rc.42
+
+## 1.2.0-rc.41
+
+### Minor Changes
+
+- 97f063d: Sandbox builds live on the project's channel. A sandbox build embeds the channel `channel set` writes, or `-c`, like any scheme's build, and registers on it, so in a pull request preview it is one more native build on `pr-<n>`. The `sandbox-<scheme>` channels are no longer reserved: a normal build can use a channel named `sandbox-*`, and nothing about a channel makes a build a sandbox build. The artifact's sandbox layer and the registry's `is_sandbox` do.
+  - Pull requests reuse a sandbox build across channels. Its registry scope names no channel: the app ID its artifact reports, its URL scheme, its artifact kind, and whether it installs directly (APK, simulator `.app`, ad hoc `.ipa`) or through a store (AAB, App Store `.ipa`). `native-build find --scheme <sandbox scheme>` finds it on any channel, and `--json`'s `sandbox` names the found build's `channel` in place of `otherBuilds`. A store build never hides an installable ad hoc build of the same native code, nor the reverse. An `.ipa` whose export no profile confirmed is never reused. Sandbox previews need the `fingerprint` update strategy to tell native changes apart.
+  - A sandbox registration needs `sandboxUrlScheme` and the new `sandboxAppId`. `GET /native-builds/latest` takes `sandboxAppId`, `sandboxUrlScheme`, `artifactKind` and `distribution`, all four or none, and `NativeBuildScope` takes `sandbox` for them.
+  - `native-build find --json` adds `iosDevices` for a found ad hoc `.ipa`: whether it still installs on the device registry's iPhones. For an iPhone the `.ipa` lacks, it reads Apple's devices with the scheme's `signing.ascApiKey`, as a build does, and writes nothing. The preview action builds again, with `--no-cache`, when a build now would add one (enabled at Apple, or approved and not at Apple yet), or the profile expired or can't be read. An iPhone Apple has disabled or refused, another account's, one in a registry another Apple account holds, or one a scheme can't add (no `signing.ascApiKey`, a pinned profile, or an export other than `release-testing`, as the build decides), gets a note in the job's log and no build. `findIosDeviceAccount()` and `GET /ios-devices/account` read the registry's Apple account without claiming it.
+  - The preview action keeps sandbox builds when a pull request closes, merged or not: `channel delete --native-builds --keep-sandbox-builds` deletes the bundles and normal builds and keeps the sandbox builds and their channel, and succeeds with `reason: "sandbox_builds"` and `keptNativeBuildIds` when nothing else is left. Delete a kept build with `native-build delete` or `channel delete --native-builds`.
+  - `ios-install-url` is the Console build page for a direct-install `.ipa`, where "Install on iPhone" checks the device. `ios-download-url` keeps the `.ipa` itself.
+  - The comment names the pull request whose sandbox build a preview reuses, and the Console's "newer build" suggestion for an iPhone finds a sandbox build another pull request made.
+  - The release action refuses a sandbox scheme on any channel.
+  - `@hot-updater/protocol/native-artifact` drops `sandboxChannelOf` and `isSandboxChannel`, `sandboxArtifactProblem` takes no channel.
+
+  For a release candidate already in use:
+  - `android-fallback-scheme` and `ios-fallback-scheme` are removed. Remove them from your workflow: a pull request with new native code gets a new sandbox build.
+  - Deploy the server first, then the CLI (1.2.0-rc.41 or later), the actions and the Console. A server of this release refuses an older CLI's sandbox registration, which sends no `sandboxAppId`, and says to upgrade the CLI. An older CLI's lookup also misses the new builds.
+  - No migration runs. Sandbox builds already on `sandbox-*` channels stay where they are, and the first preview after the upgrade builds a new sandbox build once per platform. Delete the old ones with `npx hot-updater channel delete sandbox-<scheme> --native-builds` once you no longer need them.
+
+### Patch Changes
+
+- Updated dependencies [97f063d]
+  - @hot-updater/protocol@1.2.0-rc.41
+  - @hot-updater/plugin-core@1.2.0-rc.41
+  - @hot-updater/plugin-insights@1.2.0-rc.41
+  - @hot-updater/plugin-remote-config@1.2.0-rc.41
+  - @hot-updater/plugin-api-keys@1.2.0-rc.41
+
+## 1.2.0-rc.40
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.40
+  - @hot-updater/plugin-api-keys@1.2.0-rc.40
+  - @hot-updater/plugin-insights@1.2.0-rc.40
+  - @hot-updater/plugin-core@1.2.0-rc.40
+  - @hot-updater/plugin-remote-config@1.2.0-rc.40
+
+## 1.2.0-rc.39
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.39
+  - @hot-updater/plugin-api-keys@1.2.0-rc.39
+  - @hot-updater/plugin-insights@1.2.0-rc.39
+  - @hot-updater/plugin-core@1.2.0-rc.39
+  - @hot-updater/plugin-remote-config@1.2.0-rc.39
+
+## 1.2.0-rc.38
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.38
+  - @hot-updater/plugin-api-keys@1.2.0-rc.38
+  - @hot-updater/plugin-insights@1.2.0-rc.38
+  - @hot-updater/plugin-core@1.2.0-rc.38
+  - @hot-updater/plugin-remote-config@1.2.0-rc.38
+
+## 1.2.0-rc.37
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.37
+  - @hot-updater/plugin-api-keys@1.2.0-rc.37
+  - @hot-updater/plugin-insights@1.2.0-rc.37
+  - @hot-updater/plugin-core@1.2.0-rc.37
+  - @hot-updater/plugin-remote-config@1.2.0-rc.37
+
+## 1.2.0-rc.36
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.36
+  - @hot-updater/plugin-api-keys@1.2.0-rc.36
+  - @hot-updater/plugin-insights@1.2.0-rc.36
+  - @hot-updater/plugin-core@1.2.0-rc.36
+  - @hot-updater/plugin-remote-config@1.2.0-rc.36
+
+## 1.2.0-rc.35
+
+### Patch Changes
+
+- f1f0d01: A sandbox build's built-in bundle is no longer a patch base. `findNativeBuild(scope, { builtInOlderThan })` answers null for a sandbox scope without a read, so a deploy to a `sandbox-*` channel makes no patch from a sandbox build, and the CLI also passes over a sandbox build that an older server answers. Core refuses a new patch from a sandbox build's built-in bundle, in `updateBundle` and in a deploy's new bundles, with a 400 (one read of each new patch's base; a deploy without patches reads nothing more). Patches already stored stay.
+
+  `hot-updater patch --base-artifact-id` refuses a sandbox build's built-in bundle in one line before it makes the patch, on any server: it pages the builds of the `sandbox-*` channels, where only sandbox builds register. When core refuses a patch, the CLI deletes the patch file it uploaded; any other failure, such as a lost answer after the server stored the patch, keeps the file.
+
+  The Console names no patch base on a sandbox build's page and reads none: its Built-in bundle card says deploys make no patches from it, the Patches card's empty state says the same, and a release on a sandbox channel shows no native build. The Console no longer shows the `npx hot-updater testflight` command on any IPA. A sandbox IPA also gets no TestFlight clause under its QR code, and its App Store export says only that it doesn't install from the page. A build already on TestFlight keeps its store state.
+
+- Updated dependencies [f1f0d01]
+  - @hot-updater/plugin-core@1.2.0-rc.35
+  - @hot-updater/plugin-api-keys@1.2.0-rc.35
+  - @hot-updater/plugin-insights@1.2.0-rc.35
+  - @hot-updater/plugin-remote-config@1.2.0-rc.35
+  - @hot-updater/protocol@1.2.0-rc.35
+
+## 1.2.0-rc.34
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.34
+  - @hot-updater/plugin-api-keys@1.2.0-rc.34
+  - @hot-updater/plugin-insights@1.2.0-rc.34
+  - @hot-updater/plugin-core@1.2.0-rc.34
+  - @hot-updater/plugin-remote-config@1.2.0-rc.34
+
+## 1.2.0-rc.33
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.33
+  - @hot-updater/plugin-api-keys@1.2.0-rc.33
+  - @hot-updater/plugin-insights@1.2.0-rc.33
+  - @hot-updater/plugin-core@1.2.0-rc.33
+  - @hot-updater/plugin-remote-config@1.2.0-rc.33
+
+## 1.2.0-rc.32
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.32
+  - @hot-updater/plugin-api-keys@1.2.0-rc.32
+  - @hot-updater/plugin-insights@1.2.0-rc.32
+  - @hot-updater/plugin-core@1.2.0-rc.32
+  - @hot-updater/plugin-remote-config@1.2.0-rc.32
+
+## 1.2.0-rc.31
+
+### Patch Changes
+
+- d4341b4: Every native build now shows the app version its artifact reports, whatever the update strategy.
+
+  **What is recorded.** `native_builds` records `native_app_version`, the artifact's own `CFBundleShortVersionString` or `versionName`. It is read when the build registers and never changes.
+  - A build reads it from the app it built: the archived `.app` of an `.ipa`, the simulator `.app`, or the manifest of an `.apk` or `.aab`.
+  - An import reads it from the imported artifact.
+  - It is null when the artifact's can't be read, and on a build registered before it was recorded.
+  - `app_version` is unchanged: it is still the version OTAs target, and it stays null on a fingerprint build.
+
+  **Where it shows.**
+  - **Console:** a fingerprint build's Target shows its version over the fingerprint, in the Native builds table, on its card, and on its page. A build without a version shows its fingerprint alone. An app-version build shows its version once, as before.
+  - **`native-build find`:** names a fingerprint build's app version, and `--json` carries it on `nativeBuild`.
+  - **Build summary:** a fingerprint build's heading names its version, such as `Android release 1.6.0 (66)`.
+
+  The admin API takes `nativeAppVersion` on `POST /native-builds` and returns `native_app_version` on every native build.
+
+  If a 1.2.0 prerelease migrated your database before this release, the column is missing; add it once. A database created from this release's migration already has it, so check first and skip the ALTER when `native_app_version` is listed.
+  - Cloudflare D1, SQLite: run `PRAGMA table_info("native_builds");`. Only when no row is named `native_app_version`, run `ALTER TABLE "native_builds" ADD COLUMN "native_app_version" TEXT;`. SQLite has no `IF NOT EXISTS` for a column, and running the ALTER again fails with `duplicate column name`.
+  - Supabase: `ALTER TABLE "hot_updater_v1_native_builds" ADD COLUMN IF NOT EXISTS "native_app_version" text COLLATE "C";` This is safe to run again.
+  - PostgreSQL, Neon: `ALTER TABLE "native_builds" ADD COLUMN IF NOT EXISTS "native_app_version" text COLLATE "C";` This is safe to run again.
+  - MySQL: run `SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'native_builds' AND column_name = 'native_app_version';`. Only when it returns 0, run ``ALTER TABLE `native_builds` ADD COLUMN `native_app_version` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;``. MySQL has no `IF NOT EXISTS` for a column.
+  - MongoDB, DynamoDB, Firestore, Cosmos DB: nothing to do; a row without the field reads as null.
+
+- Updated dependencies [d4341b4]
+  - @hot-updater/plugin-core@1.2.0-rc.31
+  - @hot-updater/protocol@1.2.0-rc.31
+  - @hot-updater/plugin-api-keys@1.2.0-rc.31
+  - @hot-updater/plugin-insights@1.2.0-rc.31
+  - @hot-updater/plugin-remote-config@1.2.0-rc.31
+
+## 1.2.0-rc.30
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.30
+  - @hot-updater/plugin-api-keys@1.2.0-rc.30
+  - @hot-updater/plugin-insights@1.2.0-rc.30
+  - @hot-updater/plugin-core@1.2.0-rc.30
+  - @hot-updater/plugin-remote-config@1.2.0-rc.30
+
+## 1.2.0-rc.29
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.29
+  - @hot-updater/plugin-api-keys@1.2.0-rc.29
+  - @hot-updater/plugin-insights@1.2.0-rc.29
+  - @hot-updater/plugin-core@1.2.0-rc.29
+  - @hot-updater/plugin-remote-config@1.2.0-rc.29
+
+## 1.2.0-rc.28
+
+### Minor Changes
+
+- 43605fd: Native builds and Bundles now lead with the rows that matter and fold the rest where they sit.
+  - **Native builds** lead with the newest build of each distribution path, and with the store build. A distribution path is a platform, a channel, sandbox or not, and how the build reaches people: the store track it was submitted to, or else its artifact. An `.ipa` is split by its export method.
+  - **Bundles** lead with the reachable bundles. The selected bundle shows as a row wherever it sits.
+  - **Folds.** Every run of other rows between two leading rows is one fold in its place, such as "5 older builds" or "2 unreachable bundles". Each fold opens on its own and shows exactly those rows, in order.
+  - **Filters.** The Disabled and artifact filters fold nothing.
+
+  **Paging.** A page holds 20 leading rows, plus the run under its last one, so the next page starts with a leading row.
+  - The Console server reads ahead through the list's own index, at most 200 rows a page, counting the rows it reads to classify them.
+  - A run that outlasts the budget ends the page in a fold that goes on, and the next page continues it.
+  - A fold's count is exact up to 100 and "100+" beyond. A fold's rows are read when it opens, exactly its range, 50 at a time.
+  - A page's cursor remembers where the 20 pages before it started, so Previous shows a page exactly as Next did. Past those, Previous reads up from the page's first row: its page breaks may differ, but no row is skipped or repeated.
+  - Rows are in build ID order, which is the order they were registered in.
+
+  **Keyset reads.** A keyset read, such as `listNativeBuilds`, takes `through`, a key it ends with, so one read covers one range. The admin API and the standalone adapter pass it as the `through` query parameter.
+
+  **Newer build.** A native build is older when the list has read a newer build (a greater ID) on its path: on its own page, or above the page through its channel's existing index. A newer build further up than that read reaches leaves the build leading.
+
+  **Export method.** `native_builds` records `export_method` (`app-store`, `ad-hoc`, `development`, `enterprise`, or null). When the CLI builds an `.ipa`, it takes the `method` of the export options it exported with and confirms it with the `.ipa`'s embedded profile: devices listed mean ad hoc or development, all devices mean enterprise, neither means the App Store. It records null when the two disagree or either is missing, as for an imported `.ipa`, and a build registered before this has null too. A null `.ipa` is on the plain `ipa` path.
+
+  If you migrated a database with a 1.2.0 prerelease, add the column by hand:
+  - Cloudflare D1, SQLite: `ALTER TABLE "native_builds" ADD COLUMN "export_method" TEXT;`
+  - Supabase: `ALTER TABLE "hot_updater_v1_native_builds" ADD COLUMN "export_method" varchar(16) COLLATE "C";`
+  - PostgreSQL: `ALTER TABLE "native_builds" ADD COLUMN "export_method" varchar(16) COLLATE "C";`
+  - MySQL: ``ALTER TABLE `native_builds` ADD COLUMN `export_method` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;``
+  - MongoDB, DynamoDB, Firestore, Cosmos DB: nothing to do; a row without the field reads as null.
+
+- b03f1be: Add the iOS device registry: the iPhones and iPads a team asks to install ad hoc builds on, kept in the server's database (new core tables `ios_devices`, and `ios_device_account`, the one Apple account the registry belongs to), as requested, approved, or registered with Apple.
+  - Console: **Native builds** gets an **iOS devices** view, beside Builds, with no new menu. A tester opens it on an iPhone, names it, and installs a profile that reads its UDID; the iPhone is listed as requested. On a build's page, an iPhone the `.ipa` doesn't list gets **Request access** instead of a command to copy, and an ad hoc build's page lists the devices its `.ipa` includes, by registry name. The profile link is a short-lived capability signed with `BETTER_AUTH_SECRET`, and Request access takes the UDID only from a receipt the profile's answer signed for the same signed-in person. Approvers approve, rename, and remove devices: the emails in the new `console.deviceApprovers` of `defineConsoleConfig`, or anyone on the local Console. Without `deviceApprovers`, a hosted Console approves nothing. The Console still holds no Apple key.
+  - CLI: an ad hoc `native-build ios` registers the approved devices with the Apple account of the scheme's `signing.ascApiKey` before it archives, one at a time, recording each answer. When the exported `.ipa` still lacks an approved device Apple has enabled, it deletes this app's saved Xcode-managed ad hoc profiles (matched by team and application identifier) and exports once more; a device still missing fails the build before it is tracked. A scheme with no key, with manual signing, or signing with another Apple account than the registry's registers nothing and says so. `--json` reports `devices`. `native-build devices add` picks from the requested devices at a terminal without `--udid`, and records what it registers; `devices list` shows the registry beside the Apple account; the new `devices rename` renames a device in both, and `devices remove` deletes it from the registry and, once confirmed or with `--yes`, disables it at Apple.
+  - The per-build profile routes under `/_hot-updater/native-builds/<id>/device*` are replaced by `/_hot-updater/devices/device.mobileconfig` and `device-response`. The shell command that removed saved profiles is gone: the build handles it.
+  - One Apple account per registry: before a build sends Apple its first device, it claims the registry for its key's issuer in `ios_device_account`, whose single key makes the claim atomic on every store; a build of another account sends Apple nothing, and an approved device another account registered before is never sent by a different account.
+  - Server: core gains `claimIosDeviceAccount`, `listIosDevices`, `findIosDevice`, `requestIosDevice`, `approveIosDevice`, `renameIosDevice`, `recordIosDeviceOutcome`, `markIosDevicesInBuild`, and `deleteIosDevice`, with admin routes under `/ios-devices` that `standaloneRepository` uses. No client route changes.
+  - Protocol: `readIpaInstallInfo` reports the `.ipa`'s `teamId`, and `readProvisioningProfile` reads a saved profile.
+
+  The table is part of the 1.2.0 migration. A database a 1.2 prerelease already migrated needs it created by hand, before this version is deployed over it: until then, an ad hoc build and the Console's iOS devices view fail to read the registry. Upgrade in this order: create the table, deploy the server, deploy the Console, then upgrade the CLI.
+  - D1 or SQLite:
+
+    ```sql
+    CREATE TABLE IF NOT EXISTS "ios_devices" ("id" TEXT NOT NULL, "udid" TEXT NOT NULL, "name" TEXT NOT NULL, "status" TEXT NOT NULL, "requested_by" TEXT, "created_at_ms" INTEGER NOT NULL, "approved_by" TEXT, "approved_at_ms" INTEGER, "registered_at_ms" INTEGER, "apple_issuer_id" TEXT, "apple_error" TEXT, "build_id" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+    CREATE INDEX IF NOT EXISTS "ios_devices_byStatus" ON "ios_devices" ("status", "id");
+    CREATE UNIQUE INDEX IF NOT EXISTS "ios_devices_udid" ON "ios_devices" ("udid");
+    CREATE TABLE IF NOT EXISTS "ios_device_account" ("id" TEXT NOT NULL, "apple_issuer_id" TEXT NOT NULL, "claimed_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+    ```
+
+  - Supabase: the `hot_updater_v1_ios_devices` table with its two indexes and the `hot_updater_v1_ios_device_account` table, each with `ENABLE ROW LEVEL SECURITY`, as in `0002_hot-updater_1.2.0.sql`, then that file's `CREATE OR REPLACE FUNCTION public.hot_updater_v1_apply`, whose table allowlist names both.
+  - PostgreSQL (Vercel, Neon, or your own): the same as Supabase without the `hot_updater_v1_` prefix, row level security, or the function, as in `@hot-updater/postgres`'s `sql/bundles.sql`.
+  - MySQL: the `ios_devices` table with its two indexes and the `ios_device_account` table, as `hot-updater db generate --sql mysql` prints them.
+  - MongoDB: `hot-updater db migrate` on the server, or these, which are the adapter's own index definitions:
+
+    ```js
+    db.ios_devices.createIndexes([
+      { name: "byStatus", key: { status: 1, id: 1 } },
+      { name: "all", key: { id: 1 } },
+      { name: "udid", key: { udid: 1 }, unique: true },
+    ]);
+    db.ios_device_account.createIndexes([{ name: "all", key: { id: 1 } }]);
+    ```
+
+  - Prisma or Drizzle: run `npx hot-updater db generate <server file>`, then the migration the ORM writes from it.
+
+  DynamoDB, Firestore, and Cosmos DB need nothing. Nor does `standaloneRepository`: its server's database takes the table. An AWS deployment re-runs `hot-updater init` only to keep its Lambda role's DynamoDB policy listing every core table; the Lambda never reads this one.
+
+### Patch Changes
+
+- Updated dependencies [43605fd]
+- Updated dependencies [b03f1be]
+  - @hot-updater/plugin-core@1.2.0-rc.28
+  - @hot-updater/protocol@1.2.0-rc.28
+  - @hot-updater/plugin-api-keys@1.2.0-rc.28
+  - @hot-updater/plugin-insights@1.2.0-rc.28
+  - @hot-updater/plugin-remote-config@1.2.0-rc.28
+
+## 1.2.0-rc.27
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.27
+  - @hot-updater/plugin-api-keys@1.2.0-rc.27
+  - @hot-updater/plugin-insights@1.2.0-rc.27
+  - @hot-updater/plugin-core@1.2.0-rc.27
+  - @hot-updater/plugin-remote-config@1.2.0-rc.27
+
+## 1.2.0-rc.26
+
+### Patch Changes
+
+- Updated dependencies [f424a4e]
+  - @hot-updater/protocol@1.2.0-rc.26
+  - @hot-updater/plugin-insights@1.2.0-rc.26
+  - @hot-updater/plugin-core@1.2.0-rc.26
+  - @hot-updater/plugin-remote-config@1.2.0-rc.26
+  - @hot-updater/plugin-api-keys@1.2.0-rc.26
+
+## 1.2.0-rc.25
+
+### Minor Changes
+
+- 0d8a448: Select Google Play closed, open, or production tracks, optionally use staged rollout, and promote builds with a recorded Play submission without uploading them again. Keep sandbox submissions on internal testing.
+
+  Keep release-action OTA updates working after promotion and allow reruns with an explicit `--rollout` to update or complete public-track rollouts. Skip implicit reruns and downward promotions, and preserve release metadata when updating a rollout.
+
+  Upgrade a self-hosted server and Console before the CLI: older RC servers reject the new destinations with HTTP 400 after Play has released the build, and older RC Consoles crash on the new `submitted_to` labels.
+
+### Patch Changes
+
+- 211e584: Set a sandbox build's URL scheme on its scheme: `sandbox: { urlScheme: "acme-preview" }` in `hot-updater.config.ts` turns the sandbox on with that scheme, and `sandbox: true` keeps `hu-sandbox-<app ID>`. The config refuses a scheme that isn't lower case URI syntax of up to 64 characters, or is `http`, `https`, `file`, `data`, `javascript`, `true` or `false` (which Android's manifest compiles as booleans), and the build refuses one the app registers itself.
+
+  The build registers the scheme in its sandbox URL type on iOS, which also records it in the Info.plist key `HOT_UPDATER_SANDBOX_URL_SCHEME`, and on the sandbox activity on Android, which also names it in `com.hotupdater.sandbox.URL_SCHEME`, and the scheme is part of the native build key. Import and registration read it from the artifact (on Android, the sandbox activity's link scheme that its meta-data names; on iOS, the one scheme of the sandbox URL type) into the registry's new `native_builds.sandbox_url_scheme`, `native-build find --json` returns it as `sandbox.urlScheme`, and the preview action's link and QR code use it, so a reused build keeps the scheme it was built with. A sandbox build accepts only its own scheme's links: another scheme's link "isn't a link for this app". A preview link's scheme is ASCII alone. The iOS build refuses an app whose own URL type is named `hot-updater-sandbox`, and, when it patches an app it patched before, anything but exactly one `hot-updater-sandbox` URL type holding the one recorded scheme. The patch, the artifact reader and the build itself read the recorded scheme by one rule: absent, it's a prerelease's build, read as before; present, it must be a lower-case ASCII scheme that the one `hot-updater-sandbox` URL type holds alone, or the build has no scheme of its own and refuses every link. Builds registered before the column read as the derived scheme.
+
+  The column is part of the 1.2.0 migration. A SQL database a 1.2 prerelease already migrated needs it added by hand, before this version is deployed over it: until then, reads still work, but registering any native build, a normal one too, fails. Upgrade in this order: add the column, deploy the server, then upgrade the CLI. A new CLI that registers through `standaloneRepository` with an older server loses the scheme, since that server's admin route drops `sandboxUrlScheme`: the row stores null, and its links fall back to the derived scheme.
+  - D1 or SQLite: `ALTER TABLE native_builds ADD COLUMN sandbox_url_scheme TEXT;`
+  - Supabase: `ALTER TABLE hot_updater_v1_native_builds ADD COLUMN sandbox_url_scheme varchar(255) COLLATE "C";`
+  - PostgreSQL (Vercel, Neon, or your own): `ALTER TABLE native_builds ADD COLUMN sandbox_url_scheme varchar(255) COLLATE "C";`
+  - MySQL: ``ALTER TABLE native_builds ADD COLUMN `sandbox_url_scheme` varchar(255) CHARACTER SET ascii COLLATE ascii_bin;``
+  - Prisma or Drizzle: run `npx hot-updater db generate <server file>`, then the migration the ORM writes from it.
+
+  Key-value and document stores (DynamoDB, Firestore, Cosmos DB, MongoDB) need nothing: a row stored before the column has no such field, which reads as null. Nor does `standaloneRepository`, which stores nothing itself: its server's database takes the ALTER.
+
+- Updated dependencies [0d8a448]
+- Updated dependencies [211e584]
+  - @hot-updater/plugin-core@1.2.0-rc.25
+  - @hot-updater/protocol@1.2.0-rc.25
+  - @hot-updater/plugin-api-keys@1.2.0-rc.25
+  - @hot-updater/plugin-insights@1.2.0-rc.25
+  - @hot-updater/plugin-remote-config@1.2.0-rc.25
+
+## 1.2.0-rc.24
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.24
+  - @hot-updater/plugin-api-keys@1.2.0-rc.24
+  - @hot-updater/plugin-insights@1.2.0-rc.24
+  - @hot-updater/plugin-core@1.2.0-rc.24
+  - @hot-updater/plugin-remote-config@1.2.0-rc.24
+
+## 1.2.0-rc.23
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.23
+  - @hot-updater/plugin-api-keys@1.2.0-rc.23
+  - @hot-updater/plugin-insights@1.2.0-rc.23
+  - @hot-updater/plugin-core@1.2.0-rc.23
+  - @hot-updater/plugin-remote-config@1.2.0-rc.23
+
+## 1.2.0-rc.22
+
+### Minor Changes
+
+- a823198: Record which native builds are sandbox builds and tag them **Sandbox** like the Store build tag, and make the native build booleans `is_*` and never null.
+  - `native_builds.store_build` (true or null) is now `is_store_build`, and the new sandbox fact is `is_sandbox`. Both are required booleans, true or false, in v1.2's existing `0002` migrations; `schema.core` stays `1.2.0`. One store build per scope is now kept by `store_build_scope_key`, a column the engine derives from `is_store_build` (the scope key on the store build, null on every other), under the unique index `byStoreBuild`. Boolean columns follow one rule: `is_*` for a fact about the row or `should_*` for an instruction to the client, never null.
+  - Derived string fields take `maxLength` and `ascii` like declared ones, so a derived key renders the right column on MySQL.
+  - `native-build android|ios` records `is_sandbox` from the scheme's `sandbox: true`, and `native-build import` from the artifact's sandbox layer. The admin API takes `isSandbox: boolean` on a registration, and refuses null.
+  - The registry refuses a registration whose `isSandbox` disagrees with its channel. A sandbox build registers only on a `sandbox-*` channel, and only a sandbox build registers there. A 1.2 prerelease CLI that registers a sandbox build without the field is refused with a 400 naming the reserved channel; upgrade the CLI with the server. Normal builds register as before.
+  - Everything that asks "is this a sandbox build" reads `is_sandbox`, not the channel. The Console tags the build **Sandbox** beside its kind in the Native builds list, its card, and the build's page, and hides **Mark as store build** for it. `native-build mark` refuses it by the record, and `find`, `download`, `delete` and `import` print `Kind  apk · sandbox`. `find --json`'s `nativeBuild` carries `is_sandbox` and `is_store_build`. The preview action tells a sandbox scheme from `find`'s `sandbox` result.
+  - `native-build mark --json` now reports the refusal `reason` as `sandbox_build`, not `sandbox_channel`.
+
+  If you deployed a 1.2.0 prerelease, its database already ran `0002` with `store_build`, and nothing reports it: the schema check, `hot-updater doctor` and `db migrate` all pass. Upgrade it in a maintenance window: stop everything that registers or marks native builds (CI jobs that run `native-build`, `deploy`, and the Console), run your database's SQL below, then deploy this release's server and CLI before you start them again. Until then, native build commands, `deploy`, and the Console's native build page fail; OTA update checks keep working. The SQL marks each scope's store build again and records the sandbox builds already registered (from their `sandbox-*` channel, once). It uses the default table names; with a `tablePrefix`, prepend it.
+  - Cloudflare D1, and Kysely on SQLite or libSQL. SQLite keeps the `DEFAULT 0`; nothing reads it, and the engine writes both columns:
+
+    ```sql
+    DROP INDEX IF EXISTS "native_builds_byStoreBuild";
+    ALTER TABLE "native_builds" ADD COLUMN "is_store_build" INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE "native_builds" ADD COLUMN "is_sandbox" INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE "native_builds" ADD COLUMN "store_build_scope_key" TEXT;
+    UPDATE "native_builds" SET "is_store_build" = 1, "store_build_scope_key" = "scope_key" WHERE "store_build" = 1;
+    UPDATE "native_builds" SET "is_sandbox" = 1
+      WHERE "channel_id" IN (SELECT "id" FROM "channels" WHERE substr("name", 1, 8) = 'sandbox-');
+    ALTER TABLE "native_builds" DROP COLUMN "store_build";
+    CREATE UNIQUE INDEX IF NOT EXISTS "native_builds_byStoreBuild" ON "native_builds" ("store_build_scope_key");
+    ```
+
+  - Supabase:
+
+    ```sql
+    DROP INDEX IF EXISTS "hot_updater_v1_native_builds_byStoreBuild";
+    ALTER TABLE "hot_updater_v1_native_builds"
+      ADD COLUMN "is_store_build" boolean NOT NULL DEFAULT false,
+      ADD COLUMN "is_sandbox" boolean NOT NULL DEFAULT false,
+      ADD COLUMN "store_build_scope_key" varchar(2048) COLLATE "C";
+    UPDATE "hot_updater_v1_native_builds" SET "is_store_build" = true, "store_build_scope_key" = "scope_key" WHERE "store_build" = true;
+    UPDATE "hot_updater_v1_native_builds" SET "is_sandbox" = true
+      WHERE "channel_id" IN (SELECT "id" FROM "hot_updater_v1_channels" WHERE substr("name", 1, 8) = 'sandbox-');
+    ALTER TABLE "hot_updater_v1_native_builds"
+      DROP COLUMN "store_build",
+      ALTER COLUMN "is_store_build" DROP DEFAULT,
+      ALTER COLUMN "is_sandbox" DROP DEFAULT;
+    CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byStoreBuild" ON "hot_updater_v1_native_builds" ("store_build_scope_key");
+    ```
+
+  - PostgreSQL (`@hot-updater/postgres`, its Neon and Vercel re-exports, and Kysely on PostgreSQL):
+
+    ```sql
+    DROP INDEX IF EXISTS "native_builds_byStoreBuild";
+    ALTER TABLE "native_builds"
+      ADD COLUMN "is_store_build" boolean NOT NULL DEFAULT false,
+      ADD COLUMN "is_sandbox" boolean NOT NULL DEFAULT false,
+      ADD COLUMN "store_build_scope_key" varchar(2048) COLLATE "C";
+    UPDATE "native_builds" SET "is_store_build" = true, "store_build_scope_key" = "scope_key" WHERE "store_build" = true;
+    UPDATE "native_builds" SET "is_sandbox" = true
+      WHERE "channel_id" IN (SELECT "id" FROM "channels" WHERE substr("name", 1, 8) = 'sandbox-');
+    ALTER TABLE "native_builds"
+      DROP COLUMN "store_build",
+      ALTER COLUMN "is_store_build" DROP DEFAULT,
+      ALTER COLUMN "is_sandbox" DROP DEFAULT;
+    CREATE UNIQUE INDEX IF NOT EXISTS "native_builds_byStoreBuild" ON "native_builds" ("store_build_scope_key");
+    ```
+
+  - Kysely on MySQL:
+
+    ```sql
+    DROP INDEX `native_builds_byStoreBuild` ON `native_builds`;
+    ALTER TABLE `native_builds`
+      ADD COLUMN `is_store_build` boolean NOT NULL DEFAULT false,
+      ADD COLUMN `is_sandbox` boolean NOT NULL DEFAULT false,
+      ADD COLUMN `store_build_scope_key` varchar(2048) CHARACTER SET ascii COLLATE ascii_bin;
+    UPDATE `native_builds` SET `is_store_build` = 1, `store_build_scope_key` = `scope_key` WHERE `store_build` = 1;
+    UPDATE `native_builds` SET `is_sandbox` = 1
+      WHERE `channel_id` IN (SELECT `id` FROM `channels` WHERE BINARY SUBSTRING(`name`, 1, 8) = 'sandbox-');
+    ALTER TABLE `native_builds`
+      DROP COLUMN `store_build`,
+      ALTER COLUMN `is_store_build` DROP DEFAULT,
+      ALTER COLUMN `is_sandbox` DROP DEFAULT;
+    CREATE UNIQUE INDEX `native_builds_byStoreBuild` ON `native_builds` (`store_build_scope_key`);
+    ```
+
+  - Prisma and Drizzle: run `hot-updater db generate` so the ORM schema matches, then apply your dialect's SQL above by hand rather than the ORM's generated migration, which would drop `store_build` before copying it and can't add a NOT NULL column to a table with rows. Record the migration as applied (`prisma migrate resolve --applied <name>`, or Drizzle's journal) so the next diff is empty.
+  - MongoDB: drop the old index, then run `hot-updater db migrate <server file>`, whose schema step creates the new `byStoreBuild`. Prefix the collection name with your `tablePrefix`, if any:
+
+    ```js
+    for (const name of ["byStoreBuild", "native_builds_byStoreBuild"]) {
+      if (db.native_builds.getIndexes().some((index) => index.name === name)) {
+        db.native_builds.dropIndex(name);
+      }
+    }
+    ```
+
+  MongoDB, DynamoDB, Firestore and Cosmos DB get no data backfill. A build registered before this release reads `is_store_build` and `is_sandbox` as false until it is written again. If you marked a store build on a prerelease, mark it again after upgrading with `hot-updater native-build mark <id>`; until then deploys patch from the scope's newest build. A sandbox build registered there before this release shows no **Sandbox** tag and can be marked as the store build: build the sandbox scheme again, or remove the old build with `hot-updater native-build delete <id>`.
+
+### Patch Changes
+
+- Updated dependencies [a823198]
+  - @hot-updater/plugin-core@1.2.0-rc.22
+  - @hot-updater/protocol@1.2.0-rc.22
+  - @hot-updater/plugin-api-keys@1.2.0-rc.22
+  - @hot-updater/plugin-insights@1.2.0-rc.22
+  - @hot-updater/plugin-remote-config@1.2.0-rc.22
+
+## 1.2.0-rc.21
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.21
+  - @hot-updater/plugin-api-keys@1.2.0-rc.21
+  - @hot-updater/plugin-insights@1.2.0-rc.21
+  - @hot-updater/plugin-core@1.2.0-rc.21
+  - @hot-updater/plugin-remote-config@1.2.0-rc.21
+
+## 1.2.0-rc.20
+
+### Patch Changes
+
+- Updated dependencies [1e72e05]
+  - @hot-updater/plugin-core@1.2.0-rc.20
+  - @hot-updater/plugin-api-keys@1.2.0-rc.20
+  - @hot-updater/plugin-insights@1.2.0-rc.20
+  - @hot-updater/plugin-remote-config@1.2.0-rc.20
+  - @hot-updater/protocol@1.2.0-rc.20
+
+## 1.2.0-rc.19
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.19
+  - @hot-updater/plugin-api-keys@1.2.0-rc.19
+  - @hot-updater/plugin-insights@1.2.0-rc.19
+  - @hot-updater/plugin-core@1.2.0-rc.19
+  - @hot-updater/plugin-remote-config@1.2.0-rc.19
+
+## 1.2.0-rc.18
+
+### Patch Changes
+
+- Updated dependencies [42f5b23]
+  - @hot-updater/plugin-core@1.2.0-rc.18
+  - @hot-updater/plugin-api-keys@1.2.0-rc.18
+  - @hot-updater/plugin-insights@1.2.0-rc.18
+  - @hot-updater/plugin-remote-config@1.2.0-rc.18
+  - @hot-updater/protocol@1.2.0-rc.18
+
+## 1.2.0-rc.17
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.17
+  - @hot-updater/plugin-api-keys@1.2.0-rc.17
+  - @hot-updater/plugin-insights@1.2.0-rc.17
+  - @hot-updater/plugin-core@1.2.0-rc.17
+  - @hot-updater/plugin-remote-config@1.2.0-rc.17
+
+## 1.2.0-rc.16
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.16
+  - @hot-updater/plugin-api-keys@1.2.0-rc.16
+  - @hot-updater/plugin-insights@1.2.0-rc.16
+  - @hot-updater/plugin-core@1.2.0-rc.16
+  - @hot-updater/plugin-remote-config@1.2.0-rc.16
+
+## 1.2.0-rc.15
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.15
+  - @hot-updater/plugin-api-keys@1.2.0-rc.15
+  - @hot-updater/plugin-insights@1.2.0-rc.15
+  - @hot-updater/plugin-core@1.2.0-rc.15
+  - @hot-updater/plugin-remote-config@1.2.0-rc.15
+
+## 1.2.0-rc.14
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.14
+  - @hot-updater/plugin-api-keys@1.2.0-rc.14
+  - @hot-updater/plugin-insights@1.2.0-rc.14
+  - @hot-updater/plugin-core@1.2.0-rc.14
+  - @hot-updater/plugin-remote-config@1.2.0-rc.14
+
+## 1.2.0-rc.13
+
+### Minor Changes
+
+- 1e85609: Mark the build the store sells, so a fresh install's first OTA stays a patch however many builds follow it.
+  - `hot-updater native-build mark <id> [--clear]` marks a build as its scope's store build, replacing the scope's mark in one write, or clears it. A build on a `sandbox-*` channel can't be marked. Run it again and it changes nothing. It changes no OTA already out: when the OTA a fresh install gets first has no patch from the build, it prints the `hot-updater patch` command that adds one, and `--json` carries it as `missingPatch`. The Native builds page in the Console has the same action, and shows the same command.
+  - `hot-updater deploy` patches from exactly one built-in bundle of its scope: the store build, or with no mark the most recently registered build, in one more indexed read. It prints which one, and whether it was marked. A build made after the deployed bundle is passed over for an older one instead of leaving the deploy with no built-in base.
+  - A target range such as `1.x.x`, and a default target such as `1.7.x` for a project at `1.7`, use the project's app version for that lookup when the range holds it. They found no build before.
+  - `native_builds` has a nullable `store_build` and a unique `byStoreBuild` index, in v1.2's existing `0002` migrations. `schema.core` stays `1.2.0`, so a database a v1.2 prerelease migrated needs the column and the index by hand.
+
+  If you deployed a 1.2.0 prerelease, its database already ran `0002` without `store_build`, and nothing reports it: the schema check, `hot-updater doctor` and `db migrate` all pass. Apply this before you deploy this release's server or CLI, or native build registration and `native-build mark` fail:
+  - Cloudflare D1, and Kysely on SQLite or libSQL:
+
+    ```sql
+    ALTER TABLE "native_builds" ADD COLUMN "store_build" INTEGER;
+    CREATE UNIQUE INDEX IF NOT EXISTS "native_builds_byStoreBuild" ON "native_builds" ("scope_key", "store_build");
+    ```
+
+  - Supabase:
+
+    ```sql
+    ALTER TABLE "hot_updater_v1_native_builds" ADD COLUMN "store_build" boolean;
+    CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byStoreBuild" ON "hot_updater_v1_native_builds" ("scope_key", "store_build");
+    ```
+
+  - PostgreSQL (`@hot-updater/postgres`, and Kysely on PostgreSQL):
+
+    ```sql
+    ALTER TABLE "native_builds" ADD COLUMN "store_build" boolean;
+    CREATE UNIQUE INDEX IF NOT EXISTS "native_builds_byStoreBuild" ON "native_builds" ("scope_key", "store_build");
+    ```
+
+  - Kysely on MySQL:
+
+    ```sql
+    ALTER TABLE `native_builds` ADD COLUMN `store_build` boolean;
+    CREATE UNIQUE INDEX `native_builds_byStoreBuild` ON `native_builds` (`scope_key`, `store_build`);
+    ```
+
+  - MongoDB:
+
+    ```js
+    db.native_builds.createIndex(
+      { scope_key: 1, store_build: 1 },
+      {
+        name: "native_builds_byStoreBuild",
+        unique: true,
+        partialFilterExpression: { store_build: { $exists: true } },
+      },
+    );
+    ```
+
+  - Prisma and Drizzle: run `hot-updater db generate`, then apply it with the ORM.
+
+  DynamoDB, Firestore and Cosmos DB need nothing.
+
+### Patch Changes
+
+- b54eddc: Remove `aggregateBatching: { mode: "memory" }`, which kept a process's aggregate changes in a buffer until a timer wrote them, so a crash lost them. Batched aggregates now always go through log rows, in the same write as the transaction that made them. `aggregateBatching: { windowMs }` and `aggregateBatching: false` stay, and `mode` is gone from the type, so `{ mode: "log" }` and `{ mode: "memory" }` are TypeScript errors: delete the key.
+  - A JavaScript config that still passes `mode` runs the same way: the key is ignored. Its `windowMs`, or 60 seconds without one, is how often a commit compacts.
+  - `dynamoDB`, `firebaseDatabase`, and `cosmosDatabase` need no migration: log rows live in the same table, collection, or container, under the same indexes. A hand-written DynamoDB policy with a `dynamodb:LeadingKeys` condition must list `aggregate_log_0` to `aggregate_log_7` and `aggregate_lease`, as the managed policy does.
+  - A report on these stores costs about 3 more write units than it did in memory mode, for its log row and the row's delete. Totals on other shards keep counting: reads sum every shard.
+  - `hot-updater db migrate` creates no log tables. A store with a table per model that you passed `aggregateBatching` yourself, such as a custom SQL adapter, used to run memory mode without them; its batched writes now fail until you run `adapter.migrations.apply(aggregateBatchingTables)` or drop the option.
+  - `hotUpdater.flush()` stays and merges pending log rows. A server no longer needs it before exiting. `createEngine(...).dispose()`, which only stopped the removed timer, is gone: delete the call.
+
+- Updated dependencies [b54eddc]
+- Updated dependencies [ad99046]
+- Updated dependencies [1e85609]
+- Updated dependencies [20006f2]
+- Updated dependencies [3d95e55]
+  - @hot-updater/plugin-core@1.2.0-rc.13
+  - @hot-updater/protocol@1.2.0-rc.13
+  - @hot-updater/plugin-api-keys@1.2.0-rc.13
+  - @hot-updater/plugin-insights@1.2.0-rc.13
+  - @hot-updater/plugin-remote-config@1.2.0-rc.13
+
+## 1.2.0-rc.12
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.12
+  - @hot-updater/plugin-api-keys@1.2.0-rc.12
+  - @hot-updater/plugin-insights@1.2.0-rc.12
+  - @hot-updater/plugin-core@1.2.0-rc.12
+  - @hot-updater/plugin-remote-config@1.2.0-rc.12
+
+## 1.2.0-rc.11
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.11
+  - @hot-updater/plugin-api-keys@1.2.0-rc.11
+  - @hot-updater/plugin-insights@1.2.0-rc.11
+  - @hot-updater/plugin-core@1.2.0-rc.11
+  - @hot-updater/plugin-remote-config@1.2.0-rc.11
+
+## 1.2.0-rc.10
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.10
+  - @hot-updater/plugin-api-keys@1.2.0-rc.10
+  - @hot-updater/plugin-insights@1.2.0-rc.10
+  - @hot-updater/plugin-core@1.2.0-rc.10
+  - @hot-updater/plugin-remote-config@1.2.0-rc.10
+
+## 1.2.0-rc.9
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.9
+  - @hot-updater/plugin-api-keys@1.2.0-rc.9
+  - @hot-updater/plugin-insights@1.2.0-rc.9
+  - @hot-updater/plugin-core@1.2.0-rc.9
+  - @hot-updater/plugin-remote-config@1.2.0-rc.9
+
+## 1.2.0-rc.8
+
+### Patch Changes
+
+- Updated dependencies [c463534]
+- Updated dependencies [5358377]
+  - @hot-updater/plugin-core@1.2.0-rc.8
+  - @hot-updater/plugin-api-keys@1.2.0-rc.8
+  - @hot-updater/plugin-insights@1.2.0-rc.8
+  - @hot-updater/plugin-remote-config@1.2.0-rc.8
+  - @hot-updater/protocol@1.2.0-rc.8
+
+## 1.2.0-rc.7
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.7
+  - @hot-updater/plugin-api-keys@1.2.0-rc.7
+  - @hot-updater/plugin-insights@1.2.0-rc.7
+  - @hot-updater/plugin-core@1.2.0-rc.7
+  - @hot-updater/plugin-remote-config@1.2.0-rc.7
+
+## 1.2.0-rc.6
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.6
+  - @hot-updater/plugin-api-keys@1.2.0-rc.6
+  - @hot-updater/plugin-insights@1.2.0-rc.6
+  - @hot-updater/plugin-core@1.2.0-rc.6
+  - @hot-updater/plugin-remote-config@1.2.0-rc.6
+
+## 1.2.0-rc.5
+
+### Patch Changes
+
+- Updated dependencies [2fd1c83]
+  - @hot-updater/plugin-core@1.2.0-rc.5
+  - @hot-updater/plugin-api-keys@1.2.0-rc.5
+  - @hot-updater/plugin-insights@1.2.0-rc.5
+  - @hot-updater/plugin-remote-config@1.2.0-rc.5
+  - @hot-updater/protocol@1.2.0-rc.5
+
+## 1.2.0-rc.4
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.4
+  - @hot-updater/plugin-api-keys@1.2.0-rc.4
+  - @hot-updater/plugin-insights@1.2.0-rc.4
+  - @hot-updater/plugin-core@1.2.0-rc.4
+  - @hot-updater/plugin-remote-config@1.2.0-rc.4
+
+## 1.2.0-rc.3
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.3
+  - @hot-updater/plugin-api-keys@1.2.0-rc.3
+  - @hot-updater/plugin-insights@1.2.0-rc.3
+  - @hot-updater/plugin-core@1.2.0-rc.3
+  - @hot-updater/plugin-remote-config@1.2.0-rc.3
+
+## 1.2.0-rc.2
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.2
+  - @hot-updater/plugin-api-keys@1.2.0-rc.2
+  - @hot-updater/plugin-insights@1.2.0-rc.2
+  - @hot-updater/plugin-core@1.2.0-rc.2
+  - @hot-updater/plugin-remote-config@1.2.0-rc.2
+
+## 1.2.0-rc.1
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.1
+  - @hot-updater/plugin-api-keys@1.2.0-rc.1
+  - @hot-updater/plugin-insights@1.2.0-rc.1
+  - @hot-updater/plugin-core@1.2.0-rc.1
+  - @hot-updater/plugin-remote-config@1.2.0-rc.1
+
+## 1.2.0-rc.0
+
+### Minor Changes
+
+- 28dfe97: The Console's **Native builds** tab lists the native builds Hot Updater tracks, installs them, and shows each one's built-in bundle, the diff baseline its OTAs patch from.
+  - **Native builds** (`/native-builds`) lists the tracked builds, newest first, one read per page, with each build's channel, fingerprint or app version, built-in bundle, and commit. `?channel=<name>` lists only the builds that embed a channel, also one read per page. A row opens the build's page.
+  - A build's page, `/native-builds/<id>`, reads five times whatever the build. **Install** shows an APK's QR code and `adb install` command, a simulator app's `xcrun simctl install` command, TestFlight for an IPA's testers, and a download for every build. **Built-in bundle** shows the min bundle ID its OTAs patch from, how many bundles patch from it, and whether it is its scope's newest build, which new deploys patch from, or the build that superseded it. **Served now** lists what the update check offers an install of the build, newer than its built-in bundle, and whether each first OTA downloads as a patch or as the full bundle. **Patches from this build** pages the patches from its built-in bundle.
+  - `/api/native-builds/<id>/download` redirects to the storage's download URL on each request, so the link never expires; a browser without a Console session goes to the build's page, which signs it in and returns to the build. The APK QR code holds the storage URL itself, read again every 30 seconds while it shows, so a phone needs no Console sign-in. `/_hot-updater/native-builds/qr?build=<id>` serves the QR code of a build's download link without a session and without a read.
+  - **Import a build**, beside the refresh button and in an empty list's next steps, shows the `npx hot-updater native-build import <path-to-.ipa|.aab|.apk|.app|.app.zip>` command that tracks a build made elsewhere, with its `-c/--channel` option and a link to the import guide; the Console uploads nothing.
+  - Sign-in returns to the Console page that asked for it.
+  - A bundle's detail sheet links to the newest native build of its release's scope, and says whether the bundle has a patch from it.
+  - `hot-updater channel delete <channel>` disables and deletes a channel's bundles, then the channel, as when a pull request closes. A missing channel succeeds without a change; a channel a native build embeds is kept, and the command exits with status 1.
+  - Core's API adds `getNativeBuild(id)`, one read by key, served at `GET /native-builds/:id`, and `listNativeBuilds({ channelId })`, one read of the channel's builds, served at `GET /native-builds?channelId=`; `standaloneRepository` maps both.
+
+- 79c81f6: `hot-updater native-build ios` and `native-build android` reuse a build instead of building again when nothing that can change the artifact changed. After the build adapter's prebuild, each build computes a native build key (`nbk1:` and a SHA-256) of every file of the git repository, the ignored native project files, `.env*` files, the install state and installed native packages it reads, what Expo and React Native CLI autolinking link (the config it prints, without this machine's directories, and each linked package file by file, wherever it is, with the ignored files of the repository's packages), the scheme's settings and files, the channel and fingerprint or app version, the signing identity (never a password or key), the toolchain, and the environment variables the build reads. A build the registry tracks with that key, whose artifact storage holds, is copied or downloaded to the output path, and nothing is built, tracked, or uploaded; else this machine's cached build with the key, such as a `--dry-run`'s, is tracked with its own min bundle ID; else the CLI builds and says what changed since the cached build. The CLI keeps one build per platform and scheme under `cacheDir`. A build no key can cover (Debug, outside git, autolinking that can't run, no `Podfile.lock` or `Package.resolved`, a dynamic Gradle version without a lockfile, environment reads by a computed name, device-list export methods, uninstalled provisioning profiles) always builds, and says why. `--no-cache` builds anyway and still records the key; `--submit` skips a reused build the store already has (`findTestFlightBuild` in `@hot-updater/apple-helper`, `findPlayInternalRelease` and `readBuiltVersionCode` in `@hot-updater/android-helper`); `--json` adds `cache: { hit, key, uncacheable, changed }`. The key is separate from the fingerprint, which keeps deciding which OTA updates a build takes, and `native-build find` keeps finding builds by scope.
+
+  Core's `native_builds` table has the nullable `build_key` column and the `byBuildKey` index, in the managed `0002_hot-updater_1.2.0.sql` migrations and the PostgreSQL schema. `NativeBuildRegistration` takes `buildKey`, `NativeBuildRow` has `build_key`, and `findNativeBuild(scope, { buildKey })` finds the newest build of a scope with a key in one read, also through `GET /native-builds/latest?buildKey=` and `standaloneRepository`, which reads a server's answer without the key as no build.
+
+- 4d8e0d2: Every native build `hot-updater native-build ios|android` makes is tracked in Hot Updater's native build registry, with no flag to opt out.
+  - Core's schema moves to 1.2.0 with the `native_builds` table, in the managed D1 and Supabase `0002_hot-updater_1.2.0.sql` migrations; `hot-updater init`, run again with its saved inputs, applies it. The table changes no existing one: its references to `channels` and `bundles` keep no counters.
+  - Before it builds, and before any Apple or Google sign-in, the CLI checks read-only that it can track the build: it asks the registry for the build's scope (for its newest build when the build adapter's prebuild has yet to generate the native project), and reads back (`exists`) the artifact of a build the registry already tracks there; when the database or the storage can't be reached, it stops in seconds naming which, and builds nothing. A Debug build, which loads its JavaScript from Metro and has no built-in bundle, is not tracked: the CLI says so before it builds, and `--json` reports `registration: { skipped: "debug" }`. When tracking fails after the build, the CLI exits with the artifact's path and submits it to no store.
+  - `--dry-run` builds but records and submits nothing, as `npm publish --dry-run` does: it runs the checks read-only, reads the store key `--submit` would use without signing in or issuing one, keeps the artifact on this machine, and prints what it would have recorded and where it would have submitted. A missing store key is reported, the build still runs, and the command exits 1 at the end. With `--json`, the last line has `dryRun: true`, `registration: { skipped: "dry-run" }`, and `submission: { skipped: "dry-run", destination }`.
+  - Tracking takes the JavaScript bundle a release build compiled in out of the artifact (`assets/index.android.bundle` in an `.apk`, `base/assets/index.android.bundle` in an `.aab`, `main.jsbundle` in an `.ipa` or `.app`), uploads the artifact to `native-builds/<platform>/<id>/` in the config's storage (a simulator `.app` as one `.app.zip`), uploads that bundle as the build's built-in bundle, a bundle whose ID is the MIN_BUNDLE_ID and whose manifest lists only that file at an OTA bundle's asset path, then registers both. It uses the config's `database` and `storage`, as deploy does.
+  - A tracked build records the build number its artifact reports, `build_number` (`CFBundleVersion` from the app's Info.plist, `versionCode` read with `aapt2`), which the Console shows; registrations without it, as from an earlier CLI, store null.
+  - A tracked build records the store track it was submitted to: `native_builds` has nullable `submitted_to` (`testflight` or `play-internal`), `submitted_at_ms`, and `submitted_version`, the store's version and build number. Core's `recordNativeBuildSubmission(id, { destination, version })` writes them in one read and one write, refusing another platform's store, and answers null for an unknown build; the admin API serves it at `POST /native-builds/:id/submission`, and `standaloneRepository` maps it.
+  - Core's API adds `registerNativeBuild`, which writes the build and its built-in bundle's row in one transaction, `findNativeBuild`, the newest build of a platform, channel, and fingerprint or exact app version in one indexed read, and `listNativeBuilds`. The admin API serves them at `POST /native-builds`, `GET /native-builds/latest`, and `GET /native-builds`, and `standaloneRepository` maps them; a server without these routes answers 404, which the CLI reports as a server to upgrade.
+  - A built-in bundle is no OTA bundle: no release publishes it, the bundle totals leave it out, core refuses to delete it or to release it, and `storage prune` keeps its files and the artifact. Update checks and artifact responses do not change.
+  - `azureBlobStorage` and `firebaseStorage` stream uploads instead of reading them into memory.
+  - `@hot-updater/android-helper` and `@hot-updater/apple-helper` export `extractBuiltInBundle`, and `@hot-updater/apple-helper` exports `archiveAppBundle`.
+
+### Patch Changes
+
+- 8c675a2: CLI prompts refuse to ask without a terminal instead of waiting: `keys export-public` names `-y` and `-p`, `keys remove`, `db migrate`, `db generate`, and `native-build ios|android` without `--scheme` name the option that skips the prompt, and every other prompt fails with an error. `native-build find` no longer runs the build adapter's prebuild, so a lookup leaves `ios/` and `android/` as they are: the Expo adapter reports the app version and channel `expo prebuild` would write from the Expo config (`nativeBuild.getNativeProjectValues`), and other adapters' native projects are read as they are. `hot-updater native-build delete <id>` deletes a registered native build, its built-in bundle, and its stored artifact, through core's new `deleteNativeBuild` and the admin API's `DELETE /native-builds/:id`.
+- Updated dependencies [8c675a2]
+- Updated dependencies [28dfe97]
+- Updated dependencies [84b21f0]
+- Updated dependencies [0050ff3]
+- Updated dependencies [1ad0ebe]
+- Updated dependencies [89cd5ce]
+- Updated dependencies [79c81f6]
+- Updated dependencies [4d8e0d2]
+- Updated dependencies [ed37acf]
+- Updated dependencies [4e4ddfb]
+- Updated dependencies [f017e61]
+- Updated dependencies [5e7a045]
+  - @hot-updater/plugin-core@1.2.0-rc.0
+  - @hot-updater/protocol@1.2.0-rc.0
+  - @hot-updater/plugin-api-keys@1.2.0-rc.0
+  - @hot-updater/plugin-insights@1.2.0-rc.0
+  - @hot-updater/plugin-remote-config@1.2.0-rc.0
+
 ## 1.1.22
 
 ### Patch Changes

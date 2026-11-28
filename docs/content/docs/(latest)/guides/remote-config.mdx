@@ -63,7 +63,8 @@ export const hotUpdater = HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: { "x-api-key": "<client-api-key>" },
   plugins: [
-    remoteConfig({ // [!code ++:7]
+    remoteConfig({
+      // [!code ++:7]
       defaults: {
         welcome_message: "Welcome back",
         max_items: 20,
@@ -88,11 +89,11 @@ const showNewCheckout = hotUpdater.remoteConfig.getBoolean("new_checkout");
 ```
 
 <Callout type="warn" title="The first launch reads your defaults">
-  A read returns the value the app activated last, else the key's default,
-  else `null`. A fresh install has activated nothing, so the first render
-  reads `defaults`, and a key without a default is `null` until the first
-  fetch and activate succeed, which may be never on a first launch offline.
-  Give every key you read a default, or a fallback where you read it, such as
+  A read returns the value the app activated last, else the key's default, else
+  `null`. A fresh install has activated nothing, so the first render reads
+  `defaults`, and a key without a default is `null` until the first fetch and
+  activate succeed, which may be never on a first launch offline. Give every key
+  you read a default, or a fallback where you read it, such as
   `getString("promo") ?? ""`.
 </Callout>
 
@@ -104,11 +105,11 @@ method, value types, and re-rendering when values change.
 `fetch()` downloads values, `activate()` switches reads to them, and
 `fetchAndActivate()` does both. Pick when the app changes:
 
-| You want | Call | The app changes |
-| --- | --- | --- |
-| New values as soon as possible | `fetchAndActivate()` at launch, not awaited | When the fetch ends, possibly on screen. |
+| You want                          | Call                                               | The app changes                                                              |
+| --------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------- |
+| New values as soon as possible    | `fetchAndActivate()` at launch, not awaited        | When the fetch ends, possibly on screen.                                     |
 | Server values on the first screen | `await fetchAndActivate()` behind a loading screen | Before the first screen, after a network round trip; defaults when it fails. |
-| No changes mid-session | `await activate()`, then `fetch()`, at launch | At the next launch, which activates what this one fetched. |
+| No changes mid-session            | `await activate()`, then `fetch()`, at launch      | At the next launch, which activates what this one fetched.                   |
 
 A fetch within 12 hours of the last one (`minimumFetchIntervalMs`) reuses the
 values fetched last and sends nothing, unless the app's channel, version,
@@ -136,15 +137,15 @@ draft until you publish them.
 - **Versions** lists every publish. **Roll back** publishes a copy of an
   earlier version, so the history keeps both.
 
-| Rule | A device matches when |
-| --- | --- |
-| Platform | It runs on one of the platforms. |
-| Channel | Its [channel](/docs/guides/channel-management) is one of the channels. |
-| App version | Its native app version satisfies a range, such as `>=1.4.0` or `2.x`. |
+| Rule                   | A device matches when                                                       |
+| ---------------------- | --------------------------------------------------------------------------- |
+| Platform               | It runs on one of the platforms.                                            |
+| Channel                | Its [channel](/docs/guides/channel-management) is one of the channels.      |
+| App version            | Its native app version satisfies a range, such as `>=1.4.0` or `2.x`.       |
 | Percentage of installs | Its [cohort](/docs/guides/rollout-cohorts) falls in a range, such as 0–10%. |
-| Cohort | Its cohort is one of the numbers or custom names. |
-| Fingerprint | Its native build's fingerprint is one of the hashes. |
-| Date and time | The server's clock is in a range; either end can be open. |
+| Cohort                 | Its cohort is one of the numbers or custom names.                           |
+| Fingerprint            | Its native build's fingerprint is one of the hashes.                        |
+| Date and time          | The server's clock is in a range; either end can be open.                   |
 
 Percentages are stable per installation and need no user ID. With one seed,
 `0–10%` and `10–20%` never share an installation, and widening `0–10%` to
@@ -264,13 +265,13 @@ if (result.status === "conflict") {
 A self-hosted server's admin handler serves the same operations, which the
 Console and the CLI use through [`standaloneRepository`](/docs/database-adapters/standalone):
 
-| Route | Does |
-| --- | --- |
-| `GET /remote-config/template` | The active template and its version. |
-| `PUT /remote-config/template` | Publishes `{ template, baseVersion, description? }`: `200` with the version, `409` with `currentVersion`, or `400` with `issues`. |
-| `GET /remote-config/versions?limit&cursor` | A page of versions, newest first. |
-| `GET /remote-config/versions/:version` | One version with its template. |
-| `POST /remote-config/versions/:version/rollback` | Publishes a copy of the version, from `{ baseVersion, description? }`. |
+| Route                                            | Does                                                                                                                              |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /remote-config/template`                    | The active template and its version.                                                                                              |
+| `PUT /remote-config/template`                    | Publishes `{ template, baseVersion, description? }`: `200` with the version, `409` with `currentVersion`, or `400` with `issues`. |
+| `GET /remote-config/versions?limit&cursor`       | A page of versions, newest first.                                                                                                 |
+| `GET /remote-config/versions/:version`           | One version with its template.                                                                                                    |
+| `POST /remote-config/versions/:version/rollback` | Publishes a copy of the version, from `{ baseVersion, description? }`.                                                            |
 
 ## How devices get values
 
@@ -288,11 +289,11 @@ Console and the CLI use through [`standaloneRepository`](/docs/database-adapters
 
 ## Limits
 
-| Limit | Value |
-| --- | --- |
-| Template size | 60,000 characters of JSON |
-| Parameters | 2,000; keys start with a letter or `_`, up to 256 letters, digits, and `_` |
-| Conditions | 500, with unique names of up to 100 characters |
-| Rule values | 100 per rule; channel, cohort, and fingerprint values up to 128 characters |
-| Percentages | 0 to 100 in steps of 0.1 |
-| Descriptions | 256 characters, for parameters and versions |
+| Limit         | Value                                                                      |
+| ------------- | -------------------------------------------------------------------------- |
+| Template size | 60,000 characters of JSON                                                  |
+| Parameters    | 2,000; keys start with a letter or `_`, up to 256 letters, digits, and `_` |
+| Conditions    | 500, with unique names of up to 100 characters                             |
+| Rule values   | 100 per rule; channel, cohort, and fingerprint values up to 128 characters |
+| Percentages   | 0 to 100 in steps of 0.1                                                   |
+| Descriptions  | 256 characters, for parameters and versions                                |

@@ -1,0 +1,257 @@
+import { NUMERIC_COHORT_SIZE } from "@hot-updater/protocol";
+import { Link } from "@tanstack/react-router";
+import { ArrowUpRight, PackageOpen } from "lucide-react";
+
+import { ReleaseIdDisplay } from "@/components/ReleaseIdDisplay";
+import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
+import { TimestampDisplay } from "@/components/TimestampDisplay";
+import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { formatByteSize } from "@/lib/native-builds";
+import type { NativeBuildDetail } from "@/lib/server/nativeBuilds";
+import { shellQuote } from "@/lib/shell";
+
+import { CopyableText } from "./CopyableText";
+
+/** How the first OTA to an artifact downloads on this build. */
+export type FirstDownload =
+  | { readonly kind: "patch"; readonly byteSize: number }
+  | { readonly kind: "full" }
+  /** The patches page on screen doesn't reach back to the bundle. */
+  | { readonly kind: "unknown" };
+
+/**
+ * How an install of the build downloads the artifact `artifactId` as its
+ * first OTA: as the patch from the built-in bundle when one exists, else the
+ * full bundle. Patches belong to artifacts, so a release reads its
+ * artifact's. The newest page of patches decides it for every artifact down
+ * to the page's oldest; an older one is unknown only when the page is full.
+ */
+export const firstDownloadOf = (
+  patches: NativeBuildDetail["patches"],
+  artifactId: string,
+): FirstDownload => {
+  const patch = patches.data.find((row) => row.bundleId === artifactId);
+  if (patch !== undefined) return { kind: "patch", byteSize: patch.byteSize };
+  const oldest = patches.data.at(-1)?.bundleId;
+  return patches.next !== undefined &&
+    oldest !== undefined &&
+    artifactId < oldest
+    ? { kind: "unknown" }
+    : { kind: "full" };
+};
+
+function FirstDownloadCell({ download }: { readonly download: FirstDownload }) {
+  switch (download.kind) {
+    case "patch":
+      return (
+        <span className="text-xs">
+          Patch{" "}
+          <span className="text-muted-foreground tabular-nums">
+            ({formatByteSize(download.byteSize)})
+          </span>
+        </span>
+      );
+    case "full":
+      return <span className="text-xs text-muted-foreground">Full bundle</span>;
+    case "unknown":
+      return (
+        <a
+          className="text-xs underline-offset-4 hover:underline"
+          href="#patches"
+        >
+          See patches
+        </a>
+      );
+  }
+}
+
+/**
+ * What the update check offers an install of the build now: its scope's
+ * catalog at the build's app version, down to the built-in bundle, newest
+ * first. It is the catalog of now, not the history.
+ */
+export function ServedNowCard({
+  detail,
+}: {
+  readonly detail: NativeBuildDetail;
+}) {
+  const { build, channel, servedNow, patches, catalogScopeKey } = detail;
+  // A hosted Console runs no diff, so a marked build whose first OTA has no
+  // patch from it gets the command that adds one. The first OTA is the newest
+  // release that serves anyone: one at 0% with no cohort serves no install.
+  const firstOtaArtifact = servedNow.find(
+    ({ rolloutCohortCount, targetCohorts }) =>
+      rolloutCohortCount > 0 || targetCohorts.length > 0,
+  )?.bundleId;
+  const missingPatch =
+    build.is_store_build &&
+    firstOtaArtifact !== undefined &&
+    firstOtaArtifact !== null &&
+    firstDownloadOf(patches, firstOtaArtifact).kind === "full"
+      ? [
+          "npx hot-updater patch",
+          `-p ${build.platform}`,
+          `-c ${shellQuote(channel)}`,
+          `-b ${shellQuote(firstOtaArtifact)}`,
+          `--base-artifact-id ${shellQuote(build.min_bundle_id)}`,
+        ].join(" ")
+      : null;
+  const scopeLink = (
+    <Link
+      className="inline-flex items-center gap-0.5 underline-offset-4 hover:underline"
+      search={{ scopeKey: catalogScopeKey }}
+      to="/"
+    >
+      All releases in this scope
+      <ArrowUpRight aria-hidden="true" className="size-3" />
+    </Link>
+  );
+
+  return (
+    <Card className="overflow-hidden shadow-sm">
+      <CardHeader className="border-b px-4 py-3">
+        <CardTitle className="text-sm">
+          <h2>Served now</h2>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        {servedNow.length === 0 ? (
+          <Empty className="py-10">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <PackageOpen />
+              </EmptyMedia>
+              <EmptyTitle>No OTA for this build yet</EmptyTitle>
+              <EmptyDescription>
+                No release in this build's scope is newer than its built-in
+                bundle. Deploy one with{" "}
+                <code className="font-mono">hot-updater deploy</code>, and it
+                shows here.
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Link
+                className={buttonVariants({
+                  className: "min-h-11 sm:min-h-8",
+                  variant: "outline",
+                })}
+                search={{ scopeKey: catalogScopeKey }}
+                to="/"
+              >
+                All releases in this scope
+              </Link>
+            </EmptyContent>
+          </Empty>
+        ) : (
+          <>
+            <Table aria-label="Served now" className="table-fixed">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Bundle</TableHead>
+                  <TableHead className="hidden w-40 md:table-cell">
+                    Rollout
+                  </TableHead>
+                  <TableHead className="hidden w-32 sm:table-cell">
+                    Created
+                  </TableHead>
+                  <TableHead className="w-32">First OTA download</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {servedNow.map((release) => {
+                  const artifactId = release.bundleId!;
+                  const percentage =
+                    (release.rolloutCohortCount / NUMERIC_COHORT_SIZE) * 100;
+                  return (
+                    <TableRow key={release.releaseId}>
+                      <TableCell className="py-3 whitespace-normal">
+                        <div className="flex min-w-0 flex-col gap-1">
+                          {/* Named by its release ID, as the Bundles page
+                              names it: the label links to the Bundle, and
+                              its ID tail copies beside the link. */}
+                          <ReleaseIdDisplay
+                            releaseId={release.releaseId}
+                            label={release.label}
+                            labelAs={
+                              <Link
+                                className="underline-offset-4 hover:underline"
+                                search={{ releaseId: release.releaseId }}
+                                to="/"
+                              />
+                            }
+                          />
+                          {release.message ? (
+                            <span className="text-xs text-muted-foreground">
+                              {release.message}
+                            </span>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <div className="flex flex-wrap gap-1">
+                          {release.targetCohorts.length > 0 ? (
+                            <Badge variant="secondary">
+                              {release.targetCohorts.length === 1
+                                ? "1 cohort"
+                                : `${release.targetCohorts.length} cohorts`}
+                            </Badge>
+                          ) : (
+                            <RolloutPercentageBadge percentage={percentage} />
+                          )}
+                          {release.shouldForceUpdate ? (
+                            <Badge variant="outline">Forced</Badge>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        {/* When the release was made, which a promote
+                            makes later than its artifact. */}
+                        <TimestampDisplay uuid={release.releaseId} />
+                      </TableCell>
+                      <TableCell>
+                        <FirstDownloadCell
+                          download={firstDownloadOf(patches, artifactId)}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+            {missingPatch === null ? null : (
+              <div className="flex flex-col gap-2 border-t px-4 py-3 text-xs">
+                <p>
+                  The OTA fresh installs get first has no patch from this store
+                  build, so they download all of it. Add one from your project:
+                </p>
+                <CopyableText label="the patch command" value={missingPatch} />
+              </div>
+            )}
+            <p className="border-t px-4 py-3 text-xs text-muted-foreground">
+              What the update check serves an install of this build now, newest
+              first: not the history. {scopeLink}
+            </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

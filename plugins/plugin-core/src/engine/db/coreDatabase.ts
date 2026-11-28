@@ -130,7 +130,8 @@ export interface EngineDatabaseOptions {
   /**
    * How a transaction that conflicts with another write runs again: more
    * attempts for a store many writers contend on, and `onRetry` to observe
-   * each rerun. 8 attempts by default.
+   * each rerun. 8 attempts by default; an aggregate write that lost to
+   * another writer's commit is resent without spending one.
    */
   readonly retry?: RetryOptions;
   /**

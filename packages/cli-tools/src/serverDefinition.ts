@@ -1,13 +1,19 @@
 import {
   type AnyHotUpdaterPlugin,
+  type DatabaseAdapter,
   type HotUpdaterCoreApi,
   type Migrator,
   type PluginClientCredential,
   type PluginClientPlugin,
+  type ReleaseLabelFill,
   type SchemaGenerator,
   type ToolingDatabase,
+  SETTINGS_TABLE,
   toolingTargetOf,
 } from "@hot-updater/plugin-core";
+
+import { getHotUpdaterEnvValue } from "./hotUpdaterEnv";
+import { p } from "./prompts";
 
 /** A plugin's endpoint on a server's `handlers.client`. */
 export interface ServerClientEndpoint {
@@ -166,7 +172,8 @@ export const generateClientCredential = (
 /**
  * Provisions the credential an app sends to client routes, through the
  * plugin that provides clientAuth, on the definition's database: a
- * credential saved in `env` is registered again rather than replaced.
+ * credential the environment or `env` holds is registered again rather
+ * than replaced.
  * Undefined when client routes are public.
  */
 export const provisionClientCredential = async (
@@ -180,7 +187,8 @@ export const provisionClientCredential = async (
   const found = credentialOf(definition);
   if (found === undefined) return undefined;
   const { label, header, env, provision } = found.credential;
-  const existing = input.env[env]?.trim();
+  // The environment's value first, then the env files', as init's inputs.
+  const existing = getHotUpdaterEnvValue(input.env, env);
   const value = await provision(definition.api[found.plugin], {
     ...(existing ? { existing } : {}),
     name: input.name,
@@ -223,4 +231,113 @@ export const generateSchema = (
     );
   }
   return database.generateSchema(version, name, toolingTargetOf(plugins));
+};
+
+/** One line for what a release label fill changed, or null for nothing. */
+const releaseLabelFillLine = ({
+  releases,
+  catalogs,
+}: ReleaseLabelFill): string | null => {
+  const parts = [
+    ...(releases > 0
+      ? [`labeled ${releases} release${releases === 1 ? "" : "s"}`]
+      : []),
+    ...(catalogs > 0
+      ? [`rebuilt ${catalogs} release catalog${catalogs === 1 ? "" : "s"}`]
+      : []),
+  ];
+  if (parts.length === 0) return null;
+  const line = parts.join(" and ");
+  return `${line[0]!.toUpperCase()}${line.slice(1)}.`;
+};
+
+/**
+ * Gives labels to the releases a database holds without one, and rebuilds
+ * the release catalogs that lack them, once its schema is migrated:
+ * `hot-updater init` and `db migrate` run it. It prints one line when it
+ * changed something, and nothing otherwise.
+ */
+export const fillReleaseLabels = async (
+  definition: Pick<ServerDefinition, "core">,
+): Promise<ReleaseLabelFill> => {
+  const filled = await definition.core.fillReleaseLabels();
+  const line = releaseLabelFillLine(filled);
+  if (line !== null) p.log.info(line);
+  return filled;
+};
+
+/** What the Insights plugin's `backfillReleaseRefs` returns. */
+interface InsightsBackfill {
+  readonly backfillReleaseRefs: () => Promise<{ readonly events: number }>;
+}
+
+const insightsBackfillOf = (api: unknown): InsightsBackfill | undefined => {
+  const insights = isRecord(api) ? api.insights : undefined;
+  return isRecord(insights) &&
+    typeof insights.backfillReleaseRefs === "function"
+    ? (insights as unknown as InsightsBackfill)
+    : undefined;
+};
+
+/**
+ * The settings row that records the backfill ran, beside the `schema.*`
+ * rows and retention's lease: its value is when, in epoch ms.
+ */
+const INSIGHTS_BACKFILL_KEY = "insights.releaseRefs";
+
+/** A database the CLI reaches directly: `standaloneRepository` has none. */
+const adapterOf = (database: unknown): DatabaseAdapter | undefined => {
+  const adapter = isRecord(database) ? database.adapter : undefined;
+  return isRecord(adapter) && typeof adapter.get === "function"
+    ? (adapter as unknown as DatabaseAdapter)
+    : undefined;
+};
+
+/**
+ * Moves the Insights events a 1.1 server keyed by artifact, and their
+ * counts, to their releases, once the schema is migrated: `hot-updater
+ * init` and `db migrate` run it after the label fill. It runs once a
+ * database: it then records the settings row `insights.releaseRefs`, so a
+ * later run reads that row and no event. Events a 1.1 process still running
+ * records after it stay keyed by artifact until the raw period drops them.
+ * It runs on a database the CLI reaches directly; a server deployed apart
+ * from the project runs it from its own `db migrate`. It prints one line
+ * when it moved something, and nothing otherwise. Init runs it once the new
+ * server is deployed, since it is the longest step and a run that stops
+ * keeps what it moved.
+ */
+export const backfillInsightsReleaseRefs = async (definition: {
+  readonly api?: Readonly<Record<string, unknown>> | undefined;
+  readonly database?: unknown;
+}): Promise<number> => {
+  const insights = insightsBackfillOf(definition.api);
+  const adapter = adapterOf(definition.database);
+  if (insights === undefined || adapter === undefined) return 0;
+  const [done = null] = await adapter.get(SETTINGS_TABLE, [
+    [INSIGHTS_BACKFILL_KEY],
+  ]);
+  if (done !== null) return 0;
+  const { events } = await insights
+    .backfillReleaseRefs()
+    .catch((error: unknown) => {
+      throw new Error(
+        `Moving Insights events to their releases stopped: ${error instanceof Error ? error.message : String(error)} Run the command again to resume it.`,
+        { cause: error },
+      );
+    });
+  // A concurrent run that recorded it first, or a busy store, leaves this
+  // insert refused: the next run reads the events again and moves none.
+  await adapter.write([
+    {
+      type: "insert",
+      table: SETTINGS_TABLE,
+      row: { key: INSIGHTS_BACKFILL_KEY, value: String(Date.now()), _v: 0 },
+    },
+  ]);
+  if (events > 0) {
+    p.log.info(
+      `Moved ${events} Insights event${events === 1 ? "" : "s"} from ${events === 1 ? "its artifact to its release" : "their artifacts to their releases"}.`,
+    );
+  }
+  return events;
 };

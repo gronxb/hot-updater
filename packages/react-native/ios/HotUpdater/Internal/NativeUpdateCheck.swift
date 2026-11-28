@@ -188,22 +188,28 @@ struct NativeCheckRequest {
     let requestHeaders: [String: String]
     let channel: String?
     let requestTimeout: TimeInterval
+    /// Selects with no floor: a Release whose bundle is older than the
+    /// built-in one is eligible. Only the sandbox's explicit channel open sets
+    /// it; the built-in bundle's ID stays what it is, and nothing persists it.
+    let allowsOlderThanBuiltIn: Bool
 
     init(
         baseURL: String,
         updateStrategy: HotUpdaterUpdateStrategy,
         requestHeaders: [String: String] = [:],
         channel: String? = nil,
-        requestTimeout: TimeInterval = 5
+        requestTimeout: TimeInterval = 5,
+        allowsOlderThanBuiltIn: Bool = false
     ) {
         self.baseURL = baseURL
         self.updateStrategy = updateStrategy
         self.requestHeaders = requestHeaders
         self.channel = channel
         self.requestTimeout = requestTimeout
+        self.allowsOlderThanBuiltIn = allowsOlderThanBuiltIn
     }
 
-    init(_ instance: HotUpdaterOptions, _ check: HotUpdaterCheckOptions) {
+    init(_ instance: HotUpdaterOptions, _ check: HotUpdaterCheckOptions, allowsOlderThanBuiltIn: Bool = false) {
         var headers = instance.requestHeaders
         for (name, value) in check.requestHeaders {
             // Header names are case-insensitive: the check's spelling replaces the instance's.
@@ -215,7 +221,8 @@ struct NativeCheckRequest {
             updateStrategy: check.updateStrategy,
             requestHeaders: headers,
             channel: check.channel,
-            requestTimeout: check.requestTimeout ?? instance.requestTimeout
+            requestTimeout: check.requestTimeout ?? instance.requestTimeout,
+            allowsOlderThanBuiltIn: allowsOlderThanBuiltIn
         )
     }
 }
@@ -235,6 +242,9 @@ struct NativeCheckRequest {
     @objc public let targetCohorts: [String]
     /// `INSTALL`, `ADOPT_RELEASE`, or `USE_BUILTIN`.
     @objc public let transitionKind: String
+    /// The release's label, shown `v<label>`: nil for the built-in bundle, a
+    /// release without one, and a server before labels.
+    @objc public let label: NSNumber?
 
     /// The bundle the update stages.
     let bundleId: String
@@ -261,6 +271,7 @@ struct NativeCheckRequest {
         message: String?,
         rolloutCohortCount: Int = 1000,
         targetCohorts: [String] = [],
+        label: Int64? = nil,
         bundleId: String,
         transitionKind: String,
         runsCurrentBundle: Bool,
@@ -276,6 +287,7 @@ struct NativeCheckRequest {
         self.message = message
         self.rolloutCohortCount = rolloutCohortCount
         self.targetCohorts = targetCohorts
+        self.label = label.map(NSNumber.init(value:))
         self.bundleId = bundleId
         self.transitionKind = transitionKind
         self.runsCurrentBundle = runsCurrentBundle
@@ -379,6 +391,9 @@ protocol NativeUpdateHost: NativeUpdateEventStorage {
         progress: @escaping (Double) -> Void
     ) async throws -> Any?
     func resetChannel() async -> Bool
+    /// Resets the channel only while the Release selection `guardParams`
+    /// names is current, in one step with the catalog checks.
+    func resetChannelIfSelectionCurrent(_ guardParams: [String: Any]) async -> Bool
     func releaseCatalogCache(_ partition: String) -> String?
     func setReleaseCatalogCache(_ partition: String, value: String) -> Bool
     func removeReleaseCatalogCache(_ partition: String)
@@ -398,6 +413,24 @@ struct NativeUpdateRejection: LocalizedError {
     let userInfo: [String: Any]
 
     var errorDescription: String? { message ?? code }
+}
+
+/// Whether a staging failed only because a newer check's selection replaced
+/// its own: the checker's guard, or the store's through its native rejection,
+/// which carries no classification. A race between checks, not a failure.
+func isStaleReleaseSelection(_ error: Error) -> Bool {
+    if case NativeUpdateCheckError.staleReleaseCatalog = error { return true }
+    if error is StaleReleaseSelectionError { return true }
+    guard let rejection = error as? NativeUpdateRejection, rejection.userInfo["stage"] == nil else {
+        return false
+    }
+    let stale = StaleReleaseSelectionError() as NSError
+    // The store rejects with the stale error itself, or wraps it as the
+    // underlying error of an unknown storage error.
+    if rejection.userInfo[NSLocalizedDescriptionKey] as? String == stale.localizedDescription { return true }
+    guard let underlying = rejection.userInfo[NSUnderlyingErrorKey] as? NSError else { return false }
+    return underlying.domain == stale.domain && underlying.code == stale.code
+        && underlying.localizedDescription == stale.localizedDescription
 }
 
 enum NativeUpdateCheckError: LocalizedError {
@@ -955,6 +988,22 @@ final class NativeUpdateChecker {
     /// The target the last staging committed, for another retained result of
     /// the same target.
     private var lastCommittedTargetKey: String?
+    /// The last switched-channel leave that reset the device, for another
+    /// retained result of the same catalog. Kept apart from the committed
+    /// target, which a later staging replaces.
+    private var lastLeftTargetKeyValue: String?
+    private var lastLeftTargetKey: String? {
+        get {
+            committedTargetLock.lock()
+            defer { committedTargetLock.unlock() }
+            return lastLeftTargetKeyValue
+        }
+        set {
+            committedTargetLock.lock()
+            lastLeftTargetKeyValue = newValue
+            committedTargetLock.unlock()
+        }
+    }
 
     init(
         host: NativeUpdateHost,
@@ -1132,7 +1181,10 @@ final class NativeUpdateChecker {
     private func check(_ options: NativeCheckRequest) async throws -> HotUpdaterUpdate? {
         let currentAppVersion = host.appVersion
         let currentBundleId = resolveBundleId(host.bundleId())
-        let minimumReleaseId = host.minBundleId
+        let builtInBundleId = host.minBundleId
+        // The floor is the built-in bundle's ID, except for the sandbox's
+        // explicit channel open, which takes any Release of the scope.
+        let minBundleId = options.allowsOlderThanBuiltIn ? Self.nilUUID : builtInBundleId
         let defaultChannel = host.defaultChannel()
         let nativeChannel = host.channel()
         let isSwitched = nativeChannel != defaultChannel
@@ -1171,8 +1223,10 @@ final class NativeUpdateChecker {
                 baseURL: baseURL,
                 currentAppVersion: currentAppVersion,
                 currentBundleId: currentBundleId,
-                minimumReleaseId: minimumReleaseId,
+                builtInBundleId: builtInBundleId,
+                minBundleId: minBundleId,
                 currentChannel: currentChannel,
+                isSwitched: isSwitched,
                 targetChannel: targetChannel,
                 explicitChannel: explicitChannel,
                 cohort: cohort,
@@ -1206,8 +1260,10 @@ final class NativeUpdateChecker {
         baseURL: String,
         currentAppVersion: String,
         currentBundleId: String,
-        minimumReleaseId: String,
+        builtInBundleId: String,
+        minBundleId: String,
         currentChannel: String,
+        isSwitched: Bool,
         targetChannel: String,
         explicitChannel: String?,
         cohort: String,
@@ -1265,12 +1321,12 @@ final class NativeUpdateChecker {
         let selectorCurrentBundleId =
             activeInTargetScope != nil || (!hasAuthenticatedActive && !explicitScopeSwitch)
                 ? currentBundleId
-                : minimumReleaseId
+                : builtInBundleId
         let selectionContextHash = createReleaseSelectionContextHash(ReleaseSelectionContext(
             activeBundleId: selectorCurrentBundleId,
             activeReleaseId: activeInTargetScope?.releaseId,
             cohort: cohort,
-            minimumReleaseId: minimumReleaseId,
+            minBundleId: minBundleId,
             strategy: strategy,
             strategyValue: strategyValue,
             crashedBundleIds: crashedBundleIds
@@ -1286,6 +1342,20 @@ final class NativeUpdateChecker {
         guard host.acceptReleaseCatalog(guardParams) else {
             throw NativeUpdateCheckError.invalidResponse("Rejected a stale or inconsistent Release catalog")
         }
+        // The switched channel holds nothing for this build any more, as a
+        // deleted channel does: the server answers its scope with an accepted
+        // catalog without releases. A scope without a catalog proves nothing,
+        // since a cache can still answer that for a channel deployed seconds ago.
+        if isSwitched, targetChannel == currentChannel,
+           catalog.releases.isEmpty, catalog.rollbackReleases.isEmpty {
+            return leaveSwitchedChannel(
+                options: options,
+                currentBundleId: currentBundleId,
+                builtInBundleId: builtInBundleId,
+                channel: currentChannel,
+                guardParams: guardParams
+            )
+        }
         let stableInTargetScope = stable.flatMap { stable in
             stable.catalogId.jsEquals(catalogId) && stable.scopeKey.jsEquals(scopeKey) ? stable : nil
         }
@@ -1295,11 +1365,11 @@ final class NativeUpdateChecker {
             .first { $0?.bundleId.jsEquals(selectorCurrentBundleId) == true }??
             .releaseId
         guard let desired = selectDesiredRelease(catalog, input: ReleaseSelectionInput(
-            builtInBundleId: minimumReleaseId,
+            builtInBundleId: builtInBundleId,
             currentBundleId: selectorCurrentBundleId,
             activeReleaseId: activeInTargetScope?.releaseId,
             runningReleaseId: .some(runningReleaseId),
-            minimumReleaseId: minimumReleaseId,
+            minBundleId: minBundleId,
             cohort: cohort,
             crashedBundleIds: crashedBundleIds
         )) else {
@@ -1307,7 +1377,7 @@ final class NativeUpdateChecker {
         }
 
         if desired.kind == .builtin,
-           currentBundleId.jsEquals(minimumReleaseId),
+           currentBundleId.jsEquals(builtInBundleId),
            active == nil || active?.kind.jsEquals(SelectionKind.builtin.rawValue) == true {
             return nil
         }
@@ -1321,7 +1391,8 @@ final class NativeUpdateChecker {
             generation: catalog.generation,
             catalogHash: catalog.catalogHash,
             channel: targetChannel,
-            selectionContextHash: selectionContextHash
+            selectionContextHash: selectionContextHash,
+            label: desired.release?.label
         )
         if let active, Self.sameReceipt(active, receipt) {
             return nil
@@ -1485,6 +1556,7 @@ final class NativeUpdateChecker {
             message: release?.message,
             rolloutCohortCount: release?.rolloutCohortCount ?? 1000,
             targetCohorts: release?.targetCohorts ?? [],
+            label: release?.label,
             bundleId: desired.bundleId,
             transitionKind: transitionKind,
             runsCurrentBundle: desired.bundleId.jsEquals(currentBundleId),
@@ -1496,6 +1568,95 @@ final class NativeUpdateChecker {
             checker: self,
             install: updateBundleForSelection,
             isSelectionCurrent: { [host] in host.isReleaseSelectionCurrent(guardParams) }
+        )
+    }
+
+    /// Leaves a switched channel that holds nothing for this build, such as a
+    /// deleted one, as checkForUpdate.ts does: a rollback to the built-in
+    /// bundle whose staging also clears the runtime channel, so the next check
+    /// reads the build's default channel. The check itself resets nothing,
+    /// since the reset removes the running bundle's files.
+    private func leaveSwitchedChannel(
+        options: NativeCheckRequest,
+        currentBundleId: String,
+        builtInBundleId: String,
+        channel: String,
+        guardParams: [String: Any]
+    ) -> HotUpdaterUpdate {
+        let runsBuiltIn = currentBundleId.jsEquals(builtInBundleId)
+        let errorScope = ErrorScope(
+            channel: channel,
+            bundleId: currentBundleId,
+            updateStrategy: options.updateStrategy,
+            targetBundleId: builtInBundleId,
+            targetReleaseId: nil
+        )
+        // With the catalog's freshness guard, as ordinary selections, so a
+        // leave from an older catalog never joins a current one's staging.
+        let targetKey = Self.jsonKey([
+            "LEAVE_CHANNEL", channel, builtInBundleId,
+            guardParams["catalogId"] ?? NSNull(), guardParams["generation"] ?? NSNull(),
+            guardParams["catalogHash"] ?? NSNull(), guardParams["selectionContextHash"] ?? NSNull(),
+        ])
+        let install = { [self] (_: @escaping (Double) -> Void) async throws -> Bool in
+            do {
+                // This leave, from this or another result of the same catalog,
+                // already happened: calling it again changes nothing.
+                if lastLeftTargetKey == targetKey, host.channel() == host.defaultChannel() {
+                    return true
+                }
+                // A device that left or changed the channel meanwhile keeps it.
+                guard host.channel() == channel else {
+                    throw NativeUpdateCheckError.staleReleaseCatalog
+                }
+                // The staging holds the gate, as `resetChannel()` waits for;
+                // native checks the catalog again in the same step as the
+                // reset, so a newer one accepted meanwhile keeps the channel.
+                guard await host.resetChannelIfSelectionCurrent(guardParams) else {
+                    throw NativeUpdateCheckError.staleReleaseCatalog
+                }
+                lastLeftTargetKey = targetKey
+                NativeUpdateEvents.remove(name: "onBundleDownloaded", from: host)
+                return true
+            } catch {
+                reportUpdateError(error, stage: "download", resource: "artifact", scope: errorScope)
+                throw error
+            }
+        }
+        let fromReleaseId = runningReleaseId(bundleId: currentBundleId, channel: channel)
+        queueEvent("onUpdateCheck", [
+            "status": "UPDATE_AVAILABLE",
+            "channel": channel,
+            "fromBundleId": currentBundleId,
+            "fromReleaseId": fromReleaseId ?? NSNull(),
+            "toBundleId": builtInBundleId,
+            "toReleaseId": NSNull(),
+            "transitionKind": "USE_BUILTIN",
+            "updateStatus": "ROLLBACK",
+            "shouldForceUpdate": !runsBuiltIn,
+            "updateStrategy": options.updateStrategy.name,
+        ])
+        return HotUpdaterUpdate(
+            id: builtInBundleId,
+            releaseId: nil,
+            status: .rollback,
+            shouldForceUpdate: !runsBuiltIn,
+            message: nil,
+            rolloutCohortCount: 1000,
+            targetCohorts: [],
+            bundleId: builtInBundleId,
+            transitionKind: "USE_BUILTIN",
+            runsCurrentBundle: runsBuiltIn,
+            targetKey: targetKey,
+            checker: self,
+            install: install,
+            // Current while the device is still switched to the channel and
+            // the catalog is current, and once the staging left it.
+            isSelectionCurrent: { [host] in
+                let current = host.channel()
+                return current == host.defaultChannel()
+                    || (current == channel && host.isReleaseSelectionCurrent(guardParams))
+            }
         )
     }
 
@@ -1547,7 +1708,8 @@ final class NativeUpdateChecker {
             generation: (data["generation"] as? NSNumber)?.int64Value,
             catalogHash: data["catalogHash"] as? String,
             channel: channel,
-            selectionContextHash: data["selectionContextHash"] as? String
+            selectionContextHash: data["selectionContextHash"] as? String,
+            label: releaseLabel(data["label"])
         )
     }
 

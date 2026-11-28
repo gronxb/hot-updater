@@ -86,6 +86,67 @@ class KeyValueStorageServiceTest {
     }
 
     @Test
+    fun `a set that changes nothing leaves the file alone`() {
+        val file = storageFile()
+        val storage = KeyValueStorageService(file)
+        storage.setItem("plugins/a", "1")
+        storage.setItem("plugins/gone", null)
+
+        // Another writer's bytes stay: the same value, or removing a missing key, writes nothing.
+        file.writeText("{\"plugins/a\":\"disk\"}")
+        storage.setItem("plugins/a", "1")
+        storage.setItem("plugins/gone", null)
+        assertEquals(mapOf("plugins/a" to "disk"), readStored(file))
+
+        storage.setItem("plugins/a", "2")
+        assertEquals(mapOf("plugins/a" to "2"), readStored(file))
+    }
+
+    @Test
+    fun `a set after a failed write writes again`() {
+        val directory = temporaryFolder.newFolder()
+        val file = File(directory, "hot-updater/storage.json")
+        // A file where the directory belongs makes every write fail.
+        File(directory, "hot-updater").writeText("occupied")
+        val storage = KeyValueStorageService(file)
+
+        storage.setItem("plugins/a", "1")
+        assertEquals("1", storage.getItem("plugins/a"))
+
+        File(directory, "hot-updater").delete()
+        storage.setItem("plugins/a", "1")
+        assertEquals(mapOf("plugins/a" to "1"), readStored(file))
+    }
+
+    @Test
+    fun `a set after a failed commit writes again`() {
+        val file = storageFile()
+        // A nonempty directory where the file belongs: the new file is written, but the
+        // rename that commits it fails, which AtomicFile logs instead of throwing.
+        File(file, "occupied").apply { parentFile?.mkdirs() }.writeText("x")
+        val storage = KeyValueStorageService(file)
+
+        storage.setItem("plugins/a", "1")
+        assertEquals("1", storage.getItem("plugins/a"))
+
+        File(file, "occupied").delete()
+        file.delete()
+        File("${file.path}.new").delete()
+        storage.setItem("plugins/a", "1")
+        assertEquals(mapOf("plugins/a" to "1"), readStored(file))
+    }
+
+    @Test
+    fun `a set after an unreadable file replaces it`() {
+        val file = storageFile().apply { writeText("{\"plugins/a\":") }
+        val storage = KeyValueStorageService(file)
+
+        storage.setItem("plugins/missing", null)
+
+        assertEquals(emptyMap<String, String>(), readStored(file))
+    }
+
+    @Test
     fun `is stored under noBackupFilesDir`() {
         val noBackupDirectory = temporaryFolder.newFolder("no_backup")
 

@@ -1,0 +1,58 @@
+---
+title: "PostgreSQL"
+description: Keep Hot Updater's metadata in PostgreSQL, such as a Vercel Marketplace database.
+icon: Database
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/postgres --save-dev
+```
+
+For a deployed server, install the package as a runtime dependency instead
+of a development dependency.
+
+## Setup
+
+For a complete provider deployment on Vercel, follow the
+[Vercel setup](/docs/v1.0/managed/vercel#step-2-configure-vercel): init migrates the
+database and deploys the Function that reads it. For another PostgreSQL
+database, use the configuration below.
+
+## Configuration
+
+`postgres` takes a [`pg` pool configuration](https://node-postgres.com/apis/pool),
+such as a `connectionString`, or a Kysely `dialect` for a pool you create:
+
+```typescript
+type PostgresConfig = PoolConfig & {
+  dialect?: Dialect; // A Kysely dialect over your own pool
+};
+```
+
+## Usage
+
+```typescript title="hot-updater.config.ts (excerpt)"
+import { postgres } from "@hot-updater/postgres"; // [!code ++]
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  // ... build, storage, plugins, and updateStrategy
+  database: postgres({ // [!code ++]
+    connectionString: process.env.DATABASE_URL!, // [!code ++]
+  }), // [!code ++]
+});
+```
+
+## Schema
+
+`hot-updater db migrate` creates core's tables and those of the configured
+plugins, then writes their schema settings to `private_hot_updater_settings`.
+The database answers 503 until those settings exist. Managed Vercel init runs
+the same migration. To apply SQL with your own tooling, generate it with
+`hot-updater db generate --sql`; the package's `sql/bundles.sql` holds core's
+tables only.
+
+On serverless platforms, prefer the database's pooled connection URL, such as
+Neon's `DATABASE_URL`.

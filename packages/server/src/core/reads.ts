@@ -9,6 +9,7 @@ import {
   type ReleaseFilter,
   type ReleaseRow,
   type CoreReads,
+  type HotUpdaterCoreApi,
   parseBaseCandidateKey,
 } from "@hot-updater/plugin-core";
 import type {
@@ -20,6 +21,7 @@ import type {
 import {
   ARTIFACT_FILES_PROTOCOL_VERSION,
   ARTIFACT_PROTOCOL_VERSION,
+  encodeChannelKey,
   NIL_UUID,
   type ArtifactFiles,
   type ArtifactInfo,
@@ -71,7 +73,7 @@ export const toPatchRow = pick<BundlePatchRow>([
   "order_index",
 ]);
 
-export const toReleaseRow = pick<ReleaseRow>([
+const pickReleaseRow = pick<ReleaseRow>([
   "id",
   "revision",
   "scope_key",
@@ -92,6 +94,15 @@ export const toReleaseRow = pick<ReleaseRow>([
   "created_at_ms",
   "updated_at_ms",
 ]);
+
+/** A release row; `label` null where the store holds none, as before the column. */
+export const toReleaseRow = (row: Readonly<Record<string, unknown>>) => {
+  const release = pickReleaseRow(row);
+  return {
+    ...release,
+    label: typeof row.label === "number" ? row.label : null,
+  } satisfies ReleaseRow;
+};
 
 export const toCatalogRow = pick<ReleaseCatalogRow>([
   "scope_key",
@@ -125,6 +136,25 @@ export const drain = async <T>(
   return rows;
 };
 
+/** A keyset page's range: the keys strictly after `after`, in `order`. */
+/** A keyset read's range on its index's order: past `after`, up to `through`. */
+export const after = (input: KeysetInput) => {
+  const asc = (input.order ?? "asc") === "asc";
+  const range = {
+    ...(input.after === undefined
+      ? {}
+      : asc
+        ? { gt: input.after }
+        : { lt: input.after }),
+    ...(input.through === undefined
+      ? {}
+      : asc
+        ? { lte: input.through }
+        : { gte: input.through }),
+  };
+  return Object.keys(range).length === 0 ? {} : { range };
+};
+
 export interface CoreStorage {
   readonly readStorageText?: (storageUri: string) => Promise<string | null>;
   readonly resolveFileUrl: (
@@ -132,11 +162,12 @@ export interface CoreStorage {
   ) => Promise<string | null>;
 }
 
-/** Core's reads, each through one declared index or key. */
+/** Core's reads, each through one declared index or key; plugins get `CoreReads`. */
 export const createCoreReads = (
   db: CoreDatabase,
   storage: CoreStorage,
-): CoreReads => {
+): CoreReads &
+  Pick<HotUpdaterCoreApi, "listReleaseScopeKeys" | "getReleaseByLabel"> => {
   /** A bundle row's patches, exactly as many as its reference counter holds. */
   const detail = async (
     row: ReadRow<CoreSchema["bundles"]>,
@@ -162,16 +193,6 @@ export const createCoreReads = (
       childCount: row._refs_bundle_patches_base_bundle_id ?? 0,
     };
   };
-
-  const after = (input: KeysetInput) =>
-    input.after === undefined
-      ? {}
-      : {
-          range:
-            (input.order ?? "asc") === "asc"
-              ? { gt: input.after }
-              : { lt: input.after },
-        };
 
   return {
     /** The update check: one point read of its scope's catalog. */
@@ -341,6 +362,26 @@ export const createCoreReads = (
       return row === null ? null : toReleaseRow(row);
     },
 
+    /**
+     * The release a label names: its unique index, then the row itself,
+     * since a key-value store keeps an index copy a server of an earlier
+     * release may have left behind when it changed or deleted the row.
+     */
+    async getReleaseByLabel({ channel, platform, label }) {
+      const found = await db.findOne("releases", {
+        channel_id: `channel:${encodeChannelKey(channel)}`,
+        platform,
+        label,
+      });
+      if (found === null) return null;
+      const row = await db.findOne("releases", { id: found.id });
+      if (row === null) return null;
+      const release = toReleaseRow(row);
+      return release.label === label && release.platform === platform
+        ? release
+        : null;
+    },
+
     /** One page of releases through the index its filter names. */
     async listReleases(
       input: KeysetInput & { readonly filter: ReleaseFilter },
@@ -431,8 +472,44 @@ export const createCoreReads = (
       return page.rows.map(toCatalogRow);
     },
 
-    /** Every channel, by name. */
-    async listChannels(): Promise<ChannelRow[]> {
+    /**
+     * Up to `limit` scope keys that have releases, ascending after `after`:
+     * one limit-1 seek of the `scopes` index past each scope, so the reads
+     * grow with the scopes, not with their releases.
+     */
+    async listReleaseScopeKeys(input: {
+      readonly after?: string;
+      readonly limit: number;
+    }): Promise<string[]> {
+      const scopeKeys: string[] = [];
+      // No scope key is empty, so the first seek starts past "": a bound
+      // keeps MySQL on the index instead of sorting the table.
+      for (let last = input.after ?? ""; scopeKeys.length < input.limit; ) {
+        const { rows } = await db.findMany("releases", {
+          index: "scopes",
+          where: {},
+          limit: 1,
+          range: { gt: last },
+        });
+        if (rows[0] === undefined) break;
+        last = rows[0].scope_key;
+        scopeKeys.push(last);
+      }
+      return scopeKeys;
+    },
+
+    /** Every channel by name; with `input`, one keyset page of them. */
+    async listChannels(input?: KeysetInput): Promise<ChannelRow[]> {
+      if (input !== undefined) {
+        const page = await db.findMany("channels", {
+          index: "all",
+          where: {},
+          order: input.order ?? "asc",
+          limit: input.limit,
+          ...after(input),
+        });
+        return page.rows.map(toChannelRow);
+      }
       const rows = await drain((page) =>
         db.findMany("channels", {
           index: "all",
@@ -442,6 +519,16 @@ export const createCoreReads = (
         }),
       );
       return rows.map(toChannelRow);
+    },
+
+    async getChannels(ids: readonly string[]): Promise<ChannelRow[]> {
+      const unique = [...new Set(ids)];
+      if (unique.length === 0) return [];
+      const rows = await db.findByKeys(
+        "channels",
+        unique.map((id) => ({ id })),
+      );
+      return rows.flatMap((row) => (row ? [toChannelRow(row)] : []));
     },
 
     async findChannelByName(name: string): Promise<ChannelRow | null> {

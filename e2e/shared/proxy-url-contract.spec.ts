@@ -695,6 +695,165 @@ describe("E2E remote asset proxy URLs", () => {
     }
   });
 
+  it("serves a prefetched artifact, manifest, and interrupted archive without upstream requests", async () => {
+    const resultsDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-prefetch-proxy-url-"),
+    );
+    const baseUrl = "https://provider.example.com/hot-updater";
+    const artifactUrl = `${baseUrl}/artifacts/v2/target/from/current`;
+    const signedArchiveUrl =
+      "https://storage.example.com/bundles/bundle.tar.br?Signature=archive";
+    const manifestPath = "/storage/bundles/manifest.json?token=manifest";
+    const manifestBytes =
+      '{\n  "bundleId": "target",\n  "signature": "signed"\n}\n';
+    const fetchTargets: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url =
+        input instanceof Request
+          ? input.url
+          : input instanceof URL
+            ? input.toString()
+            : input;
+      fetchTargets.push(url);
+      if (url === artifactUrl) {
+        return Response.json({
+          archiveUrl: signedArchiveUrl,
+          artifactProtocolVersion: 2,
+          manifestFileHash: "manifest-hash",
+          manifestUrl: manifestPath,
+        });
+      }
+      if (url === `${baseUrl}${manifestPath}`) {
+        return new Response(manifestBytes, {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url === signedArchiveUrl) {
+        return new Response("archive-bytes", {
+          headers: { "content-encoding": "br", "content-length": "999" },
+        });
+      }
+      return new Response("unexpected fetch target", { status: 500 });
+    });
+
+    vi.resetModules();
+    vi.stubEnv("HOT_UPDATER_E2E_APP_BASE_URL", baseUrl);
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.example");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "booted");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", resultsDir);
+    vi.stubEnv("PORT", "3107");
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const controller = await import("./control-server/controller.ts");
+      const controlRoutes = (await import("./control-server/routes.ts"))
+        .default;
+      const invalidPrefetch = await controlRoutes.request(
+        "/e2e/jobs/prefetch-update-artifact",
+        {
+          body: JSON.stringify({ targetBundleId: "target" }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      expect(invalidPrefetch.status).toBe(400);
+
+      controller.handleConfigureProxy({
+        archiveFailureMode: "interrupt",
+        archiveFailures: 1,
+        reset: true,
+      });
+      const prefetchResponse = await controlRoutes.request(
+        "/e2e/jobs/prefetch-update-artifact",
+        {
+          body: JSON.stringify({
+            currentBundleId: "current",
+            targetBundleId: "target",
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      const { jobId } = (await prefetchResponse.json()) as { jobId: string };
+      await vi.waitFor(() => {
+        expect(controller.getJob(jobId)).toMatchObject({
+          result: { prefetchedResponses: 3 },
+          status: "succeeded",
+        });
+      });
+      expect(fetchTargets).toEqual([
+        artifactUrl,
+        `${baseUrl}${manifestPath}`,
+        signedArchiveUrl,
+      ]);
+
+      const payload = (await (
+        await controller.handleProxyUpdateRequest(
+          new Request(
+            "http://localhost:3107/hot-updater/artifacts/v2/target/from/current",
+          ),
+        )
+      ).json()) as { archiveUrl: string; manifestUrl: string };
+      const manifestResponse = await controller.handleProxyRemoteAssetRequest(
+        new Request(payload.manifestUrl),
+      );
+      expect(await manifestResponse.text()).toBe(manifestBytes);
+      const interruptedArchiveResponse =
+        await controller.handleProxyRemoteAssetRequest(
+          new Request(payload.archiveUrl),
+        );
+      expect(interruptedArchiveResponse.headers.get("content-length")).toBe(
+        "13",
+      );
+      await expect(interruptedArchiveResponse.text()).rejects.toThrow(
+        "Injected E2E archive interruption",
+      );
+      const resumedArchiveResponse =
+        await controller.handleProxyRemoteAssetRequest(
+          new Request(payload.archiveUrl, {
+            headers: {
+              "if-range": interruptedArchiveResponse.headers.get("etag")!,
+              range: "bytes=6-",
+            },
+          }),
+        );
+      expect(resumedArchiveResponse.status).toBe(206);
+      expect(await resumedArchiveResponse.text()).toBe("e-bytes");
+
+      // The app's requests reached no upstream.
+      expect(fetchTargets).toHaveLength(3);
+      expect(controller.handleProxyState()).toMatchObject({
+        prefetched: { responses: 3, served: 3 },
+        requestCounts: { artifact: 1 },
+      });
+      expect(
+        controller.handleAssertBundleArtifactTransfers({
+          archiveInterruptions: 1,
+          archiveRequests: 2,
+          archiveResumes: 1,
+          currentBundleId: "current",
+          fileRequests: 0,
+          patchRequests: 0,
+          targetBundleId: "target",
+        }),
+      ).toMatchObject({
+        archive: { bytes: 13, requests: 2 },
+        archiveInterruption: { bytes: 13, interruptions: 1, resumes: 1 },
+      });
+
+      controller.handleConfigureProxy({ reset: true });
+      expect(controller.handleProxyState().prefetched).toEqual({
+        responses: 0,
+        served: 0,
+      });
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
+  });
+
   it("expects exactly the assets two signed manifests differ in, whatever the server selects", async () => {
     const root = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-changed-assets-"),
@@ -845,7 +1004,9 @@ describe("E2E remote asset proxy URLs", () => {
       // The server also selects same.png, which no manifest changed. The
       // client downloads only the changed assets, so only the selection is
       // wrong.
-      await (await select("target-extra"))(changed);
+      await (
+        await select("target-extra")
+      )(changed);
       expect(() =>
         controller.handleAssertBundleArtifactTransfers({
           ...expectation,
@@ -858,6 +1019,174 @@ describe("E2E remote asset proxy URLs", () => {
       expect(() =>
         controller.handleAssertBundleArtifactTransfers(expectation),
       ).toThrow("A Bundle manifest to compare is missing");
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await fs.rm(root, { force: true, recursive: true });
+    }
+  }, 30_000);
+
+  it("expects exactly the named files downloaded whole, each once", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-named-files-"),
+    );
+    const bundle = "index.android.bundle";
+    const xml = "drawable-mdpi/src_test_builtin_reuse_vector.xml";
+    const png = "drawable-mdpi/src_test_builtin_reuse.png";
+    const baseUrl = "https://provider.example.com/hot-updater";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = new URL(input instanceof Request ? input.url : input);
+        const match =
+          /^\/hot-updater\/artifacts\/v1\/([^/]+)\/from\/built-in$/.exec(
+            url.pathname,
+          );
+        if (!match) return new Response("bytes");
+        const target = match[1]!;
+        return Response.json({
+          artifactProtocolVersion: 1,
+          assets: Object.fromEntries(
+            [bundle, xml, png].map((assetPath) => [
+              assetPath,
+              {
+                file: { url: `/storage/${target}/${assetPath}` },
+                fileHash: "unused",
+                ...(assetPath === bundle
+                  ? {
+                      patch: {
+                        algorithm: "bsdiff",
+                        baseBundleId: "built-in",
+                        patchUrl: `/storage/${target}/${bundle}.bsdiff`,
+                      },
+                    }
+                  : {}),
+              },
+            ]),
+          ),
+          manifestFileHash: "manifest-hash",
+          manifestUrl: `/storage/${target}/manifest.json`,
+        });
+      }),
+    );
+    vi.resetModules();
+    vi.stubEnv("HOT_UPDATER_E2E_APP_BASE_URL", baseUrl);
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.example");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "test-simulator");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", root);
+    vi.stubEnv("PORT", "3107");
+    try {
+      const controller = await import("./control-server/controller.ts");
+      const controlRoutes = (await import("./control-server/routes.ts"))
+        .default;
+      // One artifact request per target, then the downloads the client
+      // chooses: a file, or the patch of the bundle.
+      const install = async (
+        target: string,
+        downloads: Array<{ assetPath: string; patch?: boolean }>,
+      ) => {
+        const payload = (await (
+          await controller.handleProxyUpdateRequest(
+            new Request(
+              `http://localhost:3107/hot-updater/artifacts/v1/${target}/from/built-in`,
+            ),
+          )
+        ).json()) as {
+          assets: Record<
+            string,
+            { file: { url: string }; patch?: { patchUrl: string } }
+          >;
+        };
+        for (const { assetPath, patch } of downloads) {
+          const asset = payload.assets[assetPath]!;
+          await (
+            await controller.handleProxyRemoteAssetRequest(
+              new Request(patch ? asset.patch!.patchUrl : asset.file.url),
+            )
+          ).text();
+        }
+      };
+      const assertFiles = (targetBundleId: string, fileRequests: string[]) =>
+        controller.handleAssertBundleArtifactTransfers({
+          archiveRequests: 0,
+          currentBundleId: "built-in",
+          fileRequests,
+          patchRequests: 1,
+          targetBundleId,
+        });
+
+      // The patch of the bundle, and the XML drawable the built-in bundle
+      // can't give.
+      await install("patch-and-xml", [
+        { assetPath: bundle, patch: true },
+        { assetPath: xml },
+      ]);
+      expect(assertFiles("patch-and-xml", [xml])).toMatchObject({
+        expectedFilePaths: [xml],
+        expectedFileRequests: 1,
+        fileRequests: 1,
+        patchRequests: 1,
+      });
+      // A count of 0 sees the XML drawable as one file too many.
+      expect(() =>
+        controller.handleAssertBundleArtifactTransfers({
+          archiveRequests: 0,
+          currentBundleId: "built-in",
+          fileRequests: 0,
+          patchRequests: 1,
+          targetBundleId: "patch-and-xml",
+        }),
+      ).toThrow("Unexpected Bundle artifact transfers");
+      // One file, but not the one named.
+      expect(() => assertFiles("patch-and-xml", [png])).toThrow(
+        "Unexpected Bundle artifact transfers",
+      );
+
+      // Also the PNG the built-in bundle has.
+      await install("extra-file", [
+        { assetPath: bundle, patch: true },
+        { assetPath: xml },
+        { assetPath: png },
+      ]);
+      expect(() => assertFiles("extra-file", [xml])).toThrow(
+        "Unexpected Bundle artifact transfers",
+      );
+
+      // The XML drawable copied from the built-in bundle instead.
+      await install("no-xml", [{ assetPath: bundle, patch: true }]);
+      expect(() => assertFiles("no-xml", [xml])).toThrow(
+        "Unexpected Bundle artifact transfers",
+      );
+
+      // The XML drawable downloaded twice.
+      await install("xml-twice", [
+        { assetPath: bundle, patch: true },
+        { assetPath: xml },
+        { assetPath: xml },
+      ]);
+      expect(() => assertFiles("xml-twice", [xml])).toThrow(
+        "Unexpected Bundle artifact transfers",
+      );
+
+      // The route takes named files, and refuses an empty or repeated name.
+      const assertRoute = (fileRequests: unknown) =>
+        controlRoutes.request("/e2e/assert-bundle-artifact-transfers", {
+          body: JSON.stringify({
+            archiveRequests: 0,
+            currentBundleId: "built-in",
+            fileRequests,
+            patchRequests: 1,
+            targetBundleId: "patch-and-xml",
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        });
+      expect((await assertRoute([xml])).status).toBe(200);
+      expect((await assertRoute([png])).status).toBe(422);
+      expect((await assertRoute([""])).status).toBe(400);
+      expect((await assertRoute([xml, xml])).status).toBe(400);
+      expect((await assertRoute([1])).status).toBe(400);
     } finally {
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
@@ -917,11 +1246,22 @@ describe("E2E remote asset proxy URLs", () => {
       path.join(os.tmpdir(), "hot-updater-catalog-proxy-"),
     );
     let generation = 1;
+    // The controller closes its provider connections; the app's connection
+    // to the controller keeps its own headers.
+    const providerConnectionHeaders = {
+      connection: "close",
+      "keep-alive": "timeout=5",
+    };
+    const expectNoProviderConnectionHeaders = (response: Response) => {
+      expect(response.headers.has("connection")).toBe(false);
+      expect(response.headers.has("keep-alive")).toBe(false);
+    };
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, init?: RequestInit) => {
         if (new Headers(init?.headers).has("if-none-match")) {
           return new Response(null, {
             headers: {
+              ...providerConnectionHeaders,
               "content-type":
                 "application/vnd.hot-updater.release-catalog+json;version=1",
               etag: '"catalog-generation-2"',
@@ -941,6 +1281,7 @@ describe("E2E remote asset proxy URLs", () => {
           }),
           {
             headers: {
+              ...providerConnectionHeaders,
               "content-type":
                 "application/vnd.hot-updater.release-catalog+json;version=1",
             },
@@ -966,11 +1307,11 @@ describe("E2E remote asset proxy URLs", () => {
       const controller = await import("./control-server/controller.ts");
       const url =
         "http://localhost:3107/hot-updater/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0";
-      expect(
-        await (
-          await controller.handleProxyUpdateRequest(new Request(url))
-        ).json(),
-      ).toMatchObject({
+      const liveResponse = await controller.handleProxyUpdateRequest(
+        new Request(url),
+      );
+      expectNoProviderConnectionHeaders(liveResponse);
+      expect(await liveResponse.json()).toMatchObject({
         generation: 1,
         scopeKey: "v1:app-version:ios:cHJvZHVjdGlvbg",
       });
@@ -989,17 +1330,18 @@ describe("E2E remote asset proxy URLs", () => {
         }),
       );
       expect(notModifiedResponse.status).toBe(304);
+      expectNoProviderConnectionHeaders(notModifiedResponse);
       expect(await notModifiedResponse.text()).toBe("");
 
       controller.handleConfigureProxy({
         catalogMode: "replay",
         replayGeneration: 1,
       });
-      expect(
-        await (
-          await controller.handleProxyUpdateRequest(new Request(url))
-        ).json(),
-      ).toMatchObject({
+      const replayedResponse = await controller.handleProxyUpdateRequest(
+        new Request(url),
+      );
+      expectNoProviderConnectionHeaders(replayedResponse);
+      expect(await replayedResponse.json()).toMatchObject({
         generation: 1,
         scopeKey: "v1:app-version:ios:cHJvZHVjdGlvbg",
       });

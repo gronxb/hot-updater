@@ -1,4 +1,5 @@
 import type {
+  AnyHotUpdaterPlugin,
   DeployReleasePolicy,
   EngineDatabase,
   StorageAdapter,
@@ -133,14 +134,16 @@ const reset = async (): Promise<void> => {
 const serve = ({
   database,
   storage = createReleaseCatalogTestStorage(),
+  plugin = insights(),
 }: {
   readonly database: EngineDatabase;
   readonly storage?: StorageAdapter;
+  readonly plugin?: AnyHotUpdaterPlugin;
 }) =>
   createHotUpdater({
     database,
     storage,
-    plugins: [insights()],
+    plugins: [plugin],
     clientAccess: "public",
   });
 
@@ -160,6 +163,9 @@ setupDatabaseTestSuite({
     insightsTestSuite({
       createModel: (database: EngineDatabase) =>
         createInsightsModel(serve({ database }).api.insights),
+      createApi: (database: EngineDatabase, plugin?: AnyHotUpdaterPlugin) =>
+        serve({ database, ...(plugin === undefined ? {} : { plugin }) }).api
+          .insights,
     }),
   ],
   name: "cloudflare d1 http",
@@ -184,6 +190,9 @@ setupDatabaseTestSuite({
     insightsTestSuite({
       createModel: (database: EngineDatabase) =>
         createInsightsModel(serve({ database }).api.insights),
+      createApi: (database: EngineDatabase, plugin?: AnyHotUpdaterPlugin) =>
+        serve({ database, ...(plugin === undefined ? {} : { plugin }) }).api
+          .insights,
     }),
   ],
   name: "cloudflare worker d1",

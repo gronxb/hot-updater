@@ -87,6 +87,15 @@ export interface CoreReads {
   latestReleaseId(scopeKey: string): Promise<string | null>;
   getReleaseCatalogRow(scopeKey: string): Promise<ReleaseCatalogRow | null>;
   listReleaseCatalogs(input: KeysetInput): Promise<ReleaseCatalogRow[]>;
-  listChannels(): Promise<ChannelRow[]>;
+  /**
+   * Every channel, by name. With `input`, one keyset page of them, whose
+   * cursor is the last channel's name.
+   */
+  listChannels(input?: KeysetInput): Promise<ChannelRow[]>;
+  /**
+   * The channels of these IDs, in their order, without the IDs no channel
+   * has: one batch read of their keys.
+   */
+  getChannels(ids: readonly string[]): Promise<ChannelRow[]>;
   findChannelByName(name: string): Promise<ChannelRow | null>;
 }

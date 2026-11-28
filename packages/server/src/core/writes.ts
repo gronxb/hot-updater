@@ -11,6 +11,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import { DatabaseConstraintError } from "@hot-updater/plugin-core";
 
+import { LABEL_PLATFORMS, labelSequenceId } from "./labels";
 import { toChannelRow, type CoreDatabase } from "./reads";
 
 export type CoreTransaction = HotUpdaterTransaction<CoreSchema>;
@@ -30,13 +31,22 @@ export const insertBundle = (tx: CoreTransaction, row: BundleRow): void => {
   countBundle(tx, row.platform, 1);
 };
 
+/**
+ * Updates a bundle; a platform change moves it between platform totals,
+ * except for a native build's built-in bundle, which they never count.
+ */
 export const updateBundle = (
   tx: CoreTransaction,
   current: StoredBundle,
   set: BundleRowUpdate,
+  { counted = true }: { readonly counted?: boolean } = {},
 ): void => {
   tx.update("bundles", current, set);
-  if (set.platform !== undefined && set.platform !== current.platform) {
+  if (
+    counted &&
+    set.platform !== undefined &&
+    set.platform !== current.platform
+  ) {
     countBundle(tx, current.platform, -1);
     countBundle(tx, set.platform, 1);
   }
@@ -75,11 +85,14 @@ export const deleteBundlePatches = async (
 /**
  * Replaces a bundle's patches with `rows`: kept patches are updated where
  * they changed, others deleted or created, so no key is written twice.
+ * `checkNew` sees each patch it is about to create, and refuses one by
+ * throwing, which leaves the transaction's writes undone.
  */
 export const replaceBundlePatches = async (
   tx: CoreTransaction,
   bundle: StoredBundle,
   rows: readonly BundlePatchRow[],
+  checkNew?: (row: BundlePatchRow) => Promise<void>,
 ): Promise<void> => {
   const wanted = new Map(rows.map((row) => [row.id, row]));
   const count = bundle._refs_bundle_patches_bundle_id ?? 0;
@@ -113,6 +126,9 @@ export const replaceBundlePatches = async (
     if (page.next === undefined) break;
     cursor = page.next;
   }
+  if (checkNew !== undefined) {
+    for (const row of wanted.values()) await checkNew(row);
+  }
   for (const row of wanted.values()) tx.create("bundle_patches", row);
 };
 
@@ -145,7 +161,11 @@ export const insertChannel = async (
   }
 };
 
-/** Deletes a channel no release uses: 1 read + 1 write. */
+/**
+ * Deletes a channel no release or native build uses, with its label
+ * counters, so one created again with its name starts at 1: 3 reads,
+ * 1 query, 1 write.
+ */
 export const deleteChannel = (
   db: CoreDatabase,
   id: string,
@@ -155,6 +175,19 @@ export const deleteChannel = (
     if (row === null) return { deleted: false, reason: "not_found" };
     if ((row._refs_releases_channel_id ?? 0) > 0) {
       return { deleted: false, reason: "not_empty" };
+    }
+    // Native builds keep no counter on their channel: one indexed read.
+    const { rows: builds } = await tx.findMany("native_builds", {
+      index: "byChannel",
+      where: { channel_id: id },
+      limit: 1,
+    });
+    if (builds.length > 0) return { deleted: false, reason: "not_empty" };
+    for (const platform of LABEL_PLATFORMS) {
+      const counter = await tx.findOne("label_sequences", {
+        id: labelSequenceId(id, platform),
+      });
+      if (counter !== null) await tx.delete("label_sequences", counter);
     }
     await tx.delete("channels", row);
     return { deleted: true };

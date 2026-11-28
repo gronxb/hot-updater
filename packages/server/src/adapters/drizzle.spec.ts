@@ -24,7 +24,8 @@ import { createBundleFixture } from "@hot-updater/test-utils";
 import { createClient } from "@libsql/client";
 import type { SQL } from "drizzle-orm";
 import { drizzle as libsql } from "drizzle-orm/libsql";
-import { drizzle as pglite } from "drizzle-orm/pglite";
+import { withReplicas } from "drizzle-orm/pg-core";
+import { drizzle as pglite, type PgliteDatabase } from "drizzle-orm/pglite";
 import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -103,6 +104,13 @@ for (const provider of ["postgresql", "sqlite"] as const) {
       ),
     plugins: [
       insightsTestSuite({
+        createApi: (database, plugin = insights()) =>
+          createHotUpdater({
+            database,
+            storage: createReleaseCatalogTestStorage(),
+            plugins: [plugin],
+            clientAccess: "public",
+          }).api.insights,
         createModel: (database) =>
           createInsightsModel(
             createHotUpdater({
@@ -239,6 +247,50 @@ describe("drizzleAdapter drivers", () => {
   });
 });
 
+describe("drizzleAdapter under withReplicas", () => {
+  /** A primary, and a replica that has the schema but none of its rows: it lags. */
+  const replicated = async () => {
+    const primary = await backends.postgresql();
+    const lagging = new PGlite();
+    await lagging.exec(engineSql("postgresql").join(";\n"));
+    const replicaQueries: string[] = [];
+    const replica = pglite(lagging, {
+      logger: { logQuery: (query) => replicaQueries.push(query) },
+    });
+    return {
+      primary,
+      replica,
+      replicaQueries,
+      close: () => Promise.all([primary.close(), lagging.close()]),
+    };
+  };
+
+  it("runs every statement on $primary, never on a lagging replica", async () => {
+    // Drizzle's withReplicas sends `execute` to the primary itself; a router
+    // that sent it to a replica, as the second one does, must not reach it
+    // either.
+    const routers = [
+      (primary: PgliteDatabase, replica: PgliteDatabase) =>
+        withReplicas(primary, [replica]),
+      (primary: PgliteDatabase, replica: PgliteDatabase) => ({
+        ...withReplicas(primary, [replica]),
+        execute: (query: SQL) => replica.execute(query),
+      }),
+    ];
+    for (const route of routers) {
+      const { primary, replica, replicaQueries, close } = await replicated();
+      const database = drizzleAdapter({
+        db: route(primary.db, replica),
+        provider: "postgresql",
+      });
+      const { core, release } = await seed(database);
+      await expect(core.getRelease(release.id)).resolves.toEqual(release);
+      expect(replicaQueries).toEqual([]);
+      await close();
+    }
+  });
+});
+
 describe("drizzleAdapter schema and migrations", () => {
   const directory = mkdtemp(path.join(import.meta.dirname, ".drizzle-"));
   afterAll(async () => rm(await directory, { recursive: true, force: true }));
@@ -285,14 +337,27 @@ describe("drizzleAdapter schema and migrations", () => {
       ).rejects.toBeInstanceOf(HotUpdaterSchemaMigrationRequiredError);
       const migrator = database.createMigrator!();
       const pending = await migrator.migrateToLatest();
+      // drizzle-kit cannot declare PostgreSQL's collation: db migrate sets it.
       expect(pending.operations).toEqual([
-        expect.objectContaining({ type: "custom" }),
+        ...(provider === "postgresql"
+          ? [
+              {
+                type: "custom",
+                description:
+                  "Set the byte-order collation the ORM cannot declare on 66 columns of 10 tables",
+              },
+            ]
+          : []),
+        {
+          type: "custom",
+          description: "Record schema.engine 1, schema.core 1.2.0",
+        },
       ]);
       await pending.execute();
       await expect(migrator.migrateToLatest()).resolves.toMatchObject({
         operations: [],
       });
-      await expect(migrator.getVersion()).resolves.toBe("1.0.0");
+      await expect(migrator.getVersion()).resolves.toBe("1.2.0");
       const { core, release } = await seed(database);
       await expect(core.getRelease(release.id)).resolves.toEqual(release);
       await (client instanceof PGlite ? client.close() : client.close());

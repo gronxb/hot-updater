@@ -1,6 +1,5 @@
 import {
   SETTINGS_TABLE,
-  quoteSql,
   sqlTableShapes,
   type SqlColumnShape,
   type SqlTableShape,
@@ -117,31 +116,12 @@ export const generatePrismaEngineSchema = (
     .join("\n\n");
 
 /**
- * The collations Prisma cannot declare, which `hot-updater db migrate` sets
- * after Prisma created the tables: `COLLATE "C"` on PostgreSQL and binary
- * UTF-8 on MySQL, so strings compare by their bytes as the engine expects.
- * The settings table is only read by key, and the migrator has already read
- * it: altering it would invalidate PostgreSQL's cached plan for that read.
+ * Whether a column's collation is one Prisma cannot declare, which
+ * `hot-updater db migrate` sets after Prisma created the tables: `COLLATE "C"`
+ * on PostgreSQL and binary UTF-8 on MySQL, so strings compare by their bytes
+ * as the engine expects.
  */
-export const prismaCollationStatements = (
+export const prismaCollates = (
   provider: PrismaProvider,
-  schema: ResolvedSchema,
-): string[] => {
-  if (provider !== "postgresql" && provider !== "mysql") return [];
-  const quote = (name: string) => quoteSql(provider, name);
-  const tables = shapesOf(provider, schema).filter(
-    (shape) => shape.name !== SETTINGS_TABLE.name,
-  );
-  return tables.flatMap((shape) => {
-    const changes = shape.columns
-      .filter((column) => prismaColumn(provider, column).collate)
-      .map((column) =>
-        provider === "postgresql"
-          ? `ALTER COLUMN ${quote(column.name)} TYPE ${column.type}`
-          : `MODIFY ${quote(column.name)} ${column.type}${column.notNull ? " NOT NULL" : " NULL"}`,
-      );
-    return changes.length === 0
-      ? []
-      : [`ALTER TABLE ${quote(shape.name)} ${changes.join(", ")}`];
-  });
-};
+  column: SqlColumnShape,
+): boolean => prismaColumn(provider, column).collate === true;

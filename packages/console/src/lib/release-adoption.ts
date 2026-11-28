@@ -1,3 +1,5 @@
+import { isBuiltinBundleId } from "./builtin-bundle-id";
+import { idTail } from "./id-tail";
 import { recoveryWindows } from "./insights-recovery";
 import type { InsightsWindow } from "./insights-rpc";
 
@@ -24,7 +26,8 @@ export type HealthPlatform = "all" | "ios" | "android";
 /** A deployed bundle, as Release health labels and rolls it back. */
 export type AdoptionRelease = {
   readonly releaseId: string;
-  readonly bundleId: string;
+  /** The release's label, shown `v12`; null for a release without one. */
+  readonly label: number | null;
   readonly platform: "ios" | "android";
   readonly deployedAtMs: number;
   readonly targetAppVersion: string | null;
@@ -67,7 +70,11 @@ export type BundleEventsInput = {
   readonly window: InsightsWindow;
   /** The end of an hour; every bundle of one chart reads the same one. */
   readonly endMs: number;
-  readonly bundleId: string;
+  /**
+   * The release, which its reports name: two releases of one artifact in
+   * one channel, as a promote back into it makes them, count apart.
+   */
+  readonly releaseId: string;
   readonly type: BundleEventType;
 };
 
@@ -78,7 +85,7 @@ export type BundleEventsInput = {
  * reports running it, or crashes on it; one that comes back counts again.
  */
 export type BundleEventsSeries = {
-  readonly bundleId: string;
+  readonly releaseId: string;
   readonly type: BundleEventType;
   readonly measuredAtMs: number;
   readonly points: readonly {
@@ -139,7 +146,7 @@ export function readBundleEventsInput(
     !Number.isSafeInteger(input.endMs) ||
     input.endMs <= 0 ||
     input.endMs % HOUR_MS !== 0 ||
-    !isText(input.bundleId) ||
+    !isText(input.releaseId) ||
     (input.type !== "DOWNLOADED" &&
       input.type !== "LAUNCHED" &&
       input.type !== "RECOVERED")
@@ -150,7 +157,7 @@ export function readBundleEventsInput(
     channel,
     window: input.window,
     endMs: input.endMs,
-    bundleId: input.bundleId,
+    releaseId: input.releaseId,
     type: input.type,
   };
 }
@@ -184,6 +191,25 @@ export const defaultAdoptionReleases = (
   return (live.length > 0 ? live : candidates)
     .slice(0, DEFAULT_ADOPTION_RELEASES)
     .map((release) => release.releaseId);
+};
+
+/**
+ * How a filter chip names the bundle it narrows to: `Bundle v12 <ID tail>`,
+ * its label and the last 12 characters of its release ID, as
+ * `ReleaseIdDisplay` shows it, from the releases already read; the tail
+ * alone for one without a label or not among them. An ID in a built-in
+ * bundle's shape, whose pieces tell nothing, reads "Built-in bundle".
+ */
+export const bundleChip = (
+  releaseId: string,
+  releases: readonly Pick<AdoptionRelease, "releaseId" | "label">[],
+): string => {
+  if (isBuiltinBundleId(releaseId)) return "Built-in bundle";
+  const label =
+    releases.find((release) => release.releaseId === releaseId)?.label ?? null;
+  return label === null
+    ? `Bundle ${idTail(releaseId)}`
+    : `Bundle v${label} ${idTail(releaseId)}`;
 };
 
 /** Whether a bundle's crashes call for rolling it back. */

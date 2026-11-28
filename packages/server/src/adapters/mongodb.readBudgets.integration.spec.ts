@@ -1,6 +1,10 @@
 import path from "node:path";
 
-import { setupReadBudgetTestSuite } from "@hot-updater/test-utils";
+import {
+  setupReadBudgetTestSuite,
+  setupReleaseLabelEngineTestSuite,
+  type ReadBudgetSuiteOptions,
+} from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
   findOpenPort,
@@ -9,6 +13,7 @@ import { execa } from "execa";
 import { MongoClient } from "mongodb";
 import { afterAll, beforeAll } from "vitest";
 
+import { composeUp } from "../docker.testFixtures";
 import { createMongoAdapter } from "./mongodbAdapter";
 
 assertDockerComposeAvailable(
@@ -33,11 +38,19 @@ beforeAll(async () => {
     COMPOSE_PROJECT_NAME: `hot-updater-mongo-budgets-${process.pid}`,
     HOT_UPDATER_E2E_MONGODB_PORT: String(port),
   };
-  await compose(["up", "-d", "--wait"]);
+  await composeUp({
+    compose: ["compose", "-f", composeFile],
+    env: environment,
+  });
   client = new MongoClient(
     `mongodb://127.0.0.1:${port}/budgets?replicaSet=rs0&directConnection=true`,
   );
   await client.connect();
+  // Fixture times sit near the epoch, past every `_expireAt`: without this,
+  // MongoDB's TTL monitor deletes rows on a pass that lands inside a test.
+  await client
+    .db("admin")
+    .command({ setParameter: 1, ttlMonitorEnabled: false });
 }, 180_000);
 
 afterAll(async () => {
@@ -49,11 +62,13 @@ afterAll(async () => {
  * `mongoAdapter`'s composition without its schema fence: the MongoDB adapter
  * on the replica set, reading in batches as small as the suite's pages.
  */
-setupReadBudgetTestSuite({
+const backend: ReadBudgetSuiteOptions = {
   name: "mongodb (replica set)",
   createAdapter: async ({ tables, nativePageSize }) => {
     const adapter = createMongoAdapter({ client, batchSize: nativePageSize });
     await adapter.migrations!.apply(tables);
     return { adapter };
   },
-});
+};
+setupReadBudgetTestSuite(backend);
+setupReleaseLabelEngineTestSuite(backend);

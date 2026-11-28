@@ -1,17 +1,8 @@
 {
   "ios": {
     "engine": "hot-updater/interface@1",
-    "hash": "2bfe96073743fa28283d218fba6c2a10e430da36943193556ed2818257e47771",
+    "hash": "86cc1f3b0598611b1479754852baedd2853454cc1ba71f7364845b89b7c4bdba",
     "sources": [
-      {
-        "type": "contents",
-        "id": "codegen-config:.",
-        "contents": "{\"jsSrcsDir\":\"./src\",\"name\":\"HotUpdaterExampleSpec\",\"type\":\"modules\"}",
-        "reasons": [
-          "codegen-config"
-        ],
-        "hash": "07c72c0791a0b21688fd33f8b00f14d7a2283b65d5d68edf9303584014fea506"
-      },
       {
         "type": "contents",
         "id": "codegen-config:../../packages/react-native",
@@ -72,7 +63,7 @@
         "reasons": [
           "local-dependency-codegen-spec"
         ],
-        "hash": "206cbf04ed750458834234c88d2e45ec90cf0e067ac050e23bc1b21d934aa86f"
+        "hash": "bd1ba0973904c0a8721c0a1ba67b3ffd8d16243874b7928f631b18b8a3f7701d"
       },
       {
         "type": "file",
@@ -110,17 +101,8 @@
   },
   "android": {
     "engine": "hot-updater/interface@1",
-    "hash": "f0f7dd0aea610afc40b326fee332466a0942d2eae7d6dd56588214a5ba86a4e7",
+    "hash": "18816a3612e7cd0ec2f827e7367fcf81268360c0a665a91179184b227798f6c0",
     "sources": [
-      {
-        "type": "contents",
-        "id": "codegen-config:.",
-        "contents": "{\"android\":{\"javaPackageName\":\"com.hotupdaterexample\"},\"jsSrcsDir\":\"./src\",\"name\":\"HotUpdaterExampleSpec\",\"type\":\"modules\"}",
-        "reasons": [
-          "codegen-config"
-        ],
-        "hash": "41b95ee0d4cd34281a853d9bff399454d50f72dc7371e78d079a2b58f9e3193b"
-      },
       {
         "type": "contents",
         "id": "codegen-config:../../packages/react-native",
@@ -199,7 +181,7 @@
         "reasons": [
           "local-dependency-codegen-spec"
         ],
-        "hash": "206cbf04ed750458834234c88d2e45ec90cf0e067ac050e23bc1b21d934aa86f"
+        "hash": "bd1ba0973904c0a8721c0a1ba67b3ffd8d16243874b7928f631b18b8a3f7701d"
       },
       {
         "type": "file",

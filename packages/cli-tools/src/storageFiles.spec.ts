@@ -87,3 +87,30 @@ describe("putStorageFile", () => {
     }
   });
 });
+
+describe("a native artifact's upload", () => {
+  it("stores an APK as what Android installs, under its file name", async () => {
+    const directory = await fs.mkdtemp(
+      path.join(os.tmpdir(), "storage-files-"),
+    );
+    temporaryDirectories.push(directory);
+    const filePath = path.join(directory, "app-release.apk");
+    await fs.writeFile(filePath, "apk");
+    const put = vi.fn(async ({ key }: { key: string }) => ({
+      storageUri: `s3://bucket/${key}`,
+    }));
+
+    await putStorageFile(
+      createStorageAdapter({ name: "s3Storage", protocol: "s3", put }),
+      "native-builds/android/build-1",
+      filePath,
+    );
+
+    expect(put).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "native-builds/android/build-1/app-release.apk",
+        contentType: "application/vnd.android.package-archive",
+      }),
+    );
+  });
+});

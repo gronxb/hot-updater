@@ -7,6 +7,11 @@ import { llmsTxtPlugin } from "./plugins/llms-txt-plugin";
 import * as MdxConfig from "./source.config.js";
 
 export default defineConfig({
+  // Waku picks its Vercel adapter from the same variable; other deploys keep
+  // Waku's default adapter.
+  ...(process.env.VERCEL
+    ? { unstable_adapter: "/plugins/vercel-adapter.ts" }
+    : {}),
   vite: {
     plugins: [
       tailwindcss(),
@@ -14,6 +19,12 @@ export default defineConfig({
       llmsTxtPlugin({
         baseUrl: "https://hot-updater.dev",
         contentDir: "content/docs/(latest)",
+      }),
+      llmsTxtPlugin({
+        baseUrl: "https://hot-updater.dev",
+        contentDir: "content/docs/v1.0",
+        generateIndex: false,
+        urlPrefix: "v1.0",
       }),
       llmsTxtPlugin({
         baseUrl: "https://hot-updater.dev",

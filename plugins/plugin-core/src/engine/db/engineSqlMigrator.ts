@@ -1,16 +1,34 @@
 import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
 import type { SchemaSettings } from "../database/fence";
+import { SETTINGS_TABLE } from "../database/fence";
 import type { ResolvedSchema } from "../database/resolveSchema";
 import type { SqlExecutor } from "../database/sql/sqlAdapter";
-import { type EngineSqlOptions, generateEngineSql } from "./engineSql";
+import { quoteSql } from "../database/sql/sqlSchema";
+import {
+  type EngineSqlOptions,
+  generateEngineSql,
+  settingsStatements,
+} from "./engineSql";
 import { getEmptyMigrationResult } from "./fixedMigratorShared";
 import {
   readStoredSettings,
   refuseNewerSchema,
   refuseV0Database,
+  settingsOperation,
   storedSchemaVersion,
 } from "./settingsMigrator";
-import type { MigrateOptions, MigrationResult, Migrator } from "./types";
+import {
+  addColumnStatements,
+  missingSqlSchema,
+  readSqlSchemaState,
+  targetShapes,
+} from "./sqlSchemaState";
+import type {
+  MigrateOptions,
+  MigrationOperation,
+  MigrationResult,
+  Migrator,
+} from "./types";
 
 export interface EngineSqlMigratorOptions extends EngineSqlOptions {
   readonly adapterName: string;
@@ -21,20 +39,68 @@ export interface EngineSqlMigratorOptions extends EngineSqlOptions {
   readonly ordered?: readonly string[];
 }
 
-/** Runs the statements in one transaction where the dialect's DDL is transactional. */
-const run = async (executor: SqlExecutor, statements: readonly string[]) => {
-  const each = async (connection: Pick<SqlExecutor, "execute">) => {
-    for (const sql of statements) await connection.execute({ sql, params: [] });
+/**
+ * MySQL declares a table's indexes in its CREATE TABLE, which a table an
+ * earlier release created skips, and has no CREATE INDEX IF NOT EXISTS: the
+ * indexes the tables lack, created one by one.
+ */
+const missingMysqlIndexes = async (
+  executor: SqlExecutor,
+  schema: ResolvedSchema,
+  tablePrefix?: string,
+): Promise<string[]> => {
+  const quote = (name: string) => quoteSql("mysql", name);
+  const shapes = targetShapes("mysql", schema, tablePrefix);
+  return missingSqlSchema(
+    shapes,
+    await readSqlSchemaState(executor),
+  ).indexes.map(({ table, index: name }) => {
+    const index = shapes
+      .find((shape) => shape.name === table)!
+      .indexes.find(
+        (candidate) => candidate.kind === "index" && candidate.name === name,
+      )!;
+    return `CREATE ${index.kind === "index" && index.unique ? "UNIQUE " : ""}INDEX ${quote(name)} ON ${quote(table)} (${index.kind === "index" ? index.columns.map(quote).join(", ") : ""})`;
+  });
+};
+
+/**
+ * Runs the tables' statements, then the settings rows last, in one
+ * transaction where the dialect's DDL is transactional. On MySQL the indexes
+ * existing tables lack go between them, so the settings move only once
+ * every index exists.
+ */
+const run = async (
+  executor: SqlExecutor,
+  tables: readonly string[],
+  settings: readonly string[],
+  schema: ResolvedSchema,
+  tablePrefix?: string,
+) => {
+  const each = async (
+    connection: Pick<SqlExecutor, "execute">,
+    sqls: readonly string[],
+  ) => {
+    for (const sql of sqls) await connection.execute({ sql, params: [] });
   };
-  await (executor.dialect === "mysql"
-    ? each(executor)
-    : executor.transaction(each));
+  if (executor.dialect !== "mysql") {
+    await executor.transaction((connection) =>
+      each(connection, [...tables, ...settings]),
+    );
+    return;
+  }
+  await each(executor, tables);
+  await each(
+    executor,
+    await missingMysqlIndexes(executor, schema, tablePrefix),
+  );
+  await each(executor, settings);
 };
 
 /**
  * `hot-updater db migrate` and `db generate` for an SQL provider on the
  * engine: the generated SQL schema, applied when a settings row is missing or
- * different, and refused on a v0 database or one a newer release migrated. A SQL adapter's `createMigrator`
+ * different, and refused on a v0 database. A SQL adapter's `createMigrator`
  * returns it, as `kyselyAdapter`'s does.
  */
 export const createEngineSqlMigrator = (
@@ -57,44 +123,79 @@ export const createEngineSqlMigrator = (
       options.settings,
       options.ordered,
     );
-    if (
-      Object.entries(options.settings).every(
-        ([key, value]) => stored.get(key) === value,
-      )
-    ) {
+    const changed = Object.entries(options.settings).filter(
+      ([key, value]) => stored.get(key) !== value,
+    );
+    // Only what the database lacks: the statements create a table or an
+    // index only when it is missing, and a late column is added to a table
+    // that exists, before its indexes are created.
+    const missing = missingSqlSchema(
+      targetShapes(
+        options.executor.dialect,
+        options.schema,
+        options.tablePrefix,
+      ).filter(
+        (shape) =>
+          shape.name !== (options.tablePrefix ?? "") + SETTINGS_TABLE.name,
+      ),
+      await readSqlSchemaState(options.executor),
+      options.tablePrefix,
+    );
+    // Up to date, but for a column a prerelease of this version's schema
+    // lacked: its settings match, and the column and its indexes are missing.
+    if (changed.length === 0 && missing.columns.length === 0) {
       return getEmptyMigrationResult();
     }
+    const addColumns = addColumnStatements(
+      options.executor.dialect,
+      missing.columns,
+    );
     const statements = generateEngineSql(
       options.executor.dialect,
       options.schema,
       options.settings,
       options,
     );
+    const settingsSql = settingsStatements(
+      options.executor.dialect,
+      options.settings,
+      options.tablePrefix,
+    );
+    const tablesSql = [
+      ...addColumns,
+      ...statements.slice(0, -settingsSql.length || undefined),
+    ];
+    const writesSettings =
+      changed.length > 0 && migrate.updateSettings !== false;
+    const operations: MigrationOperation[] = [
+      ...missing.columns.map(({ table, column }) => ({
+        type: "custom" as const,
+        description: `Add column: ${column.name} to ${table}`,
+      })),
+      ...missing.tables.map((table) => ({
+        type: "create-table" as const,
+        value: { ormName: table, columns: {} },
+      })),
+      ...missing.indexes.map(({ table, index }) => ({
+        type: "custom" as const,
+        description: `Create index: ${index} on ${table}`,
+      })),
+      ...(writesSettings ? [settingsOperation(stored, changed)] : []),
+    ];
     return {
-      operations: [
-        ...options.schema.tables.map((table) => ({
-          type: "create-table" as const,
-          value: {
-            ormName: table.name,
-            columns: Object.fromEntries(
-              table.columns.map((column) => [
-                column.name,
-                { ormName: column.name, type: column.type },
-              ]),
-            ),
-          },
-        })),
-        ...(migrate.updateSettings === false
-          ? []
-          : [
-              {
-                type: "custom" as const,
-                description: `Write the schema settings: ${Object.keys(options.settings).join(", ")}`,
-              },
-            ]),
-      ],
-      getSQL: () => statements.map((statement) => `${statement};`).join("\n\n"),
-      execute: () => run(options.executor, statements),
+      operations,
+      getSQL: () =>
+        [...addColumns, ...statements]
+          .map((statement) => `${statement};`)
+          .join("\n\n"),
+      execute: () =>
+        run(
+          options.executor,
+          tablesSql,
+          changed.length > 0 ? settingsSql : [],
+          options.schema,
+          options.tablePrefix,
+        ),
     };
   };
 

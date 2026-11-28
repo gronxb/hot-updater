@@ -4,7 +4,6 @@ import { createMemoryAdapter } from "../../database/memoryAdapter";
 import { readSettings } from "../database/fence";
 import {
   coreSettings,
-  createEngineDatabase,
   migrateCoreSchema,
   toolingTargetOf,
 } from "./coreDatabase";
@@ -26,28 +25,6 @@ describe("migrateCoreSchema, which a managed provider's init runs", () => {
     );
     const [row] = await readSettings(adapter, ["schema.core"]);
     expect(row?.value).toBe("1.3.0");
-  });
-});
-
-describe("db migrate on a store that creates its own tables", () => {
-  it("refuses a database a newer release migrated before it plans anything, and writes nothing", async () => {
-    const adapter = createMemoryAdapter();
-    await migrateCoreSchema(adapter, "mongodb");
-    await writeSchemaSettings(
-      adapter,
-      "mongodb",
-      { "schema.core": "1.3.0" },
-      [],
-    );
-    const migrator = createEngineDatabase({
-      name: "mongodb",
-      adapter,
-    }).createMigrator!();
-
-    await expect(migrator.migrateToLatest()).rejects.toThrow(
-      `mongodb: the database was migrated by Hot Updater 1.3.0 (schema.core "1.3.0", this CLI's "${coreSettings["schema.core"]}"). Upgrade hot-updater to 1.3.0 or later; nothing was written.`,
-    );
-    await expect(migrator.getVersion()).resolves.toBe("1.3.0");
   });
 });
 

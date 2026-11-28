@@ -7,6 +7,8 @@ import {
 import {
   postgresRowsExamined,
   setupReadBudgetTestSuite,
+  setupReleaseLabelEngineTestSuite,
+  type ReadBudgetSuiteOptions,
 } from "@hot-updater/test-utils";
 import { drizzle } from "drizzle-orm/pglite";
 
@@ -20,16 +22,17 @@ import { drizzleExecutor } from "./drizzleExecutor";
  * the Drizzle executor on `drizzle-orm/pglite`, on the tables drizzle-kit
  * applies from the generated schema, with the settings rows.
  */
-setupReadBudgetTestSuite({
+const backend: ReadBudgetSuiteOptions = {
   name: "drizzle (PGlite)",
   createAdapter: async () => {
     const client = new PGlite();
+    const { schema, settings } = toolingTargetOf([
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+    ]);
     await client.exec(
-      generateEngineSql(
-        "postgresql",
-        toolingTargetOf([insights(), apiKeys(), remoteConfig()]).schema,
-        toolingTargetOf([insights(), apiKeys(), remoteConfig()]).settings,
-      ).join(";\n"),
+      generateEngineSql("postgresql", schema, settings).join(";\n"),
     );
     const reads = postgresRowsExamined(
       async (sql, params) =>
@@ -43,4 +46,6 @@ setupReadBudgetTestSuite({
       cleanup: () => client.close(),
     };
   },
-});
+};
+setupReadBudgetTestSuite(backend);
+setupReleaseLabelEngineTestSuite(backend);

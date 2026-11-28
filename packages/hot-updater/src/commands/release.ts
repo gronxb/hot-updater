@@ -1,4 +1,4 @@
-import { loadConfig, p } from "@hot-updater/cli-tools";
+import { fitText, loadConfig, p } from "@hot-updater/cli-tools";
 import type {
   HotUpdaterCoreApi,
   ReleaseFilter,
@@ -10,16 +10,24 @@ import { loadServer } from "@/utils/loadServer";
 
 import { ui } from "../utils/cli-ui";
 import { printBanner } from "../utils/printBanner";
+import { canPrompt } from "../utils/prompt";
+import { failBundleCommand, notFoundError } from "../utils/publicBundleError";
+import {
+  labelText,
+  resolveReleaseId,
+  type LabelScopeOptions,
+} from "./releaseLabel";
 
 const DEFAULT_LIMIT = 20;
 
 export interface ReleaseListOptions {
-  readonly bundleId?: string;
   readonly channel?: string;
   readonly json?: boolean;
   readonly limit?: number;
   readonly platform?: "ios" | "android";
   readonly targetAppVersion?: string;
+  /** Continues a list after this release ID, as a stopped scan printed it. */
+  readonly cursor?: string;
 }
 
 export interface ReleaseUpdateOptions {
@@ -37,7 +45,7 @@ export interface ReleaseUpdateOptions {
   readonly yes?: boolean;
 }
 
-const safeDispose = async (database: {
+export const safeDispose = async (database: {
   readonly dispose?: () => Promise<void>;
 }) => {
   try {
@@ -59,6 +67,12 @@ const parseTargetCohorts = (
         .map((cohort) => cohort.trim())
         .filter(Boolean);
 
+/** A `Label` row, only for a release that has one. */
+const labelRow = (release: Pick<ReleaseRow, "label"> | null | undefined) =>
+  release && typeof release.label === "number"
+    ? ui.kv("Label", labelText(release))
+    : "";
+
 const releaseTarget = (release: ReleaseRow): string =>
   release.strategy === "APP_VERSION"
     ? (release.target_app_version ?? "")
@@ -70,6 +84,7 @@ const releaseTable = (
 ): string =>
   ui.table(
     [
+      { key: "label", label: "Label" },
       { key: "release", label: "ID", format: ui.id },
       { key: "channel", label: "Channel", format: ui.channel },
       { key: "platform", label: "Platform", format: ui.platform },
@@ -85,6 +100,7 @@ const releaseTable = (
       created: new Date(release.created_at_ms).toISOString(),
       enabled: release.enabled ? "yes" : "no",
       force: release.should_force_update ? "yes" : "no",
+      label: labelText(release),
       message: release.message ?? "",
       platform: release.platform,
       release: release.id,
@@ -96,6 +112,7 @@ const releaseTable = (
 const releaseSummary = (release: ReleaseRow, channelName: string): string =>
   ui.block("Bundle", [
     ui.kv("ID", ui.id(release.id)),
+    labelRow(release),
     ui.kv("Revision", String(release.revision)),
     ui.kv("Channel", ui.channel(channelName)),
     ui.kv("Platform", ui.platform(release.platform)),
@@ -120,6 +137,7 @@ const releaseDisablePreview = (
 ): string =>
   ui.block("Disable Bundle", [
     ui.kv("ID", ui.id(release.id)),
+    labelRow(release),
     ui.kv("Revision", String(release.revision)),
     ui.kv("Channel", ui.channel(channelName)),
     ui.kv("Platform", ui.platform(release.platform)),
@@ -138,92 +156,134 @@ const printUpdatePreview = (
   console.log(
     options.json
       ? JSON.stringify(result, null, 2)
-      : ui.block("Bundle update dry run (not saved)", [
-          ui.kv("Current bytes", String(result.currentCatalog?.byte_size ?? 0)),
-          ui.kv("Projected bytes", String(result.diagnostics.byteSize)),
-          ui.kv("Maximum bytes", String(256 * 1024)),
-          ui.kv("Descriptors", String(result.diagnostics.descriptorCount)),
-          ui.kv("Intervals", String(result.diagnostics.segmentCount)),
-          ui.kv(
-            "Named cohorts",
-            String(result.diagnostics.distinctTargetCohortCount),
-          ),
-          ui.kv("Next generation", String(result.catalog.generation)),
-        ]),
+      : fitText(
+          ui.block("Bundle update dry run (not saved)", [
+            ui.kv(
+              "Current bytes",
+              String(result.currentCatalog?.byte_size ?? 0),
+            ),
+            ui.kv("Projected bytes", String(result.diagnostics.byteSize)),
+            ui.kv("Maximum bytes", String(256 * 1024)),
+            ui.kv("Descriptors", String(result.diagnostics.descriptorCount)),
+            ui.kv("Intervals", String(result.diagnostics.segmentCount)),
+            ui.kv(
+              "Named cohorts",
+              String(result.diagnostics.distinctTargetCohortCount),
+            ),
+            ui.kv("Next generation", String(result.catalog.generation)),
+          ]),
+        ),
   );
 };
 
-const confirmMutation = async (
+export const confirmMutation = async (
   message: string,
   yes: boolean | undefined,
 ): Promise<void> => {
   if (yes) return;
-  if (!process.stdin.isTTY) {
-    p.log.error(`${message} Re-run with -y in a non-interactive shell.`);
-    process.exit(1);
-  }
+  if (!canPrompt(message)) process.exit(1);
   const confirmed = await p.confirm({ initialValue: false, message });
   if (p.isCancel(confirmed) || !confirmed) process.exit(2);
 };
 
-const channelNames = async (core: HotUpdaterCoreApi) =>
+/** The names of the channels these IDs name: one batch read of their keys. */
+const channelNamesOf = async (
+  core: HotUpdaterCoreApi,
+  ids: readonly string[],
+): Promise<Map<string, string>> =>
   new Map(
-    (await core.listChannels()).map((channel) => [channel.id, channel.name]),
+    (await core.getChannels(ids)).map((channel) => [channel.id, channel.name]),
   );
 
 const PAGE = 100;
+
+/** Pages a list reads for filters no index serves, before it stops. */
+const SCAN_PAGES = 5;
+
+interface ReleaseList {
+  readonly releases: ReleaseRow[];
+  /** Set when the scan stopped before `limit` releases matched. */
+  readonly stopped?: { readonly scanned: number; readonly cursor: string };
+}
 
 /**
  * Newest releases first. Each read goes through the index the narrowest
  * filters name: a bundle, a channel with its platforms, or every release.
  * Filters no index serves (a platform alone, a target app version) are
- * checked here while reading pages, until `limit` releases match.
+ * checked here while reading pages, until `limit` releases match or a few
+ * pages are read, so a filter that matches nothing doesn't read the table.
  */
 const listReleases = async (
   core: HotUpdaterCoreApi,
   options: ReleaseListOptions,
   channelId: string | undefined,
-): Promise<ReleaseRow[]> => {
+): Promise<ReleaseList> => {
   const limit = options.limit ?? DEFAULT_LIMIT;
   const matches = (release: ReleaseRow) =>
     (options.platform === undefined || release.platform === options.platform) &&
     (channelId === undefined || release.channel_id === channelId) &&
     (options.targetAppVersion === undefined ||
       release.target_app_version === options.targetAppVersion);
+  const scanning =
+    options.targetAppVersion !== undefined ||
+    (options.platform !== undefined && channelId === undefined);
+  const pageSize = scanning ? PAGE : Math.min(PAGE, limit);
+  const maxPages = scanning
+    ? Math.max(SCAN_PAGES, Math.ceil(limit / PAGE))
+    : Number.POSITIVE_INFINITY;
   const filters: ReleaseFilter[] =
-    options.bundleId !== undefined
-      ? [{ kind: "bundle", bundleId: options.bundleId }]
-      : channelId === undefined
-        ? [{ kind: "all" }]
-        : (options.platform === undefined
-            ? (["ios", "android"] as const)
-            : [options.platform]
-          ).map((platform) => ({
-            kind: "channelPlatform" as const,
-            channelId,
-            platform,
-          }));
-  const found = await Promise.all(
+    channelId === undefined
+      ? [{ kind: "all" }]
+      : (options.platform === undefined
+          ? (["ios", "android"] as const)
+          : [options.platform]
+        ).map((platform) => ({
+          kind: "channelPlatform" as const,
+          channelId,
+          platform,
+        }));
+  const walks = await Promise.all(
     filters.map(async (filter) => {
       const rows: ReleaseRow[] = [];
-      for (let after: string | undefined; rows.length < limit; ) {
+      let scanned = 0;
+      let after = options.cursor;
+      for (let pages = 0; rows.length < limit; pages += 1) {
+        if (pages === maxPages) return { rows, scanned, cut: after };
         const page = await core.listReleases({
           filter,
-          limit: PAGE,
+          limit: pageSize,
           order: "desc",
           ...(after === undefined ? {} : { after }),
         });
+        scanned += page.length;
         rows.push(...page.filter(matches));
-        if (page.length < PAGE) break;
+        if (page.length < pageSize) break;
         after = page.at(-1)!.id;
       }
-      return rows;
+      return { rows, scanned, cut: undefined };
     }),
   );
-  return found
-    .flat()
+  // A walk that stopped has read only the releases from where it stopped
+  // up, so the list ends at the newest such point, which it includes: the
+  // `--cursor` continuation reads past it.
+  const cursor = walks
+    .flatMap(({ cut }) => (cut === undefined ? [] : [cut]))
+    .sort()
+    .at(-1);
+  const releases = walks
+    .flatMap(({ rows }) => rows)
+    .filter((release) => cursor === undefined || release.id >= cursor)
     .sort((left, right) => (left.id < right.id ? 1 : -1))
     .slice(0, limit);
+  return cursor === undefined || releases.length === limit
+    ? { releases }
+    : {
+        releases,
+        stopped: {
+          scanned: walks.reduce((sum, { scanned }) => sum + scanned, 0),
+          cursor,
+        },
+      };
 };
 
 export const handleReleaseList = async (options: ReleaseListOptions = {}) => {
@@ -231,49 +291,68 @@ export const handleReleaseList = async (options: ReleaseListOptions = {}) => {
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
-    const channels = await channelNames(core);
-    const channelId = options.channel
-      ? [...channels].find(([, name]) => name === options.channel)?.[0]
-      : undefined;
-    if (options.channel && channelId === undefined) {
+    const channel = options.channel
+      ? await core.findChannelByName(options.channel)
+      : null;
+    if (options.channel && channel === null) {
       p.log.error(`No channel named ${options.channel}.`);
       process.exit(1);
     }
-    const releases = await listReleases(core, options, channelId);
-    console.log(
-      options.json
-        ? JSON.stringify(releases, null, 2)
-        : releaseTable(releases, channels),
+    const { releases, stopped } = await listReleases(
+      core,
+      options,
+      channel?.id,
     );
+    if (options.json) {
+      console.log(JSON.stringify(releases, null, 2));
+    } else {
+      const channels =
+        channel === null
+          ? await channelNamesOf(
+              core,
+              releases.map(({ channel_id }) => channel_id),
+            )
+          : new Map([[channel.id, channel.name]]);
+      console.log(fitText(releaseTable(releases, channels)));
+    }
+    if (stopped !== undefined) {
+      const line = `Scanned ${stopped.scanned} bundles. Narrow with --channel, or continue with --cursor ${stopped.cursor}`;
+      // --json keeps stdout to the list.
+      if (options.json) console.error(line);
+      else p.log.message(ui.muted(line));
+    }
   } finally {
     await safeDispose(server);
   }
 };
 
 export const handleReleaseShow = async (
-  releaseId: string,
-  options: { readonly json?: boolean } = {},
+  idOrLabel: string,
+  options: { readonly json?: boolean } & LabelScopeOptions = {},
 ) => {
   if (!options.json) printBanner();
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
-    const [release, channels] = await Promise.all([
-      core.getRelease(releaseId),
-      channelNames(core),
-    ]);
+    const releaseId = await resolveReleaseId(core, idOrLabel, options);
+    const release = await core.getRelease(releaseId);
     if (release === null) {
       p.log.error(`No bundle with ID ${releaseId}.`);
       process.exit(1);
     }
-    console.log(
-      options.json
-        ? JSON.stringify(release, null, 2)
-        : releaseSummary(
+    if (options.json) {
+      console.log(JSON.stringify(release, null, 2));
+    } else {
+      const channels = await channelNamesOf(core, [release.channel_id]);
+      console.log(
+        fitText(
+          releaseSummary(
             release,
             channels.get(release.channel_id) ?? release.channel_id,
           ),
-    );
+        ),
+      );
+    }
   } finally {
     await safeDispose(server);
   }
@@ -307,8 +386,8 @@ const createPolicyPatch = (
 };
 
 export const handleReleaseUpdate = async (
-  releaseId: string,
-  options: ReleaseUpdateOptions,
+  idOrLabel: string,
+  options: ReleaseUpdateOptions & LabelScopeOptions,
 ) => {
   const patch = createPolicyPatch(options);
   if (Object.keys(patch).length === 0) {
@@ -322,6 +401,7 @@ export const handleReleaseUpdate = async (
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
+    const releaseId = await resolveReleaseId(core, idOrLabel, options);
     const target = {
       ...(options.expectedRevision === undefined
         ? {}
@@ -329,18 +409,29 @@ export const handleReleaseUpdate = async (
       patch,
       releaseId,
     };
-    if (options.dryRun) {
-      printUpdatePreview(await core.preflightReleasePolicy(target), options);
-      return;
+    let result: Awaited<ReturnType<typeof core.updateReleasePolicy>>;
+    try {
+      if (options.dryRun) {
+        printUpdatePreview(await core.preflightReleasePolicy(target), options);
+        return;
+      }
+      result = await core.updateReleasePolicy(target);
+    } catch (error) {
+      return await failBundleCommand(core, releaseId, error, {
+        json: options.json,
+        outcome: "updated",
+      });
     }
-    const result = await core.updateReleasePolicy(target);
     console.log(
       options.json
         ? JSON.stringify(result, null, 2)
-        : ui.block("Bundle updated", [
-            ui.kv("ID", ui.id(releaseId)),
-            ui.kv("Revision", String(result.release?.revision ?? "")),
-          ]),
+        : fitText(
+            ui.block("Bundle updated", [
+              ui.kv("ID", ui.id(releaseId)),
+              labelRow(result.release),
+              ui.kv("Revision", String(result.release?.revision ?? "")),
+            ]),
+          ),
     );
   } finally {
     await safeDispose(server);
@@ -348,24 +439,29 @@ export const handleReleaseUpdate = async (
 };
 
 export const handleReleaseEnablement = async (
-  releaseId: string,
+  idOrLabel: string,
   enabled: boolean,
   options: {
     readonly expectedRevision?: number;
     readonly json?: boolean;
     readonly yes?: boolean;
-  },
+  } & LabelScopeOptions,
 ) => {
   if (!options.json) printBanner();
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
+    const releaseId = await resolveReleaseId(core, idOrLabel, options);
     let expectedRevision = options.expectedRevision;
     if (!enabled) {
       const release = await core.getRelease(releaseId);
       if (release === null) {
-        p.log.error(`No bundle with ID ${releaseId}.`);
-        process.exit(1);
+        return await failBundleCommand(
+          core,
+          releaseId,
+          notFoundError(releaseId),
+          { json: options.json, outcome: "updated" },
+        );
       }
       expectedRevision ??= release.revision;
 
@@ -380,7 +476,7 @@ export const handleReleaseEnablement = async (
             },
             limit: 2,
           }),
-          channelNames(core),
+          channelNamesOf(core, [release.channel_id]),
         ]);
         p.log.message(
           releaseDisablePreview(
@@ -404,17 +500,28 @@ export const handleReleaseEnablement = async (
       `${enabled ? "Enable" : "Disable"} this bundle?`,
       options.yes,
     );
-    const result = await core.updateReleasePolicy({
-      ...(expectedRevision === undefined ? {} : { expectedRevision }),
-      patch: { enabled },
-      releaseId,
-    });
+    let result: Awaited<ReturnType<typeof core.updateReleasePolicy>>;
+    try {
+      result = await core.updateReleasePolicy({
+        ...(expectedRevision === undefined ? {} : { expectedRevision }),
+        patch: { enabled },
+        releaseId,
+      });
+    } catch (error) {
+      return await failBundleCommand(core, releaseId, error, {
+        json: options.json,
+        outcome: "updated",
+      });
+    }
     console.log(
       options.json
         ? JSON.stringify(result, null, 2)
-        : ui.block(enabled ? "Bundle enabled" : "Bundle disabled", [
-            ui.kv("ID", ui.id(releaseId)),
-          ]),
+        : fitText(
+            ui.block(enabled ? "Bundle enabled" : "Bundle disabled", [
+              ui.kv("ID", ui.id(releaseId)),
+              labelRow(result.release),
+            ]),
+          ),
     );
   } finally {
     await safeDispose(server);
@@ -422,29 +529,50 @@ export const handleReleaseEnablement = async (
 };
 
 export const handleReleaseDelete = async (
-  releaseId: string,
+  idOrLabel: string,
   options: {
     readonly expectedRevision?: number;
     readonly json?: boolean;
     readonly yes?: boolean;
-  },
+  } & LabelScopeOptions,
 ) => {
   if (!options.json) printBanner();
   await confirmMutation(
-    `Permanently delete disabled bundle ${releaseId}?`,
+    `Permanently delete disabled bundle ${idOrLabel}?`,
     options.yes,
   );
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
+    const releaseId = await resolveReleaseId(core, idOrLabel, options);
+    const release = await core.getRelease(releaseId);
+    if (release === null) {
+      return await failBundleCommand(
+        core,
+        releaseId,
+        notFoundError(releaseId),
+        {
+          json: options.json,
+          outcome: "deleted",
+        },
+      );
+    }
     // Core deletes the artifact with the last bundle on it.
-    const artifactId = (await core.getRelease(releaseId))?.bundle_id ?? null;
-    const result = await core.deleteRelease({
-      ...(options.expectedRevision === undefined
-        ? {}
-        : { expectedRevision: options.expectedRevision }),
-      releaseId,
-    });
+    const artifactId = release.bundle_id;
+    let result: Awaited<ReturnType<typeof core.deleteRelease>>;
+    try {
+      result = await core.deleteRelease({
+        ...(options.expectedRevision === undefined
+          ? {}
+          : { expectedRevision: options.expectedRevision }),
+        releaseId,
+      });
+    } catch (error) {
+      return await failBundleCommand(core, releaseId, error, {
+        json: options.json,
+        outcome: "deleted",
+      });
+    }
     const deletedArtifactId =
       artifactId !== null && (await core.getBundle(artifactId)) === null
         ? artifactId
@@ -453,7 +581,14 @@ export const handleReleaseDelete = async (
       console.log(JSON.stringify({ ...result, deletedArtifactId }, null, 2));
       return;
     }
-    console.log(ui.block("Bundle deleted", [ui.kv("ID", ui.id(releaseId))]));
+    console.log(
+      fitText(
+        ui.block("Bundle deleted", [
+          ui.kv("ID", ui.id(releaseId)),
+          labelRow(release),
+        ]),
+      ),
+    );
     if (deletedArtifactId !== null) {
       p.log.info(
         "No other bundle used its files, so their artifact record was deleted too. The stored files stay until `hot-updater storage prune` deletes them.",

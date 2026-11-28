@@ -1,0 +1,246 @@
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { ReleaseIdDisplay } from "./ReleaseIdDisplay";
+
+const id = "01a13d86-86f7-7830-952d-21238207019f";
+const writeText = vi.fn<(text: string) => Promise<void>>();
+
+beforeEach(() => {
+  writeText.mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  });
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  writeText.mockReset();
+});
+
+describe("ReleaseIdDisplay", () => {
+  it("shows a labeled release as its label and the last 12 characters of its ID, and reads all of it", () => {
+    render(<ReleaseIdDisplay releaseId={id} label={14} />);
+
+    const copy = screen.getByRole("button", { name: `Copy ID ${id}` });
+    // The whole ID is in the text, clipped to its tail in the label's size.
+    expect(copy.textContent).toBe(id);
+    const clip = copy.firstElementChild!;
+    expect(clip.className).toContain("w-[12ch]");
+    expect(clip.className).toContain("overflow-hidden");
+    // The button itself isn't clipped, so its 44 px touch area reaches past it.
+    expect(copy.className).not.toContain("overflow-hidden");
+    expect(copy.className).toContain("after:-inset-y-3");
+    expect(copy.className).toContain("text-sm");
+    expect(copy.className).toContain("font-mono");
+    const display = copy.parentElement!;
+    expect(display.className).toContain("items-baseline");
+    // No dot between them, and no hover-only title: the popover shows it.
+    expect(display.textContent).toBe(`v14 ${id}`);
+    expect(display.querySelector("[title]")).toBeNull();
+    expect(display.querySelector("[aria-hidden=true]")).toBeNull();
+  });
+
+  it("shows the full ID in a popover when the tail is hovered or focused", async () => {
+    render(<ReleaseIdDisplay releaseId={id} label={14} />);
+    const copy = screen.getByRole("button", { name: `Copy ID ${id}` });
+
+    fireEvent.mouseEnter(copy);
+    fireEvent.pointerEnter(copy);
+    fireEvent.mouseMove(copy);
+    const hovered = await screen.findByRole("tooltip", {}, { timeout: 2_000 });
+    expect(within(hovered).getByText(id)).toBeTruthy();
+    expect(within(hovered).getByText("Click to copy")).toBeTruthy();
+
+    cleanup();
+    render(<ReleaseIdDisplay releaseId={id} label={14} />);
+    act(() => screen.getByRole("button", { name: `Copy ID ${id}` }).focus());
+    const focused = await screen.findByRole("tooltip", {}, { timeout: 2_000 });
+    expect(within(focused).getByText(id)).toBeTruthy();
+  });
+
+  it("copies the full ID on a click and says so in the popover", async () => {
+    render(<ReleaseIdDisplay releaseId={id} label={14} />);
+
+    fireEvent.click(screen.getByRole("button", { name: `Copy ID ${id}` }));
+
+    expect(writeText).toHaveBeenCalledWith(id);
+    const popover = await screen.findByRole("tooltip");
+    expect(within(popover).getByText(id)).toBeTruthy();
+    expect(await within(popover).findByText("Copied")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe("ID copied");
+  });
+
+  it("says when the ID couldn't be copied", async () => {
+    writeText.mockRejectedValue(new Error("Denied"));
+    render(<ReleaseIdDisplay releaseId={id} label={14} />);
+
+    fireEvent.click(screen.getByRole("button", { name: `Copy ID ${id}` }));
+
+    const popover = await screen.findByRole("tooltip");
+    expect(await within(popover).findByText("Couldn't copy")).toBeTruthy();
+  });
+
+  it("keeps the click from the row it sits in", () => {
+    const openRow = vi.fn();
+    render(
+      // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+      <div onClick={openRow}>
+        <ReleaseIdDisplay releaseId={id} label={14} />
+      </div>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: `Copy ID ${id}` }));
+
+    expect(writeText).toHaveBeenCalledWith(id);
+    expect(openRow).not.toHaveBeenCalled();
+  });
+
+  it("renders the label as the caller's control, with the tail its own button beside it", () => {
+    const open = vi.fn();
+    render(
+      <ReleaseIdDisplay
+        releaseId={id}
+        label={14}
+        labelAs={<button type="button" aria-label="Open" onClick={open} />}
+      />,
+    );
+
+    const label = screen.getByRole("button", { name: "Open" });
+    const copy = screen.getByRole("button", { name: `Copy ID ${id}` });
+    expect(label.textContent).toBe("v14");
+    expect(label.contains(copy)).toBe(false);
+    fireEvent.click(label);
+    expect(open).toHaveBeenCalledOnce();
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it("holds no button inside another control, and shows the full ID on hover there", () => {
+    render(
+      <a href="#bundle">
+        <ReleaseIdDisplay releaseId={id} copyable={false} label={14} />
+      </a>,
+    );
+
+    const link = screen.getByRole("link", { name: `v14 ${id}` });
+    expect(within(link).queryByRole("button")).toBeNull();
+    expect(link.querySelector("[title]")?.getAttribute("title")).toBe(id);
+    expect(screen.getByText(id).className).toContain("w-[12ch]");
+  });
+
+  it("puts the platform before the label where a list mixes platforms", () => {
+    render(<ReleaseIdDisplay releaseId={id} label={14} platform="android" />);
+
+    const display = screen.getByRole("button", {
+      name: `Copy ID ${id}`,
+    }).parentElement!;
+    expect(display.textContent).toBe(`Android v14 ${id}`);
+    expect(display.firstElementChild!.querySelector("svg")).not.toBeNull();
+  });
+
+  it("shows a short ID whole beside its label", () => {
+    render(<ReleaseIdDisplay releaseId="r-1" label={3} />);
+
+    expect(screen.getByText("r-1").className).not.toContain("overflow-hidden");
+  });
+
+  it("shows the ID's last 12 characters alone as its copy button, with or without a label", () => {
+    for (const label of [14, null]) {
+      render(<ReleaseIdDisplay releaseId={id} label={label} part="id" />);
+
+      const copy = screen.getByRole("button", { name: `Copy ID ${id}` });
+      // A UUID's last group, as dark as the values beside it.
+      expect(copy.firstElementChild!.className).toContain("w-[12ch]");
+      expect(copy.parentElement!.textContent).toBe(id);
+      expect(copy.className).toContain("text-foreground");
+      expect(copy.className).not.toContain("text-muted-foreground");
+      // The size of the values beside it, still 44 px tall to a finger.
+      expect(copy.className).toContain("text-xs");
+      expect(copy.className).not.toContain("text-sm");
+      expect(copy.className).toContain("after:-inset-y-3.5");
+      fireEvent.click(copy);
+      expect(writeText).toHaveBeenLastCalledWith(id);
+      cleanup();
+    }
+  });
+
+  it("shows the label alone in the caller's control, or a muted dash without one", () => {
+    const open = vi.fn();
+    const control = <button type="button" aria-label="Open" onClick={open} />;
+    render(
+      <ReleaseIdDisplay
+        releaseId={id}
+        label={14}
+        labelAs={control}
+        part="label"
+      />,
+    );
+    const labeled = screen.getByRole("button", { name: "Open" });
+    expect(labeled.textContent).toBe("v14");
+    expect(labeled.className).toContain("text-xs");
+    expect(labeled.className).not.toContain("text-sm");
+    expect(labeled.parentElement!.textContent).toBe("v14");
+    expect(screen.queryByRole("button", { name: /^Copy ID/u })).toBeNull();
+    cleanup();
+
+    render(
+      <ReleaseIdDisplay
+        releaseId={id}
+        label={null}
+        labelAs={control}
+        part="label"
+      />,
+    );
+    const unlabeled = screen.getByRole("button", { name: "Open" });
+    expect(unlabeled.textContent).toBe("—No label");
+    expect(unlabeled.className).toContain("text-muted-foreground");
+    expect(screen.queryByText(id)).toBeNull();
+    fireEvent.click(unlabeled);
+    expect(open).toHaveBeenCalledOnce();
+  });
+
+  it("shows a release without a label as its ID's last 12 characters, never its full ID", () => {
+    render(<ReleaseIdDisplay releaseId={id} label={null} />);
+
+    const copy = screen.getByRole("button", { name: `Copy ID ${id}` });
+    expect(copy.firstElementChild!.className).toContain("w-[12ch]");
+    expect(copy.parentElement!.textContent).toBe(id);
+    cleanup();
+
+    render(<ReleaseIdDisplay releaseId={id} label={null} copyable={false} />);
+    const text = screen.getByText(id);
+    expect(text.className).toContain("w-[12ch]");
+    expect(text.getAttribute("title")).toBe(id);
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("opens a release without a label from a muted dash, its tail beside it", () => {
+    const open = vi.fn();
+    render(
+      <ReleaseIdDisplay
+        releaseId={id}
+        label={null}
+        labelAs={<button type="button" onClick={open} />}
+      />,
+    );
+
+    // Read as its whole ID; it shows only a dash.
+    const opener = screen.getByRole("button", { name: id });
+    expect(opener.className).toContain("text-muted-foreground");
+    expect(within(opener).getByText(id).className).toContain("sr-only");
+    const copy = screen.getByRole("button", { name: `Copy ID ${id}` });
+    expect(copy.firstElementChild!.className).toContain("w-[12ch]");
+    fireEvent.click(copy);
+    expect(writeText).toHaveBeenLastCalledWith(id);
+    expect(open).not.toHaveBeenCalled();
+  });
+});
