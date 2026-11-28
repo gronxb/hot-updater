@@ -33,7 +33,6 @@ import {
 import { describeFailure } from "@/lib/insights-failures";
 import type { InsightsEventRow } from "@/lib/insights-view";
 
-import { BuiltinBundleBadge, isBuiltinBundle } from "./BuiltinBundle";
 import { ReportedBundleId } from "./ReportedBundleId";
 
 type EventHistoryRow = InsightsEventRow;
@@ -448,7 +447,12 @@ export function EventBundleTransition({
 }: {
   readonly event: Pick<
     EventHistoryRow,
-    "type" | "fromBundleId" | "toBundleId" | "failure" | "minBundleId"
+    | "type"
+    | "fromBundleId"
+    | "toBundleId"
+    | "failure"
+    | "minBundleId"
+    | "appVersion"
   > &
     Partial<Pick<EventHistoryRow, "change" | "fromReleaseId" | "toReleaseId">>;
 }) {
@@ -465,10 +469,17 @@ export function EventBundleTransition({
     ? event.change!.previous!.bundleId
     : event.fromBundleId;
   // Each side shows its release ID, the ID the app reports; a side with no
-  // release, such as the built-in bundle, its bundle ID.
+  // release, its bundle ID, or for the built-in bundle its name and the app
+  // version of the report that names it.
   const fromReleaseId = moved
     ? event.change!.previous!.releaseId
     : event.fromReleaseId;
+  const fromMinBundleId = moved
+    ? event.change!.previous!.minBundleId
+    : event.minBundleId;
+  const fromAppVersion = moved
+    ? event.change!.previous!.appVersion
+    : event.appVersion;
   const changed =
     downloaded ||
     failed ||
@@ -486,15 +497,11 @@ export function EventBundleTransition({
           </dt>
           <dd className="flex min-w-0 flex-wrap items-center gap-2 max-sm:min-h-11">
             <ReportedBundleId
+              appVersion={fromAppVersion}
               bundleId={fromBundleId!}
+              minBundleId={fromMinBundleId}
               releaseId={fromReleaseId}
             />
-            {isBuiltinBundle(
-              fromBundleId,
-              moved ? event.change!.previous!.minBundleId : event.minBundleId,
-            ) ? (
-              <BuiltinBundleBadge />
-            ) : null}
           </dd>
         </>
       ) : null}
@@ -511,12 +518,11 @@ export function EventBundleTransition({
           </dt>
           <dd className="flex min-w-0 flex-wrap items-center gap-2 max-sm:min-h-11">
             <ReportedBundleId
+              appVersion={event.appVersion}
               bundleId={event.toBundleId}
+              minBundleId={event.minBundleId}
               releaseId={event.toReleaseId}
             />
-            {isBuiltinBundle(event.toBundleId, event.minBundleId) ? (
-              <BuiltinBundleBadge />
-            ) : null}
           </dd>
         </>
       ) : null}

@@ -257,17 +257,28 @@ describe("NativeBuildsTable", () => {
       "019a1b2c-3d4e-7000-8000-02a1b2c3d4e5",
     ],
   ])(
-    "shows a built-in bundle ID with %s in full on the build's page",
+    "names a built-in bundle ID with %s by the build's version on its page, the ID a click copies",
     (_form, minBundleId) => {
       render(
         <BuiltInBundleCard
-          detail={detail({ build: build({ min_bundle_id: minBundleId }) })}
+          detail={detail({
+            build: build({
+              min_bundle_id: minBundleId,
+              native_app_version: "1.6.1",
+              build_number: "63",
+            }),
+          })}
         />,
       );
+      const value = screen.getByText("Bundle ID", {
+        selector: "dt",
+      }).nextElementSibling!;
+      expect(value.textContent).toBe("Built-in bundle · 1.6.1 (63)");
       expect(
-        screen.getByText("Bundle ID", { selector: "dt" }).nextElementSibling
-          ?.textContent,
-      ).toBe(minBundleId);
+        within(value as HTMLElement).getByRole("button", {
+          name: `Built-in bundle · 1.6.1 (63): copy built-in bundle ID ${minBundleId}`,
+        }),
+      ).toBeTruthy();
     },
   );
 
@@ -1829,7 +1840,11 @@ describe("BuiltInBundleCard", () => {
   it("shows the built-in bundle, its patch count, and that new deploys patch from it", () => {
     render(<BuiltInBundleCard detail={detail()} />);
 
-    expect(screen.getByText(id(2))).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: `Built-in bundle: copy built-in bundle ID ${id(2)}`,
+      }),
+    ).toBeTruthy();
     expect(screen.getByText("2 bundles")).toBeTruthy();
     expect(screen.getByText("Current baseline.")).toBeTruthy();
     expect(

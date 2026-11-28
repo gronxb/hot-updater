@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
 
-import { ID_TAIL, idEnd } from "@/lib/id-tail";
+import { ID_TAIL } from "@/lib/id-tail";
 import { cn } from "@/lib/utils";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -10,23 +10,20 @@ const COPIED_MS = 1_500;
 
 /**
  * The tail's text: the whole ID stays in it, so screen readers read all of
- * it, clipped to the 12 characters that tell IDs apart (one `ch` per
- * monospace character): from the left to its last 12, or, for a built-in
- * bundle ID whose tail is zeros, from the right to its first 12.
+ * it, clipped from the left to its last 12 characters (one `ch` per
+ * monospace character).
  */
 const TAIL_CLASS = "font-mono text-sm text-muted-foreground tabular-nums";
-// `ID_TAIL` characters wide: Tailwind needs the classes spelled out.
-const CLIP_CLASS = {
-  tail: "inline-flex w-[12ch] shrink-0 justify-end overflow-hidden",
-  head: "inline-flex w-[12ch] shrink-0 justify-start overflow-hidden",
-} as const;
+/** A name shown in place of the tail, such as a built-in bundle's. */
+const NAME_CLASS = "text-sm text-muted-foreground tabular-nums";
+// `ID_TAIL` characters wide: Tailwind needs the class spelled out.
+const CLIP_CLASS = "inline-flex w-[12ch] shrink-0 justify-end overflow-hidden";
 
-/** The class that clips `id` to its 12 characters; none for an ID that short. */
-const clipOf = (id: string) =>
-  id.length > ID_TAIL ? CLIP_CLASS[idEnd(id)] : undefined;
+/** The class that clips `id` to its last 12 characters; none for an ID that short. */
+const clipOf = (id: string) => (id.length > ID_TAIL ? CLIP_CLASS : undefined);
 
 /** What an ID is, in a copy button's name and its popover. */
-export type IdKind = "release" | "artifact" | "install";
+export type IdKind = "release" | "artifact" | "install" | "builtin";
 
 /**
  * How a copy button and its popover name each kind. A release's ID is just
@@ -37,6 +34,7 @@ const NAMES = {
   release: { noun: "ID", title: null },
   artifact: { noun: "artifact ID", title: "Artifact ID" },
   install: { noun: "install ID", title: "Install ID" },
+  builtin: { noun: "built-in bundle ID", title: "Built-in bundle ID" },
 } as const satisfies Record<IdKind, { noun: string; title: string | null }>;
 
 /**
@@ -46,13 +44,27 @@ const NAMES = {
  */
 export function IdTailText({
   id,
+  name,
   className,
 }: {
   readonly id: string;
+  /**
+   * Shown in place of the tail, such as `Built-in bundle · 1.6.1`, for an ID
+   * whose characters tell people nothing; the ID stays in `title` and for
+   * screen readers.
+   */
+  readonly name?: string;
   /** Overrides the tail's size and color. */
   readonly className?: string;
 }) {
-  return (
+  return name ? (
+    <span className={cn(NAME_CLASS, "whitespace-nowrap", className)} title={id}>
+      {name}
+      <span className="sr-only" translate="no">
+        , ID {id}
+      </span>
+    </span>
+  ) : (
     <span
       translate="no"
       className={cn(TAIL_CLASS, clipOf(id), "whitespace-nowrap", className)}
@@ -71,10 +83,17 @@ export function IdTailText({
 export function CopyableIdTail({
   id: value,
   kind,
+  name,
   className,
 }: {
   readonly id: string;
   readonly kind: IdKind;
+  /**
+   * Shown in place of the tail, such as `Built-in bundle · 1.6.1`, for an ID
+   * whose characters tell people nothing; the popover still shows the ID,
+   * and a click copies it.
+   */
+  readonly name?: string;
   /** Overrides the tail's size and color where it shows alone. */
   readonly className?: string;
 }) {
@@ -119,10 +138,14 @@ export function CopyableIdTail({
             <button
               type="button"
               aria-describedby={open ? `${id}-full` : undefined}
-              aria-label={`Copy ${noun} ${value}`}
-              translate="no"
+              aria-label={
+                name
+                  ? `${name}: copy ${noun} ${value}`
+                  : `Copy ${noun} ${value}`
+              }
+              translate={name ? undefined : "no"}
               className={cn(
-                TAIL_CLASS,
+                name ? NAME_CLASS : TAIL_CLASS,
                 // A 44 px tall touch target on a phone, as an ID copy is: the
                 // button stays unclipped so its touch area reaches past it.
                 "relative inline-flex shrink-0 cursor-copy touch-manipulation rounded-sm outline-none transition-colors after:absolute after:inset-x-0 after:-inset-y-3 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:after:hidden motion-reduce:transition-none",
@@ -132,7 +155,11 @@ export function CopyableIdTail({
             />
           }
         >
-          <span className={clipOf(value)}>{value}</span>
+          {name ? (
+            <span className="whitespace-nowrap">{name}</span>
+          ) : (
+            <span className={clipOf(value)}>{value}</span>
+          )}
         </TooltipTrigger>
         <TooltipContent
           className="max-w-80 flex-col items-start gap-0.5"

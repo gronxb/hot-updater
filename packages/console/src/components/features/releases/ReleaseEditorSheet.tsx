@@ -15,10 +15,14 @@ import { toast } from "sonner";
 import { normalizeRange } from "verkit";
 
 import { ArtifactIdDisplay } from "@/components/ArtifactIdDisplay";
+import { BuiltinBundleDisplay } from "@/components/BuiltinBundleDisplay";
 import { BundleMetadata } from "@/components/features/bundles/BundleMetadata";
 import { RolloutCohortsDialog } from "@/components/features/bundles/RolloutCohortsDialog";
 import { ReleaseSections } from "@/components/features/FeatureSlots";
-import { ReleaseNativeBuildLink } from "@/components/features/native-builds/ReleaseNativeBuildLink";
+import {
+  ReleaseNativeBuildLink,
+  releaseNativeBuildInput,
+} from "@/components/features/native-builds/ReleaseNativeBuildLink";
 import { InfoTooltip } from "@/components/InfoTooltip";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { ReleaseIdDisplay } from "@/components/ReleaseIdDisplay";
@@ -84,9 +88,11 @@ import {
   usePreflightReleaseMutation,
   usePromoteReleaseMutation,
   useReleaseCatalogDiagnosticsQuery,
+  useReleaseNativeBuildQuery,
   useReleaseQuery,
   useUpdateReleaseMutation,
 } from "@/lib/api";
+import { builtinBundleVersion } from "@/lib/native-builds";
 
 interface Draft {
   enabled: boolean;
@@ -316,6 +322,16 @@ export function ReleaseEditorSheet({
   const channelName =
     channels.find((channel) => channel.id === release?.channel_id)?.name ??
     release?.channel_id;
+  // The Native build row's read of the scope's build, which react-query
+  // shares: a patch base that is that build's built-in bundle is named by
+  // its version, and any other patch base costs no read of its own.
+  const scopeBuild = useReleaseNativeBuildQuery(
+    release && channelName
+      ? releaseNativeBuildInput(release, channelName)
+      : null,
+  ).data;
+  const patchBaseBuild =
+    scopeBuild?.min_bundle_id === patchBaseBundleId ? scopeBuild : null;
   const availableChannels = channels.filter(
     (channel) => channel.id !== release?.channel_id,
   );
@@ -714,7 +730,14 @@ export function ReleaseEditorSheet({
                       <div className="sm:col-span-2">
                         <dt>Patch base artifact ID</dt>
                         <dd className="mt-1">
-                          <ArtifactIdDisplay artifactId={patchBaseBundleId} />
+                          {patchBaseBuild ? (
+                            <BuiltinBundleDisplay
+                              appVersion={builtinBundleVersion(patchBaseBuild)}
+                              bundleId={patchBaseBundleId}
+                            />
+                          ) : (
+                            <ArtifactIdDisplay artifactId={patchBaseBundleId} />
+                          )}
                         </dd>
                       </div>
                     ) : null}

@@ -134,8 +134,10 @@ export function InstallationMatchesCard({
                       {currentBundleId ? (
                         // Inside the option's button: text, not a copy button.
                         <ReportedBundleId
+                          appVersion={event.appVersion}
                           bundleId={event.lastKnownBundleId ?? currentBundleId}
                           copyable={false}
+                          minBundleId={event.minBundleId}
                           releaseId={event.lastKnownReleaseId}
                         />
                       ) : (

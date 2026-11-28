@@ -2,15 +2,44 @@ import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
 
-import { ArtifactIdDisplay } from "@/components/ArtifactIdDisplay";
+import { BuiltinBundleDisplay } from "@/components/BuiltinBundleDisplay";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useReleaseNativeBuildQuery } from "@/lib/api";
 import {
+  type ReleaseNativeBuildInput,
+  useReleaseNativeBuildQuery,
+} from "@/lib/api";
+import {
+  builtinBundleVersion,
   nativeBuildArtifacts,
   platformLabel,
   releaseNativeBuildScope,
 } from "@/lib/native-builds";
+
+type LinkedRelease = Pick<
+  ReleaseRow,
+  "platform" | "fingerprint_hash" | "target_app_version" | "bundle_id"
+>;
+
+/**
+ * The read of a release's scope build, or null when it reads nothing: a
+ * release of the built-in bundle, or of an app version range, which targets
+ * many builds. The release sheet's patch base row takes the same read, so
+ * the two share one request.
+ */
+export const releaseNativeBuildInput = (
+  release: LinkedRelease,
+  channel: string,
+): ReleaseNativeBuildInput | null => {
+  if (release.bundle_id === null) return null;
+  const input = {
+    platform: release.platform,
+    channel,
+    fingerprintHash: release.fingerprint_hash,
+    targetAppVersion: release.target_app_version,
+  };
+  return releaseNativeBuildScope(input) === null ? null : input;
+};
 
 /**
  * The native build new deploys to a release's scope patch from, and whether
@@ -23,26 +52,14 @@ export function ReleaseNativeBuildLink({
   channel,
   bundle,
 }: {
-  readonly release: Pick<
-    ReleaseRow,
-    "platform" | "fingerprint_hash" | "target_app_version" | "bundle_id"
-  >;
+  readonly release: LinkedRelease;
   readonly channel: string;
   /** The release's bundle with its patches, once loaded. */
   readonly bundle: Pick<Bundle, "patches"> | null | undefined;
 }) {
-  const input =
-    release.bundle_id === null
-      ? null
-      : {
-          platform: release.platform,
-          channel,
-          fingerprintHash: release.fingerprint_hash,
-          targetAppVersion: release.target_app_version,
-        };
-  const scoped = input !== null && releaseNativeBuildScope(input) !== null;
-  const query = useReleaseNativeBuildQuery(scoped ? input : null);
-  if (!scoped) return null;
+  const input = releaseNativeBuildInput(release, channel);
+  const query = useReleaseNativeBuildQuery(input);
+  if (input === null) return null;
 
   const build = query.data;
   return (
@@ -59,9 +76,10 @@ export function ReleaseNativeBuildLink({
           >
             {platformLabel(build.platform)}{" "}
             {nativeBuildArtifacts[build.artifact_kind].label} ·{" "}
-            {/* Inside the link, so the tail is text, not a copy button. */}
-            <ArtifactIdDisplay
-              artifactId={build.min_bundle_id}
+            {/* Inside the link, so the name is text, not a copy button. */}
+            <BuiltinBundleDisplay
+              appVersion={builtinBundleVersion(build)}
+              bundleId={build.min_bundle_id}
               copyable={false}
             />
             <ArrowUpRight aria-hidden="true" className="size-3" />
