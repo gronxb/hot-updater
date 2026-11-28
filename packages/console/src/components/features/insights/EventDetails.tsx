@@ -339,7 +339,7 @@ export function HttpResponseDetails({
       [
         "Installation",
         event.installId ? (
-          <InstallIdDisplay installId={event.installId} />
+          <InstallIdDisplay key="install" installId={event.installId} />
         ) : null,
       ],
     ] satisfies [string, ReactNode][]
