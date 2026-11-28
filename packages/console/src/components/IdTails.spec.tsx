@@ -2,7 +2,13 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
 import type { Bundle } from "@hot-updater/plugin-core";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -10,13 +16,16 @@ import { bundleChip } from "@/lib/release-adoption";
 
 import { ArtifactIdDisplay } from "./ArtifactIdDisplay";
 import { BundleChildrenPanel } from "./features/bundles/BundleChildrenPanel";
-import { EventBundleTransition } from "./features/insights/EventDetails";
+import {
+  EventBundleTransition,
+  HttpResponseDetails,
+} from "./features/insights/EventDetails";
 import { InstallationMatchesCard } from "./features/insights/InstallationMatchesCard";
 import { ReleaseIdDisplay } from "./ReleaseIdDisplay";
 
 /*
- * The Console shows every release and artifact ID the same way: the whole
- * UUIDv7 in the text, clipped from the left to its last 12 characters (the
+ * The Console shows every release, artifact, and install ID the same way:
+ * the whole ID in the text, clipped from the left to its last 12 characters (the
  * timestamp head is what neighbouring IDs share), with the full ID in a
  * popover or a title. This guard renders the surfaces that show IDs and
  * scans the source for the ways an ID was shown before, so a new surface
@@ -29,7 +38,17 @@ const OTHER_RELEASE = "019f6a15-7f3e-7b2d-9c1a-0e9d8c7b6a5f";
 const ARTIFACT = "019f6a13-9e8d-7c6b-a5f4-e3d2c1b0a9f8";
 const PATCH_ARTIFACT = "019f6a14-2468-7ace-9bdf-13579bdf2468";
 const BUILT_IN = "019f6a10-5a5a-7b6b-8c7c-d8d8e9e9fafa";
-const IDS = [RELEASE, OTHER_RELEASE, ARTIFACT, PATCH_ARTIFACT, BUILT_IN];
+// An installation's ID: a UUIDv4 the app creates, not a release's or an
+// artifact's, shown the same way.
+const INSTALL = "8d2f0c1e-4b7a-4e6d-9f3c-2a1b0c9d8e7f";
+const IDS = [
+  RELEASE,
+  OTHER_RELEASE,
+  ARTIFACT,
+  PATCH_ARTIFACT,
+  BUILT_IN,
+  INSTALL,
+];
 
 afterEach(cleanup);
 
@@ -155,7 +174,7 @@ describe("every release and artifact ID shows its last 12 characters", () => {
 
   it("in the installations a search matches", () => {
     const row = {
-      installId: "8d2f0c1e-4b7a-4e6d-9f3c-2a1b0c9d8e7f",
+      installId: INSTALL,
       userId: "kim",
       lastKnownReleaseId: RELEASE,
       lastKnownBundleId: ARTIFACT,
@@ -173,7 +192,38 @@ describe("every release and artifact ID shows its last 12 characters", () => {
     );
     const toggle = screen.queryByRole("button", { expanded: false });
     if (toggle) fireEvent.click(toggle);
-    expect(expectTailsOnly(container)).toContain(RELEASE);
+    expect(expectTailsOnly(container)).toEqual(
+      expect.arrayContaining([INSTALL, RELEASE]),
+    );
+  });
+
+  it("in an HTTP response's context", async () => {
+    render(
+      <HttpResponseDetails
+        event={{
+          platform: "ios",
+          appVersion: "1.6.0",
+          channel: "production",
+          installId: INSTALL,
+          httpResponse: {
+            resource: "catalog",
+            path: "/catalog",
+            status: 503,
+            body: "",
+            bodyTruncated: false,
+            receivedAtMs: Date.UTC(2026, 9, 3),
+          },
+        }}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "View catalog response: HTTP 503" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "HTTP response" });
+    const context = within(dialog).getByRole("region", {
+      name: "Response context",
+    });
+    expect(expectTailsOnly(context)).toContain(INSTALL);
   });
 
   it("in a filter chip's text", () => {
@@ -209,15 +259,16 @@ describe("no surface shows an ID another way", () => {
     expect(widths).toEqual([]);
   });
 
-  it("renders no release or artifact ID as bare text", () => {
-    // `{release.bundle_id}`, `{build.min_bundle_id}`, `{patchBaseBundleId}`…
-    // as a JSX child: only the two ID displays print an ID themselves.
+  it("renders no release, artifact, or install ID as bare text", () => {
+    // `{release.bundle_id}`, `{build.min_bundle_id}`, `{event.installId}`…
+    // as a JSX child, or as the value of a labeled `["Installation", …]`
+    // row: only the ID displays print an ID themselves.
     const bare =
-      /[>}]\s*\{\s*[\w.!?]*(?:[rR]elease_?[iI]d|[bB]undle_?[iI]d|[aA]rtifact_?[iI]d)(?:\s*\?\?\s*"[^"]*")?\s*\}\s*</g;
+      /[>}]\s*\{\s*[\w.!?]*(?:[rR]elease_?[iI]d|[bB]undle_?[iI]d|[aA]rtifact_?[iI]d|[iI]nstall_?[iI]d)(?:\s*\?\?\s*"[^"]*")?\s*\}\s*<|\[\s*"[A-Z][^"]*",\s*[\w.!?]*(?:[rR]elease_?[iI]d|[bB]undle_?[iI]d|[aA]rtifact_?[iI]d|[iI]nstall_?[iI]d)\s*\]/g;
     const found = files
       .filter(
         ({ file }) =>
-          !/components\/(ReleaseIdDisplay|ArtifactIdDisplay|IdTail)\.tsx$/.test(
+          !/components\/(ReleaseIdDisplay|ArtifactIdDisplay|InstallIdDisplay|IdTail)\.tsx$/.test(
             file,
           ),
       )
@@ -229,13 +280,13 @@ describe("no surface shows an ID another way", () => {
     expect(found).toEqual([]);
   });
 
-  it("shows only install IDs and hashes as a shortened pill", () => {
-    // `HashValueDisplay` shows a head…tail pill: for an installation's ID
-    // and content hashes, never a release's or an artifact's ID.
+  it("shows only content hashes as a shortened pill", () => {
+    // `HashValueDisplay` shows a head…tail pill: for content hashes (a
+    // fingerprint, a build key, a manifest), never an ID.
     const pills = files.flatMap(({ file, text }) =>
       [...text.matchAll(/<HashValueDisplay\b[^>]*?\bvalue=\{([^}]+)\}/g)]
         .map((match) => match[1]!.trim())
-        .filter((value) => !/installId|InstallId|[hH]ash|^value$/.test(value))
+        .filter((value) => !/[hH]ash|^value$/.test(value))
         .map((value) => `${file}: value={${value}}`),
     );
     const shortened = files.flatMap(({ file, text }) =>
@@ -243,7 +294,7 @@ describe("no surface shows an ID another way", () => {
         .map((match) => match[1]!.trim())
         // The pill's own call, on what its callers above pass it.
         .filter((value) => !(file.endsWith("HashValueDisplay.tsx") && value))
-        .filter((value) => value && !/installId|InstallId|[hH]ash/.test(value))
+        .filter((value) => value && !/[hH]ash/.test(value))
         .map((value) => `${file}: shortenIdentifier(${value})`),
     );
     expect([...pills, ...shortened]).toEqual([]);
