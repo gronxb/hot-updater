@@ -3,6 +3,7 @@ import { ArrowUpRight, Copy, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { InstallIdDisplay } from "@/components/InstallIdDisplay";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
@@ -186,8 +187,11 @@ function FailureDetail({ group }: { readonly group: FailureGroup }) {
             Installation history{" "}
             <ArrowUpRight aria-hidden="true" data-icon="inline-end" />
           </Button>
-          <p className="font-mono text-xs text-muted-foreground wrap-anywhere">
-            {event.installId}
+          {/* As tall as a touch target on a phone, so the copy button's
+              touch area stays off the button above. */}
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground max-sm:min-h-11">
+            Install ID
+            <InstallIdDisplay installId={event.installId} />
           </p>
         </section>
         <section aria-label="Occurrences" className="flex flex-col gap-2">

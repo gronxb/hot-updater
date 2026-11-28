@@ -284,70 +284,100 @@ function ReleaseFilterToolbar({
   );
 }
 
+/**
+ * The chevron that shows a release's advanced artifact diagnostics, or an
+ * empty box as wide for a built-in bundle, which has none, so the label
+ * after it lines up either way. In the table it is a column of its own.
+ */
+function DiagnosticsToggle({
+  expanded,
+  onToggleExpand,
+  release,
+}: {
+  expanded: boolean;
+  onToggleExpand: () => void;
+  release: ReleaseListRow;
+}) {
+  return release.bundle_id ? (
+    <Button
+      aria-controls={`bundle-lineage-panel-${release.id}`}
+      aria-expanded={expanded}
+      aria-label={
+        expanded
+          ? "Hide advanced artifact diagnostics"
+          : "Show advanced artifact diagnostics"
+      }
+      title="Advanced artifact diagnostics"
+      className="size-11 shrink-0 touch-manipulation sm:size-8"
+      onClick={onToggleExpand}
+      size="icon"
+      type="button"
+      variant="ghost"
+    >
+      {expanded ? <ChevronDown /> : <ChevronRight />}
+    </Button>
+  ) : (
+    <span aria-hidden="true" className="block size-11 shrink-0 sm:size-8" />
+  );
+}
+
+/**
+ * A release's label as the button that opens it. On a card its ID tail
+ * follows as a copy button of its own, never inside it; the table shows
+ * the label alone and the tail in its ID column. A release without a label
+ * yet opens from its muted dash.
+ */
+function ReleaseName({
+  labelOnly = false,
+  onOpen,
+  release,
+}: {
+  labelOnly?: boolean;
+  onOpen: () => void;
+  release: ReleaseListRow;
+}) {
+  return (
+    <ReleaseIdDisplay
+      releaseId={release.id}
+      label={release.label}
+      part={labelOnly ? "label" : undefined}
+      labelAs={
+        <button
+          aria-label={`Open details for ID ${release.id}`}
+          className="min-w-0 rounded-sm text-left text-foreground transition-colors underline-offset-4 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={onOpen}
+          type="button"
+        />
+      }
+    />
+  );
+}
+
+/** A card's head: the diagnostics chevron, the label and ID tail, then the badges. */
 function ReleaseEntry({
   expanded,
-  labelOnly = false,
   onOpen,
   onToggleExpand,
   release,
 }: {
   expanded: boolean;
-  /**
-   * Whether the entry shows the label alone, for the table, whose ID column
-   * shows the ID's tail and the row's badges after it, so the label and the
-   * tail stay as close as on a card. A card has no column headers, so it
-   * shows both, then the badges.
-   */
-  labelOnly?: boolean;
   onOpen: () => void;
   onToggleExpand: () => void;
   release: ReleaseListRow;
 }) {
   return (
-    <div
-      className={cn("flex items-center gap-3", !labelOnly && "min-w-[240px]")}
-    >
-      {release.bundle_id ? (
-        <Button
-          aria-controls={`bundle-lineage-panel-${release.id}`}
-          aria-expanded={expanded}
-          aria-label={
-            expanded
-              ? "Hide advanced artifact diagnostics"
-              : "Show advanced artifact diagnostics"
-          }
-          title="Advanced artifact diagnostics"
-          className="size-11 shrink-0 touch-manipulation sm:size-8"
-          onClick={onToggleExpand}
-          size="icon"
-          type="button"
-          variant="ghost"
-        >
-          {expanded ? <ChevronDown /> : <ChevronRight />}
-        </Button>
-      ) : (
-        <span aria-hidden="true" className="size-11 shrink-0 sm:size-8" />
-      )}
+    <div className="flex min-w-[240px] items-center gap-3">
+      <DiagnosticsToggle
+        expanded={expanded}
+        onToggleExpand={onToggleExpand}
+        release={release}
+      />
       {/* A label and its ID tail don't shrink, so when a narrow card has no
-          room beside them the badges move under the ID instead of over it. */}
-      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-        {/* The label opens the Bundle; its ID tail is a copy button of its
-            own beside it, or in the table's ID column, never inside it. A
-            release without a label yet opens from its dash in the table. */}
-        <ReleaseIdDisplay
-          releaseId={release.id}
-          label={release.label}
-          part={labelOnly ? "label" : undefined}
-          labelAs={
-            <button
-              aria-label={`Open details for ID ${release.id}`}
-              className="min-w-0 rounded-sm text-left text-foreground transition-colors underline-offset-4 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={onOpen}
-              type="button"
-            />
-          }
-        />
-        {labelOnly ? null : <ReleaseBadges release={release} />}
+          room beside them the badges move under the ID instead of over it,
+          12 px under, past the tail's touch area. */}
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-3">
+        <ReleaseName onOpen={onOpen} release={release} />
+        <ReleaseBadges release={release} />
       </div>
     </div>
   );
@@ -598,7 +628,7 @@ function UnreachableBundlesFold({
       {status}
     </DataCardFold>
   ) : (
-    <DataTableFold {...props} columns={columns}>
+    <DataTableFold {...props} columns={columns} leadColumn>
       {rows.map((release) => render(release, ctx))}
       {status}
     </DataTableFold>
@@ -648,7 +678,7 @@ function BundlesPage() {
   const previousCursor = list.data?.previous;
   // Features add columns, such as release activity where the console reads it.
   const featureColumns = useReleaseColumns();
-  const columnCount = 11 + featureColumns.length;
+  const columnCount = 12 + featureColumns.length;
   const channelNames = new Map(
     channels.map((channel) => [channel.id, channel.name]),
   );
@@ -832,14 +862,22 @@ function BundlesPage() {
           data-state={search.releaseId === release.id ? "selected" : undefined}
           onOpen={() => select(release)}
         >
-          <TableCell>
-            <ReleaseEntry
+          {/* The chevron has a column of its own, so "Label" heads the
+              label and "ID" its tail, and a fold's chevron and text line up
+              with them (`DataTableFold`'s `leadColumn`). */}
+          <TableCell className="w-px">
+            <DiagnosticsToggle
               expanded={isExpanded}
-              labelOnly
-              onOpen={() => select(release)}
               onToggleExpand={() =>
                 setExpandedReleaseId(isExpanded ? undefined : release.id)
               }
+              release={release}
+            />
+          </TableCell>
+          <TableCell>
+            <ReleaseName
+              labelOnly
+              onOpen={() => select(release)}
               release={release}
             />
           </TableCell>
@@ -1081,6 +1119,9 @@ function BundlesPage() {
                 rowGroups
                 header={
                   <>
+                    <TableHead className="w-px">
+                      <span className="sr-only">Expand</span>
+                    </TableHead>
                     <TableHead>Label</TableHead>
                     <TableHead>ID</TableHead>
                     <TableHead>Channel</TableHead>

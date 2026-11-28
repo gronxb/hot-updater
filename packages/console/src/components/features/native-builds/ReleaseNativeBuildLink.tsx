@@ -2,6 +2,7 @@ import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
 
+import { ArtifactIdDisplay } from "@/components/ArtifactIdDisplay";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useReleaseNativeBuildQuery } from "@/lib/api";
@@ -58,9 +59,11 @@ export function ReleaseNativeBuildLink({
           >
             {platformLabel(build.platform)}{" "}
             {nativeBuildArtifacts[build.artifact_kind].label} ·{" "}
-            <span className="font-mono" translate="no">
-              {build.min_bundle_id}
-            </span>
+            {/* Inside the link, so the tail is text, not a copy button. */}
+            <ArtifactIdDisplay
+              artifactId={build.min_bundle_id}
+              copyable={false}
+            />
             <ArrowUpRight aria-hidden="true" className="size-3" />
           </Link>
           {bundle ? (

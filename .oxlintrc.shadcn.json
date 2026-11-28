@@ -7,6 +7,8 @@
         "packages/console/src/components/ChannelBadge.tsx",
         "packages/console/src/components/ChannelPicker.tsx",
         "packages/console/src/components/FoldedRows.tsx",
+        "packages/console/src/components/IdTail.tsx",
+        "packages/console/src/components/InstallIdDisplay.tsx",
         "packages/console/src/components/DataTable.tsx",
         "packages/console/src/components/RelativeTime.tsx",
         "packages/console/src/components/ReleaseIdDisplay.tsx",

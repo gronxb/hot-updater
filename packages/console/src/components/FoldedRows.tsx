@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TableCell, TableRow } from "@/components/ui/table";
 import type { Fold, FoldedEntry } from "@/lib/server/foldedPage";
+import { cn } from "@/lib/utils";
 
 /*
  * A fold of a list's page: the run of rows between two ordinary ones (older
@@ -75,26 +76,44 @@ export interface FoldProps {
 
 /**
  * The fold's button: a chevron and "12 older builds", as tall as a touch
- * needs on a phone and as a row's text on a wide screen.
+ * needs on a phone and as a row's text on a wide screen. With `leadColumn`,
+ * for a table whose rows start with a column of chevron buttons, its chevron
+ * sits in a box as wide as theirs, padded as their cell is, so the two
+ * chevrons share a center and its text starts where the next column's does.
  */
 function FoldButton({
   label,
   open,
   onOpenChange,
   panelId,
-}: Omit<FoldProps, "children">) {
+  leadColumn = false,
+}: Omit<FoldProps, "children"> & { readonly leadColumn?: boolean }) {
+  const chevron = (
+    <ChevronRight
+      aria-hidden="true"
+      className="size-3.5 shrink-0 transition-transform group-aria-expanded/fold:rotate-90 motion-reduce:transition-none"
+    />
+  );
   return (
     <button
       aria-controls={panelId}
       aria-expanded={open}
-      className="group/fold flex min-h-11 w-full items-center gap-2 px-4 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset motion-reduce:transition-none sm:min-h-9 sm:px-3"
+      className={cn(
+        "group/fold flex min-h-11 w-full items-center text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset motion-reduce:transition-none sm:min-h-9",
+        // A row's cell pads 8 px each side of its 32 px chevron button: the
+        // box takes the button's place, and the gap the two cells' padding.
+        leadColumn ? "gap-4 px-2" : "gap-2 px-4 sm:px-3",
+      )}
       onClick={() => onOpenChange(!open)}
       type="button"
     >
-      <ChevronRight
-        aria-hidden="true"
-        className="size-3.5 shrink-0 transition-transform group-aria-expanded/fold:rotate-90 motion-reduce:transition-none"
-      />
+      {leadColumn ? (
+        <span className="inline-flex size-8 shrink-0 items-center justify-center">
+          {chevron}
+        </span>
+      ) : (
+        chevron
+      )}
       {label}
     </button>
   );
@@ -104,14 +123,19 @@ function FoldButton({
 export function DataTableFold({
   columns,
   children,
+  leadColumn,
   ...props
-}: FoldProps & { readonly columns: number }) {
+}: FoldProps & {
+  readonly columns: number;
+  /** The table's first column holds its rows' chevron buttons. */
+  readonly leadColumn?: boolean;
+}) {
   return (
     <>
       <DataTableBody>
         <TableRow className="bg-muted/20 hover:bg-muted/20">
           <TableCell className="p-0" colSpan={columns}>
-            <FoldButton {...props} />
+            <FoldButton {...props} leadColumn={leadColumn} />
           </TableCell>
         </TableRow>
       </DataTableBody>

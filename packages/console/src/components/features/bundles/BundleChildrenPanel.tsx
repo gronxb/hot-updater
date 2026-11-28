@@ -49,10 +49,14 @@ function ArtifactId({
   readonly release: ServingRelease | null;
 }) {
   return (
-    <span className="flex min-w-0 flex-col items-start gap-1">
-      <ArtifactIdDisplay artifactId={id} />
+    // On a phone each line is 44 px tall, so the two copy buttons' touch
+    // areas meet rather than overlap.
+    <span className="flex min-w-0 flex-col items-start gap-1 max-sm:gap-0">
+      <span className="flex items-center max-sm:min-h-11">
+        <ArtifactIdDisplay artifactId={id} />
+      </span>
       {release ? (
-        <span className="inline-flex items-baseline gap-1.5 text-xs text-muted-foreground">
+        <span className="inline-flex items-baseline gap-1.5 text-xs text-muted-foreground max-sm:min-h-11 max-sm:items-center">
           Release
           <ReleaseIdDisplay releaseId={release.id} label={release.label} />
         </span>
@@ -96,7 +100,8 @@ export function BundleChildrenPanel({
         <h3 className="text-sm font-medium">Advanced artifact diagnostics</h3>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2 text-sm">
-            <span className="shrink-0 text-muted-foreground">
+            {/* As tall as the ID's 44 px line on a phone, so they center. */}
+            <span className="shrink-0 text-muted-foreground max-sm:flex max-sm:min-h-11 max-sm:items-center">
               Base artifact ID
             </span>
             <ArtifactId id={bundle.id} release={releaseOf(bundle.id)} />

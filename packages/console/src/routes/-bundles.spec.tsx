@@ -193,7 +193,7 @@ describe("BundlesPage", () => {
       expect(mocks.activity).not.toHaveBeenCalled();
       expect(screen.getByText("release-1")).toBeDefined();
       if (!mobile) {
-        expect(screen.getAllByRole("columnheader")).toHaveLength(11);
+        expect(screen.getAllByRole("columnheader")).toHaveLength(12);
       }
     },
   );
@@ -276,10 +276,10 @@ describe("BundlesPage", () => {
     const headers = screen
       .getAllByRole("columnheader")
       .map((header) => header.textContent);
-    expect(headers.slice(0, 3)).toEqual(["Label", "ID", "Channel"]);
+    expect(headers.slice(0, 4)).toEqual(["Expand", "Label", "ID", "Channel"]);
     const cells = (id: string) => {
       const row = screen.getByRole("row", { name: `Open bundle ${id}` });
-      const [label, idCell] = within(row).getAllByRole("cell");
+      const [, label, idCell] = within(row).getAllByRole("cell");
       return { row, label: label!, id: idCell! };
     };
 
@@ -329,6 +329,49 @@ describe("BundlesPage", () => {
       "Copy ID <id>",
     ]);
     expect(order(unlabeled.row)).toEqual(order(labeled.row));
+  });
+
+  it("keeps the expand chevron in a column of its own, so each header sits over its values", () => {
+    releases = [
+      { ...release, id: "01a13d86-86f7-7830-952d-21238207019f", label: 12 },
+      // A built-in bundle has no diagnostics: its chevron cell stays, empty.
+      {
+        ...release,
+        id: "01a13d86-86f7-7830-952d-2123820701a0",
+        bundle_id: null,
+        label: 11,
+      },
+    ];
+    render(<BundlesPage />);
+
+    const headers = screen.getAllByRole("columnheader");
+    // The chevron's column has no visible header, only a name to read.
+    const [expand, label] = headers;
+    expect(expand!.textContent).toBe("Expand");
+    expect(expand!.firstElementChild!.className).toContain("sr-only");
+    expect(expand!.className).toContain("w-px");
+    expect(label!.textContent).toBe("Label");
+    for (const row of screen.getAllByRole("row", { name: /^Open bundle / })) {
+      const cells = within(row).getAllByRole("cell");
+      // One cell per header, the chevron first and the label in the next.
+      expect(cells).toHaveLength(headers.length);
+      expect(cells[0]!.className).toContain("w-px");
+      expect(cells[1]!.textContent).toMatch(/^v\d+$/u);
+      expect(
+        within(cells[1]!).queryByRole("button", {
+          name: /advanced artifact diagnostics/u,
+        }),
+      ).toBeNull();
+    }
+    const [withPanel, builtIn] = screen
+      .getAllByRole("row", { name: /^Open bundle / })
+      .map((row) => within(row).getAllByRole("cell")[0]!);
+    expect(
+      within(withPanel!).getByRole("button", {
+        name: "Show advanced artifact diagnostics",
+      }),
+    ).toBeDefined();
+    expect(within(builtIn!).queryByRole("button")).toBeNull();
   });
 
   it("opens the Bundle edit sheet from the whole table row", () => {
@@ -847,6 +890,24 @@ describe("BundlesPage", () => {
           .getByRole("navigation", { name: "Bundle pagination" })
           .querySelector("p")?.textContent,
       ).toBe("2 bundles, newest first · , 3 unreachable folded");
+    });
+
+    it("spans a fold over every column, its chevron in the rows' chevron column and its text under Label", () => {
+      render(<BundlesPage />);
+
+      const headers = screen.getAllByRole("columnheader");
+      for (const name of ["1 unreachable bundle", "2 unreachable bundles"]) {
+        const button = screen.getByRole("button", { name });
+        const cell = button.closest("td")!;
+        expect(cell.colSpan).toBe(headers.length);
+        // A box as wide as the rows' chevron button, padded as their cell
+        // is, then the gap of a cell's edge: the label column's start.
+        expect(button.className).toContain("px-2");
+        expect(button.className).toContain("gap-4");
+        const box = button.firstElementChild!;
+        expect(box.className).toContain("size-8");
+        expect(box.querySelector("svg")).not.toBeNull();
+      }
     });
 
     it("opens one fold in place: exactly its range, its bundles subdued, saying why by tap or focus", async () => {

@@ -30,24 +30,36 @@ stays subordinate to exact values and actions.
 
 - Inter Variable is the UI typeface, with the platform stack as the initial
   fallback and the existing monospace stack for identifiers.
-- A labeled release reads `v12 <ID tail>` (`ReleaseIdDisplay`), like a git
-  short hash: the label in medium `text-sm`, then its ID in muted monospace
-  `text-sm` on the same baseline, clipped from the left to the last 6
-  characters, with a plain gap and no dot between them. The whole ID stays
-  in the text, so screen readers read all of it. A release without a label
-  shows its full ID. The label and tail don't shrink, so a badge beside them
+- Every release, artifact, and install ID the Console shows is its tail:
+  the whole ID in the text, so screen readers read all of it, clipped from
+  the left to its last 12 characters (`ID_TAIL`, a UUID's last group; a
+  UUIDv7's head is a timestamp neighbouring IDs share). Nothing shows one
+  in full, as a shorter slice, or as a head…tail pill; `IdTails.spec.tsx`
+  fails on any other clip width, on an ID printed as bare text or as a
+  labeled row's value, and on an ID passed to `HashValueDisplay`, whose
+  pill is for content hashes (fingerprint, build key, manifest) only.
+- A labeled release reads `v12 <ID tail>` (`ReleaseIdDisplay`): the label
+  in medium `text-sm`, then its ID tail in muted monospace `text-sm` on the
+  same baseline, with a plain gap and no dot between them. A release without
+  a label shows its tail alone, after a muted dash where the label would
+  open it (`labelAs`), and the dash reads as its whole ID unless the control
+  names itself. The label and tail don't shrink, so a badge beside them
   (Promoted, Unreachable, Disabled) shares a `flex-wrap` row with them and
   moves under them on a narrow screen rather than over the tail.
 - Where a surface heads a release's values, the label and the ID split so
   `v12` never sits under "ID": the Bundles table has a Label column then an
   ID column, and the release sheet a Label row then an ID row
-  (`ReleaseIdDisplay` with `part="label"` and `part="id"`). The Label
-  column holds only the expand chevron and the label, and the row's badges
-  follow the ID tail in the ID column, so the column stays as narrow as the
-  label and the tail sits right after it, read in the card's order. The ID
-  there is always its last 12 characters (a UUID's last group, as the
-  Console showed IDs before labels) as the copy button, labeled or not: with
-  no label beside it there is room for more of it. A release without a label
+  (`ReleaseIdDisplay` with `part="label"` and `part="id"`). The expand
+  chevron has a narrow first column of its own, headed only for screen
+  readers ("Expand"), with an empty cell for a built-in bundle, so "Label"
+  sits over `v12` and "ID" over the tail. An unreachable fold's chevron sits
+  in a box as wide as the rows' chevron button (`DataTableFold`'s
+  `leadColumn`), so the two chevrons share a center and the fold's text
+  starts under "Label". The Label column holds only the label, and the
+  row's badges follow the ID tail in the ID column, so the column stays as
+  narrow as the label and the tail sits right after it, read in the card's
+  order. The ID there is the same 12-character tail as the copy button,
+  labeled or not. A release without a label
   shows a muted dash in the Label column, which still opens it, and no Label
   row in the sheet. Split, both take `text-xs` and the ID takes
   `text-foreground`, the size and color of the values beside them (Target,
@@ -72,8 +84,18 @@ stays subordinate to exact values and actions.
 - "Bundle ID" in Console copy means the release ID. An artifact's ID shows
   through `ArtifactIdDisplay`, which takes no label, and its copy says
   "artifact". `ReleaseIdDisplay` is the only display that takes a label.
+- An artifact's ID is the same tail and copy button as a release's
+  (`ArtifactIdDisplay`), and its popover says "Artifact ID" and its button
+  "Copy artifact ID". Inside a link it is text with the full ID in `title`
+  (`copyable={false}`). Where an installation reported a bundle with no
+  release, such as the built-in bundle, Insights shows that artifact ID
+  (`ReportedBundleId`); otherwise the release ID. An installation's ID is
+  the same tail (`InstallIdDisplay`), its popover saying "Install ID" and
+  its button "Copy install ID", in event rows, installation history,
+  matching installations (as text inside the option), failure reports, and
+  an HTTP response's context.
 - Where an artifact shows (advanced artifact diagnostics' base and target),
-  its ID stays plain, then "Release" and the label of the release serving it
+  its ID tail shows first, then "Release" and the label of the release serving it
   in the expanded Bundle's channel and platform. Without one on the page,
   the artifact ID shows alone, never another channel's label. A native
   build's patches name each target by the release serving it in the build's
@@ -167,7 +189,7 @@ stays subordinate to exact values and actions.
   use a short state and direct action for empty lookup results, such as No
   matches / Edit search.
 
-- **Release ID copy:** a labeled release's ID tail is a button of its own.
+- **ID copy:** a release's or an artifact's ID tail is a button of its own.
   Hover or keyboard focus opens a tooltip with the full ID and Click to copy;
   a click, Enter, or a tap copies the full ID and the same tooltip says
   Copied (Couldn't copy on failure), with a polite status for screen readers.
@@ -178,7 +200,10 @@ stays subordinate to exact values and actions.
   tooltip), pass `copyable={false}`: the tail is text, and the full ID shows
   on hover from `title`.
   The tail clips inside the button, so its phone touch area stays 44 px
-  tall. A dialog that names a release with it, such as Roll back, gives
+  tall. Where two tails stack on a phone (an artifact and the release
+  serving it, an event's From and To), each sits on a 44 px line so the
+  touch areas meet rather than overlap, and a badge that wraps under a
+  card's tail sits 12 px under it. A dialog that names a release with it, such as Roll back, gives
   first focus to Cancel, so no tooltip opens over it. Being a button, the
   tail doesn't take a text selection; the click copies.
 

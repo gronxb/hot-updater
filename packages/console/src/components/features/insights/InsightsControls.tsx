@@ -260,17 +260,13 @@ function PickedRelease({
   readonly release: AdoptionRelease | undefined;
   readonly showPlatform: boolean;
 }) {
-  return typeof release?.label === "number" ? (
+  return (
     // Inside the chip's button, so the ID tail is text, not a copy button.
     <ReleaseIdDisplay
       releaseId={releaseId}
       copyable={false}
-      label={release.label}
-      platform={showPlatform ? release.platform : undefined}
+      label={release?.label ?? null}
+      platform={showPlatform ? release?.platform : undefined}
     />
-  ) : (
-    <span className="max-w-36 truncate font-mono" translate="no">
-      {releaseId}
-    </span>
   );
 }
