@@ -21,7 +21,18 @@ const CLIP_CLASS = "inline-flex w-[12ch] shrink-0 justify-end overflow-hidden";
 const clipOf = (id: string) => (id.length > ID_TAIL ? CLIP_CLASS : undefined);
 
 /** What an ID is, in a copy button's name and its popover. */
-export type IdKind = "release" | "artifact";
+export type IdKind = "release" | "artifact" | "install";
+
+/**
+ * How a copy button and its popover name each kind. A release's ID is just
+ * "ID", what users call a bundle ID; the others say what they are, since
+ * they are different IDs.
+ */
+const NAMES = {
+  release: { noun: "ID", title: null },
+  artifact: { noun: "artifact ID", title: "Artifact ID" },
+  install: { noun: "install ID", title: "Install ID" },
+} as const satisfies Record<IdKind, { noun: string; title: string | null }>;
 
 /**
  * The tail as text, for a display inside another control that can't hold a
@@ -49,8 +60,8 @@ export function IdTailText({
 
 /**
  * The tail as a button: hovering, focusing, or tapping it shows the full ID
- * in a popover, and a click or Enter copies it. An artifact's says so, since
- * a release's ID and an artifact's are different IDs.
+ * in a popover, and a click or Enter copies it. An artifact's or an
+ * installation's says which it is.
  */
 export function CopyableIdTail({
   id: value,
@@ -67,7 +78,7 @@ export function CopyableIdTail({
   const [copied, setCopied] = useState<"copied" | "failed" | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
-  const noun = kind === "artifact" ? "artifact ID" : "ID";
+  const { noun, title } = NAMES[kind];
 
   const copy = async (touch: boolean) => {
     clearTimeout(timer.current);
@@ -123,9 +134,7 @@ export function CopyableIdTail({
           id={`${id}-full`}
           role="tooltip"
         >
-          {kind === "artifact" ? (
-            <p className="text-background/70">Artifact ID</p>
-          ) : null}
+          {title ? <p className="text-background/70">{title}</p> : null}
           <p
             translate="no"
             className="break-all font-mono text-xs tabular-nums"
@@ -143,7 +152,7 @@ export function CopyableIdTail({
       </Tooltip>
       <span role="status" className="sr-only">
         {copied === "copied"
-          ? `${kind === "artifact" ? "Artifact ID" : "ID"} copied`
+          ? `${title ?? "ID"} copied`
           : copied === "failed"
             ? `Couldn't copy the ${noun}`
             : ""}

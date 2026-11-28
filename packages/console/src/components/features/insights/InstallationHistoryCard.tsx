@@ -1,6 +1,6 @@
 import { RefreshCw } from "lucide-react";
 
-import { HashValueDisplay } from "@/components/HashValueDisplay";
+import { InstallIdDisplay } from "@/components/InstallIdDisplay";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -169,11 +169,8 @@ export function InstallationHistoryCard({
                 </div>
                 <div className="min-w-0">
                   <dt className="text-xs text-muted-foreground">Install ID</dt>
-                  <dd className="mt-1 font-mono text-xs">
-                    <HashValueDisplay
-                      value={selectedInstallId}
-                      buttonClassName="min-h-11 px-3 lg:min-h-0 lg:px-1.5"
-                    />
+                  <dd className="mt-1 flex items-center max-sm:min-h-11">
+                    <InstallIdDisplay installId={selectedInstallId} />
                   </dd>
                 </div>
                 <div className="min-w-0">

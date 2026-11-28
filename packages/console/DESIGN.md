@@ -30,14 +30,14 @@ stays subordinate to exact values and actions.
 
 - Inter Variable is the UI typeface, with the platform stack as the initial
   fallback and the existing monospace stack for identifiers.
-- Every release and artifact ID the Console shows is its tail: the whole
-  UUIDv7 in the text, so screen readers read all of it, clipped from the
-  left to its last 12 characters (`ID_TAIL`, a UUID's last group; the head
-  is a timestamp neighbouring IDs share). Nothing shows one in full, as a
-  shorter slice, or as a head…tail pill; `IdTails.spec.tsx` fails on any
-  other clip width, on an ID printed as bare text, and on a release or
-  artifact ID passed to `HashValueDisplay`, whose pill is for install IDs
-  and content hashes.
+- Every release, artifact, and install ID the Console shows is its tail:
+  the whole ID in the text, so screen readers read all of it, clipped from
+  the left to its last 12 characters (`ID_TAIL`, a UUID's last group; a
+  UUIDv7's head is a timestamp neighbouring IDs share). Nothing shows one
+  in full, as a shorter slice, or as a head…tail pill; `IdTails.spec.tsx`
+  fails on any other clip width, on an ID printed as bare text or as a
+  labeled row's value, and on an ID passed to `HashValueDisplay`, whose
+  pill is for content hashes (fingerprint, build key, manifest) only.
 - A labeled release reads `v12 <ID tail>` (`ReleaseIdDisplay`): the label
   in medium `text-sm`, then its ID tail in muted monospace `text-sm` on the
   same baseline, with a plain gap and no dot between them. A release without
@@ -89,7 +89,11 @@ stays subordinate to exact values and actions.
   "Copy artifact ID". Inside a link it is text with the full ID in `title`
   (`copyable={false}`). Where an installation reported a bundle with no
   release, such as the built-in bundle, Insights shows that artifact ID
-  (`ReportedBundleId`); otherwise the release ID.
+  (`ReportedBundleId`); otherwise the release ID. An installation's ID is
+  the same tail (`InstallIdDisplay`), its popover saying "Install ID" and
+  its button "Copy install ID", in event rows, installation history,
+  matching installations (as text inside the option), failure reports, and
+  an HTTP response's context.
 - Where an artifact shows (advanced artifact diagnostics' base and target),
   its ID tail shows first, then "Release" and the label of the release serving it
   in the expanded Bundle's channel and platform. Without one on the page,

@@ -10,9 +10,10 @@ import {
   Smartphone,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
+import { InstallIdDisplay } from "@/components/InstallIdDisplay";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -326,16 +327,23 @@ export function HttpResponseDetails({
             ? "Redirect"
             : "Success";
   const resource = response.resource === "catalog" ? "Catalog" : "Artifact";
-  const context = [
+  const context = (
     [
-      "App",
-      event.platform &&
-        `${event.platform === "ios" ? "iOS" : "Android"} ${event.appVersion}`,
-    ],
-    ["Channel", event.channel],
-    ["SDK", event.sdkVersion],
-    ["Installation", event.installId],
-  ].filter(([, value]) => value != null);
+      [
+        "App",
+        event.platform &&
+          `${event.platform === "ios" ? "iOS" : "Android"} ${event.appVersion}`,
+      ],
+      ["Channel", event.channel],
+      ["SDK", event.sdkVersion],
+      [
+        "Installation",
+        event.installId ? (
+          <InstallIdDisplay installId={event.installId} />
+        ) : null,
+      ],
+    ] satisfies [string, ReactNode][]
+  ).filter(([, value]) => value != null);
   return (
     <Sheet>
       <SheetTrigger
