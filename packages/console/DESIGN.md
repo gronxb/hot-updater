@@ -38,7 +38,8 @@ stays subordinate to exact values and actions.
   neighbouring IDs share). A built-in bundle ID a native build makes is its
   build time and zero random bits, so its last 12 are zeros in every build;
   it clips from the right to its first 12, the build time, instead
-  (`idEnd`), with the same popover and copy. Nothing shows one
+  (`idEnd`), with the same popover and copy. A debug build's nil UUID is
+  zeros at both ends, so it keeps its tail. Nothing shows one
   in full, as a shorter slice, or as a head…tail pill; `IdTails.spec.tsx`
   fails on any other clip width, on an ID printed as bare text or as a
   labeled row's value, and on an ID passed to `HashValueDisplay`, whose
