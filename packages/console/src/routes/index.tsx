@@ -374,8 +374,9 @@ function ReleaseEntry({
       />
       {/* A label and its ID tail don't shrink, so when a narrow card has no
           room beside them the badges move under the ID instead of over it,
-          12 px under, past the tail's touch area. */}
-      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-3">
+          16 px under: the tail's touch area reaches 12 px into the gap and
+          Unreachable's the other 4, so they meet without overlapping. */}
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-4">
         <ReleaseName onOpen={onOpen} release={release} />
         <ReleaseBadges release={release} />
       </div>
@@ -418,9 +419,10 @@ function ReleaseBadges({
       ) : null}
       {release.currentlyUnreachable ? (
         <RowReason
-          // Its touch area stays 44px tall but reaches only into the gap
-          // above, not over the ID when it moves under it.
-          className="after:-top-2 after:-bottom-5"
+          // Its touch area stays 44 px tall but reaches only 4 px into the
+          // 16 px gap above, the part the ID tail's touch area leaves, when
+          // it moves under the ID.
+          className="after:-top-1 after:-bottom-6"
           icon={CircleOff}
           label="Unreachable: no device gets this bundle with the current delivery settings."
           reason="No device gets this bundle with the current delivery settings."

@@ -31,9 +31,14 @@ stays subordinate to exact values and actions.
 - Inter Variable is the UI typeface, with the platform stack as the initial
   fallback and the existing monospace stack for identifiers.
 - Every release, artifact, and install ID the Console shows is its tail:
-  the whole ID in the text, so screen readers read all of it, clipped from
-  the left to its last 12 characters (`ID_TAIL`, a UUID's last group; a
-  UUIDv7's head is a timestamp neighbouring IDs share). Nothing shows one
+  the whole ID in the text, so screen readers read all of it, clipped to the
+  12 characters that tell IDs apart (`ID_TAIL`): the tail, or the head for a
+  built-in bundle ID whose tail is zeros. That is its last 12 characters, a
+  UUID's last group, from the left (a UUIDv7's head is a timestamp
+  neighbouring IDs share). A built-in bundle ID a native build makes is its
+  build time and zero random bits, so its last 12 are zeros in every build;
+  it clips from the right to its first 12, the build time, instead
+  (`idEnd`), with the same popover and copy. Nothing shows one
   in full, as a shorter slice, or as a head…tail pill; `IdTails.spec.tsx`
   fails on any other clip width, on an ID printed as bare text or as a
   labeled row's value, and on an ID passed to `HashValueDisplay`, whose
@@ -202,8 +207,11 @@ stays subordinate to exact values and actions.
   The tail clips inside the button, so its phone touch area stays 44 px
   tall. Where two tails stack on a phone (an artifact and the release
   serving it, an event's From and To), each sits on a 44 px line so the
-  touch areas meet rather than overlap, and a badge that wraps under a
-  card's tail sits 12 px under it. A dialog that names a release with it, such as Roll back, gives
+  touch areas meet rather than overlap. A badge that wraps under a card's
+  tail sits 12 px under it, where the tail's touch area ends; a control that
+  wraps there, such as Unreachable, has a touch area of its own, so the row
+  gap holds both: 16 px under, the tail's area reaching 12 px into it and
+  the control's 4 px, meeting without overlapping, both 44 px tall. A dialog that names a release with it, such as Roll back, gives
   first focus to Cancel, so no tooltip opens over it. Being a button, the
   tail doesn't take a text selection; the click copies.
 

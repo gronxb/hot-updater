@@ -209,8 +209,8 @@ function ComparedBundleName({
   return (
     <div className="flex min-w-0 flex-col">
       {/* A label and its ID tail don't shrink, so on a phone "Disabled"
-          moves under them instead of over, 12 px under, past the tail's
-          touch area. */}
+          moves under them instead of over, 12 px under, where the tail's
+          touch area ends: a badge, not a control, it has none of its own. */}
       <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-3">
         <ReleaseIdDisplay
           releaseId={release.releaseId}

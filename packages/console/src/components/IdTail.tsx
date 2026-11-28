@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
 
-import { ID_TAIL } from "@/lib/id-tail";
+import { ID_TAIL, idEnd } from "@/lib/id-tail";
 import { cn } from "@/lib/utils";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -10,15 +10,20 @@ const COPIED_MS = 1_500;
 
 /**
  * The tail's text: the whole ID stays in it, so screen readers read all of
- * it, clipped from the left to its last 12 characters (one `ch` per
- * monospace character).
+ * it, clipped to the 12 characters that tell IDs apart (one `ch` per
+ * monospace character): from the left to its last 12, or, for a built-in
+ * bundle ID whose tail is zeros, from the right to its first 12.
  */
 const TAIL_CLASS = "font-mono text-sm text-muted-foreground tabular-nums";
-// `ID_TAIL` characters wide: Tailwind needs the class spelled out.
-const CLIP_CLASS = "inline-flex w-[12ch] shrink-0 justify-end overflow-hidden";
+// `ID_TAIL` characters wide: Tailwind needs the classes spelled out.
+const CLIP_CLASS = {
+  tail: "inline-flex w-[12ch] shrink-0 justify-end overflow-hidden",
+  head: "inline-flex w-[12ch] shrink-0 justify-start overflow-hidden",
+} as const;
 
-/** The class that clips `id` to its tail; none for an ID that short. */
-const clipOf = (id: string) => (id.length > ID_TAIL ? CLIP_CLASS : undefined);
+/** The class that clips `id` to its 12 characters; none for an ID that short. */
+const clipOf = (id: string) =>
+  id.length > ID_TAIL ? CLIP_CLASS[idEnd(id)] : undefined;
 
 /** What an ID is, in a copy button's name and its popover. */
 export type IdKind = "release" | "artifact" | "install";
