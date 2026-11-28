@@ -91,6 +91,23 @@ export const nativeBuildVersionLabel = (
 };
 
 /**
+ * The version a build's built-in bundle is named by: `nativeBuildVersionLabel`
+ * when it has a version, such as `1.7.0 (66)`, else the app version alone.
+ * Null when the build reports no version: a build number alone would read
+ * as one.
+ */
+export const builtinBundleVersion = (
+  build: NativeBuildVersionFields,
+): string | null => {
+  if (build.submitted_version) return build.submitted_version;
+  const version = build.native_app_version ?? build.app_version;
+  if (!version) return null;
+  return build.build_number === null
+    ? version
+    : `${version} (${build.build_number})`;
+};
+
+/**
  * A build as the CLI names it, such as `iOS 1.7.0 (66)`: its platform and
  * `nativeBuildVersionLabel`, or its version without a build number. Null when
  * it reports neither, for the caller to name it another way.

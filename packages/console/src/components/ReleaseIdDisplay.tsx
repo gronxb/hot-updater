@@ -40,8 +40,7 @@ interface ReleaseIdDisplayProps {
   releaseId: string;
   /**
    * The release's label, shown `v12 <ID tail>`: the name people use for it,
-   * then the last 12 characters of its ID (the first 12 for a built-in
-   * bundle ID whose tail is zeros). The whole ID stays in the text,
+   * then the last 12 characters of its ID. The whole ID stays in the text,
    * so screen readers read it, and hovering, focusing, or tapping the tail
    * shows it in a popover; a click or Enter copies it. Left out, or null
    * for a release without one, shows the tail alone, after a muted dash in

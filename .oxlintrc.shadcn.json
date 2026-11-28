@@ -4,6 +4,7 @@
     {
       "files": [
         "packages/console/src/components/ArtifactIdDisplay.tsx",
+        "packages/console/src/components/BuiltinBundleDisplay.tsx",
         "packages/console/src/components/ChannelBadge.tsx",
         "packages/console/src/components/ChannelPicker.tsx",
         "packages/console/src/components/FoldedRows.tsx",

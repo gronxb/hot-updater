@@ -47,6 +47,7 @@ describe("Insights event details", () => {
         <EventTypeDetails event={{ type: "UPDATE_DOWNLOADED" }} />
         <EventBundleTransition
           event={{
+            appVersion: "1.6.1",
             type: "UPDATE_DOWNLOADED",
             fromBundleId: "file-a",
             toBundleId: "file-b",
@@ -64,6 +65,7 @@ describe("Insights event details", () => {
     const view = render(
       <EventBundleTransition
         event={{
+          appVersion: "1.6.1",
           type: "RECOVERED",
           fromBundleId: "file-a",
           fromReleaseId: "rel-a",
@@ -73,13 +75,31 @@ describe("Insights event details", () => {
       />,
     );
     expect(screen.getByText("rel-a")).toBeDefined();
-    expect(screen.getByText("builtin-1")).toBeDefined();
+    // The built-in bundle by its name and the report's app version.
+    expect(screen.getByText("Built-in bundle · 1.6.1")).toBeDefined();
+    expect(screen.queryByText("builtin-1")).toBeNull();
     expect(screen.queryByText("file-a")).toBeNull();
+
+    // Any other side with no release by its bundle ID.
+    view.rerender(
+      <EventBundleTransition
+        event={{
+          appVersion: "1.6.1",
+          type: "RECOVERED",
+          fromBundleId: "file-a",
+          fromReleaseId: "rel-a",
+          toBundleId: "file-c",
+          minBundleId: "builtin-1",
+        }}
+      />,
+    );
+    expect(screen.getByText("file-c")).toBeDefined();
 
     // A kept launch's previous side by its release too.
     view.rerender(
       <EventBundleTransition
         event={{
+          appVersion: "1.6.1",
           type: "UNCHANGED",
           fromBundleId: null,
           toBundleId: "file-b",
@@ -109,6 +129,7 @@ describe("Insights event details", () => {
         <EventTypeDetails event={{ type }} />
         <EventBundleTransition
           event={{
+            appVersion: "1.6.1",
             type,
             fromBundleId: null,
             toBundleId: "same-file",
@@ -142,6 +163,7 @@ describe("Insights event details", () => {
         />
         <EventBundleTransition
           event={{
+            appVersion: "1.6.1",
             type: "UPDATE_FAILED",
             fromBundleId: "file-a",
             toBundleId: "file-b",
@@ -162,6 +184,7 @@ describe("Insights event details", () => {
     view.rerender(
       <EventBundleTransition
         event={{
+          appVersion: "1.6.1",
           type: "UPDATE_FAILED",
           fromBundleId: "file-a",
           toBundleId: "file-a",
@@ -438,6 +461,7 @@ describe("Insights event details", () => {
       <>
         <EventBundleTransition
           event={{
+            appVersion: "1.6.1",
             type: "UNCHANGED",
             fromBundleId: null,
             toBundleId: "bundle-b",

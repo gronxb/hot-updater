@@ -84,6 +84,9 @@ const bundle = {
 } as Bundle;
 
 let releaseValue = release;
+let bundleValue = bundle;
+let nativeBuildValue: unknown = null;
+const nativeBuildQuery = vi.fn();
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children, to }: { children: ReactNode; to: string }) => (
@@ -112,7 +115,7 @@ vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 
 vi.mock("@/lib/api", () => ({
   useBundleQuery: () => ({
-    data: bundle,
+    data: bundleValue,
     isError: false,
     isPending: false,
   }),
@@ -127,7 +130,10 @@ vi.mock("@/lib/api", () => ({
     mutateAsync: promote,
   }),
   useReleaseCatalogDiagnosticsQuery: () => ({ data: null }),
-  useReleaseNativeBuildQuery: () => ({ data: null, isPending: false }),
+  useReleaseNativeBuildQuery: (input: unknown) => {
+    nativeBuildQuery(input);
+    return { data: nativeBuildValue, isPending: false };
+  },
   useReleaseQuery: () => ({ data: releaseValue, isError: false }),
   useUpdateReleaseMutation: () => ({ isPending: false, mutateAsync: update }),
 }));
@@ -139,12 +145,66 @@ describe("ReleaseEditorSheet", () => {
     insightsAnalytics = true;
     recovery.mockReset();
     releaseValue = release;
+    bundleValue = bundle;
+    nativeBuildValue = null;
+    nativeBuildQuery.mockReset();
     preflight.mockReset();
     preflight.mockResolvedValue({});
     promote.mockReset();
     promote.mockResolvedValue({ source: null, target: { release: null } });
     update.mockReset();
     update.mockResolvedValue({});
+  });
+
+  it("names a built-in patch base by the scope build's version, from the read the sheet already makes", () => {
+    const minBundleId = "019f6a0e-77c1-7000-8000-000000000000";
+    releaseValue = {
+      ...release,
+      strategy: "FINGERPRINT",
+      fingerprint_hash: "fp-1",
+      target_app_version: null,
+    } as ReleaseRow;
+    bundleValue = {
+      ...bundle,
+      patches: [{ ...bundle.patches![0]!, baseBundleId: minBundleId }],
+    } as Bundle;
+    nativeBuildValue = {
+      id: "019f6a0e-77c0-7a1b-9c2d-3e4f5a6b7c8d",
+      platform: "ios",
+      artifact_kind: "ipa",
+      min_bundle_id: minBundleId,
+      app_version: null,
+      native_app_version: "1.6.1",
+      build_number: "63",
+      submitted_version: null,
+    };
+    render(
+      <ReleaseEditorSheet
+        channels={[{ id: "channel-1", name: "production" }]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={release.id}
+      />,
+    );
+    const base = screen.getByText("Patch base artifact ID").nextElementSibling!;
+    expect(base.textContent).toContain("Built-in bundle · 1.6.1 (63)");
+    expect(base.textContent).not.toContain("000000000000");
+    expect(base.textContent).not.toContain("019f6a0e");
+    // One scope input, the native build link's own: no read of its own.
+    expect(
+      new Set(
+        nativeBuildQuery.mock.calls.map(([input]) => JSON.stringify(input)),
+      ),
+    ).toEqual(
+      new Set([
+        JSON.stringify({
+          platform: "ios",
+          channel: "production",
+          fingerprintHash: "fp-1",
+          targetAppVersion: null,
+        }),
+      ]),
+    );
   });
 
   it("converts percentage input and preflights before saving", async () => {

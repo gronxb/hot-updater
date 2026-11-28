@@ -1,3 +1,4 @@
+import { isBuiltinBundleId } from "./builtin-bundle-id";
 import { idTail } from "./id-tail";
 import { recoveryWindows } from "./insights-recovery";
 import type { InsightsWindow } from "./insights-rpc";
@@ -196,12 +197,14 @@ export const defaultAdoptionReleases = (
  * How a filter chip names the bundle it narrows to: `Bundle v12 <ID tail>`,
  * its label and the last 12 characters of its release ID, as
  * `ReleaseIdDisplay` shows it, from the releases already read; the tail
- * alone for one without a label or not among them.
+ * alone for one without a label or not among them. An ID in a built-in
+ * bundle's shape, whose pieces tell nothing, reads "Built-in bundle".
  */
 export const bundleChip = (
   releaseId: string,
   releases: readonly Pick<AdoptionRelease, "releaseId" | "label">[],
 ): string => {
+  if (isBuiltinBundleId(releaseId)) return "Built-in bundle";
   const label =
     releases.find((release) => release.releaseId === releaseId)?.label ?? null;
   return label === null

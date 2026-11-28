@@ -31,15 +31,9 @@ stays subordinate to exact values and actions.
 - Inter Variable is the UI typeface, with the platform stack as the initial
   fallback and the existing monospace stack for identifiers.
 - Every release, artifact, and install ID the Console shows is its tail:
-  the whole ID in the text, so screen readers read all of it, clipped to the
-  12 characters that tell IDs apart (`ID_TAIL`): the tail, or the head for a
-  built-in bundle ID whose tail is zeros. That is its last 12 characters, a
-  UUID's last group, from the left (a UUIDv7's head is a timestamp
-  neighbouring IDs share). A built-in bundle ID a native build makes is its
-  build time and zero random bits, so its last 12 are zeros in every build;
-  it clips from the right to its first 12, the build time, instead
-  (`idEnd`), with the same popover and copy. A debug build's nil UUID is
-  zeros at both ends, so it keeps its tail. Nothing shows one
+  the whole ID in the text, so screen readers read all of it, clipped from
+  the left to its last 12 characters (`ID_TAIL`, a UUID's last group; a
+  UUIDv7's head is a timestamp neighbouring IDs share). Nothing shows one
   in full, as a shorter slice, or as a head…tail pill; `IdTails.spec.tsx`
   fails on any other clip width, on an ID printed as bare text or as a
   labeled row's value, and on an ID passed to `HashValueDisplay`, whose
@@ -94,8 +88,20 @@ stays subordinate to exact values and actions.
   (`ArtifactIdDisplay`), and its popover says "Artifact ID" and its button
   "Copy artifact ID". Inside a link it is text with the full ID in `title`
   (`copyable={false}`). Where an installation reported a bundle with no
-  release, such as the built-in bundle, Insights shows that artifact ID
-  (`ReportedBundleId`); otherwise the release ID. An installation's ID is
+  release, Insights shows that artifact ID (`ReportedBundleId`); otherwise
+  the release ID. A built-in bundle's ID shows no piece of itself: a native
+  build makes it from its build time and zero random bits, so its tail is
+  zeros in every build and its head a timestamp. It reads `Built-in bundle ·
+  <app version>` (`BuiltinBundleDisplay`), the version the surface already
+  holds: the native build's store label such as `1.6.1 (63)`, or the app
+  version of the report or row that names it, and `Built-in bundle` alone
+  where the surface has none. It is the same copy button, its popover
+  saying "Built-in bundle ID" with the full ID; inside a link it is text
+  with the ID in `title`. `ArtifactIdDisplay` names any ID in a built-in
+  bundle's shape this way, a filter chip reads "Built-in bundle", and
+  `BuiltinBundleNames.spec.tsx` fails on any piece of one shown. Where a
+  release serves the built-in bundle, its release ID shows with a "Built-in
+  bundle" badge. An installation's ID is
   the same tail (`InstallIdDisplay`), its popover saying "Install ID" and
   its button "Copy install ID", in event rows, installation history,
   matching installations (as text inside the option), failure reports, and

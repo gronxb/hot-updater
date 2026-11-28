@@ -171,7 +171,7 @@ describe("Distribution details", () => {
       }),
     );
   });
-  it("shows each app version's built-in bundle by its ID, apart from unknown bundles", async () => {
+  it("names each app version's built-in bundle by that version, apart from unknown bundles", async () => {
     const builtin = "019a0000-0000-7000-8000-000000000000";
     mocks.usage.mockResolvedValue({
       ...report,
@@ -205,13 +205,20 @@ describe("Distribution details", () => {
       name: "Bundle distribution",
     });
     const [running, adopted, unknown] = within(list).getAllByRole("listitem");
-    expect(within(running!).getByText("Built-in bundle")).toBeDefined();
-    expect(within(running!).getByText(builtin)).toBeDefined();
+    // Named by its app version, the full ID in its popover: never a piece of
+    // the ID, whose tail is zeros in every build.
+    expect(
+      within(running!).getByRole("button", {
+        name: `Built-in bundle · 1.0.0: copy built-in bundle ID ${builtin}`,
+      }).textContent,
+    ).toBe("Built-in bundle · 1.0.0");
+    expect(running!.textContent).not.toContain("000000000000");
+    expect(running!.textContent).not.toContain("019a0000");
     expect(within(running!).queryByRole("link")).toBeNull();
     expect(within(running!).queryByText("Unknown bundle")).toBeNull();
     expect(
       within(running!).getByRole("progressbar", {
-        name: `Built-in bundle ${builtin} share in 1.0.0 on ios`,
+        name: "Built-in bundle share in 1.0.0 on ios",
       }),
     ).toBeDefined();
     // A release that selected the built-in bundle links to it and still says
@@ -221,7 +228,16 @@ describe("Distribution details", () => {
         name: "Review bundle release-rollback for app version 1.0.0",
       }),
     ).toBeDefined();
-    expect(within(adopted!).getByText("Built-in bundle")).toBeDefined();
+    const adoptedBuiltin = within(adopted!).getByRole("button", {
+      name: `Built-in bundle · 1.0.0: copy built-in bundle ID ${builtin}`,
+    });
+    expect(adoptedBuiltin.textContent).toBe("Built-in bundle · 1.0.0");
+    // Under the release's 44 px line on a phone, its 20 px line reaches
+    // 12 px each way, 44 px tall, so its tap area meets the release tail's
+    // rather than overlapping it.
+    expect(adoptedBuiltin.className).toContain("text-sm");
+    expect(adoptedBuiltin.className).toContain("after:-inset-y-3");
+    expect(adoptedBuiltin.className).not.toContain("after:-inset-y-3.5");
     expect(within(unknown!).getByText("Unknown bundle")).toBeDefined();
     expect(within(unknown!).queryByText("Built-in bundle")).toBeNull();
     expect(mocks.release).toHaveBeenCalledWith({
