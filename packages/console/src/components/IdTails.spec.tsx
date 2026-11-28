@@ -26,7 +26,8 @@ import { ReleaseIdDisplay } from "./ReleaseIdDisplay";
 /*
  * The Console shows every release, artifact, and install ID the same way:
  * the whole ID in the text, clipped from the left to its last 12 characters (the
- * timestamp head is what neighbouring IDs share), with the full ID in a
+ * timestamp head is what neighbouring IDs share), or from the right to its
+ * first 12 for a built-in bundle ID whose tail is zeros, with the full ID in a
  * popover or a title. This guard renders the surfaces that show IDs and
  * scans the source for the ways an ID was shown before, so a new surface
  * that shows a shorter tail, a head-and-tail pill, or the full ID fails here.
@@ -38,6 +39,12 @@ const OTHER_RELEASE = "019f6a15-7f3e-7b2d-9c1a-0e9d8c7b6a5f";
 const ARTIFACT = "019f6a13-9e8d-7c6b-a5f4-e3d2c1b0a9f8";
 const PATCH_ARTIFACT = "019f6a14-2468-7ace-9bdf-13579bdf2468";
 const BUILT_IN = "019f6a10-5a5a-7b6b-8c7c-d8d8e9e9fafa";
+// A built-in bundle's ID as a native build makes it: its build time, then
+// zero random bits, so its last 12 characters are zeros in every build.
+const ZERO_TAIL = "019f6a0e-77c1-7000-8000-000000000000";
+const NIL = "00000000-0000-0000-0000-000000000000";
+// An earlier CLI's built-in bundle ID: a platform byte, then random bits.
+const PLATFORM_BYTE = "019f6a0f-1b2c-7000-8000-01c4d2e8a7f3";
 // An installation's ID: a UUIDv4 the app creates, not a release's or an
 // artifact's, shown the same way.
 const INSTALL = "8d2f0c1e-4b7a-4e6d-9f3c-2a1b0c9d8e7f";
@@ -47,8 +54,13 @@ const IDS = [
   ARTIFACT,
   PATCH_ARTIFACT,
   BUILT_IN,
+  ZERO_TAIL,
+  PLATFORM_BYTE,
   INSTALL,
 ];
+
+/** The IDs whose last 12 characters tell nothing apart: their head shows. */
+const HEADS = new Set([ZERO_TAIL]);
 
 afterEach(cleanup);
 
@@ -58,7 +70,8 @@ const showsPartOf = (text: string, id: string) =>
 
 /**
  * Fails unless every visible text that shows part of an ID is that whole ID,
- * clipped to its last 12 characters. Screen-reader text and popovers, which
+ * clipped to 12 characters: its last 12, or its first 12 for a built-in
+ * bundle ID whose tail is zeros. Screen-reader text and popovers, which
  * hold the full ID on purpose, are left out.
  */
 function expectTailsOnly(root: HTMLElement) {
@@ -77,6 +90,10 @@ function expectTailsOnly(root: HTMLElement) {
       expect(clip, `${id} shows in full`).not.toBeNull();
       expect(clip!.className).toContain(`w-[${TAIL}ch]`);
       expect(clip!.className).toContain("overflow-hidden");
+      // A tail overflows to the left, a head to the right.
+      expect(clip!.className, `${id}'s clip`).toContain(
+        HEADS.has(id) ? "justify-start" : "justify-end",
+      );
     }
   }
   // Nothing renders a clip of any other width.
@@ -169,6 +186,42 @@ describe("every release and artifact ID shows its last 12 characters", () => {
     );
     expect(seen).toEqual(
       expect.arrayContaining([RELEASE, OTHER_RELEASE, BUILT_IN]),
+    );
+  });
+
+  it("from its head for a built-in bundle ID whose tail is zeros", () => {
+    // Every native build's built-in bundle ID ends in the same 12 zeros, so
+    // its tail tells none apart: the build-time head does.
+    for (const id of [ZERO_TAIL, PLATFORM_BYTE, RELEASE]) {
+      for (const copyable of [true, false]) {
+        renderTails(<ArtifactIdDisplay artifactId={id} copyable={copyable} />);
+        cleanup();
+        renderTails(
+          <ReleaseIdDisplay copyable={copyable} label={3} releaseId={id} />,
+        );
+        cleanup();
+      }
+    }
+    const seen = renderTails(
+      <EventBundleTransition
+        event={{
+          type: "RECOVERED",
+          fromBundleId: ARTIFACT,
+          fromReleaseId: RELEASE,
+          toBundleId: ZERO_TAIL,
+          toReleaseId: undefined,
+          minBundleId: ZERO_TAIL,
+        }}
+      />,
+    );
+    expect(seen).toContain(ZERO_TAIL);
+    expect(bundleChip(ZERO_TAIL, [])).toBe(
+      `Bundle ${ZERO_TAIL.slice(0, TAIL)}`,
+    );
+    // A debug build's nil UUID is zeros at both ends: it keeps its tail.
+    expect(bundleChip(NIL, [])).toBe("Bundle 000000000000");
+    expect(bundleChip(PLATFORM_BYTE, [])).toBe(
+      `Bundle ${PLATFORM_BYTE.slice(-TAIL)}`,
     );
   });
 

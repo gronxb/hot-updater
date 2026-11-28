@@ -19,9 +19,10 @@ interface ArtifactIdDisplayProps {
 }
 
 /**
- * An artifact's ID as its last 12 characters, the way the Console shows
- * every ID: the whole ID stays in the text, hovering or focusing it shows
- * it in a popover that says it's an artifact's, and a click copies it. It
+ * An artifact's ID as its last 12 characters, or a built-in bundle's
+ * zero-tailed ID as its first 12, the way the Console shows every ID: the
+ * whole ID stays in the text, hovering or focusing it shows it in a popover
+ * that says it's an artifact's, and a click copies it. It
  * takes no label: a label names a release, and its tail is that release's
  * ID.
  */

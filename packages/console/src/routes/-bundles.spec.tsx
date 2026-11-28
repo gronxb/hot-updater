@@ -10,6 +10,28 @@ import {
 import type { ComponentType, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+/** A Tailwind spacing class's pixels, such as `gap-y-3` (12) in `className`. */
+const spacing = (className: string, utility: string) => {
+  const match = new RegExp(`(?:^|\\s)${utility}-([\\d.]+)(?=\\s|$)`).exec(
+    className,
+  );
+  return match ? Number(match[1]) * 4 : 0;
+};
+
+/**
+ * How far a control's phone touch area (its `::after`) reaches past its line
+ * on one side: `after:-top-2` or `after:-bottom-5` where given, since they
+ * come after `after:-inset-y-*` in Tailwind's CSS and win, else the inset.
+ */
+const touchReach = (className: string, side: "top" | "bottom") =>
+  spacing(className, `after:-${side}`) || spacing(className, "after:-inset-y");
+
+/** A control's phone touch area height: its text line plus both reaches. */
+const touchHeight = (className: string) =>
+  (/(?:^|\s)text-xs(?=\s|$)/.test(className) ? 16 : 20) +
+  touchReach(className, "top") +
+  touchReach(className, "bottom");
+
 const mocks = vi.hoisted(() => ({
   releasesQuery: vi.fn(),
   foldQuery: vi.fn(),
@@ -514,9 +536,19 @@ describe("BundlesPage", () => {
       expect(promoted.parentElement).toBe(name.parentElement);
       expect(unreachable.parentElement).toBe(name.parentElement);
       expect(name.parentElement!.className).toContain("flex-wrap");
-      // Stacked under the ID, the reason's touch area stays out of it.
-      expect(unreachable.className).toContain("after:-top-2");
-      expect(unreachable.className).toContain("after:-bottom-5");
+      if (mobile) {
+        // Wrapped under the tail on a phone, the reason's touch area and the
+        // copy button's meet in the row gap without overlapping, so a tap
+        // just under the tail copies it rather than explaining Unreachable,
+        // and both stay 44 px tall.
+        const gap = spacing(name.parentElement!.className, "gap-y");
+        expect(
+          touchReach(copy.className, "bottom") +
+            touchReach(unreachable.className, "top"),
+        ).toBeLessThanOrEqual(gap);
+        expect(touchHeight(copy.className)).toBeGreaterThanOrEqual(44);
+        expect(touchHeight(unreachable.className)).toBeGreaterThanOrEqual(44);
+      }
     },
   );
 
